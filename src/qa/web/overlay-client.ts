@@ -477,7 +477,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   var site = null; // { win, doc, offsetX, offsetY }
   var storeKey = "morpheus-qa:v2:" + PROJECT;
   var restored = false;
-  var draftStorageError = false;
+  var draftStorageError = false, statusText = "", statusKind = "";
   var legacyConsumed = {}, legacyImportWarning = "", draftRevision = 0, legacyAttempt = null;
 
   function frameEl() { return shell ? document.getElementById("morpheus-qa-site") : null; }
@@ -488,7 +488,12 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   }
   function pagePath(win) { return win.location.pathname + win.location.search; }
 
-  function setStatus(text, kind) { statusEl.textContent = (text || "") + (draftStorageError ? " Draft not saved: keep this tab open and Send before reloading." : "") + (legacyImportWarning ? " " + legacyImportWarning : ""); statusEl.className = "status" + (kind ? " " + kind : ""); }
+  function renderStatus() {
+    var kind = draftStorageError || legacyImportWarning ? "err" : statusKind;
+    statusEl.textContent = statusText + (draftStorageError ? " Draft not saved: keep this tab open and Send before reloading." : "") + (legacyImportWarning ? " " + legacyImportWarning : "");
+    statusEl.className = "status" + (kind ? " " + kind : "");
+  }
+  function setStatus(text, kind) { statusText = text || ""; statusKind = kind || ""; renderStatus(); }
   function persist() {
     if (!storeKey) return false;
     try {
@@ -497,7 +502,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
       sessionStorage.setItem(storeKey, data);
       draftStorageError = false;
       draftRevision++; return true;
-    } catch (e) { draftStorageError = true; setStatus("Draft could not be saved.", "err"); return false; }
+    } catch (e) { draftStorageError = true; renderStatus(); return false; }
   }
   function restoredPin(p) {
     var anchor = JSON.parse(JSON.stringify(p.anchor));
@@ -512,7 +517,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     if (raw) {
       try {
         var saved = JSON.parse(raw);
-        if (!saved || !Array.isArray(saved.pins) || !saved.pins.length) return;
+        if (!saved || !Array.isArray(saved.pins) || !saved.pins.length) { renderStatus(); return; }
         // Give the intact source an opaque identity before importing. A durable consumed-index
         // record prevents replay even if cleanup fails or the imported comment is later sent.
         if (!/^[A-Za-z0-9-]{8,64}$/.test(saved.migrationId || "")) {
@@ -539,7 +544,8 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
       if (changed) render();
     }
     legacyAttempt = { key: key, raw: raw, revision: draftRevision };
-    if (legacyImportWarning) setStatus("", "err");
+    // Migration retries refresh durable warnings without replacing the latest action result.
+    renderStatus();
   }
   function restore() {
     if (restored) return;
@@ -647,6 +653,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     if (!quiet && saved) clearComposer();
     render();
     if (!quiet && saved) setStatus("Saved pin " + p.n + ((p.text || "").trim() ? "" : " (empty)"), "ok");
+    if (!quiet && !saved) setStatus("Draft could not be saved.", "err");
   }
   function deleteFocused() {
     var p = focused(); if (!p) return;
