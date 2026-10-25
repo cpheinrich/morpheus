@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { call } from "../src/client.mjs";
 import { delegatedMarker } from "../src/config.mjs";
+import { claudeMethods, poolMethods } from "./tool-contract.mjs";
 const server = new McpServer({ name: "codex-claude", version: "0.1.0" });
 const task = {
   threadId: z.string().describe("Current Codex task id; never an invented id."),
@@ -94,7 +95,8 @@ const poolSpecs = {
     { conversationId: z.string().uuid().optional(), threadId: z.string().optional().describe("Current Codex task id; required with retry."), retry: z.boolean().default(false) },
   ],
 };
-for (const [method, [description, inputSchema]] of Object.entries(poolSpecs))
+for (const method of poolMethods) {
+  const [description, inputSchema] = poolSpecs[method];
   server.registerTool(`pool_${method}`, { description, inputSchema }, async (args) => {
     try {
       if (process.env[delegatedMarker] && (["start", "followup", "answer", "recover"].includes(method) || (method === "reattach" && args.retry === true)))
@@ -104,7 +106,9 @@ for (const [method, [description, inputSchema]] of Object.entries(poolSpecs))
       return { isError: true, content: [{ type: "text", text: e.message }] };
     }
   });
-for (const [method, [description, inputSchema]] of Object.entries(specs))
+}
+for (const method of claudeMethods) {
+  const [description, inputSchema] = specs[method];
   server.registerTool(
     `claude_${method}`,
     { description, inputSchema },
@@ -123,4 +127,5 @@ for (const [method, [description, inputSchema]] of Object.entries(specs))
       }
     },
   );
+}
 await server.connect(new StdioServerTransport());

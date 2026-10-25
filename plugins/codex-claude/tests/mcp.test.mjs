@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { mkdtemp, rm, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { codexMcpToolNames } from "../scripts/tool-contract.mjs";
 test("MCP advertises tools without activating bridge or creating settings", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "mcp-off-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -20,22 +21,7 @@ test("MCP advertises tools without activating bridge or creating settings", asyn
   const { tools } = await client.listTools();
   assert.deepEqual(
     tools.map((t) => t.name).sort(),
-    [
-      "answer",
-      "inspect",
-      "memories",
-      "override",
-      "start",
-      "status",
-      "stop",
-      "view",
-      "wait",
-    ]
-      .map((n) => "claude_" + n)
-      .concat(
-        ["answer", "followup", "logs", "profiles", "reattach", "reconcile", "recover", "start", "status", "stop", "wait"].map((n) => "pool_" + n),
-      )
-      .sort(),
+    [...codexMcpToolNames].sort(),
   );
   assert.deepEqual(await readdir(root), []);
 });
