@@ -484,7 +484,7 @@ test("concurrent Codex session discoveries both persist", async (t) => {
   });
 });
 
-test("Claude task history retains active and five recent terminal runs", async (t) => {
+test("Claude task history retains active, recent terminal and recent missing runs", async (t) => {
   const root = await isolatedHome(t);
   const repo = join(root, "repo");
   await mkdir(repo);
@@ -525,8 +525,9 @@ test("Claude task history retains active and five recent terminal runs", async (
     progress: "",
   });
   const task = await taskRead(taskId);
-  task.runId = "30000000-0000-0000-0000-000000000999";
-  task.runIds = [...terminalIds, task.runId];
+  const missingId = "30000000-0000-0000-0000-000000000999";
+  task.runId = missingId;
+  task.runIds = [...terminalIds, missingId];
   await taskWrite(task);
 
   const inspected = await m.claudeInspect(sessionId);
@@ -534,7 +535,82 @@ test("Claude task history retains active and five recent terminal runs", async (
   assert.deepEqual(inspected.runs.active.map((run) => run.id), [activeId]);
   assert.deepEqual(inspected.runs.recent.map((run) => run.id), recent);
   const stored = await taskRead(taskId);
-  assert.deepEqual(stored.runIds, [activeId, ...recent]);
+  assert.deepEqual(stored.runIds, [activeId, ...recent, missingId]);
+  assert.equal(stored.runId, activeId);
+});
+
+test("inspection pruning cannot overwrite a concurrently persisted active run", async (t) => {
+  const root = await isolatedHome(t);
+  const repo = join(root, "repo");
+  await mkdir(repo);
+  const sessionId = "66b6dd27-13a6-4c5e-8d5c-1b9a4bb261f3";
+  const taskId = claudeTaskId(sessionId);
+  const m = new Manager();
+  await m.codexHook({
+    sessionId,
+    event: "UserPromptSubmit",
+    cwd: repo,
+    permissionMode: "plan",
+  });
+  const terminalId = "40000000-0000-0000-0000-000000000001";
+  await mkdir(runDir(terminalId));
+  await atomic(join(runDir(terminalId), "run.json"), {
+    id: terminalId,
+    threadId: taskId,
+    cwd: repo,
+    createdAt: 1,
+    state: "completed",
+    terminal: true,
+  });
+  const task = await taskRead(taskId);
+  task.runId = terminalId;
+  task.runIds = [terminalId];
+  await taskWrite(task);
+
+  let snapshotTaken;
+  const snapshot = new Promise((resolve) => {
+    snapshotTaken = resolve;
+  });
+  let releaseSnapshot;
+  const release = new Promise((resolve) => {
+    releaseSnapshot = resolve;
+  });
+  const taskRuns = m.taskRuns.bind(m);
+  let pause = true;
+  m.taskRuns = async (...args) => {
+    const value = await taskRuns(...args);
+    if (pause) {
+      pause = false;
+      snapshotTaken();
+      await release;
+    }
+    return value;
+  };
+
+  const inspecting = m.claudeInspect(sessionId);
+  await snapshot;
+  const activeId = "40000000-0000-0000-0000-000000000002";
+  m.runs.set(activeId, {
+    id: activeId,
+    executor: "codex",
+    threadId: taskId,
+    cwd: repo,
+    createdAt: 2,
+    state: "running",
+    terminal: false,
+    sequence: 0,
+    progress: "",
+  });
+  // codexStart uses this same queued mutation after launching the new run.
+  const starting = m.mutateTask(taskId, (current) => {
+    current.runId = activeId;
+    current.runIds = [...new Set([...(current.runIds ?? []), activeId])];
+  });
+  releaseSnapshot();
+  await Promise.all([inspecting, starting]);
+
+  const stored = await taskRead(taskId);
+  assert.deepEqual(stored.runIds, [terminalId, activeId]);
   assert.equal(stored.runId, activeId);
 });
 

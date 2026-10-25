@@ -91,12 +91,11 @@ export class Manager {
   async snapshot(id) {
     return (await this.client()).snapshot(id);
   }
-  async mutateTask(id, mutation) {
+  async taskTransaction(id, transaction) {
     const previous = this.taskMutations.get(id) ?? Promise.resolve();
     const current = previous.catch(() => {}).then(async () => {
       const task = await taskRead(id);
-      await mutation(task);
-      await taskWrite(task);
+      if (await transaction(task)) await taskWrite(task);
       return task;
     });
     this.taskMutations.set(id, current);
@@ -106,21 +105,33 @@ export class Manager {
       if (this.taskMutations.get(id) === current) this.taskMutations.delete(id);
     }
   }
-  async taskRuns(task) {
+  async mutateTask(id, mutation) {
+    return this.taskTransaction(id, async (task) => {
+      await mutation(task);
+      return true;
+    });
+  }
+  async taskRuns(task, includeMissing = false) {
     const ids = new Set([...(task.runIds ?? []), task.runId].filter(Boolean));
     for (const run of this.runs.values())
       if (run.threadId === task.id) ids.add(run.id);
-    const runs = (
-      await Promise.all(
-        [...ids].map((id) => this.status(id).catch(() => null)),
-      )
-    )
+    const records = await Promise.all(
+      [...ids].map(async (id) => [id, await this.status(id).catch(() => null)]),
+    );
+    const runs = records
+      .map(([, run]) => run)
       .filter(Boolean)
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-    return {
+    const view = {
       active: runs.filter((run) => !run.terminal),
       recent: runs.filter((run) => run.terminal).slice(0, RECENT_RUN_LIMIT),
     };
+    if (includeMissing)
+      view.missing = records
+        .filter(([, run]) => !run)
+        .map(([id]) => id)
+        .slice(-RECENT_RUN_LIMIT);
+    return view;
   }
   async codexRunId(args) {
     if (args.runId) return args.runId;
@@ -662,18 +673,36 @@ export class Manager {
   async claudeInspect(sessionId, operation) {
     const config = await configRead();
     const taskId = claudeTaskId(sessionId);
-    let task = await this.mutateTask(taskId, async (current) => {
-      if (current.session?.cwd)
-        Object.assign(current, await projectIdentity(current.session.cwd));
-    });
     const usage = await readClaudeUsage();
     const allowance = claudeRemaining(usage);
-    const runs = await this.taskRuns(task);
-    const retained = [...runs.active, ...runs.recent].map((run) => run.id);
-    task = await this.mutateTask(taskId, (current) => {
-      current.runIds = retained;
-      if (!retained.includes(current.runId)) current.runId = retained[0] ?? null;
+    let runs;
+    const task = await this.taskTransaction(taskId, async (current) => {
+      let changed = false;
+      if (current.session?.cwd) {
+        const identity = await projectIdentity(current.session.cwd);
+        if (current.cwd !== identity.cwd || current.project !== identity.project) {
+          Object.assign(current, identity);
+          changed = true;
+        }
+      }
+      runs = await this.taskRuns(current, true);
+      const known = [...runs.active, ...runs.recent].map((run) => run.id);
+      const retained = [...new Set([...known, ...runs.missing])];
+      if (
+        retained.length !== (current.runIds ?? []).length ||
+        retained.some((id, index) => id !== current.runIds[index])
+      ) {
+        current.runIds = retained;
+        changed = true;
+      }
+      const runId = known.includes(current.runId) ? current.runId : known[0] ?? null;
+      if (current.runId !== runId) {
+        current.runId = runId;
+        changed = true;
+      }
+      return changed;
     });
+    delete runs.missing;
     return {
       task,
       session: task.session ?? null,

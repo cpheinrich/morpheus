@@ -64,3 +64,25 @@ Review-fix verification:
 The independent reviewer's 42 sandbox failures came from denied process/socket operations; the
 same complete package suite passes outside that sandbox here. The installed copy under
 `~/plugins/codex-claude` remains unchanged.
+
+## Review round 2 fixes
+
+Commit: `Apply review round 2 fixes (MO-26-10-25-05.06.40)`.
+
+The remaining review finding showed that inspection classified run history outside the task
+mutation queue, so its later pruning write could overwrite a newly persisted active run id.
+Inspection now re-reads and classifies history inside one queued transaction. The transaction
+writes only when identity or retained history actually changes, keeps every active run, the five
+newest terminal runs and up to five recent unresolved ids, and cannot race a start's queued
+history update. This supersedes round 1's overly broad statement that all missing records are
+removed: bounded recent missing ids are intentionally retained until their record resolves.
+
+The regression test pauses inspection after its history snapshot, queues the same mutation used
+to persist a newly launched active run, then releases inspection and proves the final task record
+still contains the active id.
+
+Review-fix verification:
+
+- `node --test tests/reverse.test.mjs` — 17/17 pass.
+- `pnpm -C plugins/codex-claude test` — 118/118 pass.
+- `pnpm -C plugins/codex-claude check` — pass.
