@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "purpose": "Read-only forward evaluation. Give an evaluator one request, its facts and the skill; do not give it the grading rubric or live credentials.",
+  "scenarios": [
+    {
+      "id": "unchanged-inputs",
+      "request": "Use the DevOps skill to decide whether this profile owes a new build and what to do next.",
+      "facts": {
+        "now": "2026-10-25T17:00:00Z",
+        "schedule": "staging checks every six hours, build only when apps/ios inputs change",
+        "lastInternalReceipt": { "deliveredAt": "2026-10-25T10:00:00Z", "inputDigest": "same-inputs", "valid": true },
+        "mainSinceReceipt": ["docs/help.md"],
+        "currentInputDigest": "same-inputs",
+        "lastControllerCheck": "2026-10-25T16:00:00Z",
+        "controllerErrors": []
+      }
+    },
+    {
+      "id": "artifact-failure-existing-owner",
+      "request": "Use the DevOps skill to get this delivery moving. You may diagnose and prepare a source fix, but have no authority to launch provider actions in this evaluation.",
+      "facts": {
+        "run": "run-A/attempt-1",
+        "build": 30,
+        "testsCommand": "success",
+        "selectedArtifactStage": "failure: screenshot snapshot exceeds stored-byte bound",
+        "requiredEvidenceBarrier": "failure",
+        "qualification": "skipped",
+        "upload": "skipped",
+        "receipt": null,
+        "repair": { "task": "repair-A-3", "session": "same-host-saved-session", "state": "waiting-for-funding", "lease": "current-and-valid" },
+        "funding": "upstream source CI is not yet reserved"
+      }
+    },
+    {
+      "id": "quota-reader-timeout",
+      "request": "The incident says 'wait-measured-subscription-capacity'. Diagnose the evidence and propose the next bounded step.",
+      "facts": {
+        "ordinarySubscriptionAllowed": "unknown",
+        "quotaRead": { "outcome": "timeout", "cleanup": "verified stopped" },
+        "priorQuota": { "remainingPercent": 80, "readAt": "yesterday" },
+        "repairOwner": "same-existing-session",
+        "priorInvocations": "Repeated full analyses ended on this same unchanged blocker; no new evidence since the last checkpoint.",
+        "apiFallbackGrant": false,
+        "paidOverageGrant": false
+      }
+    },
+    {
+      "id": "uncertain-upload",
+      "request": "The upload command lost its response. Restore delivery without losing our accepted build.",
+      "facts": {
+        "runAttempt": "run-B/1",
+        "build": 44,
+        "uploadClaim": "claimed-before-request",
+        "savedUploadId": "upload-B",
+        "transport": "reply lost after provider request",
+        "providerUploadReadback": { "uploadId": "upload-B", "state": "processing" },
+        "internallyAvailable": false,
+        "budget": { "limit": 40, "knownLiabilities": 35, "uncertainLiabilities": 5 }
+      }
+    },
+    {
+      "id": "eligible-deadline-and-owner",
+      "request": "An eligible staging release is overdue. Use the DevOps skill to define ownership, the next action and how this should wake after your session ends.",
+      "facts": {
+        "profile": "staging-C",
+        "deadline": "2026-10-25T12:00:00Z",
+        "now": "2026-10-25T12:20:00Z",
+        "inputsChanged": true,
+        "holds": [],
+        "sourceAgeEligible": true,
+        "dueIntent": "intent-C",
+        "run": null,
+        "controllerLastObserved": "2026-10-25T11:25:00Z",
+        "controllerHost": "host-one",
+        "watchdogHost": "host-one",
+        "existingIncident": null,
+        "authority": "diagnose, prepare reviewed source and use existing ordinary controller paths; no new service or paid-model grant"
+      }
+    },
+    {
+      "id": "observer-versus-provider",
+      "request": "The run watcher timed out. Report what failed and choose the next action.",
+      "facts": {
+        "watcher": { "outcome": "timeout", "directChildReaped": true, "allKnownProcessesAbsent": true },
+        "providerLastObservation": { "runAttempt": "run-D/1", "status": "in_progress", "observedAt": "one-hour-ago" },
+        "providerCurrentState": "not read",
+        "build": 51,
+        "repairOwner": null
+      }
+    },
+    {
+      "id": "delivery-and-external-followup",
+      "request": "Decide whether this delivery is complete and what follow-up remains.",
+      "facts": {
+        "acceptance": "exact build internally installable; external review tracked separately",
+        "currentProof": { "inventory": 1156, "finalPass": 1156, "fail": 0, "skip": 0, "actualRetries": 2 },
+        "identities": "source/config/run-attempt/IPA/build join verified",
+        "apple": { "valid": true, "expired": false, "internalGroupAssigned": true, "allExpectedInternalTesters": true, "internalInstallability": true, "externalReview": "pending" },
+        "testersMayBeAdded": false
+      }
+    },
+    {
+      "id": "subject-context-and-authority",
+      "request": "Find the relevant prior work and explain whether you may restart this controller. Only the supplied records are available; do not invent tool results.",
+      "facts": {
+        "ticket": { "id": "EX-100", "tags": ["engineering", "devops", "ios"] },
+        "worklogs": [
+          { "path": ".agent/worklog/a.md", "tags": ["engineering", "devops"], "summary": "One-shot bootstrap outcome unknown, later service health verified." },
+          { "path": ".agent/worklog/old.md", "tags": null, "summary": "Unclassified history." }
+        ],
+        "currentGrant": "read-only diagnosis",
+        "historicalCampaignBudget": 350,
+        "currentControllerHealth": "not observed",
+        "restartNonce": "already spent"
+      }
+    }
+  ]
+}

@@ -15,11 +15,34 @@ import { renderGoals, renderRequests, writeIndex, writeStaticRoadmapReadme, } fr
 import { createItem } from "../pm/new-item.js";
 import { IssueLinkError, linkIssue as linkIssueItem, parseIssueNumber, } from "../pm/issues.js";
 import { ageInDays, claim as claimItem, listClaims } from "../pm/claim.js";
-import { ARTIFACTS } from "../pm/schema.js";
+import { ARTIFACTS, WorkTags } from "../pm/schema.js";
+import { taggedWork } from "../pm/tags.js";
 import { formatReconcile, markShipped, reconcile } from "../pm/ship.js";
 import { currentBranch, resolveTrunk } from "../session/git.js";
 import { projectPolicy } from "../session/policy.js";
 const KINDS = Object.keys(ARTIFACTS);
+/** A cheap context entrypoint: explicit subject metadata, never a model classification. */
+export async function tagged(productDir, root, tags, json) {
+    const parsed = WorkTags.safeParse(tags);
+    if (!parsed.success || parsed.data.length === 0) {
+        console.error("Usage: morpheus pm tagged <tag> [<tag> ...] [--json] (matches all tags)");
+        return 1;
+    }
+    const result = await taggedWork(root, productDir, parsed.data);
+    if (json)
+        console.log(JSON.stringify(result, null, 2));
+    else {
+        for (const item of result.items)
+            console.log(`${item.kind}\t${item.path}\t${item.tags.join(", ")}\t${item.summary}`);
+        if (!result.items.length)
+            console.log("No explicitly tagged records match. Untagged history is not classified.");
+        if (result.unclassifiedWorklogs)
+            console.log(`${result.unclassifiedWorklogs} worklog(s) have no subject tags and remain unclassified.`);
+        for (const issue of result.issues)
+            console.error(`${issue.path}: ${issue.message}`);
+    }
+    return result.issues.length ? 1 : 0;
+}
 const INDEXED_KINDS = ["goals", "requests"];
 const exec = promisify(execFile);
 async function exists(path) {
@@ -227,6 +250,11 @@ export async function create(productDir, kind, title, opts, cwd) {
         console.error("A title is required.");
         return 1;
     }
+    const tags = WorkTags.safeParse(opts.tags ?? []);
+    if (!tags.success || (tags.data.length && kind !== "roadmap")) {
+        console.error("--tag requires unique lowercase subject tags on a roadmap item (for example --tag engineering --tag devops).");
+        return 1;
+    }
     const issue = opts.issue === undefined ? undefined : parseIssueNumber(opts.issue);
     if (issue === null) {
         console.error(`--issue must be a positive GitHub issue number; received "${opts.issue}".`);
@@ -251,6 +279,7 @@ export async function create(productDir, kind, title, opts, cwd) {
         priority: opts.priority,
         goal: opts.goal,
         slug: opts.slug,
+        tags: tags.data,
         ...(issue !== undefined ? { issues: [issue] } : {}),
     });
     console.log(`Created ${path}`);

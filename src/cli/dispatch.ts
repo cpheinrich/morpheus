@@ -7,6 +7,7 @@ import {
   cleanup,
   worktrees,
   claims,
+  tagged,
   create,
   index,
   linkIssue,
@@ -502,6 +503,8 @@ async function dispatchPm({ flags, command, rest, dir }: Invocation): Promise<nu
       return worktrees(process.cwd(), rest[0], flags.dryRun || flags.check);
     case "claims":
       return claims(dir, process.cwd());
+    case "tagged":
+      return tagged(dir, process.cwd(), rest, flags.json);
     case "link-issue": {
       const { refused } = await guard(
         process.cwd(),
@@ -556,7 +559,7 @@ async function dispatchPm({ flags, command, rest, dir }: Invocation): Promise<nu
         dir,
         kind ?? "",
         titleParts.join(" "),
-        { priority: flags.priority, goal: flags.goal, slug: flags.slug, issue: flags.issue },
+        { priority: flags.priority, goal: flags.goal, slug: flags.slug, issue: flags.issue, tags: flags.tags },
         process.cwd(),
       );
     }

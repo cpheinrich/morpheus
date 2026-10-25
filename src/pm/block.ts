@@ -65,12 +65,13 @@ export interface BlockResult {
   alreadyBlocked: boolean;
 }
 
-function worklogBody(opts: BlockOptions, title: string, date: string): string {
+function worklogBody(opts: BlockOptions, title: string, date: string, tags: string[]): string {
   return [
     "---",
     `date: ${date}`,
     `agent: ${opts.agent ?? "claude"}`,
     `roadmap: ${opts.id}`,
+    ...(tags.length ? [`tags: ${JSON.stringify(tags)}`] : []),
     "outcome: blocked",
     `summary: ${JSON.stringify(`Stopped on ambiguity — needs: ${opts.needs}`)}`,
     "---",
@@ -208,7 +209,7 @@ export async function block(opts: BlockOptions): Promise<BlockResult> {
     `${date}-${id.toLowerCase()}-blocked-${slugify(needs)}.md`,
   );
   await mkdir(dirname(worklogPath), { recursive: true });
-  await writeFile(worklogPath, worklogBody(opts, item.data.title, date), "utf8");
+  await writeFile(worklogPath, worklogBody(opts, item.data.title, date, item.data.tags ?? []), "utf8");
   written.push(worklogPath);
 
   const inboxPath = join(root, INBOX_DIR, `${owner}.md`);
