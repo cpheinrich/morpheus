@@ -37,3 +37,56 @@ Added a deterministic second-empty-write regression: the first empty write ackno
 The direct failure checks caught an expected integration detail: an explicit Enter save must still replace the primary message with Draft could not be saved. Moved that action result to saveFocused(false), preserving the existing exact failed-save assertion and editable composer, while background persistence only refreshes warnings. The first correction run failed that assertion in both browsers and is retained in corrected-storage-results; it was not weakened or skipped.
 
 Final QS-1 correction validation: pnpm compile; pnpm typecheck; pnpm exec vitest run tests/qa-web.test.ts (38 passed); pnpm exec eslint src/qa/web/overlay-client.ts; pm index; git diff --check all passed. Final browser command QA_EVIDENCE_DIR="$PWD/local/qa-status/evidence" pnpm exec playwright test tests/browser/qa-web-context.spec.ts --grep 'legacy route drafts|legacy cleanup write failure|failed sends|storage failures' --workers=1 --output=local/qa-status/final-correction-results passed all eight Chromium/WebKit cases (18.7 seconds). These include unchanged exact explicit-save failure assertions, both cleanup failure classes, successful recovery, one POST and no reload replay. Replaced the original four images and added web-queued-persist-{warning,recovered}-{chromium,webkit}.png. The author opened all eight final images and inspected Queued alongside each warning, with success styling after each recovery; no clipping/overlap was visible.
+
+## Independent review outcome
+
+The independent reviewer found one substantive persistence-retry status overwrite (QS-1). The author made background persistence refresh warnings, retained explicit Enter-save failure messages, and added a deterministic second-empty-write regression with recovery and replay checks. The same reviewer cleared the correction with no new findings, independently passed four focused Chromium/WebKit cases and inspected all eight final captures. Live preview adoption remains with the parent task; full CI is required before merge.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "e4ea3aa6fe14b3a9740efa1bde8ccd94c56b7d27",
+  "reviewed": "95d7bf1468eacfeb1fb6caa2a8c798c0e1b7971b",
+  "covered": "4f0af6052337a6af21774d2e3c3305a195341239",
+  "authorSession": "01a172e4-146b-7180-979c-abc6db897869",
+  "reviewerSession": "/root/qa_status_ci_fix/qa_status_review",
+  "risk": "normal",
+  "elapsedMinutes": 4.4508833333333335,
+  "timing": {
+    "source": "clock",
+    "durationMs": 267053,
+    "evidence": "Author actual clock around initial /root/qa_status_ci_fix/qa_status_review invocation: start 2026-10-25T11:56:53.309Z; final response received and completion observed 2026-10-25T12:01:20.362Z. Includes reviewer tool execution and waits."
+  },
+  "outcome": "complete",
+  "summary": "The independent reviewer found one substantive persistence-retry status overwrite (QS-1). The author made background persistence refresh warnings, retained explicit Enter-save failure messages, and added a deterministic second-empty-write regression with recovery and replay checks. The same reviewer cleared the correction with no new findings, independently passed four focused Chromium/WebKit cases and inspected all eight final captures. Live preview adoption remains with the parent task; full CI is required before merge.",
+  "findings": [
+    {
+      "id": "QS-1",
+      "severity": "substantive",
+      "description": "After acknowledgment successfully persists empty v2 pins, a failed importLegacy cleanup persist calls setStatus and erases Queued.",
+      "paths": [
+        "src/qa/web/overlay-client.ts",
+        "dist/qa/web/overlay-client.js",
+        "dist/qa/web/overlay-client.js.map",
+        "tests/browser/qa-web-context.spec.ts"
+      ],
+      "disposition": "fixed",
+      "response": "persist() now updates the durable warning through renderStatus without replacing the action result. Explicit saveFocused(false) failures keep their own error message. A new deterministic regression observes the second empty write fail after the acknowledgment, retains Queued plus warning, recovers on the third write with success styling, and verifies one POST and no replay. Pre-fix negative control failed at missing Queued. Same-reviewer follow-up cleared all changes."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/qa_status_ci_fix/qa_status_review",
+      "commit": "4f0af6052337a6af21774d2e3c3305a195341239",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.1554666666666666,
+      "timing": {
+        "source": "clock",
+        "durationMs": 69328,
+        "evidence": "Author actual clock around same-reviewer follow-up 1: start 2026-10-25T12:04:44.508Z; final response received and completion observed 2026-10-25T12:05:53.836Z. Includes reviewer tool execution and waits."
+      },
+      "summary": "QS-1 is fixed with no new findings or conditions. Independently passed the persistence-retry and failed-send/local-save cases in both browsers (four cases), inspected all eight final captures, and confirmed Queued remains alongside warnings and recovers success styling without replay."
+    }
+  ]
+}
+```
