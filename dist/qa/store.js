@@ -195,7 +195,7 @@ export async function writePendingBatch(root, batch, frameBytes, commentFrames =
         if (frameBytes)
             await writeFile(join(staging, "frame.png"), frameBytes);
         for (const [name, bytes] of commentFrames) {
-            if (!/^comment-[A-Za-z0-9_-]+\.png$/.test(name))
+            if (!/^comment-[A-Za-z0-9_-]+\.(png|jpg)$/.test(name))
                 throw new Error("Invalid QA comment frame name");
             await writeFile(join(staging, name), bytes);
         }
