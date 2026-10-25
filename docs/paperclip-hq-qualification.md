@@ -131,6 +131,9 @@ versions of the nonce file, and both resumed turns retained one native session.
 Both enrolled agents were read back paused, all existing reservation arrays were
 empty and the owned remote process identities were absent. The
 [frozen JSON closeout](../.agent/paperclip-closeouts/4925919d-5666-4a4e-b4c5-b59cc0176eee/6483543d-ed4e-4057-ac74-6025716b1184/34b83582b96861ef30520f8bb5da07bb2bca65d0b3547952223f9ac7c57c5b1e.json)
+and [readable Markdown view](../.agent/paperclip-closeouts/4925919d-5666-4a4e-b4c5-b59cc0176eee/6483543d-ed4e-4057-ac74-6025716b1184/34b83582b96861ef30520f8bb5da07bb2bca65d0b3547952223f9ac7c57c5b1e.md)
 retains three actual comments, no interactions or accepted-human-answer claims,
 both independently verified artifact versions and the Claude not-run limitation.
 The input is an operator freeze with `atomic: false`, not an upstream transaction.
+Questions and answers on this new Firebase route remain fixture-only evidence;
+no live HQ streaming, projection or browser UI was deployed by this qualification.

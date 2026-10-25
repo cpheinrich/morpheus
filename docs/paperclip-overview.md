@@ -14,6 +14,8 @@ adopted for one paused Codex test agent; production HQ authentication, full brow
 UI, multiple companies and Markdown-inbox migration remain unimplemented. Claude's
 new transport run is not qualified because fresh native usage access requires its
 account owner's sign-in; the earlier desktop bridge's Claude evidence is separate.
+Questions and answers on the new Firebase route are qualified only with fixtures;
+live HQ streaming, projections and the browser UI have not been deployed.
 
 **Morpheus defines the work and what counts as delivered. Paperclip runs and tracks delegated
 work. The desktop bridge lets you supervise that work from your existing Codex conversation.**
