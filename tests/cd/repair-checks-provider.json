@@ -1,0 +1,988 @@
+{
+  "provenance": "Consistently anonymized projection of selected historical GitHub provider shapes. Project/repository/branch, SHA, runner-name and numeric operational identities use synthetic bijections; timestamps share one shift. Public GitHub Actions/Vercel app identity, field shapes, empty steps, unassigned runner sentinels, ref policies, ordering, equality and joins are preserved. Test-owned inventory envelopes remain distinct from the private unmodified complete-view oracle. This is not a raw provider export.",
+  "subject": {
+    "sha": "0000000000000000000000000000000000000001",
+    "ref": "repair-ci-fixture",
+    "repo": {
+      "id": 10011,
+      "full_name": "example/release-app"
+    }
+  },
+  "baseRepository": {
+    "id": 10011,
+    "full_name": "example/release-app"
+  },
+  "checks": [
+    {
+      "id": 10042,
+      "name": "Vercel Preview Comments",
+      "head_sha": "0000000000000000000000000000000000000001",
+      "status": "completed",
+      "conclusion": "success",
+      "details_url": "https://vercel.com/github",
+      "check_suite": {
+        "id": 10018
+      },
+      "app": {
+        "id": 8329,
+        "slug": "vercel",
+        "owner": {
+          "login": "vercel"
+        }
+      }
+    },
+    {
+      "id": 10041,
+      "name": "iOS unit tests / test",
+      "head_sha": "0000000000000000000000000000000000000001",
+      "status": "completed",
+      "conclusion": "success",
+      "details_url": "https://github.com/example/release-app/actions/runs/10015/job/10041",
+      "check_suite": {
+        "id": 10027
+      },
+      "app": {
+        "id": 15368,
+        "slug": "github-actions",
+        "owner": {
+          "login": "github"
+        }
+      }
+    },
+    {
+      "id": 10040,
+      "name": "pm / pm",
+      "head_sha": "0000000000000000000000000000000000000001",
+      "status": "completed",
+      "conclusion": "success",
+      "details_url": "https://github.com/example/release-app/actions/runs/10017/job/10040",
+      "check_suite": {
+        "id": 10029
+      },
+      "app": {
+        "id": 15368,
+        "slug": "github-actions",
+        "owner": {
+          "login": "github"
+        }
+      }
+    },
+    {
+      "id": 10039,
+      "name": "web / web",
+      "head_sha": "0000000000000000000000000000000000000001",
+      "status": "completed",
+      "conclusion": "success",
+      "details_url": "https://github.com/example/release-app/actions/runs/10016/job/10039",
+      "check_suite": {
+        "id": 10028
+      },
+      "app": {
+        "id": 15368,
+        "slug": "github-actions",
+        "owner": {
+          "login": "github"
+        }
+      }
+    },
+    {
+      "id": 10038,
+      "name": "pr / conventions",
+      "head_sha": "0000000000000000000000000000000000000001",
+      "status": "completed",
+      "conclusion": "success",
+      "details_url": "https://github.com/example/release-app/actions/runs/40185356654/job/10038",
+      "check_suite": {
+        "id": 10026
+      },
+      "app": {
+        "id": 15368,
+        "slug": "github-actions",
+        "owner": {
+          "login": "github"
+        }
+      }
+    },
+    {
+      "id": 10037,
+      "name": "pr",
+      "head_sha": "0000000000000000000000000000000000000001",
+      "status": "completed",
+      "conclusion": "skipped",
+      "details_url": "https://github.com/example/release-app/actions/runs/40185355617/job/10037",
+      "check_suite": {
+        "id": 10023
+      },
+      "app": {
+        "id": 15368,
+        "slug": "github-actions",
+        "owner": {
+          "login": "github"
+        }
+      }
+    },
+    {
+      "id": 10036,
+      "name": "iOS unit tests / test",
+      "head_sha": "0000000000000000000000000000000000000001",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "details_url": "https://github.com/example/release-app/actions/runs/10013/job/10036",
+      "check_suite": {
+        "id": 10022
+      },
+      "app": {
+        "id": 15368,
+        "slug": "github-actions",
+        "owner": {
+          "login": "github"
+        }
+      }
+    },
+    {
+      "id": 10035,
+      "name": "pr / conventions",
+      "head_sha": "0000000000000000000000000000000000000001",
+      "status": "completed",
+      "conclusion": "success",
+      "details_url": "https://github.com/example/release-app/actions/runs/40185355650/job/10035",
+      "check_suite": {
+        "id": 10024
+      },
+      "app": {
+        "id": 15368,
+        "slug": "github-actions",
+        "owner": {
+          "login": "github"
+        }
+      }
+    },
+    {
+      "id": 10034,
+      "name": "pm / pm",
+      "head_sha": "0000000000000000000000000000000000000001",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "details_url": "https://github.com/example/release-app/actions/runs/10014/job/10034",
+      "check_suite": {
+        "id": 10025
+      },
+      "app": {
+        "id": 15368,
+        "slug": "github-actions",
+        "owner": {
+          "login": "github"
+        }
+      }
+    },
+    {
+      "id": 10033,
+      "name": "web / web",
+      "head_sha": "0000000000000000000000000000000000000001",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "details_url": "https://github.com/example/release-app/actions/runs/10012/job/10033",
+      "check_suite": {
+        "id": 10021
+      },
+      "app": {
+        "id": 15368,
+        "slug": "github-actions",
+        "owner": {
+          "login": "github"
+        }
+      }
+    },
+    {
+      "id": 10032,
+      "name": "consumer",
+      "head_sha": "0000000000000000000000000000000000000001",
+      "status": "completed",
+      "conclusion": "success",
+      "details_url": "https://github.com/example/release-app/actions/runs/40185355215/job/10032",
+      "check_suite": {
+        "id": 10020
+      },
+      "app": {
+        "id": 15368,
+        "slug": "github-actions",
+        "owner": {
+          "login": "github"
+        }
+      }
+    },
+    {
+      "id": 10031,
+      "name": "pr / conventions",
+      "head_sha": "0000000000000000000000000000000000000001",
+      "status": "completed",
+      "conclusion": "success",
+      "details_url": "https://github.com/example/release-app/actions/runs/40185355155/job/10031",
+      "check_suite": {
+        "id": 10019
+      },
+      "app": {
+        "id": 15368,
+        "slug": "github-actions",
+        "owner": {
+          "login": "github"
+        }
+      }
+    },
+    {
+      "id": 10030,
+      "name": "Vercel Preview Comments",
+      "head_sha": "0000000000000000000000000000000000000001",
+      "status": "completed",
+      "conclusion": "success",
+      "details_url": "https://vercel.com/github",
+      "check_suite": {
+        "id": 10018
+      },
+      "app": {
+        "id": 8329,
+        "slug": "vercel",
+        "owner": {
+          "login": "vercel"
+        }
+      }
+    }
+  ],
+  "runs": [
+    {
+      "id": 10012,
+      "workflow_id": 10006,
+      "path": ".github/workflows/web-ci.yml",
+      "check_suite_id": 10021,
+      "run_number": 10004,
+      "run_attempt": 1,
+      "head_sha": "0000000000000000000000000000000000000001",
+      "head_branch": "repair-ci-fixture",
+      "event": "pull_request",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "referenced_workflows": [
+        {
+          "path": "example/ci-control/.github/workflows/web-ci.yml@main",
+          "sha": "0000000000000000000000000000000000000005",
+          "ref": "refs/heads/main"
+        }
+      ],
+      "repository": {
+        "id": 10011,
+        "full_name": "example/release-app"
+      },
+      "head_repository": {
+        "id": 10011,
+        "full_name": "example/release-app"
+      },
+      "pull_requests": []
+    },
+    {
+      "id": 10013,
+      "workflow_id": 10008,
+      "path": ".github/workflows/ios-ci.yml",
+      "check_suite_id": 10022,
+      "run_number": 10002,
+      "run_attempt": 1,
+      "head_sha": "0000000000000000000000000000000000000001",
+      "head_branch": "repair-ci-fixture",
+      "event": "pull_request",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "referenced_workflows": [
+        {
+          "path": "example/ci-control/.github/workflows/ios-ci.yml@0000000000000000000000000000000000000006",
+          "sha": "0000000000000000000000000000000000000006"
+        }
+      ],
+      "repository": {
+        "id": 10011,
+        "full_name": "example/release-app"
+      },
+      "head_repository": {
+        "id": 10011,
+        "full_name": "example/release-app"
+      },
+      "pull_requests": []
+    },
+    {
+      "id": 10014,
+      "workflow_id": 10007,
+      "path": ".github/workflows/pm-ci.yml",
+      "check_suite_id": 10025,
+      "run_number": 10004,
+      "run_attempt": 1,
+      "head_sha": "0000000000000000000000000000000000000001",
+      "head_branch": "repair-ci-fixture",
+      "event": "pull_request",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "referenced_workflows": [
+        {
+          "path": "example/ci-control/.github/workflows/pm-check.yml@main",
+          "sha": "0000000000000000000000000000000000000005",
+          "ref": "refs/heads/main"
+        }
+      ],
+      "repository": {
+        "id": 10011,
+        "full_name": "example/release-app"
+      },
+      "head_repository": {
+        "id": 10011,
+        "full_name": "example/release-app"
+      },
+      "pull_requests": []
+    },
+    {
+      "id": 10015,
+      "workflow_id": 10008,
+      "path": ".github/workflows/ios-ci.yml",
+      "check_suite_id": 10027,
+      "run_number": 10003,
+      "run_attempt": 1,
+      "head_sha": "0000000000000000000000000000000000000001",
+      "head_branch": "repair-ci-fixture",
+      "event": "pull_request",
+      "status": "completed",
+      "conclusion": "success",
+      "referenced_workflows": [
+        {
+          "path": "example/ci-control/.github/workflows/ios-ci.yml@0000000000000000000000000000000000000006",
+          "sha": "0000000000000000000000000000000000000006"
+        }
+      ],
+      "repository": {
+        "id": 10011,
+        "full_name": "example/release-app"
+      },
+      "head_repository": {
+        "id": 10011,
+        "full_name": "example/release-app"
+      },
+      "pull_requests": []
+    },
+    {
+      "id": 10016,
+      "workflow_id": 10006,
+      "path": ".github/workflows/web-ci.yml",
+      "check_suite_id": 10028,
+      "run_number": 10005,
+      "run_attempt": 1,
+      "head_sha": "0000000000000000000000000000000000000001",
+      "head_branch": "repair-ci-fixture",
+      "event": "pull_request",
+      "status": "completed",
+      "conclusion": "success",
+      "referenced_workflows": [
+        {
+          "path": "example/ci-control/.github/workflows/web-ci.yml@main",
+          "sha": "0000000000000000000000000000000000000005",
+          "ref": "refs/heads/main"
+        }
+      ],
+      "repository": {
+        "id": 10011,
+        "full_name": "example/release-app"
+      },
+      "head_repository": {
+        "id": 10011,
+        "full_name": "example/release-app"
+      },
+      "pull_requests": []
+    },
+    {
+      "id": 10017,
+      "workflow_id": 10007,
+      "path": ".github/workflows/pm-ci.yml",
+      "check_suite_id": 10029,
+      "run_number": 10005,
+      "run_attempt": 1,
+      "head_sha": "0000000000000000000000000000000000000001",
+      "head_branch": "repair-ci-fixture",
+      "event": "pull_request",
+      "status": "completed",
+      "conclusion": "success",
+      "referenced_workflows": [
+        {
+          "path": "example/ci-control/.github/workflows/pm-check.yml@main",
+          "sha": "0000000000000000000000000000000000000005",
+          "ref": "refs/heads/main"
+        }
+      ],
+      "repository": {
+        "id": 10011,
+        "full_name": "example/release-app"
+      },
+      "head_repository": {
+        "id": 10011,
+        "full_name": "example/release-app"
+      },
+      "pull_requests": []
+    }
+  ],
+  "jobs": [
+    {
+      "id": 10033,
+      "run_id": 10012,
+      "run_attempt": 1,
+      "head_sha": "0000000000000000000000000000000000000001",
+      "head_branch": "repair-ci-fixture",
+      "name": "web / web",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "check_run_url": "https://api.github.com/repos/example/release-app/check-runs/10033",
+      "steps": [],
+      "runner_id": 0,
+      "runner_name": "",
+      "created_at": "2025-01-01T00:00:00Z",
+      "started_at": "2025-01-01T00:00:00Z",
+      "completed_at": "2025-01-01T00:00:01Z"
+    },
+    {
+      "id": 10034,
+      "run_id": 10014,
+      "run_attempt": 1,
+      "head_sha": "0000000000000000000000000000000000000001",
+      "head_branch": "repair-ci-fixture",
+      "name": "pm / pm",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "check_run_url": "https://api.github.com/repos/example/release-app/check-runs/10034",
+      "steps": [],
+      "runner_id": 0,
+      "runner_name": "",
+      "created_at": "2025-01-01T00:00:00Z",
+      "started_at": "2025-01-01T00:00:00Z",
+      "completed_at": "2025-01-01T00:00:01Z"
+    },
+    {
+      "id": 10036,
+      "run_id": 10013,
+      "run_attempt": 1,
+      "head_sha": "0000000000000000000000000000000000000001",
+      "head_branch": "repair-ci-fixture",
+      "name": "iOS unit tests / test",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "check_run_url": "https://api.github.com/repos/example/release-app/check-runs/10036",
+      "steps": [],
+      "runner_id": 0,
+      "runner_name": "",
+      "created_at": "2025-01-01T00:00:00Z",
+      "started_at": "2025-01-01T00:00:00Z",
+      "completed_at": "2025-01-01T00:00:00Z"
+    },
+    {
+      "id": 10039,
+      "run_id": 10016,
+      "run_attempt": 1,
+      "head_sha": "0000000000000000000000000000000000000001",
+      "head_branch": "repair-ci-fixture",
+      "name": "web / web",
+      "status": "completed",
+      "conclusion": "success",
+      "check_run_url": "https://api.github.com/repos/example/release-app/check-runs/10039",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2025-01-01T00:01:02Z",
+          "completed_at": "2025-01-01T00:01:03Z"
+        },
+        {
+          "name": "Run actions/checkout@0000000000000000000000000000000000000002",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2025-01-01T00:01:03Z",
+          "completed_at": "2025-01-01T00:01:06Z"
+        },
+        {
+          "name": "Run pnpm/action-setup@0000000000000000000000000000000000000007",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2025-01-01T00:01:06Z",
+          "completed_at": "2025-01-01T00:01:07Z"
+        },
+        {
+          "name": "Run actions/setup-node@0000000000000000000000000000000000000004",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2025-01-01T00:01:07Z",
+          "completed_at": "2025-01-01T00:01:22Z"
+        },
+        {
+          "name": "Install",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2025-01-01T00:01:22Z",
+          "completed_at": "2025-01-01T00:01:36Z"
+        },
+        {
+          "name": "Build design tokens",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2025-01-01T00:01:36Z",
+          "completed_at": "2025-01-01T00:01:37Z"
+        },
+        {
+          "name": "Typecheck",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2025-01-01T00:01:37Z",
+          "completed_at": "2025-01-01T00:01:52Z"
+        },
+        {
+          "name": "Lint",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2025-01-01T00:01:52Z",
+          "completed_at": "2025-01-01T00:02:13Z"
+        },
+        {
+          "name": "Unit tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2025-01-01T00:02:13Z",
+          "completed_at": "2025-01-01T00:03:22Z"
+        },
+        {
+          "name": "Build",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2025-01-01T00:03:22Z",
+          "completed_at": "2025-01-01T00:04:05Z"
+        },
+        {
+          "name": "E2E",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 11,
+          "started_at": "2025-01-01T00:04:05Z",
+          "completed_at": "2025-01-01T00:04:05Z"
+        },
+        {
+          "name": "Post Run actions/setup-node@0000000000000000000000000000000000000004",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 20,
+          "started_at": "2025-01-01T00:04:05Z",
+          "completed_at": "2025-01-01T00:04:06Z"
+        },
+        {
+          "name": "Post Run pnpm/action-setup@0000000000000000000000000000000000000007",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2025-01-01T00:04:06Z",
+          "completed_at": "2025-01-01T00:04:06Z"
+        },
+        {
+          "name": "Post Run actions/checkout@0000000000000000000000000000000000000002",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 22,
+          "started_at": "2025-01-01T00:04:06Z",
+          "completed_at": "2025-01-01T00:04:06Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23,
+          "started_at": "2025-01-01T00:04:06Z",
+          "completed_at": "2025-01-01T00:04:06Z"
+        }
+      ],
+      "runner_id": 10010,
+      "runner_name": "fixture-runner-2",
+      "created_at": "2025-01-01T00:00:01Z",
+      "started_at": "2025-01-01T00:01:01Z",
+      "completed_at": "2025-01-01T00:04:09Z"
+    },
+    {
+      "id": 10040,
+      "run_id": 10017,
+      "run_attempt": 1,
+      "head_sha": "0000000000000000000000000000000000000001",
+      "head_branch": "repair-ci-fixture",
+      "name": "pm / pm",
+      "status": "completed",
+      "conclusion": "success",
+      "check_run_url": "https://api.github.com/repos/example/release-app/check-runs/10040",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2025-01-01T00:00:05Z",
+          "completed_at": "2025-01-01T00:00:07Z"
+        },
+        {
+          "name": "Run actions/checkout@0000000000000000000000000000000000000002",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2025-01-01T00:00:07Z",
+          "completed_at": "2025-01-01T00:00:09Z"
+        },
+        {
+          "name": "Run actions/checkout@0000000000000000000000000000000000000002",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2025-01-01T00:00:09Z",
+          "completed_at": "2025-01-01T00:00:11Z"
+        },
+        {
+          "name": "Run pnpm/action-setup@0000000000000000000000000000000000000007",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2025-01-01T00:00:11Z",
+          "completed_at": "2025-01-01T00:00:12Z"
+        },
+        {
+          "name": "Run actions/setup-node@0000000000000000000000000000000000000004",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2025-01-01T00:00:12Z",
+          "completed_at": "2025-01-01T00:00:13Z"
+        },
+        {
+          "name": "Install the Morpheus CLI runtime",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2025-01-01T00:00:13Z",
+          "completed_at": "2025-01-01T00:00:23Z"
+        },
+        {
+          "name": "Verify generated HQ role helpers",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 7,
+          "started_at": "2025-01-01T00:00:23Z",
+          "completed_at": "2025-01-01T00:00:23Z"
+        },
+        {
+          "name": "Validate frontmatter",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2025-01-01T00:00:23Z",
+          "completed_at": "2025-01-01T00:00:24Z"
+        },
+        {
+          "name": "Verify product READMEs are current",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2025-01-01T00:00:24Z",
+          "completed_at": "2025-01-01T00:00:24Z"
+        },
+        {
+          "name": "Validate inboxes",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2025-01-01T00:00:24Z",
+          "completed_at": "2025-01-01T00:00:25Z"
+        },
+        {
+          "name": "Team",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2025-01-01T00:00:25Z",
+          "completed_at": "2025-01-01T00:00:25Z"
+        },
+        {
+          "name": "Post Run actions/setup-node@0000000000000000000000000000000000000004",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2025-01-01T00:00:25Z",
+          "completed_at": "2025-01-01T00:00:26Z"
+        },
+        {
+          "name": "Post Run pnpm/action-setup@0000000000000000000000000000000000000007",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 20,
+          "started_at": "2025-01-01T00:00:26Z",
+          "completed_at": "2025-01-01T00:00:26Z"
+        },
+        {
+          "name": "Post Run actions/checkout@0000000000000000000000000000000000000002",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2025-01-01T00:00:26Z",
+          "completed_at": "2025-01-01T00:00:27Z"
+        },
+        {
+          "name": "Post Run actions/checkout@0000000000000000000000000000000000000002",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 22,
+          "started_at": "2025-01-01T00:00:27Z",
+          "completed_at": "2025-01-01T00:00:27Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23,
+          "started_at": "2025-01-01T00:00:27Z",
+          "completed_at": "2025-01-01T00:00:27Z"
+        }
+      ],
+      "runner_id": 10009,
+      "runner_name": "fixture-runner-1",
+      "created_at": "2025-01-01T00:00:01Z",
+      "started_at": "2025-01-01T00:00:04Z",
+      "completed_at": "2025-01-01T00:00:29Z"
+    },
+    {
+      "id": 10041,
+      "run_id": 10015,
+      "run_attempt": 1,
+      "head_sha": "0000000000000000000000000000000000000001",
+      "head_branch": "repair-ci-fixture",
+      "name": "iOS unit tests / test",
+      "status": "completed",
+      "conclusion": "success",
+      "check_run_url": "https://api.github.com/repos/example/release-app/check-runs/10041",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2025-01-01T00:01:30Z",
+          "completed_at": "2025-01-01T00:01:35Z"
+        },
+        {
+          "name": "Run actions/checkout@0000000000000000000000000000000000000003",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2025-01-01T00:01:35Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Check native change scope",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Set up test evidence runtime",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 4,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Select Xcode",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 5,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Check out this workflow's actions",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 6,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Create isolated test simulator",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 7,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Validate locked project inputs",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 8,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Prepare isolated build directories",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 9,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Select changed Swift sources",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 10,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Lint changed Swift sources",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 11,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Cache resolved Swift packages",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 12,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Resolve locked Swift packages",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Use Java 21 for Firebase emulators",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 14,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Install the locked Firebase emulator CLI",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Build for testing",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 16,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Build",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 17,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Run unit and UI tests",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 18,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Export complete test evidence",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 19,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Export rendered test attachments",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 20,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Upload rendered test attachments",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 21,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Collect Firebase emulator diagnostics",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 22,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Upload complete test evidence",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 23,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Upload Xcode failure evidence",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 24,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Post Run actions/checkout@0000000000000000000000000000000000000003",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 48,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:44Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 49,
+          "started_at": "2025-01-01T00:01:44Z",
+          "completed_at": "2025-01-01T00:01:45Z"
+        }
+      ],
+      "runner_id": 10001,
+      "runner_name": "fixture-runner-3",
+      "created_at": "2025-01-01T00:00:01Z",
+      "started_at": "2025-01-01T00:01:29Z",
+      "completed_at": "2025-01-01T00:01:48Z"
+    }
+  ]
+}
