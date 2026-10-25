@@ -118,6 +118,57 @@ so duplicate Paperclip wakes do not launch another provider call. After interrup
 `reconcile` establishes host termination; `recover` can release the supported exact-run hold
 and continue the saved follow-up. Unknown effects remain visible instead of being called success.
 
+## A common interface for agent compute
+
+**Yes: Paperclip already supplies an agent-adapter interface.** Its installed 2026.1012.0
+contract standardizes execution, environment checks and session serialization, with model
+discovery hooks. It includes Claude, Codex and OpenCode adapters. Our qualified remote pool
+currently uses its `process` adapter plus our bridge; that pool accepts only Claude and Codex.
+Paperclip's wider adapter catalog is not automatically available through it.
+[Pinned adapter contract](https://github.com/paperclipai/paperclip/blob/v2026.1012.0/packages/adapter-utils/src/types.ts).
+
+**Recommended next step:** keep one coordinator-facing contract and extend the runtime adapters
+underneath it. Reuse Paperclip's adapter system and evaluate **Agent Client Protocol (ACP)**
+for interactive sessions before adding another framework. ACP standardizes prompts, streamed
+updates, tool permissions, cancellation and session configuration; its ecosystem includes Claude
+and Codex adapters. Native sign-in, quotas and remote recovery still need qualification for each
+chosen adapter. This is a proposed extension; it does not replace the tested native-CLI path.
+[ACP introduction](https://agentclientprotocol.com/get-started/introduction),
+[agent integrations](https://agentclientprotocol.com/get-started/agents).
+
+```mermaid
+flowchart LR
+  Request[One agent execution request] --> Pool[Paperclip and desktop bridge]
+  Pool --> Contract[Common agent interface - proposed expansion]
+  Contract --> Claude[Claude Code adapter]
+  Contract --> Codex[Codex adapter]
+  Contract --> Other[OpenCode or another open-model agent]
+  Other --> Models[Local model or hosted model API]
+```
+
+The common interface should expose start, progress/events, answer, follow-up, stop, reattach
+and recovery, while advertising which capabilities each adapter supports. Every run should retain:
+
+| Record | Required distinction |
+|---|---|
+| Agent and runtime | Logical worker/role, harness and adapter versions, provider, host, account and workspace. |
+| Model and effort | Requested model/version and effort; separately reported effective values and provenance. Unsupported or unreported values stay explicit. |
+| Execution and resources | Task/run/session IDs, permissions, timestamps, outcome, token usage, quota/reservation observations and termination evidence. |
+
+An effort label is not a universal unit of compute: adapters must declare supported settings
+and any mapping. ACP exposes model and reasoning-level configuration categories, but their
+presence does not prove which model or effort actually served a turn.
+[ACP configuration](https://agentclientprotocol.com/protocol/v1/session-config-options).
+
+**OpenRouter and LiteLLM fit below the agent harness.** OpenRouter provides hosted access to
+many models; LiteLLM offers an open-source, self-hostable model gateway. Neither model gateway
+alone replaces native Claude/Codex sessions, machine allocation or our interactive worker contract.
+OpenRouter's SDK availability should not be mistaken for a self-hostable agent dispatcher.
+For open models, first qualify a harness such as OpenCode, which Paperclip already supports,
+then choose direct/local inference or a gateway when needed. No new gateway is adopted here.
+[OpenRouter](https://openrouter.ai/docs/quickstart), [LiteLLM](https://docs.litellm.ai/docs/),
+[Paperclip's OpenCode adapter](https://docs.paperclip.ing/reference/adapters/opencode/).
+
 ## Machines, subscriptions and rollout status
 
 A worker profile binds **provider + Paperclip agent + account identity + host + workspace +
