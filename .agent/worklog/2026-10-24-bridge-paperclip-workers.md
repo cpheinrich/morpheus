@@ -625,3 +625,35 @@ Record IDs F01–F08 correspond to the reviewer’s F1–F8. The initial risk is
   ]
 }
 ```
+
+## October 24 evening — retry after the mini's native sign-in
+
+Chris confirmed running `claude auth login` on the mini and requested another attempt.
+The registered SSH target and both installed Claude Code 2.1.302 paths still return
+`loggedIn: false, authMethod: none`. The mini's `.claude.json` has an OAuth-account
+record and its modification time, and the login Keychain's, reflect the recent sign-in.
+No credential file contents or token values were displayed or copied.
+
+A bounded native Keychain read failed with exit 36. `security show-keychain-info` also
+reported “User interaction is not allowed”; reading non-secret item metadata succeeds.
+This identifies the remaining SSH/Keychain-access obstacle rather than proving that the
+browser sign-in was absent. `launchctl asuser` cannot enter the GUI audit session from
+this SSH context. A Terminal Apple-event status probe did not complete; its exact owned
+osascript PID 12005 was verified and stopped. No provider inference ran. Asked Chris to
+unlock the mini's login Keychain locally and retain it unlocked for the qualification.
+The original real remote Claude acceptance remains pending; workers stay paused and
+PR #475 stays WIP/draft with auto-merge off.
+
+Integrated current trunk `8fb23695d5b50ea4429bb133c85ab710b608fc79` by Git's automatic
+merge `5c5b3bf5019e5a1e44b7f5a20db372b822d82dc2`, without hand resolution. This includes
+the independently reviewed unmapped-model fallback and repair-only CD control; neither
+was authored in this task. On the integrated tree, `npm test` in
+`plugins/codex-claude` passed **95/95** (14.788 seconds), `npm run check` passed, and
+`morpheus review validate` accepted the original review record and exact trunk merge.
+The private deployed prototype remains at `c908eb9`; no hot upgrade was attempted.
+
+Budget checkpoint at 2026-10-25T03:44Z: the native main Claude usage reader reported
+61% weekly used (39% remaining), below Chris's 40%-remaining floor. No further main
+Claude delegation was admitted. Codex's host account read reports 99% weekly remaining;
+its 25%-remaining floor continues to apply. These are fresh shared-account observations,
+not per-task billing or a claim that this task consumed the intervening usage.
