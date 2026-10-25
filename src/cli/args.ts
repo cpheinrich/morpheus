@@ -44,6 +44,7 @@ export interface Flags {
   css?: string;
   ts?: string;
   priority?: string;
+  tags: string[];
   goal?: string;
   slug?: string;
   issue?: string;
@@ -148,7 +149,7 @@ const booleanOptions: Record<string, (flags: Flags) => void> = {
 };
 
 /** Flags `parseArgs` consumes in its switch rather than through the option tables. */
-const SWITCH_FLAGS = ["--dir", "--base", "--issue", "--ceiling", "--author", "--isbn"] as const;
+const SWITCH_FLAGS = ["--dir", "--base", "--issue", "--ceiling", "--author", "--isbn", "--tag"] as const;
 
 /**
  * Every flag the global parser consumes before a subcommand sees its arguments. A subcommand that
@@ -181,6 +182,7 @@ export function parseArgs(argv: string[]): Flags {
     hq: true,
     positional: [],
     authors: [],
+    tags: [],
     isbns: [],
   };
 
@@ -221,6 +223,9 @@ export function parseArgs(argv: string[]): Flags {
         if (author) flags.authors.push(author);
         break;
       }
+      case "--tag":
+        flags.tags.push(argv[++i] ?? "");
+        break;
       case "--isbn":
         if (argv[i + 1]) flags.isbns.push(argv[++i]!);
         break;

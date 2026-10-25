@@ -214,3 +214,5 @@ export declare const agenticCtoPointerSkill: () => string;
  * has been read.
  */
 export declare const researchEngineerPointerSkill: () => string;
+/** The same canonical-guide distribution path as the other CTO contributor skills. */
+export declare const devopsEngineerPointerSkill: () => string;

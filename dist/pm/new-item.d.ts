@@ -36,6 +36,8 @@ export interface NewItemOptions {
     goal?: string;
     /** GitHub issues the roadmap item fully resolves. */
     issues?: number[];
+    /** Roadmap subject tags; validated before any file is created. */
+    tags?: string[];
     /** Injectable clock, so tests can pin the period a goal lands in. */
     now?: Date;
 }

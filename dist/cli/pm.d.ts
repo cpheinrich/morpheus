@@ -1,3 +1,5 @@
+/** A cheap context entrypoint: explicit subject metadata, never a model classification. */
+export declare function tagged(productDir: string, root: string, tags: string[], json: boolean): Promise<number>;
 /** Validate every artifact under a product directory. Returns an exit code. */
 export declare function validate(productDir: string): Promise<number>;
 /** Retire legacy roadmap tables and regenerate the low-churn README indexes. */
@@ -8,6 +10,7 @@ export declare function create(productDir: string, kind: string, title: string, 
     goal?: string;
     slug?: string;
     issue?: string;
+    tags?: string[];
 }, cwd: string): Promise<number>;
 /** Add issue-closure intent to an item that already exists. */
 export declare function linkIssue(productDir: string, id: string, rawIssue: string): Promise<number>;

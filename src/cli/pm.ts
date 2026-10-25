@@ -24,12 +24,31 @@ import {
   parseIssueNumber,
 } from "../pm/issues.js";
 import { ageInDays, claim as claimItem, listClaims } from "../pm/claim.js";
-import { ARTIFACTS, type ArtifactKind } from "../pm/schema.js";
+import { ARTIFACTS, WorkTags, type ArtifactKind } from "../pm/schema.js";
+import { taggedWork } from "../pm/tags.js";
 import { formatReconcile, markShipped, reconcile } from "../pm/ship.js";
 import { currentBranch, resolveTrunk } from "../session/git.js";
 import { projectPolicy } from "../session/policy.js";
 
 const KINDS = Object.keys(ARTIFACTS) as ArtifactKind[];
+
+/** A cheap context entrypoint: explicit subject metadata, never a model classification. */
+export async function tagged(productDir: string, root: string, tags: string[], json: boolean): Promise<number> {
+  const parsed = WorkTags.safeParse(tags);
+  if (!parsed.success || parsed.data.length === 0) {
+    console.error("Usage: morpheus pm tagged <tag> [<tag> ...] [--json] (matches all tags)");
+    return 1;
+  }
+  const result = await taggedWork(root, productDir, parsed.data);
+  if (json) console.log(JSON.stringify(result, null, 2));
+  else {
+    for (const item of result.items) console.log(`${item.kind}\t${item.path}\t${item.tags.join(", ")}\t${item.summary}`);
+    if (!result.items.length) console.log("No explicitly tagged records match. Untagged history is not classified.");
+    if (result.unclassifiedWorklogs) console.log(`${result.unclassifiedWorklogs} worklog(s) have no subject tags and remain unclassified.`);
+    for (const issue of result.issues) console.error(`${issue.path}: ${issue.message}`);
+  }
+  return result.issues.length ? 1 : 0;
+}
 const INDEXED_KINDS = ["goals", "requests"] as const;
 type IndexedKind = (typeof INDEXED_KINDS)[number];
 
@@ -275,7 +294,7 @@ export async function create(
   productDir: string,
   kind: string,
   title: string,
-  opts: { priority?: string; goal?: string; slug?: string; issue?: string },
+  opts: { priority?: string; goal?: string; slug?: string; issue?: string; tags?: string[] },
   cwd: string,
 ): Promise<number> {
   if (!isKind(kind)) {
@@ -284,6 +303,12 @@ export async function create(
   }
   if (!title) {
     console.error("A title is required.");
+    return 1;
+  }
+
+  const tags = WorkTags.safeParse(opts.tags ?? []);
+  if (!tags.success || (tags.data.length && kind !== "roadmap")) {
+    console.error("--tag requires unique lowercase subject tags on a roadmap item (for example --tag engineering --tag devops).");
     return 1;
   }
 
@@ -315,6 +340,7 @@ export async function create(
     priority: opts.priority,
     goal: opts.goal,
     slug: opts.slug,
+    tags: tags.data,
     ...(issue !== undefined ? { issues: [issue] } : {}),
   });
   console.log(`Created ${path}`);

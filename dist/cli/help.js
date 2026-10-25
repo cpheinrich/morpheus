@@ -9,9 +9,10 @@ morpheus — an operating system for building and running companies
 Usage
   morpheus pm validate [--dir <hq/product>]
   morpheus pm index    [--dir <hq/product>] [--check]
-  morpheus pm new <roadmap|goals|requests> <title> [--priority P1] [--goal G-2026-Q3-01]
+  morpheus pm new <roadmap|goals|requests> <title> [--priority P1] [--goal G-2026-Q3-01] [--tag engineering --tag devops]
                             [--slug fix-photo-picker] [--issue 123]
                             — name the slug like a branch; derived otherwise
+  morpheus pm tagged <tag> [<tag> ...] [--json]     Read roadmap/worklogs matching all subject tags
   morpheus pm claim <RM-014>
   morpheus pm resume <ID>   reuse an existing task worktree or its remote branch
   morpheus pm cleanup <ID> [--dry-run|--check] [--release-stale-sessions]
