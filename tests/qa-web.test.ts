@@ -455,4 +455,30 @@ describe("the guide", () => {
     expect(QA_GUIDE).toMatch(/`element`: a CSS `selector`/);
     expect(QA_GUIDE).toContain("Grok, or any agent without a browser panel: `open <url>`");
   });
+
+  it("distinguishes current web viewport JPEG evidence from iOS and legacy page frames", () => {
+    const current = QA_GUIDE.slice(QA_GUIDE.indexOf("**Current web comments**"), QA_GUIDE.indexOf("**iOS comments:**"));
+    expect(current).toContain("`comment.webContext` as primary placement evidence");
+    expect(current).toContain("`webContext.scope` (element/view/page)");
+    expect(current).toContain("placement viewport JPEG");
+    expect(current).toContain("longest edge at most 1600 px, quality 0.5");
+    expect(current).toContain("`comment.createdAt` and `webContext.capturedAt` record placement, not Send");
+    for (const field of ["webContext.image.status", "webContext.image.error", "webContext.image.omitted", "webContext.limitations"]) expect(current).toContain(`\`${field}\``);
+    expect(current).toContain("Never replace missing placement evidence with a later live screenshot");
+    expect(current).toContain("x = image.point.x * image.scaleX, y = image.point.y * image.scaleY");
+    expect(current).toContain("comment.frame.width / webContext.viewport.width");
+    expect(current).toContain("comment.frame.height / webContext.viewport.height");
+    expect(current).toContain("`webContext.viewport.scrollX/scrollY`");
+    expect(current).toContain("`webContext.scroll`");
+    expect(current).toContain("web `anchor.normX/normY` remain full-page fractions");
+    const ios = QA_GUIDE.slice(QA_GUIDE.indexOf("**iOS comments:**"), QA_GUIDE.indexOf("**Legacy web comments**"));
+    expect(ios).toContain("`frame.path` PNG first");
+    expect(ios).toContain("fractions of that comment frame's");
+    const legacy = QA_GUIDE.slice(QA_GUIDE.indexOf("**Legacy web comments**"));
+    expect(legacy).toContain("lack `webContext`");
+    expect(legacy).toContain("whole page\n  captured at Send");
+    expect(QA_GUIDE).not.toContain("For web or\nolder batches without comment frames, use the batch-level frame");
+    expect(QA_GUIDE).not.toContain("A web batch's frame is the whole page");
+    expect(QA_GUIDE).not.toContain("batch.json and its captured PNGs");
+  });
 });
