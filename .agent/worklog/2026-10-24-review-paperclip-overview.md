@@ -286,3 +286,39 @@ The independent reviewer found one minor wording defect: its installed2026.1012.
 Qualified the table/import counts as approximate October25 QA observations instead of exact
 contract facts (DOC-001). This is the minor author response permitted by the review contract;
 no additional reviewer turn is needed. `git diff --check` passed after the wording correction.
+
+## Independent review
+
+The independent normal-risk review cleared the overview with one minor finding about exact installed-build counts. The author qualified those counts as approximate October 25 observations. The reviewer inspected all three final diagram captures and found no visual defects; current qualified behavior, accepted design, frozen-input export and pending rollout remain distinct. Runtime tests were omitted for this documentation-only scope; final-head CI remains required.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "0b4b6567c4bb343f76c10bd4dd8f06328d1d2f19",
+  "reviewed": "d2dbe33784ef1df46f2c6e082585e0d4b15ff33e",
+  "covered": "f05a98040abc09bf3fe0eb4ce7e7edfcc2ba6e3d",
+  "authorSession": "01a172c8-bdd0-7e32-b7e4-19f04aebb615",
+  "reviewerSession": "/root/finish_overview_review/overview_independent_review",
+  "risk": "normal",
+  "elapsedMinutes": 4.42365,
+  "timing": {
+    "source": "clock",
+    "durationMs": 265419,
+    "evidence": "Actual clock readings around collaboration.spawn_agent invocation for /root/finish_overview_review/overview_independent_review: start 2026-10-25T11:21:57.890Z; final result received and end observed 2026-10-25T11:26:23.309Z. Includes tool execution and event waits."
+  },
+  "outcome": "complete",
+  "summary": "The independent normal-risk review cleared the overview with one minor finding about exact installed-build counts. The author qualified those counts as approximate October 25 observations. The reviewer inspected all three final diagram captures and found no visual defects; current qualified behavior, accepted design, frozen-input export and pending rollout remain distinct. Runtime tests were omitted for this documentation-only scope; final-head CI remains required.",
+  "findings": [
+    {
+      "id": "DOC-001",
+      "severity": "minor",
+      "description": "Exact installed-build counts were slightly stale: reviewer observed 242 exported pgTable declarations in version 2026.1012.0 versus the overview's 240; 304 migrations matched.",
+      "paths": [
+        "docs/paperclip-overview.md"
+      ],
+      "disposition": "fixed",
+      "response": "Qualified table/import counts as approximate October 25 QA observations instead of compatibility guarantees. git diff --check passed. The reviewer explicitly cleared this minor author response without a follow-up turn."
+    }
+  ]
+}
+```
