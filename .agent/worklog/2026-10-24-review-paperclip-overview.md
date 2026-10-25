@@ -154,3 +154,57 @@ opened diagram5 and inspected its pixels and arrows. The person's review tab was
 Session-only responder command/config remain under local/, never in the shared scaffold.
 Quota was73% weekly used during this batch; native admission/stop guards remain unchanged.
 No repository runtime changes, push, PR, independent review or CI during this QA batch.
+
+## Batch 20261025T082330Z-01cp6n — HQ, shared fleet and interactive inbox
+
+Five comments submitted at08:23:30Z: use HQ's own design system; one Paperclip instance with
+company-specific HQs and shared compute visibility; prefer an independent Google Cloud tailnet
+controller; go directly to option2 with simple Firebase role checks; consider a live human inbox
+and ticket conversation with immutable Markdown closeout records.
+
+The unattended responder refused before provider launch because no active verified Codex turn
+settings were available. The queue remained intact. Verified the prior responder PIDs absent
+and the previous bridge run terminal, then released the dead claim. Resuming while this chat was
+active admitted Claude at73% weekly used, via the configured opus/xhigh fallback for gpt-6.1-sol
+(same mapping, no override). Run4b2bed03-1867-4dab-913a-47ee6949a882 supplied the draft. Its native
+stream emitted an empty zero-turn result before continuing work. The coordinator mistook the
+bridge's needs_input report for an ended turn and stopped it too early; retained its draft,
+verified terminal cleanup and absent responder, then took the claim as
+codex:paperclip-overview-manual-01a165f2. No concurrent writer.
+
+Incorporated all five comments into the overview and replaced answered open questions. Recommended
+Paperclip as the live collaboration authority (comments, screenshots, structured questions and
+human assignment), HQ as its normal branded UI, and versioned Git closeout records after verified
+delivery. Firestore retains existing HQ data, without a duplicate task/chat store. Proposed shared
+occupancy is explicitly a pool-runtime extension. Company-to-HQ mapping is server-owned. The cloud
+controller diagram includes the bridge journal/control path: a Paperclip comment or interaction
+response alone does not authorize a native pool turn. Current co-location remains a real gap.
+
+Clarified that Git preserves snapshots but does not itself make a working file append-only;
+the future closeout contract needs validation, revision/cursor and attachment hashes, durable
+artifact references and a new snapshot on reopen. Existing Markdown inbox/PM policy remains in
+force until an explicit migration. The other planning session was not identified in the bounded
+recent-thread inventory/prose search; no claim that it does not exist. Added prospective acceptance
+checks for two company HQs, shared capacity, one correctly delivered answer, company mismatch,
+laptop-offline controller access and repeatable closeout export.
+
+Evidence: direct pinned2026.1012.0 shared issue types confirm human assignees, structured
+interactions and conversation metadata; package metadata and pinned LICENSE confirm MIT.
+Read the official issues, companies and deployment API docs. Existing interactive-bridge design
+states process-adapter control files, turn journaling and the same-host restriction. Graph
+transport was unavailable in this continuous session; no new graph-completeness claim.
+Opened placement JPEGs1 and5: both are white despite captured metadata. Used their semantic HTML
+targets, disclosed the loss, and sent this concrete capture finding to the separately authorized
+QA editor/thumbnail task. Never substituted new screenshots for placement evidence.
+
+`git diff --check` passed. A separate browser tab rendered all five Mermaid diagrams; opened the
+changed cloud/HQ diagram and inspected both its top and scrolled lower half. Labels and arrows
+are readable. The person's live review tab, preview and drafts were not reloaded. No runtime
+deployment or live two-HQ experiment is claimed; this batch is research and prose only.
+
+Created the session-scoped app heartbeat `paperclip-document-qa-wake`, checking every five minutes
+to wake this thread for queued comments when an idle chat cannot supply verified bridge settings.
+It stays quiet for an empty queue or active writer and pauses at preview expiry10:25:35Z
+(3:25 a.m. Pacific), or when Chris ends QA. Existing native quota guards remain unchanged; the
+heartbeat adds no model override, reset or overage route. This replaces reliance on an idle chat
+being implicitly wakeable. Commit and resolve locally; no push, PR, review or CI until QA ends.

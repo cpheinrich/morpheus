@@ -216,30 +216,165 @@ as the actor, so HQ must also enforce per-user permissions, require `admin` (the
 role) for controls, and record the Firebase user in its own audit trail.
 The key never reaches the browser or a worker.
 
+### Chris's direction, October 25 QA
+
+These preferences now guide the proposal; they describe the target, not the current runtime:
+
+1. **Our own design system.** HQ should render Paperclip's functionality in HQ's look, not
+   Paperclip's board.
+2. **One shared instance.** One Paperclip instance and one shared compute pool for all
+   companies. Paperclip's company scoping maps each company's work to its own HQ. Every HQ can
+   see what the shared runners are doing, so a backlog is visible.
+3. **An independent controller.** The controller should move to a cheap Google Cloud instance on
+   the tailnet, separate from his Macs, so one machine going down does not take it down.
+   Location and size are still open.
+4. **Go straight to option 2,** with Firebase role checks kept as simple as possible.
+5. **An interactive inbox and ticket conversation.** Messages, screenshots, discrete inputs and
+   assignments to people, minted into immutable Markdown when the ticket wraps up. The
+   question is whether that state belongs in Paperclip or Firestore. The other planning
+   session has not been located; this proposal does not assume its details.
+
+### Recommendation, by direction
+
+**1. Design system.** Build HQ's views in our design system over Paperclip's API. Do not embed or
+restyle the board: its React app is Paperclip's own, and plugin UI slots render inside it, not in
+HQ. Its [MIT license](https://github.com/paperclipai/paperclip/blob/v2026.1012.0/LICENSE)
+allows reuse, and `@paperclipai/shared` supplies shared types and request validators. HQ can
+relay company events or poll through its server; the browser never holds the Paperclip key.
+Keep the board as the operator console for anything HQ does not cover yet.
+
+**2. One instance, company-scoped HQs.** This fits Paperclip's model. Companies, agents, issues,
+runs, comments and interactions have company ownership. Bind each HQ to its company in trusted
+server configuration, and verify that the server credential and every issue/attachment request
+respect that boundary. An arbitrary company ID from the browser cannot select another company.
+Paperclip agents remain company-scoped; separate logical agent profiles can use the same physical
+worker, with capacity reserved globally by host/account in our runtime.
+[Company API](https://docs.paperclip.ing/reference/api/companies/).
+**Shared-runner visibility is the gap.** Capacity and
+reservations live in our pool runtime, not in Paperclip, and Paperclip's run lists are per
+company. Proposed: the pool publishes aggregate occupancy per host and provider (running,
+queued, reserved, free) without other companies' titles or logs, and every HQ reads that.
+
+**3. Controller on a small Google Cloud VM.** This is feasible, but it is a re-qualification, not a
+move.
+
+- The current version requires the controller and the desktop bridge to share a host and user.
+  Paperclip's process adapter launches the pool runner on the controller host. The bridge sends
+  answers and stops to that runner through private local control files. On a VM, the runner
+  would SSH to the Macs from the cloud, and answers and stops would need an authenticated
+  network path.
+- The HQ frontend can stay on Vercel while an HQ backend/gateway runs on a tailnet-connected
+  server. Ordinary Vercel functions do not automatically gain that private route; choose an
+  authenticated relay/gateway path explicitly. Keeping Paperclip private is compatible with
+  an internet-accessible HQ frontend. This proposal does not expose a new endpoint.
+- A cloud controller survives a laptop going offline, but one VM is still a single point of
+  failure. Plan persistent data, restart policy and a tested backup/restore path, with embedded
+  or managed Postgres. Sleeping Macs remain unavailable workers, and headless Claude sign-in
+  still needs qualification. Choose region and machine size after measuring idle and run load;
+  no price or high-availability claim is made here.
+  [Deployment modes](https://docs.paperclip.ing/reference/deploy/overview/).
+
+**4. Option 2 directly, with simple role checks.** Agreed; option 1 is no longer a planned step.
+Deep links remain an admin fallback on the tailnet. No new Firestore rules are needed for
+Paperclip data, because it does not live in Firestore. The HQ server route checks the existing
+claim: `canAccessHq` to view that HQ's company, and `admin` to start, answer, assign or stop.
+
+**5. Interactive conversation: keep it in Paperclip, mint the record into Git.** Paperclip
+already stores, per company-scoped issue:
+
+- comments by users or agents;
+- image and file attachments, linked to comments through the `StorageProvider`;
+- structured interactions addressed to a user or an agent: `ask_user_questions`,
+  `request_confirmation`, `request_checkbox_confirmation`, `request_item_verdicts`,
+  `suggest_tasks`. They have `human_only` and other resolver policies, and can wake the
+  assignee on an answer;
+- human assignment (`assignee_user_id`, `responsible_user_id`), read states and inbox
+  dismissals;
+- revisioned issue documents.
+
+These features exist in the pinned shared issue types as well as the current
+[issues API](https://docs.paperclip.ing/reference/api/issues/); our HQ integration has not yet
+qualified them end to end.
+
+Duplicating that thread in Firestore would create two authorities for the same messages.
+Recommended: an HQ inbox item is a Paperclip issue, or an interaction addressed to that person,
+in their company. HQ reads and writes it through the server route. When the ticket wraps up, the
+coordinator exports a versioned Markdown closeout record into Git with the PR: task and issue IDs,
+the frozen conversation revision/cursor, decisions and accepted answers, validation evidence,
+and attachment references with content hashes. Keep large images in durable private artifact
+storage rather than committing every screenshot binary. Git preserves old committed snapshots;
+making closeout files append-only needs an explicit validation rule. Reopening a ticket creates
+a new snapshot instead of overwriting the previous one. One Morpheus item can aggregate several
+Paperclip issues, and a completed execution turn alone does not trigger repository acceptance.
+
+This is a proposal. Today the inbox is `hq/team/<handle>.md` with the
+[inbox cycle](runbooks/inbox-cycle.md). Replacing it needs an explicit migration design for
+validation, archiving and promotion to `decisions.md`.
+
+| Kind of state | Single authority | Everyone else |
+|---|---|---|
+| Roadmap item, acceptance, decisions, completion record | Morpheus Git | HQ renders; Paperclip receives task instructions |
+| Execution conversation: messages, screenshots, questions, assignments, runs and logs | Paperclip | HQ reads and writes through the server route |
+| Shared compute capacity and reservations | Pool runtime | Every HQ reads the aggregate |
+| HQ identity and role | Firebase Auth custom claim | Paperclip sees the server credential |
+| Existing HQ data | Firestore, under role rules | — |
+
+**How an HQ answer reaches a worker needs qualifying.** Paperclip delivers an interaction
+response either by steering it into a live run or by waking the assignee for a new run
+(`steered` and `wake_fallback` in its delivery records). Our qualified pool does not use that
+path. A live Claude answer goes through the bridge's control files to SSH stdin. Codex asks at
+a turn boundary, and the answer arrives as a follow-up. Until the runner consumes Paperclip
+interaction responses, an HQ answer should be a follow-up that wakes the next turn. Live HQ
+answers are a proposed extension. That follow-up must go through the bridge's turn journal:
+posting a comment or interaction response alone does not create an authorized pool turn, and
+an unrecognized wake can be a no-op. The new HQ backend needs a qualified remote route into
+the bridge for starts, answers and stops, with an acknowledgment tied to the exact session.
+The bridge also points a blocked issue's `unblockDescriptor`
+at the controlling Codex conversation; HQ would become a second unblock route, which needs its
+own rule for who answers first.
+
 ```mermaid
-flowchart LR
-  Browser[HQ in the browser] -->|Firebase session cookie| Route[HQ server route - role check]
-  Browser -->|Firebase client auth - role rules| Firestore[Firestore - HQ data or optional status projection]
-  Route -->|Scoped Paperclip key, server-side only - proposed| API[Paperclip REST API]
-  API --> Postgres[Paperclip Postgres - unchanged]
-  Browser -.->|Deep link over private network| Board[Paperclip dashboard]
+flowchart TB
+  subgraph VM[Small Google Cloud VM on the tailnet - proposed]
+    API[Paperclip API and company events]
+    Postgres[Paperclip Postgres]
+    Runner[Pool runner and occupancy]
+    Controls[Morpheus bridge journal and controls]
+    API --> Postgres
+    API --> Runner
+    Controls -->|Journaled issue or follow-up| API
+    Controls -->|Live answer or stop| Runner
+  end
+  Browser[HQ in the browser - our design system] -->|Firebase session cookie| Route[HQ backend or gateway - role and company check]
+  Browser -->|Firebase client auth - role rules| Firestore[Firestore - existing HQ data]
+  Route -->|Company-scoped reads| API
+  Route -->|Authenticated remote controls - proposed| Controls
+  Runner -->|SSH over Tailscale| Macs[Mac worker runtimes]
+  API -.->|Completed thread minted as Markdown in a PR - proposed| Git[Morpheus Git records]
 ```
 
-**Recommendation:** keep Paperclip on Postgres. Start with option 1, then build option 2 as the
-target. If HQ needs Firestore-native, rule-gated views, add a read-only status projection that a
-server-side sync writes from Paperclip into Firestore. Paperclip remains the source of truth, and
-controls still go through its API. Rather than port the database, use managed Postgres if the
-operational burden is the concern. No migration, network exposure or frontend rollout is
-authorized by this research.
+**Overall recommendation:** keep Paperclip on Postgres and build option 2 directly, as Chris
+prefers. Put the execution conversation in Paperclip, aggregate pool occupancy in the runtime,
+and completion records in Git. Use Firestore only for HQ data with no Paperclip equivalent.
+No migration, VM, network exposure, credential or frontend rollout is authorized by this
+research.
 
-**Open questions for Chris:**
+**Still open for Chris:**
 
-- Which HQ hosts these views: one operator HQ, or each company's HQ? One Paperclip instance
-  serves several companies.
-- How should a deployed HQ reach the private controller: a tailnet-connected server, a relay, or
-  local-only use?
-- Which roles may view and which may control? The proposal is admin-only controls.
-- Is Postgres for Paperclip acceptable, embedded on the controller or managed?
+- The VM's region and size, and whether Paperclip's Postgres is embedded on it or managed.
+- Where the HQ backend/gateway runs and how it reaches the private controller.
+- Whether HQs may see other companies' job titles on the shared runners, or counts only. The
+  proposal is counts only.
+- Whether to adopt the proposed Paperclip-backed inbox and Git snapshot contract, and which
+  durable artifact store retains screenshots.
+
+**First validation slice:** two company HQs using the same worker pool. Show each company's own
+task, conversation and screenshot in its normal design system; display shared occupancy in both;
+answer one structured question and verify it reaches the correct native session exactly once;
+reject a mismatched company ID; keep controller/task history available with one laptop offline;
+export the completed task twice without duplicate records, and reproduce its attachment hashes.
+The UI can say "waiting for a worker" when capacity is unavailable. These are prospective
+acceptance checks, not claims that the prototype already passes them.
 
 ## Machines, subscriptions and rollout status
 
