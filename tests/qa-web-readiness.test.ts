@@ -32,7 +32,7 @@ it.each(["state = not running\nruns = 1\nlast exit code = 2", "state = not runni
 it("allows a pending first launch and a compiling live process to become ready", async () => {
   const readJob = vi.fn().mockReturnValueOnce("state = not running\nruns = 0\nlast exit code = (never exited)").mockReturnValue("state = running\npid = 123\nruns = 1");
   fetchMock.mockResolvedValueOnce(new Response("", { status: 503 }))
-    .mockResolvedValueOnce(new Response(JSON.stringify({ kind: "web", upstream: state().upstream })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ kind: "web", upstream: state().upstream, root })))
     .mockResolvedValueOnce(new Response("ready"));
   await waitForWebPreview(state(), readJob, join(root, "preview.log"), () => undefined);
   expect(readJob).toHaveBeenCalledTimes(2);

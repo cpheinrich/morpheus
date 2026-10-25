@@ -343,6 +343,25 @@ local dev server. The project declares it in `morpheus.json`:
 - **Attach or start.** If something already answers at `url`, the preview attaches and `stop` leaves
   it running. Otherwise it runs `command` in `cwd` under the launchd supervisor, in its own process
   group, and `stop` (or the lease, or the dev server exiting) ends the whole group.
+- **Ownership survives project renames.** New web sessions use
+  `~/Library/Caches/morpheus.qa.web/web-<checkout/dev-directory-key>/session.json`
+  and a stable launchd label, independent of the project/display name and configured legacy
+  namespace. Status, start and stop also discover old namespace directories for the same key.
+  When old and new namespaces share a launchd label, its registered state-file argument selects
+  the owner; an empty legacy directory cannot replace the stable session.
+  The stored checkout and dev directory must match, and the registered job must name the web
+  supervisor and exact state file; a port or upstream URL alone never authorizes stopping it.
+  Legacy session files stay at their original paths while running so their supervisor can keep
+  reading the lease. Status reports the actual old log path; the next start stops the verified
+  old registration before writing a new stable session. Multiple registrations, foreign/malformed
+  or symlinked records, active legacy start locks, and unverifiable jobs refuse without stopping
+  an arbitrary process. Health also names the checkout root. Stop reports when no registered owner
+  was found instead of claiming termination. Both the overlay and any spawned dev listener must
+  disappear before shutdown is confirmed. Listener presence counts even for HTTP errors or a
+  stalled response; failed/unconfirmed shutdown and orphan listeners retain their state for
+  diagnosis. Only inactive records whose overlay port and owned dev endpoint are absent may
+  be cleared without a registered job. Moving the actual checkout or
+  dev directory is separate from renaming its display label: stop the original preview first.
 - **The site's own address (MO-26-10-06-22.17.47).** When the preview starts the dev server and
   `command` contains `{port}`, the dev server runs on the first free port above `url`'s and the
   overlay listens on `url` itself. Sign-in allowlists (a Firebase browser key's HTTP referrers,
