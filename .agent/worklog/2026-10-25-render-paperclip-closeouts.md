@@ -61,19 +61,19 @@ Post-review targeted CLI checking found TS2322: the added boolean mode flags wid
 `values[key]` to `string | true`; the root tsconfig imports the renderer/guard
 through tests but does not include the standalone CLI. Tightened required-option
 validation to an explicit string check and added actual-CLI refusal checks for a
-missing commit option and conflicting modes. The same reviewer will verify this
-narrow late correction; the initial clean review remains unchanged.
+missing commit option and conflicting modes. The same reviewer verified this
+narrow late correction with no findings; the initial clean review remains unchanged.
 The same standalone strict TypeScript command now runs in the narrow history
 workflow, keeping that CLI boundary checked without widening the root tsconfig.
 
-Independent normal-risk review cleared the final implementation with no findings. The reviewer independently passed all 60 focused tests and the actual exact-commit history CLI, inspected all three refreshed captures, and confirmed every captured field remains represented with inert text and digest-bound links. Ordinary CI remains required; no live provider or upstream authority was validated.
+Independent normal-risk review cleared the implementation with no findings, and the same reviewer cleared the narrow late CLI typing correction and scoped workflow typecheck. The reviewer independently passed focused tests, exercised the exact-commit history CLI and inspected all three final captures. Every captured field remains represented with inert text and digest-bound links. Ordinary CI remains required; no live provider or upstream authority was validated.
 
 ```morpheus-review
 {
   "version": 2,
   "base": "e4ea3aa6fe14b3a9740efa1bde8ccd94c56b7d27",
   "reviewed": "8f05ac38c8c56c09d0677014a064dac680b99930",
-  "covered": "8f05ac38c8c56c09d0677014a064dac680b99930",
+  "covered": "504e797f22540543a132e31c845cce3b9b571268",
   "authorSession": "01a172e5-4834-7ce2-842c-f9a06d7a798b",
   "reviewerSession": "/root/markdown_closeouts/closeout_reviewer",
   "risk": "normal",
@@ -84,7 +84,22 @@ Independent normal-risk review cleared the final implementation with no findings
     "evidence": "Author clock tools bracketed /root/markdown_closeouts/closeout_reviewer initial invocation: start 2026-10-25T12:06:00Z, completed-response receipt 2026-10-25T12:09:15Z; 195000ms includes tool execution and waits. Reviewer separately reported final observed clock 12:09:01Z."
   },
   "outcome": "complete",
-  "summary": "Independent normal-risk review cleared the final implementation with no findings. The reviewer independently passed all 60 focused tests and the actual exact-commit history CLI, inspected all three refreshed captures, and confirmed every captured field remains represented with inert text and digest-bound links. Ordinary CI remains required; no live provider or upstream authority was validated.",
-  "findings": []
+  "summary": "Independent normal-risk review cleared the implementation with no findings, and the same reviewer cleared the narrow late CLI typing correction and scoped workflow typecheck. The reviewer independently passed focused tests, exercised the exact-commit history CLI and inspected all three final captures. Every captured field remains represented with inert text and digest-bound links. Ordinary CI remains required; no live provider or upstream authority was validated.",
+  "findings": [],
+  "followUps": [
+    {
+      "reviewerSession": "/root/markdown_closeouts/closeout_reviewer",
+      "commit": "504e797f22540543a132e31c845cce3b9b571268",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.95,
+      "timing": {
+        "source": "clock",
+        "durationMs": 57000,
+        "evidence": "Author clock tools bracketed the same-reviewer follow-up: start 2026-10-25T12:12:06Z, completed-response receipt 2026-10-25T12:13:03Z; 57000ms includes tools and waits. Reviewer separately reported final observed clock 12:12:47Z."
+      },
+      "scopeReason": "A post-clearance strict check of the standalone CLI exposed TS2322 outside the root tsconfig import scope. This turn verifies only the required-option string narrowing, actual-CLI refusal assertions, the narrow workflow standalone typecheck and worklog evidence; no renderer or history semantics changed.",
+      "summary": "The same reviewer cleared the narrow CLI type correction, new refusal assertions and scoped workflow check with no findings. Independently passed standalone strict tsc and all 32 Markdown/guard tests; the final captures remain exact because rendered bytes did not change."
+    }
+  ]
 }
 ```
