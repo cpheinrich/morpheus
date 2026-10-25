@@ -70,6 +70,8 @@ the answers arrive.
 - ML and algorithm work (models, benchmarks, experiments) goes to an agent following the
   research-engineer skill (`morpheus cto guide research-engineer`), the first
   individual-contributor skill under this one.
+- CI/CD delivery responsibility and infrastructure incidents go to the devops-engineer skill
+  (`morpheus cto guide devops-engineer`); it uses the existing controller and mandate.
 - Prefer a route you control to an outside dependency: redesign around a vendor ticket or another
   team rather than wait on one.
 - Uncertainty is a checkpoint, not a human blocker. Before calling a technical problem blocked,

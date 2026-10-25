@@ -1623,3 +1623,20 @@ Git already supplies the complete checkout/diff and Node is already present. Thi
 repository-specific four-flag selector is under 100 lines and explicitly handles
 uncertain comparisons and both rename paths. Build it here without a new action,
 generic filtering framework or dependency. See docs/ci-scope.md for the input map.
+
+## DevOps responsibility and subject tags live in Morpheus — 2026-10-25
+
+MO-26-10-25-03.01.09. Chris asked for a DevOps persona like the CTO and research engineer,
+responsible primarily for timely CI/CD and incident follow-through, with event/deadline wakeups
+and deeper reasoning when needed. He accepted avoiding a forever chat; durable incident records
+and bounded reasoning preserve context while the existing controller remains the effect owner.
+The skill uses the existing canonical/mirror/generated-guide/scaffold-pointer path. Source
+availability does not claim that a new live supervisor has been deployed.
+
+Chris also explicitly wants multiple tags on Morpheus's own roadmap tickets and worklogs,
+regardless of separate Paperclip exploration. `tags` is optional open-vocabulary subject metadata;
+CI/CD or infrastructure work uses `engineering` and `devops`, with narrower tags added as useful.
+Tags confer no owner or authority. Legacy records remain valid, no blanket historical tagging is
+performed, and a queue can later project this contract without becoming its source of truth.
+Existing Zod/frontmatter/Node APIs fit these small domain fields and deterministic reads; no
+additional generic tag framework or dependency is introduced.

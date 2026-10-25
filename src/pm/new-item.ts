@@ -5,7 +5,7 @@ import { claimedNumbers } from "./claim.js";
 import { itemFilename, periodInZone, timestampId } from "./id.js";
 import { today } from "./frontmatter.js";
 import { parseArtifact } from "./parse.js";
-import { ARTIFACTS, type ArtifactKind } from "./schema.js";
+import { ARTIFACTS, WorkTags, type ArtifactKind } from "./schema.js";
 import { headSha } from "./git-sha.js";
 
 /** Infix per artifact kind. Roadmap items get the bare project prefix. */
@@ -147,6 +147,8 @@ export interface NewItemOptions {
   goal?: string;
   /** GitHub issues the roadmap item fully resolves. */
   issues?: number[];
+  /** Roadmap subject tags; validated before any file is created. */
+  tags?: string[];
   /** Injectable clock, so tests can pin the period a goal lands in. */
   now?: Date;
 }
@@ -160,6 +162,8 @@ export interface NewItem {
 
 /** Create a new item file with valid frontmatter. */
 export async function createItem(opts: NewItemOptions): Promise<NewItem> {
+  const tags = opts.tags === undefined ? undefined : WorkTags.parse(opts.tags);
+  if (tags?.length && opts.kind !== "roadmap") throw new Error("Tags are supported on roadmap items and worklogs.");
   const { productDir, kind, prefix, title, cwd } = opts;
   const dir = join(productDir, ARTIFACTS[kind].dir);
   await mkdir(dir, { recursive: true });
@@ -181,6 +185,7 @@ export async function createItem(opts: NewItemOptions): Promise<NewItem> {
         title,
         status: "backlog",
         priority: opts.priority ?? "P2",
+        tags: tags?.length ? tags : undefined,
         goal: opts.goal,
         owner: "agent",
         prs: [],
