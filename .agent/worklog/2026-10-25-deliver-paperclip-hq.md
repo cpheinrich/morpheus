@@ -101,6 +101,10 @@ The second ordinary same-reviewer follow-up covers this deployment cap; no new a
 runtime service account is introduced. The two HQ focused files now pass 26 tests; optional
 Firebase build and root typecheck also pass. A refreshed full sanitized fixture was saved only
 to a private0600 temporary file for the lead's authenticated visual work, never committed.
+The same reviewer cleared that deployment cap with no findings in 25,000ms, checking all nine
+definitions and the installed Firebase option types. This completes the three ordinary review
+turns; any further correction must satisfy the runbook's narrow verification scope or receive
+explicit human authorization. Fresh shared quota at this checkpoint was 70% weekly used.
 
 The independent high-risk source review cleared the implementation with no findings. The
 reviewer independently ran both focused test files (25 passed), checked the complete diff,
@@ -113,7 +117,7 @@ crash recovery remain separate acceptance work.
   "version": 2,
   "base": "8ba59081a39807197a5d8595ee04a94f7afc0e9d",
   "reviewed": "06f2661615dfb2b991cacb399ecb282c8e25efb0",
-  "covered": "d6d73c44ca6e9c73e44c0c15a8b44dcb0c45e35a",
+  "covered": "2548c73f840a346db24d0ef99839f7041bd840a6",
   "authorSession": "01a1755a-96c3-7c41-860e-c5178e43bae6",
   "reviewerSession": "/root/hq_connector_projection/review_hq_projection",
   "risk": "high",
@@ -139,6 +143,19 @@ crash recovery remain separate acceptance work.
         "evidence": "First ordinary follow-up /root/hq_connector_projection/review_hq_projection: author clock 2026-10-25T23:29:53Z before followup_task; receipt clock 2026-10-25T23:30:37Z immediately after final response."
       },
       "summary": "Cleared the bounded QA fixture synchronization correction with no findings after inspecting the CI log and responder lifecycle; relied on the author's 34-test focused pass."
+    },
+    {
+      "reviewerSession": "/root/hq_connector_projection/review_hq_projection",
+      "commit": "2548c73f840a346db24d0ef99839f7041bd840a6",
+      "outcome": "cleared",
+      "scopeReason": "The lead added an inseparable pilot deployment allocation constraint before activation: cap every callable at one instance and zero warm instances. This turn covers the wrapper option, focused assertion and explanatory contract.",
+      "elapsedMinutes": 0.4166666666666667,
+      "timing": {
+        "source": "clock",
+        "durationMs": 25000,
+        "evidence": "Second ordinary follow-up /root/hq_connector_projection/review_hq_projection: author clock 2026-10-25T23:33:43Z before followup_task; receipt clock 2026-10-25T23:34:08Z immediately after final response."
+      },
+      "summary": "Cleared all nine callable allocation caps and focused assertion/documentation with no findings; installed Firebase option types support both settings."
     }
   ]
 }
