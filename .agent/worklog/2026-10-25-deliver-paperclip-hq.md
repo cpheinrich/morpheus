@@ -84,6 +84,16 @@ test-only synchronization correction is required to finish CI delivery; the same
 inspect it as the first allowed follow-up. Production QA behavior is unchanged. No unchanged
 suite was rerun merely to obtain a favorable result.
 
+The same reviewer cleared that test-only correction with no findings after inspecting the CI
+log and exact responder control flow. `pnpm exec vitest run tests/qa-comments.test.ts` passed all
+34 tests, and `pnpm typecheck` passed. The follow-up took 44,000ms measured by author clocks.
+
+A read-only probe of the reviewed projection adapter against the existing authenticated local
+Paperclip service returned 55 issues, 24 agents and 32 bounded comments in 87,589 bytes, with
+issue/agent truncation false and comment truncation true. Observation time was
+1792971015808. Only counts/flags/time/bytes were emitted; no source text, credentials, native
+identities, bridge calls or provider work were emitted or invoked.
+
 The independent high-risk source review cleared the implementation with no findings. The
 reviewer independently ran both focused test files (25 passed), checked the complete diff,
 authorization, projection bounds/isolation, token rotation, ownership/shutdown and uncertain
@@ -95,7 +105,7 @@ crash recovery remain separate acceptance work.
   "version": 2,
   "base": "8ba59081a39807197a5d8595ee04a94f7afc0e9d",
   "reviewed": "06f2661615dfb2b991cacb399ecb282c8e25efb0",
-  "covered": "06f2661615dfb2b991cacb399ecb282c8e25efb0",
+  "covered": "d6d73c44ca6e9c73e44c0c15a8b44dcb0c45e35a",
   "authorSession": "01a1755a-96c3-7c41-860e-c5178e43bae6",
   "reviewerSession": "/root/hq_connector_projection/review_hq_projection",
   "risk": "high",
@@ -107,6 +117,21 @@ crash recovery remain separate acceptance work.
   },
   "outcome": "complete",
   "summary": "The independent high-risk source review cleared the implementation with no findings.",
-  "findings": []
+  "findings": [],
+  "followUps": [
+    {
+      "reviewerSession": "/root/hq_connector_projection/review_hq_projection",
+      "commit": "d6d73c44ca6e9c73e44c0c15a8b44dcb0c45e35a",
+      "outcome": "cleared",
+      "scopeReason": "Late test-only CI correction: wait for the pre-existing QA fixture child completion receipt before asserting claim cleanup, after the full-suite race blocked delivery. Production QA behavior and pilot implementation are unchanged.",
+      "elapsedMinutes": 0.7333333333333333,
+      "timing": {
+        "source": "clock",
+        "durationMs": 44000,
+        "evidence": "First ordinary follow-up /root/hq_connector_projection/review_hq_projection: author clock 2026-10-25T23:29:53Z before followup_task; receipt clock 2026-10-25T23:30:37Z immediately after final response."
+      },
+      "summary": "Cleared the bounded QA fixture synchronization correction with no findings after inspecting the CI log and responder lifecycle; relied on the author's 34-test focused pass."
+    }
+  ]
 }
 ```
