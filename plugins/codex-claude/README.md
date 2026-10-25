@@ -91,7 +91,19 @@ The selected model and effort are mapped independently at each Claude launch:
 
 Low/medium/high/xhigh map to their matching effort values; minimal/none map to low;
 max/ultra map to max. These are configurable approximations, not claims of equivalence.
-Unsupported combinations fail visibly. Explicit model/effort overrides take precedence.
+Explicit model/effort overrides take precedence, then `modelMap`.
+
+A Codex model missing from `modelMap` — Codex ships new ones faster than this table changes;
+`gpt-6.1-sol` once blocked every delegation until the user was asked to pick a Claude model —
+uses `modelFallback`, default `opus`. That family alias follows whatever the installed Claude
+CLI resolves it to, so no model choice is asked for. The run's `selection` (and
+`claude_inspect`'s preview) records `source` (`override`, `mapped` or `fallback`), the Codex
+`codexModel`, and for a fallback a `reason`, so the coordinator can report what ran. Set
+`modelFallback` to another fixed model or family alias (`fable`, `sonnet`, a full id) to
+change it, or to `null` to refuse unmapped models with a message naming the setting. It is
+not a retry: authentication, rate-limit, permission and transport failures are reported as
+they are, and an explicit model the CLI rejects still fails that run. Unsupported effort
+values still fail visibly.
 
 Any explicit model is passed through to `claude --model`: a family alias (`opus`, `sonnet`,
 `haiku`, `fable`) or a full id such as `claude-fable-5-1`, from an override or from

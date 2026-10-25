@@ -92,6 +92,10 @@ try {
       (result.notes ??= []).push(
         "config.subscriptionModels is deprecated and ignored: any explicit model id is passed to the Claude CLI, which decides availability. Remove the key when convenient.",
       );
+    if (result.config.modelFallback === null)
+      (result.notes ??= []).push(
+        "config.modelFallback is null: delegation from a Codex model missing from modelMap is refused. Set it to a family alias such as \"opus\" to fall back instead.",
+      );
     console.log(JSON.stringify(result, null, 2));
   } else {
     let input = rest.join(" ");
