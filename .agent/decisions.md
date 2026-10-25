@@ -1,5 +1,13 @@
 # Decisions
 
+**HQ native qualification is a separate explicit operator path** — 2026-10-25.
+Use the dedicated Firebase demo emulators, actual Manager HQ facade and existing
+single Pool, with fixtures first and fresh native quota before bounded test turns.
+Keep default tests provider-free and retain unknown/refused providers honestly.
+Considered Commander15.0.0 (registry modified2026-09-02, no runtime dependencies);
+Node's existing `parseArgs` handles two fixed qualification modes without a new
+CLI framework. The admission/evidence harness is domain-specific and adds no package.
+
 **Paperclip Markdown views derive from exact canonical closeouts** — 2026-10-25.
 The optional operator prototype keeps its frozen canonical JSON identity and emits
 an adjacent deterministic view with inert display fences and digest-only local

@@ -4,6 +4,19 @@
 > This describes the October 24 implementation and October 25 design decisions;
 > broader project rollout is still pending.
 
+October25 implementation status: the [scoped HQ actor facade](paperclip-hq-actor.md)
+and [outbound Firebase transport](paperclip-hq-transport.md) have landed. A
+[controlled qualification](paperclip-hq-qualification.md) joined real demo Auth,
+Functions and Firestore to the existing private Pool and remote Codex, including a
+saved-receipt reconnect, same-session follow-up and independently read nonce files.
+Its frozen Git closeout records those exact bytes. The private test runtime was
+adopted for one paused Codex test agent; production HQ authentication, full browser
+UI, multiple companies and Markdown-inbox migration remain unimplemented. Claude's
+new transport run is not qualified because fresh native usage access requires its
+account owner's sign-in; the earlier desktop bridge's Claude evidence is separate.
+Questions and answers on the new Firebase route are qualified only with fixtures;
+live HQ streaming, projections and the browser UI have not been deployed.
+
 **Morpheus defines the work and what counts as delivered. Paperclip runs and tracks delegated
 work. The desktop bridge lets you supervise that work from your existing Codex conversation.**
 
