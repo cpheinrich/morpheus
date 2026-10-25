@@ -415,7 +415,7 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     "li{display:flex;gap:8px;align-items:flex-start;padding:10px;border:1px solid var(--qa-rule);border-radius:8px;background:var(--qa-panel);cursor:pointer}" +
     "li.focused{border-color:var(--qa-fg)}" +
     "li .body{flex:1;white-space:pre-wrap;overflow-wrap:anywhere}li .empty{color:var(--qa-muted);font-style:italic}" +
-    "li .capture-error{display:block;color:#d93025;font-size:11px;margin-top:4px}" +
+    "li .capture-error{display:block;color:var(--qa-fg);font-size:11px;margin-top:4px}" +
     ".num{flex:0 0 auto;min-width:20px;height:20px;border-radius:10px;background:#e4572e;color:#fff;font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center}" +
     ".none{color:var(--qa-muted);padding:4px 4px 0}" +
     ".composer{padding:12px 16px 16px;border-top:1px solid var(--qa-rule);display:flex;flex-direction:column;gap:8px}" +
