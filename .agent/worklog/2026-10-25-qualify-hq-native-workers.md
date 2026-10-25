@@ -122,7 +122,7 @@ during review. Final-head CI and protected delivery remained the author's respon
   "version": 2,
   "base": "cd325c52401527e4ce1e0e34e22e071a9f1f0663",
   "reviewed": "5a0e1080386738edfe7cc54c03efd75ea2e6824e",
-  "covered": "5a0e1080386738edfe7cc54c03efd75ea2e6824e",
+  "covered": "c29b26c76a8e8e0412b63b8f26338dc08b2dc061",
   "authorSession": "01a172da-309c-7f03-a0b7-06376f645f5a",
   "reviewerSession": "/root/qualify_hq_native/qualification_reviewer",
   "risk": "high",
@@ -134,7 +134,31 @@ during review. Final-head CI and protected delivery remained the author's respon
   },
   "outcome": "complete",
   "summary": "Independent high-risk review cleared the qualification with no findings. The reviewer independently passed the3 guard tests and76 focused transport/exporter/Markdown/history tests, checked the canonical snapshot and both63-byte blob hashes, and corroborated the retained native/session/cleanup receipts. No provider or live client was invoked during review. Final-head CI and protected delivery remained the author's responsibility.",
-  "findings": []
+  "findings": [],
+  "followUps": [
+    {
+      "reviewerSession": "/root/qualify_hq_native/qualification_reviewer",
+      "commit": "c29b26c76a8e8e0412b63b8f26338dc08b2dc061",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.75,
+      "timing": {
+        "source": "clock",
+        "durationMs": 45000,
+        "evidence": "Author clock observed2026-10-25T12:40:32Z before invoking the same reviewer finalization-only turn and2026-10-25T12:41:17Z after its final response; reviewer latest own clock12:41:06Z. Includes tool execution and waits."
+      },
+      "summary": "The same reviewer cleared the finalization commit with no findings; only explanatory prose and the accurate initial review record changed.",
+      "scopeReason": "Finalize the cleared qualification's readable closeout link, explicit fixture-only question and undeployed UI limits, and initial independent-review record.",
+      "finalization": {
+        "paths": [
+          "docs/paperclip-hq-qualification.md",
+          "docs/paperclip-overview.md",
+          ".agent/worklog/2026-10-25-qualify-hq-native-workers.md"
+        ],
+        "evidence": "Inspected the complete 5a0e1080386738edfe7cc54c03efd75ea2e6824e..c29b26c76a8e8e0412b63b8f26338dc08b2dc061 diff and exact changed-path list; verified the linked Markdown artifact exists in that commit. The review record accurately reflects the initial clearance and 3 guard plus 76 focused passing tests.",
+        "attestation": "These changes close out behavior already reviewed and cleared. They add no implementation, accepted-design change or normative rule. No source, tests, workflows, native clients or provider effects changed or ran during this finalization."
+      }
+    }
+  ]
 }
 ```
 
@@ -237,3 +261,11 @@ separately reviewed transport's dependency boundary.
 The exact continuation commands and private runtime identities are in the ignored
 `local/handoffs/hq-native-qualification.md` within this task worktree. Do not start a
 second Pool or native intent to compensate for missing observations.
+
+## Delivery observations
+
+The same reviewer cleared the final prose and review-record finalization in45,000ms,
+with no findings. Initial source CI finished green at5a0e108:11 checks,8 passed
+and3 expected skips. Final review-record validation and final-head CI precede merge.
+The private test mapping pins this task worktree; retain it and the ignored proofs
+while observing saved HQ receipts. Cleanup must preserve that needed runtime evidence.
