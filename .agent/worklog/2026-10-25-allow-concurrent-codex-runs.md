@@ -86,3 +86,103 @@ Review-fix verification:
 - `node --test tests/reverse.test.mjs` — 17/17 pass.
 - `pnpm -C plugins/codex-claude test` — 118/118 pass.
 - `pnpm -C plugins/codex-claude check` — pass.
+
+## Independent review
+
+Independent review (three turns) of the concurrent-Codex-runs change found two blocking defects in turn 1 (needs_input replies could target the wrong worktree; concurrent thread.started writes lost codexSessions entries) plus unbounded run-id growth, then a pruning race in turn 2; all were fixed with regression tests that exercise the adversarial orderings, and turn 3 cleared the change with no new findings.
+
+Reviewer: a fresh Codex session (gpt-5.6-sol, high effort) launched by the coordinating Claude session with the `morpheus review prepare` packet and no author context, resumed for turns 2 and 3. Timings are launcher wall clocks around `codex exec`. Head 15ab0154 is a plain trunk merge after the covered commit.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "e4ea3aa6fe14b3a9740efa1bde8ccd94c56b7d27",
+  "reviewed": "6b68d7ceef3e48d711edaa9b650b2e57eac04cfa",
+  "covered": "e9f63c27472bae4dd9fdced01724480535779199",
+  "authorSession": "7dfbcb4c-6fd4-5e43-bba6-aea6a0d1b6e5",
+  "reviewerSession": "01a172fa-b01a-7f00-917e-8b0918925151",
+  "risk": "normal",
+  "elapsedMinutes": 7.066666666666666,
+  "timing": {
+    "source": "runner",
+    "durationMs": 424000,
+    "evidence": "codex exec (gpt-5.6-sol, high) thread 01a172fa-b01a-7f00-917e-8b0918925151; launcher wall clock start 2026-10-25T12:13:14Z, end 2026-10-25T12:20:18Z"
+  },
+  "outcome": "complete",
+  "summary": "Independent review (three turns) of the concurrent-Codex-runs change found two blocking defects in turn 1 (needs_input replies could target the wrong worktree; concurrent thread.started writes lost codexSessions entries) plus unbounded run-id growth, then a pruning race in turn 2; all were fixed with regression tests that exercise the adversarial orderings, and turn 3 cleared the change with no new findings.",
+  "findings": [
+    {
+      "id": "F1-reply-wrong-worktree",
+      "severity": "substantive",
+      "disposition": "fixed",
+      "paths": [
+        "plugins/codex-claude/src/service.mjs",
+        "plugins/codex-claude/claude-plugin/skills/delegate-to-codex/SKILL.md"
+      ],
+      "description": "A needs_input reply without runId resolved from the Claude session's cwd and reply metadata was accepted even when the selected run was not awaiting input, so a reply meant for worktree B could resume or launch worktree A; the skill text omitted runId on replies.",
+      "response": "Replies now target only runs in needs_input, default when exactly one is waiting, and refuse naming the ids when several or none are; the skill passes runId (5e3885f3)."
+    },
+    {
+      "id": "F2-codexsessions-lost-write",
+      "severity": "substantive",
+      "disposition": "fixed",
+      "paths": [
+        "plugins/codex-claude/src/service.mjs",
+        "plugins/codex-claude/tests/reverse.test.mjs"
+      ],
+      "description": "Concurrent thread.started events did unlocked read-modify-write of the task JSON, so two runs discovering Codex sessions together could overwrite each other's codexSessions entry (reproduced by the reviewer).",
+      "response": "A per-task mutation queue serialises task-file writes; a Promise.all regression test exercises the race (5e3885f3)."
+    },
+    {
+      "id": "F3-runids-unbounded",
+      "severity": "minor",
+      "disposition": "fixed",
+      "paths": [
+        "plugins/codex-claude/src/service.mjs",
+        "plugins/codex-claude/tests/reverse.test.mjs"
+      ],
+      "description": "Terminal run ids were truncated only in the returned view while task.runIds grew forever and every inspect scanned every historical run.",
+      "response": "Persisted history is pruned to active runs plus five recent terminal runs (5e3885f3); the pruning itself was then found racy (F4) and moved inside the queue (e9f63c27)."
+    },
+    {
+      "id": "F4-prune-race",
+      "severity": "substantive",
+      "disposition": "fixed",
+      "paths": [
+        "plugins/codex-claude/src/service.mjs",
+        "plugins/codex-claude/tests/reverse.test.mjs"
+      ],
+      "description": "Pruning computed runs and retained ids outside the mutation queue and then overwrote runIds, so an inspect snapshot followed by a concurrent start could erase the new active run from persisted history (reproduced in turn 2).",
+      "response": "Classification and pruning run inside one queued transaction, write only when needed and keep active plus bounded recent or missing ids; a regression test pauses inspection after its snapshot, enqueues the start, then releases it and asserts the active id survives (e9f63c27)."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "01a172fa-b01a-7f00-917e-8b0918925151",
+      "commit": "5e3885f34db6a35cf28be7b6550beff534357d11",
+      "scopeReason": "Author fixes for F1, F2 and F3.",
+      "outcome": "blocked",
+      "elapsedMinutes": 2.8666666666666667,
+      "timing": {
+        "source": "runner",
+        "durationMs": 172000,
+        "evidence": "codex exec (gpt-5.6-sol, high) thread 01a172fa-b01a-7f00-917e-8b0918925151; launcher wall clock start 2026-10-25T12:27:01Z, end 2026-10-25T12:29:53Z"
+      },
+      "summary": "F1 and F2 resolved, F3 partially: pruning raced a concurrent start and could drop the active run from persisted history (F4), blocking."
+    },
+    {
+      "reviewerSession": "01a172fa-b01a-7f00-917e-8b0918925151",
+      "commit": "e9f63c27472bae4dd9fdced01724480535779199",
+      "scopeReason": "Author fix for F4.",
+      "outcome": "cleared",
+      "elapsedMinutes": 3.1666666666666665,
+      "timing": {
+        "source": "runner",
+        "durationMs": 190000,
+        "evidence": "codex exec (gpt-5.6-sol, high) thread 01a172fa-b01a-7f00-917e-8b0918925151; launcher wall clock start 2026-10-25T12:35:45Z, end 2026-10-25T12:38:55Z"
+      },
+      "summary": "F4 resolved inside the queued transaction with a genuinely interleaved regression test; earlier fixes still pass; no new findings; clear."
+    }
+  ]
+}
+```
