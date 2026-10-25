@@ -82,3 +82,28 @@ source CI, review, protected merge, consumer pin or real delivery is claimed.
 The owner must inspect the complete local packet and CI event/cost shape before
 releasing initial implementation publication. After release, one fresh high-risk
 reviewer, normal record validation, final-head CI and protected merge are required.
+
+## Protected integration and source publication release
+
+The coordinating owner released the finite source publication/review/CI/merge loop
+after inspecting the initial packet, conditional on the actual protected verifier
+merge. [PR511](https://github.com/cpheinrich/morpheus/pull/511) merged as
+`5fbdee441c71e5634c2f14b28babbab8d25820b2`; the task fetched and merged that
+actual current trunk before its first implementation publication.
+
+The only merge conflict was two independent append-only decision entries. Resolve
+it mechanically by retaining the entire incoming decisions file as a byte-exact
+prefix and appending this task's exact existing decision block. Every other
+incoming changed path and all three authored workflow files remained byte-exact.
+No code/configuration conflict or semantic resolution occurred. The initial
+independent review includes this complete integrated result.
+
+The release covers only this narrow source loop. Native execution, consumer
+adoption, host/service/runner effects, provider operations and controller history
+remain outside its authority.
+
+The integrated source passed the same 217 focused tests across five files,
+typecheck, compile, real actionlint over the actual complete workflow set,
+PM index/validation and whitespace checks. No generated changes resulted.
+The protected verifier merge's natural main CI also completed successfully before
+the initial independent review; initial task CI remains the next qualification.
