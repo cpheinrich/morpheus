@@ -229,6 +229,23 @@ export function permissionMode(snapshot) {
   if (snapshot.approvalPolicy === "on-request") return "default";
   throw new Error("Unsupported approval policy; delegation refused.");
 }
+// A remote pool profile may not exceed the calling Codex task's own sandbox. Writes
+// without a per-action user approval need a writable coordinator; read-only profiles
+// fit any verified sandbox. Unknown sandboxes or approval policies refuse.
+const POOL_SANDBOX_RANK = { readOnly: 0, workspaceWrite: 1, dangerFullAccess: 2 };
+const POOL_PERMISSION_RANK = { plan: 0, "read-only": 0, default: 1, acceptEdits: 1, "workspace-write": 1 };
+const APPROVAL_POLICIES = new Set(["never", "on-request", "on-failure", "untrusted"]);
+export function assertPoolAuthority(snapshot, permission) {
+  const rank = POOL_SANDBOX_RANK[snapshot?.sandbox?.type];
+  if (rank === undefined || !APPROVAL_POLICIES.has(snapshot?.approvalPolicy))
+    throw new Error("This Codex task's permissions could not be verified; pool delegation refused.");
+  const needed = POOL_PERMISSION_RANK[permission];
+  if (needed === undefined) throw new Error("Unknown pool permission; refused.");
+  if (needed > rank)
+    throw new Error(
+      `Pool permission ${permission} exceeds this Codex task's ${snapshot.sandbox.type} sandbox; permissions were not widened.`,
+    );
+}
 export function subscriptionEnv(env) {
   const clean = { ...env };
   for (const key of Object.keys(clean)) {

@@ -72,6 +72,23 @@ never submit a local task to a different machine by guessing its project path.
     AGENTS.md/CLAUDE.md remain project instructions. Shared full access means this is an
     ownership convention, not an OS-level write sandbox. Do not create cross-store symlinks.
 
+## Remote pool workers
+
+When the user asks for a remote Claude or Codex worker, use the `pool_*` tools (or
+`bridge.mjs pool.<operation> -`). `pool_profiles` lists registered workers; never invent a host,
+profile or path. `pool_start` with the current task id, profile and a bounded handoff returns a
+`conversationId`: keep it in the chat. Poll `pool_wait` and publish concise progress. Answer a
+live Claude question with `pool_answer` under the same rules as step 7. A Codex `needs_input`
+result, or the next instruction, goes through `pool_followup` after the turn ended (with
+`replySource`/`replyReason` when it answers a question). Follow-ups are turn-boundary only; never
+claim mid-turn steering. `pool_stop` stops a turn exactly. After a restart or a lost tool result,
+`pool_reattach` (by conversation id, or by task id to list) — never start a duplicate. Always
+pass the current task id to start, follow-up, answer and retry: admission uses this task's own
+live settings, and a read-only task cannot drive a writing profile. An unknown
+submission is retried only with `retry: true`. A `refused` turn names its category (for example
+`native_auth_unavailable`, `quota_exhausted`, `account_reserved`, `binding_drift`); report it, do
+not work around it. Verify artifacts independently; a worker's `completed` is not acceptance.
+
 For installation, enable/disable, supported versions, host setup, cleanup, memory selection,
 and failure recovery, read the plugin's `README.md`. Keep this integration outside project
 scaffolding: another Morpheus contributor must never acquire it merely by cloning a repo.
