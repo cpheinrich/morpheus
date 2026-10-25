@@ -254,18 +254,19 @@ test("web context: document scroll is applied once while fixed dialog stays in i
 });
 
 test("web context: storage failures remain visible and pin-count admission is bounded", async ({ page }) => {
-  // Block the first open: WebKit can populate the cached database before a post-load patch.
+  // Patch the factory prototype before first open; an instance override can miss WebKit calls.
   await page.addInitScript(() => {
-    if (sessionStorage.getItem("storage-failure-tested")) return;
+    if (window !== window.top || sessionStorage.getItem("storage-failure-tested")) return;
     sessionStorage.setItem("storage-failure-tested", "yes");
     Storage.prototype.setItem = function () { throw new Error("quota"); };
-    indexedDB.open = function () { throw new Error("blocked storage"); };
+    IDBFactory.prototype.open = function () { throw new Error("blocked storage"); };
   });
   const s = await setup(page);
   try {
     await s.site.locator("#base").click({ button: "right", position: { x: 50, y: 40 } });
     await page.locator("morpheus-qa textarea").fill("Keep HTML in this tab");
     await expect.poll(async () => (await s.pins())[0]?.context.image.status, { timeout: 17000 }).toBe("failed");
+    expect((await s.pins())[0].context.image.error).toBe("blocked storage");
     await expect(page.locator("morpheus-qa .status")).toContainText("Draft not saved");
     await page.locator("morpheus-qa button.primary").click();
     await expect(page.locator("morpheus-qa .status")).toContainText("Queued");
@@ -475,8 +476,10 @@ test("web context: cross-origin artwork and video omit only their media, keeping
   } finally { await s.cleanup(); media.closeAllConnections(); await new Promise<void>(resolve => media.close(() => resolve())); }
 });
 
-test("web context: legacy route drafts merge once with v2 drafts across navigation and cleanup failure", async ({ page }) => {
+test("web context: legacy route drafts merge once with v2 drafts across navigation and cleanup failure", async ({ page }, info) => {
   const s = await setup(page);
+  let posts = 0;
+  page.on("request", request => { if (request.method() === "POST" && new URL(request.url()).pathname === "/__qa/api/batches") posts++; });
   const old = (id: string, text: string) => ({ id, n: 1, text, anchor: { normX: .2, normY: .2 } });
   try {
     await page.evaluate(pin => {
@@ -489,7 +492,14 @@ test("web context: legacy route drafts merge once with v2 drafts across navigati
     await page.evaluate(pin => {
       sessionStorage.setItem("morpheus-qa:/second", JSON.stringify({ pins: [pin] }));
       const remove = Storage.prototype.removeItem;
-      Storage.prototype.removeItem = function (key) { if (key === "morpheus-qa:/second") throw new Error("cleanup denied"); return remove.call(this, key); };
+      (window as any).__legacyCleanupAfterSend = 0;
+      Storage.prototype.removeItem = function (key) {
+        if (key === "morpheus-qa:/second") {
+          if (JSON.parse(sessionStorage.getItem("morpheus-qa:v2:context-fixture")!).pins.length === 0) (window as any).__legacyCleanupAfterSend++;
+          throw new Error("cleanup denied");
+        }
+        return remove.call(this, key);
+      };
     }, old("old1", "Second legacy"));
     await s.site.locator("body").evaluate(body => body.ownerDocument.defaultView!.history.pushState(null, "", "/second"));
     await expect(page.locator("morpheus-qa ol li")).toHaveCount(2);
@@ -500,10 +510,23 @@ test("web context: legacy route drafts merge once with v2 drafts across navigati
     await s.site.locator("body").evaluate(body => body.ownerDocument.defaultView!.history.pushState(null, "", "/second"));
     await expect(page.locator("morpheus-qa ol li")).toHaveCount(1);
     await page.locator("morpheus-qa button.primary").click();
+    await expect.poll(() => page.evaluate(() => (window as any).__legacyCleanupAfterSend)).toBe(1);
     await expect(page.locator("morpheus-qa .status")).toContainText("Queued");
+    await expect(page.locator("morpheus-qa .status")).toContainText("Legacy draft retained: browser storage could not complete migration.");
+    await expect(page.locator("morpheus-qa .status")).toHaveClass("status err");
+    expect(posts).toBe(1);
+    if (process.env.QA_EVIDENCE_DIR) { await mkdir(process.env.QA_EVIDENCE_DIR, { recursive: true }); await page.screenshot({ path: join(process.env.QA_EVIDENCE_DIR, `web-queued-legacy-warning-${info.project.name}.png`) }); }
+    await s.site.locator("body").evaluate(body => body.ownerDocument.defaultView!.history.pushState(null, "", "/away"));
+    await expect(page.locator("morpheus-qa .status")).not.toContainText("Legacy draft retained");
+    await expect(page.locator("morpheus-qa .status")).toContainText("Queued");
+    await expect(page.locator("morpheus-qa .status")).toHaveClass("status ok");
+    if (process.env.QA_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.QA_EVIDENCE_DIR, `web-queued-warning-cleared-${info.project.name}.png`) });
+    await s.site.locator("body").evaluate(body => body.ownerDocument.defaultView!.history.pushState(null, "", "/second"));
+    await expect(page.locator("morpheus-qa .status")).toContainText("Legacy draft retained");
     await page.reload();
     await expect.poll(async () => (await s.pins()).length).toBe(0);
     expect(await page.evaluate(() => sessionStorage.getItem("morpheus-qa:/second"))).toBeNull();
+    expect(posts).toBe(1);
   } finally { await s.cleanup(); }
 });
 
