@@ -104,12 +104,18 @@ export const RoadmapStatus = z.enum([
 
 export const Priority = z.enum(["P0", "P1", "P2", "P3"]);
 
+/** Subject metadata, independent of a role, claim or execution permission. */
+export const WorkTags = z.array(
+  z.string().min(1).max(48).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/, "use a lowercase tag such as devops or machine-learning"),
+).max(16).refine((tags) => new Set(tags).size === tags.length, "tags must be unique");
+
 export const RoadmapItem = z
   .object({
     id: z.string().regex(ROADMAP_ID, "must look like EV-014"),
     title: z.string().min(3),
     status: RoadmapStatus,
     priority: Priority.default("P2"),
+    tags: WorkTags.optional(),
     goal: z.string().regex(GOAL_ID).optional(),
     owner: z.enum(["agent", "human"]).default("agent"),
     prs: z.array(z.number().int().positive()).default([]),
@@ -188,6 +194,7 @@ export const JournalEntry = z.object({
   date: isoDate,
   agent: z.enum(["claude", "codex", "human"]),
   roadmap: z.string().regex(ROADMAP_ID).optional(),
+  tags: WorkTags.optional(),
   outcome: z.enum(["shipped", "abandoned", "blocked", "research"]),
   summary: z.string().min(1),
 });

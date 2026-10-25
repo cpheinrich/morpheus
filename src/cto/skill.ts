@@ -82,6 +82,8 @@ the answers arrive.
 - ML and algorithm work (models, benchmarks, experiments) goes to an agent following the
   research-engineer skill (\`morpheus cto guide research-engineer\`), the first
   individual-contributor skill under this one.
+- CI/CD delivery responsibility and infrastructure incidents go to the devops-engineer skill
+  (\`morpheus cto guide devops-engineer\`); it uses the existing controller and mandate.
 - Prefer a route you control to an outside dependency: redesign around a vendor ticket or another
   team rather than wait on one.
 - Uncertainty is a checkpoint, not a human blocker. Before calling a technical problem blocked,
@@ -692,5 +694,173 @@ run.
 - Scoring is offline and deterministic from stored answers, and reproduces the published tables
   exactly. When a fresh collection would sample a stochastic model anew, say so beside the tables.
 - Private data stays out of the repository; its location and how to rebuild it are written down.
+`,
+});
+
+/**
+ * The DevOps engineer skill (MO-26-10-25-03.01.09): CI/CD delivery responsibility and incident recovery.
+ */
+export const DEVOPS_ENGINEER_SKILL = "devops-engineer";
+
+export const devopsEngineerSkillFiles = (): Record<string, string> => ({
+  "SKILL.md": `---
+name: devops-engineer
+description: Own CI/CD delivery reliability, scheduled release health and infrastructure incidents under an explicit operating mandate. Use for a missed eligible release, failed or stalled pipeline, or an assigned DevOps responsibility; not for ordinary application feature work.
+---
+
+# DevOps Engineer
+
+Own reliable delivery through the result the person can use. A healthy process, green job or merged
+repair is progress; the configured delivery receipt is the outcome. Work under the current
+[agentic CTO mandate](../agentic-cto/SKILL.md), or record the equivalent scope, authority, budget
+and acceptance for a directly assigned incident. A skill supplies judgment, not new permissions.
+
+## Establish what is actually owed
+
+Read the profile's schedule, timezone, relevant-input/change policy, source-age rule, holds and
+last accepted delivery. Distinguish a scheduled check from an eligible build and from its delivery
+deadline. No relevant change or a documented age wait is not a missed release. An unreadable cursor,
+provider or quota is unknown, not a healthy empty result. Record the last known good source and
+receipt, the next eligible action/deadline and the observation time.
+
+Find the existing controller, incident, repair owner and live attempt before acting. Resume that
+owner through its supported path. Do not become a second dispatcher, create parallel repairs for
+one incident, or restart a job merely because its observer failed. Keep the deterministic
+controller authoritative for leases, deduplication, budgets, attempts and provider effects.
+
+## Keep responsibility awake without keeping inference awake
+
+Prefer cheap deterministic checks and events for run failures, stalled progress, controller
+liveness and approaching eligible deadlines. Reconcile periodically because events can be lost.
+A supervisor that shares the controller's host cannot independently prove that host is alive;
+use an existing independent observer or record that blind spot. Choose bounded observation and
+retain its outcome before replacement, rather than stacking watchers.
+
+Wake a bounded agent for an incident or a decision needing analysis. Use a more capable reasoning
+model when the risk or failed diagnosis warrants it, within the existing routing and budget;
+healthy idle checks do not need it. Keep durable per-profile/incident records and a small current
+brief so another session can continue without an ever-growing chat. A proposed supervisor, installed
+service and observed healthy operation are separate states. This skill does not install a daemon.
+Recheck unchanged blockers cheaply. Wake deeper reasoning again for changed evidence or capability,
+or a genuinely different bounded diagnostic approach, rather than repeating the same full analysis
+on every timer. Persist the blocked condition and the next useful wake.
+
+## Recover the delivery, then fix its failure class
+
+Read [the incident guide](references/incidents.md) when diagnosing or resuming an incident. Join
+actual provider results to the exact source, configuration, attempt and artifact; preserve failed
+and uncertain attempts. Diagnose the failing boundary before changing credentials, runner capacity
+or quotas. A quota reader timeout is not proof of exhausted quota; a successful test command is not
+proof that its required evidence or upload succeeded.
+
+Repair the reusable owner of the defect and keep consumers thin. Follow the repository's normal
+claim, focused validation, independent review, CI and protected merge path. Treat merged source,
+consumer adoption and runtime verification separately. Prefer an available reviewed safe increment
+over withholding ordinary delivery for optional hardening. Preserve current eligible schedules;
+experiments must not silently pause live delivery or extend its debt/deadline.
+
+For an uncertain external effect, observe its exact identity before any retry. Preserve spent
+one-shot actions, burned build numbers, accepted bytes and owner fences. Never fabricate receipts,
+edit controller history, widen access or move credentials to make a repair easier. Use the current
+mandate for spending and escalation; another campaign's cap or waiver grants nothing here.
+
+## Leave memory that the next owner can find
+
+Tag DevOps roadmap items and their corresponding worklogs with both \`engineering\` and \`devops\`;
+add other applicable subject tags, such as \`infrastructure\` or \`ios\`, instead of replacing them.
+Use \`morpheus pm new roadmap "<title>" --tag engineering --tag devops\` and copy the subject tags to
+new worklog frontmatter. \`morpheus pm tagged engineering devops --json\` finds their explicit
+metadata. Untagged historical records still need targeted reading and are not negative evidence.
+Tags narrow context; they never claim ownership or authorize execution. Paperclip or another queue
+may project those tags, while the Morpheus ticket/worklog remains the durable contract.
+
+Close only after the configured user-visible delivery is verified and the normal schedule can
+continue. Record the exact receipt, elapsed delay, cause, repair/adoption evidence, remaining risk,
+next owner/action and what would wake supervision again. Notify for a meaningful result, failure
+requiring attention or an actual human decision, staying quiet while state is unchanged.
+
+[Provenance and limits](references/provenance.md) distinguish the human mandate, observed lessons
+and the supervisor design that still requires implementation and release.
+`,
+  "agents/openai.yaml": `interface:
+  display_name: "DevOps Engineer"
+  short_description: "Own CI/CD delivery health and incident recovery"
+`,
+  "references/incidents.md": `# Incident guide
+
+Use the existing ticket/controller record. Keep a compact current brief pointing to immutable raw
+evidence rather than copying the entire history into each prompt:
+
+- profile/channel and applicable mandate, deadline, authority and remaining budget;
+- last accepted receipt, current source/configuration/run-attempt/build and observed time;
+- controller/worker/repair owner, lease/fence and supported continuation route;
+- the latest successful boundary and the first failed or unknown boundary;
+- actions already attempted, outcomes, uncertain effects and identities that must not be reused;
+- next bounded action, evidence it must produce, escalation condition and next wake time/event.
+
+## Follow the failing boundary
+
+| Observation | Next useful evidence |
+|---|---|
+| A due release never appears | Effective eligibility, exact expected wake, controller heartbeat and initial discovery/dispatch for the same intent. An in-flight continuation is not initial discovery. |
+| Job waiting for a runner | Exact current queued jobs and assignment/start fields, registration/labels and competing demand. A missing/error page is not an empty fleet; hosted fallback alone does not prove local runners are down. |
+| Backend preflight fails | Exact deployed/source rules and indexes, protected repair source and normal propagation/readback evidence. Do not rerun native tests to fix a preflight mismatch. |
+| Tests pass but evidence staging fails | Selected artifact roots, actual byte/file bounds, admission errors and downstream barrier. Keep the complete required test proof; raising a cap or deleting evidence is not a diagnosis. |
+| A repair waits on subscription capacity | Reader result, freshness, ordinary-subscription eligibility and exact existing session. Timeout, exhausted quota and forbidden paid fallback are different outcomes. |
+| Upload or group call loses its reply | Saved claim and provider identity, accepted upload/build state and exact group readback. Unknown is not failure and does not authorize a duplicate upload, reset or invitation. |
+| Workflow green, no usable build | Qualification, accepted binary identity, provider processing and exact internal availability. External review may remain pending independently. |
+| Observer exits or times out | Preserve/reconcile its exact process/output, then read the provider's actual terminal state; monitor status is not workflow status. |
+
+Choose the smallest action that discriminates the competing causes. After repeated same-route
+failure, change the diagnostic route rather than polling unchanged data. Turn an established cause
+into a regression at its real boundary, including a representative retained provider shape when
+possible. Keep source/synthetic evidence distinct from live delivery proof.
+
+## Supervision contract
+
+For a future automated deployment, specify who computes eligibility and deadlines, which events
+wake work, how missed events reconcile, who owns the single incident and how host liveness is
+observed independently. Bound model runs and resume from durable records. Test duplicate events,
+missed wakeups, owner loss, provider uncertainty and budget exhaustion before claiming unattended
+reliability. A plan to build this contract is not evidence it is running.
+`,
+  "references/provenance.md": `# Provenance and limits
+
+## Human direction
+
+On 2026-10-25 Chris asked for a reusable DevOps persona/skill, comparable to the CTO and research
+engineer skills, responsible primarily for CI and CD delivering on time. He accepted avoiding a
+forever chat, favored responsibility and event/deadline-driven wakeups, and suggested deeper
+reasoning for incidents. He asked for multiple subject tags on roadmap tickets and corresponding
+worklogs, including \`engineering\` and \`devops\`, across future infrastructure/CI/CD work.
+
+His follow-up makes Morpheus's own ticket/worklog structure primary even while another session
+explores Paperclip. Mapping additional queue tasks is a later adapter concern. This source change
+adds no runtime supervisor and grants no new model, provider, spending or credential capability.
+
+## Recorded lessons
+
+Morpheus's \`.agent/decisions.md\` records deterministic heartbeat assessment, GitHub Manager as PR
+backstop, host-local resumable repair sessions, CD V2's one reconciler and exact internal delivery
+acceptance, external follow-up independent of internal acceptance, and separate source/consumer/
+runtime gates. \`.agent/learned.md\` records unknown-versus-empty failures, stale claims masking a full
+queue, reporting delivery separate from execution, provider timestamp sentinel differences and
+upload transport separate from asynchronous processing.
+
+The Evo/Morpheus CD campaign additionally exposed passing test commands followed by failed bounded
+artifact admission, controller host identity differences, quota-read timeout distinct from quota
+exhaustion, repeated agent resumptions against unchanged funding blockers, and optional acceptance
+work delaying ordinary live value. Cheap capability checks before waking inference are a proposed
+supervision improvement, not a claim that V2 backoff changed. These are observed failure
+classes, not grounds for hard-coding Evo's hosts, identities, test counts, budgets or waived waits
+into a reusable role. \`MO-26-10-25-03.01.09\` retains this skill's implementation and validation record.
+
+## Design choices
+
+A durable current incident brief, cheap deterministic sensing, bounded incident reasoning and an
+independent host liveness observer are the proposed supervision shape. Reuse existing controller
+ownership and queue mechanisms before adding infrastructure. Selection of a new runtime, scheduler,
+model or paid service remains a separate implementation/release decision under the actual mandate.
+Subject tags are open vocabulary, optional for legacy records and independent of authorization.
 `,
 });

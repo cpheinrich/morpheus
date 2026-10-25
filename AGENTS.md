@@ -189,6 +189,11 @@ unrelated item's branch**. Waivers (`skip-tests:`, `records-only:`) need a real 
 especially. Decisions in `.agent/decisions.md` are settled; if one looks wrong, ask rather than
 work around it ([`.agent/README.md`](.agent/README.md) relates the records).
 
+**Tag the subject, not the owner.** Give new roadmap items and their worklogs applicable `tags:`
+arrays; CI/CD or infrastructure work includes both `engineering` and `devops`, plus other relevant
+tags. Use repeated `pm new --tag` and `pm tagged <tag> [<tag> ...] --json` for context retrieval.
+Existing untagged history stays valid. See [`work-tags.md`](docs/work-tags.md).
+
 ### Testing: focused first
 
 Run the tests for the files you changed and their direct dependents —

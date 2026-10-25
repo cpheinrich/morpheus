@@ -44,6 +44,7 @@ export interface Flags {
     css?: string;
     ts?: string;
     priority?: string;
+    tags: string[];
     goal?: string;
     slug?: string;
     issue?: string;

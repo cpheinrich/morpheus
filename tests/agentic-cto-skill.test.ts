@@ -9,11 +9,13 @@ import { ctoGuideTopics, ctoSkillDescription } from "../src/cto/guide.js";
 import {
   AGENTIC_CTO_SKILL,
   RESEARCH_ENGINEER_SKILL,
+  DEVOPS_ENGINEER_SKILL,
   agenticCtoSkillFiles,
   researchEngineerSkillFiles,
+  devopsEngineerSkillFiles,
 } from "../src/cto/skill.js";
 import { scaffold } from "../src/init/index.js";
-import { agenticCtoPointerSkill, researchEngineerPointerSkill } from "../src/init/templates.js";
+import { agenticCtoPointerSkill, researchEngineerPointerSkill, devopsEngineerPointerSkill } from "../src/init/templates.js";
 import type { Seed } from "../src/init/templates.js";
 
 const REPO = join(import.meta.dirname, "..");
@@ -39,6 +41,13 @@ const SKILLS = [
     pointer: researchEngineerPointerSkill,
     topic: [RESEARCH_ENGINEER_SKILL],
     prefix: `${RESEARCH_ENGINEER_SKILL}/`,
+  },
+  {
+    name: DEVOPS_ENGINEER_SKILL,
+    files: devopsEngineerSkillFiles(),
+    pointer: devopsEngineerPointerSkill,
+    topic: [DEVOPS_ENGINEER_SKILL],
+    prefix: `${DEVOPS_ENGINEER_SKILL}/`,
   },
 ];
 
@@ -144,6 +153,15 @@ describe("the research-engineer skill under the CTO", () => {
     const toCto = linksIn(research).filter(({ target }) => target === `../${AGENTIC_CTO_SKILL}/SKILL.md`);
     expect(toCto).toHaveLength(1);
     expect(agenticCtoSkillFiles()["SKILL.md"]).toContain(`\`morpheus cto guide ${RESEARCH_ENGINEER_SKILL}\``);
+  });
+});
+
+describe("the DevOps contributor skill", () => {
+  it("reaches its CTO mandate through either provider and guide distribution", () => {
+    const skill = devopsEngineerSkillFiles()["SKILL.md"] ?? "";
+    expect(linksIn(skill).filter(({ target }) => target === `../${AGENTIC_CTO_SKILL}/SKILL.md`)).toHaveLength(1);
+    expect(agenticCtoSkillFiles()["SKILL.md"]).toContain(`\`morpheus cto guide ${DEVOPS_ENGINEER_SKILL}\``);
+    expect(ctoSkillDescription(DEVOPS_ENGINEER_SKILL)).not.toBe(ctoSkillDescription(AGENTIC_CTO_SKILL));
   });
 });
 

@@ -16,7 +16,7 @@ describe("CLI argument compatibility", () => {
       all: false, offline: false, full: false, requiredOnly: false, json: false, dispatch: false, print: false,
       openBrowser: true, provision: true, waitlist: true, hq: true, worktree: false, nul: false,
       baseGiven: false,
-      positional: [], authors: [], isbns: [] });
+      positional: [], authors: [], isbns: [], tags: [] });
     expect(parseArgs(["--dir"])).toMatchObject({ dir: "hq/product" });
     expect(parseArgs(["--base", "topic", "--base"])).toMatchObject({ base: "topic" });
     // `--base` carries a default for the roadmap commands, so "typed" has to be

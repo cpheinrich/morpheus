@@ -516,6 +516,11 @@ needed.
   and distributed the same way — canonical files beside `agentic-cto`, printed by
   `morpheus cto guide research-engineer` (a reference as `research-engineer/<reference>`), and a
   one-file pointer from `morpheus init` — and the CTO's mandate, budget and gates apply to it.
+- **`devops-engineer`** owns CI/CD delivery health and incident follow-through under the same
+  mandate. It distinguishes eligible deadlines and actual availability from process health,
+  resumes existing repair ownership and keeps memory in durable incident records. It uses the
+  same provider mirrors, guide (`morpheus cto guide devops-engineer`) and scaffold pointers.
+  The skill defines responsibility; it does not activate a second controller or a live supervisor.
 
 ### 7.2 Conventions and how they are enforced
 
@@ -1539,6 +1544,15 @@ analytics loop), and `status` of `on-track | at-risk | missed | achieved`. `Requ
 (`new | triaged | accepted | declined | duplicate`), and an optional `roadmap` id once promoted.
 A worklog entry carries `date`, `agent`, optional `roadmap`, `outcome`
 (`shipped | abandoned | blocked | research`), and `summary`.
+
+Roadmap items and worklogs also accept optional `tags: [engineering, devops]`: up to16 unique
+lowercase subject slugs, each up to48 characters. Vocabulary remains project-owned and supports
+multiple overlapping subjects. Tags never grant ownership or authority. New CI/CD/infrastructure
+work carries both `engineering` and `devops`; new worklogs copy applicable item tags, and `pm block`
+does so automatically. Legacy untagged records remain valid and are not silently classified.
+`pm new roadmap ... --tag engineering --tag devops` writes tags; read-only
+`pm tagged engineering devops --json` returns roadmap/worklogs explicitly matching every tag,
+with parse errors reported rather than interpreted as an empty result. See `docs/work-tags.md`.
 
 An item file is frontmatter plus free prose — the schema constrains the metadata, never the body.
 This is the same validation approach used for Firestore documents (§14.1): **one way to describe a
