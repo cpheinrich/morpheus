@@ -1,4 +1,4 @@
-import { lstat, readdir, realpath } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath, rm } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -232,15 +232,42 @@ export async function worktreeStatus(cwd) {
 }
 /** Inspect registrations from the caller, never from a potentially broken checkout. */
 export async function pruneStaleWorktrees(cwd, dryRun = false) {
+    const { common } = await checkoutIdentity(cwd);
+    const admin = join(common, "worktrees");
+    const entries = await readdir(admin, { withFileTypes: true }).catch(error => {
+        if (error.code === "ENOENT")
+            return [];
+        throw error;
+    });
     const lines = [];
     for (const worktree of await listWorktrees(cwd)) {
         if (worktree.locked !== undefined || !(await missingDirectory(worktree.path)))
             continue;
-        // Global `git worktree prune` also drops registrations for existing directories
-        // missing their .git file. Remove only the absent paths, with Git's normal
-        // validation/lock guards and without --force; branch refs remain untouched.
+        // Git's global prune also drops registrations for surviving directories with
+        // missing .git files. Locate only this absent checkout's administrative entry.
+        const matches = [];
+        for (const entry of entries) {
+            if (!entry.isDirectory())
+                continue;
+            const registration = join(admin, entry.name);
+            const pointer = await readFile(join(registration, "gitdir"), "utf8").catch(error => {
+                if (error.code === "ENOENT")
+                    return null;
+                throw error;
+            });
+            if (pointer?.replace(/\n$/, "") === join(worktree.path, ".git"))
+                matches.push(registration);
+        }
+        if (matches.length !== 1)
+            throw new Error(`Cannot resolve exactly one registration for ${worktree.path}; retain and inspect manually.`);
+        const registration = matches[0];
+        if (!(await missingDirectory(join(registration, "locked"))) || !(await missingDirectory(worktree.path)))
+            continue;
+        // Never use `git worktree remove`: a checkout restored after the absence
+        // check would be deleted, including ignored files. Only remove Git metadata;
+        // rm does not follow child symlinks and no path in the checkout is passed to it.
         if (!dryRun)
-            await git(cwd, ["worktree", "remove", "--", worktree.path]);
+            await rm(registration, { recursive: true });
         lines.push(`${dryRun ? "Would prune" : "Pruned"}: ${worktree.path} (branch retained)`);
     }
     return lines.join("\n");

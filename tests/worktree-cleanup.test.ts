@@ -1,15 +1,21 @@
+import * as fs from "node:fs/promises";
+import * as sessionStart from "../src/session/start.js";
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, rmdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanupTask, pruneStaleWorktrees } from "../src/pm/cleanup.js";
 import { worktrees } from "../src/cli/pm.js";
 import { bindTask, prepareTask } from "../src/session/tasks.js";
 import { sessionId } from "../src/session/policy.js";
 import { writeLease } from "../src/session/store.js";
+
+vi.mock("node:fs/promises", async importOriginal => ({
+  ...await importOriginal<typeof import("node:fs/promises")>(),
+}));
 
 const exec = promisify(execFile);
 const git = async (cwd: string, ...args: string[]) => (await exec("git", args, { cwd })).stdout.trim();
@@ -213,7 +219,6 @@ describe("completed task worktree cleanup", () => {
   });
 });
 
-
 describe("missing worktree registration pruning", () => {
   it("prunes a missing directory through the CLI while retaining its branch", async () => {
     await rm(target, { recursive: true });
@@ -266,6 +271,41 @@ describe("missing worktree registration pruning", () => {
     expect(await worktrees(root, "prune", true)).toBe(0);
     expect(await git(root, "worktree", "list", "--porcelain")).toBe(before);
     expect(await git(root, "rev-parse", `refs/heads/${branch}`)).toBe(head);
+  });
+
+  it("never deletes a checkout restored immediately before the pruning mutation", async () => {
+    await writeFile(join(root, ".git/info/exclude"), "private.txt\n");
+    await writeFile(join(target, "private.txt"), "irreplaceable ignored data\n");
+    const parked = `${target}-parked`;
+    await fs.rename(target, parked);
+    let restored = false;
+    const restore = async () => {
+      if (!restored) { await fs.rename(parked, target); restored = true; }
+    };
+    const originalGit = sessionStart.sessionGit;
+    const originalRm = fs.rm;
+    // Cover both the old directory-removing primitive and metadata-only pruning,
+    // restoring AFTER all absence checks, immediately before mutation executes.
+    const gitSpy = vi.spyOn(sessionStart, "sessionGit").mockImplementation(async (cwd, args, trim) => {
+      if (args[0] === "worktree" && args[1] === "remove") await restore();
+      return originalGit(cwd, args, trim);
+    });
+    const rmSpy = vi.spyOn(fs, "rm").mockImplementation(async (path, options) => {
+      await restore();
+      return originalRm(path, options);
+    });
+    try {
+      await pruneStaleWorktrees(root);
+      expect(restored).toBe(true);
+      expect(await readFile(join(target, "private.txt"), "utf8")).toBe("irreplaceable ignored data\n");
+      expect(await readFile(join(target, "implementation.txt"), "utf8")).toBe("implemented\n");
+      expect(await git(root, "rev-parse", `refs/heads/${branch}`)).toBe(head);
+      expect(await git(root, "ls-remote", "--heads", "origin", `refs/heads/${branch}`)).toBe(`${head}\trefs/heads/${branch}`);
+    } finally {
+      gitSpy.mockRestore();
+      rmSpy.mockRestore();
+      if (!restored) await restore();
+    }
   });
 
   it("preserves locked missing registrations", async () => {
