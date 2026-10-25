@@ -40,7 +40,7 @@ export type Target = { baseUrl: string; companyId: string; issueId: string; thre
 export const MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024;
 export const MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_BYTES = 32 * 1024 * 1024;
-const ROOT = ".agent/paperclip-closeouts";
+export const ROOT = ".agent/paperclip-closeouts";
 export const sha256 = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
 
 // Sorting object keys gives the frozen contract one byte representation. Arrays
@@ -90,7 +90,7 @@ async function directory(repo: string, components: string[], create = false): Pr
   }
   return current;
 }
-async function readBytes(repo: string, path: string, max: number): Promise<Buffer> {
+export async function readBytes(repo: string, path: string, max: number): Promise<Buffer> {
   const components = parts(path);
   await directory(repo, components.slice(0, -1));
   const handle = await open(join(repo, ...components), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -112,13 +112,13 @@ async function readBytes(repo: string, path: string, max: number): Promise<Buffe
     return buffer.subarray(0, size);
   } finally { await handle.close(); }
 }
-async function repositoryRoot(repo: string): Promise<string> {
+export async function repositoryRoot(repo: string): Promise<string> {
   const root = await realpath(repo);
   const top = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: root, env: gitSubprocessEnv(), encoding: "utf8", stdio: "pipe" }).trim();
   if (await realpath(top) !== root) throw new Error("--repo must name the Git repository root");
   return root;
 }
-function validate(value: unknown, target: Target): Snapshot {
+export function validate(value: unknown, target: Target): Snapshot {
   const snapshot = FrozenSnapshot.parse(value);
   uuid.parse(target.companyId); uuid.parse(target.issueId);
   if (origin(snapshot.source.baseUrl) !== origin(target.baseUrl) || snapshot.source.companyId !== target.companyId ||
@@ -186,7 +186,7 @@ export async function exportCloseout(repo: string, target: Target, readSource: (
   return { path, snapshotId, created, record };
 }
 
-async function exclusive(repo: string, path: string, bytes: Buffer): Promise<boolean> {
+export async function exclusive(repo: string, path: string, bytes: Buffer): Promise<boolean> {
   const components = parts(path);
   const parent = await directory(repo, components.slice(0, -1), true);
   const temporary = join(parent, `.pending-${randomUUID()}`);
