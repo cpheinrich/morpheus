@@ -208,3 +208,24 @@ It stays quiet for an empty queue or active writer and pauses at preview expiry1
 (3:25 a.m. Pacific), or when Chris ends QA. Existing native quota guards remain unchanged; the
 heartbeat adds no model override, reset or overage route. This replaces reliance on an idle chat
 being implicitly wakeable. Commit and resolve locally; no push, PR, review or CI until QA ends.
+
+## Batch 20261025T082437Z-hmf0u3 — diagram enlargement
+
+Chris reported that Enlarge diagram5 opened a smaller diagram. Semantic placement points to that
+button; its saved JPEG is also blank, so it establishes no original pixels. The session-only
+renderer cloned Mermaid's percentage-sized SVG into a shrink-to-content dialog with a700px
+minimum. On a wider page that can shrink the diagram instead of enlarging it.
+
+Updated the gitignored preview helper to size the clone explicitly to at least1.5times its
+inline width, its native viewBox width or900px, whichever is largest. The modal uses available
+viewport width and scrolls overflow rather than shrinking the SVG; opening resets scroll.
+`node --check local/paperclip-overview-preview/serve.mjs` passed. Notified Chris before restarting
+the managed preview; the replacement preserved overlay4610 and renderer4611 and kept the prior
+expiry bound (new expiry10:24:52Z, 3:24 a.m. Pacific). No browser reload was performed in his tab.
+
+Reloaded only the separate verification tab. All five diagrams rendered. Opened diagram5 and
+inspected actual pixels: its labels are visibly larger than the inline and old modal versions,
+with a working close control and scrollable content. Saved local proof at
+local/paperclip-overview-preview/diagram-enlarged.png and closed that test tab. This changes
+the temporary document-review renderer, not Morpheus's shared overlay or the separately owned
+editor/capture fix. No new repository dependency or committed runtime source change.
