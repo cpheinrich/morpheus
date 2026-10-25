@@ -192,7 +192,9 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
       var cs = win.getComputedStyle(node);
       if (cs.display === "none" || cs.visibility === "hidden") return null;
       if (++count > 4000) throw new Error("Visible DOM exceeds capture limit");
-      if (off && cs.overflow !== "visible" && node !== doc.documentElement && node !== doc.body) return null;
+      // Keep offscreen boxes in normal flow even when overflow clips their children.
+      // Dropping a preceding diagram/scroller moves later text upward before the
+      // root's original scroll transform, producing an otherwise valid blank JPEG.
       var omission = node.matches("iframe,object,embed") && !off ? "Embedded media omitted" : node.shadowRoot && !off ? "Shadow DOM omitted" : null;
       var clone;
       if (node.matches("img,canvas,video") && !off) {
@@ -309,7 +311,7 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     }); });
   }
   function capturePinImage(p, snapshot) {
-    var key = storeKey + ":" + p.id;
+    var key = storeKey + ":" + p.id, initialStatus = statusEl.textContent;
     p.imageWork = imageRecord(key, { snapshot: snapshot, savedAt: Date.now() }).then(function () { return encodeViewport(snapshot); }).then(function (frame) {
       frame.capturedAt = p.createdAt;
       p.webContext.image.scaleX = frame.width / p.webContext.viewport.width;
@@ -317,7 +319,7 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
       return imageRecord(key, { frame: frame, savedAt: Date.now() }).then(function () { p.frame = frame; p.webContext.image.status = "captured"; });
     }).catch(function (error) { p.webContext.image.status = "failed"; p.webContext.image.error = short(error.message, 160); }).then(function () {
       persist(); renderList(); showPlacement();
-      if (p.id === focusedId) setStatus(p.webContext.image.status === "captured" ? "Placement HTML and JPEG saved." : "HTML saved; placement image failed: " + p.webContext.image.error, p.webContext.image.status === "captured" ? "ok" : "err");
+      if (p.id === focusedId && statusEl.textContent === initialStatus) setStatus(p.webContext.image.status === "captured" ? "Placement HTML and JPEG saved." : "HTML saved; placement image failed: " + p.webContext.image.error, p.webContext.image.status === "captured" ? "ok" : "err");
     });
     return p.imageWork;
   }
@@ -413,6 +415,7 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     "li{display:flex;gap:8px;align-items:flex-start;padding:10px;border:1px solid var(--qa-rule);border-radius:8px;background:var(--qa-panel);cursor:pointer}" +
     "li.focused{border-color:var(--qa-fg)}" +
     "li .body{flex:1;white-space:pre-wrap;overflow-wrap:anywhere}li .empty{color:var(--qa-muted);font-style:italic}" +
+    "li .capture-error{display:block;color:var(--qa-fg);font-size:11px;margin-top:4px}" +
     ".num{flex:0 0 auto;min-width:20px;height:20px;border-radius:10px;background:#e4572e;color:#fff;font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center}" +
     ".none{color:var(--qa-muted);padding:4px 4px 0}" +
     ".composer{padding:12px 16px 16px;border-top:1px solid var(--qa-rule);display:flex;flex-direction:column;gap:8px}" +
@@ -610,6 +613,9 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
       var num = document.createElement("span"); num.className = "num"; num.textContent = String(p.n);
       var body = document.createElement("span"); body.className = "body";
       if ((p.text || "").trim()) body.textContent = p.text; else { var em = document.createElement("span"); em.className = "empty"; em.textContent = "(no text yet)"; body.appendChild(em); }
+      if (p.webContext && p.webContext.image && p.webContext.image.status === "failed") {
+        var warning = document.createElement("span"); warning.className = "capture-error"; warning.textContent = "Placement image unavailable. HTML saved."; body.appendChild(warning);
+      }
       var del = document.createElement("button"); del.className = "x"; del.type = "button"; del.textContent = "×"; del.title = "Delete pin " + p.n;
       del.addEventListener("click", function (e) { e.stopPropagation(); focusedId = p.id; deleteFocused(); });
       li.addEventListener("click", function () { focusPin(p.id); });
@@ -629,16 +635,24 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     setStatus("Editing pin " + p.n + (p.webContext ? ". Placement HTML context saved." : ". Legacy pin: no placement HTML context available."));
     render(); persist();
   }
+  function clearComposer() {
+    focusedId = null; textEl.value = ""; textEl.disabled = true;
+    scopeEl.value = "element"; scopeEl.disabled = true;
+    hl.style.display = "none"; escArmedAt = 0;
+  }
   function saveFocused(quiet) {
     var p = focused(); if (!p) return;
-    p.text = textEl.value; render(); persist();
-    if (!quiet) setStatus("Saved pin " + p.n + ((p.text || "").trim() ? "" : " (empty)"), "ok");
+    p.text = textEl.value;
+    var saved = persist();
+    if (!quiet && saved) clearComposer();
+    render();
+    if (!quiet && saved) setStatus("Saved pin " + p.n + ((p.text || "").trim() ? "" : " (empty)"), "ok");
   }
   function deleteFocused() {
     var p = focused(); if (!p) return;
     pins = pins.filter(function (x) { return x !== p; });
     imageRecord(storeKey + ":" + p.id, null).catch(function () {});
-    focusedId = null; textEl.value = ""; textEl.disabled = true;
+    clearComposer();
     setStatus("Deleted pin " + p.n); render(); persist();
   }
   function addPin(el, cx, cy) {
@@ -782,13 +796,19 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
   function send() {
     var ready = pins.filter(function (p) { return (p.text || "").trim(); });
     if (!ready.length || sending || !site) return;
+    // Encoding and the POST are asynchronous. Keep the submitted version separate
+    // from the editor, which may already contain the person's next comment.
+    var submitted = ready.map(function (p) {
+      return { pin: p, text: p.text, scope: p.webContext && p.webContext.scope, comment: JSON.parse(JSON.stringify({ id: "c" + p.n, text: p.text.trim(), createdAt: p.createdAt || "unknown (legacy pin)", anchor: p.anchor, webContext: p.webContext })) };
+    });
     sending = true; renderList(); setStatus("Sending placement context…");
     Promise.all(ready.map(function (p) { return p.imageWork || Promise.resolve(); })).then(function () {
     var body = {
       preview: { url: safeUrl(site.win), kind: "web", label: short(site.doc.title || site.win.location.pathname) },
-      comments: ready.map(function (p) {
-        var comment = { id: "c" + p.n, text: p.text.trim(), createdAt: p.createdAt || "unknown (legacy pin)", anchor: p.anchor };
-        if (p.webContext) comment.webContext = p.webContext;
+      comments: submitted.map(function (entry) {
+        var p = entry.pin, comment = entry.comment;
+        // Placement image metadata settles independently of editable text/scope.
+        if (comment.webContext && p.webContext.image) comment.webContext.image = JSON.parse(JSON.stringify(p.webContext.image));
         if (p.frame) comment.frame = p.frame;
         return comment;
       })
@@ -797,10 +817,12 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     })
       .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.status); return j; }); })
       .then(function (result) {
-      pins = pins.filter(function (p) { return ready.indexOf(p) < 0; });
-      ready.forEach(function (p) { imageRecord(storeKey + ":" + p.id, null).catch(function () {}); });
+      var acknowledged = submitted.filter(function (entry) { return entry.pin.text === entry.text && (entry.pin.webContext && entry.pin.webContext.scope) === entry.scope; }).map(function (entry) { return entry.pin; });
+      pins = pins.filter(function (p) { return acknowledged.indexOf(p) < 0; });
+      acknowledged.forEach(function (p) { imageRecord(storeKey + ":" + p.id, null).catch(function () {}); });
       if (!pins.length) nextN = 1;
-      focusedId = null; textEl.value = ""; textEl.disabled = true; persist(); render();
+      if (acknowledged.some(function (p) { return p.id === focusedId; })) clearComposer();
+      persist(); render();
       setStatus("Queued " + result.id + " · " + result.pendingCount + " open batch(es). " + (result.responderActive ? "Background responder running." : result.wakeConfigured ? "Agent wake configured." : "No agent wake configured; message your agent to resume."), "ok");
     }).catch(function (e) { setStatus("Send failed: " + e.message + ". Pins kept.", "err"); })
       .then(function () { sending = false; renderList(); });

@@ -26,6 +26,152 @@ async function setup(page: Page, html = fixture) {
   return { root, site, frame, pins, cleanup };
 }
 
+test("web context: saving a pin clears its composer and keeps the saved comment editable", async ({ page }, info) => {
+  const s = await setup(page);
+  try {
+    await s.site.locator("#base").click({ button: "right", position: { x: 50, y: 40 } });
+    await page.locator("morpheus-qa textarea").fill("Saved background comment");
+    await page.locator("morpheus-qa select").selectOption("view");
+    await expect.poll(async () => (await s.pins())[0]?.context.image.status, { timeout: 17000 }).toBe("captured");
+    if (process.env.QA_EVIDENCE_DIR) { await mkdir(process.env.QA_EVIDENCE_DIR, { recursive: true }); await page.screenshot({ path: join(process.env.QA_EVIDENCE_DIR, `web-composer-before-${info.project.name}.png`) }); }
+    await page.locator("morpheus-qa textarea").press("Enter");
+    await expect(page.locator("morpheus-qa .status")).toHaveText("Saved pin 1");
+    await expect(page.locator("morpheus-qa textarea")).toHaveValue("");
+    await expect(page.locator("morpheus-qa textarea")).toBeDisabled();
+    await expect(page.locator("morpheus-qa select")).toHaveValue("element");
+    await expect(page.locator("morpheus-qa select")).toBeDisabled();
+    await expect(page.locator("morpheus-qa .placement")).toBeHidden();
+    await expect(page.locator("morpheus-qa .placement-status")).toBeHidden();
+    await expect(page.locator("morpheus-qa .pin.focused")).toHaveCount(0);
+    await expect(page.locator("morpheus-qa ol li.focused")).toHaveCount(0);
+    await expect(page.locator("morpheus-qa ol li")).toContainText("Saved background comment");
+    if (process.env.QA_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.QA_EVIDENCE_DIR, `web-composer-after-${info.project.name}.png`) });
+    await page.locator("morpheus-qa ol li").click();
+    await expect(page.locator("morpheus-qa textarea")).toHaveValue("Saved background comment");
+    await expect(page.locator("morpheus-qa select")).toHaveValue("view");
+    await expect(page.locator("morpheus-qa .placement")).toBeVisible();
+  } finally { await s.cleanup(); }
+});
+
+test("web context: a styled Markdown document retains placement pixels before and after scrolling", async ({ page }, info) => {
+  test.setTimeout(40000);
+  const html = `<!doctype html><html lang="en"><head><title>Architecture overview</title><style>
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f5f4f0;color:#202725;font:17px/1.7 Arial}
+    header{padding:14px 28px;background:#e9eee7;border-bottom:1px solid #d5dbd5}
+    main{max-width:1000px;margin:32px auto;padding:34px 44px 64px;background:white;border:1px solid #e1e5de;border-radius:12px}
+    h1{font-size:34px;line-height:1.2;margin:0 0 26px}h2{font-size:24px;margin:42px 0 16px}p{margin:15px 0}
+    #base,#markdown-bottom{height:120px;padding:20px;background:rgb(22,96,143);color:white}
+    blockquote{margin:20px 0;padding:9px 20px;background:#f2f5ec;border-left:4px solid #7b946b}
+    table{border-collapse:collapse;width:100%}td,th{border:1px solid #dce3d9;padding:11px 13px;text-align:left}
+    </style></head><body><header>Document review</header><main data-qa-view="architecture-overview">
+    <h1>How the pieces fit together</h1><blockquote>Work in progress</blockquote><section id="base">First diagram context</section>
+    <h2>Who owns what</h2><table><tr><th>Component</th><th>Responsibility</th></tr><tr><td>Controller</td><td>Queue and runs</td></tr></table>
+    <section style="height:2200px;overflow:auto"><p>Earlier clipped diagram content</p></section><div style="height:1000px">Later document sections</div><h2>Independent controller</h2><section id="markdown-bottom">Cloud and worker context</section><p>End of overview</p>
+    </main></body></html>`;
+  const s = await setup(page, html);
+  try {
+    for (const [i, target] of ["#base", "#markdown-bottom"].entries()) {
+      await s.site.locator(target).click({ button: "right", position: { x: 50, y: 90 } });
+      await expect.poll(async () => (await s.pins())[i]?.context.image.status, { timeout: 17000 }).toBe("captured");
+      const pin = (await s.pins())[i];
+      const pixel = await page.evaluate(async ({ url, point, scaleX, scaleY }) => {
+        const image = new Image(); image.src = url; await image.decode();
+        const canvas = document.createElement("canvas"); canvas.width = image.width; canvas.height = image.height;
+        const ctx = canvas.getContext("2d")!; ctx.drawImage(image, 0, 0);
+        return Array.from(ctx.getImageData(Math.round(point.x * scaleX), Math.round(point.y * scaleY), 1, 1).data).slice(0, 3);
+      }, { url: pin.frame.dataUrl, ...pin.context.image });
+      if (process.env.QA_EVIDENCE_DIR) { await mkdir(process.env.QA_EVIDENCE_DIR, { recursive: true }); await writeFile(join(process.env.QA_EVIDENCE_DIR, `web-markdown-${i}-${info.project.name}.jpg`), Buffer.from(pin.frame.dataUrl.split(",")[1], "base64")); }
+      [22, 96, 143].forEach((value, channel) => expect(Math.abs(pixel[channel]! - value), `placement ${i}: ${pixel}`).toBeLessThanOrEqual(8));
+      if (i === 1) expect(pin.context.viewport.scrollY).toBeGreaterThan(1500);
+    }
+  } finally { await s.cleanup(); }
+});
+
+test("web context: sending freezes the submitted version and preserves newer edits and a new composer", async ({ page }) => {
+  test.setTimeout(40000);
+  const s = await setup(page);
+  let release!: () => void;
+  const encoding = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/__qa/modern-screenshot.js", async route => { await encoding; await route.continue(); });
+  try {
+    await s.site.locator("#base").click({ button: "right", position: { x: 50, y: 40 } });
+    await page.locator("morpheus-qa textarea").fill("Submitted version");
+    await page.locator("morpheus-qa select").selectOption("view");
+    await page.locator("morpheus-qa button.primary").click();
+    await expect(page.locator("morpheus-qa .status")).toContainText("Sending");
+    await page.locator("morpheus-qa textarea").fill("Newer edit to keep");
+    await page.locator("morpheus-qa select").selectOption("page");
+    await s.site.locator("#base").click({ button: "right", position: { x: 100, y: 60 } });
+    await page.locator("morpheus-qa textarea").fill("Next comment draft");
+    release();
+    await expect(page.locator("morpheus-qa .status")).toContainText("Queued", { timeout: 18000 });
+    const pins = await s.pins();
+    expect(pins.map((p: any) => [p.text, p.context.scope])).toEqual([["Newer edit to keep", "page"], ["Next comment draft", "element"]]);
+    await expect(page.locator("morpheus-qa textarea")).toHaveValue("Next comment draft");
+    await expect(page.locator("morpheus-qa textarea")).toBeEnabled();
+    const dirs = await readdir(join(s.root, "local/qa-comments/pending"));
+    expect(dirs).toHaveLength(1);
+    const batch = JSON.parse(await readFile(join(s.root, "local/qa-comments/pending", dirs[0]!, "batch.json"), "utf8"));
+    expect(batch.comments).toHaveLength(1);
+    expect(batch.comments[0]).toMatchObject({ text: "Submitted version", webContext: { scope: "view", image: { status: "captured" } } });
+    await page.locator("morpheus-qa ol li").first().click();
+    await expect(page.locator("morpheus-qa textarea")).toHaveValue("Newer edit to keep");
+    await expect(page.locator("morpheus-qa select")).toHaveValue("page");
+    await page.reload();
+    await expect(page.locator("morpheus-qa ol li")).toHaveCount(2);
+    expect((await s.pins()).map((p: any) => p.text)).toEqual(["Newer edit to keep", "Next comment draft"]);
+  } finally { release(); await s.cleanup(); }
+});
+
+test("web context: an acknowledged batch removes only submitted pins while a new draft stays selected", async ({ page }) => {
+  test.setTimeout(40000);
+  const s = await setup(page);
+  let release!: () => void;
+  const response = new Promise<void>(resolve => { release = resolve; });
+  let posted!: () => void;
+  const requestSeen = new Promise<void>(resolve => { posted = resolve; });
+  await page.route("**/__qa/api/batches", async route => { posted(); await response; await route.continue(); });
+  try {
+    await s.site.locator("#base").click({ button: "right", position: { x: 50, y: 40 } });
+    await page.locator("morpheus-qa textarea").fill("Acknowledged comment");
+    await page.locator("morpheus-qa button.primary").click();
+    await requestSeen;
+    await s.site.locator("#base").click({ button: "right", position: { x: 100, y: 60 } });
+    await page.locator("morpheus-qa textarea").fill("Unsent next comment");
+    await page.locator("morpheus-qa select").selectOption("view");
+    release();
+    await expect(page.locator("morpheus-qa .status")).toContainText("Queued");
+    expect((await s.pins()).map((p: any) => p.text)).toEqual(["Unsent next comment"]);
+    await expect(page.locator("morpheus-qa textarea")).toHaveValue("Unsent next comment");
+    await expect(page.locator("morpheus-qa select")).toHaveValue("view");
+    await expect(page.locator("morpheus-qa button.primary")).toHaveText("Send batch (1)");
+    await expect(page.locator("morpheus-qa .pin.focused")).toHaveCount(1);
+  } finally { release(); await s.cleanup(); }
+});
+
+test("web context: failed sends and failed local saves retain the editable comment", async ({ page }) => {
+  const s = await setup(page);
+  try {
+    await page.route("**/__qa/api/batches", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Fixture unavailable" }) }));
+    await s.site.locator("#base").click({ button: "right", position: { x: 50, y: 40 } });
+    await page.locator("morpheus-qa textarea").fill("Recoverable comment");
+    await page.locator("morpheus-qa select").selectOption("view");
+    await expect.poll(async () => (await s.pins())[0]?.context.image.status, { timeout: 17000 }).toBe("captured");
+    await page.locator("morpheus-qa button.primary").click();
+    await expect(page.locator("morpheus-qa .status")).toContainText("Send failed: Fixture unavailable. Pins kept.");
+    await expect(page.locator("morpheus-qa textarea")).toHaveValue("Recoverable comment");
+    await expect(page.locator("morpheus-qa select")).toHaveValue("view");
+    expect(await s.pins()).toHaveLength(1);
+    await page.evaluate(() => { Storage.prototype.setItem = function () { throw new Error("Fixture full"); }; });
+    await page.locator("morpheus-qa textarea").press("Enter");
+    await expect(page.locator("morpheus-qa .status")).toContainText("Draft could not be saved");
+    await expect(page.locator("morpheus-qa textarea")).toHaveValue("Recoverable comment");
+    await expect(page.locator("morpheus-qa textarea")).toBeEnabled();
+    await expect(page.locator("morpheus-qa select")).toHaveValue("view");
+    await expect(page.locator("morpheus-qa .pin.focused")).toHaveCount(1);
+  } finally { await s.cleanup(); }
+});
+
 test("web context: exact semantic state, modal identity, scroll, scope, persistence and immutable JPEGs", async ({ page }, info) => {
   const s = await setup(page);
   try {
@@ -144,9 +290,10 @@ test("web context: image failure preserves HTML; legacy drafts remain editable a
     expect((await s.pins())[0].context.image.error).toBe("Capture library unavailable");
     await page.locator("morpheus-qa textarea").press("Enter");
     await expect(page.locator("morpheus-qa .status")).toContainText("Saved pin 1");
-    await expect(page.locator("morpheus-qa .placement-status")).toBeVisible();
-    await expect(page.locator("morpheus-qa .placement-status")).toContainText("Capture library unavailable");
+    await expect(page.locator("morpheus-qa .placement-status")).toBeHidden();
+    await expect(page.locator("morpheus-qa ol li .capture-error")).toHaveText("Placement image unavailable. HTML saved.");
     await page.locator("morpheus-qa ol li").click();
+    await expect(page.locator("morpheus-qa .placement-status")).toContainText("Capture library unavailable");
     await expect(page.locator("morpheus-qa .placement-status")).toContainText("HTML evidence is saved");
     await page.locator("morpheus-qa button.primary").click();
     await expect(page.locator("morpheus-qa .status")).toContainText("Queued");
