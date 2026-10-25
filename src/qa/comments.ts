@@ -68,15 +68,52 @@ export const QaAnchor = z
     { message: "anchor needs normX/normY or x/y" },
   );
 
+const webText = z.string().max(240);
+const webBounds = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }).strict();
+const webNode = z.object({
+  tag: z.string().max(32),
+  attributes: z.partialRecord(z.enum(["id", "data-testid", "data-qa-view", "data-entity-id", "data-artist-id", "role", "aria-label", "aria-labelledby", "name", "type", "alt"]), webText),
+  text: webText,
+  bounds: webBounds,
+  styles: z.partialRecord(z.enum(["display", "position", "color", "background-color", "font-size", "text-decoration-line", "padding", "overflow", "z-index"]), z.string().max(120)),
+}).strict();
+
+/** Small, allowlisted semantic HTML evidence, frozen synchronously at pin placement. */
+export const QaWebContext = z.object({
+  version: z.literal(1),
+  scope: z.enum(["element", "view", "page"]),
+  capturedAt: z.string().min(1).max(64),
+  route: z.object({ pathname: webText, query: z.string().max(1000), hash: webText }).strict(),
+  target: webNode,
+  ancestors: z.array(webNode).max(6),
+  view: z.object({ kind: z.enum(["dialog", "view", "page"]), identity: z.string().max(2000), root: webNode }).strict(),
+  state: z.array(z.object({ kind: z.string().max(32), label: webText, value: webText }).strict()).max(16),
+  scroll: z.array(z.object({ selector: webText, x: z.number(), y: z.number() }).strict()).max(8),
+  viewport: z.object({ width: z.number().positive(), height: z.number().positive(), scrollX: z.number(), scrollY: z.number() }).strict(),
+  limitations: z.array(z.string().max(160)).max(4),
+  image: z.object({
+    status: z.enum(["pending", "captured", "failed"]),
+    coordinateSpace: z.literal("viewport"),
+    scale: z.number().positive(),
+    scaleX: z.number().positive().optional(),
+    scaleY: z.number().positive().optional(),
+    quality: z.literal(0.5),
+    point: z.object({ x: z.number(), y: z.number() }).strict(),
+    omitted: z.array(z.string().max(160)).max(4).optional(),
+    error: z.string().max(160).optional(),
+  }).strict().optional(),
+}).strict();
+
 export const QaComment = z
   .object({
     id: z.string().min(1),
     text: z.string().min(1),
     createdAt: z.string().min(1),
     anchor: QaAnchor,
+    webContext: QaWebContext.optional(),
     /** Stable accessibility identifier for the screen at pin placement. */
     screenId: z.string().min(1).optional(),
-    /** The immutable simulator frame captured when this pin was placed. */
+    /** Optional immutable image captured when this pin was placed. */
     frame: z.object({
       path: z.string().min(1).optional(),
       width: z.number().int().positive(),

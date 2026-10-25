@@ -12,6 +12,8 @@ export function newBatchId(now = new Date()) {
 export async function recordBatch(root, project, raw, defaultPreview) {
     if (!Array.isArray(raw.comments) || raw.comments.length === 0)
         throw new BatchRejected("comments required");
+    if (defaultPreview.kind === "web" && raw.comments.length > 30)
+        throw new BatchRejected("at most 30 web comments per batch");
     const id = newBatchId();
     let frameBytes;
     let frameMeta = raw.frame
@@ -33,13 +35,20 @@ export async function recordBatch(root, project, raw, defaultPreview) {
         const { dataUrl, ...metadata } = frame;
         if (dataUrl === undefined)
             return value;
-        if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/png;base64,")) {
-            throw new BatchRejected("comment frame must be a PNG data URL");
+        const mime = typeof dataUrl === "string" ? /^data:image\/(png|jpeg);base64,/.exec(dataUrl) : null;
+        if (!mime || typeof dataUrl !== "string") {
+            throw new BatchRejected("comment frame must be a PNG or JPEG data URL");
         }
-        const bytes = Buffer.from(dataUrl.slice("data:image/png;base64,".length), "base64");
+        if (mime[1] === "jpeg" && dataUrl.length > 512 * 1024)
+            throw new BatchRejected("comment JPEG exceeds 512 KiB");
+        if (mime[1] === "jpeg" && (Number(frame.width) > 1600 || Number(frame.height) > 1600))
+            throw new BatchRejected("comment JPEG exceeds 1600 px");
+        const bytes = Buffer.from(dataUrl.slice(mime[0].length), "base64");
         if (bytes.length === 0)
             throw new BatchRejected("comment frame is empty");
-        const path = `comment-${index + 1}.png`;
+        if (mime[1] === "jpeg" && (bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff))
+            throw new BatchRejected("comment JPEG has invalid signature");
+        const path = `comment-${index + 1}.${mime[1] === "jpeg" ? "jpg" : "png"}`;
         commentFrames.set(path, bytes);
         return { ...comment, frame: { ...metadata, path } };
     });

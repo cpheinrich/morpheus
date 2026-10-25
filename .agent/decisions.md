@@ -1585,3 +1585,10 @@ same-user sandbox. This is a small domain-specific boundary using existing Zod,
 canonical hashing and normal GitHubStore CAS; no generic module or new dependency
 is needed. Actual source publication, financial review and consumer use remain
 separate gates.
+
+
+## Web QA pins preserve semantic HTML and viewport JPEGs at placement — 2026-10-24
+
+MO-26-10-24-20.37.28, #482. Chris requested compact underlying HTML/hierarchy and observable UI state as primary evidence, with a quality-0.5 JPEG of the visible application viewport at each pin (longest edge 1600). Freeze both before focus/navigation; asynchronous resource work renders an inert frozen clone rather than reading the later live page. Stable route/view/entity and target fingerprints control markers independently from captured transient state; element/view/page classification keeps general feedback meaningful. Bound metadata, clone work, image bytes and browser storage; image failures retain usable HTML evidence. Legacy full-page anchor coordinates and iOS PNG transport remain compatible.
+
+Reused modern-screenshot 4.7.0 (registry current 2026-04-16, zero runtime dependencies). Its public render API clones asynchronously, so it cannot freeze a live page at click without the small first-party synchronous snapshot boundary. A new capture framework was rejected; no dependency was added. IndexedDB is the native durable boundary for pending snapshots and images.

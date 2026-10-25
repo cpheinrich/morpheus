@@ -94,12 +94,6 @@ test("web: pin two elements across page scroll and send both through the proxy",
   const upstreamPort = await listen(upstream);
   const qa = await startWebQaServer({ root, project: "fixture", upstream: `http://127.0.0.1:${upstreamPort}`, port: 0 });
   try {
-    // The browser still executes the real overlay, proxy, framing, pin and send code.
-    // Stub only the screenshot engine so the test is independent of font hosts.
-    await page.route("**/__qa/modern-screenshot.js", (route) => route.fulfill({
-      contentType: "text/javascript",
-      body: 'window.modernScreenshot={domToPng:async function(){return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=";}};',
-    }));
     await page.goto(`http://127.0.0.1:${qa.port}/`);
     const site = page.frameLocator("#morpheus-qa-site");
     await expect(site.locator("#first")).toBeVisible();
@@ -120,7 +114,7 @@ test("web: pin two elements across page scroll and send both through the proxy",
       await page.screenshot({ path: join(process.env.QA_EVIDENCE_DIR, `web-${testInfo.project.name}.png`) });
     }
     await page.locator("morpheus-qa button.primary").click();
-    await expect(page.locator("morpheus-qa .status")).toContainText("Queued");
+    await expect(page.locator("morpheus-qa .status")).toContainText("Queued", { timeout: 17000 });
     const names = await readdir(join(root, "local/qa-comments/pending"));
     expect(names).toHaveLength(1);
     const batch = JSON.parse(await readFile(join(root, "local/qa-comments/pending", names[0]!, "batch.json"), "utf8"));
