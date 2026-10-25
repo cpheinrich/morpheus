@@ -94,6 +94,14 @@ issue/agent truncation false and comment truncation true. Observation time was
 1792971015808. Only counts/flags/time/bytes were emitted; no source text, credentials, native
 identities, bridge calls or provider work were emitted or invoked.
 
+The lead requested one inseparable pilot deployment correction before activation: declare
+`maxInstances: 1` and `minInstances: 0` on each callable to bound allocation and idle instances.
+This touches the existing wrapper, its focused options assertion and the explanatory contract.
+The second ordinary same-reviewer follow-up covers this deployment cap; no new authority or
+runtime service account is introduced. The two HQ focused files now pass 26 tests; optional
+Firebase build and root typecheck also pass. A refreshed full sanitized fixture was saved only
+to a private0600 temporary file for the lead's authenticated visual work, never committed.
+
 The independent high-risk source review cleared the implementation with no findings. The
 reviewer independently ran both focused test files (25 passed), checked the complete diff,
 authorization, projection bounds/isolation, token rotation, ownership/shutdown and uncertain

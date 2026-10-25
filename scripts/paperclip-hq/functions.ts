@@ -10,7 +10,7 @@ export function createFunctions({ onCall, HttpsError, db, auth, settings }: {
   onCall: any; HttpsError: any; db: any; auth: { getUser(uid: string): Promise<any> }; settings: Settings;
 }) {
   const backend = createBackend({ settings, store: firestoreStore(db, settings.companyId), projection: firestoreProjectionStore(db, settings.companyId), user: uid => auth.getUser(uid) });
-  return Object.fromEntries(Object.entries(backend).map(([name, handler]) => [name, onCall({ cors: settings.allowedOrigins ?? false }, async (request: any) => {
+  return Object.fromEntries(Object.entries(backend).map(([name, handler]) => [name, onCall({ cors: settings.allowedOrigins ?? false, maxInstances: 1, minInstances: 0 }, async (request: any) => {
     try { return await (handler as any)(request.auth, request.data ?? {}); }
     catch (error) {
       if (error instanceof TransportError) throw new HttpsError(error.code, error.message);

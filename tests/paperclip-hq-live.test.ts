@@ -6,6 +6,7 @@ import { createBackend, type User } from '../scripts/paperclip-hq/backend.js';
 import { projectionLimits, paperclipProjection, boundedResponse, type PublishedProjection } from '../scripts/paperclip-hq/projection.js';
 import { firebaseToken, daemonOwnership, runDaemon, boundedBridgeCall } from '../scripts/paperclip-hq/runtime.js';
 import type { CommandStore } from '../scripts/paperclip-hq/store.js';
+import { createFunctions } from '../scripts/paperclip-hq/functions.js';
 
 const companyId = '11111111-1111-4111-8111-111111111111', issueId = '22222222-2222-4222-8222-222222222222';
 const other = '33333333-3333-4333-8333-333333333333';
@@ -27,6 +28,16 @@ afterEach(async () => { await Promise.all(dirs.splice(0).map(path => rm(path, { 
 async function directory() { const path = await mkdtemp(join(tmpdir(), 'hq-live-')); dirs.push(path); return path; }
 
 describe('authenticated HQ projection', () => {
+  it('caps each callable deployment at one instance with zero warm instances', () => {
+    const options: unknown[] = [];
+    const ref: any = { doc: () => ref, collection: () => ref };
+    createFunctions({ onCall: (value: unknown, handler: unknown) => { options.push(value); return handler; }, HttpsError: Error,
+      db: ref, auth: { async getUser() { throw new Error('not invoked during definition'); } },
+      settings: { companyId, controllerId: 'mbp', connectorUid: 'connector', profiles: ['codex-mini'] },
+    });
+    expect(options).toHaveLength(9);
+    expect(options).toEqual(Array(9).fill({ cors: false, maxInstances: 1, minInstances: 0 }));
+  });
   it('publishes only as the live connector and reads only as current humans without target overrides', async () => {
     const { backend, users } = backendFixture();
     expect(await backend.snapshot({ uid: 'chris' }, {})).toBeNull();

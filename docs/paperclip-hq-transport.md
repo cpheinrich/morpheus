@@ -121,6 +121,7 @@ Local testing on this Mac also ran on Node26; that does not prove Node22 compati
 explicit company/controller, connector UID, allowed profile names and optional `allowedOrigins`
 for the company's browser. Without allowed origins, browser CORS is disabled. No deployment
 command is supplied before an actual consumer project and its identity are qualified.
+Each callable declares `maxInstances: 1` and `minInstances: 0` for the bounded pilot deployment.
 
 `connect.mjs` runs one bounded outbound pass using a private absolute-path configuration file:
 
