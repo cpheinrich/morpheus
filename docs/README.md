@@ -6,6 +6,8 @@ here is canonical; anything rendered elsewhere is a view.
 
 ## Designs
 
+- [CI scope](ci-scope.md) — which checks run for each changed path, required status
+  reporting and Python compatibility versus artifact transport.
 - [Morpheus and Paperclip overview](paperclip-overview.md) — work-in-progress architecture,
   task ownership, remote workers and interactive delegation, with diagrams.
 - [CD pipeline V2](cd-pipeline-v2.md) — delivery ownership, automatic recovery and

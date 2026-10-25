@@ -1553,6 +1553,12 @@ shape, whether it lands in a markdown file or a database row.**
 
 Tests are first-class. Agents update tests in the same PR as the code, enforced by CI (§7.2).
 
+Morpheus's own PR CI selects expensive jobs from a verified cumulative diff;
+unknown inputs/comparisons and all main pushes run everything. PM and applicable
+PR conventions retain their existing behavior. The reusable Node workflow defaults
+to running, with an opt-in inner-job skip that preserves its required check name.
+See [CI scope](docs/ci-scope.md) for path inputs and artifact compatibility coverage.
+
 **Colocated with the code they test** — `apps/web/tests/`, `apps/ios/Tests/`, never centralised. An
 agent editing a component should find its test in the same tree. `qa/` holds what spans surfaces or
 is not code:
@@ -1581,6 +1587,12 @@ exclusive on-disk record before acting, resolves it after work, or releases the
 claim on failure. The queue and claim commands are agent-neutral. A webhook is
 an optional notification to a host-managed responder, not an agent scheduler;
 whether a chat can wake or work in parallel is determined by that host.
+Web preview ownership follows the checkout/dev-directory identity rather than a project display
+name. Legacy namespace records are discovered by that identity and acted on only when stored
+root/directory and the registered supervisor's exact state-file argument agree; ambiguous owners
+or unconfirmed shutdowns never become a successful stop report. A shared legacy/stable launchd
+label is resolved by its registered state-file argument. Confirmation requires disappearance of
+both the overlay and any spawned dev listener, irrespective of HTTP readiness.
 An opt-in checkout-local responder can instead invoke any configured agent CLI
 as a separate serial process. Its on-disk owner marker reserves the checkout
 until stopped; later batches accumulate without occupying the interactive chat.

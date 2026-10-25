@@ -1596,3 +1596,30 @@ Reused modern-screenshot 4.7.0 (registry current 2026-04-16, zero runtime depend
 ## Placement freezes share initial-style resets instead of repeating token dictionaries — 2026-10-24
 
 MO-26-10-24-22.06.12, #488. Computed ordinary properties resolve CSS variables; copying every inherited custom property onto every node adds no frozen visual information. Compare resolved properties with an initial-value probe and put the initial reset in one shared clone/pseudo stylesheet. Keep resolved color properties explicit because initial border/outline/decoration colors depend on currentColor. Keep display, direction and unicode-bidi explicit; inline `all` is unsuitable because CSSOM expands it plus overrides into longhands. Preserve the existing first-party freeze boundary and modern-screenshot dependency, with unchanged 120 ms/4000-node/2 MiB/JPEG limits. No generic package or new dependency is needed for this correction. Apply document scroll exactly once; reserve child translation for nested scroll containers. Image errors remain beside the editor independently of transient save status.
+
+## Web preview identity is independent of project display labels — 2026-10-24
+
+MO-26-10-24-23.43.56, #494. A manifest rename must not hide an owned running supervisor or make stop falsely report success. Keep the checkout/dev-directory key but put new sessions under a stable web cache/launchd namespace. Discover legacy namespace records without moving a live lease, validate exact stored root/directory and registered supervisor argv/state-file binding, and refuse foreign or ambiguous owners. Endpoint identity includes the checkout root; port/upstream matches alone never authorize termination. Resolve colliding legacy/stable labels by the registered state-file argument, never directory order. Confirm absence of both overlay and spawned dev TCP listeners, including unhealthy or stalled HTTP services. Failed or unconfirmed stop keeps evidence and reports that limitation.
+
+Considered npm `launchctl` 1.1.1 (registry modified 2022-06-19; four direct native/legacy dependencies). It does not solve this ownership protocol. Reuse the existing command runner and native filesystem APIs for this small Morpheus-specific boundary; no new package or generic process manager.
+
+## Enumerate ordinary computed-style names once per placement freeze — 2026-10-24
+
+MO-26-10-24-23.34.43, #493. A populated guide modal makes repeated native computed-style enumeration expensive even when inherited custom-property values are discarded. Reuse ordinary property names from the existing browser initial-value probe within that one freeze; read every resolved value again per element/pseudo and retain explicit colors/reset exceptions. This adds no cross-pin cache, dependency or generic serializer. A bulk cssText assignment was measured and rejected because it did not reduce the dominant enumeration work. Production time/node/byte/JPEG caps and immutable capture remain unchanged.
+
+## Scope PR CI conservatively; keep required names and both Python boundaries — 2026-10-25
+
+MO-26-10-24-23.13.37. Ordinary prose can skip expensive checks only after a verified
+cumulative PR comparison; unknown paths/history/detector outputs run all. Main pushes
+remain the full integration backstop. PM and applicable PR conventions are independent.
+Always invoke the reusable Node workflow and skip its inner job to preserve the
+required `node / check` status. Its new boolean defaults true for existing consumers.
+Retain Python 3.9/3.14 filesystem/environment tests on one runner; run the fixed
+Node 24 artifact transport once with unchanged admission/pins/caps/retention.
+
+Considered dorny/paths-filter v4.0.3 (published 2026-08-05; Node >=24; four runtime
+dependencies: @actions/core, @actions/exec, @actions/github and picomatch). Native
+Git already supplies the complete checkout/diff and Node is already present. This
+repository-specific four-flag selector is under 100 lines and explicitly handles
+uncertain comparisons and both rename paths. Build it here without a new action,
+generic filtering framework or dependency. See docs/ci-scope.md for the input map.

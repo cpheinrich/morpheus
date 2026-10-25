@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
-import { join, resolve } from "node:path";
+import { createConnection } from "node:net";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { normalizeUpstream } from "../web/server.js";
@@ -33,6 +34,7 @@ export interface WebPreviewConfig {
   cwd: string;
   /** The page to open first, e.g. /hq. */
   path: string;
+  /** Legacy namespace retained for configuration compatibility; new session identity is root-based. */
   namespace: string;
 }
 
@@ -154,16 +156,84 @@ export interface WebPreviewState {
   spawned: boolean; command?: string[]; cwd: string; project: string;
 }
 
-interface WebContext { root: string; config: WebPreviewConfig; key: string; stateDir: string; stateFile: string; label: string; target: string; run: Run; log: (l: string) => void }
+interface WebContext { root: string; config: WebPreviewConfig; key: string; cacheRoot: string; stateDir: string; stateFile: string; label: string; target: string; run: Run; log: (l: string) => void }
 
-export function webContext(root: string, config: WebPreviewConfig, run: Run = defaultRun, log: (l: string) => void = console.log): WebContext {
+export function webContext(root: string, config: WebPreviewConfig, run: Run = defaultRun, log: (l: string) => void = console.log, cacheRoot = join(homedir(), "Library", "Caches")): WebContext {
+  root = resolve(root); cacheRoot = resolve(cacheRoot);
   const key = webKey(root, config);
-  const stateDir = join(homedir(), "Library", "Caches", config.namespace, `web-${key}`);
-  const label = `${config.namespace}.web.${key}`;
-  return { root, config, key, stateDir, stateFile: join(stateDir, "session.json"), label, target: `gui/${process.getuid?.()}/${label}`, run, log };
+  // Project names and configured display namespaces may change during a live QA session.
+  const stateDir = join(cacheRoot, "morpheus.qa.web", `web-${key}`);
+  const label = `morpheus.qa.web.${key}`;
+  return { root, config, key, cacheRoot, stateDir, stateFile: join(stateDir, "session.json"), label, target: `gui/${process.getuid?.()}/${label}`, run, log };
 }
 
-const readJSON = <T>(path: string): T | undefined => (existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as T) : undefined);
+const canonical = (path: string): string => { try { return realpathSync(path); } catch { return resolve(path); } };
+
+function readState(ctx: WebContext): WebPreviewState | undefined {
+  if (!existsSync(ctx.stateFile)) return undefined;
+  if (lstatSync(ctx.stateDir).isSymbolicLink() || !lstatSync(ctx.stateFile).isFile() || lstatSync(ctx.stateFile).size > 65536) throw new Error(`Cannot verify preview state at ${ctx.stateFile}.`);
+  let state: WebPreviewState;
+  try { state = JSON.parse(readFileSync(ctx.stateFile, "utf8")) as WebPreviewState; }
+  catch { throw new Error(`Cannot read preview state at ${ctx.stateFile}; it was retained.`); }
+  if (!state || typeof state.root !== "string" || !isAbsolute(state.root) || typeof state.cwd !== "string" || !state.cwd || isAbsolute(state.cwd) || state.cwd.split("/").includes("..") || canonical(state.root) !== canonical(ctx.root)
+    || canonical(resolve(state.root, state.cwd)) !== canonical(resolve(ctx.root, ctx.config.cwd))) throw new Error(`Refusing preview state for another checkout or dev directory: ${ctx.stateFile}.`);
+  if (typeof state.upstream !== "string" || !Number.isInteger(state.port) || state.port < 1 || state.port > 65535 || typeof state.spawned !== "boolean"
+    || !Number.isFinite(state.expiresAt) || typeof state.path !== "string" || !state.path.startsWith("/")) throw new Error(`Invalid preview state at ${ctx.stateFile}; it was retained.`);
+  try { normalizeUpstream(state.upstream); } catch { throw new Error(`Invalid preview upstream at ${ctx.stateFile}; it was retained.`); }
+  return state;
+}
+
+/** The job itself must reference this exact state file; a matching port/label alone is not ownership. */
+function jobArguments(status: string): string[] | undefined {
+  const block = status.match(/(?:^|\n)\s*arguments = \{\r?\n([\s\S]*?)\r?\n\s*\}/)?.[1];
+  return block?.split("\n").map(line => line.trim().replace(/^\d+\s*=\s*/, "").replace(/^"(.*)"$/, "$1")).filter(Boolean);
+}
+function verifyJob(ctx: WebContext, status: string): void {
+  const args = jobArguments(status);
+  if (!args || args.length !== 3 || basename(args[0]!) !== basename(process.execPath) || !/[/\\]qa[/\\]preview[/\\]web-supervisor\.js$/.test(args[1]!)
+    || resolve(args[2]!) !== resolve(ctx.stateFile)) throw new Error(`Cannot verify preview job ownership for ${ctx.target}; expected the web supervisor and ${ctx.stateFile}. No job was stopped.`);
+}
+
+interface WebSession { ctx: WebContext; state: WebPreviewState; status: string }
+
+/** Bounded legacy lookup keeps pre-upgrade sessions discoverable after a project/namespace rename. */
+function discover(ctx: WebContext): WebSession[] {
+  const directories = existsSync(ctx.cacheRoot) ? readdirSync(ctx.cacheRoot, { withFileTypes: true }).filter(entry => (entry.isDirectory() || entry.isSymbolicLink()) && /^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(entry.name) && !entry.name.includes("..")) : [];
+  if (directories.length > 4096) throw new Error(`Too many cache directories to verify preview ownership under ${ctx.cacheRoot}.`);
+  const candidates = new Map<string, WebContext[]>([[ctx.target, [ctx]]]);
+  for (const directory of directories) {
+    const stateDir = join(ctx.cacheRoot, directory.name, `web-${ctx.key}`);
+    if (!existsSync(stateDir)) continue;
+    if (directory.isSymbolicLink() || lstatSync(stateDir).isSymbolicLink()) throw new Error(`Refusing symlinked preview state directory ${stateDir}.`);
+    if (stateDir !== ctx.stateDir && existsSync(join(stateDir, "start.lock"))) throw new Error(`Another preview start may own ${stateDir}; verify it ended before retrying.`);
+    const label = `${directory.name}.web.${ctx.key}`;
+    const candidate = { ...ctx, stateDir, stateFile: join(stateDir, "session.json"), label, target: `gui/${process.getuid?.()}/${label}` };
+    const group = candidates.get(candidate.target) ?? [];
+    if (!group.some(existing => existing.stateFile === candidate.stateFile)) group.push(candidate);
+    candidates.set(candidate.target, group);
+  }
+  if (candidates.size > 64) throw new Error("Too many matching preview records; refusing ambiguous ownership.");
+  const sessions: WebSession[] = [];
+  for (const group of candidates.values()) {
+    const records = group.map(candidate => ({ ctx: candidate, state: readState(candidate) }));
+    const status = job(group[0]!);
+    if (status) {
+      const args = jobArguments(status);
+      const owner = records.find(candidate => candidate.state && args?.[2] && resolve(args[2]) === resolve(candidate.ctx.stateFile));
+      if (!owner) throw new Error(`Preview job ${group[0]!.target} has no verifiable state-file binding. No job was stopped.`);
+      verifyJob(owner.ctx, status);
+      for (const candidate of records) if (candidate.state) sessions.push({ ctx: candidate.ctx, state: candidate.state, status: candidate === owner ? status : "" });
+    } else {
+      for (const candidate of records) if (candidate.state) sessions.push({ ctx: candidate.ctx, state: candidate.state, status: "" });
+    }
+  }
+  const registered = sessions.filter(session => session.status);
+  if (registered.length > 1) throw new Error("Multiple registered web previews match this checkout; refusing ambiguous ownership. No job was stopped.");
+  // The stable namespace can also hold a legacy project literally named 'web': deduplicate its file.
+  const unique = new Map<string, WebSession>();
+  for (const session of sessions) if (!unique.has(session.ctx.stateFile) || session.status) unique.set(session.ctx.stateFile, session);
+  return [...unique.values()];
+}
 
 async function answers(url: string): Promise<boolean> {
   try {
@@ -173,24 +243,57 @@ async function answers(url: string): Promise<boolean> {
   } catch { return false; }
 }
 
-/** Healthy when our overlay answers on its port and names this dev server as its upstream. */
+/** Presence is different from readiness: HTTP500, stalled HTTP and other listeners retain evidence. */
+async function endpointListening(url: string): Promise<boolean> {
+  const endpoint = new URL(url);
+  return new Promise((resolveListening, reject) => {
+    const socket = createConnection({ host: endpoint.hostname.replace(/^\[|\]$/g, ""), port: sitePort(url) }, () => { socket.destroy(); resolveListening(true); });
+    socket.setTimeout(1500, () => { socket.destroy(); reject(new Error(`Cannot verify whether preview endpoint ${endpoint.host} is listening; state retained.`)); });
+    socket.once("error", (error: NodeJS.ErrnoException) => {
+      socket.destroy();
+      if (error.code === "ECONNREFUSED") resolveListening(false);
+      else reject(new Error(`Cannot inspect preview endpoint ${endpoint.host}: ${error.code ?? "unknown error"}; state retained.`));
+    });
+  });
+}
+async function servicesListening(state: WebPreviewState): Promise<boolean> {
+  return await endpointListening(`http://127.0.0.1:${state.port}`) || (state.spawned && await endpointListening(state.upstream));
+}
+
+/** Healthy only when the overlay names this checkout and dev server, not just the same port. */
 export async function webHealthy(state: WebPreviewState | undefined): Promise<boolean> {
   if (!state) return false;
   try {
     const response = await fetch(`http://127.0.0.1:${state.port}/__qa/health`, { signal: AbortSignal.timeout(5000) });
     if (!response.ok) return false;
-    const body = (await response.json()) as { upstream?: string; kind?: string };
-    return body.kind === "web" && body.upstream === state.upstream;
+    const body = (await response.json()) as { upstream?: string; kind?: string; root?: string };
+    return body.kind === "web" && body.upstream === state.upstream && typeof body.root === "string" && canonical(body.root) === canonical(state.root);
   } catch { return false; }
 }
 
 function job(ctx: WebContext): string {
-  try { return ctx.run("launchctl", ["print", ctx.target]); } catch { return ""; }
+  try { return ctx.run("launchctl", ["print", ctx.target]); }
+  catch (error) {
+    if (/could not find (?:specified )?service|no such process|service not found/i.test((error as Error).message)) return "";
+    throw new Error(`Cannot inspect preview job ${ctx.target}: ${(error as Error).message}`);
+  }
 }
 
-async function stopWeb(ctx: WebContext): Promise<void> {
-  const pid = job(ctx).match(/\bpid = (\d+)/)?.[1];
-  if (job(ctx)) ctx.run("launchctl", ["bootout", ctx.target]);
+async function stopWeb(ctx: WebContext, state: WebPreviewState | undefined): Promise<boolean> {
+  const status = job(ctx);
+  if (!status) {
+    if (state) {
+      // Never forget a possibly live orphan, nor treat its port as permission to terminate it.
+      if (await servicesListening(state)) throw new Error(`Preview services still listen without a verified launchd owner. State retained at ${ctx.stateFile}; no stop was confirmed.`);
+      rmSync(ctx.stateFile, { force: true });
+    }
+    return false;
+  }
+  if (!state) throw new Error(`No state proves ownership of ${ctx.target}; no job was stopped.`);
+  verifyJob(ctx, status);
+  const pid = status.match(/\bpid = (\d+)/)?.[1];
+  if (pid && (!Number.isSafeInteger(Number(pid)) || Number(pid) <= 1)) throw new Error(`Cannot verify supervisor PID for ${ctx.target}; no job was stopped.`);
+  ctx.run("launchctl", ["bootout", ctx.target]);
   if (pid) {
     for (let attempt = 0; attempt < 150; attempt++) {
       try { process.kill(Number(pid), 0); } catch { break; }
@@ -198,7 +301,9 @@ async function stopWeb(ctx: WebContext): Promise<void> {
       await sleep(200);
     }
   }
+  if (job(ctx) || await servicesListening(state)) throw new Error(`Web preview services still listen or remain registered; state retained at ${ctx.stateFile}. No stop was confirmed.`);
   rmSync(ctx.stateFile, { force: true });
+  return true;
 }
 
 function report(ctx: WebContext, state: WebPreviewState, options: Pick<WebPreviewOptions, "sshHost">): void {
@@ -262,24 +367,39 @@ export async function waitForWebPreview(state: WebPreviewState, readJob: () => s
 }
 
 export async function runWebPreview(ctx: WebContext, options: WebPreviewOptions, project: string): Promise<void> {
-  const previous = readJSON<WebPreviewState>(ctx.stateFile);
   if (options.command === "status") {
+    const sessions = discover(ctx), found = sessions.find(session => session.status);
     let ok = false;
     for (let attempt = 0; attempt < 3 && !ok; attempt++) {
-      ok = await webHealthy(previous);
-      if (!ok && previous && attempt < 2) await sleep(1000);
+      ok = found ? await webHealthy(found.state) : false;
+      if (!ok && found && attempt < 2) await sleep(1000);
     }
-    if (!ok) throw new Error(`No healthy web preview for this checkout. Run start. Log: ${join(ctx.stateDir, "preview.log")}`);
-    report(ctx, previous!, options);
+    if (!ok) throw new Error(`No healthy owned web preview for this checkout. Run start. Log: ${join(found?.ctx.stateDir ?? sessions[0]?.ctx.stateDir ?? ctx.stateDir, "preview.log")}`);
+    report(found!.ctx, found!.state, options);
     return;
   }
+  for (const directory of [join(ctx.cacheRoot, "morpheus.qa.web"), ctx.stateDir]) if (existsSync(directory) && lstatSync(directory).isSymbolicLink()) throw new Error(`Refusing symlinked preview state directory ${directory}.`);
   mkdirSync(ctx.stateDir, { recursive: true, mode: 0o700 });
   const lock = join(ctx.stateDir, "start.lock");
   try { mkdirSync(lock); } catch { throw new Error(`Another preview start is running. If it was interrupted, remove ${lock} after confirming it has ended.`); }
-  const stop = () => stopWeb(ctx);
+  let activeCtx = ctx, activeState: WebPreviewState | undefined;
+  const stop = () => stopWeb(activeCtx, activeState);
   try {
+    const sessions = discover(ctx);
+    const found = sessions.find(session => session.status) ?? (sessions.length === 1 ? sessions[0] : undefined);
+    if (sessions.length > 1 && !found) throw new Error("Multiple unregistered preview records match this checkout; no stop was confirmed. Inspect the retained session files.");
+    const unverifiedLive = await Promise.all(sessions.filter(session => session !== found).map(session => servicesListening(session.state)));
+    if (unverifiedLive.some(Boolean)) throw new Error("Another matching preview record has live services without a verified job; refusing ambiguous ownership. No job was stopped.");
+    const previous = found?.state;
+    activeCtx = found?.ctx ?? ctx; activeState = previous;
+    // A stale stable-path record must not be overwritten while an unverified service still answers.
+    if (options.command === "start") for (const stale of sessions) if (stale !== found && stale.ctx.stateFile === ctx.stateFile) await stopWeb(stale.ctx, stale.state);
     await withPreviewCancellation(async (check) => {
-      if (options.command === "stop") { await stop(); ctx.log("Stopped this checkout's web preview: the overlay, and the dev server if this preview started it."); return; }
+      if (options.command === "stop") {
+        const stopped = await stop();
+        ctx.log(stopped ? "Stopped this checkout's web preview: the overlay, and the dev server if this preview started it." : "No registered owned web preview was found; no process termination was confirmed.");
+        return;
+      }
       await stop();
       check();
       const site = ctx.config.url;
@@ -310,6 +430,7 @@ export async function runWebPreview(ctx: WebContext, options: WebPreviewOptions,
         spawned: !running,
         ...(ctx.config.command ? { command: ctx.config.command.map((a) => a.replaceAll("{port}", String(devPort))) } : {}),
       };
+      activeCtx = ctx; activeState = state;
       const temporary = `${ctx.stateFile}.tmp`;
       writeFileSync(temporary, JSON.stringify(state, null, 2), { mode: 0o600 });
       renameSync(temporary, ctx.stateFile);
@@ -327,7 +448,7 @@ export async function runWebPreview(ctx: WebContext, options: WebPreviewOptions,
         await stop();
         throw error;
       }
-    }, stop);
+    }, async () => { await stop(); });
   } finally {
     rmSync(lock, { recursive: true, force: true });
   }

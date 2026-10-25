@@ -11,6 +11,10 @@ name: Node CI
 on:
   workflow_call:
     inputs:
+      run-check:
+        description: Skip the inner job while retaining its reported check name.
+        type: boolean
+        default: true
       node-version:
         type: string
         default: "22"
@@ -53,6 +57,7 @@ on:
 
 jobs:
   check:
+    if: ${{ inputs.run-check }}
     runs-on: ${{ inputs.runner }}
     defaults:
       run:

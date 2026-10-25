@@ -188,6 +188,56 @@ def inventory(rows):
             'storedUpperBytes': bound(raw, len(rows), names)}
 
 
+def diagnostic_selection(rows):
+    """Only oversized optional diagnostics may omit whole files/bundles."""
+    report_name = 'artifact-selection.json'
+    seen = set()
+    names = 0
+    for _, name, _ in rows:
+        names += name_ok(name)
+        alias = unicodedata.normalize('NFC', name).casefold()
+        require(alias not in seen, 'ambiguous name')
+        require(alias != report_name and not alias.startswith(report_name + '/'), 'reserved diagnostic name')
+        seen.add(alias)
+    require(len(rows) <= MAX_FILES and names <= MAX_NAMES, 'census bound')
+    try:
+        inventory(rows)
+        return rows, None
+    except Refused as error:
+        require(str(error) == 'stored-byte bound', str(error))
+    # The report travels in the archive. Reserve the largest representation of
+    # each status before selecting any bytes; never truncate a source file.
+    records = [{'name': name, 'bytes': sig[6], 'status': 'omitted-byte-budget'}
+               for _, name, sig in rows]
+    report = {'schema': 'optional-diagnostic-selection/1', 'complete': False,
+              'entries': records}
+    encode = lambda: (json.dumps(report, sort_keys=True, indent=2) + '\n').encode('utf8')
+    raw, count, total_names = len(encode()), 1, len(report_name)
+    bound(raw, count, total_names)
+    groups = {}
+    for index, row in enumerate(rows):
+        parts = row[1].split('/')
+        bundle = next((i for i, part in enumerate(parts) if part.endswith('.xcresult')), None)
+        key = '/'.join(parts[:bundle + 1]) if bundle is not None else row[1]
+        groups.setdefault(key, []).append((index, row))
+    selected = []
+    # Smaller units first keeps useful logs/metadata ahead of large result bundles.
+    for _, group in sorted(groups.items(), key=lambda item: (sum(r[2][6] for _, r in item[1]), item[0])):
+        added_raw = sum(row[2][6] for _, row in group)
+        added_names = sum(len(row[1].encode('utf8')) for _, row in group)
+        try:
+            bound(raw + added_raw, count + len(group), total_names + added_names)
+        except Refused:
+            continue
+        raw += added_raw
+        count += len(group)
+        total_names += added_names
+        for index, row in group:
+            records[index]['status'] = 'selected'
+            selected.append(row)
+    return sorted(selected, key=lambda row: row[1]), encode()
+
+
 def write_once(path, value):
     fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, 'w') as f:
@@ -295,6 +345,10 @@ def stage(context):
     try:
         deadline = started + MAX_SECONDS
         rows = selection(context, deadline)
+        original_rows = rows
+        report = None
+        if context['channel'] in ('native-screenshots', 'native-failure-evidence'):
+            rows, report = diagnostic_selection(rows)
         accounting = inventory(rows)
         retention, required = CHANNELS[context['channel']]
         require(rows or not required, 'mandatory artifact empty')
@@ -308,11 +362,21 @@ def stage(context):
             sha = copy_regular(source, dest, sig, expired)
             entries.append({'name': name, 'bytes': sig[6], 'sha256': sha,
                             'signature': list(signature(dest.lstat()))})
-        require(selection(context, deadline) == rows, 'source selection changed')
+        if report is not None:
+            dest = payload / 'artifact-selection.json'
+            fd = os.open(str(dest), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, 'wb') as out:
+                out.write(report)
+            dest.chmod(0o400)
+            entries.append({'name': dest.name, 'bytes': len(report),
+                            'sha256': hashlib.sha256(report).hexdigest(),
+                            'signature': list(signature(dest.lstat()))})
+            accounting = inventory(tree(payload, budget={'scanned': 0, 'deadline': deadline}))
+        require(selection(context, deadline) == original_rows, 'source selection changed')
         for p in sorted([p for p in payload.rglob('*') if p.is_dir()], key=lambda p: len(p.parts), reverse=True):
             p.chmod(0o500)
         payload.chmod(0o500)
-        manifest = {'schema': 'artifact-stage-admission/1', 'status': 'ADMITTED' if rows else 'EMPTY',
+        manifest = {'schema': 'artifact-stage-admission/1', 'status': 'ADMITTED' if entries else 'EMPTY',
                     'channel': context['channel'], 'context': context, 'payloadRoot': str(payload),
                     'accounting': accounting, 'retentionDays': retention, 'entries': entries,
                     'capBytes': CAP, 'archive': True, 'compressionLevel': 0,

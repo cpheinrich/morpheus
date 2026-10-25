@@ -92,9 +92,13 @@ has disappeared. A same-UID adversary is outside the snapshot guarantee.
 
 ## CI and acceptance limits
 
-The `artifact-abi` job has a ten-minute ceiling per Python 3.9/3.14 leg, disables its
-new uv cache, selects actual Node 24, runs focused filesystem/environment tests, and
-uploads a distinct fixed synthetic fixture through the exact Node 24 upload action.
+The `artifact-abi` job has one ten-minute ceiling, disables its uv cache, selects
+actual Node 24 and runs all four filesystem/environment/fixture suites under both
+Python 3.9 and 3.14 on one runner. It attempts both versions even after a failure,
+then fails if either failed. After both pass, Python 3.14 stages one fixed synthetic
+fixture for the exact Node 24 upload action. The transport/readback runs once:
+the fixed bytes do not define a different Node upload ABI per Python interpreter.
+PR selection follows [CI scope](ci-scope.md); every main push runs the job.
 Each initiated fixture's envelope is at most 2 MiB and retention is one day. A pinned
 archive-compatible normal downloader (`d3f86a106a0bac45b974a628896c90dbdf5c8093`,
 whose action metadata declares Node 20)
@@ -126,3 +130,22 @@ native shell barrier. `test_stage_mutants.py` and `test_trace_mutants.py` delibe
 break in-memory source and require the targeted tests to fail; they are author checks,
 not a mutation-score CI gate. Use Python 3.9 and 3.14 for ABI qualification. Local Python
 passes do not substitute for the actual Node 24 Actions job or consumer native evidence.
+
+### Oversized optional native diagnostics
+
+Only `native-screenshots` and `native-failure-evidence` may represent an oversized
+candidate set with a bounded selection. The entire candidate census is validated
+before selection and compared again after copying, including omitted files.
+Whole files are selected deterministically, smallest units first; `.xcresult`
+bundles are indivisible units. The uploaded `artifact-selection.json` lists every
+candidate, its byte size, and `selected` or `omitted-byte-budget` status. Its
+worst-case serialized size is reserved before selection and its actual bytes are
+included in admission accounting. A report that cannot fit refuses admission.
+Small artifacts retain their original layout. The report filename is reserved in
+these two channels. No file is truncated, and a partial result bundle is never
+presented as usable evidence.
+
+The native workflow captures failure before artifact staging. Later artifact
+failures still fail the job and admission barrier, but do not independently select
+native failure evidence. Mandatory native-complete and qualified-test channels
+retain full, fail-closed admission. Diagnostic selection is not test qualification.
