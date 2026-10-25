@@ -20,7 +20,7 @@ function validateUpload(step: Step, own: string, barrier = false) {
   expect(step.uses).toBe(uploadPin);
   expect(step.with).toMatchObject({ path: `\${{ steps.${own}.outputs.payload-root }}`, archive: true, "compression-level": 0, overwrite: false });
   for (const outcome of states) for (const admitted of ["true", "false"]) for (const files of ["true", "false"]) for (const barrierOutcome of states) {
-    const fixture = { scope: { outputs: { run: "true" } }, ios_paths: { outcome: "success" }, qa_tests: { outcome: "failure" }, upload: { outputs: { "receipt-path": "receipt", "resource-path": "resource" } },
+    const fixture = { native_failure: { outputs: { failed: "true" } }, scope: { outputs: { run: "true" } }, ios_paths: { outcome: "success" }, qa_tests: { outcome: "failure" }, upload: { outputs: { "receipt-path": "receipt", "resource-path": "resource" } },
       [own]: { outcome, outputs: { admitted, "has-files": files } }, artifact_barrier: { outcome: barrierOutcome } };
     expect(evaluate(step.if!, fixture), `${step.name}/${outcome}/${admitted}/${files}/${barrierOutcome}`).toBe(outcome === "success" && admitted === "true" && files === "true" && (!barrier || barrierOutcome === "success"));
   }
@@ -49,6 +49,18 @@ describe("bounded artifact integration", () => {
       expect(steps.indexOf(step)).toBeGreaterThan(barrier);
       expect(step.with?.["retention-days"]).toBe(retention);
       validateUpload(step, own, true);
+    }
+  });
+  it("does not turn an artifact failure into a native failure diagnostic", () => {
+    const steps = read(".github/workflows/ios-ci.yml").jobs.test!.steps;
+    const capture = steps.find(s => s.id === "native_failure")!;
+    expect(capture.if).toBe("${{ always() }}");
+    expect(capture.env?.NATIVE_FAILED).toBe("${{ failure() }}");
+    expect(steps.indexOf(capture)).toBeLessThan(steps.findIndex(s => s.id === "artifact_screenshots"));
+    const stage = steps.find(s => s.id === "artifact_failure")!;
+    for (const failed of ["true", "false"]) for (const laterFailure of [true, false]) {
+      expect(evaluate(stage.if!, { scope: { outputs: { run: "true" } }, ios_paths: { outcome: "success" },
+        native_failure: { outputs: { failed } } }, laterFailure)).toBe(failed === "true");
     }
   });
   it("executes the native all-selected barrier at failure and skipped boundaries", () => {

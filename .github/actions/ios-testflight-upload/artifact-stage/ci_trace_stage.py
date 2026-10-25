@@ -12,7 +12,7 @@ import time
 
 HERE = Path(__file__).resolve().parent
 CORE = HERE / 'stage.py'
-CORE_SHA256 = '55817c49421cad82df7f25a0541d382fc1676f88c5b092886912568a0f9b7adb'
+CORE_SHA256 = '9b33e668846a66fe8a0d29901da6fa209735ffd8b319de925e71a17b65b9361f'
 TRACE_CAP = 64 << 20
 RETENTION_DAYS = 1
 
