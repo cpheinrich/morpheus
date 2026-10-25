@@ -7,6 +7,7 @@ import { atomic, readJSON } from "./store.mjs";
 import { identity } from "./processes.mjs";
 import { bindingDigest, ENVELOPE, loadPool, sha256, transportArgv, transportEnv } from "./pool-config.mjs";
 import { paperclipClient } from "./pool-paperclip.mjs";
+import { verifyHQBinding } from "./pool-hq.mjs";
 import {
   UUID, claimPath, controlDir, dispositionMarker, dispositionPath, initPool, issueIndex, linkIssue,
   observeDisposition, parseMarker, readConversation, reconcilePath, releaseAccount, reserveAccount, runPath, sessionPath,
@@ -213,6 +214,15 @@ export async function runTurn({
     say("refused", { category, detail, disposition: record.disposition });
     return code;
   };
+  // HQ pins include controller/repository identity and executable fields outside the
+  // legacy desktop binding. Revalidate before account reconciliation or host effects.
+  if (conversation.hq) {
+    try {
+      await verifyHQBinding(profileName, conversation, { executionPool: pool, apiUrl: env.PAPERCLIP_API_URL, issue });
+    } catch {
+      return refuse("hq_binding_drift", "the installed HQ mapping changed or is unavailable", RUNNER_EXIT.config);
+    }
+  }
   const binding = bindingDigest(profileName, profile);
   if (conversation.bindingSha256 !== binding)
     return refuse("binding_drift", "the pool profile changed after this conversation started", RUNNER_EXIT.config);

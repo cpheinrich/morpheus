@@ -54,6 +54,7 @@ import { Viewer } from "./viewer.mjs";
 import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
 import { installationId } from "./installation.mjs";
 import { Pool } from "./pool.mjs";
+import { HQPool } from "./pool-hq.mjs";
 
 export function previewSelection(config, snapshot) {
   try {
@@ -75,6 +76,7 @@ export class Manager {
     control: (threadId, conversation) =>
       this.poolControl(threadId, conversation),
   });
+  hq = new HQPool(this.pool, { draining: () => this.draining });
   async client() {
     if (!this.codex) {
       this.codex = await new Codex().connect();
@@ -816,6 +818,7 @@ export class Manager {
       }
     }
     // Remote pool turns are owned by Paperclip's runner, not this service.
+    if (method.startsWith("hq.")) return this.hq.dispatch(method.slice(3), args);
     if (method.startsWith("pool.")) return this.pool.dispatch(method.slice(5), args);
     if (method === "inspect")
       return this.inspect(args.threadId, args.operation);
