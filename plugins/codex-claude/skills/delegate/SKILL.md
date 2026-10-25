@@ -74,7 +74,8 @@ never submit a local task to a different machine by guessing its project path.
 
 Claude-coordinated sessions may own multiple concurrent Codex runs only in different
 working directories. `codex_inspect` lists them; wait, view, status and stop by `runId`.
-The bridge refuses a second writer in one worktree and names the owning run.
+Pass the originating `runId` when replying to `needs_input`. The bridge refuses a second
+writer in one worktree and names the owning run.
 
 ## Remote pool workers
 

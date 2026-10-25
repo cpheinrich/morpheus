@@ -26,7 +26,14 @@ import {
   statusText,
   transcriptModel,
 } from "../src/claude-usage.mjs";
-import { initStore, configWrite, taskRead } from "../src/store.mjs";
+import {
+  atomic,
+  initStore,
+  configWrite,
+  taskRead,
+  taskWrite,
+  runDir,
+} from "../src/store.mjs";
 import { Manager, claudeTaskId } from "../src/service.mjs";
 
 async function isolatedHome(t) {
@@ -385,24 +392,150 @@ test("one Claude session runs Codex concurrently only in different worktrees", a
     /Delegation concurrency limit reached/,
   );
 
-  Object.assign(m.runs.get(first.id), {
+  Object.assign(m.runs.get(second.id), {
     terminal: true,
     state: "needs_input",
     codexSession: "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0002",
   });
   const after = await m.claudeInspect(sessionId);
-  assert.deepEqual(after.runs.active.map((run) => run.id), [second.id]);
-  assert.deepEqual(after.runs.recent.map((run) => run.id), [first.id]);
+  assert.deepEqual(after.runs.active.map((run) => run.id), [first.id]);
+  assert.deepEqual(after.runs.recent.map((run) => run.id), [second.id]);
   const resumed = await m.codexStart({
     sessionId,
-    runId: first.id,
     prompt: "answer",
     replySource: "user",
     replyReason: "User answered",
     operation: "codex",
   });
-  assert.equal(resumed.cwd, await realpath(repo));
+  assert.equal(resumed.cwd, await realpath(other));
   assert.equal(resumed.codexSession, "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0002");
+
+  Object.assign(m.runs.get(first.id), {
+    terminal: true,
+    state: "needs_input",
+  });
+  Object.assign(m.runs.get(second.id), { state: "completed" });
+  Object.assign(m.runs.get(resumed.id), {
+    terminal: true,
+    state: "needs_input",
+  });
+  await assert.rejects(
+    m.codexStart({
+      sessionId,
+      prompt: "ambiguous",
+      replySource: "user",
+      replyReason: "User answered",
+      operation: "codex",
+    }),
+    (error) =>
+      /multiple runs are awaiting input/.test(error.message) &&
+      error.message.includes(first.id) &&
+      error.message.includes(resumed.id),
+  );
+  Object.assign(m.runs.get(first.id), { state: "completed" });
+  Object.assign(m.runs.get(resumed.id), { state: "completed" });
+  await assert.rejects(
+    m.codexStart({
+      sessionId,
+      prompt: "late answer",
+      replySource: "user",
+      replyReason: "User answered",
+      operation: "codex",
+    }),
+    /no run is awaiting input/,
+  );
+});
+
+test("concurrent Codex session discoveries both persist", async (t) => {
+  await isolatedHome(t);
+  const taskId = claudeTaskId("44b6dd27-13a6-4c5e-8d5c-1b9a4bb261f3");
+  const task = await taskRead(taskId);
+  task.codexSessions = {};
+  await taskWrite(task);
+  const m = new Manager();
+  const ids = [
+    "10000000-0000-0000-0000-000000000001",
+    "10000000-0000-0000-0000-000000000002",
+  ];
+  const runs = ids.map((id, index) => ({
+    id,
+    executor: "codex",
+    codexSession: null,
+    threadId: taskId,
+    cwd: `/worktree-${index + 1}`,
+    createdAt: index,
+    state: "starting",
+    terminal: false,
+    sequence: 0,
+    progress: "",
+  }));
+  await Promise.all(ids.map((id) => mkdir(runDir(id))));
+  await Promise.all(
+    runs.map((run, index) =>
+      m.codexEvent(run, {
+        type: "thread.started",
+        thread_id: `20000000-0000-0000-0000-00000000000${index + 1}`,
+      }),
+    ),
+  );
+  assert.deepEqual((await taskRead(taskId)).codexSessions, {
+    "/worktree-1": "20000000-0000-0000-0000-000000000001",
+    "/worktree-2": "20000000-0000-0000-0000-000000000002",
+  });
+});
+
+test("Claude task history retains active and five recent terminal runs", async (t) => {
+  const root = await isolatedHome(t);
+  const repo = join(root, "repo");
+  await mkdir(repo);
+  const sessionId = "55b6dd27-13a6-4c5e-8d5c-1b9a4bb261f3";
+  const m = new Manager();
+  await m.codexHook({
+    sessionId,
+    event: "UserPromptSubmit",
+    cwd: repo,
+    permissionMode: "plan",
+  });
+  const taskId = claudeTaskId(sessionId);
+  const terminalIds = Array.from(
+    { length: 7 },
+    (_, index) => `30000000-0000-0000-0000-00000000000${index + 1}`,
+  );
+  for (const [index, id] of terminalIds.entries()) {
+    await mkdir(runDir(id));
+    await atomic(join(runDir(id), "run.json"), {
+      id,
+      threadId: taskId,
+      cwd: repo,
+      createdAt: index + 1,
+      state: "completed",
+      terminal: true,
+    });
+  }
+  const activeId = "30000000-0000-0000-0000-000000000100";
+  m.runs.set(activeId, {
+    id: activeId,
+    executor: "codex",
+    threadId: taskId,
+    cwd: repo,
+    createdAt: 100,
+    state: "running",
+    terminal: false,
+    sequence: 0,
+    progress: "",
+  });
+  const task = await taskRead(taskId);
+  task.runId = "30000000-0000-0000-0000-000000000999";
+  task.runIds = [...terminalIds, task.runId];
+  await taskWrite(task);
+
+  const inspected = await m.claudeInspect(sessionId);
+  const recent = terminalIds.slice(-5).reverse();
+  assert.deepEqual(inspected.runs.active.map((run) => run.id), [activeId]);
+  assert.deepEqual(inspected.runs.recent.map((run) => run.id), recent);
+  const stored = await taskRead(taskId);
+  assert.deepEqual(stored.runIds, [activeId, ...recent]);
+  assert.equal(stored.runId, activeId);
 });
 
 test("a needs_input result resumes only with an attributed reply", async (t) => {

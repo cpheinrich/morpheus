@@ -45,8 +45,8 @@ MCP server and CLI; never submit a local task to a different machine by guessing
    for status, view and stop too; when more than one run is active, omitting one is refused
    with the available ids. `codex_view` returns a read-only live page.
 7. Codex runs non-interactively and cannot ask mid-run. A `needs_input` result carries its
-   question: resume with `codex_start` on the same session, with `replySource` and
-   `replyReason`. `replySource: claude` is allowed only for a routine, reversible
+   question: resume with `codex_start` on the same session, passing that result's
+   `runId` with `replySource` and `replyReason`. `replySource: claude` is allowed only for a routine, reversible
    clarification with an obvious default; never use it to grant authority, approve costs,
    send, publish, destroy data, access secrets, or settle a material product decision.
    Those need the user's actual answer, and `replySource: user` attests to it. At most eight

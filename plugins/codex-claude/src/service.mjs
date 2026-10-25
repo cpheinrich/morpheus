@@ -63,8 +63,10 @@ export function previewSelection(config, snapshot) {
     return { error: error.message };
   }
 }
+const RECENT_RUN_LIMIT = 5;
 export class Manager {
   runs = new Map();
+  taskMutations = new Map();
   codex = null;
   busy = false;
   draining = false;
@@ -89,6 +91,21 @@ export class Manager {
   async snapshot(id) {
     return (await this.client()).snapshot(id);
   }
+  async mutateTask(id, mutation) {
+    const previous = this.taskMutations.get(id) ?? Promise.resolve();
+    const current = previous.catch(() => {}).then(async () => {
+      const task = await taskRead(id);
+      await mutation(task);
+      await taskWrite(task);
+      return task;
+    });
+    this.taskMutations.set(id, current);
+    try {
+      return await current;
+    } finally {
+      if (this.taskMutations.get(id) === current) this.taskMutations.delete(id);
+    }
+  }
   async taskRuns(task) {
     const ids = new Set([...(task.runIds ?? []), task.runId].filter(Boolean));
     for (const run of this.runs.values())
@@ -102,7 +119,7 @@ export class Manager {
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
     return {
       active: runs.filter((run) => !run.terminal),
-      recent: runs.filter((run) => run.terminal).slice(0, 5),
+      recent: runs.filter((run) => run.terminal).slice(0, RECENT_RUN_LIMIT),
     };
   }
   async codexRunId(args) {
@@ -119,11 +136,11 @@ export class Manager {
   }
   async inspect(id, operation) {
     const config = await configRead();
-    const task = await taskRead(id);
     const snapshot = await this.snapshot(id);
     const identity = await projectIdentity(snapshot.cwd);
-    Object.assign(task, identity);
-    await taskWrite(task);
+    const task = await this.mutateTask(id, (current) => {
+      Object.assign(current, identity);
+    });
     let allowance = null;
     try {
       allowance = remaining(
@@ -247,9 +264,10 @@ export class Manager {
         env,
         config,
       );
-      task.runId = id;
-      task.supervisionReplies = replies;
-      await taskWrite(task);
+      await this.mutateTask(task.id, (current) => {
+        current.runId = id;
+        current.supervisionReplies = replies;
+      });
       return this.begin(id);
     } finally {
       this.busy = false;
@@ -263,10 +281,11 @@ export class Manager {
       throw new Error("Bridge upgrade is in progress; retry afterward.");
     await this.poolControl(threadId, conversation);
     const config = await configRead();
-    const task = await taskRead(threadId);
     const snapshot = await this.snapshot(threadId);
-    Object.assign(task, await projectIdentity(snapshot.cwd));
-    await taskWrite(task);
+    const identity = await projectIdentity(snapshot.cwd);
+    const task = await this.mutateTask(threadId, (current) => {
+      Object.assign(current, identity);
+    });
     if (task.disabled || config.projects[task.project] === "off")
       throw new Error("Delegation disabled for this task or project");
     assertPoolAuthority(snapshot, permission);
@@ -448,10 +467,10 @@ export class Manager {
     const effects = applyClaudeEvent(run, event);
     if (effects.overage) await this.cancel(run.id);
     if (effects.session) {
-      const task = await taskRead(run.threadId);
-      task.claudeSession = effects.session;
-      task.sessions = { ...task.sessions, [run.cwd]: effects.session };
-      await taskWrite(task);
+      await this.mutateTask(run.threadId, (task) => {
+        task.claudeSession = effects.session;
+        task.sessions = { ...task.sessions, [run.cwd]: effects.session };
+      });
     }
     if (effects.ended) this.send(run, { type: "close" });
     if (run.state === "starting") run.state = "running";
@@ -461,9 +480,12 @@ export class Manager {
     const ended = applyCodexEvent(run, event);
     if (run.newSession && !run.codexSession) {
       run.codexSession = run.newSession;
-      const task = await taskRead(run.threadId);
-      task.codexSessions = { ...task.codexSessions, [run.cwd]: run.newSession };
-      await taskWrite(task);
+      await this.mutateTask(run.threadId, (task) => {
+        task.codexSessions = {
+          ...task.codexSessions,
+          [run.cwd]: run.newSession,
+        };
+      });
     }
     if (ended) this.send(run, { type: "close" });
     if (run.state === "starting") run.state = "running";
@@ -607,12 +629,13 @@ export class Manager {
         response: { subtype: "success", request_id: args.questionId, response },
       },
     });
-    task.supervisionReplies =
-      args.source === "user" ? 0 : task.supervisionReplies + 1;
-    task.answerSequence = (task.answerSequence || 0) + 1;
-    await taskWrite(task);
+    const updated = await this.mutateTask(run.threadId, (current) => {
+      current.supervisionReplies =
+        args.source === "user" ? 0 : current.supervisionReplies + 1;
+      current.answerSequence = (current.answerSequence || 0) + 1;
+    });
     await writeFile(
-      join(runDir(run.id), `answer-${task.answerSequence}.json`),
+      join(runDir(run.id), `answer-${updated.answerSequence}.json`),
       JSON.stringify({
         source: args.source,
         reason: args.reason,
@@ -638,13 +661,19 @@ export class Manager {
   // Claude-coordinated sessions: Claude is primary and Codex is the delegate.
   async claudeInspect(sessionId, operation) {
     const config = await configRead();
-    const task = await taskRead(claudeTaskId(sessionId));
-    if (task.session?.cwd)
-      Object.assign(task, await projectIdentity(task.session.cwd));
-    await taskWrite(task);
+    const taskId = claudeTaskId(sessionId);
+    let task = await this.mutateTask(taskId, async (current) => {
+      if (current.session?.cwd)
+        Object.assign(current, await projectIdentity(current.session.cwd));
+    });
     const usage = await readClaudeUsage();
     const allowance = claudeRemaining(usage);
     const runs = await this.taskRuns(task);
+    const retained = [...runs.active, ...runs.recent].map((run) => run.id);
+    task = await this.mutateTask(taskId, (current) => {
+      current.runIds = retained;
+      if (!retained.includes(current.runId)) current.runId = retained[0] ?? null;
+    });
     return {
       task,
       session: task.session ?? null,
@@ -662,7 +691,7 @@ export class Manager {
     this.busy = true;
     try {
       const config = await configRead();
-      const { task, route: decision } = await this.claudeInspect(
+      const { task, runs, route: decision } = await this.claudeInspect(
         args.sessionId,
         args.operation,
       );
@@ -672,6 +701,7 @@ export class Manager {
         throw new Error(
           "No verified Claude session settings yet. The plugin's hooks record them; trust the hooks and send a message first.",
         );
+      const replying = args.replySource != null || args.replyReason != null;
       let previous = null;
       if (args.runId) {
         previous = await this.status(args.runId);
@@ -679,6 +709,20 @@ export class Manager {
           throw new Error("The requested run belongs to another Claude session.");
         if (args.cwd && (await projectIdentity(args.cwd)).cwd !== previous.cwd)
           throw new Error("The requested run belongs to a different working directory.");
+      }
+      if (replying) {
+        const awaiting = [...runs.active, ...runs.recent].filter(
+          (run) => run.state === "needs_input",
+        );
+        if (previous && previous.state !== "needs_input")
+          throw new Error(`Run ${previous.id} is not awaiting input.`);
+        if (!previous && awaiting.length === 0)
+          throw new Error("no run is awaiting input.");
+        if (!previous && awaiting.length > 1)
+          throw new Error(
+            `runId is required because multiple runs are awaiting input: ${awaiting.map((run) => run.id).join(", ")}`,
+          );
+        previous ??= awaiting[0];
       }
       const identity = await projectIdentity(
         args.cwd || previous?.cwd || session.cwd,
@@ -688,7 +732,6 @@ export class Manager {
           "Delegation directory must belong to the Claude session repository.",
         );
       task.cwd = identity.cwd;
-      const runs = await this.taskRuns(task);
       previous ??= [...runs.active, ...runs.recent].find(
         (run) => run.cwd === task.cwd,
       );
@@ -782,14 +825,16 @@ export class Manager {
         env,
         config,
       );
-      task.runId = id;
-      task.runIds = [...new Set([...(task.runIds ?? []), id])];
-      task.supervisionReplies = replies;
-      task.supervisionRepliesByCwd = {
-        ...task.supervisionRepliesByCwd,
-        [task.cwd]: replies,
-      };
-      await taskWrite(task);
+      await this.mutateTask(task.id, (current) => {
+        current.runId = id;
+        current.runIds = [...new Set([...(current.runIds ?? []), id])];
+        current.memoryEnabled = config.memorySharing;
+        current.supervisionReplies = replies;
+        current.supervisionRepliesByCwd = {
+          ...current.supervisionRepliesByCwd,
+          [task.cwd]: replies,
+        };
+      });
       return this.begin(id);
     } finally {
       this.busy = false;
@@ -798,22 +843,24 @@ export class Manager {
   async codexHook(args) {
     const config = await configRead();
     if (config.mode === "off") return {};
-    const task = await taskRead(claudeTaskId(args.sessionId));
+    const taskId = claudeTaskId(args.sessionId);
+    const task = await taskRead(taskId);
     if (args.event === "SessionEnd") {
       for (const run of (await this.taskRuns(task)).active)
         if (!run.background) await this.cancel(run.id);
       return {};
     }
     // Hook input is Claude's own report of the session, so it is the settings source.
-    const previous = task.session ?? {};
-    task.session = {
-      cwd: args.cwd ?? previous.cwd,
-      permissionMode: args.permissionMode ?? previous.permissionMode,
-      model: args.model ?? previous.model,
-      effort: args.effort ?? previous.effort,
-      updatedAt: Date.now(),
-    };
-    await taskWrite(task);
+    await this.mutateTask(taskId, (current) => {
+      const previous = current.session ?? {};
+      current.session = {
+        cwd: args.cwd ?? previous.cwd,
+        permissionMode: args.permissionMode ?? previous.permissionMode,
+        model: args.model ?? previous.model,
+        effort: args.effort ?? previous.effort,
+        updatedAt: Date.now(),
+      };
+    });
     try {
       const s = await this.claudeInspect(args.sessionId);
       return {
@@ -889,26 +936,24 @@ export class Manager {
     if (method === "answer") return this.answer(args);
     if (method === "stop") return this.cancel(args.runId);
     if (method === "override") {
-      const task = await taskRead(args.threadId);
       if (!["auto", "codex", "claude", "off"].includes(args.executor))
         throw new Error("Invalid override");
-      task.disabled = args.executor === "off";
-      task.override = args.executor === "off" ? "auto" : args.executor;
-      await taskWrite(task);
-      return task;
+      return this.mutateTask(args.threadId, (task) => {
+        task.disabled = args.executor === "off";
+        task.override = args.executor === "off" ? "auto" : args.executor;
+      });
     }
     if (method === "codex.inspect")
       return this.claudeInspect(args.sessionId, args.operation);
     if (method === "codex.start") return this.codexStart(args);
     if (method === "codex.hook") return this.codexHook(args);
     if (method === "codex.override") {
-      const task = await taskRead(claudeTaskId(args.sessionId));
       if (!["auto", "codex", "claude", "off"].includes(args.executor))
         throw new Error("Invalid override");
-      task.disabled = args.executor === "off";
-      task.override = args.executor === "off" ? "auto" : args.executor;
-      await taskWrite(task);
-      return task;
+      return this.mutateTask(claudeTaskId(args.sessionId), (task) => {
+        task.disabled = args.executor === "off";
+        task.override = args.executor === "off" ? "auto" : args.executor;
+      });
     }
     if (method === "codex.memories") {
       const { task } = await this.claudeInspect(args.sessionId);

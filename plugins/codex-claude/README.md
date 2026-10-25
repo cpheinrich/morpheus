@@ -150,7 +150,8 @@ both. Start a new Claude session after installing, and review its hooks.
   cap and run limit as Claude workers, with the prompt on stdin. The saved Codex session id is
   resumed per working directory with `codex exec resume`. Codex cannot ask mid-run, so a
   question arrives as a `needs_input` result and is answered by starting again with
-  `replySource` (`claude` or `user`) and `replyReason`, within the same supervision budget.
+  that result's `runId`, `replySource` (`claude` or `user`) and `replyReason`, within the
+  same supervision budget.
   One Claude session may run multiple Codex delegations concurrently when each uses a
   different worktree. A second writer in the same working directory is refused with the
   owning run id; the global `maxConcurrent` limit still applies. `codex_inspect` lists all
@@ -279,8 +280,8 @@ reversible clarifications with a recorded reason; substantive product decisions,
 permissions, sending, publishing, spending, and destructive operations still need the user.
 A tool permission is not interchangeable with a clarification. The `source: user` field
 is the coordinating agent's attestation to an actual user answer, not an independent
-approval UI. Structured/prose `needs_input` results resume the same conversation with
-`replySource` and `replyReason`. Autonomous supervision is capped at eight replies by default. A genuine user answer
+approval UI. Structured/prose `needs_input` results resume the same conversation with its
+`runId`, `replySource` and `replyReason`. Autonomous supervision is capped at eight replies by default. A genuine user answer
 remains allowed at the limit and resets that autonomous budget; its audit record is retained.
 
 Full-access/never-approval Codex turns launch Claude with `bypassPermissions`.

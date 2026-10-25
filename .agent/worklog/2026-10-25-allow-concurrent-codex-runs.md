@@ -42,3 +42,25 @@ Final verification:
 The repository-level Vitest suite was not run: this change does not touch the shared core paths
 for which AGENTS.md permits the one full local run. The plugin's complete package suite is its
 direct test surface.
+
+## Review round 1 fixes
+
+Commit: `Apply review fixes (MO-26-10-25-05.06.40)`.
+
+- Reply routing now selects the session's sole `needs_input` run before applying a cwd default,
+  rejects replies when none is awaiting input, and lists the run ids when several are awaiting.
+  Both delegation skill copies now require the originating `runId` on a reply.
+- All service task-record mutations now pass through a per-task in-process queue. Concurrent
+  `thread.started` events for different worktrees therefore merge both native Codex session ids.
+- Claude-session inspection now persists only active run ids plus the five newest terminal run
+  ids, removes missing records, and repairs the legacy single `runId` pointer when it was pruned.
+
+Review-fix verification:
+
+- `node --test tests/reverse.test.mjs` — 16/16 pass.
+- `pnpm -C plugins/codex-claude test` — 117/117 pass.
+- `pnpm -C plugins/codex-claude check` — pass.
+
+The independent reviewer's 42 sandbox failures came from denied process/socket operations; the
+same complete package suite passes outside that sandbox here. The installed copy under
+`~/plugins/codex-claude` remains unchanged.
