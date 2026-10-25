@@ -1,5 +1,6 @@
 ---
 roadmap: MO-26-10-24-23.22.31
+tags: [engineering, devops, infrastructure]
 ---
 # Paperclip overview comment QA session
 
@@ -16,8 +17,9 @@ the document changes. Diagram enlargement is a viewer control, not source conten
 
 The temporary qa.web declaration in morpheus.json is deliberately uncommitted.
 Its exact prior bytes are saved at local/paperclip-overview-preview/morpheus.original.json.
-At session end, stop responder and preview, then restore those bytes; do not include
-the temporary declaration in a commit. The responder's scope reminder repeats this.
+The responder is stopped and those bytes restored after QA; do not include the temporary
+declaration in a commit. At Chris's request, the existing preview lease remains available
+until its October 26 expiry, without renewal or reload of the person's tab.
 
 Morpheus owns the renderer at127.0.0.1:4611 and the overlay at
 http://127.0.0.1:4610/paperclip-overview, expires2026-10-25T10:25:35.651Z.
@@ -255,3 +257,26 @@ Codex bounded subagents are permitted by the CTO skill; reserve review/cleanup h
 new admission before the75% used ceiling. No cloud resource, credential or paid-service change
 is inferred from the design. The first riskiest assumption is crash-safe delivery from Firebase
 to the existing single private pool owner; prove it before frontend rollout.
+
+## Document delivery verification — October 25
+
+Integrated origin/main through 0b4b6567, including the frozen-input closeout exporter. Added
+only its bounded source-status link: it does not fetch live threads or qualify inbox migration.
+The accepted MacBook Pro/Firebase design and current/planned distinctions remain intact.
+The temporary manifest matches the committed bytes; no preview helper, private comment artifact
+or dependency change is in this PR. No generic module or package decision is introduced.
+
+`pnpm typecheck`, `pnpm compile`, `pnpm morpheus pm index` and `git diff --check` passed.
+A bounded local Markdown-link check resolved 10 repository links/anchors and checked 17 HTTPS
+URL shapes; all five Mermaid blocks are present. Runtime tests and the full suite were omitted
+because only prose, acceptance and task records change; CI retains its normal checks.
+
+In a separate CUA Brave test tab at renderer4611, all five Mermaid SVGs rendered. Enlarged the
+final controller diagram and inspected its actual top, middle and bottom pixels: MacBook Pro
+controller, planned outbound connector, bridge journal, Cloud Function, Firestore transport,
+worker and planned Git closeout labels/arrows are legible. Captures are retained locally at
+`local/paperclip-overview-preview/final-controller-diagram-20261025.png`,
+`final-controller-diagram-lower-20261025.png` and `final-controller-diagram-bottom-20261025.png`.
+These are new final-document verification captures, not original comment-placement evidence.
+The test tab was closed; Chris's live QA tab and drafts were untouched. Preview expiry remains
+2026-10-26T10:29:22.239Z without renewal. The independent reviewer receives these captures.

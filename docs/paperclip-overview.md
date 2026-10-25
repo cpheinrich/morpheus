@@ -1,7 +1,8 @@
 # How Morpheus and Paperclip fit together
 
 > **Work in progress.** The Paperclip integration is an opt-in, tested prototype.
-> This describes the October 24, 2026 implementation; broader project rollout is still pending.
+> This describes the October 24 implementation and October 25 design decisions;
+> broader project rollout is still pending.
 
 **Morpheus defines the work and what counts as delivered. Paperclip runs and tracks delegated
 work. The desktop bridge lets you supervise that work from your existing Codex conversation.**
@@ -202,8 +203,8 @@ would therefore enforce user permissions in its own code. Rules protect requests
 the mobile/web client libraries, including direct browser reads; those reads would not pass
 through Paperclip's authorization checks. Firestore transactions do not offer a drop-in
 replacement for Postgres's row/advisory locks, queue queries or SQL migrations.
-[Rules and server libraries](https://firebase.google.com/docs/firestore/security/get-started),
-[Firestore transactions](https://firebase.google.com/docs/firestore/manage-data/transactions).
+[Rules and server libraries](https://firebase.google.com/docs/firestore/security/get-started?authuser=cpheinrich@gmail.com),
+[Firestore transactions](https://firebase.google.com/docs/firestore/manage-data/transactions?authuser=cpheinrich@gmail.com).
 
 **How the two authorization systems would relate in option 2:** Firebase stays the HQ identity.
 A user's `role` custom claim drives the `/hq` route gate (`decideHqAccess` verifies the session
@@ -308,6 +309,11 @@ Paperclip issues, and a completed execution turn alone does not trigger reposito
 This contract is accepted for implementation. Today the inbox is `hq/team/<handle>.md` with the
 [inbox cycle](runbooks/inbox-cycle.md). Replacing it still requires a qualified migration for
 validation, archiving and promotion to `decisions.md`.
+
+The [frozen-input closeout exporter](paperclip-closeout.md) is now available as an operator
+prototype. It validates explicit normalized JSON and writes content-addressed snapshots; it
+does not fetch a live Paperclip thread, establish acceptance or replace the existing inbox.
+Live acquisition and migration remain separate qualification work.
 
 | Kind of state | Single authority | Everyone else |
 |---|---|---|
