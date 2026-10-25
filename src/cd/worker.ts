@@ -8,10 +8,11 @@ import { fileURLToPath } from "node:url";
 import { checkLocalReview } from "../review/local.js";
 import { type AgentResult, type CdConfig, type CdState, type QuotaSnapshot, hash } from "./schema.js";
 import { after, adoptRepair, completeOperationalRepair, invariant, quotaUsed, repairWork, sourceAt } from "./state.js";
-import { GitHubStore, pages } from "./store.js";
+import { GitHubStore } from "./store.js";
 import { ActionsAdapter } from "./actions.js";
 import { git, loadSources } from "./source.js";
 import { nativeQuota } from "./quota-reader.js";
+import { verifyRepairChecks } from "./repair-checks.js";
 
 const exec = promisify(execFile);
 function paused(state: CdState, intentId: string): boolean { return state.pauses.some(pause => ["all", intentId, state.intents[intentId]!.channel].includes(pause.scope)); }
@@ -107,10 +108,9 @@ export async function scheduleHosted(config: CdConfig, store: GitHubStore, now: 
 export async function verifyRepair(config: CdConfig, store: GitHubStore, sourceDir: string, result: AgentResult): Promise<string> {
   const match = result.pullRequest?.match(new RegExp(`^https://github\\.com/${config.repository.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/pull/([0-9]+)$`));
   invariant(match && result.reviewHead, "Repair needs exact reviewed PR provenance");
-  const pull = await store.api.request<{ merged: boolean; merge_commit_sha: string; head: { sha: string }; base: { ref: string; sha: string }; body: string; labels: { name: string }[] }>("GET", `repos/${config.repository}/pulls/${match[1]}`);
+  const pull = await store.api.request<{ merged: boolean; merge_commit_sha: string; head: { sha: string; ref?: string; repo?: { id: number; full_name: string } | null }; base: { ref: string; sha: string; repo?: { id: number; full_name: string } | null }; body: string; labels: { name: string }[] }>("GET", `repos/${config.repository}/pulls/${match[1]}`);
   invariant(pull.merged && pull.head.sha === result.reviewHead && pull.base.ref === config.mainBranch, "Repair PR is not merged with its exact reviewed head");
-  const checks = await pages<{ conclusion: string | null }>(store.api, `repos/${config.repository}/commits/${pull.head.sha}/check-runs`, "check_runs");
-  invariant(checks.length && checks.every(check => ["success", "skipped", "neutral"].includes(check.conclusion ?? "")), "Repair head has failed/incomplete checks");
+  const checks = await verifyRepairChecks(store.api, config.repository, pull.head, pull.base.repo);
   git(sourceDir, ["fetch", "origin", pull.head.sha, pull.merge_commit_sha]);
   const directory = await mkdtemp(join(tmpdir(), "morpheus-cd-review-"));
   try {
@@ -118,7 +118,9 @@ export async function verifyRepair(config: CdConfig, store: GitHubStore, sourceD
     const findings = checkLocalReview({ root: directory, body: pull.body, labels: pull.labels.map(label => label.name), head: pull.head.sha, base: pull.base.sha });
     invariant(findings.length === 0, `Repair lacks valid independent review: ${findings.map(finding => finding.message).join("; ")}`);
   } finally { try { git(sourceDir, ["worktree", "remove", directory]); } finally { await rm(directory, { recursive: true, force: true }); } }
-  invariant(!result.sourceSha || result.sourceSha === pull.merge_commit_sha, "Agent source differs from actual merged repair"); return pull.merge_commit_sha;
+  invariant(!result.sourceSha || result.sourceSha === pull.merge_commit_sha, "Agent source differs from actual merged repair");
+  if (checks.superseded.length) result.evidence.push(`Morpheus verified cancellation supersession: ${JSON.stringify(checks)}`);
+  return pull.merge_commit_sha;
 }
 export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir: string, options: { executor: "local" | "hosted"; hostId?: string; workId?: string; invocationId?: string; taskDigest?: string }, environment: NodeJS.ProcessEnv = process.env): Promise<unknown> {
   invariant(config.mode === "active", "Observe mode does not invoke repair agents");

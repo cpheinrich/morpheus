@@ -18,7 +18,7 @@ never submit a local task to a different machine by guessing its project path.
    is performed by Codex without changing the persistent override. Stop a running Claude
    writer and wait until terminal before taking over its files.
 3. Automatic mode checks the least remaining reported Codex allowance window at safe
-   checkpoints. Keep executing in Codex at or above the threshold (50% remaining by
+   checkpoints. Keep executing in Codex at or above the threshold (20% remaining by
    default); below it delegate
    substantive work and reserve Codex for coordination. Recheck after tools or completed
    stages. Unknown/stale allowance is not zero. Do not switch an in-flight writer. A
@@ -71,6 +71,11 @@ never submit a local task to a different machine by guessing its project path.
     disabled memory sharing. Each agent writes only its own native memory store; repository
     AGENTS.md/CLAUDE.md remain project instructions. Shared full access means this is an
     ownership convention, not an OS-level write sandbox. Do not create cross-store symlinks.
+
+Claude-coordinated sessions may own multiple concurrent Codex runs only in different
+working directories. `codex_inspect` lists them; wait, view, status and stop by `runId`.
+Pass the originating `runId` when replying to `needs_input`. The bridge refuses a second
+writer in one worktree and names the owning run.
 
 ## Remote pool workers
 

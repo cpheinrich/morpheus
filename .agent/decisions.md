@@ -1,5 +1,13 @@
 # Decisions
 
+**HQ native qualification is a separate explicit operator path** — 2026-10-25.
+Use the dedicated Firebase demo emulators, actual Manager HQ facade and existing
+single Pool, with fixtures first and fresh native quota before bounded test turns.
+Keep default tests provider-free and retain unknown/refused providers honestly.
+Considered Commander15.0.0 (registry modified2026-09-02, no runtime dependencies);
+Node's existing `parseArgs` handles two fixed qualification modes without a new
+CLI framework. The admission/evidence harness is domain-specific and adds no package.
+
 **Paperclip Markdown views derive from exact canonical closeouts** — 2026-10-25.
 The optional operator prototype keeps its frozen canonical JSON identity and emits
 an adjacent deterministic view with inert display fences and digest-only local
@@ -14,6 +22,15 @@ no Markdown parsing engine, generic Git wrapper or new dependency is needed.
 
 Choices Chris made and why. Distilled from status replies — the archive in `status/` is the
 raw record; this is the part worth reading.
+
+**Claude-coordinated Codex runs are keyed by worktree, not by Claude session** — 2026-10-25.
+A Claude session may own multiple concurrent Codex delegations, subject to the existing global
+`maxConcurrent` cap, while one canonical working directory still admits only one active writer.
+Run history belongs to the Claude task; native Codex session ids and autonomous-supervision counts
+remain keyed by working directory so `needs_input` resumes cannot cross worktrees. Run-specific
+wait, view, status and stop operations accept `runId`; the single-run default remains compatible,
+but multiple active runs require an explicit id and report the choices. New installations route
+automatically only below 20% remaining; a saved explicit threshold is preserved.
 
 **Morpheus/Paperclip linkage is explicit and one-to-many** — 2026-10-23. Chris approved deeper
 integration with one roadmap parent linked to multiple execution jobs. Git retains repository,
@@ -1652,6 +1669,20 @@ Tags confer no owner or authority. Legacy records remain valid, no blanket histo
 performed, and a queue can later project this contract without becoming its source of truth.
 Existing Zod/frontmatter/Node APIs fit these small domain fields and deterministic reads; no
 additional generic tag framework or dependency is introduced.
+
+## Verify cancelled SourceCI by exact provider lineage — 2026-10-25
+
+MO-26-10-25-04.11.25. A repair can have unstarted cancelled Actions jobs and a
+newer successful SourceCI run at the same reviewed head in different check suites.
+The source-repair verifier may discharge only those cancellations through exact
+provider identities, complete/latest inventories, unique job context and a stable
+finite reacquisition; genuine failures, pending/unknown and external cancellations
+remain blocking. The authoritative current SourceCI contract permits floated control
+refs to advance. Retain their resolved provenance and reject contradictory immutable
+pins, rather than requiring incidental SHA equality across runs. Same-run rerun
+supersession remains unsupported. This is a small GitHub repair-domain join using
+existing Zod/API seams, so no generic retry framework or dependency is introduced.
+Runtime worker adoption remains a separately qualified normal operation.
 
 ## Workflow status functions stay in supported conditionals — 2026-10-25
 

@@ -68,6 +68,7 @@ export async function taskRead(id) {
     override: "auto",
     disabled: false,
     runId: null,
+    runIds: [],
     claudeSession: null,
     supervisionReplies: 0,
   });
