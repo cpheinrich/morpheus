@@ -55,6 +55,13 @@ import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
 import { installationId } from "./installation.mjs";
 import { Pool } from "./pool.mjs";
 
+export function previewSelection(config, snapshot) {
+  try {
+    return modelSelection(config, snapshot);
+  } catch (error) {
+    return { error: error.message };
+  }
+}
 export class Manager {
   runs = new Map();
   codex = null;
@@ -98,6 +105,9 @@ export class Manager {
       snapshot,
       allowance,
       route: route(config, task, allowance, operation),
+      // What a start without overrides would run, including fallback provenance, so the
+      // coordinator can report it before launching; a refusal is reported, not thrown.
+      selection: previewSelection(config, snapshot),
     };
   }
   async start(args) {

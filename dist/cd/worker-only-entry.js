@@ -1,0 +1,41 @@
+import { RepairControlInvalid, RepairHeld, guardStore, repairHeld, validateRepairControls } from "./repair-control.js";
+/** The worker's own first-due predicate (not complete, due, lease absent or expired). */
+export const due = (work, now) => work.state !== "complete" && Date.parse(work.nextCheckAt) <= Date.parse(now) && (!work.lease || Date.parse(work.lease.expiresAt) <= Date.parse(now));
+export async function runHeldAwareWorker(d) {
+    const snapshot = await d.store.read(), now = (d.now ?? (() => new Date().toISOString()))();
+    try {
+        validateRepairControls(snapshot.state);
+    }
+    catch (error) {
+        if (error instanceof RepairControlInvalid)
+            return { state: "repair-control-invalid", reason: error.message };
+        throw error;
+    }
+    const agents = snapshot.state.agents;
+    let target = d.options.workId ? agents[d.options.workId] : undefined;
+    // A held target returns before quota/login; unheld work behind it is still selected (no starvation).
+    if (target && repairHeld(snapshot.state, target.intentId))
+        return { state: "repair-held", workId: target.id };
+    if (!d.options.workId) {
+        const candidates = Object.values(agents).filter(work => due(work, now));
+        if (!candidates.length)
+            return { state: "idle" };
+        target = candidates.find(work => !repairHeld(snapshot.state, work.intentId));
+        if (!target)
+            return { state: "repair-held", workId: candidates[0].id };
+    }
+    // With no holds this is the work the unchanged worker would pick itself. The explicit workId adds
+    // one bounded early race (documented): a concurrent budget-wait between the two reads.
+    const options = target ? { ...d.options, workId: target.id } : d.options;
+    try {
+        return await d.runWorker(d.config, target ? guardStore(d.store, target.intentId) : d.store, d.sourceDir, options, d.environment);
+    }
+    catch (error) {
+        if (error instanceof RepairHeld)
+            return { state: "repair-held", workId: target?.id ?? d.options.workId ?? "" };
+        if (error instanceof RepairControlInvalid)
+            return { state: "repair-control-invalid", reason: error.message };
+        throw error;
+    }
+}
+//# sourceMappingURL=worker-only-entry.js.map

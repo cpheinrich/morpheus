@@ -1,21 +1,25 @@
 ---
 owner: cpheinrich
-date: 2026-10-23
+date: 2026-10-24
 agents:
   - codex
-previous: .agent/inbox-archive/2026-10-19-1239-cpheinrich.md
+previous: .agent/inbox-archive/2026-10-24-0247-cpheinrich.md
 ---
-# Inbox — 2026-10-23
+# Inbox — 2026-10-24
 
-The explicit one-roadmap-to-many-Paperclip-job bridge is merged in [PR #470](https://github.com/cpheinrich/morpheus/pull/470), with private authentication and two independently reconciled snapshot jobs. The deeper executable comparison is recorded in [PR #472](https://github.com/cpheinrich/morpheus/pull/472). Its frozen scores were direct6/6 and manager-plus-Paperclip5/6, but the differing case omitted an input schema and execution exposed an isolation defect; it cannot rank workflow quality. Keep the bridge, keep small repairs direct, and qualify broader workers before unattended rollout. Study workers are paused and reservations clear. The earlier30-task two-host pilot and12/12 historical tie remain unchanged. The unreplied issue-maintenance items below are preserved.
+The interactive worker bridge is built in [draft PR #475](https://github.com/cpheinrich/morpheus/pull/475). Real remote Codex passed streaming, questions, remembered follow-ups, coordinator reconnect, verified stop and bridge recovery. Real local Claude passed live questions and same-session follow-ups; it does not replace the pending remote Claude test. Both test workers are paused and all three pool account ledgers are clear. No consumer project or simulator was migrated. The prior unreplied items are preserved below.
 
-The issue-maintenance automation reconciled all open issues and the issues closed since its October 12 run. GitHub confirms **38 of 41 tracked issues closed**. Thirteen fixes landed in other sessions; their merge commits are on current main and their remote branches are deleted. Three issues remain open. The material change is that #248 now has implementation PR #414 and needs an additional review turn, so the older policy-choice prompt has been replaced. This run made no production release or credential changes.
+## ✅ 1. Interactive bridge and live recovery · `codex`
 
-## ✅ 1. Thirteen intervening issue fixes verified · `codex`
+Paperclip owns execution turns while the current Codex conversation supervises work. The bridge preserves native sessions and logs, refuses duplicate or uncertain replays, and resolves an upstream stop hold only after exact termination proof. The plugin has 90 passing deterministic tests on Node 26 and Node 22. The draft PR contains the design, run identities, independently checked nonce artifacts, failed attempts and limitations. Broad rollout remains pending acceptance and independent review; existing subscription and host limits remain in force.
 
-Verified merged PRs [#390](https://github.com/cpheinrich/morpheus/pull/390), [#392](https://github.com/cpheinrich/morpheus/pull/392), [#395](https://github.com/cpheinrich/morpheus/pull/395), [#396](https://github.com/cpheinrich/morpheus/pull/396), [#402](https://github.com/cpheinrich/morpheus/pull/402), [#404](https://github.com/cpheinrich/morpheus/pull/404), [#405](https://github.com/cpheinrich/morpheus/pull/405), [#406](https://github.com/cpheinrich/morpheus/pull/406), [#407](https://github.com/cpheinrich/morpheus/pull/407), [#408](https://github.com/cpheinrich/morpheus/pull/408), [#409](https://github.com/cpheinrich/morpheus/pull/409), [#410](https://github.com/cpheinrich/morpheus/pull/410), and [#413](https://github.com/cpheinrich/morpheus/pull/413). They cover worktree cleanup, iOS workflow isolation and evidence, QA capture and recovery, review deferral bookkeeping, incident closure, and first HQ sign-in. The automation ledger preserves each issue's PR, review coverage SHA, final check snapshot and closure evidence.
+## ❗ 2. Finish the mini’s native Claude sign-in · `codex`
 
-## ❗ 2. One further review turn for PR #414 · `codex`
+Claude web sign-in has not authenticated Claude Code on Zoe’s Mac mini: its native CLI still reports loggedIn false. On the mini, run `claude auth login --claudeai`, finish the Zoe Google sign-in, then verify `claude auth status` reports loggedIn true. This enables the real remote Claude tests required by [PR #475](https://github.com/cpheinrich/morpheus/pull/475). No password, token or sign-in code needs to be pasted into chat. The draft remains open with auto-merge disabled until validation finishes.
+
+~
+
+## ❗ 3. One further review turn for PR #414 · `codex`
 
 [#248](https://github.com/cpheinrich/morpheus/issues/248) now has draft [PR #414](https://github.com/cpheinrich/morpheus/pull/414). Its worklog records approval of the human-override policy and three independent review turns clearing the implementation through `249285c`. The final test-only correction `74290f6` updates the scaffold expectation for the already-reviewed comment-revocation workflow. Its build/test jobs pass, but that correction is outside review coverage. Current-main `verifyReviewRecord` reproduces the coverage refusal. GitHub also reports a conflict with current main; the existing author must integrate trunk before final validation. The PR remains draft with auto-merge off.
 
@@ -28,13 +32,13 @@ The [independent-review runbook](../../docs/runbooks/independent-review.md) requ
 
 ~
 
-## ❗ 3. Kairos certificate-chain evidence · `codex`
+## ❗ 4. Kairos certificate-chain evidence · `codex`
 
 [#310](https://github.com/cpheinrich/morpheus/issues/310) remains open. Its failed Actions run shows an imported identity and a generic trust-check failure, but does not reveal the public leaf certificate issuer or the detailed verification error. Please send the failed public certificate's issuer and validity dates, or the unquiet security verify-cert error. No private key, password, provisioning profile or production rerun is needed.
 
 ~
 
-## ❗ 4. One older claim remains · `codex`
+## ❗ 5. One older claim remains · `codex`
 
 `MO-26-09-16-00.36.07` shipped in [PR #390](https://github.com/cpheinrich/morpheus/pull/390), and its remote branch is deleted. That previous disposition request is resolved. `MO-055` still holds remote branch `mo-055-a-new-contributor-gets-an-inbox-in-one-c`; this automation did not take it over. The original context is in [the archived exchange](../../.agent/inbox-archive/2026-10-12-1945-cpheinrich.md).
 
@@ -45,35 +49,3 @@ The [independent-review runbook](../../docs/runbooks/independent-review.md) requ
 
 ~
 
-## ✅ 5. GitHub Manager log stays open · `codex`
-
-[#335](https://github.com/cpheinrich/morpheus/issues/335) is the persistent manager audit log, not a defect to close.
-
-## ✅ 6. Paperclip two-host pilot delivered with bounded evidence · `codex`
-
-Both the MacBook Pro and Zoe's Mac mini completed real Codex work: 24 historical decision tasks plus six nonce/autoplacement checks, for 30 verified artifact and decision completions. Both decision conditions scored 12/12; there is no measured accuracy gain. The [results and limits](https://github.com/cpheinrich/morpheus/blob/main/docs/paperclip-pilot-results.md) record 54 passing focused tests and four passing synthetic SSH cleanup drills. Independent review identified mismatched quota/native account identity and missing route binding; both were fixed, old enrollments retired, and fresh enrollment verified with two additional exact nonce runs. A real controller hot restart interrupted its CLI run, so maintenance requires pausing and draining active work; seamless adoption is not established.
-
-Source [PR #455](https://github.com/cpheinrich/morpheus/pull/455) merged as `15d333a0` after independent review and passing required CI. The separate [host provisioning record](https://github.com/cpheinrich/agent-host-setup/pull/10) is merged. Broader project, account/model routing, and simulator qualification are tracked in [MO-26-10-23-00.15.26](../product/roadmap/MO-26-10-23-00.15.26-qualify-paperclip-projects.md). The integration is installed at `~/.local/share/morpheus-paperclip/integration/current`; the [operating guide](https://github.com/cpheinrich/morpheus/blob/main/scripts/paperclip-pilot/README.md) describes enrollment and maintenance. Workers are paused, scheduled timers disabled, and reservations clear; the local [dashboard](http://127.0.0.1:3100/MOR/dashboard) remains available on the MacBook Pro. This FYI requires no reply.
-
-
-## ✅ 7. Phase2 task linkage and bounded comparison · `codex`
-
-[Bridge PR #470](https://github.com/cpheinrich/morpheus/pull/470) links immutable Git intent,
-exact Paperclip job/run IDs and independently accepted source/artifact evidence. One parent
-can own many jobs; Paperclip done never ships a Git roadmap item. The dashboard now requires
-normal operator sign-in through the existing Air tunnel. Private operator credentials remain
-on the MacBook Pro at `~/.local/share/morpheus-paperclip/authenticated-phase2-20261023/owner-credentials.private.json`;
-no provider login was copied. Chris is sorting out subscription sharing separately.
-
-[Comparison PR #472](https://github.com/cpheinrich/morpheus/pull/472) retains all18 held-out
-worker episodes and8 manager calls. No continuation or large historical replay was needed.
-The report explains why the6/6 versus5/6 result is inconclusive, the extra time/token overhead,
-the literal report metric's false negatives and the actual CLI capability failures. Hosted
-delegation remained callable despite disabled flags and its calls were absent from exec JSON;
-the diagnostic child was interrupted and verified terminal. CLI restrictions are best effort,
-not a qualified worker boundary. No quality or human-time benefit is claimed.
-
-The existing [consumer qualification item](../product/roadmap/MO-26-10-23-19.45.05-qualify-paperclip-consumers.md)
-preserves protected delivery on each authorized host, effective worker/child authority,
-restart/recovery, simulator resource integration and prospective human-intervention metrics.
-No additional account, subscription, paid fallback or production release is authorized here.

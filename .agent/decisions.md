@@ -1207,6 +1207,17 @@ bracketed context suffix such as `[1m]`, never a leading dash) so a value can ne
 another CLI flag. A saved
 `subscriptionModels` key still parses and is ignored, reported by `doctor`. No dependency.
 
+**An unmapped Codex model falls back to `opus` instead of blocking delegation** — 2026-10-24
+(MO-26-10-24-18.48.39, #479). "No Claude model mapping for Codex model gpt-6.1-sol" stopped a
+delegation until the user was asked to pick a model; every Codex release after the plugin's
+`modelMap` does the same. Chris authorized an automatic fallback (latest Opus or Fable) for the
+whole class. `modelFallback` defaults to the family alias `opus`, which the installed CLI
+resolves, so no discovery call or model question is needed; Fable is not assumed available.
+Explicit overrides and `modelMap` still win, moving aliases stay refused (the setting rejects
+them), and `null` restores the refusal with a message naming the setting. The run's
+`selection` and `claude_inspect` report `source`/`codexModel`/`reason`. It is not a retry on
+CLI errors and adds no API-key or overage path. Existing settings load with the default.
+
 **Selected native tests retain complete execution evidence** — 2026-09-26. The reusable iOS
 workflow accepts optional explicit test identifiers and a caller-owned selection manifest and
 result validator. Defaults still run the whole scheme. Structured xcresult summaries and logs
