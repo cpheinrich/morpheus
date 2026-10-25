@@ -32,8 +32,10 @@ From this package directory, explicitly run:
 node scripts/install.mjs
 ```
 
-The installer copies the package, installs its locked dependencies, tests it, and uses
-Codex's bundled plugin-creator helper to register it in the personal marketplace. It
+The installer copies the package, installs its locked dependencies, tests it, verifies the
+installed MCP servers against their exact shared tool-name contracts, and uses Codex's
+bundled plugin-creator helper to register it in the personal marketplace. A contract error
+lists the missing, unexpected, and observed tool names. It
 preserves other marketplace entries. If that helper is elsewhere, set
 `CODEX_PLUGIN_CREATOR` to its `create_basic_plugin.py` path. Installation does not choose
 manual or automatic mode. Finish existing delegated runs before updating the package;
