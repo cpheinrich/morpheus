@@ -162,3 +162,64 @@ PM index/validation, diff checks and exact protected-payload preservation checks
 passed. No local full suite was run. Protected PR517's main CI run
 `40198124460` completed successfully, including the actionlint-enabled Node job
 and browser/artifact checks, before this source's first independent review.
+
+## Independent review and minor response — 2026-10-25
+
+Initial source CI run `40198696299` passed on published head
+`9e3dd02cf17c1ea855f5b2efb9d44a6501d831fc` with six passed and three skipped
+checks. The fresh reviewer inspected `da72f97819c09215e3648630a51776f97465bab7`,
+which differed only by recording PR518 in the roadmap; implementation and test
+bytes matched the successful CI head. An initial launch was refused for a full
+agent pool before creating any reviewer session. After a slot became available,
+the one fresh reviewer started with no inherited history; the refused launch
+consumed no review turn or timing.
+
+Independent high-risk review cleared the source with one minor FIFO-input finding; the nonblocking descriptor open and compiled-CLI regression fix it. No substantive findings or unresolved review questions remain.
+
+The reviewer reproduced a FIFO without a writer blocking in `open()` before the
+regular-file check. Open with `O_RDONLY | O_NONBLOCK`, then retain the existing
+descriptor type and byte checks. The new POSIX regression runs the actual
+compiled CLI with an unopened FIFO and an inert GitHub-command sentinel: it
+exits 1 before the deadline with no stdout or provider invocation. Removing the
+nonblocking flag compiled successfully and failed that regression after the test
+supervisor terminated its own blocked child; restored all exact fixed bytes.
+The regression is inapplicable on Windows, which has no POSIX FIFO fixture.
+
+The fix stays within the reviewer's four named paths and is covered as a fixed
+minor finding under the normal policy; no follow-up turn was needed. After the
+fix, 381 tests in the ten-file focused scope passed, as did real actionlint,
+typecheck, lint, compile, PM index/validation and diff checks. The original ten
+mutation results remain preserved, and the additional FIFO mutant was killed.
+The reviewer independently ran 117 tests in four files and changed no source.
+CI for the record head and subsequent ready event remains required before merge.
+Consumer adoption and an actual diagnostic note remain outside this source task.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "30d412a7e4194b502088fc359c72c88b1d78f964",
+  "reviewed": "da72f97819c09215e3648630a51776f97465bab7",
+  "covered": "1b8605855db3f30bf2d472cbc28dcf3dbcd1177c",
+  "authorSession": "01a17329-4d8c-7390-bf79-63dd1893f7db",
+  "reviewerSession": "/root/normal_repair_diagnostic_source/independent_source_review",
+  "risk": "high",
+  "elapsedMinutes": 4.533333333333333,
+  "timing": {
+    "source": "clock",
+    "durationMs": 272000,
+    "evidence": "Author clock readings around the fresh reviewer: 2026-10-25T13:50:54Z before dispatch and 2026-10-25T13:55:26Z at the completion observation. The reviewer reported its last observed clock as 2026-10-25T13:55:01Z; the interval includes final-result delivery and observation. The refused 13:47 launch created no session and is excluded."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk review cleared the source with one minor FIFO-input finding; the nonblocking descriptor open and compiled-CLI regression fix it. No substantive findings or unresolved review questions remain.",
+  "findings": [
+    {
+      "id": "RD-01",
+      "severity": "minor",
+      "description": "Opening the evidence path before checking its type blocks indefinitely on a FIFO with no writer, so the regular-file refusal never executes. The reviewer reproduced this through the compiled CLI.",
+      "paths": ["src/cd/cli.ts", "dist/cd/cli.js", "dist/cd/cli.js.map", "tests/cd/repair-diagnostic-cli.test.ts"],
+      "disposition": "fixed",
+      "response": "Use O_RDONLY | O_NONBLOCK, then keep the existing descriptor type and byte guards. The compiled-CLI FIFO regression exits 1 before its deadline and proves the GitHub-command sentinel was never invoked. The blocking-open mutant compiled and failed that actual regression; all fixed bytes were restored. All 381 focused tests, actionlint, typecheck, lint, compile and PM checks passed. Only the named minor paths changed before covered."
+    }
+  ]
+}
+```
