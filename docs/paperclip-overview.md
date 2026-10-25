@@ -70,6 +70,7 @@ flowchart LR
 `scripts/paperclip-bridge/` prepares and submits immutable jobs, then reads back their exact
 issue identities. Records live at `.agent/paperclip/<roadmap-ID>/<job>.json`, with repository,
 branch, source SHA, acceptance reference and evidence hashes. Reconciliation records an
+
 operator-verified result; it never marks the roadmap item shipped automatically.
 
 There are **two complementary integration surfaces today**:
