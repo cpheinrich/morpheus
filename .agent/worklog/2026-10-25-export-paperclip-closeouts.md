@@ -84,3 +84,14 @@ Parent reservation: at most8 Codex weekly points, initial20-minute bound; no Cla
 paid API, reset or extra workers. Shared usage read22% used at start,23% during initial
 validation and24% after25 focused tests (rounded shared-account observations, not exact
 attributable consumption). Global admission ceiling68%/hard ceiling75% were not approached.
+
+## Continued delivery authorization
+
+After the implementation checkpoint, the parent explicitly authorized the complete
+normal delivery loop: one fresh independent reviewer without inherited history,
+review record, PR, CI and merge. Additional review reservation is at most4 shared Codex
+weekly points; latest observation before review preparation is25% used. No Claude,
+provider API or cloud action is authorized. Normal review ceiling15 minutes; global
+stop-new-work threshold68–70% used and hard ceiling75% remain. The frozen-input
+prototype is not live API qualification or a migration. Initial no-push scope above is
+historical and is superseded by this authorization.
