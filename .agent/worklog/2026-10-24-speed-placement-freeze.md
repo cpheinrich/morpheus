@@ -26,3 +26,40 @@ In-memory comparison of a once-per-freeze ordinary property list lowered style c
 - Source candidate uses fresh contexts/route override only. Own draft pins were deleted and contexts closed; no Send, user-tab operation, responder/preview restart or website edit. The parent stopped/rebuilt services after QA ended; final production capture availability was coordinated explicitly.
 
 Fresh independent review cleared the implementation with one minor correction to distinguish requested and actual page-scroll evidence; the review record follows below. Original failure metadata and final successful JPEGs remain distinct evidence. During investigation the website owner applied the requested removal of “YouTube preview”; current guide header captures show Juana Molina rather than pretending the old wording still exists.
+
+## Independent review
+
+Independent normal-risk review cleared the implementation with no substantive findings. M493-R1 identified imprecise page-scroll evidence wording; the author corrected the two named Markdown files and PR prose to distinguish requested2773, recorded Chromium2773/WebKit2662 or2672, and the original failure2772.8125 without inventing a cause. The reviewer independently passed four browser cases, probed ordinary-property completeness across HTML controls/SVG/MathML/pseudos, and inspected actual/stress/original JPEG pixels. No follow-up was required for the minor correction. Existing media omissions, placeholder contrast, and browser DOM-renderer differences remain limitations.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "fc7678e6cea4d7442c994173e1ae6e0fb2c311b5",
+  "reviewed": "b5b8499eb0f46eebe0cc54028c39b7ecd646e32f",
+  "covered": "f505243361715587e4d015c24bab9d54d6c422b1",
+  "authorSession": "01a1711e-35dc-7de0-aec8-4e993b389f16",
+  "reviewerSession": "/root/qa_session_supervisor/capture_perf_review",
+  "risk": "normal",
+  "elapsedMinutes": 2.4,
+  "timing": {
+    "source": "clock",
+    "durationMs": 144000,
+    "evidence": "clock.curr_time readings immediately before reviewer spawn at2026-10-25T07:06:08Z and immediately after its final answer at2026-10-25T07:08:32Z; includes tool execution and waits, excludes subsequent author correction."
+  },
+  "outcome": "complete",
+  "summary": "Independent normal-risk review cleared the implementation with no substantive findings. M493-R1 identified imprecise page-scroll evidence wording; the author corrected the two named Markdown files and PR prose to distinguish requested2773, recorded Chromium2773/WebKit2662 or2672, and the original failure2772.8125 without inventing a cause. The reviewer independently passed four browser cases, probed ordinary-property completeness across HTML controls/SVG/MathML/pseudos, and inspected actual/stress/original JPEG pixels. No follow-up was required for the minor correction. Existing media omissions, placeholder contrast, and browser DOM-renderer differences remain limitations.",
+  "findings": [
+    {
+      "id": "M493-R1",
+      "severity": "minor",
+      "description": "Acceptance and worklog imply all16 actual captures had page scroll2773, but retained results show WebKit2662/2672 and Chromium2773. Separate requested and actual offsets from original failure2772.8125; cause is unestablished.",
+      "paths": [
+        "qa/acceptance/populated-modal-freeze.md",
+        ".agent/worklog/2026-10-24-speed-placement-freeze.md"
+      ],
+      "disposition": "fixed",
+      "response": "Commit f505243361715587e4d015c24bab9d54d6c422b1 corrects only the named Markdown files; corresponding PR prose now lists requested and recorded per-engine offsets. Original raw results and failure metadata are preserved. Minor-only author correction; reviewer explicitly required no follow-up."
+    }
+  ]
+}
+```
