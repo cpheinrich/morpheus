@@ -280,3 +280,9 @@ worker and planned Git closeout labels/arrows are legible. Captures are retained
 These are new final-document verification captures, not original comment-placement evidence.
 The test tab was closed; Chris's live QA tab and drafts were untouched. Preview expiry remains
 2026-10-26T10:29:22.239Z without renewal. The independent reviewer receives these captures.
+
+The independent reviewer found one minor wording defect: its installed2026.1012.0 build had
+242 exported table declarations rather than the earlier240 observation;304 migrations matched.
+Qualified the table/import counts as approximate October25 QA observations instead of exact
+contract facts (DOC-001). This is the minor author response permitted by the review contract;
+no additional reviewer turn is needed. `git diff --check` passed after the wording correction.

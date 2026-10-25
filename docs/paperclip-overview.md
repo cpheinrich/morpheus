@@ -181,7 +181,7 @@ through the controller's loopback port or the Air's forwarded port, as described
 |---|---|---|
 | Dashboard | A React board app served by the same Express server; its data comes from `/api`. | Coupled to Paperclip's API, not to its database. HQ can reuse the API. |
 | Auth and authorization | Board users sign in through Better Auth on Paperclip's own tables. Board/agent API keys and run tokens are checked by Paperclip's server code. | Paperclip does not know Firebase identities or Firestore rules. |
-| Database | Drizzle ORM on Postgres, embedded by default: 240 tables and 304 SQL migrations. Drizzle is imported by 321 server modules, with ~470 `SELECT … FOR UPDATE` call sites, some `NOWAIT`/`SKIP LOCKED`, plus Postgres advisory locks and upserts. | Launch claims, idempotent issue creation and wake deduplication, which our bridge relies on, are built on Postgres locking. |
+| Database | Drizzle ORM on Postgres, embedded by default: roughly 240 tables and 304 SQL migrations. Drizzle is imported by about 320 server modules, with ~470 `SELECT … FOR UPDATE` call sites, some `NOWAIT`/`SKIP LOCKED`, plus Postgres advisory locks and upserts. | Launch claims, idempotent issue creation and wake deduplication, which our bridge relies on, are built on Postgres locking. |
 | File storage | Attachments already pass through a pluggable `StorageProvider` with local-disk and S3 providers. | This extension point handles files; database access has no equivalent provider interface. |
 
 Sources: [schema](https://github.com/paperclipai/paperclip/tree/v2026.1012.0/packages/db/src/schema),
@@ -189,7 +189,8 @@ Sources: [schema](https://github.com/paperclipai/paperclip/tree/v2026.1012.0/pac
 [Better Auth setup](https://github.com/paperclipai/paperclip/blob/v2026.1012.0/server/src/auth/better-auth.ts),
 [authorization](https://github.com/paperclipai/paperclip/blob/v2026.1012.0/server/src/services/authorization.ts),
 [storage interface](https://github.com/paperclipai/paperclip/blob/v2026.1012.0/server/src/storage/types.ts).
-Counts come from the installed build's compiled `server` and `db` packages.
+Counts are approximate observations during October 25 QA of the installed build's compiled
+`server` and `db` packages, not compatibility guarantees.
 
 | Option | What it means | Cost and risk |
 |---|---|---|
