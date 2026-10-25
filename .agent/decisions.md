@@ -1606,3 +1606,20 @@ Considered npm `launchctl` 1.1.1 (registry modified 2022-06-19; four direct nati
 ## Enumerate ordinary computed-style names once per placement freeze — 2026-10-24
 
 MO-26-10-24-23.34.43, #493. A populated guide modal makes repeated native computed-style enumeration expensive even when inherited custom-property values are discarded. Reuse ordinary property names from the existing browser initial-value probe within that one freeze; read every resolved value again per element/pseudo and retain explicit colors/reset exceptions. This adds no cross-pin cache, dependency or generic serializer. A bulk cssText assignment was measured and rejected because it did not reduce the dominant enumeration work. Production time/node/byte/JPEG caps and immutable capture remain unchanged.
+
+## Scope PR CI conservatively; keep required names and both Python boundaries — 2026-10-25
+
+MO-26-10-24-23.13.37. Ordinary prose can skip expensive checks only after a verified
+cumulative PR comparison; unknown paths/history/detector outputs run all. Main pushes
+remain the full integration backstop. PM and applicable PR conventions are independent.
+Always invoke the reusable Node workflow and skip its inner job to preserve the
+required `node / check` status. Its new boolean defaults true for existing consumers.
+Retain Python 3.9/3.14 filesystem/environment tests on one runner; run the fixed
+Node 24 artifact transport once with unchanged admission/pins/caps/retention.
+
+Considered dorny/paths-filter v4.0.3 (published 2026-08-05; Node >=24; four runtime
+dependencies: @actions/core, @actions/exec, @actions/github and picomatch). Native
+Git already supplies the complete checkout/diff and Node is already present. This
+repository-specific four-flag selector is under 100 lines and explicitly handles
+uncertain comparisons and both rename paths. Build it here without a new action,
+generic filtering framework or dependency. See docs/ci-scope.md for the input map.

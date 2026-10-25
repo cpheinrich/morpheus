@@ -1553,6 +1553,12 @@ shape, whether it lands in a markdown file or a database row.**
 
 Tests are first-class. Agents update tests in the same PR as the code, enforced by CI (§7.2).
 
+Morpheus's own PR CI selects expensive jobs from a verified cumulative diff;
+unknown inputs/comparisons and all main pushes run everything. PM and applicable
+PR conventions retain their existing behavior. The reusable Node workflow defaults
+to running, with an opt-in inner-job skip that preserves its required check name.
+See [CI scope](docs/ci-scope.md) for path inputs and artifact compatibility coverage.
+
 **Colocated with the code they test** — `apps/web/tests/`, `apps/ios/Tests/`, never centralised. An
 agent editing a component should find its test in the same tree. `qa/` holds what spans surfaces or
 is not code:

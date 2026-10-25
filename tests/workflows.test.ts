@@ -969,14 +969,23 @@ describe("ci.yml", () => {
     expect(wf.on?.pull_request?.types).toContain("ready_for_review");
     expect(wf.on?.pull_request?.types).toContain("synchronize");
 
-    // No caller-level skip, on this job or any other: the delivery check must
-    // be reported on every push for required-check protection to be satisfiable.
+    // Required reusable callers must still report. Optional expensive jobs
+    // may skip on a verified path decision; node skips only inside its callee.
     // One deliberate exception: `pr` skips an unlabelled *draft*, using exactly
     // that unreported state as "waiting". A draft cannot merge anyway, and
     // marking it ready (a trigger here) or labelling it runs the check.
     for (const [name, job] of Object.entries(wf.jobs ?? {})) {
       if (name === "pr") {
         expect(job.if).toBe(`\${{ ${PR_CHECK_CALLER_IF} }}`);
+        continue;
+      }
+      if (name === "node") {
+        expect(job.if).toBe("${{ !cancelled() }}");
+        continue;
+      }
+      if (["codex-claude", "qa-browser", "artifact-abi"].includes(name)) {
+        expect(job.if).toContain("needs.changes.result != 'success'");
+        expect(job.if).toContain("!cancelled()");
         continue;
       }
       expect(job.if, `${name} must run on every push`).toBeUndefined();

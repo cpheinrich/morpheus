@@ -1,11 +1,13 @@
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createContext, runInContext } from "node:vm";
 import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
 
 type Step = { name?: string; id?: string; if?: string; uses?: string; run?: string; env?: Record<string, string>; with?: Record<string, unknown> };
-type Workflow = { on: { workflow_call: { inputs: Record<string, { default?: unknown }> } }; jobs: Record<string, { "timeout-minutes"?: number; strategy?: { matrix?: { python?: string[] } }; steps: Step[] }> };
+type Workflow = { on: { workflow_call: { inputs: Record<string, { default?: unknown }> } }; jobs: Record<string, { "timeout-minutes"?: number; needs?: string | string[]; env?: Record<string, string>; strategy?: { matrix?: { python?: string[] } }; steps: Step[] }> };
 const root = new URL("../", import.meta.url);
 const read = (path: string) => load(readFileSync(new URL(path, root), "utf8")) as Workflow;
 const uploadPin = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a";
@@ -85,7 +87,14 @@ describe("bounded artifact integration", () => {
   it("declares actual Node24/Python Actions ABI validation and bounds each synthetic channel", () => {
     const job = read(".github/workflows/ci.yml").jobs["artifact-abi"]!;
     expect(job["timeout-minutes"]).toBe(10);
-    expect(job.strategy?.matrix?.python).toEqual(["3.9", "3.14"]);
+    expect(job.strategy).toBeUndefined();
+    expect(job.env?.UV_PYTHON).toBe("3.14");
+    expect(job.needs).toBe("changes");
+    const suites = job.steps.find(s => s.name === "Test Python 3.9 and 3.14 compatibility")!.run!;
+    expect(suites).toContain("for python in 3.9 3.14");
+    expect(suites).toContain('exit "$status"');
+    expect(job.steps.filter(s => s.uses === uploadPin)).toHaveLength(1);
+    for (const suite of ["test_stage.py", "test_ci_trace.py", "test_processing_environment.py", "test_abi_fixture.py"]) expect(suites).toContain(suite);
     expect(job.steps.find(s => s.uses?.startsWith("actions/setup-node@"))?.with?.["node-version"]).toBe("24");
     expect(job.steps.find(s => s.uses?.startsWith("astral-sh/setup-uv@"))?.with?.["enable-cache"]).toBe(false);
     const upload = job.steps.find(s => s.uses === uploadPin)!;
@@ -93,5 +102,26 @@ describe("bounded artifact integration", () => {
     expect(upload.if).toContain("steps.artifact_abi.outcome == 'success'");
     expect(upload.if).toContain("steps.artifact_abi.outputs.admitted == 'true'");
     expect(job.steps.at(-1)?.run).toContain("abi_fixture.py verify");
+  });
+  it("attempts both Python boundaries and returns failure after any install, version or suite failure", () => {
+    const script = read(".github/workflows/ci.yml").jobs["artifact-abi"]!.steps.find(s => s.name === "Test Python 3.9 and 3.14 compatibility")!.run!;
+    const suites = ["test_stage.py", "test_ci_trace.py", "test_processing_environment.py", "test_abi_fixture.py"];
+    const dir = mkdtempSync(join(tmpdir(), "artifact-python-loop-"));
+    try {
+      const uv = join(dir, "uv"), log = join(dir, "calls.jsonl");
+      writeFileSync(uv, `#!${process.execPath}\nconst fs=require('node:fs'),args=process.argv.slice(2),python=args[0]==='python'?args[2]:process.env.UV_PYTHON;fs.appendFileSync(process.env.PROBE_LOG,JSON.stringify({args,python})+'\\n');const failure=process.env.PROBE_FAILURE;const fail=python==='3.9'&&((failure==='install'&&args[0]==='python')||(failure==='version'&&args.includes('-c'))||(failure==='suite'&&args.at(-1)==='tests/artifacts/test_stage.py'));process.exit(fail?9:0);\n`);
+      chmodSync(uv, 0o700);
+      for (const failure of ["", "install", "version", "suite"]) {
+        writeFileSync(log, "");
+        const result = spawnSync("/bin/bash", ["-c", script], { env: { PATH: dir, PROBE_LOG: log, PROBE_FAILURE: failure }, encoding: "utf8" });
+        expect(result.status, result.stderr).toBe(failure ? 1 : 0);
+        const calls = readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line) as { args: string[]; python: string });
+        expect(calls.filter(c => c.args[0] === "python").map(c => c.python)).toEqual(["3.9", "3.14"]);
+        const tested = calls.filter(c => c.args.at(-1)?.startsWith("tests/artifacts/"));
+        const expected = (failure === "install" || failure === "version" ? ["3.14"] : ["3.9", "3.14"])
+          .flatMap(python => suites.map(suite => [python, `tests/artifacts/${suite}`]));
+        expect(tested.map(c => [c.python, c.args.at(-1)])).toEqual(expected);
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
