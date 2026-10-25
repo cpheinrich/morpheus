@@ -125,3 +125,40 @@ receipt/event assertions. Production `src/` and `dist/` bytes are unchanged from
 `2836e03ee67dd78a24949305920954cd183daecf6bdfe3292970853cb6c32515`.
 The revision adds contract tests, entry-manifest documentation and this record
 only; source publication, reviewer, CI and operational effects remain held.
+
+## Protected integration and conditional source release — 2026-10-25
+
+The lead agent inspected the exact source/qualification packet and conditionally
+released one initial implementation push, unlabelled draft PR, CI wait and one
+fresh high-risk independent review, with the author owning findings, record,
+CI and protected merge. The same $5 maximum and eight full/four metadata event
+ceilings remain held; there is no new reservation or settlement.
+
+Integrated actual protected workflow correction `30d412a7e4194b502088fc359c72c88b1d78f964`
+(PR517), which already includes PR511. Git's automatic merge reproduced tree
+`2672b5956e63871c5cf8b23a09f9c62c26499311` exactly; no conflict or semantic
+resolution was needed. Diagnostic runtime bytes and all three protected workflow
+payloads are preserved. The existing development post-merge hook installed the
+current Morpheus CLI; no frozen delivery runtime, service or native owner was changed.
+
+Requalification includes actionlint 1.7.12's actual local checker and regression
+tests. The protected CI input adds a pinned, checksummed Linux X64 checker within
+the existing required Node job, with a three-minute step and 90-second download
+limit. It adds no runner job, cache, artifact or model call. Standard public
+runner labels, one-day 66 MiB per-event artifact ceiling and actual 10 GiB cache
+limit preserve the previously qualified conservative $0.704296875 storage maximum.
+
+Before marking the draft ready, wait for the record head's full CI and all
+metadata runs to finish, then wait separately for the fresh ready-event CI.
+This preserves executed required checks instead of cancelling them through
+overlapping readiness events. CI/review completion remains outstanding here.
+No actual diagnostic note or operational host/CD-provider/CD-ledger/native-owner
+effect is released.
+
+The integrated qualification passed 380 tests in ten focused files: the six CD
+files above plus workflow-expression, artifact-workflow, workflow and CI-scope
+tests. Real `actionlint -shellcheck= -pyflakes=`, typecheck, lint, compile,
+PM index/validation, diff checks and exact protected-payload preservation checks
+passed. No local full suite was run. Protected PR517's main CI run
+`40198124460` completed successfully, including the actionlint-enabled Node job
+and browser/artifact checks, before this source's first independent review.
