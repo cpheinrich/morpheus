@@ -18,3 +18,5 @@ export const hqInspect = handlers.inspect;
 export const hqClaim = handlers.claim;
 export const hqBeginApply = handlers.beginApply;
 export const hqComplete = handlers.complete;
+export const hqPublish = handlers.publish;
+export const hqSnapshot = handlers.snapshot;

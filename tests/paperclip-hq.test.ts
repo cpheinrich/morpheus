@@ -100,6 +100,16 @@ describe('HQ command transport', () => {
 });
 
 describe('outbound connector', () => {
+  it('finishes the admitted action and stops claiming further work after shutdown', async () => {
+    const f = fixture(), dir = await directory(), shutdown = new AbortController();
+    await f.backend.enqueue(admin, f.input);
+    await f.backend.enqueue(admin, { ...f.input, operationId: '33333333-3333-4333-8333-333333333333' });
+    let calls = 0;
+    await createConnector({ directory: dir, companyId, controllerId: settings.controllerId, connectorId: 'mbp', backend: (method, args) => (f.backend[method] as any)(machine, args), bridge: async () => { calls++; shutdown.abort(); return { ok: true }; } }).tick(shutdown.signal);
+    expect(calls).toBe(1);
+    expect(f.data.get(operationId)!.state).toBe('completed');
+    expect(f.data.get('33333333-3333-4333-8333-333333333333')!.state).toBe('pending');
+  });
   it('delivers accepted uppercase and lowercase UUIDs once, including case-only aliases on a Mac', async () => {
     const f = fixture(), dir = await directory();
     const upper = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA', lower = upper.toLowerCase();

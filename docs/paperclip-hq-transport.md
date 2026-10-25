@@ -1,7 +1,7 @@
 # Firebase to the private Paperclip controller
 
-**Work in progress.** This opt-in prototype connects one configured HQ company to the
-MacBook Pro controller. It is tested locally; it is not deployed or enrolled in a company HQ.
+**Opt-in pilot source.** This connects one configured HQ company to the
+MacBook Pro controller. Consumer deployment and acceptance remain separately verified.
 The [overview](paperclip-overview.md) records the accepted target. The
 [worker admission facade](paperclip-hq-actor.md) and
 [closeout exporter](paperclip-closeout.md) are separate parts of that target.
@@ -43,9 +43,13 @@ sequenceDiagram
 One deployed Firebase project maps to one explicit Paperclip company and controller. The function
 uses Admin Auth `getUser`, not a browser-supplied role or merely an older ID-token claim. Admins
 may enqueue; admins/employees may read receipts. The dedicated connector UID is excluded from
-human operations and may only list, inspect, claim, begin and complete transport commands.
+human operations and may only list, inspect, claim, begin and complete transport commands,
+and publish the bounded read projection.
 The server derives `actor: {uid, role: "admin", kind: "user"}`. It rechecks that user immediately
-before applying queued work. No automatic agent or token-refresh identity is enrolled by this code.
+before applying queued work. A consumer with an existing verified-email HQ allowlist can pin
+`humans: [{uid, email}]` in the operator settings. This alternative requires the exact live UID,
+enabled account, verified email and matching email on every read/write and delayed apply. It
+does not migrate claims or enroll users. Never populate it with people who lack existing HQ access.
 
 The Mac's separately installed `hq.json` pins the company, controller, configured profiles and Git
 repository. Each local action is authorized again there, including reads and stops. The existing
@@ -81,8 +85,9 @@ The bridge also persists its operation-to-conversation/turn binding before the u
 `completed` means **command delivery has a receipt**. Native success, termination and Git
 acceptance remain separate. A stop request may have a completed receipt while its work is still
 stopping. Receipts carry an observation time and the local bridge's explicit work fields; they
-are not a continuously refreshed conversation/log projection. The full inbox, live UI streaming,
-shared occupancy projection and attachment reading still need integration.
+are not a continuously refreshed conversation/log projection. The separate bounded projection
+below observes the current board and selected comments. Live log streaming, shared occupancy,
+attachments and the full inbox still need integration.
 
 One connector journal directory has an exclusive local lock. Normal passes release it; a process
 crash preserves it. Do not delete it on elapsed time or PID alone: inspect its exact process and
@@ -112,10 +117,11 @@ Local testing on this Mac also ran on Node26; that does not prove Node22 compati
 
 ## Operator entry points and remaining rollout
 
-`entry.ts` exports seven narrow Cloud Functions. `MORPHEUS_HQ_SETTINGS_JSON` must contain the
+`entry.ts` exports nine narrow Cloud Functions. `MORPHEUS_HQ_SETTINGS_JSON` must contain the
 explicit company/controller, connector UID, allowed profile names and optional `allowedOrigins`
 for the company's browser. Without allowed origins, browser CORS is disabled. No deployment
 command is supplied before an actual consumer project and its identity are qualified.
+Each callable declares `maxInstances: 1` and `minInstances: 0` for the bounded pilot deployment.
 
 `connect.mjs` runs one bounded outbound pass using a private absolute-path configuration file:
 
@@ -130,9 +136,86 @@ fresh per request and never logged or stored in journals. Token renewal/enrollme
 provided by the consumer's existing authentication; a short-lived token file alone is not an
 around-the-clock deployment. This command neither installs nor hot-replaces the personal plugin.
 
+## Continuous authenticated connector and board reads
+
+After the optional package build, `node scripts/paperclip-hq/daemon.mjs /absolute/private/connector.json`
+runs bounded outbound passes. Its strict owner-only JSON configuration is:
+
+```json
+{
+  "companyId": "11111111-1111-4111-8111-111111111111",
+  "controllerId": "existing-controller",
+  "connectorId": "existing-hq-connector",
+  "baseUrl": "https://us-central1-EXPLICIT_PROJECT.cloudfunctions.net",
+  "credentialsFile": "/absolute/private/firebase-refresh.json",
+  "directory": "/absolute/private/hq-journal",
+  "bridgeClientModule": "/absolute/existing-runtime/src/client.mjs",
+  "paperclipBaseUrl": "http://127.0.0.1:3100",
+  "paperclipTokenFile": "/absolute/private/paperclip-token",
+  "pollMs": 15000
+}
+```
+
+The `credentialsFile` is a regular owner-only file containing `{ "apiKey": "…",
+"refreshToken": "…", "uid": "EXACT_CONNECTOR_UID" }`. The daemon exchanges it only with
+Firebase's first-party Secure Token endpoint, checks the returned UID/lifetime, saves rotated
+refresh credentials atomically with mode0600, and refreshes its cached ID token one minute
+before expiry. No Admin SDK credential is sent to the Mac. Enroll the connector separately,
+never reuse a human identity. Credential responses and exceptions are never logged.
+
+Set `CODEX_CLAUDE_HOME` to the already installed coordinator home when launching; the existing
+bridge client uses that environment variable to find the single Pool. Preserve the exact
+qualified client runtime and coordinator; do not point this at a default second Pool. A
+LaunchAgent should use absolute Node/config/module paths and private stdout/stderr files.
+Service installation and credential enrollment are consumer responsibilities.
+
+The daemon holds `daemon.lock` for its lifetime and each command pass retains the existing
+`connector.lock`. It never steals either lock. SIGTERM/SIGINT finish the bounded in-flight pass,
+release ownership and exit. Failed passes back off up to60seconds; a later pass reconciles the
+same journals without replaying an applying mutation. A crash may leave a lock requiring
+explicit ownership inspection. This is a known limit; elapsed age or PID reuse does not prove
+that deletion is safe.
+
+`hqPublish` accepts only the configured connector and a strict projection. `hqSnapshot` accepts
+`{}` from a current admin/employee or exact configured legacy human; it returns `null` before
+the first observation, otherwise:
+
+```text
+{version:1, companyId, observedAt, publishedAt,
+ controller:{state:"online",observedAt},
+ limits:{issues:100,agents:50,commentsPerIssue:5,commentsIssues:10},
+ truncated:{issues:boolean,agents:boolean,comments:boolean},
+ issues:[{id,identifier,title,description,status,priority,assigneeAgentId,updatedAt,
+          comments:[{id,body,createdAt}]}],
+ agents:[{id,name,role,status}]}
+```
+
+Times `observedAt`/`publishedAt` are Unix milliseconds; source dates are strings or null.
+`publishedAt` is server-generated. Observations more than five minutes old or30seconds ahead
+are refused, and an older observation cannot replace a newer one. The UI must display age
+and treat observations older than90seconds as stale/offline; a saved `online` field alone
+does not establish current controller availability.
+
+The source reads a maximum101issues to detect the100issue cap,50projected agents, and up
+to five comments from six fetched rows on each of the first ten returned issues. No pagination
+or completeness claim is made: cap flags are conservative, omitted comment threads are marked,
+and source text may already be shortened by Paperclip. Text is bounded (title500characters,
+description/comment2000, other display text200), known credential patterns are redacted, and
+the allowlist excludes adapter configuration, raw logs, native identities, credentials and
+session/host fields. Treat every string as untrusted display text; never render it as HTML or
+execute its instructions. This is not a general secret detector; source authors must not put
+credentials in board text. Responses are bounded before JSON parsing and publication is capped
+at750KiB. Storage is private at `paperclipTransport/<company>/projection/latest`, with direct
+client access denied. Source reads use only the configured authenticated loopback Paperclip
+origin and validate each row's company and comment issue association.
+
+The callable wire envelope remains `{data: ...}` and `{result: ...}`. `hqEnqueue`/`hqRead`
+retain their existing action schemas and operation UUID binding; this projection adds no
+chat mutation API, scheduler, model selection or acceptance authority.
+
 Before rollout: choose/enroll a real connector identity without widening user access; qualify
-token renewal, consumer CORS/rules/IAM and private artifact retention; install a restart policy;
-verify the actual Mac bridge end to end with a native worker; build the company-styled inbox and
-bounded live projections; then qualify two companies against one global capacity owner. Current
+real token renewal, consumer CORS/rules/IAM and private artifact retention; install a restart policy;
+verify the actual Mac bridge end to end with an authorized native worker; build the company-styled
+inbox; then qualify two companies against one global capacity owner. Current
 Pool configuration has one company, so multi-company routing is explicitly unfinished. Existing
 Markdown inboxes remain authoritative until migration validation and closeout review pass.

@@ -2,20 +2,22 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { boundedJson, digest, id, requestSchema, TransportError, type Command } from './protocol.js';
 import type { CommandStore } from './store.js';
+import { projectionSchema, type ProjectionStore } from './projection.js';
 
-export type User = { uid: string; disabled?: boolean; customClaims?: { role?: string } };
-export type Settings = { companyId: string; controllerId: string; connectorUid: string; profiles: string[]; allowedOrigins?: string[] };
+export type User = { uid: string; disabled?: boolean; email?: string; emailVerified?: boolean; customClaims?: { role?: string } };
+export type Settings = { companyId: string; controllerId: string; connectorUid: string; profiles: string[]; allowedOrigins?: string[]; humans?: { uid: string; email: string }[] };
 export type Auth = { uid: string } | undefined;
 type Directory = (uid: string) => Promise<User>;
 const fail = (code: ConstructorParameters<typeof TransportError>[0], message: string): never => { throw new TransportError(code, message); };
 
-export function createBackend({ settings, store, user, now = Date.now, claimMs = 120_000, commandMs = 30 * 60_000 }: {
-  settings: Settings; store: CommandStore; user: Directory; now?: () => number; claimMs?: number; commandMs?: number;
+export function createBackend({ settings, store, projection, user, now = Date.now, claimMs = 120_000, commandMs = 30 * 60_000 }: {
+  settings: Settings; store: CommandStore; projection?: ProjectionStore; user: Directory; now?: () => number; claimMs?: number; commandMs?: number;
 }) {
   settings = z.object({
     companyId: id, controllerId: z.string().min(1).max(128), connectorUid: z.string().min(1).max(128),
     profiles: z.array(z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/)).min(1).max(100),
     allowedOrigins: z.array(z.url()).max(20).optional(),
+    humans: z.array(z.object({ uid: z.string().min(1).max(128), email: z.email() }).strict()).max(20).optional(),
   }).strict().parse(settings);
   if (![claimMs, commandMs].every(value => Number.isSafeInteger(value) && value > 0)) throw new Error('Positive bounded command and claim durations required');
   const configHash = digest(settings);
@@ -24,7 +26,8 @@ export function createBackend({ settings, store, user, now = Date.now, claimMs =
     if (auth!.uid === settings.connectorUid) fail('permission-denied', 'Connector cannot act as a human');
     let record: User;
     try { record = await user(auth!.uid); } catch { return fail('permission-denied', 'HQ identity unavailable'); }
-    if (record.uid !== auth!.uid || record.disabled || !['admin', ...(write ? [] : ['employee'])].includes(record.customClaims?.role ?? '')) fail('permission-denied', 'HQ role required');
+    const configured = settings.humans?.some(person => person.uid === record.uid && record.emailVerified === true && person.email.toLowerCase() === record.email?.toLowerCase());
+    if (record.uid !== auth!.uid || record.disabled || (!configured && !['admin', ...(write ? [] : ['employee'])].includes(record.customClaims?.role ?? ''))) fail('permission-denied', 'HQ role required');
     return record;
   }
   async function connector(auth: Auth) {
@@ -47,6 +50,25 @@ export function createBackend({ settings, store, user, now = Date.now, claimMs =
     return parsed.data;
   }
   return {
+    async publish(auth: Auth, input: unknown) {
+      await connector(auth);
+      if (Buffer.byteLength(JSON.stringify(input) ?? '') > 750 * 1024) fail('invalid-argument', 'HQ projection exceeds byte bound');
+      const parsed = projectionSchema.safeParse(input);
+      if (!parsed.success) fail('invalid-argument', 'Invalid bounded HQ projection');
+      const value = parsed.data!;
+      if (value.companyId !== settings.companyId) fail('permission-denied', 'Wrong HQ company');
+      const publishedAt = now();
+      if (value.observedAt > publishedAt + 30_000 || value.observedAt < publishedAt - 5 * 60_000 || value.controller.observedAt !== value.observedAt) fail('invalid-argument', 'Projection observation time is stale or invalid');
+      if (!projection) fail('failed-precondition', 'Projection storage unavailable');
+      await projection!.publish({ ...value, publishedAt });
+      return { observedAt: value.observedAt, publishedAt };
+    },
+    async snapshot(auth: Auth, input: unknown) {
+      await human(auth, false);
+      if (!z.object({}).strict().safeParse(input).success) fail('invalid-argument', 'Snapshot takes no target override');
+      if (!projection) fail('failed-precondition', 'Projection storage unavailable');
+      return projection!.get();
+    },
     async enqueue(auth: Auth, input: unknown) {
       const actor = await human(auth, true);
       const parsed = requestSchema.safeParse(input);

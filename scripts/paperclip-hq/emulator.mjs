@@ -8,6 +8,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { callableClient } from './lib/client.js';
 import { createConnector } from './lib/connector.js';
+import { projectionLimits } from './lib/projection.js';
 
 const projectId = 'demo-morpheus-hq';
 if (process.env.GCLOUD_PROJECT !== projectId || process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:19200' || process.env.FIREBASE_AUTH_EMULATOR_HOST !== '127.0.0.1:19199') throw new Error('This test only runs on the dedicated demo emulators');
@@ -27,6 +28,24 @@ async function account(uid, role) {
 
 test('real Auth + Functions + Firestore transport and outbound connector', async () => {
   const admin = await account('chris', 'admin'), staff = await account('staff', 'employee'), connector = await account('connector');
+  const legacy = await account('legacy');
+  const snapshot = { version: 1, companyId, observedAt: Date.now(), controller: { state: 'online', observedAt: 0 }, limits: projectionLimits,
+    truncated: { issues: false, agents: false, comments: false }, issues: [], agents: [] };
+  snapshot.controller.observedAt = snapshot.observedAt;
+  assert.equal(await admin.call('snapshot'), null);
+  await assert.rejects(admin.call('publish', snapshot), /403/);
+  await assert.rejects(legacy.call('snapshot'), /403/);
+  await auth.updateUser('legacy', { emailVerified: true });
+  const published = await connector.call('publish', snapshot);
+  assert.equal(published.observedAt, snapshot.observedAt);
+  assert.deepEqual(await legacy.call('snapshot'), { ...snapshot, publishedAt: published.publishedAt });
+  assert.deepEqual(await staff.call('snapshot'), await legacy.call('snapshot'));
+  await assert.rejects(connector.call('snapshot'), /403/);
+  await assert.rejects(connector.call('publish', { ...snapshot, observedAt: snapshot.observedAt - 1, controller: { ...snapshot.controller, observedAt: snapshot.observedAt - 1 } }), /500/);
+  await auth.updateUser('legacy', { disabled: true });
+  await assert.rejects(legacy.call('snapshot'), /403/);
+  const directProjection = await fetch(`http://127.0.0.1:19200/v1/projects/${projectId}/databases/(default)/documents/paperclipTransport/${companyId}/projection/latest`, { headers: { authorization: `Bearer ${admin.token}` } });
+  assert.equal(directProjection.status, 403, 'projection is callable-only even for HQ admins');
   const operationId = '22222222-2222-4222-8222-222222222222';
   const input = { operationId, companyId, action: 'start', args: { profile: 'codex-mini', prompt: 'Emulator task' } };
   const command = await admin.call('enqueue', input);
@@ -60,5 +79,5 @@ test('real Auth + Functions + Firestore transport and outbound connector', async
     await assert.rejects(connector.call('beginApply', { operationId: revokedId, fence: claim.fence }), /403/);
     assert.equal((await staff.call('read', { operationId: revokedId })).state, 'rejected');
   } finally { await rm(dir, { recursive: true, force: true }); }
-  console.log('Verified demo-only authenticated enqueue, duplicate refusal, rules denial, one fake bridge invocation, receipt, and revoked actor. No native provider launched.');
+  console.log('Verified demo-only projection authorization, live legacy identity, monotonic publication, direct read denial, authenticated enqueue, duplicate refusal, one fake bridge invocation, receipt, and revoked actor. No native provider launched.');
 });

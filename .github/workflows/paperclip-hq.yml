@@ -3,7 +3,7 @@ on:
   pull_request:
     paths:
       - 'scripts/paperclip-hq/**'
-      - 'tests/paperclip-hq.test.ts'
+      - 'tests/paperclip-hq*.test.ts'
       - 'plugins/codex-claude/src/pool*.mjs'
       - 'plugins/codex-claude/src/service.mjs'
       - 'plugins/codex-claude/tests/pool-fixtures.mjs'
@@ -15,7 +15,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/paperclip-hq/**'
-      - 'tests/paperclip-hq.test.ts'
+      - 'tests/paperclip-hq*.test.ts'
       - 'plugins/codex-claude/src/pool*.mjs'
       - 'plugins/codex-claude/src/service.mjs'
       - 'plugins/codex-claude/tests/pool-fixtures.mjs'
