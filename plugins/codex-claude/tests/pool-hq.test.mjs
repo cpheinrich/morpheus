@@ -185,3 +185,25 @@ test("a crash after journaling but before upstream submission remains observable
   assert.equal(second.operation.turn, 1);
   assert.equal(fx.paperclip.count("POST", /\/issues$/), 0);
 });
+
+test("desktop and HQ follow-ups on separate conversations share one profile allocation guard", async (t) => {
+  const fx = await setup(t);
+  const hq = await fx.start();
+  await finish(hq.work.conversationId);
+  fx.pool.manager.snapshot = async () => ({ cwd: fx.profile.workspace, model: "gpt-5.6-sol", reasoningEffort: "medium", sandbox: { type: "dangerFullAccess" }, approvalPolicy: "never" });
+  const desktop = await fx.pool.start({ threadId: "desktop-fixture-task", profile: fx.name, prompt: "desktop first" });
+  await finish(desktop.conversationId);
+  let release, entered;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const reached = new Promise((resolve) => { entered = resolve; });
+  const original = fx.pool.continueTurn.bind(fx.pool);
+  fx.pool.continueTurn = async (...args) => { entered(); await gate; return original(...args); };
+  const next = fx.call("followup", { conversationId: hq.work.conversationId, operationId: randomUUID(), prompt: "HQ continuation" });
+  await reached;
+  try {
+    await assert.rejects(fx.pool.followup({ conversationId: desktop.conversationId, threadId: "desktop-fixture-task", prompt: "racing desktop continuation" }), /Another pool turn is being allocated/);
+  } finally { release(); }
+  assert.equal((await next).work.turn, 2);
+  assert.equal((await fx.pool.status({ conversationId: desktop.conversationId })).turn, 1);
+  assert.equal(fx.paperclip.count("POST", /\/comments$/), 1);
+});

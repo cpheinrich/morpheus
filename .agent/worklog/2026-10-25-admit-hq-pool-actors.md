@@ -1,5 +1,5 @@
 ---
-tags: [engineering, devops]
+tags: [engineering, devops, infrastructure]
 roadmap: MO-26-10-25-03.51.24
 agent: codex
 ---
@@ -61,7 +61,9 @@ passed. Replaced an artificial allocation-set assertion with an actual blocked s
   passed16/16 at that checkpoint:5 dedicated HQ tests plus11 existing desktop Pool tests.
   Existing Pool tests use fixture executables only.
 - Added actual desktop/HQ admission-race and pre-submission failure cases; dedicated HQ
-  suite passed7/7. The final run after preserving exact prompt whitespace also passed7/7.
+  suite passed7/7. The run after preserving exact prompt whitespace also passed7/7.
+  Parent then requested the mixed desktop/HQ follow-up race explicitly; added it before
+  independent review. The final dedicated suite passed8/8.
 - `node --test plugins/codex-claude/tests/pool-hq.test.mjs plugins/codex-claude/tests/manager.test.mjs plugins/codex-claude/tests/pool-units.test.mjs plugins/codex-claude/tests/pool-review.test.mjs plugins/codex-claude/tests/pool-protocol.test.mjs`
   passed45/45, covering the directly affected Manager and Pool policy/protocol dependents.
 - `node plugins/codex-claude/scripts/check.mjs`, `pnpm typecheck`, `pnpm compile`,
