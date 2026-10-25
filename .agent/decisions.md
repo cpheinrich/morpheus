@@ -8,6 +8,18 @@ Considered Commander15.0.0 (registry modified2026-09-02, no runtime dependencies
 Node's existing `parseArgs` handles two fixed qualification modes without a new
 CLI framework. The admission/evidence harness is domain-specific and adds no package.
 
+**Paperclip Markdown views derive from exact canonical closeouts** — 2026-10-25.
+The optional operator prototype keeps its frozen canonical JSON identity and emits
+an adjacent deterministic view with inert display fences and digest-only local
+links. Preserve earlier records/views/blobs with a bounded exact-commit Git object
+comparison; Git storage alone is not append-only. Existing JSON-only records may
+gain views without changing their identity. This does not establish live-source
+atomicity, completeness, acceptance authority or PM completion.
+Considered marked 18.1.1 (modified 2026-10-12; no runtime dependencies) and simple-git
+4.0.2 (modified 2026-09-26; five direct dependencies). Fixed domain Markdown emission
+and native Git object/tree operations fit the existing Node/Zod/crypto boundary;
+no Markdown parsing engine, generic Git wrapper or new dependency is needed.
+
 Choices Chris made and why. Distilled from status replies — the archive in `status/` is the
 raw record; this is the part worth reading.
 
