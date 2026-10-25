@@ -92,9 +92,13 @@ has disappeared. A same-UID adversary is outside the snapshot guarantee.
 
 ## CI and acceptance limits
 
-The `artifact-abi` job has a ten-minute ceiling per Python 3.9/3.14 leg, disables its
-new uv cache, selects actual Node 24, runs focused filesystem/environment tests, and
-uploads a distinct fixed synthetic fixture through the exact Node 24 upload action.
+The `artifact-abi` job has one ten-minute ceiling, disables its uv cache, selects
+actual Node 24 and runs all four filesystem/environment/fixture suites under both
+Python 3.9 and 3.14 on one runner. It attempts both versions even after a failure,
+then fails if either failed. After both pass, Python 3.14 stages one fixed synthetic
+fixture for the exact Node 24 upload action. The transport/readback runs once:
+the fixed bytes do not define a different Node upload ABI per Python interpreter.
+PR selection follows [CI scope](ci-scope.md); every main push runs the job.
 Each initiated fixture's envelope is at most 2 MiB and retention is one day. A pinned
 archive-compatible normal downloader (`d3f86a106a0bac45b974a628896c90dbdf5c8093`,
 whose action metadata declares Node 20)

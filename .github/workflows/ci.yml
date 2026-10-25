@@ -14,7 +14,30 @@ on:
     types: [opened, reopened, synchronize, ready_for_review]
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      node: ${{ steps.scope.outputs.node }}
+      browser: ${{ steps.scope.outputs.browser }}
+      bridge: ${{ steps.scope.outputs.bridge }}
+      artifacts: ${{ steps.scope.outputs.artifacts }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - name: Select checks from the complete PR diff
+        id: scope
+        run: node scripts/ci-scope.mjs
+
   codex-claude:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.bridge != 'false') }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -30,14 +53,20 @@ jobs:
           pnpm test
 
   node:
+    needs: changes
+    # Always call the reusable workflow: skipping this caller loses node / check.
+    if: ${{ !cancelled() }}
     uses: ./.github/workflows/node-ci.yml
     with:
+      run-check: ${{ needs.changes.result != 'success' || needs.changes.outputs.node != 'false' }}
       run-lint: true
       build-script: compile
       verify-build-clean: true
       build-output-directory: dist
 
   qa-browser:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -67,19 +96,17 @@ jobs:
           compression-level: 0
           overwrite: false
 
-  # This is synthetic transport qualification, never native test evidence.
+  # Both Python versions in one runner; one synthetic transport qualification.
   artifact-abi:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.artifacts != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
       actions: read
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ['3.9', '3.14']
     env:
-      UV_PYTHON: ${{ matrix.python }}
+      UV_PYTHON: '3.14'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -88,15 +115,23 @@ jobs:
       - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a
         with:
           enable-cache: false
-      - name: Qualify actual interpreter and focused artifact tests
+      - name: Qualify actual Node runtime
         run: |
           set -euo pipefail
           node -e 'if (process.versions.node.split(".")[0] !== "24") process.exit(1); console.log(JSON.stringify({node:process.versions.node,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,sha:process.env.GITHUB_SHA,job:process.env.GITHUB_JOB,runner:process.env.RUNNER_NAME}));'
-          uv python install "$UV_PYTHON"
-          uv run --no-project python -I -S -B tests/artifacts/test_stage.py
-          uv run --no-project python -I -S -B tests/artifacts/test_ci_trace.py
-          uv run --no-project python -I -S -B tests/artifacts/test_processing_environment.py
-          uv run --no-project python -I -S -B tests/artifacts/test_abi_fixture.py
+      - name: Test Python 3.9 and 3.14 compatibility
+        run: |
+          set -uo pipefail
+          status=0
+          for python in 3.9 3.14; do
+            if ! uv python install "$python"; then status=1; continue; fi
+            export UV_PYTHON="$python"
+            if ! uv run --no-project python -I -S -B -c 'import os, sys; assert ".".join(map(str, sys.version_info[:2])) == os.environ["UV_PYTHON"]; print(sys.version)'; then status=1; continue; fi
+            for suite in test_stage.py test_ci_trace.py test_processing_environment.py test_abi_fixture.py; do
+              uv run --no-project python -I -S -B "tests/artifacts/$suite" || status=1
+            done
+          done
+          exit "$status"
       - name: Stage fixed 2 MiB ABI fixture
         id: artifact_abi
         run: uv run --no-project python -I -S -B tests/artifacts/abi_fixture.py prepare
@@ -104,7 +139,7 @@ jobs:
         if: ${{ success() && steps.artifact_abi.outcome == 'success' && steps.artifact_abi.outputs.admitted == 'true' && steps.artifact_abi.outputs.has-files == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: artifact-abi-fixture-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.python }}
+          name: artifact-abi-fixture-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ steps.artifact_abi.outputs.payload-root }}
           if-no-files-found: error
           retention-days: 1
@@ -114,7 +149,7 @@ jobs:
       - name: Download through normal archive-compatible downloader
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: artifact-abi-fixture-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.python }}
+          name: artifact-abi-fixture-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/artifact-abi-readback
       - name: Verify complete independent fixture bytes
         run: uv run --no-project python -I -S -B tests/artifacts/abi_fixture.py verify
