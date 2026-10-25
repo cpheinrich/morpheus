@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { call } from "../src/client.mjs";
 import { delegatedMarker } from "../src/config.mjs";
+import { codexMethods } from "./tool-contract.mjs";
 const server = new McpServer({ name: "claude-codex", version: "0.1.0" });
 const session = {
   sessionId: z
@@ -74,7 +75,8 @@ const specs = {
     { ...session, owner: z.enum(["claude", "codex"]) },
   ],
 };
-for (const [name, [method, description, inputSchema]] of Object.entries(specs))
+for (const name of codexMethods) {
+  const [method, description, inputSchema] = specs[name];
   server.registerTool(
     `codex_${name}`,
     { description, inputSchema },
@@ -95,4 +97,5 @@ for (const [name, [method, description, inputSchema]] of Object.entries(specs))
       }
     },
   );
+}
 await server.connect(new StdioServerTransport());
