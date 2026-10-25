@@ -120,9 +120,9 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     var root = dialogs.length ? dialogs[dialogs.length - 1] : doc.querySelector("main,[role=main]") || doc.body;
     var kind = dialogs.length ? (root.matches("dialog,[role=dialog],[aria-modal=true]") ? "dialog" : "view") : "page";
     var heading = root.querySelector("h1,h2,[role=heading]");
-    var entity = root.querySelector("[data-entity-id],[data-artist-id]");
     // View identity excludes transient filters, search, loading and video state.
-    var identity = JSON.stringify([kind, describe(root).attributes, heading ? semanticText(heading) : "", entity ? describe(entity).attributes : {}]);
+    // Entity identifiers belong to the view root; a descendant may just be the first filtered card.
+    var identity = JSON.stringify([kind, describe(root).attributes, heading ? semanticText(heading) : ""]);
     return { root: root, kind: kind, identity: identity.slice(0, 2000) };
   }
   function captureContext(el, createdAt) {
@@ -435,6 +435,7 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
   var storeKey = "morpheus-qa:v2:" + PROJECT;
   var restored = false;
   var draftStorageError = false;
+  var legacyConsumed = {}, legacyImportWarning = "", draftRevision = 0, legacyAttempt = null;
 
   function frameEl() { return shell ? document.getElementById("morpheus-qa-site") : null; }
   function siteWindow() {
@@ -444,24 +445,68 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
   }
   function pagePath(win) { return win.location.pathname + win.location.search; }
 
-  function setStatus(text, kind) { statusEl.textContent = (text || "") + (draftStorageError ? " Draft not saved: keep this tab open and Send before reloading." : ""); statusEl.className = "status" + (kind ? " " + kind : ""); }
+  function setStatus(text, kind) { statusEl.textContent = (text || "") + (draftStorageError ? " Draft not saved: keep this tab open and Send before reloading." : "") + (legacyImportWarning ? " " + legacyImportWarning : ""); statusEl.className = "status" + (kind ? " " + kind : ""); }
   function persist() {
-    if (!storeKey) return;
+    if (!storeKey) return false;
     try {
-      var data = JSON.stringify({ pins: pins.map(function (p) { return { id: p.id, n: p.n, anchor: p.anchor, text: p.text, byPage: !!p.byPage, createdAt: p.createdAt, webContext: p.webContext, identity: p.identity }; }), nextN: nextN });
+      var data = JSON.stringify({ pins: pins.map(function (p) { return { id: p.id, n: p.n, anchor: p.anchor, text: p.text, byPage: !!p.byPage, createdAt: p.createdAt, webContext: p.webContext, identity: p.identity }; }), nextN: nextN, legacyConsumed: legacyConsumed });
       if (new Blob([data]).size > 262144) throw new Error("Draft limit reached");
       sessionStorage.setItem(storeKey, data);
       draftStorageError = false;
-    } catch (e) { draftStorageError = true; setStatus("Draft could not be saved.", "err"); }
+      draftRevision++; return true;
+    } catch (e) { draftStorageError = true; setStatus("Draft could not be saved.", "err"); return false; }
+  }
+  function restoredPin(p) {
+    var anchor = JSON.parse(JSON.stringify(p.anchor));
+    if (anchor.page && anchor.page.url) { try { anchor.page.url = safeUrl({ location: new URL(anchor.page.url) }); } catch (e) { anchor.page.url = "unknown legacy URL"; } }
+    return { id: p.id, n: p.n, anchor: anchor, text: String(p.text || ""), el: null, byPage: !!p.byPage, createdAt: p.createdAt, webContext: p.webContext, identity: p.identity };
+  }
+  function importLegacy() {
+    var key = "morpheus-qa:" + pagePath(site.win), raw;
+    try { raw = sessionStorage.getItem(key); } catch (e) { return; }
+    if (legacyAttempt && legacyAttempt.key === key && legacyAttempt.raw === raw && legacyAttempt.revision === draftRevision) return;
+    legacyImportWarning = "";
+    if (raw) {
+      try {
+        var saved = JSON.parse(raw);
+        if (!saved || !Array.isArray(saved.pins) || !saved.pins.length) return;
+        // Give the intact source an opaque identity before importing. A durable consumed-index
+        // record prevents replay even if cleanup fails or the imported comment is later sent.
+        if (!/^[A-Za-z0-9-]{8,64}$/.test(saved.migrationId || "")) {
+          saved.migrationId = "legacy-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+          sessionStorage.setItem(key, JSON.stringify(saved));
+          raw = sessionStorage.getItem(key);
+        }
+        var id = saved.migrationId, consumed = legacyConsumed[id] || [], changed = false;
+        legacyConsumed[id] = consumed;
+        for (var i = 0; i < saved.pins.length; i++) {
+          if (consumed.indexOf(i) >= 0) continue;
+          var source = saved.pins[i];
+          if (!source || !source.anchor || typeof source.n !== "number" || pins.length >= 30) break;
+          var p = restoredPin(source); p.id = id + "-" + i; p.n = nextN++;
+          pins.push(p); consumed.push(i);
+          // Persist each admitted comment and its replay guard before removing any source data.
+          if (!persist()) { pins.pop(); consumed.pop(); nextN--; persist(); break; }
+          changed = true;
+        }
+        if (consumed.length === saved.pins.length) {
+          if (persist()) sessionStorage.removeItem(key);
+        } else legacyImportWarning = "Legacy draft retained: Send/delete current comments to make room, then return to this route.";
+      } catch (e) { legacyImportWarning = "Legacy draft retained: browser storage could not complete migration. Keep this tab open."; }
+      if (changed) render();
+    }
+    legacyAttempt = { key: key, raw: raw, revision: draftRevision };
+    if (legacyImportWarning) setStatus("", "err");
   }
   function restore() {
     if (restored) return;
     restored = true;
     pins = []; nextN = 1; focusedId = null;
     try {
-      var saved = JSON.parse(sessionStorage.getItem(storeKey) || sessionStorage.getItem("morpheus-qa:" + pagePath(site.win)) || "null");
+      var saved = JSON.parse(sessionStorage.getItem(storeKey) || "null");
+      if (saved && saved.legacyConsumed && typeof saved.legacyConsumed === "object") legacyConsumed = saved.legacyConsumed;
       if (saved && saved.pins && saved.pins.length) {
-        pins = saved.pins.slice(0, 30).filter(function (p) { return p && p.anchor && typeof p.n === "number"; }).map(function (p) { if (p.anchor.page && p.anchor.page.url) { try { p.anchor.page.url = safeUrl({ location: new URL(p.anchor.page.url) }); } catch (e) { p.anchor.page.url = "unknown legacy URL"; } } return { id: p.id, n: p.n, anchor: p.anchor, text: String(p.text || "").slice(0, 8000), el: null, byPage: !!p.byPage, createdAt: p.createdAt, webContext: p.webContext, identity: p.identity }; });
+        pins = saved.pins.slice(0, 30).filter(function (p) { return p && p.anchor && typeof p.n === "number"; }).map(restoredPin);
         nextN = Math.max(saved.nextN || 1, pins.reduce(function (m, p) { return Math.max(m, p.n + 1); }, 1));
         pins.forEach(function (p) {
           if (!p.webContext || !p.webContext.image) return;
@@ -660,7 +705,7 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     win.addEventListener("scroll", follow, true); win.addEventListener("resize", follow);
     try { new win.MutationObserver(function () { follow(); }).observe(doc.documentElement, { subtree: true, childList: true, attributes: true }); } catch (e) { /* detached */ }
     setMode(commenting);
-    restore(); layout(); applyTheme(); render();
+    restore(); importLegacy(); layout(); applyTheme(); render();
     if (shell) syncAddress(win);
   }
   /** The shell's address bar and title follow the framed page, so a reload returns to it. */
@@ -681,6 +726,7 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     if (win.location.protocol !== location.protocol) return;
     if (!site || site.doc !== doc) { if (doc.readyState !== "loading" && doc.documentElement) attach(win); return; }
     follow();
+    importLegacy();
     if (shell) syncAddress(win);
     lastSiteUrl = win.location.href;
     applyTheme();

@@ -192,3 +192,106 @@ test("web context: cross-origin artwork and video omit only their media, keeping
     if (process.env.QA_EVIDENCE_DIR) { await mkdir(process.env.QA_EVIDENCE_DIR, { recursive: true }); await writeFile(join(process.env.QA_EVIDENCE_DIR, `web-media-${info.project.name}.jpg`), Buffer.from(pin.frame.dataUrl.split(",")[1], "base64")); }
   } finally { await s.cleanup(); media.closeAllConnections(); await new Promise<void>(resolve => media.close(() => resolve())); }
 });
+
+test("web context: legacy route drafts merge once with v2 drafts across navigation and cleanup failure", async ({ page }) => {
+  const s = await setup(page);
+  const old = (id: string, text: string) => ({ id, n: 1, text, anchor: { normX: .2, normY: .2 } });
+  try {
+    await page.evaluate(pin => {
+      sessionStorage.setItem("morpheus-qa:v2:context-fixture", JSON.stringify({ pins: [] }));
+      sessionStorage.setItem("morpheus-qa:/?token=TOKEN_SECRET", JSON.stringify({ pins: [pin] }));
+    }, old("old1", "First legacy"));
+    await page.reload();
+    await expect(page.locator("morpheus-qa ol li")).toHaveText(["1First legacy×"]);
+    expect(await page.evaluate(() => sessionStorage.getItem("morpheus-qa:/?token=TOKEN_SECRET"))).toBeNull();
+    await page.evaluate(pin => {
+      sessionStorage.setItem("morpheus-qa:/second", JSON.stringify({ pins: [pin] }));
+      const remove = Storage.prototype.removeItem;
+      Storage.prototype.removeItem = function (key) { if (key === "morpheus-qa:/second") throw new Error("cleanup denied"); return remove.call(this, key); };
+    }, old("old1", "Second legacy"));
+    await s.site.locator("body").evaluate(body => body.ownerDocument.defaultView!.history.pushState(null, "", "/second"));
+    await expect(page.locator("morpheus-qa ol li")).toHaveCount(2);
+    expect((await s.pins()).map((p: any) => p.text)).toEqual(["First legacy", "Second legacy"]);
+    expect(await page.evaluate(() => sessionStorage.getItem("morpheus-qa:/second"))).not.toBeNull();
+    await page.locator("morpheus-qa ol li").filter({ hasText: "Second legacy" }).locator("button").click();
+    await s.site.locator("body").evaluate(body => body.ownerDocument.defaultView!.history.pushState(null, "", "/away"));
+    await s.site.locator("body").evaluate(body => body.ownerDocument.defaultView!.history.pushState(null, "", "/second"));
+    await expect(page.locator("morpheus-qa ol li")).toHaveCount(1);
+    await page.locator("morpheus-qa button.primary").click();
+    await expect(page.locator("morpheus-qa .status")).toContainText("Queued");
+    await page.reload();
+    await expect.poll(async () => (await s.pins()).length).toBe(0);
+    expect(await page.evaluate(() => sessionStorage.getItem("morpheus-qa:/second"))).toBeNull();
+  } finally { await s.cleanup(); }
+});
+
+test("web context: legacy overflow survives admission and metadata limits", async ({ page }, info) => {
+  const s = await setup(page);
+  try {
+    await page.evaluate(() => {
+      const old = (id: string, text: string) => ({ id, n: 1, text, anchor: { normX: .2, normY: .2 } });
+      sessionStorage.setItem("morpheus-qa:v2:context-fixture", JSON.stringify({ pins: Array.from({ length: 29 }, (_, i) => ({ ...old("existing" + i, "Existing " + i), n: i + 1 })) }));
+      sessionStorage.setItem("morpheus-qa:/?token=TOKEN_SECRET", JSON.stringify({ pins: [old("a", "Legacy A"), old("b", "Legacy B"), old("c", "Legacy C")] }));
+    });
+    await page.reload();
+    await expect(page.locator("morpheus-qa ol li")).toHaveCount(30);
+    await expect(page.locator("morpheus-qa .status")).toContainText("Legacy draft retained");
+    expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem("morpheus-qa:/?token=TOKEN_SECRET")!).pins.map((p: any) => p.text))).toEqual(["Legacy A", "Legacy B", "Legacy C"]);
+    if (process.env.QA_EVIDENCE_DIR) { await mkdir(process.env.QA_EVIDENCE_DIR, { recursive: true }); await page.screenshot({ path: join(process.env.QA_EVIDENCE_DIR, `web-legacy-overflow-${info.project.name}.png`) }); }
+    await page.locator("morpheus-qa button.primary").click();
+    await expect(page.locator("morpheus-qa .status")).toContainText("Queued");
+    await expect.poll(async () => (await s.pins()).map((p: any) => p.text)).toEqual(["Legacy B", "Legacy C"]);
+    expect(await page.evaluate(() => sessionStorage.getItem("morpheus-qa:/?token=TOKEN_SECRET"))).toBeNull();
+    await page.evaluate(() => {
+      const old = (id: string, text: string) => ({ id, n: 1, text, anchor: { normX: .2, normY: .2 } });
+      sessionStorage.setItem("morpheus-qa:v2:context-fixture", JSON.stringify({ pins: [old("large", "x".repeat(261800))] }));
+      sessionStorage.setItem("morpheus-qa:/?token=TOKEN_SECRET", JSON.stringify({ pins: [old("pending", "Pending " + "y".repeat(1000))] }));
+    });
+    await page.reload();
+    await expect.poll(async () => (await s.pins()).length).toBe(1);
+    await expect(page.locator("morpheus-qa .status")).toContainText("Legacy draft retained");
+    expect(await page.evaluate(() => sessionStorage.getItem("morpheus-qa:/?token=TOKEN_SECRET"))).not.toBeNull();
+    await page.locator("morpheus-qa ol li .num").click();
+    await page.locator("morpheus-qa textarea").fill("Shortened current comment");
+    await expect.poll(async () => (await s.pins()).length).toBe(2);
+    expect((await s.pins())[1].text).toBe("Pending " + "y".repeat(1000));
+  } finally { await s.cleanup(); }
+});
+
+test("web context: unrelated filtered/reordered cards do not change page identity", async ({ page }) => {
+  const s = await setup(page);
+  try {
+    await s.site.locator("main").evaluate(main => { main.innerHTML = '<h1>Artist guide</h1><article data-entity-id="Alice">Alice</article><article data-entity-id="Bob"><button id="bob">Bob artwork</button></article>'; });
+    await s.site.locator("#bob").click({ button: "right" });
+    await s.site.locator('[data-entity-id="Alice"]').evaluate(el => el.remove());
+    await expect.poll(async () => (await s.pins())[0].hidden).toBe(false);
+    await s.site.locator("main").evaluate(main => { const alice = document.createElement("article"); alice.dataset.entityId = "Alice"; alice.textContent = "Alice"; main.prepend(alice); });
+    await expect.poll(async () => (await s.pins())[0].hidden).toBe(false);
+    expect((await s.pins())[0].context.target.text).toBe("Bob artwork");
+  } finally { await s.cleanup(); }
+});
+
+test("web context: failed merged-metadata write leaves the legacy source recoverable", async ({ page }) => {
+  const s = await setup(page);
+  try {
+    await page.evaluate(() => {
+      sessionStorage.setItem("morpheus-qa:v2:context-fixture", JSON.stringify({ pins: [] }));
+      sessionStorage.setItem("morpheus-qa:/?token=TOKEN_SECRET", JSON.stringify({ pins: [{ id: "old", n: 1, text: "Durable legacy", anchor: { normX: .2, normY: .2 } }] }));
+    });
+    await page.addInitScript(() => {
+      const set = Storage.prototype.setItem;
+      (window as any).restoreStorageWrites = () => { Storage.prototype.setItem = set; };
+      Storage.prototype.setItem = function (key, value) { if (key === "morpheus-qa:v2:context-fixture") throw new Error("quota"); return set.call(this, key, value); };
+    });
+    await page.reload();
+    await expect(page.locator("morpheus-qa .status")).toContainText("Legacy draft retained");
+    expect((await s.pins()).length).toBe(0);
+    expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem("morpheus-qa:/?token=TOKEN_SECRET")!).pins[0].text)).toBe("Durable legacy");
+    await page.evaluate(() => (window as any).restoreStorageWrites());
+    await s.site.locator("body").evaluate(body => body.ownerDocument.defaultView!.history.pushState(null, "", "/away"));
+    await expect.poll(async () => page.url()).toContain("/away");
+    await s.site.locator("body").evaluate(body => body.ownerDocument.defaultView!.history.pushState(null, "", "/?token=TOKEN_SECRET"));
+    await expect.poll(async () => (await s.pins()).map((p: any) => p.text)).toEqual(["Durable legacy"]);
+    expect(await page.evaluate(() => sessionStorage.getItem("morpheus-qa:/?token=TOKEN_SECRET"))).toBeNull();
+  } finally { await s.cleanup(); }
+});
