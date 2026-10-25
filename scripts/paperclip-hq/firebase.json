@@ -1,0 +1,5 @@
+{
+  "functions": [{ "source": ".", "codebase": "paperclip-hq-prototype", "ignore": ["node_modules", "*.ts", "tsconfig.json", "README.md"] }],
+  "firestore": { "rules": "firestore.rules", "indexes": "firestore.indexes.json" },
+  "emulators": { "auth": { "host": "127.0.0.1", "port": 19199 }, "firestore": { "host": "127.0.0.1", "port": 19200 }, "functions": { "host": "127.0.0.1", "port": 19201 }, "ui": { "enabled": false }, "singleProjectMode": true }
+}
