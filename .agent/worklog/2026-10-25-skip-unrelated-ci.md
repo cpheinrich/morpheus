@@ -133,5 +133,10 @@ draft and its review label removed pending the same reviewer's late-correction t
 
 The wait-ci command reported green from the successful duplicate while the direct
 GitHub check rollup still included the other run's failure/pending browser check.
-Direct checks prevented premature merge. Track that separate waiter issue rather
+Direct checks prevented premature merge. Track that separate waiter issue as MO-26-10-25-02.22.28 rather
 than widening this CI-selection implementation to change the waiter itself.
+
+Integrated main 04358bf (#498, QA composer/capture fixes) with an exact automatic
+Git merge, without resolving or editing its implementation. No record changes on
+trunk; context receipt refreshed after integration. Reran the three scoped workflow
+suites against the integrated consumer imports before the follow-up review.
