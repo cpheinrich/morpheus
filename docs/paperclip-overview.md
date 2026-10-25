@@ -169,6 +169,77 @@ then choose direct/local inference or a gateway when needed. No new gateway is a
 [OpenRouter](https://openrouter.ai/docs/quickstart), [LiteLLM](https://docs.litellm.ai/docs/),
 [Paperclip's OpenCode adapter](https://docs.paperclip.ing/reference/adapters/opencode/).
 
+## Paperclip inside our HQ, and Firestore instead of Postgres
+
+**Research and proposal only. Today no HQ page talks to Paperclip.** The dashboard is reached
+through the controller's loopback port or the Air's forwarded port, as described above.
+
+**How installed Paperclip 2026.1012.0 is coupled:**
+
+| Layer | What the installed source shows | Consequence |
+|---|---|---|
+| Dashboard | A React board app served by the same Express server; its data comes from `/api`. | Coupled to Paperclip's API, not to its database. HQ can reuse the API. |
+| Auth and authorization | Board users sign in through Better Auth on Paperclip's own tables. Board/agent API keys and run tokens are checked by Paperclip's server code. | Paperclip does not know Firebase identities or Firestore rules. |
+| Database | Drizzle ORM on Postgres, embedded by default: 240 tables and 304 SQL migrations. Drizzle is imported by 321 server modules, with ~470 `SELECT … FOR UPDATE` call sites, some `NOWAIT`/`SKIP LOCKED`, plus Postgres advisory locks and upserts. | Launch claims, idempotent issue creation and wake deduplication, which our bridge relies on, are built on Postgres locking. |
+| File storage | Attachments already pass through a pluggable `StorageProvider` with local-disk and S3 providers. | The only installed storage seam; database access has no equivalent port. |
+
+Sources: [schema](https://github.com/paperclipai/paperclip/tree/v2026.1012.0/packages/db/src/schema),
+[DB client](https://github.com/paperclipai/paperclip/blob/v2026.1012.0/packages/db/src/client.ts),
+[Better Auth setup](https://github.com/paperclipai/paperclip/blob/v2026.1012.0/server/src/auth/better-auth.ts),
+[authorization](https://github.com/paperclipai/paperclip/blob/v2026.1012.0/server/src/services/authorization.ts),
+[storage interface](https://github.com/paperclipai/paperclip/blob/v2026.1012.0/server/src/storage/types.ts).
+Counts come from the installed build's compiled `server` and `db` packages.
+
+| Option | What it means | Cost and risk |
+|---|---|---|
+| 1. Links and deep links | HQ lists linked jobs from `.agent/paperclip/` and links to their Paperclip issue/run pages. | Small. Opening a link still needs private network access and a Paperclip sign-in. |
+| 2. Native HQ controls through a server-side API boundary | An HQ server route verifies the Firebase session, then calls Paperclip's REST API with a server-held key and renders status, logs, start, answer and stop. | Medium. The deployed HQ must reach the loopback-only controller, which needs a network and deployment decision. |
+| 3. Replace Postgres with Firestore | Rewrite Paperclip's data layer and auth adapter for Firestore. | Very large, and in practice a permanent fork: every upstream release and migration must be ported, and the locking semantics redesigned and requalified. |
+
+**Firestore rules would not protect Paperclip's data even after a port.** Firestore server
+client libraries bypass security rules. A Paperclip server would therefore use privileged
+access, and authorization would remain in Paperclip's code. Rules apply only when browsers read
+Firestore directly, and direct reads would bypass Paperclip's checks.
+Firestore transactions do not provide Postgres's `NOWAIT`/`SKIP LOCKED` queue semantics,
+advisory locks, joins or SQL migrations.
+[Rules and server libraries](https://firebase.google.com/docs/firestore/security/get-started),
+[Firestore transactions](https://firebase.google.com/docs/firestore/manage-data/transactions).
+
+**How the two authorization systems would relate in option 2:** Firebase stays the HQ identity.
+A user's `role` custom claim drives the `/hq` route gate (`decideHqAccess` verifies the session
+cookie, then `canAccessHq`) and the generated Firestore role rules
+([`src/hq/roles.ts`](../src/hq/roles.ts), [`src/hq/gate.ts`](../src/hq/gate.ts)). Morpheus ships
+those gate, role and rules primitives; the dashboard pages are built in the project hosting HQ.
+The HQ server would call Paperclip with one scoped service key. Paperclip would see that key as
+the actor, so HQ must enforce per-user permissions, require `admin` (the write role) for
+controls, and record the Firebase user in its own audit trail.
+The key never reaches the browser or a worker.
+
+```mermaid
+flowchart LR
+  Browser[HQ in the browser] -->|Firebase session cookie| Route[HQ server route - role check]
+  Route -->|Firestore reads under role rules| Firestore[Firestore - HQ data]
+  Route -->|Scoped Paperclip key, server-side only - proposed| API[Paperclip REST API]
+  API --> Postgres[Paperclip Postgres - unchanged]
+  Browser -.->|Deep link over private network| Board[Paperclip dashboard]
+```
+
+**Recommendation:** keep Paperclip on Postgres. Start with option 1, then build option 2 as the
+target. If HQ needs Firestore-native, rule-gated views, add a read-only status projection that a
+server-side sync writes from Paperclip into Firestore. Paperclip remains the source of truth, and
+controls still go through its API. Rather than port the database, use managed Postgres if the
+operational burden is the concern. No migration, network exposure or frontend rollout is
+authorized by this research.
+
+**Open questions for Chris:**
+
+- Which HQ hosts these views: one operator HQ, or each company's HQ? One Paperclip instance
+  serves several companies.
+- How should a deployed HQ reach the private controller: a tailnet-connected server, a relay, or
+  local-only use?
+- Which roles may view and which may control? The proposal is admin-only controls.
+- Is Postgres for Paperclip acceptable, embedded on the controller or managed?
+
 ## Machines, subscriptions and rollout status
 
 A worker profile binds **provider + Paperclip agent + account identity + host + workspace +

@@ -74,3 +74,54 @@ diagram: labels/arrows are legible and the proposal is visibly named. Closed tha
 tab without reloading or navigating Chris's review tab. No runtime tests, live worker replay,
 push, PR or CI for this prose-only batch. Document edits are committed locally with this log;
 the session-only morpheus.json edit remains unstaged.
+
+## Repair automatic comment handling
+
+Chris reported "No agent wake configured" after submitting batch20261025T065637Z-24l8m5.
+The local queue/responder configuration existed, but its earlier native Codex CLI had
+stopped on the unsupported saved model before performing work. Replaced only the local
+responder wrapper with the existing Codex–Claude bridge, using this actual coordinator
+thread and QA worktree. Model/effort come from the bridge's normal mapping (currently
+fallback opus/xhigh), not a guessed Codex CLI model. No global settings or credential changed.
+
+The local wrapper checks fresh native ordinary Claude quota before every batch and during
+the turn: admit below77% weekly/90% session used, stop at80%/95% or unknown telemetry,
+with a ten-minute batch bound. This retains the user-authorized20% weekly remaining floor
+and an in-flight admission margin. Unknown native resets still refuse.
+
+Its first admission coincided with the five-hour reset and was refused before provider
+launch (runId null): native usage became0 with reset null. Retained that refusal. A separate
+bounded initialization used native Claude with no tools, one turn, no saved session and a
+30-second deadline; it returned QA_READY in8117ms. Fresh native read then reported session4%
+with a real future reset and weekly73%. No reset value was invented and no guard was weakened.
+The refused claim is released only after both supervisor and responder were observed stopped.
+
+The exact-checkout graph bootstrap completed successfully. The already-loaded parent MCP
+transport then closed, so the delegated context supplies the earlier bounded primary graph
+evidence and exact source fallback; do not claim a fresh parent graph query succeeded.
+Actual automatic batch execution and continuing idle readiness must be checked before
+reporting the wake repair complete.
+
+## Batch 20261025T065637Z-24l8m5 — Paperclip in HQ and Firestore
+
+Claude responder (native bridge). Question: reach Paperclip's dashboard or its functions from
+our Firebase-backed HQ, and use Firestore instead of Postgres. Research and documentation only;
+no migration, network exposure or frontend rollout was authorized or performed.
+
+Read the installed 2026.1012.0 packages under the managed `paperclipai` shim
+(`~/.local/share/morpheus-paperclip/instance/cli/current/node_modules/@paperclipai`): `db`
+(240 `pgTable`s, 304 SQL migrations, `Db` is a Drizzle postgres-js database), `server`
+(Drizzle imported in 321 non-test modules; ~470 `.for("update")`/`FOR UPDATE` call sites,
+some `noWait`/`skipLocked`; 53 advisory-lock references; 234 `onConflict` upserts), Better
+Auth via `drizzleAdapter(..., {provider: "pg"})`, the `StorageProvider` interface (local disk
+and S3), and `app.js` serving the board UI beside `/api`. Counts are grep counts over the
+compiled build, not a source audit. Morpheus side: `src/hq/gate.ts`, `roles.ts`, `rules.ts` and
+`architecture.md` §hq; graph MCP not used — direct source read.
+
+Added an overview section: coupling table, three options (deep links, server-side API
+boundary, Firestore port), why Firestore rules would not gate a Paperclip server (server
+libraries bypass rules), Firebase/Paperclip authorization relationship, a Mermaid diagram of
+the proposed boundary, a recommendation (stay on Postgres; links now, server-side controls
+next; optional read-only Firestore projection) and four open questions for Chris. Dead end:
+no local Mermaid CLI in this checkout (no `node_modules`); diagram checked by hand against the
+existing diagrams' syntax. No preview reload, rebuild, push, PR or CI.
