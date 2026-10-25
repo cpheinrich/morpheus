@@ -781,3 +781,20 @@ remaining) is requested but unanswered; no answer or approval is inferred from e
 The private closeout-gui-retry.private.json and finalization-packet.private.json hold the
 exact resumption state. Current main also contains unrelated QA PR483; fetch and integrate
 trunk explicitly before the eventual finalization/merge. No new main-Claude call was made.
+
+## Expanded budget and finalization — October24 evening
+
+Chris explicitly authorized: “draw down claude budget to up to20% remaining if needed to
+finish task.” This replaces this task's prior40%-remaining Claude floor; it does not change
+another project's budget, approve paid overage/API fallback, or alter repository review rules.
+Native main-Claude telemetry at04:15:44Z remains61% weekly used/39% remaining, session18%.
+Reserve up to2 weekly points for the original reviewer's one unused automatic finalization-only
+turn (five-minute ceiling). Overall hard floor20% remaining/80% used; admit below77% used to
+leave3 points for in-flight work. No pool-wide quota policy was loosened: existing worker
+caps remain stricter than this task's new maximum.
+
+Integrated latest trunk8ee9a13c266d8fc31918f523965fc0ce3a59ebe4 by Git's automatic merge,
+without hand resolution, including unrelated QA PR483 and the records-only inbox PR485.
+The only authored changes after source clearance remain this worklog and four explanatory
+completion Markdown files. Resume the same native reviewer5dede39f-16f4-4aee-a072-22d0ae040f97
+at its existing plugin cwd; no fresh replacement reviewer and no new implementation review.
