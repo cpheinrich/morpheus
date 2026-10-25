@@ -167,3 +167,34 @@ Clock measurement includes the initial reviewer invocation through its returned 
   ]
 }
 ```
+
+
+## Integrated-source CI and next qualification checkpoint
+
+Integrated reviewed actor504/e4ea3aa6 and overview506/72265971 through reproducible trunk
+merges; review validation still passes. Node22 Auth/Functions/Firestore CI passed. Earlier
+headb0a1229 CI was green, but current integrated head130a6075 had one unrelated Chromium
+legacy-draft status failure: a successful send's Queued confirmation was overwritten by a
+cleanup warning. Never substitute the earlier green result for this newer head. PR505 was
+returned to draft with auto-merge off. A separate claimed repair MO-26-10-25-04.46.53/PR509
+owns the source and deterministic regression; it will merge before this branch integrates
+and runs final CI. A baseline single-case local run passed, consistent with the timing race,
+not proof of its absence. The saved CI trace and precise failure remain in ignored local proofs.
+
+At the next shared provider checkpoint Codex is36% weekly used/64% remaining, ordinary usage
+allowed. Completed initial author/reviewer reservations settle against that shared observation;
+there are no uncertain provider launches. Remaining bounded allocations are native qualification
+10 points including its review, Markdown/history work8, the isolated QA repair5, and coordination/
+final closure4: at most63% used from this checkpoint, below the75% ceiling. Keep admission soft
+stop68–70 and reserve25% remaining. Quota reads themselves are not model work. Main Claude
+remains below reserve and unused. Zoe's independent Claude account earlier reported0% weekly,
+but later native quota reads returned authentication refusal; no Claude inference was admitted.
+A first-party interactive /usage check also failed to load account usage, displaying0 model
+input/output and0 model API duration; only /usage and /exit ran. No token mint/copy, logout or
+provider fallback. The currently unknown allowance remains a refusal, not cached headroom.
+
+Native qualification task MO-26-10-25-04.30.30 has a durable readiness checkpoint and explicit
+opt-in harness; it remains unrun pending merged505. Both exact remote test agents are paused
+and no provider has started. The Markdown/history task MO-26-10-25-04.40.09/PR510 adds a human
+view of the frozen record and an append-only Git guard, without claiming live API acquisition.
+Those tasks own separate worktrees and review loops.
