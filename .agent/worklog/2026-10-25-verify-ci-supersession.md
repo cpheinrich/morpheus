@@ -48,7 +48,8 @@ drift. Each mutant was restored byte-exactly. No local full suite was run; this
 change is inside CD and its direct dependents, and source CI owns the full suite.
 
 No live worker/controller update, CI rerun, source adoption, receipt or delivery is
-claimed by these source results. Publication remains held for Root packet inspection.
+claimed by these source results. Publication was held for Root packet inspection,
+then released after local qualification and the privacy check.
 
 The compiled candidate also passed one retrospective oracle against unmodified
 retained provider responses:13 complete checks,11 complete same-head workflow runs
@@ -66,3 +67,32 @@ After anonymization, the focused verifier suite passed64 cases and all four
 targeted mutants were assertion-killed again; typecheck passed. The initial
 anonymized test run exposed one synthetic run-number golden mismatch, corrected
 against the private bijection. Implementation and raw-oracle input bytes are unchanged.
+
+Initial exact-head source CI40191889546 passed (six successful jobs and three
+expected draft/disabled-legacy skips). The public draft remained unlabelled through
+that run. Current reviewer graph generation2026-10-25T12:06:16Z provided a bounded
+worker call chain; the new helper/test coverage was missing and native-worker line16
+was partial, so exact current source supplied those portions.
+
+Fresh high-risk independent source review cleared the exact implementation with no findings. The reviewer inspected source, generated output, tests, privacy and historical-oracle evidence, and exact-head CI, and independently passed 91 focused tests. No runtime adoption or delivery was assessed.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "e4ea3aa6fe14b3a9740efa1bde8ccd94c56b7d27",
+  "reviewed": "3bf8f02725a7bfd77ad951da7bc34c1f4bda1431",
+  "covered": "3bf8f02725a7bfd77ad951da7bc34c1f4bda1431",
+  "authorSession": "01a17280-752c-7210-a63c-fa906dcbc65d",
+  "reviewerSession": "/root/devops_skill_and_tag_design/verifier_source_review",
+  "risk": "high",
+  "elapsedMinutes": 3.7814833333333335,
+  "timing": {
+    "source": "clock",
+    "durationMs": 226889,
+    "evidence": "Actual author clock immediately before reviewer invocation 2026-10-25T12:15:01.472Z through first observed terminal response 2026-10-25T12:18:48.361Z, inclusive of tools/waits;226889ms. Canonical reviewer /root/devops_skill_and_tag_design/verifier_source_review."
+  },
+  "outcome": "complete",
+  "summary": "Fresh high-risk independent source review cleared the exact implementation with no findings. The reviewer inspected source, generated output, tests, privacy and historical-oracle evidence, and exact-head CI, and independently passed 91 focused tests. No runtime adoption or delivery was assessed.",
+  "findings": []
+}
+```
