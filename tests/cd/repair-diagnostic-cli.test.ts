@@ -1,7 +1,9 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { execFileSync, spawn } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cd } from "../../src/cd/cli.js";
 import { canonical } from "../../src/cd/schema.js";
@@ -61,6 +63,21 @@ describe("public repair-diagnostic command", () => {
     f.api.calls = []; await writeFile(f.evidencePath, text + " ");
     await expect(cd(f.argv, {})).rejects.toThrow("1..16384 bytes"); expect(f.api.calls).toEqual([]);
   });
+  it.skipIf(process.platform === "win32")("rejects an unopened FIFO through the compiled CLI without blocking or provider calls", async () => {
+    const f = await setup(), fifo = join(f.directory, "diagnostic.fifo"), marker = join(f.directory, "provider-called");
+    execFileSync("mkfifo", [fifo]);
+    await writeFile(join(f.directory, "gh"), '#!/bin/sh\nprintf provider > "$RD_PROVIDER_SENTINEL"\nexit 97\n', { mode: 0o700 });
+    const argv = [...f.argv]; argv[argv.indexOf("--evidence") + 1] = fifo;
+    const child = spawn(process.execPath, [fileURLToPath(new URL("../../dist/cli/index.js", import.meta.url)), "cd", ...argv], { env: { ...process.env, PATH: f.directory, RD_PROVIDER_SENTINEL: marker }, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "", stderr = "", deadlineHit = false;
+    child.stdout.on("data", bytes => { stdout += String(bytes); }); child.stderr.on("data", bytes => { stderr += String(bytes); });
+    const deadline = setTimeout(() => { deadlineHit = true; child.kill("SIGTERM"); }, 2000);
+    const fuse = setTimeout(() => child.kill("SIGKILL"), 3000);
+    const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => { child.once("error", reject); child.once("close", (code, signal) => resolve({ code, signal })); }).finally(() => { clearTimeout(deadline); clearTimeout(fuse); });
+    expect(result).toEqual({ code: 1, signal: null }); expect(deadlineHit).toBe(false); expect(stdout).toBe("");
+    expect(stderr).toContain("Repair diagnostic file must contain 1..16384 bytes");
+    await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
+  }, 5000);
   it.each(["failure", "quiescence"])("preserves normal %s refusal for a failed attempt", async kind => {
     const f = await setup(), argv = [...f.argv], before = await f.store.read(); argv[argv.indexOf("--kind") + 1] = kind;
     const { diagnostic: _diagnostic, workId: _workId, taskDigest: _taskDigest, ...identity } = f.input;

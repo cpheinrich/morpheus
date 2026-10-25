@@ -1,4 +1,5 @@
 import { parseArgs } from "node:util";
+import { constants } from "node:fs";
 import { open, readFile } from "node:fs/promises";
 import { dirname, resolve, basename } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -34,7 +35,7 @@ async function jsonInput(path: string): Promise<unknown> {
 }
 async function repairDiagnosticInput(path: string): Promise<unknown> {
   invariant(path !== "-", "Repair diagnostics require a bounded JSON file");
-  const file = await open(resolve(path), "r");
+  const file = await open(resolve(path), constants.O_RDONLY | constants.O_NONBLOCK);
   try {
     const stat = await file.stat();
     invariant(stat.isFile() && stat.size > 0 && stat.size <= REPAIR_DIAGNOSTIC_MAX_BYTES, "Repair diagnostic file must contain 1..16384 bytes");
