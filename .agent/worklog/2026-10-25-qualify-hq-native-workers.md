@@ -6,6 +6,111 @@ agent: codex
 
 # Controlled HQ transport qualification
 
+## Actual qualification result
+
+The real demo Auth/Functions/Firestore transport reached the actual Manager-owned
+HQ facade, existing Paperclip process adapter and remote native Codex. The start and
+one bounded same-session follow-up completed with verified termination. Both
+commands deliberately lost their acknowledgment after a local receipt was saved;
+a fresh connector instance acknowledged that saved receipt, and replay of the
+exact cloud command retained the same conversation and turn. This proves command
+delivery/reconnect and this bounded native path; it does not qualify production
+HQ auth, a browser UI, multiple companies or migration of Markdown inboxes.
+
+The actual evidence is the
+[frozen closeout](../paperclip-closeouts/4925919d-5666-4a4e-b4c5-b59cc0176eee/6483543d-ed4e-4057-ac74-6025716b1184/34b83582b96861ef30520f8bb5da07bb2bca65d0b3547952223f9ac7c57c5b1e.json)
+and its two verified63-byte blobs. Independent SSH reads matched phase1
+`238d0c14cfd8cc69d956eed219529434e9409c50d5d945fce90131e094f6b2ba`
+and phase2 `3db3ac4f751778022dcac6d6184e3959104535a2784c7fbb68d3276d3ff0f6c1`.
+Phase2 preserved the original nonce/provider. Remote events show only the intended
+file changes and zero command-execution events in both turns. The native exec event
+format does not independently report the serving model/effort; configured/requested
+`gpt-6.1-sol`/medium remains distinct from that unknown observation.
+
+| Identity | Start | Follow-up |
+|---|---|---|
+| HQ operation | `9290ddaf-b925-418d-a3b9-871c90c674e4` | `d4727fc2-32ef-4856-8242-d6d1099c35c6` |
+| Paperclip run | `9f055ee2-2722-4eb0-ad58-fa32ceb5addf` | `c028d796-17fa-4366-b14b-65e98148d344` |
+| Native host run | `12e1f303a201f7c4f018b536abd9235b` | `574461f1664efee66cdeaf033c9a9a89` |
+| Verified native time | 2026-10-25T12:25:44Z | 2026-10-25T12:27:39Z |
+
+Both share conversation `835e93b1-d956-47fd-9444-dd292bee78ab`, issue
+`6483543d-ed4e-4057-ac74-6025716b1184` and native saved session
+`01a17305-fab1-7843-b6ba-0a83f28c025a`, with no session drift. Each first
+command receipt was honestly queued/nonterminal; its cloud `completed` state was
+not used as native completion. Fresh host quota observed0% primary at12:25:32Z
+and12:27:27Z and returned admission under the existing limits. These native-host
+quota windows are separate from the coordinating Codex account's42% before launch
+and44% after closeout work. Provider-reported output was172 and380 tokens;
+input/cached context accounting remains private. No API/overage/reset was used.
+
+Reviewed controller source `a230385ba7532709646bc1855a4e056657c3ac98` was
+staged at a new private versioned path with30 exact `src/`/`scripts/` module
+hashes; its manifest SHA256 is
+`9b74023aa394e081c116e48fc961db36d8fa8261a9ae490c493d165df5c69c9d`.
+Only the dedicated Codex test agent's runner arguments changed. Paused readback,
+command/cwd/environment and heartbeat settings matched before/after; the existing
+Pool home, profiles, remote bindings and account reservation ledger were retained.
+The old installed dependency tree supplies the same pinned SDK1.31.0/ws8.21.3/
+Zod4.1.12. The remote host remained its older runtime, with actual source hashes
+retained privately; source staging does not claim remote runtime replacement.
+The personal plugin and local Claude profile were untouched.
+
+At12:29:12Z both enrolled agents were independently read back paused, periodic
+heartbeats remained disabled, all three existing reservation arrays were empty,
+and no controller bridge socket remained. The remote process/group identities
+recorded for each owned native turn were absent. Each native turn's own receipt
+also records completed/verified. Raw local intents, cloud/local receipts, remote
+events and exact ownership readbacks remain under ignored `local/`.
+
+Claude is deliberately not-run. In addition to the reader's401/403 authentication
+category, the parent ran only first-party `/usage` and `/exit` in the existing
+Zoe GUI audit session: the CLI reported Claude Pro/Sonnet5.5/medium but usage failed,
+with zero model tokens/cost. A bounded supported sign-in attempt reached Zoe's
+Google SSO and needed an unavailable owner passkey/password. It was canceled,
+with no credentials minted/copied, native account swap or inference, and the
+parent verified the original browser account/session was retained. This is
+unknown usage access, not evidence of quota exhaustion. Concrete follow-up
+MO-26-10-25-05.29.55 owns sign-in plus a fresh guarded Claude qualification.
+
+The closeout acquisition read the exact issue and a bounded complete three-comment
+page plus zero interactions, then observed the same data again. Its operator
+revision identifies that capture; `cursor: null`, `atomic: false` and the export's
+limitation remain honest. Accepted answers and decisions are empty: no operational
+comment or done status was promoted to human acceptance. The canonical JSON byte
+SHA256 is the recorded snapshot identity; an identical export reported
+`created: false`. Both blob hashes/sizes were independently checked. No private
+paths or credentials are present in the public snapshot.
+
+After PR510 merged at `cd325c52401527e4ce1e0e34e22e071a9f1f0663`, the
+same JSON record produced its adjacent deterministic Markdown view. Its first
+render reported `created: true` and exact replay `created: false`, preserving the
+canonical JSON snapshot identity. The author read the complete resulting view,
+including its empty accepted-answer section, Claude not-run evidence, actual
+message identities and both63-byte blob links. Neither renderer nor exporter
+asserts human acceptance or a live transactional read. The immutable namespace
+forbids a free-form child README; its convention is pointed to from `.agent/README.md`.
+
+## Final validation and delivery
+
+- `pnpm --dir scripts/paperclip-hq run build` passed.
+- `node --test scripts/paperclip-hq/run-qualification.test.mjs` passed3/3.
+- The explicit `run-qualification.mjs --fixture` real demo-emulator test passed1/1,
+  including actual Manager/HQ, fixture native question/answer, exactly one fake issue
+  and native launch, reconnect and independently read file content.
+- `pnpm exec vitest run tests/paperclip-hq.test.ts tests/paperclip-closeout.test.ts`
+  passed44/44. These directly cover the joined transport and exporter dependencies.
+- `pnpm typecheck`, `pnpm compile` and `pnpm morpheus pm index` passed before the
+  final evidence documentation edits. No local full-suite run; shared core unchanged.
+- The path-scoped workflow now runs the guard tests and joined fixture under Node22
+  with its existing fixed Firebase/Java pins. Every default path remains provider-free.
+- Independent review, final-head CI and merge remain outstanding at this entry.
+
+The integrated Markdown source additionally passed focused76/76 across transport,
+JSON exporter and Markdown/history tests. The final integrated typecheck, compile
+and PM index were rerun before the PR. This new source integration justifies that
+focused expansion; no unchanged full suite was rerun locally.
+
 ## Readiness checkpoint — implementation incomplete
 
 The parent CTO assigned a controlled, test-only Firebase/Auth/Functions/Firestore
@@ -77,6 +182,14 @@ call for all candidate evidence paths failed `Transport closed`. Exact source fa
 covered Manager, Pool/HQ, config, store, runner/host boundary, shared fixtures, transport
 backend/connector/wrapper and closeout exporter. New harness files have no usable graph
 coverage proof in this session. No exhaustive graph claim is made.
+
+Before independent review the MCP connection became available again. Generation
+2026-10-25T12:06:16Z metadata matched the HQ facade/shared fixture/exporter without
+recorded gaps; new HQ transport/harness and Markdown/history paths were missing
+from that primary-checkout generation and received exact source fallback. A narrowed
+HQ dispatch search returned1/1, its complete depth1 outbound trace15/15, and its
+exact snippet confirmed the retained actor, receipt and existing-Pool boundary.
+This remains best-effort Tier2 evidence, not an exhaustive coverage claim.
 
 Registry inspection found Commander15.0.0, last modified2026-09-02, with no runtime
 dependencies. Existing Node `parseArgs` handles two fixed test modes in a small wrapper;

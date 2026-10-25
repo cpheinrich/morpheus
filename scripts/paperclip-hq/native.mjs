@@ -112,12 +112,25 @@ try {
   assert.ok(profiles, 'Owner-installed HQ mapping must pass before resume');
   for (const selected of target.profiles) {
     const p = pool.profiles[selected.name], deadline = Date.now() + target.maxTurnMs;
+    const followupId = selected.followupConversationId;
+    if (followupId) assert.match(followupId, /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
+    let previousSession;
+    if (followupId) {
+      const before = await call('hq.status', { ...scope, conversationId: followupId });
+      assert.equal(before.work.profile, selected.name); assert.equal(before.work.state, 'completed');
+      assert.equal(before.work.terminal, true); assert.equal(before.work.turn, 1);
+      previousSession = JSON.parse(await readFile(join(poolHome, 'pool/conversations', followupId, 'session.json'), 'utf8')).session;
+      assert.ok(previousSession);
+    }
     const artifact = `hq-${target.nonce}-${p.provider}.json`;
     assert.equal(basename(artifact), artifact);
-    const expected = { nonce: target.nonce, provider: p.provider, phase: 1 };
+    const expected = { nonce: target.nonce, provider: p.provider, phase: followupId ? 2 : 1 };
     const operationId = randomUUID();
-    const input = { operationId, companyId: target.companyId, action: 'start', args: { profile: selected.name,
-      prompt: `Controlled HQ transport qualification. Use your file-writing tool to create only ${artifact} in the current workspace containing exactly ${JSON.stringify(expected)} followed by a newline. Return completed with that filename as evidence. No shell command, delegation, network, configuration change, retry, extra file or new permission request. Stop after this small task.` } };
+    const limits = ' Return completed with that filename as evidence. No shell command, delegation, network, configuration change, retry, extra file or new permission request. Stop after this small task.';
+    const input = followupId ? { operationId, companyId: target.companyId, action: 'followup', args: { conversationId: followupId,
+      prompt: `Controlled second HQ qualification turn in this same conversation. Use your file-writing tool to update only ${artifact}. Preserve the original nonce and provider, set phase to 2, and retain a trailing newline.${limits}` } }
+      : { operationId, companyId: target.companyId, action: 'start', args: { profile: selected.name,
+        prompt: `Controlled HQ transport qualification. Use your file-writing tool to create only ${artifact} in the current workspace containing exactly ${JSON.stringify(expected)} followed by a newline.${limits}` } };
     await save(`${p.provider}-start-intent`, input);
     operations.push(operationId);
     resumed.push(p.agentId);
@@ -137,6 +150,7 @@ try {
     assert.equal(receipt.state, 'completed');
     assert.equal(receipt.result.operation.state, 'receipted');
     const conversationId = receipt.result.work.conversationId;
+    if (followupId) assert.equal(conversationId, followupId);
     owned.push(conversationId);
     await save(`${p.provider}-receipt`, receipt);
     const final = await observe(conversationId, deadline);
@@ -145,12 +159,15 @@ try {
     // Same cloud command and fresh connector observe the receipt without a new turn.
     await admin('enqueue', input); await createConnector(connectorOptions).tick();
     const reattached = await call('hq.reattach', { ...scope, conversationId });
-    assert.equal(reattached.work.turn, 1);
+    assert.equal(reattached.work.turn, followupId ? 2 : 1);
+    const session = JSON.parse(await readFile(join(poolHome, 'pool/conversations', conversationId, 'session.json'), 'utf8'));
+    if (followupId) assert.equal(session.session, previousSession, 'Native follow-up must retain its own saved session');
     const bytes = Buffer.from((await exec(p.host.ssh || 'ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', '-o', 'StrictHostKeyChecking=yes', p.host.target, `cat ${quote(join(p.workspace, artifact))}`], { timeout: 20_000, maxBuffer: 65_536 })).stdout);
     assert.deepEqual(JSON.parse(bytes.toString()), expected);
     await writeFile(join(proof, artifact), bytes, { flag: 'wx', mode: 0o600 });
     record.profiles.push({ name: selected.name, provider: p.provider, agentId: p.agentId, operationId, conversationId, issueId: (await readFile(join(poolHome, 'pool/conversations', conversationId, 'conversation.json'), 'utf8').then(JSON.parse)).issueId,
-      final: final.work, artifact, artifactSha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length, savedReceiptRecovery: true });
+      final: final.work, artifact, artifactSha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length, savedReceiptRecovery: true,
+      ...(followupId ? { sameNativeSession: true } : {}) });
     console.log(JSON.stringify({ provider: p.provider, state: final.work.state, termination: final.work.termination, artifactSha256: record.profiles.at(-1).artifactSha256 }));
   }
 } catch (error) {

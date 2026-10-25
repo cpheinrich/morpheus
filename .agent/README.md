@@ -8,6 +8,11 @@ whether something was already asked.
 
 ## Structure
 
+`paperclip-closeouts/` contains generated immutable conversation snapshots, their
+readable views and verified content-addressed blobs. Never edit an existing output;
+capture a new snapshot. Its strict data namespace accepts only those generated
+paths, so this parent README holds the pointer to the [closeout contract](../docs/paperclip-closeout.md).
+
 Two raw logs, each feeding exactly one distillation:
 
 | Raw | Feeds | Answers |

@@ -83,6 +83,13 @@ agent's unfinished work before resume. The owner-installed facade and native hos
 guards then revalidate their existing pins and fresh quotas. It never overrides a
 model, permission, provider, quota, account reservation or unknown native outcome.
 
+For exactly the bounded second turn, a profile may include
+`followupConversationId`, the explicit first-turn conversation UUID. The harness
+requires that conversation to be completed at turn1 with a saved native session,
+updates only the same nonce file to phase2, and verifies the unchanged native
+session plus the preserved original nonce/provider. Use a new proof directory;
+never use this option to replay an unknown turn or retry arbitrary prior work.
+
 It persists intent before resume/enqueue, admits only a tiny nonce file write,
 deliberately disconnects after saving the command receipt, and recovers through a
 new connector. A repeated cloud request observes the same receipt and turn. Final
@@ -117,3 +124,13 @@ credentials, private paths or unreviewed provider prose to the public repository
 
 The task worklog records the actual attempted providers, quota outcome, exact
 runtime versions, receipts, independent artifacts, cleanup and remaining limits.
+
+On October25 the joined fixture passed and the actual Codex start/follow-up both
+completed with verified termination. Independent SSH reads produced two63-byte
+versions of the nonce file, and both resumed turns retained one native session.
+Both enrolled agents were read back paused, all existing reservation arrays were
+empty and the owned remote process identities were absent. The
+[frozen JSON closeout](../.agent/paperclip-closeouts/4925919d-5666-4a4e-b4c5-b59cc0176eee/6483543d-ed4e-4057-ac74-6025716b1184/34b83582b96861ef30520f8bb5da07bb2bca65d0b3547952223f9ac7c57c5b1e.json)
+retains three actual comments, no interactions or accepted-human-answer claims,
+both independently verified artifact versions and the Claude not-run limitation.
+The input is an operator freeze with `atomic: false`, not an upstream transaction.
