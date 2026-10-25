@@ -14,7 +14,7 @@ try {
   } });
   const required = (key: keyof typeof values): string => {
     const value = values[key];
-    if (!value) throw new Error("missing required option");
+    if (typeof value !== "string" || !value) throw new Error("missing required option");
     return value;
   };
   const repo = resolve(values.repo!);

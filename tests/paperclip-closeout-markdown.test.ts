@@ -183,5 +183,10 @@ describe("committed closeout history guard", () => {
     expect(JSON.parse(rendered.stdout).canonicalPath).toBe(exported.path);
     const head = commit(repo); const checked = run("--check-history", "--base", base, "--head", head);
     expect({ status: checked.status, result: JSON.parse(checked.stdout) }).toEqual({ status: 0, result: { base, head, preserved: 0, added: 3 } });
+    for (const refused of [run("--check-history", "--base", base), run("--render", "--check-history")]) {
+      expect({ status: refused.status, stdout: refused.stdout, stderr: refused.stderr }).toEqual({
+        status: 1, stdout: "", stderr: "Closeout refused. Check the frozen-input contract, exact target and local file safety; no task status was changed.\n",
+      });
+    }
   });
 });

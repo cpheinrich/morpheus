@@ -57,6 +57,13 @@ heading confined to the message block; answer/evidence/attachment content is
 legible. This added no project dependency or live acquisition. Local review
 captures: `/tmp/paperclip-closeout-preview-{top,middle,bottom}.png`.
 
+Post-review targeted CLI checking found TS2322: the added boolean mode flags widen
+`values[key]` to `string | true`; the root tsconfig imports the renderer/guard
+through tests but does not include the standalone CLI. Tightened required-option
+validation to an explicit string check and added actual-CLI refusal checks for a
+missing commit option and conflicting modes. The same reviewer will verify this
+narrow late correction; the initial clean review remains unchanged.
+
 Independent normal-risk review cleared the final implementation with no findings. The reviewer independently passed all 60 focused tests and the actual exact-commit history CLI, inspected all three refreshed captures, and confirmed every captured field remains represented with inert text and digest-bound links. Ordinary CI remains required; no live provider or upstream authority was validated.
 
 ```morpheus-review
