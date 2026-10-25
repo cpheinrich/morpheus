@@ -195,7 +195,16 @@ export async function worktreeStatus(cwd: string): Promise<string[]> {
   return lines;
 }
 
-/** Git alone prunes missing registrations; never delete branches or live directories. */
+/** Inspect registrations from the caller, never from a potentially broken checkout. */
 export async function pruneStaleWorktrees(cwd: string, dryRun = false): Promise<string> {
-  return git(cwd, ["worktree", "prune", "--verbose", "--expire", "now", ...(dryRun ? ["--dry-run"] : [])]);
+  const lines: string[] = [];
+  for (const worktree of await listWorktrees(cwd)) {
+    if (worktree.locked !== undefined || !(await missingDirectory(worktree.path))) continue;
+    // Global `git worktree prune` also drops registrations for existing directories
+    // missing their .git file. Remove only the absent paths, with Git's normal
+    // validation/lock guards and without --force; branch refs remain untouched.
+    if (!dryRun) await git(cwd, ["worktree", "remove", "--", worktree.path]);
+    lines.push(`${dryRun ? "Would prune" : "Pruned"}: ${worktree.path} (branch retained)`);
+  }
+  return lines.join("\n");
 }

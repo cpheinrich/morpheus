@@ -711,9 +711,10 @@ export async function worktrees(cwd, action, dryRun = false) {
     try {
         if (action && action !== "prune")
             throw new Error("Usage: morpheus pm worktrees [prune] [--dry-run]");
-        console.log((await worktreeStatus(cwd)).join("\n"));
         if (action === "prune")
             console.log(await pruneStaleWorktrees(cwd, dryRun) || "No stale registrations pruned.");
+        else
+            console.log((await worktreeStatus(cwd)).join("\n"));
         return 0;
     }
     catch (error) {
