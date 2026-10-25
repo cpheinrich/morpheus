@@ -119,6 +119,12 @@ describe("committed closeout history guard", () => {
     expect(await validateHistory(repo, base, head)).toEqual({ base, head, preserved: 0, added: 3 });
     expect(await validateHistory(repo, head, head)).toEqual({ base: head, head, preserved: 3, added: 0 });
   });
+  it("lets existing JSON-only history gain its exact Markdown view", async () => {
+    const { repo, base, exported } = await fixture(); const jsonHead = commit(repo);
+    expect(await validateHistory(repo, base, jsonHead)).toEqual({ base, head: jsonHead, preserved: 0, added: 2 });
+    await renderCloseout(repo, exported.path); const head = commit(repo);
+    expect(await validateHistory(repo, jsonHead, head)).toEqual({ base: jsonHead, head, preserved: 2, added: 1 });
+  });
   it.each(["json", "md", "blob"].flatMap(kind => ["edit", "delete", "rename"].map(action => ({ kind, action }))))("refuses $action of existing $kind history", async ({ kind, action }) => {
     const { repo, exported } = await fixture(); await renderCloseout(repo, exported.path); const base = commit(repo);
     const blob = exported.record.attachments[0]!;
@@ -153,6 +159,17 @@ describe("committed closeout history guard", () => {
     await expect(validateHistory(repo, base, head)).rejects.toThrow("unsafe closeout path or mode");
     await expect(validateHistory(repo, "HEAD", head)).rejects.toThrow("exact verified");
     await expect(validateHistory(repo, "0".repeat(40), head)).rejects.toThrow();
+  });
+  it("refuses executable blob modes and a blob committed at an ancestor directory", async () => {
+    const { repo, base, exported } = await fixture();
+    git(repo, "add", "-A"); git(repo, "update-index", "--chmod=+x", exported.path);
+    git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "mode");
+    await expect(validateHistory(repo, base, git(repo, "rev-parse", "HEAD"))).rejects.toThrow("unsafe closeout path or mode");
+    git(repo, "reset", "--hard", base);
+    const oid = git(repo, "hash-object", "-w", "qa/file.bin");
+    git(repo, "update-index", "--add", "--cacheinfo", `100644,${oid},.agent`);
+    git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "ancestor");
+    await expect(validateHistory(repo, base, git(repo, "rev-parse", "HEAD"))).rejects.toThrow("unsafe closeout path or mode");
   });
   it("runs the render and history CLI modes with exact committed identities", async () => {
     const { repo, base, exported } = await fixture();

@@ -30,7 +30,7 @@ graph claims. The prepared checkout's codebase-memory bootstrap completed.
 Claim allocated a registered exclusive task checkout; all edits occur there.
 
 Validation: `pnpm exec vitest run tests/paperclip-closeout.test.ts tests/paperclip-closeout-markdown.test.ts`
-passed 58 tests covering the changed optional scripts and their existing exporter
+passed 60 tests covering the changed optional scripts and their existing exporter
 dependency. `pnpm typecheck`, `pnpm compile`, `pnpm morpheus pm index` and
 `git diff --check` passed; generated build/index bytes were unchanged. The full
 suite remains CI-owned because shared core was not changed. No live provider call
