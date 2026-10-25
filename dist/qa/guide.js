@@ -70,12 +70,16 @@ On the web overlay the site sits on the left, as usual, and a full-height commen
 right takes the site's own colours, font and light or dark mode. Right-click any element
 (Shift+right-click keeps the browser's own menu), or turn on Comment and click, to pin a comment;
 the column lists every pin. Enter saves, Shift+Enter is a newline, Esc Esc deletes the focused pin,
-⌘Enter sends. Unsent pins survive a reload of the same page. For a sign-in that redirects the
-whole page to a provider, use the column's Full page button; Column puts the frame back.
+⌘Enter sends. Applies to selects Element, Current view or Whole page feedback. Markers hide outside
+their original view/target while comments stay accessible in the sidebar. The tab retains unsent
+comments and placement evidence across navigation/reload, subject to reported storage failures.
+For a sign-in that redirects the whole page to a provider, use the column's Full page button;
+Column puts the frame back.
 
 ## 4. Queue comments and keep the person's chat free
 
-Each Send writes local/qa-comments/pending/<batchId>/batch.json and its captured PNGs in the checkout.
+Each Send writes local/qa-comments/pending/<batchId>/batch.json and available images in the checkout:
+web placement JPEGs, iOS placement PNGs, and optional legacy/Send-time batch frames.
 
 Every Send adds another complete batch to the durable queue and shows the open-batch count. It does
 not mean a responder has started. Arm a responder before the person starts commenting when the host
@@ -101,23 +105,44 @@ verify its child agent and descendants have stopped. Only then run responder rec
 
 Choose a stable responder identity, such as \`codex:<session-id>\`. Call
 \`morpheus qa comments claim --agent <identity> --root <checkout>\` until it prints nothing. For
-each claimed id: \`morpheus qa comments show <id> --root <checkout>\`. For iOS, open each comment's
-\`frame.path\` first: it is the frame from pin placement, and \`screenId\` identifies the screen.
-The batch-level frame is from Send and may show different content after scrolling. For web or
-older batches without comment frames, use the batch-level frame. Map each anchor (normX/normY
-are fractions of its matching frame's width and height) to what is on screen, act on
-or answer each comment, then \`morpheus qa comments resolve <id> --agent <identity> --root <checkout>\`.
+each claimed id: \`morpheus qa comments show <id> --root <checkout>\`. Read its evidence by type:
+
+- **Current web comments** have \`comment.webContext\` as primary placement evidence: sanitized
+  route, target/ancestors, view/entity, observable UI state, styles, original viewport and scroll.
+  Respect \`webContext.scope\` (element/view/page), including feedback about a background or whole
+  view. \`comment.createdAt\` and \`webContext.capturedAt\` record placement, not Send.
+  When available, \`comment.frame.path\` names the supplementary placement viewport JPEG
+  (comment-N.jpg, longest edge at most 1600 px, quality 0.5). It covers the visible application
+  viewport, not the whole scroll page. \`frame.capturedAt\` is the frozen placement time.
+  Check \`webContext.image.status\`, \`webContext.image.error\`, \`webContext.image.omitted\`
+  and \`webContext.limitations\`: unsupported
+  media can be labelled placeholders, and capture/storage failure can leave usable HTML without
+  a JPEG. Never replace missing placement evidence with a later live screenshot.
+- **Web JPEG coordinates:** \`webContext.image.point.x/y\` is the original viewport click.
+  Its encoded JPEG point is x = image.point.x * image.scaleX, y = image.point.y * image.scaleY
+  (all image fields are under webContext). \`image.scaleX/scaleY\` account for integer canvas
+  rounding; \`image.scale\` is only the nominal cap. If exact scales are absent, derive them from
+  comment.frame.width / webContext.viewport.width and comment.frame.height / webContext.viewport.height.
+  \`webContext.viewport.scrollX/scrollY\` record the original window offset; \`webContext.scroll\`
+  records nested scroll containers. Do not multiply a web JPEG's size by anchor.normX/normY:
+  web \`anchor.normX/normY\` remain full-page fractions and \`anchor.x/y\` remain full-page pixels.
+- **iOS comments:** open each comment's \`frame.path\` PNG first; it is the displayed simulator
+  frame frozen at placement. Its \`anchor.normX/normY\` are fractions of that comment frame's
+  width/height. \`screenId\`, when available, is screen/tracking context. The optional batch-level
+  frame is from Send and may show different content after scrolling or navigation.
+- **Legacy web comments** lack \`webContext\`. Their optional batch-level frame is the whole page
+  captured at Send; \`anchor.normX/normY\` are full-page fractions. Their \`anchor.page\` carries
+  URL, scroll, viewport and page size; \`element\`: a CSS \`selector\` identifies the original target
+  with tag, visible text and within-element offsets. Use that text/selector to find the source.
+  A missing legacy frame does not establish original visual state. For older iOS batches without
+  comment frames, use the batch-level frame when available, mapping their normalized anchors to it.
+
+Act on or answer each comment, then
+\`morpheus qa comments resolve <id> --agent <identity> --root <checkout>\`.
 If work fails, release that claim; if the responder died, an operator can release it with
 \`--force\` after confirming the old responder stopped. Confirm the
-first batch's captured PNG shows real app pixels before treating its anchors as authoritative.
-
-A web batch's frame is the whole page, so normX/normY are fractions of the page, not the window.
-Each web anchor also carries \`page\` (url, scroll, viewport and page size) and, when it could be
-resolved, \`element\`: a CSS \`selector\` that matched exactly the pinned element, its \`tag\`, its
-visible \`text\`, and the point within it (offsetX/offsetY; when the click fell outside every element's
-own box, the offsets are clamped to its edge and x/y is the real point). Find the element in the source by its
-text and selector — it is what the comment is about. A batch can arrive without a frame when the
-page could not be captured; the element and page context still locate every comment.
+first batch's saved images show the expected app content and inspect any declared omissions before
+treating image locations as authoritative. HTML context remains primary for current web comments.
 
 A wake webhook in local/qa-comments/webhook.json is scoped to that checkout, not this chat. It
 fires for every batch at the root. Never copy another checkout's webhook or assume its target is
