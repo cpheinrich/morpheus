@@ -74,6 +74,16 @@ credit, reset, overage, native-worker or model API route was used.
 
 ## Independent source review
 
+Late CI correction scope: the current head had one full-suite pass and another full-suite run
+with 3287/3288 passing. The only failure was the pre-existing QA responder fixture: it waited for
+the child's `resolved` file before the child unlinked the claim and exited. An early claim
+assertion could fail and the test's cleanup then killed the child, masking the assertion as exit1.
+The fixture now waits for the existing responder completion log after successful child close and
+claim release, and retains its exact ordering/ownership/descendant assertions. This bounded
+test-only synchronization correction is required to finish CI delivery; the same reviewer will
+inspect it as the first allowed follow-up. Production QA behavior is unchanged. No unchanged
+suite was rerun merely to obtain a favorable result.
+
 The independent high-risk source review cleared the implementation with no findings. The
 reviewer independently ran both focused test files (25 passed), checked the complete diff,
 authorization, projection bounds/isolation, token rotation, ownership/shutdown and uncertain

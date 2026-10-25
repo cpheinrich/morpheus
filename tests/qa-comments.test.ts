@@ -206,7 +206,10 @@ setTimeout(() => {
     await writeFile(join(root, "local/qa-comments/responder.json"), JSON.stringify({ agent: "codex:background", command: [process.execPath, script], pollMs: 250 }));
     const config = await loadResponderConfig(root);
     const controller = new AbortController();
-    const worker = runQaResponder(relative(process.cwd(), root), config, controller.signal, () => undefined);
+    let secondCompleted = false;
+    const worker = runQaResponder(relative(process.cwd(), root), config, controller.signal, (message) => {
+      if (message === "QA responder: resolved responder-second") secondCompleted = true;
+    });
     try {
       for (let i = 0; i < 50; i++) {
         const marker = await responderStatus(root);
@@ -218,9 +221,11 @@ setTimeout(() => {
       expect(await isResponderActive(root)).toBe(true);
       await writePendingBatch(root, second);
       for (let i = 0; i < 100; i++) {
-        if ((await showBatch(root, second.id))?.batch.status === "resolved") break;
+        // A resolved file precedes child cleanup; wait for the owner's completion receipt.
+        if (secondCompleted) break;
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
+      expect(secondCompleted).toBe(true);
       expect((await showBatch(root, first.id))?.batch.status).toBe("resolved");
       expect((await showBatch(root, second.id))?.batch.status).toBe("resolved");
       expect(await readBatchClaim(root, first.id)).toBeNull();
