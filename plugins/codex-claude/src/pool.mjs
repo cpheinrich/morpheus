@@ -24,6 +24,7 @@ const controlFile = (id) => join(controlDir(id), `${String(Date.now()).padStart(
 const firstLine = (text) => text.trim().split("\n")[0].slice(0, 80);
 export class Pool {
   followups = new Set();
+  allocations = new Set();
   // `admit` verifies the calling Codex task before anything can launch; `control` before
   // an answer. The bridge service supplies both from live task metadata. Without them
   // every mutation refuses rather than trusting an unverified caller.
@@ -64,33 +65,44 @@ export class Pool {
         throw new Error(`Pool profile ${name} already has an active turn in conversation ${id}; wait, stop or reattach it.`);
     }
   }
-  async start(args) {
-    if (!TASK_ID.test(args.threadId ?? "")) throw new Error("Invalid Codex task id");
+  async allocate(profile, fn) {
+    if (this.allocations.has(profile)) throw new Error("Another pool turn is being allocated for this profile; observe before retrying.");
+    this.allocations.add(profile);
+    try { return await fn(); } finally { this.allocations.delete(profile); }
+  }
+  async start(args, hq = null) {
+    return this.allocate(args.profile, () => this.startTurn(args, hq));
+  }
+  async startTurn(args, hq = null) {
+    if (!hq && !TASK_ID.test(args.threadId ?? "")) throw new Error("Invalid Codex task id");
     if (typeof args.prompt !== "string" || !args.prompt.trim() || args.prompt.length > 200000)
       throw new Error("A bounded prompt is required");
     const { pool, api } = await this.context();
     const profile = pool.profiles[args.profile];
     if (!profile) throw new Error("Unknown pool profile");
-    const { project } = await this.admit(args.threadId, profile.permission, null);
+    const { project } = hq ? await hq.admit(null) : await this.admit(args.threadId, profile.permission, null);
     await initPool();
     await this.assertProfileIdle(args.profile);
-    const id = randomUUID();
+    const id = hq?.conversationId ?? randomUUID();
     const dir = conversationDir(id);
     await mkdir(join(dir, "turns"), { recursive: true, mode: 0o700 });
     await mkdir(controlDir(id), { mode: 0o700 });
     await mkdir(answersDir(id), { mode: 0o700 });
     const conversation = {
-      version: 1, id, threadId: args.threadId, profile: args.profile, provider: profile.provider,
+      version: 1, id, threadId: hq ? null : args.threadId, ...(hq ? { hq: hq.identity } : {}), profile: args.profile, provider: profile.provider,
       agentId: profile.agentId, bindingSha256: bindingDigest(args.profile, profile), createdAt: Date.now(),
       project, issueId: null, turns: 1, supervisionReplies: 0,
     };
     await atomic(join(dir, "conversation.json"), conversation);
-    const threads = await readJSON(threadIndex(args.threadId), { conversations: [] });
-    threads.conversations.push(id);
-    await atomic(threadIndex(args.threadId), threads);
+    if (!hq) {
+      const threads = await readJSON(threadIndex(args.threadId), { conversations: [] });
+      threads.conversations.push(id);
+      await atomic(threadIndex(args.threadId), threads);
+    }
     // Journal before the external mutation; an unknown outcome is observed, never reposted.
-    const turn = { n: 1, kind: "start", prompt: args.prompt, promptSha256: sha256(args.prompt), state: "posting", createdAt: Date.now() };
+    const turn = { n: 1, kind: "start", ...(hq ? { actor: hq.identity.actor, operationId: hq.identity.operationId } : {}), prompt: args.prompt, promptSha256: sha256(args.prompt), state: "posting", createdAt: Date.now() };
     await atomic(turnPath(id, 1), turn);
+    if (hq) { await hq.admit(conversation); await hq.recordTurn(id, 1); }
     await this.submitIssue(pool, api, conversation, turn);
     return this.status({ conversationId: id });
   }
@@ -250,11 +262,12 @@ export class Pool {
     }
     return { runId: run.paperclipRunId, offset, nextOffset: response?.nextOffset ?? null, lines };
   }
-  async answer(args) {
+  async answer(args, hq = null) {
     if (!["codex", "user"].includes(args.source)) throw new Error("Invalid answer source");
-    if (!TASK_ID.test(args.threadId ?? "")) throw new Error("Pass the current Codex task id");
+    if (!hq && !TASK_ID.test(args.threadId ?? "")) throw new Error("Pass the current Codex task id");
     const c = await this.conversation(args.conversationId);
-    await this.control(args.threadId, c);
+    if (hq) await hq.admit(c);
+    else await this.control(args.threadId, c);
     const n = c.turns;
     // The answer journal is checked first, so a duplicate is reported as such whether or
     // not the provider has already moved past the question.
@@ -270,10 +283,11 @@ export class Pool {
     if (args.source === "codex" && c.supervisionReplies >= config.maxSupervisionReplies)
       throw new Error("Supervision limit reached. Escalate to the user.");
     if (args.source === "codex" && !args.reason) throw new Error("Record why this clarification does not require the user.");
+    if (hq) await hq.recordTurn(c.id, n);
     try {
       await writeFile(
         join(answersDir(c.id), `q-${sha256(`${n}:${args.questionId}`).slice(0, 32)}.json`),
-        JSON.stringify({ turn: n, questionId: args.questionId, threadId: args.threadId, source: args.source, reason: args.reason, answers: args.answers, allow: args.allow !== false, at: Date.now() }),
+        JSON.stringify({ turn: n, questionId: args.questionId, threadId: hq ? null : args.threadId, ...(hq ? { actor: hq.identity.actor, operationId: hq.identity.operationId } : {}), source: args.source, reason: args.reason, answers: args.answers, allow: args.allow !== false, at: Date.now() }),
         { flag: "wx", mode: 0o600 },
       );
     } catch (error) {
@@ -287,14 +301,14 @@ export class Pool {
         : { updatedInput: { ...run.question.input, ...(args.answers ? { answers: args.answers } : {}) } }),
     };
     // Atomic: the relay only ever sees a complete control (its .tmp name is ignored).
-    await atomic(controlFile(c.id), { type: "answer", turn: n, message: { type: "control_response", response: { subtype: "success", request_id: args.questionId, response } } });
+    await atomic(controlFile(c.id), { type: "answer", turn: n, ...(hq ? { actor: hq.identity.actor, operationId: hq.identity.operationId } : {}), message: { type: "control_response", response: { subtype: "success", request_id: args.questionId, response } } });
     await atomic(join(conversationDir(c.id), "conversation.json"), {
       ...(await readJSON(join(conversationDir(c.id), "conversation.json"))),
       supervisionReplies: args.source === "user" ? 0 : c.supervisionReplies + 1,
     });
     return this.status({ conversationId: c.id });
   }
-  async followup(args) {
+  async followup(args, hq = null) {
     // All supported clients share the controller's bridge service. Refuse a second
     // submission before either caller can allocate the same next turn number.
     const id = args.conversationId;
@@ -302,13 +316,14 @@ export class Pool {
       throw new Error("Another follow-up is being submitted for this conversation; read status before retrying.");
     this.followups.add(id);
     try {
-      return await this.continueTurn(args);
+      const c = await this.conversation(id);
+      return await this.allocate(c.profile, () => this.continueTurn(args, hq));
     } finally {
       this.followups.delete(id);
     }
   }
-  async continueTurn(args) {
-    if (!TASK_ID.test(args.threadId ?? "")) throw new Error("Pass the current Codex task id");
+  async continueTurn(args, hq = null) {
+    if (!hq && !TASK_ID.test(args.threadId ?? "")) throw new Error("Pass the current Codex task id");
     if (typeof args.prompt !== "string" || !args.prompt.trim() || args.prompt.length > 200000)
       throw new Error("A bounded prompt is required");
     const c = await this.conversation(args.conversationId);
@@ -323,7 +338,8 @@ export class Pool {
       throw new Error("The pool profile changed since this conversation started; start a new conversation.");
     // The caller's own live authority admits the turn; the original task and project
     // still apply, so another session cannot revive a conversation whose owner is off.
-    await this.admit(args.threadId, profile.permission, c);
+    if (hq) await hq.admit(c);
+    else await this.admit(args.threadId, profile.permission, c);
     const unsettled = await this.unsettled(c, api);
     if (unsettled) throw new Error(unsettled);
     const continuation = previous.state === "needs_input" || previous.result?.outcome === "needs_input";
@@ -336,11 +352,12 @@ export class Pool {
     const turn = {
       n, kind: "followup", prompt: args.prompt, promptSha256: sha256(args.prompt), state: "posting",
       replySource: args.replySource ?? null, replyReason: args.replyReason ?? null,
-      coordinatorThreadId: args.threadId, createdAt: Date.now(),
+      coordinatorThreadId: hq ? null : args.threadId, ...(hq ? { actor: hq.identity.actor, operationId: hq.identity.operationId } : {}), createdAt: Date.now(),
     };
     await atomic(turnPath(c.id, n), turn);
     const stored = await readJSON(join(conversationDir(c.id), "conversation.json"));
     await atomic(join(conversationDir(c.id), "conversation.json"), { ...stored, turns: n, supervisionReplies: replies });
+    if (hq) { await hq.admit(c); await hq.recordTurn(c.id, n); }
     await this.submitComment(api, { ...c, turns: n }, turn);
     return this.status({ conversationId: c.id });
   }
@@ -363,13 +380,14 @@ export class Pool {
     if (["verified", "not-started"].includes(run.termination) || proof?.state === "terminated") return null;
     return "The previous turn's termination is not proven; run pool.reconcile before continuing. Nothing was posted.";
   }
-  async stop({ conversationId }) {
+  async stop({ conversationId }, hq = null) {
     const c = await this.conversation(conversationId);
+    if (hq) { await hq.admit(c); await hq.recordTurn(c.id, c.turns); }
     const n = c.turns;
     try {
       // Not launched yet: take the claim so no runner can ever launch this turn.
       await mkdir(claimPath(c.id, n), { mode: 0o700 });
-      await atomic(runPath(c.id, n), { conversationId: c.id, turn: n, state: "cancelled", finished: true, termination: "not-started", stopReason: "stopped before launch", endedAt: Date.now() });
+      await atomic(runPath(c.id, n), { conversationId: c.id, turn: n, state: "cancelled", finished: true, termination: "not-started", ...(hq ? { actor: hq.identity.actor, operationId: hq.identity.operationId } : {}), stopReason: "stopped before launch", endedAt: Date.now() });
       return { ...(await this.status({ conversationId })), stopping: false };
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
@@ -378,7 +396,7 @@ export class Pool {
     if (run?.finished) return { ...(await this.status({ conversationId })), stopping: false };
     // Claimed but not yet recorded: the stop still lands in the spool, which the runner
     // checks before launch and relays to the host from its start.
-    await atomic(controlFile(c.id), { type: "stop", turn: n });
+    await atomic(controlFile(c.id), { type: "stop", turn: n, ...(hq ? { actor: hq.identity.actor, operationId: hq.identity.operationId } : {}) });
     let cancel = run?.paperclipRunId ? "requested" : "no Paperclip run recorded yet";
     try {
       const { api } = await this.context();
