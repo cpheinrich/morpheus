@@ -100,3 +100,70 @@ personal plugin hot replacement occurred. Stale local lock recovery needs exact 
 unknown bridge effects require observed operation reconciliation. Continuous token renewal,
 company-styled UI, live bounded projections, shared occupancy, attachment retention and multiple
 companies remain separate rollout work. The old Markdown inbox remains authoritative.
+
+
+## Independent pre-merge review
+
+Independent high-risk review conditionally cleared one substantive UUID delivery/reconnect mismatch and one minor lease-documentation ambiguity. Fixed within the reviewer-named four paths; uppercase and case-only UUID spellings now retain separate safe journal filenames, lost acknowledgements reconnect without re-execution, and original-fence receipt recovery is documented. All prescribed checks passed.
+
+Clock measurement includes the initial reviewer invocation through its returned result, with no author work between. The reviewer set exact condition paths/evidence; no replacement reviewer or self-review. Conditional fix250f7326 is covered. Shared Codex read28% used before review; later global29%. No main-Claude work launched.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "0b4b6567c4bb343f76c10bd4dd8f06328d1d2f19",
+  "reviewed": "3743aa5e1e246c4770c51d1f3d3ef64fbe7cc0d0",
+  "covered": "250f73261990b60b8f139a6b2638f18a9cd5434a",
+  "authorSession": "01a165f2-ad9a-7270-863f-355359913b8c",
+  "reviewerSession": "/root/hq_transport_reviewer",
+  "risk": "high",
+  "elapsedMinutes": 3.54575,
+  "timing": {
+    "source": "clock",
+    "durationMs": 212745,
+    "evidence": "Parent clock captured invocation start 2026-10-25T11:17:48.866Z and completed reviewer return 2026-10-25T11:21:21.611Z for /root/hq_transport_reviewer in parent 01a165f2-ad9a-7270-863f-355359913b8c."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk review conditionally cleared one substantive UUID delivery/reconnect mismatch and one minor lease-documentation ambiguity. Fixed within the reviewer-named four paths; uppercase and case-only UUID spellings now retain separate safe journal filenames, lost acknowledgements reconnect without re-execution, and original-fence receipt recovery is documented. All prescribed checks passed.",
+  "findings": [
+    {
+      "id": "HQ-R1",
+      "severity": "substantive",
+      "description": "Connector accepted only lowercase UUID filenames and pending IDs while backend accepted uppercase, allowing one accepted request to poison every pass and strand reconnect receipts.",
+      "paths": [
+        "scripts/paperclip-hq/connector.ts",
+        "tests/paperclip-hq.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Validate pending IDs with the same backend UUID schema and hash exact operation IDs for case-safe journal names while preserving stored IDs. Added delivery of uppercase, lowercase and case-only spellings plus uppercase receipt reconnect; no duplicate bridge calls.",
+      "condition": {
+        "paths": [
+          "scripts/paperclip-hq/connector.ts",
+          "tests/paperclip-hq.test.ts"
+        ],
+        "evidence": "Make pending-list and journal-filename validation accept backend-valid UUID cases without altering stored identifiers; prove uppercase plus lowercase delivery once and uppercase saved receipt reconnect without another bridge call. Run focused transport tests, typecheck and optional package build."
+      },
+      "conditionMet": "pnpm exec vitest run tests/paperclip-hq.test.ts passed16/16; pnpm typecheck passed; pnpm --dir scripts/paperclip-hq run build passed. Diff confined to the four named source/test/document paths. Tests retain exact original operation IDs and verify case-safe filenames and no second bridge call."
+    },
+    {
+      "id": "HQ-R2",
+      "severity": "minor",
+      "description": "Acceptance wording said expired claimants cannot acknowledge, although a saved receipt may be published under its original applying fence after expiry.",
+      "paths": [
+        "qa/acceptance/paperclip-hq-transport.md",
+        "docs/paperclip-hq-transport.md"
+      ],
+      "disposition": "fixed",
+      "response": "Clarified expired pre-application and replaced claims versus original applying fence receipt publication. Preserved tested recovery behavior.",
+      "condition": {
+        "paths": [
+          "qa/acceptance/paperclip-hq-transport.md",
+          "docs/paperclip-hq-transport.md"
+        ],
+        "evidence": "Clarify original applying-fence receipt recovery after expiry; preserve current receipt behavior."
+      },
+      "conditionMet": "Both documents distinguish claim expiry from original-fence receipt recovery. Existing exact-expiry recovery test passes as part of16/16 focused transport tests."
+    }
+  ]
+}
+```
