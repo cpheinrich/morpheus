@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { readFile } from "node:fs/promises";
+import { open, readFile } from "node:fs/promises";
 import { dirname, resolve, basename } from "node:path";
 import { randomUUID } from "node:crypto";
 import { configSchema, configurationDigest, hash, type CdConfig, type Identity, type TestEvidence, type UploadEvidence } from "./schema.js";
@@ -13,6 +13,7 @@ import { runWorker, scheduleHosted, QuotaReader } from "./worker.js";
 import { githubToken, probeGitHubToken } from "./github-token.js";
 import { validatePayloadFiles } from "./evidence.js";
 import { reserveReviewedSource } from "./source-finance.js";
+import { recordRepairDiagnostic, REPAIR_DIAGNOSTIC_MAX_BYTES } from "./repair-diagnostic.js";
 
 const HELP = `morpheus cd config|init|tick|request|status|verify-execution|claim-upload|record-upload|upload-hook|record|worker|budget
   --config PATH                 Consumer configuration (default .morpheus/cd.json)
@@ -20,6 +21,7 @@ const HELP = `morpheus cd config|init|tick|request|status|verify-execution|claim
   tick [--observe]               Reconcile slots, workflows, Apple and durable repairs
   request --channel CHANNEL [--source SHA] [--validation] [--group ID] [--source-age-waiver REF]
   record --kind tests|failure|quiescence --evidence FILE (or - for stdin)
+  record --kind repair-diagnostic --evidence FILE  Bounded data for an existing failed repair
   upload-hook --phase before|resource|after
   worker --executor local|hosted [--host-id ID] [--work-id ID --invocation-id ID --task-digest SHA256]
   budget --operation reserve|settle --id ID [--request FILE --maximum-micros N|--actual-micros N]
@@ -29,6 +31,18 @@ All results are JSON. Upload claim exit 3 means skip safely; never retry bytes.
 async function jsonInput(path: string): Promise<unknown> {
   if (path !== "-") return JSON.parse(await readFile(resolve(path), "utf8"));
   let text = ""; for await (const bytes of process.stdin) text += String(bytes); return JSON.parse(text);
+}
+async function repairDiagnosticInput(path: string): Promise<unknown> {
+  invariant(path !== "-", "Repair diagnostics require a bounded JSON file");
+  const file = await open(resolve(path), "r");
+  try {
+    const stat = await file.stat();
+    invariant(stat.isFile() && stat.size > 0 && stat.size <= REPAIR_DIAGNOSTIC_MAX_BYTES, "Repair diagnostic file must contain 1..16384 bytes");
+    const bytes = Buffer.alloc(REPAIR_DIAGNOSTIC_MAX_BYTES + 1); let length = 0;
+    while (length < bytes.length) { const read = await file.read(bytes, length, bytes.length - length, null); if (!read.bytesRead) break; length += read.bytesRead; }
+    invariant(length <= REPAIR_DIAGNOSTIC_MAX_BYTES, "Repair diagnostic file exceeds 16384 bytes");
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, length)));
+  } finally { await file.close(); }
 }
 function required(value: string | undefined, name: string): string { invariant(value, `Missing ${name}`); return value; }
 export function environmentIdentity(environment: NodeJS.ProcessEnv): Identity {
@@ -68,6 +82,11 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
     invariant(positionals.length === 1 && positionals[0] === "budget" && values.operation === "reserve" && !values.help, "Reviewed source authority is only valid for explicit budget reserve, without help");
     const allowed = new Set(["config", "operation", "id", "request", "maximum-micros", "authority", "authority-digest", "json"]);
     for (const key of Object.keys(values)) invariant(allowed.has(key), `Reviewed source budget reserve does not accept --${key}`);
+  }
+  if (values.kind === "repair-diagnostic") {
+    invariant(positionals.length === 1 && positionals[0] === "record" && !values.help, "Repair diagnostics require the explicit record command without help");
+    const allowed = new Set(["config", "kind", "evidence", "json"]);
+    for (const key of Object.keys(values)) invariant(allowed.has(key), `Repair diagnostic record does not accept --${key}`);
   }
   if (values.help || !positionals.length) { console.log(HELP); return 0; }
   if (positionals[0] === "github-token") { console.log(JSON.stringify(await (values.probe ? probeGitHubToken(environment) : githubToken(environment, values.revoke)))); return 0; }
@@ -133,7 +152,9 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
       result = await store.transact(`upload-record-${identity.attemptId}-${hash(evidence).slice(0, 24)}`, "record-upload-result", now, state => { recordUpload(state, evidence, now); return { uploadOperationId: `upload:${identity.attemptId}`, outcome: evidence.outcome, providerUploadId: evidence.providerUploadId }; }); break;
     }
     case "record": {
-      const path = required(values.evidence, "--evidence"), evidence = await jsonInput(path) as Identity & Record<string, unknown>;
+      const path = required(values.evidence, "--evidence");
+      if (values.kind === "repair-diagnostic") { result = await recordRepairDiagnostic(store, await repairDiagnosticInput(path)); break; }
+      const evidence = await jsonInput(path) as Identity & Record<string, unknown>;
       if (values.kind === "tests") {
         invariant(path !== "-", "Full-test evidence needs a file and its actual sibling payloads");
         const tests = evidence as unknown as TestEvidence; await validatePayloadFiles(tests, path); verifyValidator(sourceDir, tests);
@@ -148,7 +169,7 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
           invariant(typeof evidence.ref === "string" && evidence.ref.length > 10 && evidence.processGroupAbsent === true && evidence.executorTerminated === true, "Job terminal status/lease expiry alone cannot establish quiescence");
           attempt.quiescence = { kind: evidence.kind, ref: evidence.ref, observedAt: now }; return attempt.quiescence;
         });
-      } else throw new Error("Record kind must be tests, failure or quiescence");
+      } else throw new Error("Record kind must be tests, failure, quiescence or repair-diagnostic");
       break;
     }
     case "worker": {

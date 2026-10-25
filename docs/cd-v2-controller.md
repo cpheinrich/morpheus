@@ -145,6 +145,65 @@ pause, cursor and receipt checks still determine delivery; this is not authority
 reupload, manufacture raw results or count a workflow conclusion as availability.
 An artifact name, count or workflow conclusion never proves full tests.
 
+`cd record --kind repair-diagnostic --config ABS --evidence FILE` appends
+untrusted diagnostic data to one existing repair after its latest execution
+attempt has failed. This is separate from `record --kind failure`, which still
+requires a current active attempt. The strict JSON file contains:
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "repair-diagnostic",
+  "workId": "repair-staging-example-2",
+  "taskDigest": "<exact stored task SHA-256>",
+  "intentId": "staging-example",
+  "attemptId": "staging-example-a2",
+  "dispatchEffectId": "<exact failed dispatch identity>",
+  "sourceSha": "<exact 40-character failed/current source SHA>",
+  "controlSha": "<exact 40-character failed control SHA>",
+  "runId": "100",
+  "runAttempt": "1",
+  "diagnostic": {
+    "summary": "Separately qualified corrected capability",
+    "evidence": ["synthetic-proof:reviewed-source"]
+  }
+}
+```
+
+Use actual exact identities; the angle-bracket values above are placeholders.
+The work must be the unique latest noncomplete repair for that undelivered,
+still-repairing intent. Its stored task and supplied task digest must agree.
+The latest attempt must be failed, its source must still be the intent's current
+source, and both Actions run fields must already be bound exactly. The command
+never fills run identities, creates work or retargets a sibling. These conditions
+are checked before a new note and in every CAS callback after a conflict.
+
+The file must be a regular UTF-8 JSON file containing 1..16384 bytes; stdin is
+refused. Canonical JSON is also limited to 16384 UTF-8 bytes. Summary text is
+nonblank and at most 8192 characters, with at most eight nonblank evidence strings
+of at most 4096 characters each. Unknown fields and unrelated flags are refused.
+Only the exact work's `evidence` array gains one deduplicated canonical JSON string;
+all controller policy, ownership, leases/fences, task, source/lineage, clocks,
+attempt/test/upload/receipt history, pauses, cursors and funding remain unchanged.
+There is no dispatch, worker wake, provider/model action or capability approval.
+The existing regular worker timer remains the continuation owner.
+
+The full canonical SHA-256 names the `repair-diagnostic-<sha256>` transition/event.
+Success returns a small JSON result with `head`, `replayed`, `result` (the
+immutable work/task/intent/attempt and diagnostic SHA-256 receipt), `eventId`,
+`eventOwner`, `verifiedReadbackHead` and
+`targetCurrent`, an observation of the target at that readback. A normal owner may
+advance after the note commits: a genuine replay still acknowledges that saved
+note with `targetCurrent: false`, without restoring work or authorizing a retry.
+A new note for a completed or changed target is refused. Receipt/owner/evidence
+collisions are refused. An unknown write/readback outcome requires observing that
+exact transition and work; it does not justify a new ID, another target or a
+blind retry. Evidence remains diagnostic data, never instructions, authority,
+funding or proof of actual consumer/runtime adoption.
+The exported `recordRepairDiagnostic(store, input)` API returns the same bounded
+result. `appendRepairDiagnostic(state, input)` is its pure evidence-only reducer;
+the public CLI uses the normal store API and never emits the full state.
+
 ## Upload and internal completion
 
 The reusable upload hook is:
