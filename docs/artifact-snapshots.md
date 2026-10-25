@@ -145,7 +145,13 @@ Small artifacts retain their original layout. The report filename is reserved in
 these two channels. No file is truncated, and a partial result bundle is never
 presented as usable evidence.
 
-The native workflow captures failure before artifact staging. Later artifact
+The native workflow captures failure before artifact staging with `failure()` in
+the capture step's `if`. A selected capture writes `failed=true`; a skipped
+capture leaves no output, which the exact-true diagnostic selectors reject.
+Success, allowed continue-on-error failures, skipped work, cancellation and scope
+bypass therefore do not select native failure diagnostics. A cancellation after
+the snapshot does not rewrite an already captured failure. Status functions are
+not valid in step `env` or `run` expressions. Later artifact
 failures still fail the job and admission barrier, but do not independently select
 native failure evidence. Mandatory native-complete and qualified-test channels
 retain full, fail-closed admission. Diagnostic selection is not test qualification.
