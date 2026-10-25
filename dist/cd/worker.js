@@ -8,10 +8,10 @@ import { fileURLToPath } from "node:url";
 import { checkLocalReview } from "../review/local.js";
 import { hash } from "./schema.js";
 import { after, adoptRepair, completeOperationalRepair, invariant, quotaUsed, repairWork, sourceAt } from "./state.js";
-import { pages } from "./store.js";
 import { ActionsAdapter } from "./actions.js";
 import { git, loadSources } from "./source.js";
 import { nativeQuota } from "./quota-reader.js";
+import { verifyRepairChecks } from "./repair-checks.js";
 const exec = promisify(execFile);
 function paused(state, intentId) { return state.pauses.some(pause => ["all", intentId, state.intents[intentId].channel].includes(pause.scope)); }
 export const agentResultSchema = { type: "object", additionalProperties: false, properties: { outcome: { type: "string", enum: ["repaired", "checkpoint", "blocked"] }, summary: { type: "string" }, pullRequest: { type: "string" }, sourceSha: { type: "string" }, reviewHead: { type: "string" }, evidence: { type: "array", items: { type: "string" } }, missingCapability: { type: "string" } }, required: ["outcome", "summary", "pullRequest", "sourceSha", "reviewHead", "evidence", "missingCapability"] };
@@ -149,8 +149,7 @@ export async function verifyRepair(config, store, sourceDir, result) {
     invariant(match && result.reviewHead, "Repair needs exact reviewed PR provenance");
     const pull = await store.api.request("GET", `repos/${config.repository}/pulls/${match[1]}`);
     invariant(pull.merged && pull.head.sha === result.reviewHead && pull.base.ref === config.mainBranch, "Repair PR is not merged with its exact reviewed head");
-    const checks = await pages(store.api, `repos/${config.repository}/commits/${pull.head.sha}/check-runs`, "check_runs");
-    invariant(checks.length && checks.every(check => ["success", "skipped", "neutral"].includes(check.conclusion ?? "")), "Repair head has failed/incomplete checks");
+    const checks = await verifyRepairChecks(store.api, config.repository, pull.head, pull.base.repo);
     git(sourceDir, ["fetch", "origin", pull.head.sha, pull.merge_commit_sha]);
     const directory = await mkdtemp(join(tmpdir(), "morpheus-cd-review-"));
     try {
@@ -167,6 +166,8 @@ export async function verifyRepair(config, store, sourceDir, result) {
         }
     }
     invariant(!result.sourceSha || result.sourceSha === pull.merge_commit_sha, "Agent source differs from actual merged repair");
+    if (checks.superseded.length)
+        result.evidence.push(`Morpheus verified cancellation supersession: ${JSON.stringify(checks)}`);
     return pull.merge_commit_sha;
 }
 export async function runWorker(config, store, sourceDir, options, environment = process.env) {
