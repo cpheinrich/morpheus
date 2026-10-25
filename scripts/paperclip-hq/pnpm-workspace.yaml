@@ -1,0 +1,5 @@
+# This standalone deployment package needs no dependency lifecycle scripts.
+# pnpm 11 reads build policy here, not from package.json or .npmrc.
+packages:
+  - .
+ignoreScripts: true

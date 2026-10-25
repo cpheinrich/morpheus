@@ -97,6 +97,11 @@ Automatic stale-lock ownership recovery is not qualified by this prototype.
 ## Local verification
 
 The optional deployment dependencies stay under `scripts/paperclip-hq/`, outside the kit's runtime.
+That package pins its own TypeScript/Node development types and denies install scripts through
+its standalone pnpm 11 workspace policy. Keep `pnpm-workspace.yaml` in the upload. Build `lib/`
+before deployment; empty `gcp-build` prevents Google Buildpacks from recompiling excluded sources.
+`node scripts/paperclip-hq/check-package.mjs` checks clean standalone development and plain
+production installs with fresh stores, then loads all nine compiled definitions without RPCs.
 The core uses existing Zod and Node facilities. No paid services or real credentials are needed:
 
 ```sh
