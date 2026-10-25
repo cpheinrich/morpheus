@@ -4,10 +4,14 @@ Native blocked transitions require an unblock route. The runner supplies a worke
 `unblockDescriptor` pointing to the controlling Codex conversation, and clears it on done.
 This follows the pinned API's actual HTTP 422 guard; a question in a comment alone is insufficient.
 
-Status: staged on both hosts. Remote Codex and local Claude have completed real nonce turns;
-protocol and recovery qualification is recorded below. Task MO-26-10-24-00.59.32; acceptance is in
-qa/acceptance/MO-26-10-24-00.59.32.md. Remote Claude live acceptance is pending native
-sign-in on the Mac mini and is not replaced by synthetic evidence.
+Status, October 24 evening: real remote Codex and remote Claude have completed the interactive
+qualification. The Mac mini's native Claude Pro login works through its existing GUI audit
+session; the registered worker still runs as Zoe, not root. Streaming, a live question/answer,
+same-session follow-ups, coordinator reconnect, native-worker stop and recovery were verified.
+Exact identities, SSH artifact readbacks and limits are in the latest section of
+[the worklog](../.agent/worklog/2026-10-24-bridge-paperclip-workers.md). Earlier pending and failed
+attempts below remain historical evidence. Task MO-26-10-24-00.59.32; acceptance is in
+qa/acceptance/MO-26-10-24-00.59.32.md.
 
 ## Root proposal (retained)
 
@@ -246,3 +250,24 @@ recovery of an earlier cancelled no-op. Native evidence proved that no-op never 
 (startedAt/processPid/processGroupId all null); the generic bridge must not infer that for
 foreign runs. Requested sonnet/medium, observed claude-sonnet-5-5, observed effort unknown.
 Neither successful local Claude work nor deterministic SSH tests replace remote Claude acceptance.
+
+## October 24 evening: remote Claude qualification
+
+Conversation `7821461c-c371-4231-b8a3-211e4a15954a` on the existing mini-claude profile
+retained native session `06ff651e-b6cf-4723-a4d7-ae050b1cbc3e` across all four turns.
+The controller restarted while a live question was pending; the run, question, session and
+log cursor stayed identical. Independent SSH reads verified the original random nonce and
+blue label at phases2,3 and4; the last artifact records audit `recovered` and Paperclip done.
+The stopped turn was waiting for an unapproved Bash permission. Its native CLI and MCP child
+were observed alive, then absent after stop; exact host reconciliation preceded recovery.
+The proposed sleep did not run, so this does not establish stopping a running Claude shell
+command. Remote Codex's earlier foreground-command stop remains a separate result.
+
+Plain SSH had incorrectly appeared unsigned-in because it could not read the saved Keychain
+credential in that audit session. With Chris's newly configured passwordless sudo, the private
+launcher enters Zoe's existing GUI audit session using `launchctl asuser`, then immediately
+returns to Zoe's uid/home before running the same native Node runtime. Model, guardian and
+worker uid501 were checked. No credential was copied or token minted. This host route needs
+the existing logged-in GUI session; logout/reboot readiness was not tested. Only the private
+mini-claude launcher and its actual reported quota-window configuration changed; the reviewed
+prototype source remains `c908eb9`, with the existing weekly57/60 and session90/95 caps.

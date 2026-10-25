@@ -657,3 +657,100 @@ Budget checkpoint at 2026-10-25T03:44Z: the native main Claude usage reader repo
 Claude delegation was admitted. Codex's host account read reports 99% weekly remaining;
 its 25%-remaining floor continues to apply. These are fresh shared-account observations,
 not per-task billing or a claim that this task consumed the intervening usage.
+
+## October 24 evening — terminal-only native Claude access and real remote qualification
+
+Chris asked to retry with the mini's newly configured passwordless sudo, and then to retain
+terminal/sudo resolution as a standing preference. The previous “locked Keychain” diagnosis
+was too broad: plain SSH's audit session could not read the saved login, while the logged-in
+GUI session could. The command-line route succeeded immediately:
+
+```
+sudo -n launchctl asuser "$(id -u zoe)" sudo -n -H -u zoe /Users/zoe/.local/bin/claude auth status
+```
+
+It reported loggedIn true, authMethod claude.ai, firstParty, subscriptionType pro; Keychain
+settings read “no-timeout.” No browser, new approval prompt, Keychain password, credential
+copy or long-lived token was needed. Sudo enters the existing GUI audit context, then uid/home
+return to Zoe before Node or any model process starts. This does not attest readiness after
+logout/reboot or unlocking an actually locked Keychain.
+
+A private operator launcher outside every model workspace accepts only the existing exact
+pool-remote.mjs entry and invokes the same native Node through that sequence. Only
+mini-claude's operator host.node was repointed; existing binding, host/account, workspace,
+model, effort and permissions stayed identical. Native host config now requires exactly this
+Pro account's two actual reported quota windows (session90/95 and weekly57/60); unavailable
+Sonnet-only/Opus-only windows were not assumed. Codex config was untouched. Operator intent,
+before-config copy, fixed launcher and readbacks are private. Prototype source remains
+reviewed c908eb9 on both hosts; no source hot upgrade or code change was needed.
+
+The fresh Pro account initially reported session0% with null reset. A separately reserved,
+one-turn, no-tools native login smoke returned exactly AUTH_READY in1.305s, native session
+f99a8b4a-0a5f-4518-bb93-7467837feabe. It was not claimed as pool acceptance and changed no
+pool rule. The next native quota observation reported future resets for both windows; all
+pool work passed the unchanged admission/meter guards. No guessed reset was inserted.
+
+Actual remote pool conversation **7821461c-c371-4231-b8a3-211e4a15954a**, issue
+**730de433-092c-47ce-a38d-1d0dd869114c**, existing mini-claude agent
+d6e7256d-bcec-4cf6-8319-325812d32c08 on zoe-mini-interactive. All four turns retained native
+session **06ff651e-b6cf-4723-a4d7-ae050b1cbc3e**. Requested sonnet/medium; observed
+claude-sonnet-5-5 with effort unknown, basis native init (no effort observation invented).
+
+- Turn1, run9424c6ea-04b5-4d94-ac1d-200539daee2c, remoteefc37f959ee1908d8b10b315a6c04b5b:
+  real progress GUI_REMOTE_STREAM_READY was folded from Paperclip's log while the provider
+  waited in live AskUserQuestion ea7c8b47-8cab-48c5-93c6-4065ba338b2c. SSH independently read
+  phase1 nonce gui-native-0350b789-b426-444a-94ee-c7f34ec18978. Coordinator shutdown/reattach
+  retained the identical native session, run, question, sequence4 and byte cursor37370; no
+  second execution. The coordinator answered blue as source codex with a concrete reversible
+  fixture reason. Phase2 exact JSON was read independently over SSH; done applied/verified.
+- Turn2, runa3740097-23fa-4870-8cfa-f20699c8d1e3, remotef74cd091d3a5890d150c6cee09eb6446:
+  follow-up contained no original nonce value. The same native conversation remembered the
+  original nonce/blue and wrote phase3/audit remembered. Independent SSH exact readback;
+  done applied/verified.
+- Turn3, runad6ad417-bbb0-4407-8878-c4abb0d5f529, remote0f382609458030120d68365af8ff14ec:
+  the proposed foreground sleep produced a Bash permission request8fecc403-8685-40f9-807b-
+  a52cbdb73be4. It was NOT approved and the sleep never ran. The foreground-sleep drill is
+  retained as failed, not silently retried. Native CLI18253 and MCP-child18273 were observed
+  live, uid501, with guardian18251 and pool17580 on the earlier first turn / pool18226 on this
+  turn. The controller deliberately stopped this active permission-waiting worker. Original
+  controller evidence remains transport_lost/unknown; separate host receipt records
+  interrupted/verified and pool.reconcile proved the exact UUID terminated. Independent ps
+  readback found none of18226/18251/18253/18273. This proves native-worker cleanup, not stopping
+  a running Claude shell command. That stronger Claude-specific case is untested; the earlier
+  real Codex foreground-command stop and deterministic guardian regressions remain separate.
+- Turn4, run1cdaa192-75e0-493d-a7d8-21bc38690aee, remote5de2259bce59f76c6413fb456482b7c8:
+  saved follow-up was released only by pool.recover resolving exact source turn3's action
+  ac4c958c-5ce2-466b-9454-e66669d0bf50, mixed effects, with termination proof. No prompt repost
+  or permission approval. Same native session wrote phase4/audit recovered with original
+  nonce/blue; independently parsed SSH JSON verified every value. Final Paperclip issue done,
+  exact own-run disposition applied, provider completed and termination verified.
+
+Private proof set under ~/.local/share/morpheus-paperclip/interactive-20261024:
+claude-gui-qualification-start.json, claude-gui-first-wait.json,
+claude-gui-active-reconnect.json, claude-gui-turn1-completed.json,
+claude-gui-turn2-completed.json, claude-gui-stop-recovery.json (failed sleep drill retained),
+claude-gui-reconciled-recovery.json, claude-gui-final-proof.json and
+claude-gui-native-readback.json. These contain exact identities/readbacks, not credentials.
+The earlier refused issue11b61468-2375-4482-86ed-69b18f07d557 was separately cancelled with a
+supersession explanation pointing to the new qualified issue, never re-labelled successful.
+
+Final native mini Claude telemetry03:58:03Z: weekly0% used and session2% used, future resets;
+extra usage disabled through the trusted reader. Weekly0→0 is rounded account telemetry,
+not zero inference. Four pool turns plus the bounded one-word enrollment smoke are retained.
+Release seven of the reserved eight weekly points, conservatively account one for granularity.
+All three new test agents are paused, no model turn is active, and pool.reconcile returns[].
+Main Claude still61% weekly used/39% remaining, below Chris's40% floor; no main-Claude model
+run was admitted. Existing weekly floor and no paid fallback still apply.
+
+Preference saved and read back in host-level /Users/chrisheinrich/code/AGENTS.md and
+/Users/zoe/code/AGENTS.md on the mini, with the exact successful audit-context command and
+explicit regular-user execution. These are host-local instructions outside the Morpheus Git
+repository; generic project scaffolds were not changed.
+
+The original real remote-Claude acceptance is now evidenced. No new implementation is in the
+completion diff: four explanatory/qualification Markdown files update stale pending status and
+state the actual limits; the worklog retains all failures. Integrated-source95/95 plugin tests,
+plugin check and exact-merge review validation passed earlier this evening; CI at63b305a is
+fully green. PM index remains unchanged and git diff --check passes. The four-document
+completion awaits the original reviewer's bounded finalization and final-head CI; PR #475
+remains WIP/draft with auto-merge off until that loop finishes.
