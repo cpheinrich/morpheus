@@ -17,7 +17,7 @@ mutants=[
  ('cap-boundary-inclusive',"value <= CAP, 'stored-byte bound'","value < CAP, 'stored-byte bound'",'test_exact_cap_and_one_byte_accounting_boundaries'),
  ('no-raw-factor2','value = 2 * raw + 4 * names','value = raw + 4 * names','test_exact_cap_and_one_byte_accounting_boundaries'),
  ('allow-hardlinks','stat.S_ISREG(s.st_mode) and s.st_nlink == 1','stat.S_ISREG(s.st_mode)','test_symlink_hardlink_fifo_and_linked_parent'),
- ('drop-source-rescan',"require(selection(context, deadline) == rows, 'source selection changed')","require(True, 'source selection changed')",'test_new_late_source_file_and_bad_alias'),
+ ('drop-source-rescan',"require(selection(context, deadline) == original_rows, 'source selection changed')","require(True, 'source selection changed')",'test_new_late_source_file_and_bad_alias'),
  ('drop-copy-post-identity',"require(signature(os.fstat(fd)) == expected and signature(source.lstat()) == expected, 'input changed during copy')","require(True, 'input changed during copy')",'test_copy_fd_post_identity_independent_of_final_rescan'),
  ('drop-name-byte-limit',"require(length <= MAX_PATH, 'path byte bound')","require(True, 'path byte bound')",'test_count_name_depth_and_scan_boundaries'),
  ('drop-owner',"require(s.st_uid == os.getuid(), 'foreign file owner')","require(True, 'foreign file owner')",'test_foreign_owner_and_independent_snapshot_hash'),

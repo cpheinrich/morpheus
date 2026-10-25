@@ -13,3 +13,8 @@ prototype docstrings record its provenance; they grant no operation authority.
 Receipt leaves additionally bind SHA-256 of the producer's validated canonical receipt
 directory. Never rotate that directory to retry a spent invocation; output availability
 is not a namespace. Missing optional audit roots may be EMPTY; linked roots must refuse.
+
+Oversized optional native screenshot/failure channels include a bounded whole-file
+selection plus `artifact-selection.json` documenting every omission. Result bundles
+are atomic. Mandatory channels and the archive cap are unchanged; see
+`docs/artifact-snapshots.md` for the selection contract.

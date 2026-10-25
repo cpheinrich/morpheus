@@ -129,11 +129,57 @@ class Tests(unittest.TestCase):
         self.record('empty-optional-no-upload-payload')
         q=self.contexts['qualified-tests'];(Path(q['roots']['evidence'])/'summary.json').unlink()
         self.refuse(q,'missing-qualified-payload')
-    def test_sparse_over_cap_refuses_before_copy(self):
+    def test_sparse_optional_is_explicitly_omitted_but_mandatory_refuses(self):
         p=Path(self.c['roots']['screenshots'])/'oversized.bin'
         with p.open('wb') as f: f.truncate(s.CAP)
+        m=s.stage(self.c)
+        report=json.loads((Path(m['payloadRoot'])/'artifact-selection.json').read_text())
+        self.assertFalse(report['complete'])
+        self.assertEqual({r['name']:r['status'] for r in report['entries']},
+                         {'oversized.bin':'omitted-byte-budget','screenshot.png':'selected'})
+        self.assertFalse((Path(m['payloadRoot'])/'oversized.bin').exists())
+        self.assertTrue(s.verify_snapshot(m))
+        q=self.contexts['native-complete-evidence']
+        with (Path(q['roots']['logs'])/'huge.log').open('wb') as f: f.truncate(s.CAP)
         with patch.object(s,'copy_regular',side_effect=AssertionError('must not copy over cap')):
-            self.refuse(self.c,'sparse-cap-refuse-before-copy')
+            self.refuse(q,'mandatory-sparse-cap-refuse-before-copy')
+
+    def test_omitted_source_mutation_still_refuses(self):
+        p=Path(self.c['roots']['screenshots'])/'oversized.bin'
+        with p.open('wb') as f: f.truncate(s.CAP)
+        original=s.copy_regular
+        def mutate(*args):
+            p.touch()
+            return original(*args)
+        with patch.object(s,'copy_regular',side_effect=mutate):
+            self.refuse(self.c,'omitted-source-mutation')
+
+    def test_oversized_result_bundle_is_atomic(self):
+        c=self.contexts['native-failure-evidence']
+        bundle=Path(c['roots']['results'])/'Tests.xcresult'
+        with (bundle/'large').open('wb') as f: f.truncate(s.CAP)
+        m=s.stage(c)
+        report=json.loads((Path(m['payloadRoot'])/'artifact-selection.json').read_text())
+        bundle_rows=[r for r in report['entries'] if '.xcresult/' in r['name']]
+        self.assertEqual(len(bundle_rows),2)
+        self.assertTrue(all(r['status']=='omitted-byte-budget' for r in bundle_rows))
+        self.assertFalse((Path(m['payloadRoot'])/'Results/Tests.xcresult').exists())
+        self.assertTrue((Path(m['payloadRoot'])/'Logs/tests.log').is_file())
+
+    def test_report_alone_is_bounded_and_invalid_candidates_never_omitted(self):
+        root=Path(self.c['roots']['screenshots'])
+        (root/'screenshot.png').unlink()
+        with (root/'huge').open('wb') as f: f.truncate(s.CAP)
+        m=s.stage(self.c)
+        self.assertEqual([r['name'] for r in m['entries']],['artifact-selection.json'])
+        self.assertEqual(m['status'],'ADMITTED')
+        self.assertLessEqual(m['accounting']['storedUpperBytes'],s.CAP)
+        rows=s.selection(self.c, s.time.monotonic()+s.MAX_SECONDS)
+        with patch.object(s,'CAP',1048576):
+            with self.assertRaises(s.Refused):s.diagnostic_selection(rows)
+        bad=[(rows[0][0],'bad:name',rows[0][2])]
+        with self.assertRaises(s.Refused):s.diagnostic_selection(bad)
+
     def test_symlink_hardlink_fifo_and_linked_parent(self):
         root=Path(self.c['roots']['screenshots']);source=root/'screenshot.png'
         source.unlink();source.symlink_to(Path(self.c['roots']['results'])/'tests.json')
