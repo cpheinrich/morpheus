@@ -54,7 +54,7 @@ describe("bounded artifact integration", () => {
   it("does not turn an artifact failure into a native failure diagnostic", () => {
     const steps = read(".github/workflows/ios-ci.yml").jobs.test!.steps;
     const capture = steps.find(s => s.id === "native_failure")!;
-    expect(capture.if).toBe("${{ always() }}");
+    expect(capture.if).toBe("${{ steps.scope.outputs.run == 'true' && always() }}");
     expect(capture.env?.NATIVE_FAILED).toBe("${{ failure() }}");
     expect(steps.indexOf(capture)).toBeLessThan(steps.findIndex(s => s.id === "artifact_screenshots"));
     const stage = steps.find(s => s.id === "artifact_failure")!;
