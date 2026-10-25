@@ -268,6 +268,31 @@ repairs may complete from direct evidence without inventing a code PR; pre-uploa
 retry still requires executor quiescence. Accepted/uncertain binaries continue
 provider reconciliation under their original identity.
 
+The repair check gate reads the exact head's paginated `filter=all` inventory.
+Failures, pending/unknown results and non-Actions cancellations still block. The
+only cancellation exception is a completed GitHub Actions job with explicit empty
+steps and unassigned runner fields, linked through its exact check/job/run IDs to
+a strictly later successful SourceCI run in the same PR head repository/ref,
+event, workflow ID/path and unambiguous job-name context. The successor workflow,
+job and check must all succeed; skipped/neutral do not discharge a cancellation.
+Same-run rerun supersession is deliberately unsupported.
+
+For that exception, the worker reads complete same-head workflow inventories,
+including newer queued runs that have not created checks, and complete selected
+attempt-job lists. Counts, duplicate identities, malformed metadata, API failures
+or changes across two finite acquisition views retain the checkpoint. The bounds
+are 10,000 checks/jobs and fewer than1,000 same-head runs, because GitHub caps the
+filtered workflow search at1,000. This establishes a bounded observed view, not
+a lock against future provider events. Resolved reusable-workflow provenance is
+retained in the verified result evidence. A floated `@main` may advance under
+authoritative SourceCI; a declared immutable reference cannot contradict its SHA.
+The exact merged PR/head, local independent-review record and actual merged-source
+checks still run. A source merge does not update an already loaded worker runtime;
+consumer adoption is a separate normal operation. See GitHub's
+[check-run filter](https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference),
+[workflow search bound](https://docs.github.com/en/rest/actions/workflow-runs#list-workflow-runs-for-a-repository)
+and [attempt jobs](https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run-attempt).
+
 For multiple native workers, pass `--host-id ID` to `cd worker --executor local`.
 Assign a distinct, stable nonsecret ID to each Mac/user/Codex session store; reuse
 it across restarts of that same store, and change it after replacing or moving the

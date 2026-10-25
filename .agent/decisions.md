@@ -1669,3 +1669,17 @@ Tags confer no owner or authority. Legacy records remain valid, no blanket histo
 performed, and a queue can later project this contract without becoming its source of truth.
 Existing Zod/frontmatter/Node APIs fit these small domain fields and deterministic reads; no
 additional generic tag framework or dependency is introduced.
+
+## Verify cancelled SourceCI by exact provider lineage — 2026-10-25
+
+MO-26-10-25-04.11.25. A repair can have unstarted cancelled Actions jobs and a
+newer successful SourceCI run at the same reviewed head in different check suites.
+The source-repair verifier may discharge only those cancellations through exact
+provider identities, complete/latest inventories, unique job context and a stable
+finite reacquisition; genuine failures, pending/unknown and external cancellations
+remain blocking. The authoritative current SourceCI contract permits floated control
+refs to advance. Retain their resolved provenance and reject contradictory immutable
+pins, rather than requiring incidental SHA equality across runs. Same-run rerun
+supersession remains unsupported. This is a small GitHub repair-domain join using
+existing Zod/API seams, so no generic retry framework or dependency is introduced.
+Runtime worker adoption remains a separately qualified normal operation.
