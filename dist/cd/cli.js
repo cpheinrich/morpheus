@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
-import { readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open, readFile } from "node:fs/promises";
 import { dirname, resolve, basename } from "node:path";
 import { randomUUID } from "node:crypto";
 import { configSchema, configurationDigest, hash } from "./schema.js";
@@ -13,12 +14,14 @@ import { runWorker, scheduleHosted, QuotaReader } from "./worker.js";
 import { githubToken, probeGitHubToken } from "./github-token.js";
 import { validatePayloadFiles } from "./evidence.js";
 import { reserveReviewedSource } from "./source-finance.js";
+import { recordRepairDiagnostic, REPAIR_DIAGNOSTIC_MAX_BYTES } from "./repair-diagnostic.js";
 const HELP = `morpheus cd config|init|tick|request|status|verify-execution|claim-upload|record-upload|upload-hook|record|worker|budget
   --config PATH                 Consumer configuration (default .morpheus/cd.json)
   --source-dir PATH             Exact app checkout, separate from trusted control/config
   tick [--observe]               Reconcile slots, workflows, Apple and durable repairs
   request --channel CHANNEL [--source SHA] [--validation] [--group ID] [--source-age-waiver REF]
   record --kind tests|failure|quiescence --evidence FILE (or - for stdin)
+  record --kind repair-diagnostic --evidence FILE  Bounded data for an existing failed repair
   upload-hook --phase before|resource|after
   worker --executor local|hosted [--host-id ID] [--work-id ID --invocation-id ID --task-digest SHA256]
   budget --operation reserve|settle --id ID [--request FILE --maximum-micros N|--actual-micros N]
@@ -32,6 +35,27 @@ async function jsonInput(path) {
     for await (const bytes of process.stdin)
         text += String(bytes);
     return JSON.parse(text);
+}
+async function repairDiagnosticInput(path) {
+    invariant(path !== "-", "Repair diagnostics require a bounded JSON file");
+    const file = await open(resolve(path), constants.O_RDONLY | constants.O_NONBLOCK);
+    try {
+        const stat = await file.stat();
+        invariant(stat.isFile() && stat.size > 0 && stat.size <= REPAIR_DIAGNOSTIC_MAX_BYTES, "Repair diagnostic file must contain 1..16384 bytes");
+        const bytes = Buffer.alloc(REPAIR_DIAGNOSTIC_MAX_BYTES + 1);
+        let length = 0;
+        while (length < bytes.length) {
+            const read = await file.read(bytes, length, bytes.length - length, null);
+            if (!read.bytesRead)
+                break;
+            length += read.bytesRead;
+        }
+        invariant(length <= REPAIR_DIAGNOSTIC_MAX_BYTES, "Repair diagnostic file exceeds 16384 bytes");
+        return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, length)));
+    }
+    finally {
+        await file.close();
+    }
 }
 function required(value, name) { invariant(value, `Missing ${name}`); return value; }
 export function environmentIdentity(environment) {
@@ -74,6 +98,12 @@ export async function cd(argv, environment = process.env) {
         const allowed = new Set(["config", "operation", "id", "request", "maximum-micros", "authority", "authority-digest", "json"]);
         for (const key of Object.keys(values))
             invariant(allowed.has(key), `Reviewed source budget reserve does not accept --${key}`);
+    }
+    if (values.kind === "repair-diagnostic") {
+        invariant(positionals.length === 1 && positionals[0] === "record" && !values.help, "Repair diagnostics require the explicit record command without help");
+        const allowed = new Set(["config", "kind", "evidence", "json"]);
+        for (const key of Object.keys(values))
+            invariant(allowed.has(key), `Repair diagnostic record does not accept --${key}`);
     }
     if (values.help || !positionals.length) {
         console.log(HELP);
@@ -181,7 +211,12 @@ export async function cd(argv, environment = process.env) {
             break;
         }
         case "record": {
-            const path = required(values.evidence, "--evidence"), evidence = await jsonInput(path);
+            const path = required(values.evidence, "--evidence");
+            if (values.kind === "repair-diagnostic") {
+                result = await recordRepairDiagnostic(store, await repairDiagnosticInput(path));
+                break;
+            }
+            const evidence = await jsonInput(path);
             if (values.kind === "tests") {
                 invariant(path !== "-", "Full-test evidence needs a file and its actual sibling payloads");
                 const tests = evidence;
@@ -203,7 +238,7 @@ export async function cd(argv, environment = process.env) {
                 });
             }
             else
-                throw new Error("Record kind must be tests, failure or quiescence");
+                throw new Error("Record kind must be tests, failure, quiescence or repair-diagnostic");
             break;
         }
         case "worker": {

@@ -1,5 +1,15 @@
 # Decisions
 
+**Failed repair diagnostics are a separate evidence-only record** — 2026-10-25.
+Use `cd record --kind repair-diagnostic` with exact existing work/task and latest
+failed execution identity, bounded untrusted canonical JSON and the normal
+GitHubStore CAS/event path. Preserve existing active-attempt guards and every
+controller field except the exact work's deduplicated evidence. A genuine note
+receipt survives normal owner progression; target readback is observation, never
+permission to resume, fund or apply anything. Keep consumer operator adoption and
+runtime proof separate. This small CD-specific boundary reuses installed Zod,
+canonical hashing and the existing store; no generic module or dependency is needed.
+
 **HQ native qualification is a separate explicit operator path** — 2026-10-25.
 Use the dedicated Firebase demo emulators, actual Manager HQ facade and existing
 single Pool, with fixtures first and fresh native quota before bounded test turns.
