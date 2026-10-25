@@ -36,6 +36,22 @@ as skipped. Skipping the caller would leave that check unreported and block merg
 The reusable input defaults to true, so other projects keep their current behavior.
 No workflow-level path filter or branch-protection setting changes.
 
+When the Node check runs, Morpheus enables `node-ci.yml`'s optional
+`run-workflow-lint` input. It validates every repository workflow with actionlint
+1.7.12 inside the existing required `node / check`; validation failure fails that
+check. The reusable input defaults false for other consumers and supports Linux
+X64 runners. CI downloads the publisher's binary, verifies its pinned SHA-256,
+and bounds the step to three minutes (90-second download maximum). It adds no
+runner job, cache, artifact, model call or runtime dependency. Shellcheck and
+pyflakes integrations are disabled; workflow, expression-context and action
+validation remain enabled.
+
+For local workflow checks and `tests/workflow-expressions.test.ts`, install
+actionlint 1.7.12 (for example `brew install actionlint`) and run
+`actionlint -shellcheck= -pyflakes=`. The focused tests invoke the real checker on
+all workflows and on invalid status-function placements; their status/output
+scenarios are local models, not a claim of native or provider execution.
+
 ## Why keep two Pythons but one upload
 
 Python 3.9 covers the older interpreter boundary used by native macOS tooling;

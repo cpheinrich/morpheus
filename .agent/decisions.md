@@ -1693,3 +1693,18 @@ pins, rather than requiring incidental SHA equality across runs. Same-run rerun
 supersession remains unsupported. This is a small GitHub repair-domain join using
 existing Zod/API seams, so no generic retry framework or dependency is introduced.
 Runtime worker adoption remains a separately qualified normal operation.
+
+## Workflow status functions stay in supported conditionals — 2026-10-25
+
+MO-26-10-25-05.37.37. GitHub rejects status functions in step environment and
+script expressions before native jobs start. Capture native failure with a
+failure-only step conditional and a literal true output, before artifact stages;
+an absent output never selects diagnostics. Keep all-selected admission and
+allowed-skip/test rules unchanged.
+
+Adopt actionlint 1.7.12 (publisher release 2026-03-30; twelve direct and two
+indirect Go dependencies, distributed as one static binary), rather than building
+an Actions expression parser. Morpheus enables a default-off reusable Node CI
+input and verifies the official Linux X64 archive's SHA-256 before executing it
+inside the existing required check. Real checker regressions cover unsupported
+status contexts. No runtime package, new runner job or generic parser is added.

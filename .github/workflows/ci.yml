@@ -60,6 +60,7 @@ jobs:
     with:
       run-check: ${{ needs.changes.result != 'success' || needs.changes.outputs.node != 'false' }}
       run-lint: true
+      run-workflow-lint: true
       build-script: compile
       verify-build-clean: true
       build-output-directory: dist

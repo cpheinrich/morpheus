@@ -923,10 +923,8 @@ jobs:
 
       - name: Capture native failure before artifact staging
         id: native_failure
-        if: ${{ steps.scope.outputs.run == 'true' && always() }}
-        env:
-          NATIVE_FAILED: ${{ failure() }}
-        run: echo "failed=$NATIVE_FAILED" >> "$GITHUB_OUTPUT"
+        if: ${{ steps.scope.outputs.run == 'true' && failure() }}
+        run: echo 'failed=true' >> "$GITHUB_OUTPUT"
 
       - name: Stage bounded native-screenshots
         id: artifact_screenshots
