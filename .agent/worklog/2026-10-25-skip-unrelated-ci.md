@@ -88,9 +88,9 @@ temporary branch were removed after closure; the PR and run retain the evidence.
 
 ## Independent review
 
-Independent high-risk review cleared the scoped CI and single artifact transport without findings. The reviewer passed 43 focused tests and independently verified successful implementation CI and the prose-only skipped-check probe. No code corrections were required; final-head CI and record validation remain merge gates.
+Independent high-risk review cleared the scoped CI without findings. After CI exposed an existing temporary-receipt test race, the same reviewer cleared the focused test correction, exact trunk integration and separate waiter follow-up ticket without findings. Focused tests and real implementation/prose-only reporting evidence passed; final-head GitHub CI remains required before merge.
 
-One fresh reviewer, no inherited author history, no follow-up turns. High risk
+One fresh reviewer, no inherited author history, one same-reviewer follow-up. High risk
 reflects shared CI controls. Measured duration is from actual invocation/completion
 clock readings, not an estimate. No visual surface changed. Graph transport remained
 unavailable; exact source/configuration reads and focused tests supplied evidence.
@@ -100,7 +100,7 @@ unavailable; exact source/configuration reads and focused tests supplied evidenc
   "version": 2,
   "base": "454cf6498f0d39aa78b05aa1a3af714ea2d154d2",
   "reviewed": "6693ee7b4d37bc1da994557197e3d0028944c3eb",
-  "covered": "6693ee7b4d37bc1da994557197e3d0028944c3eb",
+  "covered": "15e7a9857e56cea5de266c775c06ba3468ab01b1",
   "authorSession": "01a1723f-e386-7d73-b1d7-ac60b628624c",
   "reviewerSession": "/root/ci_scope_review",
   "risk": "high",
@@ -111,8 +111,24 @@ unavailable; exact source/configuration reads and focused tests supplied evidenc
     "evidence": "Actual invocation boundary readings for /root/ci_scope_review in author thread 01a1723f-e386-7d73-b1d7-ac60b628624c: start 2026-10-25T09:13:27.968Z, completion 2026-10-25T09:15:17.059Z; includes tool execution and wait."
   },
   "outcome": "complete",
-  "summary": "Independent high-risk review cleared the scoped CI and single artifact transport without findings. The reviewer passed 43 focused tests and independently verified successful implementation CI and the prose-only skipped-check probe. No code corrections were required; final-head CI and record validation remain merge gates.",
-  "findings": []
+  "summary": "Independent high-risk review cleared the scoped CI without findings. After CI exposed an existing temporary-receipt test race, the same reviewer cleared the focused test correction, exact trunk integration and separate waiter follow-up ticket without findings. Focused tests and real implementation/prose-only reporting evidence passed; final-head GitHub CI remains required before merge.",
+  "findings": [],
+  "followUps": [
+    {
+      "reviewerSession": "/root/ci_scope_review",
+      "commit": "15e7a9857e56cea5de266c775c06ba3468ab01b1",
+      "base": "04358bf0d82e5132d3f544f33860844fbc13c1ff",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.07115,
+      "timing": {
+        "source": "clock",
+        "durationMs": 64269,
+        "evidence": "Actual same-reviewer follow-up invocation boundary readings for /root/ci_scope_review: start 2026-10-25T09:23:17.882Z, completion 2026-10-25T09:24:22.151Z; includes tool execution and wait."
+      },
+      "scopeReason": "Late CI correction after initial clearance: observe the reserved run's committed receipt instead of transient atomic-write siblings; inspect exact trunk integration, integrated test inputs and separate waiter backlog record.",
+      "summary": "Cleared without findings: committed-receipt observation preserves termination/reservation assertions, production behavior is unchanged, trunk merge matches Git's automatic tree, and the waiter issue is separately tracked. Reviewer independently passed the corrected reconciliation and integrated import-closure tests."
+    }
+  ]
 }
 ```
 
@@ -140,3 +156,8 @@ Integrated main 04358bf (#498, QA composer/capture fixes) with an exact automati
 Git merge, without resolving or editing its implementation. No record changes on
 trunk; context receipt refreshed after integration. Reran the three scoped workflow
 suites against the integrated consumer imports before the follow-up review.
+
+The same reviewer cleared follow-up commit 15e7a985 after independently passing
+the corrected reconciliation test and integrated import-closure test (2/2).
+Initial clearance and both measured invocation durations are preserved above.
+Final-head checks are verified directly across applicable runs before merge.
