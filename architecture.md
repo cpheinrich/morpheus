@@ -1581,6 +1581,10 @@ exclusive on-disk record before acting, resolves it after work, or releases the
 claim on failure. The queue and claim commands are agent-neutral. A webhook is
 an optional notification to a host-managed responder, not an agent scheduler;
 whether a chat can wake or work in parallel is determined by that host.
+Web preview ownership follows the checkout/dev-directory identity rather than a project display
+name. Legacy namespace records are discovered by that identity and acted on only when stored
+root/directory and the registered supervisor's exact state-file argument agree; ambiguous owners
+or unconfirmed shutdowns never become a successful stop report.
 An opt-in checkout-local responder can instead invoke any configured agent CLI
 as a separate serial process. Its on-disk owner marker reserves the checkout
 until stopped; later batches accumulate without occupying the interactive chat.

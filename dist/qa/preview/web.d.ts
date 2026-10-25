@@ -21,6 +21,7 @@ export interface WebPreviewConfig {
     cwd: string;
     /** The page to open first, e.g. /hq. */
     path: string;
+    /** Legacy namespace retained for configuration compatibility; new session identity is root-based. */
     namespace: string;
 }
 export type WebConfigResult = {
@@ -70,6 +71,7 @@ interface WebContext {
     root: string;
     config: WebPreviewConfig;
     key: string;
+    cacheRoot: string;
     stateDir: string;
     stateFile: string;
     label: string;
@@ -77,8 +79,8 @@ interface WebContext {
     run: Run;
     log: (l: string) => void;
 }
-export declare function webContext(root: string, config: WebPreviewConfig, run?: Run, log?: (l: string) => void): WebContext;
-/** Healthy when our overlay answers on its port and names this dev server as its upstream. */
+export declare function webContext(root: string, config: WebPreviewConfig, run?: Run, log?: (l: string) => void, cacheRoot?: string): WebContext;
+/** Healthy only when the overlay names this checkout and dev server, not just the same port. */
 export declare function webHealthy(state: WebPreviewState | undefined): Promise<boolean>;
 /** A registered job may be pending its first launch; only a missing or exited job is fatal. */
 export declare function waitForWebPreview(state: WebPreviewState, readJob: () => string, logPath: string, check: () => void): Promise<void>;
