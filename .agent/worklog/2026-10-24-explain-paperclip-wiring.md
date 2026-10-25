@@ -44,10 +44,11 @@ MO-26-10-24-21.07.10 and MO-26-10-24-22.06.12 to shipped as routine board bookke
 
 ## Independent review
 
-Fresh independent reviewer cleared the documentation with no findings after checking the
-implementation, local links and actual pixels of all three diagrams. Git linkage and
-interactive delegation remain explicitly separate, and qualification limits are accurately
-stated. No live worker or authentication replay was performed.
+Fresh independent reviewer cleared the documentation with no findings after checking the implementation, local links and actual pixels of all three diagrams. Git linkage and interactive delegation remain explicitly separate, and qualification limits are accurately stated. No live worker or authentication replay was performed.
+
+The first record validation refused the line-wrapped visible summary; rendered prose was
+equivalent but the checker requires a literal match. Kept the summary on one source line and
+validated again. No reviewed content changed.
 
 ```morpheus-review
 {
