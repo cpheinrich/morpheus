@@ -921,6 +921,13 @@ jobs:
           done
           echo "Firebase did not produce a debug log."
 
+      - name: Capture native failure before artifact staging
+        id: native_failure
+        if: ${{ steps.scope.outputs.run == 'true' && always() }}
+        env:
+          NATIVE_FAILED: ${{ failure() }}
+        run: echo "failed=$NATIVE_FAILED" >> "$GITHUB_OUTPUT"
+
       - name: Stage bounded native-screenshots
         id: artifact_screenshots
         if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
@@ -937,7 +944,7 @@ jobs:
 
       - name: Stage bounded native-failure-evidence
         id: artifact_failure
-        if: ${{ steps.scope.outputs.run == 'true' && failure() && steps.ios_paths.outcome == 'success' }}
+        if: ${{ steps.scope.outputs.run == 'true' && always() && steps.native_failure.outputs.failed == 'true' && steps.ios_paths.outcome == 'success' }}
         uses: ./.morpheus-artifacts/.github/actions/ios-testflight-upload/artifact-stage
         with:
           channel: native-failure-evidence
@@ -986,7 +993,7 @@ jobs:
           overwrite: false
 
       - name: Upload Xcode failure evidence
-        if: ${{ steps.scope.outputs.run == 'true' && failure() && steps.ios_paths.outcome == 'success' && steps.artifact_failure.outcome == 'success' && steps.artifact_failure.outputs.admitted == 'true' && steps.artifact_failure.outputs.has-files == 'true' && steps.artifact_barrier.outcome == 'success' }}
+        if: ${{ steps.scope.outputs.run == 'true' && always() && steps.native_failure.outputs.failed == 'true' && steps.ios_paths.outcome == 'success' && steps.artifact_failure.outcome == 'success' && steps.artifact_failure.outputs.admitted == 'true' && steps.artifact_failure.outputs.has-files == 'true' && steps.artifact_barrier.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ios-ci-${{ github.run_id }}-${{ github.run_attempt }}

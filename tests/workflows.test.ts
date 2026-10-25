@@ -2490,7 +2490,7 @@ describe("ios-ci.yml", () => {
   it("uploads both xcresults and raw logs only when the run fails", async () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const upload = steps.find((step) => step.name === "Upload Xcode failure evidence");
-    expect(upload?.if).toBe("${{ steps.scope.outputs.run == 'true' && failure() && steps.ios_paths.outcome == 'success' && steps.artifact_failure.outcome == 'success' && steps.artifact_failure.outputs.admitted == 'true' && steps.artifact_failure.outputs.has-files == 'true' && steps.artifact_barrier.outcome == 'success' }}");
+    expect(upload?.if).toBe("${{ steps.scope.outputs.run == 'true' && always() && steps.native_failure.outputs.failed == 'true' && steps.ios_paths.outcome == 'success' && steps.artifact_failure.outcome == 'success' && steps.artifact_failure.outputs.admitted == 'true' && steps.artifact_failure.outputs.has-files == 'true' && steps.artifact_barrier.outcome == 'success' }}");
     expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     const withBlock = upload?.with as Record<string, unknown> | undefined;
     expect(withBlock?.path).toBe("${{ steps.artifact_failure.outputs.payload-root }}");
