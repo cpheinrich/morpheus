@@ -24,6 +24,8 @@ Response: group candidate records by label and select the registered owner from 
 
 Independent high-risk review found three ownership/stop-confirmation defects. The author fixed colliding legacy labels and replaced readiness-based absence with bounded TCP listener checks; the same reviewer cleared all three findings and independently passed 109 focused tests. No remaining findings or user-service mutations.
 
+Final head fc62219 CI passed all checks except Chromium token-rich capture exceeded the existing 120 ms freeze bound (25/26 browser cases passed). This was the separate reviewed PR495 performance fix, merged upstream as ead6c3013f24062436572c785cd0443f38be08ec. Integrated that trunk in d69bdcbe2d1cfa027fafa1b4146f667bcdba0b74; retained both full appended decisions when resolving their sole conflict. No capture code was authored in this task. Final integrated CI follows.
+
 ```morpheus-review
 {
   "version": 2,
@@ -88,6 +90,12 @@ Independent high-risk review found three ownership/stop-confirmation defects. Th
         "evidence": "Author clock readings around the same-reviewer follow-up: 2026-10-25T07:08:37.358Z to 2026-10-25T07:09:17.454Z (1792912117358 to 1792912157454), including tools and waits."
       },
       "summary": "Cleared OWN-1, OWN-2 and OWN-3 after inspecting source, generated output, docs and regressions. Independently ran all four focused suites: 109 tests passed; diff checks passed. No remaining findings or user services modified."
+    }
+  ],
+  "trunkIntegrations": [
+    {
+      "commit": "d69bdcbe2d1cfa027fafa1b4146f667bcdba0b74",
+      "reason": "Merged reviewed PR495 trunk ead6c301 after CI exposed its known token-rich browser freeze limit. Resolved only the append conflict in .agent/decisions.md by retaining both complete decision entries; no capture or lifecycle source was hand-edited."
     }
   ]
 }
