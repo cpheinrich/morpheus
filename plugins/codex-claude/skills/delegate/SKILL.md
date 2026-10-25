@@ -36,11 +36,12 @@ never submit a local task to a different machine by guessing its project path.
    that, and report `selection.source`/`selection.reason` so they know what ran. Pass an
    override only when the user names a model or effort; any explicit model id or family
    alias they name is passed to the Claude CLI, which decides whether the subscription can
-   run it, and is never replaced by the fallback. A run that fails with the CLI's
-   unrecognized-model error means that model is unavailable here: report it and use the
-   model the user authorized as the fallback, never a moving alias such as `best`. If the
-   fallback is disabled or refused, report the bridge's message. Unsupported
-   effort/permission metadata must be reported, never guessed. Full access is not permission to bypass a business approval,
+   run it, and is never replaced by `modelFallback`. A run that fails with the CLI's
+   unrecognized-model error means that model is unavailable here: report it, and retry only
+   with an alternative the user named for that case, never a moving alias such as `best`.
+   If a `modelFallback` run itself is rejected (`selection.source` is `fallback`), or the
+   fallback is disabled or refused, report the bridge's or CLI's message; do not retry the
+   same model. Unsupported effort/permission metadata must be reported, never guessed. Full access is not permission to bypass a business approval,
    repository review, spending, or sending rule.
 6. Call `claude_wait` (up to 25 seconds) until completion or a question. This renews the
    owner lease. Publish meaningful concise progress in this Codex task. `claude_view`
