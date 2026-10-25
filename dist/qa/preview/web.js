@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
+import { createConnection } from "node:net";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -171,9 +172,12 @@ function readState(ctx) {
     return state;
 }
 /** The job itself must reference this exact state file; a matching port/label alone is not ownership. */
-function verifyJob(ctx, status) {
+function jobArguments(status) {
     const block = status.match(/(?:^|\n)\s*arguments = \{\r?\n([\s\S]*?)\r?\n\s*\}/)?.[1];
-    const args = block?.split("\n").map(line => line.trim().replace(/^\d+\s*=\s*/, "").replace(/^"(.*)"$/, "$1")).filter(Boolean);
+    return block?.split("\n").map(line => line.trim().replace(/^\d+\s*=\s*/, "").replace(/^"(.*)"$/, "$1")).filter(Boolean);
+}
+function verifyJob(ctx, status) {
+    const args = jobArguments(status);
     if (!args || args.length !== 3 || basename(args[0]) !== basename(process.execPath) || !/[/\\]qa[/\\]preview[/\\]web-supervisor\.js$/.test(args[1])
         || resolve(args[2]) !== resolve(ctx.stateFile))
         throw new Error(`Cannot verify preview job ownership for ${ctx.target}; expected the web supervisor and ${ctx.stateFile}. No job was stopped.`);
@@ -183,7 +187,7 @@ function discover(ctx) {
     const directories = existsSync(ctx.cacheRoot) ? readdirSync(ctx.cacheRoot, { withFileTypes: true }).filter(entry => (entry.isDirectory() || entry.isSymbolicLink()) && /^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(entry.name) && !entry.name.includes("..")) : [];
     if (directories.length > 4096)
         throw new Error(`Too many cache directories to verify preview ownership under ${ctx.cacheRoot}.`);
-    const candidates = new Map([[ctx.target, ctx]]);
+    const candidates = new Map([[ctx.target, [ctx]]]);
     for (const directory of directories) {
         const stateDir = join(ctx.cacheRoot, directory.name, `web-${ctx.key}`);
         if (!existsSync(stateDir))
@@ -194,20 +198,32 @@ function discover(ctx) {
             throw new Error(`Another preview start may own ${stateDir}; verify it ended before retrying.`);
         const label = `${directory.name}.web.${ctx.key}`;
         const candidate = { ...ctx, stateDir, stateFile: join(stateDir, "session.json"), label, target: `gui/${process.getuid?.()}/${label}` };
-        candidates.set(candidate.target, candidate);
+        const group = candidates.get(candidate.target) ?? [];
+        if (!group.some(existing => existing.stateFile === candidate.stateFile))
+            group.push(candidate);
+        candidates.set(candidate.target, group);
     }
     if (candidates.size > 64)
         throw new Error("Too many matching preview records; refusing ambiguous ownership.");
     const sessions = [];
-    for (const candidate of candidates.values()) {
-        const state = readState(candidate), status = job(candidate);
+    for (const group of candidates.values()) {
+        const records = group.map(candidate => ({ ctx: candidate, state: readState(candidate) }));
+        const status = job(group[0]);
         if (status) {
-            if (!state)
-                throw new Error(`Preview job ${candidate.target} has no verifiable state file. No job was stopped.`);
-            verifyJob(candidate, status);
+            const args = jobArguments(status);
+            const owner = records.find(candidate => candidate.state && args?.[2] && resolve(args[2]) === resolve(candidate.ctx.stateFile));
+            if (!owner)
+                throw new Error(`Preview job ${group[0].target} has no verifiable state-file binding. No job was stopped.`);
+            verifyJob(owner.ctx, status);
+            for (const candidate of records)
+                if (candidate.state)
+                    sessions.push({ ctx: candidate.ctx, state: candidate.state, status: candidate === owner ? status : "" });
         }
-        if (state)
-            sessions.push({ ctx: candidate, state, status });
+        else {
+            for (const candidate of records)
+                if (candidate.state)
+                    sessions.push({ ctx: candidate.ctx, state: candidate.state, status: "" });
+        }
     }
     const registered = sessions.filter(session => session.status);
     if (registered.length > 1)
@@ -228,6 +244,24 @@ async function answers(url) {
     catch {
         return false;
     }
+}
+/** Presence is different from readiness: HTTP500, stalled HTTP and other listeners retain evidence. */
+async function endpointListening(url) {
+    const endpoint = new URL(url);
+    return new Promise((resolveListening, reject) => {
+        const socket = createConnection({ host: endpoint.hostname.replace(/^\[|\]$/g, ""), port: sitePort(url) }, () => { socket.destroy(); resolveListening(true); });
+        socket.setTimeout(1500, () => { socket.destroy(); reject(new Error(`Cannot verify whether preview endpoint ${endpoint.host} is listening; state retained.`)); });
+        socket.once("error", (error) => {
+            socket.destroy();
+            if (error.code === "ECONNREFUSED")
+                resolveListening(false);
+            else
+                reject(new Error(`Cannot inspect preview endpoint ${endpoint.host}: ${error.code ?? "unknown error"}; state retained.`));
+        });
+    });
+}
+async function servicesListening(state) {
+    return await endpointListening(`http://127.0.0.1:${state.port}`) || (state.spawned && await endpointListening(state.upstream));
 }
 /** Healthy only when the overlay names this checkout and dev server, not just the same port. */
 export async function webHealthy(state) {
@@ -259,14 +293,8 @@ async function stopWeb(ctx, state) {
     if (!status) {
         if (state) {
             // Never forget a possibly live orphan, nor treat its port as permission to terminate it.
-            if (await webHealthy(state) || (state.spawned && await answers(state.upstream)))
-                throw new Error(`Preview services still answer without a verified launchd owner. State retained at ${ctx.stateFile}; no stop was confirmed.`);
-            try {
-                await requireFreePort(state.port);
-            }
-            catch {
-                throw new Error(`Port ${state.port} is occupied without a verified preview job. State retained at ${ctx.stateFile}; no stop was confirmed.`);
-            }
+            if (await servicesListening(state))
+                throw new Error(`Preview services still listen without a verified launchd owner. State retained at ${ctx.stateFile}; no stop was confirmed.`);
             rmSync(ctx.stateFile, { force: true });
         }
         return false;
@@ -291,8 +319,8 @@ async function stopWeb(ctx, state) {
             await sleep(200);
         }
     }
-    if (job(ctx) || await webHealthy(state))
-        throw new Error(`Web preview still answers or remains registered; state retained at ${ctx.stateFile}. No stop was confirmed.`);
+    if (job(ctx) || await servicesListening(state))
+        throw new Error(`Web preview services still listen or remain registered; state retained at ${ctx.stateFile}. No stop was confirmed.`);
     rmSync(ctx.stateFile, { force: true });
     return true;
 }
@@ -391,7 +419,7 @@ export async function runWebPreview(ctx, options, project) {
         const found = sessions.find(session => session.status) ?? (sessions.length === 1 ? sessions[0] : undefined);
         if (sessions.length > 1 && !found)
             throw new Error("Multiple unregistered preview records match this checkout; no stop was confirmed. Inspect the retained session files.");
-        const unverifiedLive = await Promise.all(sessions.filter(session => session !== found).map(async (session) => await webHealthy(session.state) || (session.state.spawned && await answers(session.state.upstream))));
+        const unverifiedLive = await Promise.all(sessions.filter(session => session !== found).map(session => servicesListening(session.state)));
         if (unverifiedLive.some(Boolean))
             throw new Error("Another matching preview record has live services without a verified job; refusing ambiguous ownership. No job was stopped.");
         const previous = found?.state;

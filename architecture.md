@@ -1584,7 +1584,9 @@ whether a chat can wake or work in parallel is determined by that host.
 Web preview ownership follows the checkout/dev-directory identity rather than a project display
 name. Legacy namespace records are discovered by that identity and acted on only when stored
 root/directory and the registered supervisor's exact state-file argument agree; ambiguous owners
-or unconfirmed shutdowns never become a successful stop report.
+or unconfirmed shutdowns never become a successful stop report. A shared legacy/stable launchd
+label is resolved by its registered state-file argument. Confirmation requires disappearance of
+both the overlay and any spawned dev listener, irrespective of HTTP readiness.
 An opt-in checkout-local responder can instead invoke any configured agent CLI
 as a separate serial process. Its on-disk owner marker reserves the checkout
 until stopped; later batches accumulate without occupying the interactive chat.
