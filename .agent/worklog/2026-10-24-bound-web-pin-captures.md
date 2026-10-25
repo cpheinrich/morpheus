@@ -1,0 +1,38 @@
+# MO-26-10-24-22.06.12 — Bounded placement JPEGs
+
+## Scope and evidence
+
+Issue #488 reproduces on the actual MusicGuide via an isolated browser context, without sending comments or touching Chris's tab. Original evidence: `/tmp/cph-overlay-diagnostic-GnIZXN/state.json` and `pin.png`: semantic evidence survived, image failed `Frozen viewport exceeds 2 MiB`, and later Saved status hid the failure. Canonical graph generation 2026-10-25T04:32:58Z had no recorded coverage issues for the capture source/tests/runbook, but embedded-JavaScript literals and this newer task worktree required exact-source fallback. Merged current trunk including guide PR486 before review.
+
+## Diagnosis and implementation
+
+The original actual guide snapshot had 108 nodes and 2,793,658 XML bytes; 686,772 bytes were repeated inherited custom properties. Merely skipping custom properties still produced 2,054,830 bytes, too close to the 2 MiB bound. A diagnostic 1000 ms profiling deadline was used only to measure the failing original; production and acceptance retain 120 ms. All inline-style declarations occupied 1,859,230 bytes originally, 1,129,042 after skipping custom properties.
+
+Use a shared initial reset plus resolved style differences, including pseudo-elements. Explicit display/direction/unicode-bidi preserve the probe and CSS reset exceptions. The actual guide dropped to 1,081,648 XML bytes / 153,826 inline-style bytes / zero custom-property bytes in the first measurement. An inline `all:initial` attempt was rejected: CSSOM expanded only nine overrides into 10,438 serialized bytes. Offscreen pruning now precedes computed-style work for the same already-excluded subtrees; the final serialization is also checked against the existing deadline.
+
+Pixel inspection then found an older root-scroll bug: generic scroller translation duplicated the root transform, moving the page and fixed modal 796px past their placement. Exclude the document scrolling element from nested-scroll translations and test a scrolled page plus fixed modal. The earlier optimized JPEG exactly matched the skip-custom renderer, but that was insufficient visual evidence because both shared the old scroll bug.
+
+Capture failures stay visible beside the thumbnail/editor after save/reselection; HTML and Send remain usable. No transport, metadata or image-cap relaxation, no new dependency. The existing CI browser command omitted the context test file; add it so the placement regression runs in both CI engines as well.
+
+## Test development and dead ends
+
+Added inherited design tokens, resolved fonts/layout, SVG, absolute badge pseudo-element, form value immutability, and explicit initial color inside a non-initial parent. Pixel sampling moved away from text and JPEG chroma boundaries. A fixed pseudo-element nested inside a fixed transformed ancestor exposed an existing synthetic layout limitation; the realistic badge fixture uses an absolute pseudo-element. No claim covers every exotic fixed-descendant combination. Native comparison also exposed pre-existing stretching of contain-fit artwork: rasterize source media with its intrinsic aspect ratio before applying cloned object-fit, and assert white side gutters plus red center pixels. The browser command is serial so CPU-bound capture deadlines are not tested under competing fixture encodes.
+
+One overlapping Playwright invocation collided on the default test-results trace output; subsequent runs are serialized with distinct `/tmp` output. WebKit's storage-failure test patched IndexedDB after the initial open had already populated its cache, so it now injects failure before navigation (and stops injection after the first reload). The new scroll test initially sampled a JPEG color boundary and allowed only 20 seconds for two sequential WebKit encodes; its sample is now inside the card and its test budget is 40 seconds (production encoding limits unchanged). One cold token-rich run hit the 120 ms work guard; repeated production-bound acceptance and final browser results are recorded below rather than increasing the guard.
+
+## Validation
+
+- `pnpm exec vitest run tests/qa-web.test.ts tests/qa-overlay-pins.test.ts tests/qa-web-readiness.test.ts`: 56 tests passed (the direct capture/overlay/readiness unit scope).
+- Serialized Chromium/WebKit context + comments run: 24 unchanged cases passed; the newly added scroll case initially failed only at a JPEG boundary sample / two-encode test timeout. After those test corrections, focused scroll + token/object-fit cases passed all 4 engine cases (37.7 seconds). Existing 120 ms product guard and encoding deadlines are unchanged. CI now runs both browser files serially.
+- Differential visual diagnosis uses the same source with all ordinary computed properties retained, 1000 ms / 4 MiB diagnostic-only caps (the original full representation cannot otherwise produce a modal image). This is not production acceptance. Chromium page and modal JPEGs exactly match the optimized renderer hashes after common root-scroll/artwork corrections. WebKit differential and final production repetitions are recorded below.
+- Temporary browser evidence stays under `/tmp/morpheus-488-*`; no real queue submissions, tab changes, server restarts or website writes. Fresh contexts are closed; test sends occur only on temporary fixture servers.
+- Native-vs-JPEG inspection retains the documented DOM-renderer limitation: Chromium wraps some venue/genre text differently in both the full-property and compact renderers. Artwork proportions, correct viewport/artist, modal header, search form, styled SVG/pseudo and explicit initial inheritance were inspected/asserted. WebKit renders the guide text without that wrapping difference.
+
+- Final production-bound actual guide acceptance: 12/12 JPEGs captured in three fresh contexts per engine, page DON RANDI + modal My Chemical Romance in each. `/tmp/morpheus-488-real/results.json`: freeze 44–74.5 ms, XML at most 1,067,219 bytes, JPEG at most 104,364 bytes, every frame 940×1000, quality 0.5, no page errors. Neither 120 ms nor 2 MiB cap was altered in this acceptance script; timing is measured outside the freeze call.
+- Both-engine page/modal pixels were inspected. After matching visible loaded-image state, all four optimized page/modal JPEGs exactly match full-property diagnostic renders. Chromium page SHA-256 `73c2259ccd775bf0af26674d8d0bba1700304b531b61eb4f1132a6b336cd93b6`; WebKit page `dac5e55586171ac994b79465ec578ecede527f517aeb26521661200a61269fed`. The first WebKit context captured before lower-row lazy artwork became visible; later fresh contexts include it, as does the comparison render. Modal captures correctly preserve their placement-time loading state, artist/search/header; synthetic media tests inspect labelled unsupported-media placeholders. Native reference PNGs, encoded JPEGs and full-property diagnostic evidence live beside the measurements in `/tmp`.
+
+- Node 24.22.1 final checks: `pnpm typecheck`, `pnpm exec eslint src/qa/web/overlay-client.ts`, the focused 56-test Vitest command above, `pnpm compile`, and `pnpm morpheus pm index` all passed. Compile refreshed committed dist; index was unchanged. Typecheck first caught missing test callback types, corrected before the successful check. No unchanged full unit-suite rerun; CI supplies the full suite.
+
+## Independent review
+
+Pending fresh independent review. Chris's website QA remains active; this upstream fix does not end that session or install/restart the live preview.

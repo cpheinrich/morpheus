@@ -149,17 +149,42 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   }
   /** Freeze visible DOM, styles and loaded media synchronously; never mount executable clones. */
   function freezeViewport(win) {
-    var doc = win.document, w = win.innerWidth, h = win.innerHeight, count = 0, rules = [], scrolls = [], omitted = [], deadline = performance.now() + 120;
+    var doc = win.document, w = win.innerWidth, h = win.innerHeight, count = 0, rules = ["[data-qa-frozen],[data-qa-frozen]::before,[data-qa-frozen]::after{all:initial !important}"], scrolls = [], omitted = [], deadline = performance.now() + 120;
     var snapshotDoc = document.implementation.createHTMLDocument("");
+    // Computed longhands already resolve var(). Repeating inherited token dictionaries
+    // and hundreds of initial values per node can dwarf the visible content. Reset
+    // every clone before copying differences, including explicit initial-valued children
+    // of non-initial parents; simply dropping those declarations would inherit wrongly.
+    var defaults = {}, probe = document.createElement("div");
+    probe.style.cssText = "all:initial !important;display:none !important";
+    document.documentElement.appendChild(probe);
+    try {
+      var initial = window.getComputedStyle(probe);
+      for (var d = 0; d < initial.length; d++) if (initial[d].indexOf("--") !== 0) defaults[initial[d]] = initial.getPropertyValue(initial[d]);
+    } finally { probe.remove(); }
+    function freezeStyle(cs, style) {
+      // Keep the reset in one shared rule: CSSOM expands inline all + overrides
+      // back to hundreds of longhands when serializing, defeating the size bound.
+      style.cssText = "";
+      for (var i = 0; i < cs.length; i++) {
+        var key = cs[i];
+        if (key.indexOf("--") === 0) continue;
+        var value = cs.getPropertyValue(key);
+        // display belongs to the hidden probe; all does not reset direction or unicode-bidi.
+        if (key === "display" || key === "direction" || key === "unicode-bidi" || value !== defaults[key]) style.setProperty(key, value, "important");
+      }
+      style.setProperty("animation", "none", "important"); style.setProperty("transition", "none", "important");
+    }
     function copy(node) {
       if (node.nodeType === 3) return snapshotDoc.createTextNode(node.textContent);
       if (!isElement(node) || node === ui || node.matches("script,style,link,meta,base,noscript,animate,animateTransform,animateMotion,set")) return null;
       if (performance.now() > deadline) throw new Error("Viewport freeze exceeded 120 ms work limit");
-      var r = node.getBoundingClientRect(), cs = win.getComputedStyle(node);
-      if (cs.display === "none" || cs.visibility === "hidden") return null;
+      var r = node.getBoundingClientRect();
       // An offscreen subtree cannot paint here unless overflow permits a visible descendant.
       var off = r.bottom < 0 || r.top > h || r.right < 0 || r.left > w;
       if (off && r.top > h && node !== doc.documentElement && node !== doc.body) return null;
+      var cs = win.getComputedStyle(node);
+      if (cs.display === "none" || cs.visibility === "hidden") return null;
       if (++count > 4000) throw new Error("Visible DOM exceeds capture limit");
       if (off && cs.overflow !== "visible" && node !== doc.documentElement && node !== doc.body) return null;
       var omission = node.matches("iframe,object,embed") && !off ? "Embedded media omitted" : node.shadowRoot && !off ? "Shadow DOM omitted" : null;
@@ -167,7 +192,11 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
       if (node.matches("img,canvas,video") && !off) {
         try {
         var canvas = document.createElement("canvas");
-        canvas.width = Math.max(1, Math.min(1600, Math.ceil(r.width))); canvas.height = Math.max(1, Math.min(1600, Math.ceil(r.height)));
+        // Keep source aspect ratio: object-fit is applied by the clone, not by drawImage.
+        var sourceWidth = node.naturalWidth || node.videoWidth || node.width || r.width;
+        var sourceHeight = node.naturalHeight || node.videoHeight || node.height || r.height;
+        var mediaScale = Math.min(1, Math.min(1600, Math.max(r.width, r.height)) / Math.max(sourceWidth, sourceHeight));
+        canvas.width = Math.max(1, Math.ceil(sourceWidth * mediaScale)); canvas.height = Math.max(1, Math.ceil(sourceHeight * mediaScale));
         if (node.matches("video") && node.readyState < 2) throw new Error("Video has no decoded placement frame");
         if (node.matches("img") && (!node.complete || !node.naturalWidth)) throw new Error("Image has not loaded at placement");
         canvas.getContext("2d").drawImage(node, 0, 0, canvas.width, canvas.height);
@@ -178,30 +207,31 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
         // SVG geometry is data; executable/event/navigation attributes are never copied.
         if (node.namespaceURI === "http://www.w3.org/2000/svg") Array.prototype.forEach.call(node.attributes, function (a) { if (!/^on|href|src/i.test(a.name) && !/href/i.test(a.name)) clone.setAttribute(a.name, a.value); else if (/href/i.test(a.name) && /^#[A-Za-z0-9_-]+$/.test(a.value)) clone.setAttribute(a.name, a.value); });
       }
-      for (var i = 0; i < cs.length; i++) clone.style.setProperty(cs[i], cs.getPropertyValue(cs[i]), "important");
-      clone.style.setProperty("animation", "none", "important"); clone.style.setProperty("transition", "none", "important");
+      freezeStyle(cs, clone.style);
       if (omission) {
         clone = snapshotDoc.createElement("div");
-        for (var v = 0; v < cs.length; v++) clone.style.setProperty(cs[v], cs.getPropertyValue(cs[v]), "important");
+        freezeStyle(cs, clone.style);
         clone.style.setProperty("background", "#ddd", "important"); clone.style.setProperty("color", "#333", "important"); clone.style.setProperty("font-size", "14px", "important");
         clone.textContent = omission;
         if (omitted.indexOf(omission) < 0 && omitted.length < 4) omitted.push(omission);
       } else if (node.matches("input,textarea,select") || privateField(node)) {
         clone = snapshotDoc.createElement("div");
-        for (var j = 0; j < cs.length; j++) clone.style.setProperty(cs[j], cs.getPropertyValue(cs[j]), "important");
+        freezeStyle(cs, clone.style);
         clone.textContent = privateField(node) ? "" : node.matches("select") ? (node.selectedOptions[0] ? node.selectedOptions[0].textContent : "") : node.value;
       } else if (!off || node === doc.documentElement || node === doc.body) {
         for (var child = node.firstChild; child; child = child.nextSibling) { var c = copy(child); if (c) clone.appendChild(c); }
       }
+      clone.setAttribute("data-qa-frozen", "");
       if (cs.position === "fixed") clone.style.setProperty("transform", "translate(" + win.scrollX + "px," + win.scrollY + "px) " + (cs.transform === "none" ? "" : cs.transform), "important");
-      if (node.scrollTop || node.scrollLeft) scrolls.push([clone, node.scrollLeft, node.scrollTop]);
+      // Root scroll is already applied to frozen below; only nested scrollers need child translation.
+      if (node !== doc.scrollingElement && (node.scrollTop || node.scrollLeft)) scrolls.push([clone, node.scrollLeft, node.scrollTop]);
       ["::before", "::after"].forEach(function (pseudo) {
         var ps = win.getComputedStyle(node, pseudo);
         if (!ps.content || ps.content === "none" || ps.content === "normal") return;
         var id = "qa-freeze-" + count + "-" + rules.length; clone.classList.add(id);
-        var text = "." + id + pseudo + "{";
-        for (var k = 0; k < ps.length; k++) text += ps[k] + ":" + ps.getPropertyValue(ps[k]) + " !important;";
-        rules.push(text + "}");
+        var pseudoStyle = snapshotDoc.createElement("span").style;
+        freezeStyle(ps, pseudoStyle);
+        rules.push("." + id + pseudo + "{" + pseudoStyle.cssText + "}");
       });
       return clone;
     }
@@ -219,6 +249,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     var style = snapshotDoc.createElement("style"); style.textContent = rules.join("\n"); wrapper.insertBefore(style, wrapper.firstChild);
     var xml = new XMLSerializer().serializeToString(wrapper);
     if (new Blob([xml]).size > 2 * 1024 * 1024) throw new Error("Frozen viewport exceeds 2 MiB");
+    if (performance.now() > deadline) throw new Error("Viewport freeze exceeded 120 ms work limit");
     return { html: xml, width: w, height: h, omitted: omitted, background: win.getComputedStyle(doc.body).backgroundColor };
   }
   var captureLibrary;
@@ -382,6 +413,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     "textarea{width:100%;min-height:88px;resize:vertical;font:inherit;color:var(--qa-fg);background:var(--qa-field);border:1px solid var(--qa-rule);border-radius:8px;padding:8px}" +
     "textarea:focus{outline:none;border-color:var(--qa-fg)}textarea:disabled{opacity:.5}" +
     ".status{min-height:1.3em;font-size:12px;color:var(--qa-muted)}.status.ok{color:var(--qa-ok)}.status.err{color:#d93025}" +
+    ".placement-status{margin:0;color:#d93025;font-size:12px;overflow-wrap:anywhere}" +
     ".keys{font-size:11px;color:var(--qa-muted)}" +
     "button{font:inherit;color:var(--qa-fg);background:transparent;border:1px solid var(--qa-rule);border-radius:6px;padding:6px 10px;cursor:pointer}" +
     "button:hover:not(:disabled){border-color:var(--qa-fg)}button:disabled{opacity:.45;cursor:default}" +
@@ -405,6 +437,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     "<label>Applies to <select class=scope disabled><option value=element>Element</option><option value=view>Current view</option><option value=page>Whole page</option></select></label>" +
     "<textarea placeholder='Comment for this pin…' disabled maxlength=8000></textarea>" +
     "<img class=placement alt='Frozen placement viewport' hidden style='max-width:100%;max-height:130px;object-fit:contain'>" +
+    "<p class=placement-status role=status hidden></p>" +
     "<div class=keys>Enter saves · Shift+Enter newline · Esc Esc deletes · ⌘Enter sends</div>" +
     "<button class=primary type=button disabled>Send batch</button></div>" +
     "</aside>";
@@ -414,6 +447,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   var textEl = root.querySelector("textarea"), statusEl = root.querySelector(".status");
   var scopeEl = root.querySelector(".scope");
   var placementEl = root.querySelector(".placement");
+  var placementStatusEl = root.querySelector(".placement-status");
   var layoutBtn = root.querySelector(".layout"), awayEl = root.querySelector(".away");
   var LAYOUT_COOKIE = "morpheus_qa_layout";
   var lastSiteUrl = location.href;
@@ -521,7 +555,13 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     textEl.value = ""; textEl.disabled = true;
   }
   function focused() { for (var i = 0; i < pins.length; i++) if (pins[i].id === focusedId) return pins[i]; return null; }
-  function showPlacement() { var p = focused(); placementEl.hidden = !p || !p.frame; if (p && p.frame) placementEl.src = p.frame.dataUrl; else placementEl.removeAttribute("src"); }
+  function showPlacement() {
+    var p = focused(), image = p && p.webContext && p.webContext.image;
+    placementEl.hidden = !p || !p.frame;
+    if (p && p.frame) placementEl.src = p.frame.dataUrl; else placementEl.removeAttribute("src");
+    placementStatusEl.hidden = !image || image.status !== "failed";
+    placementStatusEl.textContent = image && image.status === "failed" ? "Placement image unavailable: " + image.error + ". HTML evidence is saved; you can Send this comment." : "";
+  }
 
   function position(p) {
     p.marker.hidden = true;

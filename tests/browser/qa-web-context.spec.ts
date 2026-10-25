@@ -12,9 +12,9 @@ body{margin:0;background:rgb(20,40,200);font-family:Arial}main{height:14000px}#b
 </style></head><body><main><h1>Artists</h1><div id=base>Base card</div></main>
 <script>window.openArtist=function(name){var old=document.querySelector('[role=dialog]');if(old)old.remove();var d=document.createElement('section');d.setAttribute('role','dialog');if(name==='Bob')d.style.background='rgb(20,200,40)';d.setAttribute('data-artist-id',name);d.innerHTML='<h2>'+name+'</h2><input type=search aria-label="Find artwork" value="landscape"><input type=password value="PASSWORD_SECRET"><div hidden>HIDDEN_SECRET</div><button aria-pressed=true>Oil</button><div id=scroller><div id=target>Artwork '+name+'</div><div style="height:1000px"></div></div>';document.body.appendChild(d)};</script></body></html>`;
 
-async function setup(page: Page) {
+async function setup(page: Page, html = fixture) {
   const root = await mkdtemp(join(tmpdir(), "web-context-"));
-  const upstream = createServer((_req, res) => { res.writeHead(200, { "content-type": "text/html" }); res.end(fixture); });
+  const upstream = createServer((_req, res) => { res.writeHead(200, { "content-type": "text/html" }); res.end(html); });
   await new Promise<void>(resolve => upstream.listen(0, "127.0.0.1", resolve));
   const qa = await startWebQaServer({ root, project: "context-fixture", upstream: `http://127.0.0.1:${(upstream.address() as { port: number }).port}`, port: 0 });
   await page.goto(`http://127.0.0.1:${qa.port}/?token=TOKEN_SECRET#gallery`);
@@ -83,16 +83,43 @@ test("web context: exact semantic state, modal identity, scroll, scope, persiste
   } finally { await s.cleanup(); }
 });
 
+test("web context: document scroll is applied once while fixed dialog stays in its viewport", async ({ page }) => {
+  test.setTimeout(40000);
+  const s = await setup(page, fixture.replace('<div id=base>', '<div style="height:700px"></div><div id=base>'));
+  try {
+    await s.frame.evaluate(() => scrollTo(0, 700));
+    await s.site.locator("#base").click({ button: "right", position: { x: 50, y: 40 } });
+    await expect.poll(async () => (await s.pins())[0]?.context.image.status, { timeout: 17000 }).toBe("captured");
+    await s.frame.evaluate(() => (window as any).openArtist("Alice"));
+    await s.site.locator("#target").click({ button: "right", position: { x: 50, y: 40 } });
+    await expect.poll(async () => (await s.pins())[1]?.context.image.status, { timeout: 17000 }).toBe("captured");
+    const colors = await page.evaluate(async (urls: string[]) => {
+      return Promise.all(urls.map(async url => {
+        const image = new Image(); image.src = url; await image.decode();
+        const canvas = document.createElement("canvas"); canvas.width = image.width; canvas.height = image.height;
+        const ctx = canvas.getContext("2d")!; ctx.drawImage(image, 0, 0);
+        return Array.from(ctx.getImageData(800, 110, 1, 1).data).slice(0, 3);
+      }));
+    }, (await s.pins()).map((pin: any) => pin.frame.dataUrl));
+    // The gray base card and red fixed dialog both occupy this viewport point at placement.
+    expect(colors[0]!.every(value => Math.abs(value - 221) <= 8), JSON.stringify(colors[0])).toBe(true);
+    expect(colors[1]![0]).toBeGreaterThan(180); expect(colors[1]![2]).toBeLessThan(65);
+  } finally { await s.cleanup(); }
+});
+
 test("web context: storage failures remain visible and pin-count admission is bounded", async ({ page }) => {
+  // Block the first open: WebKit can populate the cached database before a post-load patch.
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("storage-failure-tested")) return;
+    sessionStorage.setItem("storage-failure-tested", "yes");
+    Storage.prototype.setItem = function () { throw new Error("quota"); };
+    indexedDB.open = function () { throw new Error("blocked storage"); };
+  });
   const s = await setup(page);
   try {
-    await page.evaluate(() => {
-      Storage.prototype.setItem = function () { throw new Error("quota"); };
-      indexedDB.open = function () { throw new Error("blocked storage"); };
-    });
     await s.site.locator("#base").click({ button: "right", position: { x: 50, y: 40 } });
     await page.locator("morpheus-qa textarea").fill("Keep HTML in this tab");
-    await expect.poll(async () => (await s.pins())[0]?.context.image.status).toBe("failed");
+    await expect.poll(async () => (await s.pins())[0]?.context.image.status, { timeout: 17000 }).toBe("failed");
     await expect(page.locator("morpheus-qa .status")).toContainText("Draft not saved");
     await page.locator("morpheus-qa button.primary").click();
     await expect(page.locator("morpheus-qa .status")).toContainText("Queued");
@@ -115,6 +142,12 @@ test("web context: image failure preserves HTML; legacy drafts remain editable a
     await page.locator("morpheus-qa textarea").fill("HTML still usable");
     await expect.poll(async () => (await s.pins())[0]?.context.image.status).toBe("failed");
     expect((await s.pins())[0].context.image.error).toBe("Capture library unavailable");
+    await page.locator("morpheus-qa textarea").press("Enter");
+    await expect(page.locator("morpheus-qa .status")).toContainText("Saved pin 1");
+    await expect(page.locator("morpheus-qa .placement-status")).toBeVisible();
+    await expect(page.locator("morpheus-qa .placement-status")).toContainText("Capture library unavailable");
+    await page.locator("morpheus-qa ol li").click();
+    await expect(page.locator("morpheus-qa .placement-status")).toContainText("HTML evidence is saved");
     await page.locator("morpheus-qa button.primary").click();
     await expect(page.locator("morpheus-qa .status")).toContainText("Queued");
     await page.evaluate(() => { sessionStorage.removeItem("morpheus-qa:v2:context-fixture"); sessionStorage.setItem("morpheus-qa:/?token=TOKEN_SECRET", JSON.stringify({ pins: [{ id: "old", n: 1, text: "Old comment", anchor: { normX: .2, normY: .2 } }] })); });
@@ -125,6 +158,57 @@ test("web context: image failure preserves HTML; legacy drafts remain editable a
     await page.locator("morpheus-qa button.primary").click();
     await expect(page.locator("morpheus-qa .status")).toContainText("Queued");
   } finally { await s.cleanup(); }
+});
+
+test("web context: inherited design tokens stay bounded without losing resolved styles", async ({ page }, info) => {
+  const tokens = Array.from({ length: 180 }, (_, i) => `--brand-unused-${i}:color-mix(in srgb, rgb(20,40,200) 40%, rgb(200,20,40));`).join("");
+  const cards = Array.from({ length: 36 }, (_, i) => `<article><h2>Artist ${i}</h2><p>Live music in a small room</p><button>Listen ${i}</button></article>`).join("");
+  const s = await setup(page, `<!doctype html><html><head><title>Token-rich guide</title><style>
+    :root{${tokens}--brand-accent:rgb(200,20,40);--brand-pseudo:rgb(20,180,40)}
+    body{margin:0;font:16px Arial;color:white;background:rgb(20,40,200)}main{min-height:14000px}
+    #base{height:100px;background:rgb(17,34,51)}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+    article{padding:8px;border:1px solid white;background:rgb(40,50,60)}h2,p{margin:0}button{font:inherit;color:var(--brand-accent)}
+    svg{position:fixed;left:340px;top:20px;width:40px;height:40px}rect{fill:var(--brand-accent)}
+    .badge{position:fixed;left:400px;top:20px;width:40px;height:40px}.badge::before{content:"";position:absolute;inset:0;width:40px;height:40px;background:var(--brand-pseudo)}
+    .inherit{position:fixed;left:460px;top:20px;color:var(--brand-accent)}.reset{color:initial;font:40px/40px monospace}
+    input{position:fixed;left:520px;top:20px;width:180px;padding:8px;border:2px solid var(--brand-accent);font:16px Arial}
+    img{position:fixed;left:740px;top:20px;width:100px;height:40px;object-fit:contain;background:white}
+    </style></head><body><main><div id=base>Token-rich guide</div><div class=cards>${cards}</div></main>
+    <svg viewBox="0 0 40 40"><rect width="40" height="40"/></svg><span class=badge></span><span class=inherit><span class=reset>█</span></span><input value="Placement query"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='40'%3E%3Crect width='20' height='40' fill='rgb(200,20,40)'/%3E%3C/svg%3E"></body></html>`);
+  let release!: () => void;
+  const encoding = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/__qa/modern-screenshot.js", async route => { await encoding; await route.continue(); });
+  try {
+    await expect(s.site.locator("img")).toHaveJSProperty("complete", true);
+    await s.site.locator("#base").click({ button: "right", position: { x: 50, y: 40 } });
+    await page.locator("morpheus-qa textarea").fill("Token-rich placement");
+    const pendingImage = (await s.pins())[0].context.image;
+    expect(pendingImage.status, JSON.stringify(pendingImage)).toBe("pending");
+    await page.waitForFunction(async () => {
+      const request = indexedDB.open("morpheus-web-pin-evidence", 1);
+      const db = await new Promise<IDBDatabase>(resolve => { request.onsuccess = () => resolve(request.result); });
+      const rows = db.transaction("pins").objectStore("pins").getAll();
+      return new Promise<boolean>(resolve => { rows.onsuccess = () => resolve(rows.result.some(r => r.snapshot)); });
+    });
+    const snapshot = await page.evaluate(async () => {
+      const request = indexedDB.open("morpheus-web-pin-evidence", 1);
+      const db = await new Promise<IDBDatabase>(resolve => { request.onsuccess = () => resolve(request.result); });
+      const rows = db.transaction("pins").objectStore("pins").getAll();
+      return new Promise<{ html: string }>(resolve => { rows.onsuccess = () => resolve(rows.result.find(r => r.snapshot).snapshot); });
+    });
+    expect(new Blob([snapshot.html]).size).toBeLessThan(2 * 1024 * 1024);
+    expect(snapshot.html).not.toContain("--brand-unused-");
+    if (process.env.QA_EVIDENCE_DIR) { await mkdir(process.env.QA_EVIDENCE_DIR, { recursive: true }); await writeFile(join(process.env.QA_EVIDENCE_DIR, `web-token-snapshot-${info.project.name}.html`), snapshot.html); }
+    await s.frame.evaluate(() => { document.documentElement.style.setProperty("--brand-accent", "yellow"); document.documentElement.style.setProperty("--brand-pseudo", "purple"); document.querySelector("input")!.value = "Changed later"; });
+    release();
+    await expect.poll(async () => (await s.pins())[0].context.image.status, { timeout: 17000 }).toBe("captured");
+    const pin = (await s.pins())[0];
+    if (process.env.QA_EVIDENCE_DIR) { await mkdir(process.env.QA_EVIDENCE_DIR, { recursive: true }); await writeFile(join(process.env.QA_EVIDENCE_DIR, `web-tokens-${info.project.name}.jpg`), Buffer.from(pin.frame.dataUrl.split(",")[1], "base64")); }
+    const pixels = await page.evaluate(async url => { const image = new Image(); image.src = url; await image.decode(); const canvas = document.createElement("canvas"); canvas.width = image.width; canvas.height = image.height; const c = canvas.getContext("2d")!; c.drawImage(image, 0, 0); return [[10,80],[360,40],[420,40],[470,40],[750,40],[790,40]].map(([x,y]) => Array.from(c.getImageData(x!,y!,1,1).data).slice(0,3)); }, pin.frame.dataUrl);
+    [[17,34,51],[200,20,40],[20,180,40],[0,0,0],[255,255,255],[200,20,40]].forEach((expected, i) => expected.forEach((value, j) => expect(Math.abs(pixels[i]![j]! - value), `pixel ${i}: ${pixels[i]}`).toBeLessThanOrEqual(8)));
+    expect(snapshot.html).toContain("Placement query");
+    expect(snapshot.html).not.toContain("Changed later");
+  } finally { release(); await s.cleanup(); }
 });
 
 test("web context: pending frozen image resumes after reload, cap and quality apply, long page work stays bounded", async ({ page }) => {
