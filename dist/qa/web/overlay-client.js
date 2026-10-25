@@ -502,7 +502,7 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
       sessionStorage.setItem(storeKey, data);
       draftStorageError = false;
       draftRevision++; return true;
-    } catch (e) { draftStorageError = true; setStatus("Draft could not be saved.", "err"); return false; }
+    } catch (e) { draftStorageError = true; renderStatus(); return false; }
   }
   function restoredPin(p) {
     var anchor = JSON.parse(JSON.stringify(p.anchor));
@@ -653,6 +653,7 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     if (!quiet && saved) clearComposer();
     render();
     if (!quiet && saved) setStatus("Saved pin " + p.n + ((p.text || "").trim() ? "" : " (empty)"), "ok");
+    if (!quiet && !saved) setStatus("Draft could not be saved.", "err");
   }
   function deleteFocused() {
     var p = focused(); if (!p) return;
