@@ -489,7 +489,7 @@ Record IDs F01–F08 correspond to the reviewer’s F1–F8. The initial risk is
   "version": 2,
   "base": "660211fc5b179ae5bcc47c9d0c6c49b0863b02b7",
   "reviewed": "720f6b140c1298320a7f11ca801b42f99e446dd5",
-  "covered": "c908eb91e58e03f7a8c308b4e70b686662aed4b3",
+  "covered": "230e6496fe3f16eaf7a5784cea6636d8fa617ac6",
   "authorSession": "01a165f2-ad9a-7270-863f-355359913b8c",
   "reviewerSession": "5dede39f-16f4-4aee-a072-22d0ae040f97",
   "risk": "high",
@@ -500,7 +500,7 @@ Record IDs F01–F08 correspond to the reviewer’s F1–F8. The initial risk is
     "evidence": "Claude native session 5dede39f-16f4-4aee-a072-22d0ae040f97, bridge invocation 94fb5e2e-c641-4ca4-b8a8-7343bedba5bf, final result duration_ms=704725."
   },
   "outcome": "complete",
-  "summary": "Independent source review found two substantive and six minor defects across its turns; all fixes and regressions were cleared by the same reviewer. Remote Claude acceptance remains blocked on native login, so PR #475 stays WIP/draft with auto-merge disabled. Source clearance does not complete or ship the task.",
+  "summary": "Independent source review found two substantive and six minor defects; the same reviewer cleared all fixes through c908eb9, then finalized the four explanatory completion files and the real remote Claude acceptance at 230e649. The author independently checked native artifacts, stop/recovery and identities. Finalization did not rerun live behavior; running Claude-shell-command stop and logout/reboot readiness remain untested. Final-head CI and normal merge remain required.",
   "findings": [
     {
       "id": "F01",
@@ -621,6 +621,29 @@ Record IDs F01–F08 correspond to the reviewer’s F1–F8. The initial risk is
       },
       "scopeReason": "Late review correction: verify the newly reported F8 null captured coordinator identity guard and its regression after the prior clearance.",
       "summary": "Cleared F8 guard and regression, no new findings; source only, with pending remote Claude acceptance and CI explicitly retained."
+    },
+    {
+      "reviewerSession": "5dede39f-16f4-4aee-a072-22d0ae040f97",
+      "commit": "230e6496fe3f16eaf7a5784cea6636d8fa617ac6",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.03215,
+      "timing": {
+        "source": "runner",
+        "durationMs": 61929,
+        "evidence": "Claude native session 5dede39f-16f4-4aee-a072-22d0ae040f97, bridge invocation f6e2949b-fffb-43f8-8865-9e9324de76d5, native result duration_ms=61929. This is invocation duration, not cumulative duration_api_ms or total_cost_usd."
+      },
+      "scopeReason": "Automatic finalization-only: complete the previously pending real remote Claude acceptance condition and its four explanatory Markdown updates after prior source clearance.",
+      "summary": "Cleared the original remote Claude acceptance condition and four completion Markdown files, preserving native-worker-versus-running-shell-stop and logout/reboot limits. No new implementation or normative behavior.",
+      "finalization": {
+        "paths": [
+          "docs/paperclip-interactive-bridge.md",
+          "hq/product/roadmap/MO-26-10-24-00.59.32-bridge-paperclip-workers.md",
+          "hq/product/roadmap/MO-26-10-24-02.58.42-validate-remote-claude.md",
+          "qa/acceptance/MO-26-10-24-00.59.32.md"
+        ],
+        "evidence": "Checked at HEAD 230e6496fe3f16eaf7a5784cea6636d8fa617ac6. Read the exact git diff c4ff1e24^..c4ff1e24 for the four paths, and confirmed they are unchanged from c4ff1e2 to HEAD. Listed the first-parent non-merge commits c908eb91..230e6496 (c8a0aec, 63b305a, c4ff1e2, 1aad368, 230e649): all touch only the worklog, plus these four files in c4ff1e2. The diff in plugins/codex-claude comes only from trunk commit 8fb2369 (#480), and no branch commit touches the plugin. git merge-tree --write-tree reproduces merges 5c5b3bf and 911420d exactly. All four paths are regular files (mode 100644) and none is a policy file. Read the private proof files claude-gui-final-proof.json, claude-gui-native-readback.json, claude-gui-stop-recovery.json and gui-final-paused-agents.json. They show: conversation 7821461c-c371-4231-b8a3-211e4a15954a, issue 730de433-092c-47ce-a38d-1d0dd869114c (status done), native session 06ff651e-b6cf-4723-a4d7-ae050b1cbc3e at turn 4, completed with termination verified, done disposition applied by own run 1cdaa192-75e0-493d-a7d8-21bc38690aee, sessionDrift false, requested model sonnet/effort medium, artifact nonce gui-native-0350b789-b426-444a-94ee-c7f34ec18978 with label blue, phase 4 and audit recovered, the stopped native pids absent from ps, the cancelled run ad6ad417-bbb0-4407-8878-c4abb0d5f529, and the mini-codex, mini-claude and local-claude agents paused.",
+        "attestation": "These four files are explanatory prose and the completion of the acceptance condition I had already set (real remote Claude qualification on the mini). The acceptance file changes only its pending-login sentence into a record that the condition was resolved; every other criterion is unchanged. The roadmap edits record the result, move the tracking item from blocked to review with prs [475], and keep the parent's original acceptance and the draft/CI gate. The design doc records the verified identities and the limits: native-worker cleanup during an unapproved permission rather than a running-command stop, no claim of readiness after logout or reboot, and no credential copied. It also describes operator-side host configuration outside this repository. No new policy, normative behaviour or implementation is introduced, and the reviewed source remains c908eb9 plus exact trunk merges."
+      }
     }
   ]
 }
@@ -798,3 +821,26 @@ without hand resolution, including unrelated QA PR483 and the records-only inbox
 The only authored changes after source clearance remain this worklog and four explanatory
 completion Markdown files. Resume the same native reviewer5dede39f-16f4-4aee-a072-22d0ae040f97
 at its existing plugin cwd; no fresh replacement reviewer and no new implementation review.
+
+## Final independent clearance
+
+Independent source review found two substantive and six minor defects; the same reviewer cleared all fixes through c908eb9, then finalized the four explanatory completion files and the real remote Claude acceptance at 230e649. The author independently checked native artifacts, stop/recovery and identities. Finalization did not rerun live behavior; running Claude-shell-command stop and logout/reboot readiness remain untested. Final-head CI and normal merge remain required.
+
+The original native reviewer5dede39f-16f4-4aee-a072-22d0ae040f97 completed its single automatic
+finalization turn f6e2949b-fffb-43f8-8865-9e9324de76d5 in **61,929ms** (native duration_ms;
+1.03215 minutes). It independently verified the exact Git scope and reproducible main merges,
+read the named non-credential proofs in part, and authored the attestation copied verbatim into
+the review record. No files, live systems, tests or provider work were changed by the reviewer.
+Its selection was Opus/xhigh through the configured fallback for active Codex gpt-6.1-sol.
+No provider-reported dollar estimate is treated as subscription spend; fresh account telemetry
+settles the reservation. The reviewer noted final reattach observed-model metadata was null;
+the model citation comes from retained native init/host receipts and earlier successful turns,
+not from that null field. Final-head CI and author-managed merge remain next.
+
+Native main-Claude telemetry at04:19:43Z still reports61%weekly used/39%remaining and18%
+session used. The bounded finalization reservation is settled conservatively at one weekly
+point for granularity, with the unused point released; this is not a per-task billing claim.
+The host's retained final-turn receipt5de2259bce59f76c6413fb456482b7c8 independently records
+observed claude-sonnet-5-5/effortunknown from native init, matching the earlier successful
+turns despite the later aggregate status's null observation field. Typecheck, compile and PM
+index passed after latest exact trunk integration; generated files unchanged.
