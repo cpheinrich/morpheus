@@ -229,3 +229,29 @@ with a working close control and scrollable content. Saved local proof at
 local/paperclip-overview-preview/diagram-enlarged.png and closed that test tab. This changes
 the temporary document-review renderer, not Morpheus's shared overlay or the separately owned
 editor/capture fix. No new repository dependency or committed runtime source change.
+
+
+## Final QA batch 20261025T103419Z-l83tuy and implementation mandate
+
+All four responses read with their semantic placements. Opened all four original JPEGs: each
+contains only a grey field and “Shadow DOM omitted”; they do not establish original page pixels.
+Used the saved semantic context and retained the originals. Chris chose the current MacBook Pro
+controller for v1, Firebase/Cloud Functions for the HQ backend, shared runner titles with simple
+access, and the Paperclip live inbox plus versioned Git closeout contract. Updated the target
+diagram and removed the answered questions. Cloud hosting is now a later availability option.
+
+Chris's final direction: “take these responses and run with them … the rest … unsupervised …
+push it as far as you can within the context of this design and session.” This ends the QA-only
+authoring restriction and starts implementation under agentic-cto. Implementation belongs in
+separate claimed tasks; this branch carries the reviewed design. Removed the QA heartbeat so its
+stale QA-only instructions cannot start competing writers. The renewed preview remains leased
+until 2026-10-26T10:29:22.239Z, without automatic renewal or browser reload.
+
+Budget at transition: Codex 22% weekly used, 78% remaining, ordinary subscription usage allowed;
+keep at least25% weekly remaining. Main Claude reports88% weekly used/12% remaining and95%
+session used; its native responder refused admission before starting a provider (runId null).
+No further Claude work is admitted while below the20% reserve. No overage, API fallback or reset.
+Codex bounded subagents are permitted by the CTO skill; reserve review/cleanup headroom and stop
+new admission before the75% used ceiling. No cloud resource, credential or paid-service change
+is inferred from the design. The first riskiest assumption is crash-safe delivery from Firebase
+to the existing single private pool owner; prove it before frontend rollout.

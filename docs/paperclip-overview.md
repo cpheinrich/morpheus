@@ -225,14 +225,16 @@ These preferences now guide the proposal; they describe the target, not the curr
 2. **One shared instance.** One Paperclip instance and one shared compute pool for all
    companies. Paperclip's company scoping maps each company's work to its own HQ. Every HQ can
    see what the shared runners are doing, so a backlog is visible.
-3. **An independent controller.** The controller should move to a cheap Google Cloud instance on
-   the tailnet, separate from his Macs, so one machine going down does not take it down.
-   Location and size are still open.
+3. **MacBook Pro controller for v1.** Keep Paperclip, Postgres and the bridge on the current
+   MacBook Pro. Revisit a cloud controller if laptop availability causes problems; a VM is
+   no longer a prerequisite.
 4. **Go straight to option 2,** with Firebase role checks kept as simple as possible.
-5. **An interactive inbox and ticket conversation.** Messages, screenshots, discrete inputs and
-   assignments to people, minted into immutable Markdown when the ticket wraps up. The
-   question is whether that state belongs in Paperclip or Firestore. The other planning
-   session has not been located; this proposal does not assume its details.
+5. **An interactive inbox and ticket conversation.** Paperclip owns messages, screenshots,
+   discrete inputs and assignments. Export versioned Markdown closeout snapshots to Git when
+   the ticket wraps up. Chris accepted this contract in the final QA batch. Existing Markdown
+   inboxes remain in service until the replacement passes migration checks.
+6. **Firebase backend.** Use Cloud Functions and Firebase primitives for HQ, connected to the
+   private Mac controller. Prefer simple existing roles and shared runner visibility.
 
 ### Recommendation, by direction
 
@@ -252,32 +254,28 @@ worker, with capacity reserved globally by host/account in our runtime.
 [Company API](https://docs.paperclip.ing/reference/api/companies/).
 **Shared-runner visibility is the gap.** Capacity and
 reservations live in our pool runtime, not in Paperclip, and Paperclip's run lists are per
-company. Proposed: the pool publishes aggregate occupancy per host and provider (running,
-queued, reserved, free) without other companies' titles or logs, and every HQ reads that.
+company. The pool should publish occupancy per host and provider (running, queued, reserved, free),
+including company and job titles. Chris explicitly accepted this shared visibility. Company
+threads, attachment contents and controls still resolve through their configured HQ company;
+shared titles do not authorize arbitrary controller commands.
 
-**3. Controller on a small Google Cloud VM.** This is feasible, but it is a re-qualification, not a
-move.
+**3. Controller stays on the MacBook Pro for v1.** This preserves the qualified same-host
+relationship between Paperclip's process adapter, pool runner and bridge control files. Remote
+workers still use SSH over Tailscale. A cloud controller remains a later availability option,
+with database persistence and a backup/restore test required before moving it.
 
-- The current version requires the controller and the desktop bridge to share a host and user.
-  Paperclip's process adapter launches the pool runner on the controller host. The bridge sends
-  answers and stops to that runner through private local control files. On a VM, the runner
-  would SSH to the Macs from the cloud, and answers and stops would need an authenticated
-  network path.
-- The HQ frontend can stay on Vercel while an HQ backend/gateway runs on a tailnet-connected
-  server. Ordinary Vercel functions do not automatically gain that private route; choose an
-  authenticated relay/gateway path explicitly. Keeping Paperclip private is compatible with
-  an internet-accessible HQ frontend. This proposal does not expose a new endpoint.
-- A cloud controller survives a laptop going offline, but one VM is still a single point of
-  failure. Plan persistent data, restart policy and a tested backup/restore path, with embedded
-  or managed Postgres. Sleeping Macs remain unavailable workers, and headless Claude sign-in
-  still needs qualification. Choose region and machine size after measuring idle and run load;
-  no price or high-availability claim is made here.
-  [Deployment modes](https://docs.paperclip.ing/reference/deploy/overview/).
+**4. Firebase HQ backend, with simple role checks.** Option 2 remains the target. Use a Firebase
+callable function for authenticated HQ operations, checking the existing role and a server-owned
+HQ-to-Paperclip-company mapping. `canAccessHq` admits existing admins/employees to read; controls
+require admin. Paperclip credentials stay on the controller.
 
-**4. Option 2 directly, with simple role checks.** Agreed; option 1 is no longer a planned step.
-Deep links remain an admin fallback on the tailnet. No new Firestore rules are needed for
-Paperclip data, because it does not live in Firestore. The HQ server route checks the existing
-claim: `canAccessHq` to view that HQ's company, and `admin` to start, answer, assign or stop.
+A Cloud Function cannot assume a private route to the Mac's loopback API. The first implementation
+will test an **outbound controller connector**: HQ submits a typed operation to a private
+Firestore transport collection; the Mac claims it, invokes the existing bridge/Paperclip owner,
+and publishes a receipt and bounded read projection. Firestore delivers requests and observations;
+Paperclip still schedules work and owns its conversation. This is a proposed connection path,
+not a deployed endpoint. The connector must preserve operation IDs and refuse blind replay after
+an uncertain external effect. Disconnects should show an offline/waiting state in HQ.
 
 **5. Interactive conversation: keep it in Paperclip, mint the record into Git.** Paperclip
 already stores, per company-scoped issue:
@@ -307,17 +305,17 @@ making closeout files append-only needs an explicit validation rule. Reopening a
 a new snapshot instead of overwriting the previous one. One Morpheus item can aggregate several
 Paperclip issues, and a completed execution turn alone does not trigger repository acceptance.
 
-This is a proposal. Today the inbox is `hq/team/<handle>.md` with the
-[inbox cycle](runbooks/inbox-cycle.md). Replacing it needs an explicit migration design for
+This contract is accepted for implementation. Today the inbox is `hq/team/<handle>.md` with the
+[inbox cycle](runbooks/inbox-cycle.md). Replacing it still requires a qualified migration for
 validation, archiving and promotion to `decisions.md`.
 
 | Kind of state | Single authority | Everyone else |
 |---|---|---|
 | Roadmap item, acceptance, decisions, completion record | Morpheus Git | HQ renders; Paperclip receives task instructions |
 | Execution conversation: messages, screenshots, questions, assignments, runs and logs | Paperclip | HQ reads and writes through the server route |
-| Shared compute capacity and reservations | Pool runtime | Every HQ reads the aggregate |
+| Shared compute capacity and reservations | Pool runtime | Every HQ reads occupancy and shared job titles |
 | HQ identity and role | Firebase Auth custom claim | Paperclip sees the server credential |
-| Existing HQ data | Firestore, under role rules | — |
+| Existing HQ data; command delivery and bounded projections | Firestore, under role rules | Projections identify their source and observation time |
 
 **How an HQ answer reaches a worker needs qualifying.** Paperclip delivers an interaction
 response either by steering it into a live run or by waking the assignee for a new run
@@ -335,45 +333,44 @@ own rule for who answers first.
 
 ```mermaid
 flowchart TB
-  subgraph VM[Small Google Cloud VM on the tailnet - proposed]
+  subgraph Mac[MacBook Pro controller - v1]
     API[Paperclip API and company events]
     Postgres[Paperclip Postgres]
-    Runner[Pool runner and occupancy]
+    Runner[Existing pool runner and occupancy]
     Controls[Morpheus bridge journal and controls]
+    Connector[Outbound HQ connector - planned]
     API --> Postgres
     API --> Runner
+    Connector --> Controls
     Controls -->|Journaled issue or follow-up| API
-    Controls -->|Live answer or stop| Runner
+    Controls -->|Answer or stop| Runner
   end
-  Browser[HQ in the browser - our design system] -->|Firebase session cookie| Route[HQ backend or gateway - role and company check]
-  Browser -->|Firebase client auth - role rules| Firestore[Firestore - existing HQ data]
-  Route -->|Company-scoped reads| API
-  Route -->|Authenticated remote controls - proposed| Controls
-  Runner -->|SSH over Tailscale| Macs[Mac worker runtimes]
-  API -.->|Completed thread minted as Markdown in a PR - proposed| Git[Morpheus Git records]
+  Browser[HQ browser - our design system] -->|Firebase authentication| Function[Cloud Function - role and company check]
+  Function --> Transport[Private Firestore command delivery and projections]
+  Connector -->|Outbound claim and receipt| Transport
+  Runner -->|SSH over Tailscale| Workers[Mac worker runtimes]
+  API -.->|Versioned closeout in a reviewed PR - planned| Git[Morpheus Git records]
 ```
 
-**Overall recommendation:** keep Paperclip on Postgres and build option 2 directly, as Chris
-prefers. Put the execution conversation in Paperclip, aggregate pool occupancy in the runtime,
-and completion records in Git. Use Firestore only for HQ data with no Paperclip equivalent.
-No migration, VM, network exposure, credential or frontend rollout is authorized by this
-research.
+**Implementation direction:** keep Paperclip on Postgres and build option 2 directly. Use Firebase
+for HQ authentication, backend and private delivery; use the existing pool to execute work. Start
+with the existing private Paperclip artifact storage and record content hashes in closeouts;
+qualify retention and restoration before calling those references durable. No new storage vendor
+is required for the first slice. Do not copy the conversation into a second Firestore chat store.
 
-**Still open for Chris:**
+**Final QA answers received, October 25:** controller stays on the MacBook Pro; Firebase hosts the
+HQ backend; shared runner titles are allowed; the Paperclip inbox/Git snapshot contract is
+accepted. Chris then authorized unsupervised implementation and testing. This authorizes code,
+normal review/CI/merge and local qualification; cloud deployment and new paid resources remain
+separate from that work.
 
-- The VM's region and size, and whether Paperclip's Postgres is embedded on it or managed.
-- Where the HQ backend/gateway runs and how it reaches the private controller.
-- Whether HQs may see other companies' job titles on the shared runners, or counts only. The
-  proposal is counts only.
-- Whether to adopt the proposed Paperclip-backed inbox and Git snapshot contract, and which
-  durable artifact store retains screenshots.
-
-**First validation slice:** two company HQs using the same worker pool. Show each company's own
-task, conversation and screenshot in its normal design system; display shared occupancy in both;
-answer one structured question and verify it reaches the correct native session exactly once;
-reject a mismatched company ID; keep controller/task history available with one laptop offline;
-export the completed task twice without duplicate records, and reproduce its attachment hashes.
-The UI can say "waiting for a worker" when capacity is unavailable. These are prospective
+**Validation before rollout:** connect two configured HQ companies to one controller; render each
+company's own task, conversation and screenshot, with shared runner titles in both; answer a
+structured question and verify the exact native session receipt; reject a mismatched company;
+show offline/stale state during a controller outage and resume without duplicate turns; export a
+completed thread twice without duplicate snapshots, then reopen it and preserve the old record;
+verify attachment hashes. The controller is unavailable when the MacBook Pro is offline in v1.
+Local/emulator tests and live native-worker qualification must be reported separately. These are
 acceptance checks, not claims that the prototype already passes them.
 
 ## Machines, subscriptions and rollout status
