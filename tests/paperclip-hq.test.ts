@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createBackend, type User, type Settings } from '../scripts/paperclip-hq/backend.js';
-import { createConnector } from '../scripts/paperclip-hq/connector.js';
+import { createConnector, journalName } from '../scripts/paperclip-hq/connector.js';
 import { digest, type Command } from '../scripts/paperclip-hq/protocol.js';
 import type { CommandStore } from '../scripts/paperclip-hq/store.js';
 
@@ -100,9 +100,31 @@ describe('HQ command transport', () => {
 });
 
 describe('outbound connector', () => {
+  it('delivers accepted uppercase and lowercase UUIDs once, including case-only aliases on a Mac', async () => {
+    const f = fixture(), dir = await directory();
+    const upper = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA', lower = upper.toLowerCase();
+    await f.backend.enqueue(admin, { ...f.input, operationId: upper });
+    await f.backend.enqueue(admin, { ...f.input, operationId: lower });
+    await f.backend.enqueue(admin, f.input);
+    const seen: string[] = [];
+    const connector = createConnector({ directory: dir, companyId, controllerId: settings.controllerId, connectorId: 'mbp', backend: (method, args) => (f.backend[method] as any)(machine, args), bridge: async (_method, args) => { seen.push(args.operationId as string); return { operationId: args.operationId }; } });
+    await connector.tick(); await connector.tick();
+    expect(seen).toEqual([upper, lower, operationId]);
+    expect(journalName(upper).toLowerCase()).not.toBe(journalName(lower).toLowerCase());
+    for (const value of seen) expect(JSON.parse(await readFile(join(dir, journalName(value)), 'utf8')).operationId).toBe(value);
+  });
+  it('republishes an uppercase UUID saved receipt after acknowledgement loss without another bridge call', async () => {
+    const f = fixture(), dir = await directory(), upper = 'BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB';
+    await f.backend.enqueue(admin, { ...f.input, operationId: upper }); let failAck = true, calls = 0;
+    const make = () => createConnector({ directory: dir, companyId, controllerId: settings.controllerId, connectorId: 'mbp', backend: (method, args) => { if (method === 'complete' && failAck) return Promise.reject(new Error('ack lost')); return (f.backend[method] as any)(machine, args); }, bridge: async () => { calls++; return { received: true }; } });
+    await expect(make().tick()).rejects.toThrow('ack lost'); failAck = false;
+    await make().tick(); expect(calls).toBe(1); expect(f.data.get(upper)!.state).toBe('completed');
+    expect(JSON.parse(await readFile(join(dir, journalName(upper)), 'utf8')).state).toBe('acked');
+  });
+
   it('resumes a prepared journal only after fresh server fencing and authorization', async () => {
     const f = fixture(), dir = await directory(); await f.backend.enqueue(admin, f.input); const command = await f.backend.claim(machine, { operationId });
-    await writeFile(join(dir, `${operationId}.json`), JSON.stringify({ version: 1, operationId, requestHash: command!.requestHash, fence: command!.fence, state: 'prepared' }));
+    await writeFile(join(dir, journalName(operationId)), JSON.stringify({ version: 1, operationId, requestHash: command!.requestHash, fence: command!.fence, state: 'prepared' }));
     f.advance(100); let calls = 0;
     await createConnector({ directory: dir, companyId, controllerId: settings.controllerId, connectorId: 'mbp', backend: (method, args) => (f.backend[method] as any)(machine, args), bridge: async () => { calls++; return { ok: true }; } }).tick();
     expect(calls).toBe(1); expect(f.data.get(operationId)!.fence).not.toBe(command!.fence);
@@ -111,7 +133,7 @@ describe('outbound connector', () => {
   it('does not replay after server applying acknowledgement was lost before local intent update', async () => {
     const f = fixture(), dir = await directory(); await f.backend.enqueue(admin, f.input); const command = await f.backend.claim(machine, { operationId });
     await f.backend.beginApply(machine, { operationId, fence: command!.fence! });
-    await writeFile(join(dir, `${operationId}.json`), JSON.stringify({ version: 1, operationId, requestHash: command!.requestHash, fence: command!.fence, state: 'prepared' }));
+    await writeFile(join(dir, journalName(operationId)), JSON.stringify({ version: 1, operationId, requestHash: command!.requestHash, fence: command!.fence, state: 'prepared' }));
     let calls = 0;
     await createConnector({ directory: dir, companyId, controllerId: settings.controllerId, connectorId: 'mbp', backend: (method, args) => (f.backend[method] as any)(machine, args), bridge: async () => { calls++; return {}; } }).tick();
     expect(calls).toBe(0); expect(f.data.get(operationId)!.state).toBe('unknown');
@@ -133,14 +155,14 @@ describe('outbound connector', () => {
       backend: async (method, args) => { if (method === 'complete' && failAck) throw new Error('disconnected'); return (f.backend[method] as any)(machine, args); },
       bridge: async (method, args) => {
         expect(method).toBe('hq.start'); expect(args.actor).toEqual({ uid: 'chris', role: 'admin', kind: 'user' });
-        expect(JSON.parse(await readFile(join(dir, `${operationId}.json`), 'utf8')).state).toBe('applying');
+        expect(JSON.parse(await readFile(join(dir, journalName(operationId)), 'utf8')).state).toBe('applying');
         expect(f.data.get(operationId)!.state).toBe('applying'); calls++;
         return { operation: { operationId, state: 'receipted' }, work: { terminal: false } };
       } });
     await expect(connector.tick()).rejects.toThrow('disconnected');
     expect(calls).toBe(1); failAck = false; await connector.tick();
     expect(calls).toBe(1); expect(f.data.get(operationId)!.state).toBe('completed');
-    expect(JSON.parse(await readFile(join(dir, `${operationId}.json`), 'utf8')).state).toBe('acked');
+    expect(JSON.parse(await readFile(join(dir, journalName(operationId)), 'utf8')).state).toBe('acked');
   });
   it('never repeats a bridge call after unknown outcome, including reconnect', async () => {
     const f = fixture(), dir = await directory(); let calls = 0; await f.backend.enqueue(admin, f.input);
@@ -150,7 +172,7 @@ describe('outbound connector', () => {
   it('handles interrupted applying journal as unknown without launching a worker', async () => {
     const f = fixture(), dir = await directory(); await f.backend.enqueue(admin, f.input); const command = await f.backend.claim(machine, { operationId });
     await f.backend.beginApply(machine, { operationId, fence: command!.fence! });
-    await writeFile(join(dir, `${operationId}.json`), JSON.stringify({ version: 1, operationId, requestHash: command!.requestHash, fence: command!.fence, state: 'applying' }));
+    await writeFile(join(dir, journalName(operationId)), JSON.stringify({ version: 1, operationId, requestHash: command!.requestHash, fence: command!.fence, state: 'applying' }));
     let calls = 0;
     await createConnector({ directory: dir, companyId, controllerId: settings.controllerId, connectorId: 'mbp', backend: (method, args) => (f.backend[method] as any)(machine, args), bridge: async () => { calls++; } }).tick();
     expect(calls).toBe(0); expect(f.data.get(operationId)!.state).toBe('unknown');

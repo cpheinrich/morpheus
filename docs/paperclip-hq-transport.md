@@ -65,13 +65,15 @@ bypasses rules and therefore stays inside the authorized backend.
 ## Delivery, crashes and reconnect
 
 An operation UUID binds the normalized payload and actual user. Repeating it returns the same
-intent; changed content or another actor refuses. Claims have fences and expiry. A stale claimant
-cannot begin or publish a receipt. Once applying, a command is never automatically made pending
+intent; changed content or another actor refuses. Claims have fences and expiry. An expired pre-application claim cannot begin; a replaced fence cannot publish a receipt.
+A saved receipt may publish under the original applying fence after its lease expires. Once applying, a command is never automatically made pending
 again. A missing receipt becomes `unknown`; it requires observation of the original bridge
 operation rather than reposting a request. Firestore transaction callbacks contain no native or
 Paperclip effects, because Firebase may retry those callbacks.
 
-The private Mac journal records prepared intent, applying intent and receipt. A reconnect can
+The private Mac journal records prepared intent, applying intent and receipt. Filenames hash
+the exact operation ID so accepted uppercase IDs remain recoverable and case-only spellings
+cannot alias on a Mac; the stored operation ID itself is preserved. A reconnect can
 publish a saved receipt without invoking the bridge again. A prepared intent can proceed only
 through a fresh backend authorization/fence; an interrupted applying intent is reported unknown.
 The bridge also persists its operation-to-conversation/turn binding before the upstream effect.

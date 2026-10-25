@@ -1,12 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, rename, lstat, realpath, unlink, readdir } from 'node:fs/promises';
+import { mkdir, open, readFile, rename, lstat, realpath, unlink, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Command } from './protocol.js';
-import { boundedJson, digest } from './protocol.js';
+import { boundedJson, digest, id } from './protocol.js';
 
 type BackendCall = (method: 'pending' | 'claim' | 'beginApply' | 'complete' | 'inspect', data?: any) => Promise<any>;
 type BridgeCall = (method: string, data: Record<string, unknown>) => Promise<any>;
 type Journal = { version: 1; operationId: string; requestHash: string; fence: string; state: 'prepared' | 'applying' | 'receipt' | 'unknown' | 'acked'; result?: unknown };
+
+// UUID text is accepted case-sensitively by Firestore. A digest filename also
+// preserves distinct spellings on case-insensitive Mac filesystems.
+export const journalName = (operationId: string) => `${digest(id.parse(operationId))}.json`;
 
 // Run one bounded pass from a caller-owned loop/LaunchAgent. No scheduler or model selection.
 export function createConnector({ directory, companyId, controllerId, connectorId, backend, bridge }: {
@@ -21,7 +25,7 @@ export function createConnector({ directory, companyId, controllerId, connectorI
     const stat = await lstat(dir);
     if ((stat.mode & 0o077) !== 0 || (process.getuid && stat.uid !== process.getuid())) throw new Error('Connector journal must be private and owned');
   }
-  const file = (id: string) => join(dir, `${id}.json`);
+  const file = (operationId: string) => join(dir, journalName(operationId));
   async function read(id: string): Promise<Journal | null> {
     try {
       if ((await lstat(file(id))).isSymbolicLink()) throw new Error('Connector journal symlink refused');
@@ -94,12 +98,15 @@ export function createConnector({ directory, companyId, controllerId, connectorI
         try {
           await lock.writeFile(JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
           for (const name of await readdir(dir)) {
-            if (!/^[0-9a-f-]{36}\.json$/.test(name)) continue;
-            const journal = await read(name.slice(0, -5));
+            if (!/^[0-9a-f]{64}\.json$/.test(name)) continue;
+            if ((await lstat(join(dir, name))).isSymbolicLink()) throw new Error('Connector journal symlink refused');
+            const saved = JSON.parse(await readFile(join(dir, name), 'utf8')) as Journal;
+            if (journalName(saved.operationId) !== name) throw new Error('Connector journal filename binding changed');
+            const journal = await read(saved.operationId);
             if (journal && ['prepared', 'receipt', 'applying', 'unknown'].includes(journal.state)) await apply(journal.operationId);
           }
           const pending = await backend('pending');
-          if (!Array.isArray(pending) || pending.length > 25 || pending.some(id => typeof id !== 'string' || !/^[0-9a-f-]{36}$/.test(id))) throw new Error('Invalid pending command list');
+          if (!Array.isArray(pending) || pending.length > 25 || pending.some(operationId => !id.safeParse(operationId).success)) throw new Error('Invalid pending command list');
           for (const operationId of pending) await apply(operationId);
           return { observed: pending.length };
         } finally { await lock.close(); await unlink(lockPath); }
