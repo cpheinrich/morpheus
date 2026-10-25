@@ -75,3 +75,28 @@ real provider execution, live restart adoption and multiple companies are not qu
 Some exceptions remain conservatively unknown even before effects; an observation miss
 requires operator diagnosis and does not authorize a repost. Independent review/CI/merge
 are pending in this checkpoint.
+
+
+## Initial independent review and corrections
+
+Reviewer `/root/hq_pool_actor/hq_actor_reviewer` reviewed97e8377ee18ea3acc36593526d9fae2ca2cdc3aa
+at high risk. Measured clock boundaries1792926361366 through1792926641195ms give279829ms,
+including all tool execution/waits. It returned complete but blocked, no conditions:
+HQ-PIN-001 (substantive) found queued native launches only checked the reduced desktop
+binding; HQ-REPO-002 (substantive) found remote worker paths were resolved on the controller.
+Parent authorized the necessary narrow runner-hook ownership extension.
+
+Corrections share the same mapping verifier between HQ commands and native runner admission,
+validate the captured controller/profile as well as current config before host/account effects,
+and require an explicit controller-local `repository` separate from the pinned worker workspace.
+The mapping digest includes both local repository path and identity. Fake-only drift probes cover
+node/ssh executables, company/project/controller URL, owner reinstallation, and a captured-profile
+race during upstream lookup; all host-spawn attempts are intercepted. SSH admission covers a
+worker workspace absent from the controller. Same-reviewer follow-up remains required.
+
+Correction validation: the six-file focused command (`pool-hq`, `pool`, `pool-protocol`,
+`pool-review`, `pool-units`, `manager`) passed66/66 after both fixes. A final positive
+intercept test then confirmed an unchanged HQ pin reaches exactly its pinned host executable
+without launching a provider; the dedicated HQ suite passed18/18 including seven drift
+subtests. Plugin syntax, typecheck, compile, PM index and whitespace checks passed again.
+No generated output changed. These results precede the same-reviewer follow-up.

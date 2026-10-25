@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -18,7 +18,7 @@ async function setup(t) {
   const mapping = {
     version: 1, connectorId: "mbp-controller", companyId: fx.pool.controller.companyId,
     controller: { ...fx.pool.controller, projectId: null },
-    profiles: { [fx.name]: { project: (await projectIdentity(fx.profile.workspace)).project, profileSha256: hqProfileDigest(parsed.profiles[fx.name]) } },
+    profiles: { [fx.name]: { repository: fx.coordinatorCwd, project: (await projectIdentity(fx.coordinatorCwd)).project, profileSha256: hqProfileDigest(parsed.profiles[fx.name]) } },
   };
   delete mapping.controller.tokenFile;
   await writeFile(hqPath(), JSON.stringify(mapping), { mode: 0o600 });
@@ -206,4 +206,73 @@ test("desktop and HQ follow-ups on separate conversations share one profile allo
   assert.equal((await next).work.turn, 2);
   assert.equal((await fx.pool.status({ conversationId: desktop.conversationId })).turn, 1);
   assert.equal(fx.paperclip.count("POST", /\/comments$/), 1);
+});
+
+test("queued HQ turns reject every controller/full-profile pin change before any host effect", async (t) => {
+  const changes = [
+    ["host.node", (pool, name) => { pool.profiles[name].host.node = "/changed-node"; }],
+    ["owner mapping reinstall", (pool, name) => { pool.profiles[name].host.node = "/changed-node"; }],
+    ["captured profile changed during lookup", (pool, name) => { pool.profiles[name].host.node = "/changed-node"; }],
+    ["host.ssh", (pool, name) => { pool.profiles[name].host.ssh = "/changed-ssh"; }],
+    ["controller.companyId", (pool) => { pool.controller.companyId = randomUUID(); }],
+    ["controller.projectId", (pool) => { pool.controller.projectId = randomUUID(); }],
+    ["controller.baseUrl", (pool) => { pool.controller.baseUrl = "http://localhost:3999"; }],
+  ];
+  for (const [name, change] of changes) await t.test(name, async (sub) => {
+    const fx = await setup(sub);
+    const started = await fx.start();
+    const changed = JSON.parse(JSON.stringify(fx.poolConfig));
+    change(changed, fx.name);
+    await fx.writePool(changed);
+    if (name === "owner mapping reinstall") {
+      fx.mapping.profiles[fx.name].profileSha256 = hqProfileDigest((await loadPool()).profiles[fx.name]);
+      await writeFile(hqPath(), JSON.stringify(fx.mapping), { mode: 0o600 });
+    }
+    if (name === "captured profile changed during lookup") fx.paperclip.fail = (method, path) => {
+      if (method === "GET" && /heartbeat-runs/.test(path))
+        writeFileSync(join(fx.coord, "pool.json"), JSON.stringify(fx.poolConfig), { mode: 0o600 });
+    };
+    let hostEffects = 0;
+    const code = await fx.run(fx.paperclip.startRun([...fx.paperclip.issues.keys()][0]), fx.name, {
+      spawnImpl: () => { hostEffects++; throw new Error("host execution must be unreachable"); },
+    });
+    assert.equal(code, 78);
+    assert.equal(hostEffects, 0);
+    const run = JSON.parse(await readFile(runPath(started.work.conversationId, 1), "utf8"));
+    assert.deepEqual([run.category, run.state, run.termination, run.finished], ["hq_binding_drift", "refused", "not-started", true]);
+    assert.deepEqual(await (await import("node:fs/promises")).readdir(join(fx.coord, "pool", "accounts")), []);
+  });
+});
+
+test("SSH profiles authorize a separately pinned controller repository without resolving the remote workspace", async (t) => {
+  const fx = await setup(t);
+  const pool = JSON.parse(JSON.stringify(fx.poolConfig));
+  const remoteWorkspace = join(fx.root, "exists-only-on-remote-worker");
+  pool.profiles[fx.name].workspace = remoteWorkspace;
+  pool.profiles[fx.name].host.transport = "ssh";
+  pool.profiles[fx.name].host.target = "zoe@mini.test";
+  await fx.writePool(pool);
+  fx.mapping.profiles[fx.name].profileSha256 = hqProfileDigest((await loadPool()).profiles[fx.name]);
+  await writeFile(hqPath(), JSON.stringify(fx.mapping), { mode: 0o600 });
+  const started = await fx.start();
+  assert.equal(started.work.state, "queued");
+  assert.equal((await readConversation(started.work.conversationId)).project, (await projectIdentity(fx.coordinatorCwd)).project);
+  assert.equal((await fx.call("status", { conversationId: started.work.conversationId })).work.profile, fx.name);
+  assert.equal(fx.paperclip.count("POST", /\/issues$/), 1);
+  fx.mapping.profiles[fx.name].repository = remoteWorkspace;
+  await writeFile(hqPath(), JSON.stringify(fx.mapping), { mode: 0o600 });
+  await assert.rejects(fx.call("status", { conversationId: started.work.conversationId }), /ENOENT/);
+});
+
+test("an unchanged HQ mapping reaches exactly the pinned host transport without launching a provider", async (t) => {
+  const fx = await setup(t);
+  const started = await fx.start();
+  const executables = [];
+  const code = await fx.run(fx.paperclip.startRun([...fx.paperclip.issues.keys()][0]), fx.name, {
+    spawnImpl: (executable) => { executables.push(executable); throw new Error("fixture intercepted host transport"); },
+  });
+  assert.equal(code, 75);
+  assert.deepEqual(executables, [fx.profile.host.node]);
+  const run = JSON.parse(await readFile(runPath(started.work.conversationId, 1), "utf8"));
+  assert.deepEqual([run.category, run.termination], ["transport", "not-started"]);
 });

@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { home } from "./config.mjs";
 import { atomic, configRead, projectIdentity, readJSON } from "./store.mjs";
 import { loadPool, ownerFile, PROFILE_NAME, sha256 } from "./pool-config.mjs";
+import { apiOrigin } from "./pool-paperclip.mjs";
 import { poolHome, readConversation, turnPath } from "./pool-store.mjs";
 
 // Only the owner-installed outbound Firebase connector calls this facade over the
@@ -17,7 +18,7 @@ const controllerSchema = z.object({ baseUrl: z.string().url(), companyId: uuid, 
 const mappingSchema = z.object({
   version: z.literal(1), connectorId: z.string().min(1).max(128), companyId: uuid,
   controller: controllerSchema,
-  profiles: z.record(z.string().regex(PROFILE_NAME), z.object({ project: z.string().min(1), profileSha256: digest }).strict()),
+  profiles: z.record(z.string().regex(PROFILE_NAME), z.object({ repository: z.string().refine(isAbsolute), project: z.string().refine(isAbsolute), profileSha256: digest }).strict()),
 }).strict();
 const common = { connectorId: z.string().min(1).max(128), companyId: uuid, actor: actorSchema };
 const prompt = z.string().min(1).max(200000).refine((value) => !!value.trim(), "A bounded prompt is required");
@@ -66,28 +67,40 @@ const receipt = (op) => ({
   operationId: op.operationId, action: op.action, requestSha256: op.requestSha256,
   conversationId: op.conversationId, turn: op.turn, state: op.state,
 });
+export async function verifyHQBinding(profileName, conversation = null, { args = null, executionPool = null, apiUrl = null, issue = null } = {}) {
+  const mapping = mappingSchema.parse(JSON.parse(await ownerFile(hqPath(), "HQ controller mapping")));
+  if (args && (args.connectorId !== mapping.connectorId || args.companyId !== mapping.companyId))
+    throw new Error("HQ connector/company scope refused");
+  const pool = await loadPool();
+  if (mapping.companyId !== pool.controller.companyId || canonical(mapping.controller) !== canonical(controllerOf(pool)))
+    throw new Error("HQ controller identity changed; reinstall the owner mapping");
+  const config = await configRead();
+  if (config.mode === "off") throw new Error("Delegation disabled");
+  const profile = pool.profiles[profileName];
+  const entry = mapping.profiles[profileName];
+  if (!profile || !entry || hqProfileDigest(profile) !== entry.profileSha256)
+    throw new Error("HQ profile is not mapped or changed; reinstall the owner mapping");
+  if (executionPool && (canonical(controllerOf(executionPool)) !== canonical(mapping.controller) ||
+    hqProfileDigest(executionPool.profiles[profileName]) !== entry.profileSha256))
+    throw new Error("HQ captured execution binding changed");
+  const repository = await projectIdentity(entry.repository);
+  if (repository.cwd !== entry.repository || repository.project !== entry.project || config.projects[entry.project] === "off")
+    throw new Error("HQ repository mapping changed or delegation is disabled");
+  const identity = mappingDigest(mapping, profileName);
+  if (conversation && (!conversation.hq || conversation.hq.mappingSha256 !== identity || conversation.profile !== profileName))
+    throw new Error("Conversation is outside this HQ mapping");
+  if (apiUrl && apiOrigin(apiUrl) !== apiOrigin(mapping.controller.baseUrl))
+    throw new Error("HQ run controller origin changed");
+  if (issue && (issue.companyId !== mapping.companyId || (issue.projectId ?? null) !== mapping.controller.projectId))
+    throw new Error("HQ run company/project scope changed");
+  return { project: entry.project, mappingSha256: identity };
+}
+
 export class HQPool {
   busy = new Set();
   constructor(pool, { draining = () => false } = {}) { this.pool = pool; this.draining = draining; }
-  async authorize(args, profileName, conversation = null) {
-    const mapping = mappingSchema.parse(JSON.parse(await ownerFile(hqPath(), "HQ controller mapping")));
-    if (args.connectorId !== mapping.connectorId || args.companyId !== mapping.companyId)
-      throw new Error("HQ connector/company scope refused");
-    const pool = await loadPool();
-    if (mapping.companyId !== pool.controller.companyId || canonical(mapping.controller) !== canonical(controllerOf(pool)))
-      throw new Error("HQ controller identity changed; reinstall the owner mapping");
-    const config = await configRead();
-    if (config.mode === "off") throw new Error("Delegation disabled");
-    const profile = pool.profiles[profileName];
-    const entry = mapping.profiles[profileName];
-    if (!profile || !entry || hqProfileDigest(profile) !== entry.profileSha256)
-      throw new Error("HQ profile is not mapped or changed; reinstall the owner mapping");
-    if ((await projectIdentity(profile.workspace)).project !== entry.project || config.projects[entry.project] === "off")
-      throw new Error("HQ repository mapping changed or delegation is disabled");
-    const identity = mappingDigest(mapping, profileName);
-    if (conversation && (!conversation.hq || conversation.hq.mappingSha256 !== identity || conversation.profile !== profileName))
-      throw new Error("Conversation is outside this HQ mapping");
-    return { project: entry.project, mappingSha256: identity };
+  async authorize(args, profileName, conversation = null, executionPool = null) {
+    return verifyHQBinding(profileName, conversation, { args, executionPool });
   }
   async dispatch(action, input = {}) {
     if (!schemas[action]) throw new Error("Unknown HQ pool operation");
@@ -149,9 +162,9 @@ export class HQPool {
       const hq = {
         conversationId: op.conversationId,
         identity: { mappingSha256: op.mappingSha256, actor: args.actor, operationId: op.operationId },
-        admit: async (current) => {
+        admit: async (current, executionPool = null) => {
           if (this.draining()) throw new Error("Bridge upgrade is in progress");
-          return this.authorize(args, profile, current);
+          return this.authorize(args, profile, current, executionPool);
         },
         recordTurn: async (id, turn) => {
           Object.assign(op, { conversationId: id, turn, state: "applying" });

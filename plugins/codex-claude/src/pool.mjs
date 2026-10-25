@@ -80,7 +80,7 @@ export class Pool {
     const { pool, api } = await this.context();
     const profile = pool.profiles[args.profile];
     if (!profile) throw new Error("Unknown pool profile");
-    const { project } = hq ? await hq.admit(null) : await this.admit(args.threadId, profile.permission, null);
+    const { project } = hq ? await hq.admit(null, pool) : await this.admit(args.threadId, profile.permission, null);
     await initPool();
     await this.assertProfileIdle(args.profile);
     const id = hq?.conversationId ?? randomUUID();
@@ -102,7 +102,7 @@ export class Pool {
     // Journal before the external mutation; an unknown outcome is observed, never reposted.
     const turn = { n: 1, kind: "start", ...(hq ? { actor: hq.identity.actor, operationId: hq.identity.operationId } : {}), prompt: args.prompt, promptSha256: sha256(args.prompt), state: "posting", createdAt: Date.now() };
     await atomic(turnPath(id, 1), turn);
-    if (hq) { await hq.admit(conversation); await hq.recordTurn(id, 1); }
+    if (hq) { await hq.admit(conversation, pool); await hq.recordTurn(id, 1); }
     await this.submitIssue(pool, api, conversation, turn);
     return this.status({ conversationId: id });
   }
@@ -338,7 +338,7 @@ export class Pool {
       throw new Error("The pool profile changed since this conversation started; start a new conversation.");
     // The caller's own live authority admits the turn; the original task and project
     // still apply, so another session cannot revive a conversation whose owner is off.
-    if (hq) await hq.admit(c);
+    if (hq) await hq.admit(c, pool);
     else await this.admit(args.threadId, profile.permission, c);
     const unsettled = await this.unsettled(c, api);
     if (unsettled) throw new Error(unsettled);
@@ -357,7 +357,7 @@ export class Pool {
     await atomic(turnPath(c.id, n), turn);
     const stored = await readJSON(join(conversationDir(c.id), "conversation.json"));
     await atomic(join(conversationDir(c.id), "conversation.json"), { ...stored, turns: n, supervisionReplies: replies });
-    if (hq) { await hq.admit(c); await hq.recordTurn(c.id, n); }
+    if (hq) { await hq.admit(c, pool); await hq.recordTurn(c.id, n); }
     await this.submitComment(api, { ...c, turns: n }, turn);
     return this.status({ conversationId: c.id });
   }
@@ -399,7 +399,8 @@ export class Pool {
     await atomic(controlFile(c.id), { type: "stop", turn: n, ...(hq ? { actor: hq.identity.actor, operationId: hq.identity.operationId } : {}) });
     let cancel = run?.paperclipRunId ? "requested" : "no Paperclip run recorded yet";
     try {
-      const { api } = await this.context();
+      const { pool, api } = await this.context();
+      if (hq) await hq.admit(c, pool);
       if (run?.paperclipRunId) await api.post(`/heartbeat-runs/${run.paperclipRunId}/cancel`, {});
     } catch (error) {
       // The spool stop is exact on its own; the Paperclip record is best effort.

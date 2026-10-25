@@ -31,7 +31,8 @@ controller user. Its strict shape is:
   },
   "profiles": {
     "installed-profile-name": {
-      "project": "the-canonical-Git-common-directory-or-non-Git-workspace",
+      "repository": "the-canonical-controller-local-repository-or-workspace",
+      "project": "its-canonical-Git-common-directory-or-non-Git-workspace",
       "profileSha256": "the-64-character-profile-digest"
     }
   }
@@ -42,16 +43,19 @@ controller user. Its strict shape is:
 controller tuple must match `pool.json`. Use exported `hqProfileDigest(profile)` from
 `plugins/codex-claude/src/pool-hq.mjs` on the profile returned by `loadPool()`; it hashes
 canonical sorted-key JSON of the entire parsed profile, including host executables,
-account, provider, model, effort, permission and workspace. `projectIdentity(workspace)`
-supplies the repository identity. Configuration examples above contain placeholders,
+account, provider, model, effort, permission and workspace. `projectIdentity(repository)`
+supplies the controller-local repository identity. `repository` is independent of the
+worker profile workspace: an SSH workspace may exist only on its worker host. Configuration examples above contain placeholders,
 not an installation command or live target.
 
 The mapping digest additionally pins connector, company, controller, profile name and
 repository. Existing HQ conversations and operation receipts retain that digest and
 refuse a changed mapping. Profile selection is by installed name only; request schemas
 reject model, effort, permission, host, account, workspace, retry and source overrides.
-Global/project delegation switches and bridge draining still prevent admission. The
-native runner continues to enforce existing fresh subscription quota, host binding,
+Global/project delegation switches and bridge draining still prevent admission. Queued
+HQ runs revalidate this same full mapping and their captured execution configuration
+before account reservation, reconciliation or host execution; changing or reinstalling
+the mapping cannot authorize an older queued intent. The native runner continues to enforce existing fresh subscription quota, host binding,
 permission, account reservation and termination checks.
 
 ## Local connector contract
@@ -114,7 +118,8 @@ contain text authored by the provider. Logs expose bounded event classifications
 
 ## Validation and limits
 
-The dedicated tests use fake Paperclip with no provider starts. They cover actor/company
+The dedicated tests use fake Paperclip with no provider starts; queued-launch drift
+probes intercept every host-spawn attempt. They cover actor/company
 checks on all methods, profile/controller drift, strict overrides, journal-before-effect,
 unknown/restart recovery, changed payload, honest controls, permission refusal, actual
 concurrent desktop/HQ admission, stop versus completion, and projection filtering.
