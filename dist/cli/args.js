@@ -62,7 +62,7 @@ const booleanOptions = {
     "--required-only": (flags) => { flags.requiredOnly = true; },
 };
 /** Flags `parseArgs` consumes in its switch rather than through the option tables. */
-const SWITCH_FLAGS = ["--dir", "--base", "--issue", "--ceiling", "--author", "--isbn"];
+const SWITCH_FLAGS = ["--dir", "--base", "--issue", "--ceiling", "--author", "--isbn", "--tag"];
 /**
  * Every flag the global parser consumes before a subcommand sees its arguments. A subcommand that
  * lets a project declare its own flags (qa preview modes) must refuse these, or the flag is
@@ -93,6 +93,7 @@ export function parseArgs(argv) {
         hq: true,
         positional: [],
         authors: [],
+        tags: [],
         isbns: [],
     };
     for (let i = 0; i < argv.length; i++) {
@@ -134,6 +135,9 @@ export function parseArgs(argv) {
                     flags.authors.push(author);
                 break;
             }
+            case "--tag":
+                flags.tags.push(argv[++i] ?? "");
+                break;
             case "--isbn":
                 if (argv[i + 1])
                     flags.isbns.push(argv[++i]);

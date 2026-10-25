@@ -15,3 +15,8 @@ export declare const agenticCtoSkillFiles: () => Record<string, string>;
  */
 export declare const RESEARCH_ENGINEER_SKILL = "research-engineer";
 export declare const researchEngineerSkillFiles: () => Record<string, string>;
+/**
+ * The DevOps engineer skill (MO-26-10-25-03.01.09): CI/CD delivery responsibility and incident recovery.
+ */
+export declare const DEVOPS_ENGINEER_SKILL = "devops-engineer";
+export declare const devopsEngineerSkillFiles: () => Record<string, string>;

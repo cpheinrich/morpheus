@@ -15,7 +15,7 @@ import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
 import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
 import { STATIC_ROADMAP_README } from "../pm/index-gen.js";
 import { ctoSkillDescription } from "../cto/guide.js";
-import { AGENTIC_CTO_SKILL, RESEARCH_ENGINEER_SKILL } from "../cto/skill.js";
+import { AGENTIC_CTO_SKILL, RESEARCH_ENGINEER_SKILL, DEVOPS_ENGINEER_SKILL } from "../cto/skill.js";
 export const manifest = (s) => JSON.stringify({
     name: s.name,
     prefix: s.prefix,
@@ -789,8 +789,7 @@ morpheus pm claims             # what is already taken
 morpheus pm claim ${s.prefix}-001      # stakes the branch on origin, sets in-progress
 \`\`\`
 
-The remote branch **is** the claim. Never create the branch by hand — \`pm claim\` derives it from
-the item id, so the two cannot disagree.
+The remote branch **is** the claim. Never create the branch by hand; \`pm claim\` derives it from the id.
 
 **A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
 voice and browser chat enter the same lifecycle: create or link the roadmap item, claim it, work on
@@ -874,8 +873,9 @@ the rule only with \`enabled: false\` and a substantive \`reason\` in the manife
 or generated goal/request index changes. The roadmap README is static after that migration. CI runs
 the same check and will fail otherwise.
 
-**Append a worklog entry** to \`.agent/worklog/YYYY-MM-DD-slug.md\`. Record dead ends especially —
-git history cannot hold work that produced no code, and that is the expensive knowledge.
+**Append a worklog entry** to \`.agent/worklog/YYYY-MM-DD-slug.md\`, including dead ends and the
+ticket's subject \`tags\`. CI/CD and infrastructure work uses \`[engineering, devops]\` plus relevant
+tags. Read matches with \`pm tagged devops\`.
 
 ## Local testing: focused first
 
@@ -1041,6 +1041,7 @@ One file per task: \`YYYY-MM-DD-slug.md\`, with frontmatter naming the roadmap i
 date: 2026-07-29
 agent: claude
 roadmap: XX-001
+tags: [engineering, devops]
 outcome: shipped | abandoned | blocked | research
 summary: One line.
 ---
@@ -1048,6 +1049,11 @@ summary: One line.
 
 **Record dead ends.** Git history holds what worked; only this holds the two hours spent proving
 an approach could not work, which is exactly what the next person needs.
+
+Use applicable lowercase subject tags on the roadmap item and each new worklog. Multiple tags
+are encouraged: CI/CD work uses both \`engineering\` and \`devops\`; add \`infrastructure\` or
+\`ios\` when relevant. Find explicit matches with \`morpheus pm tagged engineering devops --json\`.
+Older untagged history remains valid and unclassified; do not infer its subject or mass-rewrite it.
 `;
 export const inboxArchiveReadme = () => `# Inbox archive
 
@@ -1760,5 +1766,25 @@ Until you have read it, these boundaries already hold:
 
 If \`morpheus cto guide research-engineer\` is unknown, the installed CLI predates it: run
 \`morpheus self update\`.
+`;
+/** The same canonical-guide distribution path as the other CTO contributor skills. */
+export const devopsEngineerPointerSkill = () => `---
+name: ${DEVOPS_ENGINEER_SKILL}
+description: ${ctoSkillDescription(DEVOPS_ENGINEER_SKILL)}
+---
+
+# DevOps Engineer
+
+Run \`morpheus cto guide devops-engineer\` and follow it. Read the references it names with
+\`morpheus cto guide devops-engineer/<topic>\`. The current CTO mandate's authority, budget and
+repository controls apply; this skill grants no additional provider or spending permission.
+
+Until you have read it, verify actual eligible delivery and its user-visible receipt; resume the
+existing controller/repair owner before acting; preserve unknown external outcomes instead of
+duplicating effects. Tag related tickets and worklogs with \`engineering\` and \`devops\`.
+Keep normal delivery ahead of optional hardening. A skill or installed guide is not a running
+supervisor. Morpheus holds the reviewed copy and this installed CLI prints it.
+
+If \`morpheus cto guide devops-engineer\` is unknown, run \`morpheus self update\`.
 `;
 //# sourceMappingURL=templates.js.map
