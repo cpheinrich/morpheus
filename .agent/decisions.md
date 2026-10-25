@@ -15,6 +15,15 @@ no Markdown parsing engine, generic Git wrapper or new dependency is needed.
 Choices Chris made and why. Distilled from status replies — the archive in `status/` is the
 raw record; this is the part worth reading.
 
+**Claude-coordinated Codex runs are keyed by worktree, not by Claude session** — 2026-10-25.
+A Claude session may own multiple concurrent Codex delegations, subject to the existing global
+`maxConcurrent` cap, while one canonical working directory still admits only one active writer.
+Run history belongs to the Claude task; native Codex session ids and autonomous-supervision counts
+remain keyed by working directory so `needs_input` resumes cannot cross worktrees. Run-specific
+wait, view, status and stop operations accept `runId`; the single-run default remains compatible,
+but multiple active runs require an explicit id and report the choices. New installations route
+automatically only below 20% remaining; a saved explicit threshold is preserved.
+
 **Morpheus/Paperclip linkage is explicit and one-to-many** — 2026-10-23. Chris approved deeper
 integration with one roadmap parent linked to multiple execution jobs. Git retains repository,
 branch, source SHA, acceptance references, exact upstream IDs and independently verified evidence;
