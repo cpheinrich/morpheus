@@ -3,7 +3,9 @@
 This optional operator prototype turns an explicitly frozen conversation input into
 an immutable Git-reviewable snapshot. It does not replace Markdown inboxes or PM,
 connect to Paperclip, change upstream status, commit files, or establish completion.
-Review and commit its output through the ordinary claimed-task PR.
+Review and commit its output through the ordinary claimed-task PR. An optional
+deterministic Markdown view makes that same snapshot readable at wrap-up; the
+canonical JSON remains the full content identity.
 
 ## Run against one exact target
 
@@ -120,6 +122,72 @@ bytes. The source and output paths reject traversal, symlinks and nonregular inp
 Run in an operator-owned checkout without concurrent hostile filesystem mutation:
 Node path checks do not provide an `openat` sandbox against an attacker concurrently
 renaming ancestor directories. This prototype is not a concurrency or credential boundary.
+
+## Readable Markdown from an existing snapshot
+
+Render only an existing canonical export, using its exact repository-relative path:
+
+```sh
+pnpm exec tsx scripts/paperclip-closeout/cli.ts --repo . --render \
+  --snapshot .agent/paperclip-closeouts/<company-uuid>/<issue-uuid>/<snapshot-sha256>.json
+```
+
+This writes the adjacent `<snapshot-sha256>.md`, reports its `canonicalPath` and
+same `snapshotId`, and leaves the exporter command above backward compatible.
+The renderer verifies the canonical JSON schema, bytes, digest and company/issue
+path, plus every locally verified attachment's digest and size, before publishing.
+It does not rerun acquisition or authenticate the operator's declarations.
+The view preserves source identity/freeze, issue, every message and author/time,
+decisions and message references, accepted question/answer JSON and attribution,
+all validation outcomes/references, and every attachment reference and verification
+classification. Binary bytes stay in content-addressed blobs; verified ones get
+relative links. External references remain display text and are explicitly
+unverified when no local bytes were captured.
+
+All untrusted text and structured fields appear in plain code blocks whose fence
+is longer than every backtick run in the value. HTML, scripts, links and embedded
+Markdown therefore remain display text in a CommonMark-compatible preview.
+Only renderer-owned digest-based JSON/blob links become active links. Human
+review for sensitive prose remains necessary. An identical repeat returns
+`created: false`; changed/reopened source has a new JSON digest and a new view.
+A mismatched existing view is refused rather than overwritten. There is no
+mutable latest view or in-place rerender migration.
+
+## Git history guard
+
+Git itself permits rewriting files. The operator's exclusive writes are only one
+boundary; validate the exact proposed Git trees before accepting a PR:
+
+```sh
+pnpm exec tsx scripts/paperclip-closeout/cli.ts --repo . --check-history \
+  --base <full-40-character-base-commit> --head <full-40-character-head-commit>
+```
+
+The guard reads exact committed objects with replacement objects disabled, never
+the working tree or index. Every existing path under `.agent/paperclip-closeouts`
+must retain its bytes and mode; edits, deletions and renames are refused. Added
+files must be canonical valid JSON at its digest/source identity, exact derived
+Markdown beside its JSON, or a digest-matching binary blob. Every verified
+attachment referenced by a new record/view must exist with matching bytes and size.
+An existing JSON export may gain its missing Markdown view; old JSON-only exports
+remain valid. Symlink/executable modes, root case aliases, unexpected paths and
+unresolved canonical/blob references are refused. A valid orphan blob is allowed
+for recovery from an interrupted export. No temporary `.pending-*` file may enter Git.
+
+The comparison is deliberately bounded: 32 MiB tree listing per commit, 1,000 added
+closeout files, 128 MiB total unique object reads, 16 MiB per blob, about 8 MiB per
+JSON record and twice that per Markdown view. Exceeding a bound refuses validation.
+The base and head must be exact verified commit IDs; when the base has advanced,
+integrate its records rather than deleting them from a behind branch.
+
+The narrow `Paperclip closeout history / history` PR workflow runs for closeout
+records, their ancestors/case aliases, exporter/guard source/tests, or its own
+workflow. Normal PM/review/CI checks still apply. This check enforces the inspected
+comparison when it runs; GitHub path filtering and repository policy are not an
+adversarial append-only storage service. It does not retroactively audit unchanged
+old content, prove upstream completeness/atomicity, establish acceptance authority,
+or complete a PM item. Consumers adopting this optional prototype must wire the
+guard into their own ordinary review path.
 
 ## Why live acquisition remains separate
 
