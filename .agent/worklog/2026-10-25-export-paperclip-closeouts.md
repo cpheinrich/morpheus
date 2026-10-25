@@ -95,3 +95,68 @@ provider API or cloud action is authorized. Normal review ceiling15 minutes; glo
 stop-new-work threshold68–70% used and hard ceiling75% remain. The frozen-input
 prototype is not live API qualification or a migration. Initial no-push scope above is
 historical and is superseded by this authorization.
+
+## Independent review and conditional correction
+
+Independent normal-risk review found PC-1, a mixed-case Git metadata path bypass. The
+author fixed it within the reviewer's exact condition, added regression tests across
+input, attachment and reference boundaries, and passed all required focused checks.
+The review is complete; operator-frozen and non-atomic limitations remain explicit.
+
+The runner issued `/root/closeout_export/closeout_reviewer` with history inheritance
+disabled. Author-observed clock boundaries were2026-10-25T11:03:05Z before invocation
+and2026-10-25T11:05:44Z at completed-response receipt:159,000ms/2.65minutes, including
+tool execution and waits. The reviewer separately reported its final clock11:05:22Z;
+the record conservatively uses the author's complete invocation window. No padding,
+extension, follow-up or replacement reviewer was used. The reviewer independently ran
+the25 original focused tests and read the source, CLI, docs, acceptance and records.
+
+PC-1 reproduced `.GIT/config` resolving to Git metadata on the case-insensitive host.
+Commit059f3b9c5f8cc958ea19d9d5fb23fab196477c59 changes the root metadata check to
+case-insensitive matching, adds platform-independent `.git`/`.GIT`/`.GiT` rejection
+tests for frozen input, attachment paths, attachment references and evidence references,
+and documents the exclusion. Refused attachment exports leave exactly `.git` and `qa`
+at the temp repository root, with no output directory. All28 focused tests, typecheck,
+compile, PM index and diff checks pass; generated files are unchanged.
+
+Trunk integration23ab0e38bc38a74279557ba12d913d9f16e3fcac merged already-landed
+main2b102e3e3ee86276ad69a342eece2e52e01d8bb1 without conflicts or hand edits.
+`git merge-tree --write-tree` reproduced exact tree
+b0b979ab83b4940e3b92c981422c0cff00dd01f0; review base/covered are preserved under
+the exact-merge rule. New AGENTS/decisions delta was read. No unrelated author changes
+were added. Shared Codex usage was26% used at review completion, up from25% at admission.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "7bcdbb419e2d5592bb0994a2a073241c1c546783",
+  "reviewed": "9ee8ac45efa1173cb25d3446b4604fb46a0a818e",
+  "covered": "059f3b9c5f8cc958ea19d9d5fb23fab196477c59",
+  "authorSession": "01a172b0-bea1-7113-b43f-550d0e600803",
+  "reviewerSession": "/root/closeout_export/closeout_reviewer",
+  "risk": "normal",
+  "elapsedMinutes": 2.65,
+  "timing": {
+    "source": "clock",
+    "durationMs": 159000,
+    "evidence": "Author clock tools bracketed reviewer /root/closeout_export/closeout_reviewer invocation: start 2026-10-25T11:03:05Z, completed-response receipt 2026-10-25T11:05:44Z; 159000ms includes tools and waits. Reviewer separately reported final clock 11:05:22Z."
+  },
+  "outcome": "complete",
+  "summary": "Independent normal-risk review found PC-1, a mixed-case Git metadata path bypass. The author fixed it within the reviewer's exact condition, added regression tests across input, attachment and reference boundaries, and passed all required focused checks. The review is complete; operator-frozen and non-atomic limitations remain explicit.",
+  "findings": [
+    {
+      "id": "PC-1",
+      "severity": "substantive",
+      "description": "The root metadata exclusion matched only lowercase .git. On the case-insensitive Mac, .GIT/config resolved to Git metadata and was successfully exported as verified attachment bytes, exposing private configuration or credential-bearing remotes.",
+      "paths": ["scripts/paperclip-closeout/export.ts"],
+      "disposition": "fixed",
+      "response": "Commit 059f3b9c5f8cc958ea19d9d5fb23fab196477c59 makes the reserved root component check case-insensitive, adds platform-independent rejection coverage across all requested boundaries and documents it; refused exports create no output.",
+      "condition": {
+        "paths": ["scripts/paperclip-closeout/export.ts", "tests/paperclip-closeout.test.ts", "docs/paperclip-closeout.md"],
+        "evidence": "Make the root .git check case-insensitive; add platform-independent rejection assertions for mixed-case aliases across frozen-input paths, attachment paths and repository-relative references; document the exclusion. Run the focused test file, typecheck, compile, PM index and git diff --check. Confirm refused attachment exports create no output. No compiled counterpart exists for this optional script."
+      },
+      "conditionMet": "All requested changes are confined to the three prescribed paths. pnpm exec vitest run tests/paperclip-closeout.test.ts passes 28 tests, including .git/.GIT/.GiT input, attachment and reference refusal with no output directory. pnpm typecheck, pnpm compile, pnpm morpheus pm index and git diff --check pass; compile/index generated no changes."
+    }
+  ]
+}
+```
