@@ -181,7 +181,7 @@ through the controller's loopback port or the Air's forwarded port, as described
 | Dashboard | A React board app served by the same Express server; its data comes from `/api`. | Coupled to Paperclip's API, not to its database. HQ can reuse the API. |
 | Auth and authorization | Board users sign in through Better Auth on Paperclip's own tables. Board/agent API keys and run tokens are checked by Paperclip's server code. | Paperclip does not know Firebase identities or Firestore rules. |
 | Database | Drizzle ORM on Postgres, embedded by default: 240 tables and 304 SQL migrations. Drizzle is imported by 321 server modules, with ~470 `SELECT … FOR UPDATE` call sites, some `NOWAIT`/`SKIP LOCKED`, plus Postgres advisory locks and upserts. | Launch claims, idempotent issue creation and wake deduplication, which our bridge relies on, are built on Postgres locking. |
-| File storage | Attachments already pass through a pluggable `StorageProvider` with local-disk and S3 providers. | The only installed storage seam; database access has no equivalent port. |
+| File storage | Attachments already pass through a pluggable `StorageProvider` with local-disk and S3 providers. | This extension point handles files; database access has no equivalent provider interface. |
 
 Sources: [schema](https://github.com/paperclipai/paperclip/tree/v2026.1012.0/packages/db/src/schema),
 [DB client](https://github.com/paperclipai/paperclip/blob/v2026.1012.0/packages/db/src/client.ts),
@@ -196,12 +196,12 @@ Counts come from the installed build's compiled `server` and `db` packages.
 | 2. Native HQ controls through a server-side API boundary | An HQ server route verifies the Firebase session, then calls Paperclip's REST API with a server-held key and renders status, logs, start, answer and stop. | Medium. The deployed HQ must reach the loopback-only controller, which needs a network and deployment decision. |
 | 3. Replace Postgres with Firestore | Rewrite Paperclip's data layer and auth adapter for Firestore. | Very large, and in practice a permanent fork: every upstream release and migration must be ported, and the locking semantics redesigned and requalified. |
 
-**Firestore rules would not protect Paperclip's data even after a port.** Firestore server
-client libraries bypass security rules. A Paperclip server would therefore use privileged
-access, and authorization would remain in Paperclip's code. Rules apply only when browsers read
-Firestore directly, and direct reads would bypass Paperclip's checks.
-Firestore transactions do not provide Postgres's `NOWAIT`/`SKIP LOCKED` queue semantics,
-advisory locks, joins or SQL migrations.
+**A server-side Firestore port would still need application authorization.** Firestore server
+client libraries bypass security rules and use IAM. A Paperclip server using those libraries
+would therefore enforce user permissions in its own code. Rules protect requests made with
+the mobile/web client libraries, including direct browser reads; those reads would not pass
+through Paperclip's authorization checks. Firestore transactions do not offer a drop-in
+replacement for Postgres's row/advisory locks, queue queries or SQL migrations.
 [Rules and server libraries](https://firebase.google.com/docs/firestore/security/get-started),
 [Firestore transactions](https://firebase.google.com/docs/firestore/manage-data/transactions).
 
@@ -210,15 +210,16 @@ A user's `role` custom claim drives the `/hq` route gate (`decideHqAccess` verif
 cookie, then `canAccessHq`) and the generated Firestore role rules
 ([`src/hq/roles.ts`](../src/hq/roles.ts), [`src/hq/gate.ts`](../src/hq/gate.ts)). Morpheus ships
 those gate, role and rules primitives; the dashboard pages are built in the project hosting HQ.
-The HQ server would call Paperclip with one scoped service key. Paperclip would see that key as
-the actor, so HQ must enforce per-user permissions, require `admin` (the write role) for
-controls, and record the Firebase user in its own audit trail.
+The proposed HQ server would use server-held Paperclip credentials, with company and action
+scope verified against the exact endpoints before rollout. Paperclip would see that credential
+as the actor, so HQ must also enforce per-user permissions, require `admin` (the proposed write
+role) for controls, and record the Firebase user in its own audit trail.
 The key never reaches the browser or a worker.
 
 ```mermaid
 flowchart LR
   Browser[HQ in the browser] -->|Firebase session cookie| Route[HQ server route - role check]
-  Route -->|Firestore reads under role rules| Firestore[Firestore - HQ data]
+  Browser -->|Firebase client auth - role rules| Firestore[Firestore - HQ data or optional status projection]
   Route -->|Scoped Paperclip key, server-side only - proposed| API[Paperclip REST API]
   API --> Postgres[Paperclip Postgres - unchanged]
   Browser -.->|Deep link over private network| Board[Paperclip dashboard]

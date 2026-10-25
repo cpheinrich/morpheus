@@ -125,3 +125,32 @@ the proposed boundary, a recommendation (stay on Postgres; links now, server-sid
 next; optional read-only Firestore projection) and four open questions for Chris. Dead end:
 no local Mermaid CLI in this checkout (no `node_modules`); diagram checked by hand against the
 existing diagrams' syntax. No preview reload, rebuild, push, PR or CI.
+
+### Wake repair verification and completed-turn cleanup
+
+The live background worker automatically claimed the real new batch, researched it, committed
+e8ae038 and resolved it at2026-10-25T07:06:17.759Z. Bridge run
+3802cb44-22d8-4b74-8564-46b9e80062b8 returned a completed structured result. Its native
+stream-json process remained open after the result (state completed, terminal false). Gracefully
+requested responder shutdown, stopped that exact bridge run, and verified terminal true plus
+both supervisor/responder PIDs absent before the coordinator edited. The completed result and
+resolved batch are retained; process cleanup is recorded as interrupted, not fabricated success.
+
+Updated the gitignored wrapper to recognize a completed result, stop its still-open native
+process through the bridge, and require verified terminal cleanup before returning ownership
+to the serial queue. An isolated provider-free wrapper harness passed three cases: completed
+result with open stream invokes inspect/start/wait/stop/wait and succeeds only after terminal;
+unverified cleanup refuses; exactly77% weekly usage refuses before any bridge/provider start.
+`node --check local/paperclip-overview-preview/respond.mjs` passed. No global bridge code changed.
+
+Coordinator corrected the new diagram to put rule-gated Firestore reads on the Firebase browser
+client, not the privileged HQ server. Clarified IAM/application authorization, and left exact
+Paperclip credential/company/action scope as a rollout qualification rather than promising a
+generic service key. Live primary source links verified for DB client, auth, authorization and
+Firebase rules. Bare Node Mermaid checks failed due to missing DOMPurify browser DOM (two
+attempts; changed approach). All five diagrams rendered in a separate browser verification tab;
+opened diagram5 and inspected its pixels and arrows. The person's review tab was untouched.
+
+Session-only responder command/config remain under local/, never in the shared scaffold.
+Quota was73% weekly used during this batch; native admission/stop guards remain unchanged.
+No repository runtime changes, push, PR, independent review or CI during this QA batch.
