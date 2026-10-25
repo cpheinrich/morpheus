@@ -371,8 +371,11 @@ describe("paperclip worker wrapper", () => {
     const second = relay(inv, "echo");
     expect(await second.done).toBe(75);
     expect(second.err()).toContain("no free reservation");
+    const [reservation] = ledger(f);
+    // Atomic receipt writers rename temporary siblings; observe this run's committed file.
+    const receiptPath = join(f.state, "receipts", `${reservation.runUuid}.json`);
     first.child.kill("SIGKILL"); // wrapper dies; the host sees EOF and stops the model
-    await until(() => readdirSync(join(f.state, "receipts")).some(n => readFileSync(join(f.state, "receipts", n), "utf8").includes('"termination": "verified"')));
+    await until(() => JSON.parse(readFileSync(receiptPath, "utf8")).termination === "verified");
     expect(ledger(f)).toHaveLength(1);
     const third = relay(inv, "echo");
     expect(await third.done).toBe(0);

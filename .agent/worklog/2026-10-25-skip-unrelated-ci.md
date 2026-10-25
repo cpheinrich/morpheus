@@ -115,3 +115,23 @@ unavailable; exact source/configuration reads and focused tests supplied evidenc
   "findings": []
 }
 ```
+
+## Late CI test correction
+
+Final-head runs 40179926816 and 40179927140 overlapped after push/ready events.
+The existing PM concurrency group cancelled one PM invocation; rerunning that exact
+job restored run 40179926816 to success. In the other run, Node failed 1/3015 tests:
+the existing Paperclip killed-wrapper test enumerated a `.json.<pid>.tmp` receipt
+and lost it to the supervisor's atomic rename before read. The same code passed
+in the parallel run; this is an observed test race, not a product/provider failure.
+
+Change only that test's observation to the reserved run UUID's committed `.json`
+receipt and compare its parsed termination value exactly. No supervisor, worker,
+quota or account behavior changes. `pnpm exec vitest run tests/paperclip-pilot.test.ts`
+passed all 54 tests; typecheck, compile and PM index passed. The PR was returned to
+draft and its review label removed pending the same reviewer's late-correction turn.
+
+The wait-ci command reported green from the successful duplicate while the direct
+GitHub check rollup still included the other run's failure/pending browser check.
+Direct checks prevented premature merge. Track that separate waiter issue rather
+than widening this CI-selection implementation to change the waiter itself.
