@@ -4,7 +4,8 @@
   "type": "module",
   "main": "lib/entry.js",
   "engines": { "node": "22" },
-  "scripts": { "build": "tsc -p tsconfig.json" },
+  "scripts": { "build": "tsc -p tsconfig.json", "gcp-build": "" },
+  "devDependencies": { "@types/node": "22.20.1", "typescript": "5.9.3" },
   "dependencies": { "firebase-admin": "14.5.0", "firebase-functions": "7.4.0", "zod": "4.4.3" },
   "packageManager": "pnpm@11.9.0"
 }
