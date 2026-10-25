@@ -107,3 +107,50 @@ typecheck, compile, real actionlint over the actual complete workflow set,
 PM index/validation and whitespace checks. No generated changes resulted.
 The protected verifier merge's natural main CI also completed successfully before
 the initial independent review; initial task CI remains the next qualification.
+
+## Initial CI and independent review
+
+[Initial CI](https://github.com/cpheinrich/morpheus/actions/runs/40196537410)
+passed at `dcca49c71afc3e67f1fb5887e8f814068bc766e3`: six checks passed and
+three expected unlabelled-draft/legacy-review checks skipped. The actual Linux
+actionlint 1.7.12 acquisition and validation passed in the required Node job;
+112 test files and 3,198 tests passed. Browser QA and the actual artifact ABI job
+passed. No local full-suite rerun was added.
+
+Independent high-risk review cleared the workflow correction with no findings
+after checking supported status semantics, unchanged native controls, real
+actionlint regressions and actual Linux CI evidence. No fixes or follow-up review
+were required; native delivery and consumer adoption remain unverified by this
+source task.
+
+The one fresh reviewer independently ran 14 targeted tests and rejected both
+the original defect and the twelve unsupported-context mutants with real
+actionlint. The author measured actual clock readings around the invocation:
+13:18:35–13:21:20 UTC on 2026-10-25, 165,000 ms, with no delay to meet the floor.
+
+After clearance, integrate protected current trunk
+`a719fd1051c18d46cc0c048172a9761dad1c0e36` mechanically. The merge
+`b3ec43f54a12a39648b04c14681acd13b57c272b` has exactly the tree independently
+calculated by `git merge-tree --write-tree`: `05c94c43774f5486fcd0ff5f2b1e02451711bb65`.
+This clean post-review integration spends no review turn; final CI remains required.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "5fbdee441c71e5634c2f14b28babbab8d25820b2",
+  "reviewed": "dcca49c71afc3e67f1fb5887e8f814068bc766e3",
+  "covered": "dcca49c71afc3e67f1fb5887e8f814068bc766e3",
+  "authorSession": "01a17310-1e80-7fe1-b0ea-e5c454d9f2fc",
+  "reviewerSession": "/root/native_artifact_workflow_expression_fix/workflow_high_review",
+  "risk": "high",
+  "elapsedMinutes": 2.75,
+  "timing": {
+    "source": "clock",
+    "durationMs": 165000,
+    "evidence": "Author clock tool readings around reviewer /root/native_artifact_workflow_expression_fix/workflow_high_review: 2026-10-25T13:18:35Z before dispatch and 2026-10-25T13:21:20Z immediately after its final result."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk review cleared the workflow correction with no findings after checking supported status semantics, unchanged native controls, real actionlint regressions and actual Linux CI evidence. No fixes or follow-up review were required; native delivery and consumer adoption remain unverified by this source task.",
+  "findings": []
+}
+```
