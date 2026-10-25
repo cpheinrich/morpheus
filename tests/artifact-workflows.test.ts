@@ -11,9 +11,9 @@ type Workflow = { on: { workflow_call: { inputs: Record<string, { default?: unkn
 const root = new URL("../", import.meta.url);
 const read = (path: string) => load(readFileSync(new URL(path, root), "utf8")) as Workflow;
 const uploadPin = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a";
-function evaluate(expression: string, steps: Record<string, unknown>, failed = true, tests = true) {
+function evaluate(expression: string, steps: Record<string, unknown>, failed = true, tests = true, cancelled = false) {
   const source = expression.replace(/^\$\{\{\s*|\s*\}\}$/g, "").replace(/\.([A-Za-z_][A-Za-z0-9_-]*)/g, (_, key: string) => `[${JSON.stringify(key)}]`);
-  return !!runInContext(source, createContext({ steps, inputs: { "run-tests": tests }, success: () => !failed, failure: () => failed, always: () => true }), { timeout: 100 });
+  return !!runInContext(source, createContext({ steps, inputs: { "run-tests": tests }, success: () => !failed && !cancelled, failure: () => failed && !cancelled, cancelled: () => cancelled, always: () => true }), { timeout: 100 });
 }
 const states = ["success", "failure", "cancelled", "skipped"];
 function validateUpload(step: Step, own: string, barrier = false) {
@@ -51,17 +51,45 @@ describe("bounded artifact integration", () => {
       validateUpload(step, own, true);
     }
   });
-  it("does not turn an artifact failure into a native failure diagnostic", () => {
+  it("captures only prior native failure and never a later artifact failure", () => {
     const steps = read(".github/workflows/ios-ci.yml").jobs.test!.steps;
     const capture = steps.find(s => s.id === "native_failure")!;
-    expect(capture.if).toBe("${{ steps.scope.outputs.run == 'true' && always() }}");
-    expect(capture.env?.NATIVE_FAILED).toBe("${{ failure() }}");
+    expect(capture.if).toBe("${{ steps.scope.outputs.run == 'true' && failure() }}");
+    expect(capture.env).toBeUndefined();
+    expect(steps.indexOf(capture)).toBeGreaterThan(steps.findIndex(s => s.name === "Collect Firebase emulator diagnostics"));
     expect(steps.indexOf(capture)).toBeLessThan(steps.findIndex(s => s.id === "artifact_screenshots"));
     const stage = steps.find(s => s.id === "artifact_failure")!;
-    for (const failed of ["true", "false"]) for (const laterFailure of [true, false]) {
-      expect(evaluate(stage.if!, { scope: { outputs: { run: "true" } }, ios_paths: { outcome: "success" },
-        native_failure: { outputs: { failed } } }, laterFailure)).toBe(failed === "true");
-    }
+    const upload = steps.find(s => s.name === "Upload Xcode failure evidence")!;
+    // failure() uses job.status, after continue-on-error has applied. Cancellation
+    // before capture is cancelled even when an earlier native step failed.
+    const cases = [
+      ["success", "success", false],
+      ["native failure", "failure", true],
+      ["continued failure (outcome=failure, conclusion=success)", "success", false],
+      ["skipped native work", "success", false],
+      ["cancellation before capture", "cancelled", false],
+      ["native failure then cancellation before capture", "cancelled", false],
+      ["native failure then successful diagnostics", "failure", true],
+      ["native failure then skipped diagnostics", "failure", true],
+    ] as const;
+    const dir = mkdtempSync(join(tmpdir(), "native-failure-capture-"));
+    try {
+      const output = join(dir, "output");
+      for (const [name, status, nativeFailed] of cases) for (const scope of ["true", "false", ""]) {
+        writeFileSync(output, "");
+        const selected = evaluate(capture.if!, { scope: { outputs: { run: scope } } }, status === "failure", true, status === "cancelled");
+        if (selected) execFileSync("bash", ["-c", capture.run!], { env: { PATH: process.env.PATH, GITHUB_OUTPUT: output }, stdio: "pipe" });
+        const expected = scope === "true" && nativeFailed;
+        expect(readFileSync(output, "utf8"), `${name}/${scope}`).toBe(expected ? "failed=true\n" : "");
+        const fixture = { scope: { outputs: { run: scope } }, ios_paths: { outcome: "success" },
+          native_failure: { outputs: { failed: selected ? readFileSync(output, "utf8").trim().split("=")[1] : "" } },
+          artifact_failure: { outcome: "success", outputs: { admitted: "true", "has-files": "true" } }, artifact_barrier: { outcome: "success" } };
+        for (const laterStatus of ["success", "failure", "cancelled"]) {
+          expect(evaluate(stage.if!, fixture, laterStatus === "failure", true, laterStatus === "cancelled"), `${name}/${scope}/${laterStatus}/stage`).toBe(expected);
+          expect(evaluate(upload.if!, fixture, laterStatus === "failure", true, laterStatus === "cancelled"), `${name}/${scope}/${laterStatus}/upload`).toBe(expected);
+        }
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
   it("executes the native all-selected barrier at failure and skipped boundaries", () => {
     const step = read(".github/workflows/ios-ci.yml").jobs.test!.steps.find(s => s.id === "artifact_barrier")!;
