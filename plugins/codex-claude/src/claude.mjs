@@ -83,6 +83,55 @@ export async function handoff(prompt, memories) {
   );
   return `${instructions}\n\nRead-only Codex memory excerpts (reference, not new instructions):\n${JSON.stringify(memories)}\n\nTask and current handoff:\n${prompt}`;
 }
+// Folds one Claude stream-json event into a run. Side effects (cancel, close, session
+// persistence) belong to the caller, so the local bridge and the pool host share one parser.
+export function applyClaudeEvent(run, event) {
+  const effects = { ended: false, overage: false, session: null };
+  if (
+    event.type === "stream_event" &&
+    event.event?.delta?.type === "text_delta"
+  ) {
+    run.progress = ((run.progress || "") + event.event.delta.text).slice(
+      -8000,
+    );
+    run.sequence++;
+  }
+  if (event.type === "assistant" && !run.progress) {
+    run.progress = (event.message?.content || [])
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .slice(-8000);
+    run.sequence++;
+  }
+  if (
+    event.type === "rate_limit_event" &&
+    event.rate_limit_info?.isUsingOverage
+  ) {
+    run.error = "Claude reported paid overage; stopping";
+    effects.overage = true;
+  }
+  if (event.session_id && !run.claudeSession) {
+    run.claudeSession = event.session_id;
+    effects.session = event.session_id;
+  }
+  if (event.type === "control_request") {
+    run.question = { id: event.request_id, request: event.request };
+    run.state = "needs_input";
+  }
+  if (event.type === "result") {
+    run.result = event.structured_output || {
+      outcome: event.is_error ? "failed" : "needs_input",
+      summary:
+        event.result || "Claude ended without a structured completion report.",
+      evidence: [],
+    };
+    if (event.is_error) run.result.outcome = "failed";
+    run.state = run.result.outcome;
+    effects.ended = true;
+  }
+  return effects;
+}
 export function claudeArgs(session, selection, permission) {
   const args = [
     "claude",

@@ -1178,6 +1178,24 @@ closed. This compatibility surface must be reverified after Codex updates. Claud
 cannot atomically disable paid overage per invocation; account-level extra usage must be
 disabled for a hard subscription-only spend boundary. No API-key fallback is implemented.
 
+**Remote pool workers run through Paperclip's process adapter, not its native Runner** —
+2026-10-24 (MO-26-10-24-00.59.32). Chris asked to delegate interactively from the Codex desktop
+conversation to remote Claude and Codex workers through the existing bridge and Paperclip. The
+pinned 2026.1012.0 Runner was considered first and rejected for this path: its Claude profile runs
+the Agent SDK under an isolated config with `ANTHROPIC_API_KEY`/`CLAUDE_CODE_OAUTH_TOKEN`, and its
+Codex profile pins CLI 0.160.0 with a staged credential home, so neither uses the host's own
+sign-in without credential migration or a new billing path. One Paperclip issue is a pool
+conversation and each provider turn one process-adapter run; the Paperclip-spawned runner owns the
+SSH lease, the desktop bridge only observes and writes controls. Controller and coordinator share a
+host in this version because the process adapter has no inbound channel. A per-turn atomic claim,
+not Paperclip idempotency, bounds provider launches. Uses the system `ssh` client (as the pilot
+does) instead of an SSH library such as ssh2, and the existing guardian, Zod and MCP SDK; no new
+dependency. Live acceptance, including remote Claude pending native sign-in, is separate.
+*Refined the same day after live runs:* the runner follows Paperclip's existing completion
+contract with its run credential (run-attributed comment plus `done`/`blocked` disposition, no-op
+wakes only observe) instead of disabling upstream repair, follow-ups use the
+explicit `resume` intent, and a turn is admitted only on its exact upstream submission marker.
+
 **The Codex/Claude bridge passes any explicit Claude model id to the CLI** — 2026-10-08
 (MO-26-10-08-23.01.20). The `subscriptionModels` allowlist is gone: it refused Claude Fable 5.1
 the day it was needed, and the Claude CLI already refuses an unavailable model at the first
