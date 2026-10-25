@@ -42,3 +42,52 @@ The new regression failed before the fix in BOTH engines (normal border pixel re
 ### Conditional correction verification
 
 Both-engine context suite passed all 22 cases serially (1.3 minutes). Final post-correction Node24 typecheck, source ESLint and compile passed. Corrected fixture images in `/tmp/morpheus-488-fixture-fixed/` were inspected: normal and pseudo black borders/outlines remain black around red text. The repeated final actual-guide run captured all 12 placements at production caps: 45–73.60000002384186 ms, XML ≤1104757 bytes, JPEG ≤104364 bytes, 940×1000/q0.5, zero page errors. Measurements/native references/JPEGs: `/tmp/morpheus-488-real/results.json` and adjacent files.
+
+Independent normal-risk review conditionally cleared CBR-001 after finding currentColor-dependent initial colors. The author retained all resolved color properties and verified black normal/pseudo borders and outlines against red text, both-engine context tests, compiler/lint checks and repeated real-guide production bounds. No other findings; the documented pre-existing Chromium text-wrapping limitation remains.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "a85c839f702676a39d4e1cc3c86d5848d32a9c0d",
+  "reviewed": "cc5c3c35b67149d72861e2b0a444d3cccffce520",
+  "covered": "85781365477d1d1ae3c1e6be3d99728967eb0b0c",
+  "authorSession": "01a1711e-35dc-7de0-aec8-4e993b389f16",
+  "reviewerSession": "/root/qa_session_supervisor/capture_bounds_review",
+  "risk": "normal",
+  "elapsedMinutes": 2.8,
+  "timing": {
+    "source": "clock",
+    "durationMs": 168000,
+    "evidence": "Author clock readings around /root/qa_session_supervisor/capture_bounds_review initial invocation: 2026-10-25 05:29:36 UTC to 2026-10-25 05:32:24 UTC; includes reviewer tool execution and waits."
+  },
+  "outcome": "complete",
+  "summary": "Independent normal-risk review conditionally cleared CBR-001 after finding currentColor-dependent initial colors. The author retained all resolved color properties and verified black normal/pseudo borders and outlines against red text, both-engine context tests, compiler/lint checks and repeated real-guide production bounds. No other findings; the documented pre-existing Chromium text-wrapping limitation remains.",
+  "findings": [
+    {
+      "id": "CBR-001",
+      "severity": "substantive",
+      "description": "Probe-equal black border/outline colors were omitted even though their initial CSS value uses currentColor; red text therefore produced red borders/outlines in both engines and red text decoration in WebKit.",
+      "paths": [
+        "src/qa/web/overlay-client.ts",
+        "tests/browser/qa-web-context.spec.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Retain color and all -color properties regardless of probe equality. Added normal and pseudo-element red-text fixtures with black border/outline pixel assertions; they failed on the reviewed implementation in both engines and pass after the correction. Changes are limited to the reviewer-authorized paths.",
+      "condition": {
+        "paths": [
+          "src/qa/web/overlay-client.ts",
+          "dist/qa/web/overlay-client.js",
+          "dist/qa/web/overlay-client.js.map",
+          "tests/browser/qa-web-context.spec.ts",
+          "docs/runbooks/qa-comments.md",
+          "qa/acceptance/web-pin-capture-bounds.md",
+          ".agent/decisions.md",
+          ".agent/worklog/2026-10-24-bound-web-pin-captures.md"
+        ],
+        "evidence": "Retain resolved color and every -color property; add both-engine red-text/explicit-black border and outline regression including pseudo-elements that fails before correction. Run both-engine context tests serially, typecheck, source ESLint and compile; inspect corrected pixels; repeat actual guide page/modal acceptance under unchanged production caps and record measurements. Documentation only explains this correction."
+      },
+      "conditionMet": "Both engines failed the added regression before the fix (border pixel 254/0/2 and 252/0/7). All 22 context cases then passed serially; corrected Chromium/WebKit fixture pixels inspected with black normal/pseudo border/outline and red text. Node24 typecheck/source ESLint/compile passed. Repeated actual-guide page/modal acceptance passed under unchanged production limits; exact final measurements are recorded above. No unauthorized paths changed."
+    }
+  ]
+}
+```
