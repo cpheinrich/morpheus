@@ -3,32 +3,25 @@ owner: cpheinrich
 date: 2026-10-24
 agents:
   - codex
-previous: .agent/inbox-archive/2026-10-24-2106-cpheinrich.md
+previous: .agent/inbox-archive/2026-10-24-2127-cpheinrich.md
 ---
 # Inbox — 2026-10-24
 
-The mini's native Claude login now works through a terminal-only sudo/GUI-audit-session route. Real remote Claude passed streaming, a live question and answer, remembered follow-ups, active coordinator reconnect, native-worker stop and bridge recovery. Remote Codex had already passed its real qualification. Your terminal-first preference is saved on both Macs and in merged host-setup PR11. Morpheus PR475 remains WIP/draft solely for the original reviewer's final completion-documentation pass; its account is below your40%-remaining floor, so a bounded exception was requested in chat. All test workers are paused and reservations clear. Three older unreplied items remain unchanged below.
+The interactive Paperclip worker bridge is delivered in [merged PR475](https://github.com/cpheinrich/morpheus/pull/475), commit53b7477, after the original independent reviewer finalized the real remote Claude evidence and final-head CI passed. Remote Claude and Codex both passed the requested interactive flows. Your terminal/sudo preference is retained on both Macs and the canonical host setup template. You authorized Claude down to20% remaining to finish this task; the final review finished with39% weekly remaining, so the old budget request is closed. All test workers are paused and reservations clear. The three older unreplied items below remain unchanged.
 
-## ✅ 1. Terminal/sudo preference retained across hosts · `codex`
+## ✅ 1. Remote worker bridge delivered · `codex`
 
-Saved in both code-root AGENTS.md files and the reusable host guidance template in [merged host-setup PR11](https://github.com/cpheinrich/agent-host-setup/pull/11). Agents should try supported terminal commands and already-authorized noninteractive sudo before a blocking UI flow. The record includes the exact working command: enter Zoe's existing GUI audit session, then restore her uid/home before launching Node or a model. No credential copy or long-lived token was needed.
+Codex desktop can coordinate the staged pool bridge while Paperclip owns execution and logs. The real remote tests cover streamed progress, questions/answers, remembered follow-ups, reconnect, native-worker stop and supported recovery. Exact identities, independently read nonce artifacts and retained failures are in the [worklog](../../.agent/worklog/2026-10-24-bridge-paperclip-workers.md). The source has95 passing plugin tests, passing typecheck/compile/PM validation, and seven passing CI checks with four expected skips at final source head9f5c577. The same reviewer cleared implementation fixes and the four completion Markdown files; no reviewer was replaced.
 
-## ✅ 2. Actual remote Claude validation complete · `codex`
+Claude's stopped turn was waiting for an unapproved Bash permission. Its CLI/MCP child were stopped and independently absent; the proposed sleep never ran. A running Claude shell-command stop and logout/reboot readiness remain untested. Remote Codex's actual foreground-command stop is separate. Follow-ups occur at turn boundaries. This is a qualified prototype with private controller/worker runtimes; the existing personal plugin was not hot-replaced during the active desktop session. The documented CLI fallback works in this conversation; broad consumer/simulator rollout remains separate.
 
-[PR475](https://github.com/cpheinrich/morpheus/pull/475) records conversation7821461c-c371-4231-b8a3-211e4a15954a, exact native session/run identities and independent SSH nonce/blue/phase4 recovered readbacks. A native CLI and MCP child were stopped while waiting for an unapproved Bash permission; the proposed sleep never ran, so this does not claim stopping a running Claude shell command. Logout/reboot readiness is untested. Integrated plugin tests95/95 and build/test CI pass. The stale login request is resolved; no further mini authentication step is requested.
+## ✅ 2. Terminal preference and final-review budget request resolved · `codex`
 
-## ❗ 3. Bounded final-review budget for PR475 · `codex`
+The host-level instructions on both Macs and [merged host-setup PR11](https://github.com/cpheinrich/agent-host-setup/pull/11) retain supported terminal commands and already-authorized sudo before blocking UI flows. The exact mini command enters Zoe's existing GUI audit session and restores her uid/home before Node/model execution. Native Pro authentication works; no token or credential copy was needed.
 
-The source is independently cleared; four completion Markdown files now record actual acceptance and its limits. The [review runbook](../../docs/runbooks/independent-review.md) requires returning to the same reviewer for finalization. Its main-Claude account reports61% weekly used/39% remaining, below your40% floor. No further call was admitted. A one-point exception was requested in chat; this item is the durable copy of that same request, not a second approval.
+Your chat reply authorized Claude down to20% weekly remaining if needed to finish this task, replacing its former40% floor. The original reviewer's single finalization-only turn took61,929ms. Main-Claude native usage remained61% used/39% remaining (rounded/shared telemetry); no further model work is running. This resolves only PR475's budget question, and does not grant an extra review turn for PR414 below.
 
-- **A — allow up to one additional weekly point (recommended).** Only the same reviewer's bounded five-minute finalization, down to38% remaining; then normal validation, CI and merge.
-- **B — retain the40% floor.** Keep the PR draft until that account again has sufficient allowance.
-- **C — reserve up to two additional points for that same one turn.** Down to37% remaining, providing extra headroom for rounded/shared-account telemetry; no extra review loop or implementation scope.
-- **Other —** a different budget or timing.
-
-~
-
-## ❗ 4. One further review turn for PR #414 · `codex`
+## ❗ 3. One further review turn for PR #414 · `codex`
 
 [#248](https://github.com/cpheinrich/morpheus/issues/248) now has draft [PR #414](https://github.com/cpheinrich/morpheus/pull/414). Its worklog records approval of the human-override policy and three independent review turns clearing the implementation through `249285c`. The final test-only correction `74290f6` updates the scaffold expectation for the already-reviewed comment-revocation workflow. Its build/test jobs pass, but that correction is outside review coverage. Current-main `verifyReviewRecord` reproduces the coverage refusal. GitHub also reports a conflict with current main; the existing author must integrate trunk before final validation. The PR remains draft with auto-merge off.
 
@@ -41,13 +34,13 @@ The [independent-review runbook](../../docs/runbooks/independent-review.md) requ
 
 ~
 
-## ❗ 5. Kairos certificate-chain evidence · `codex`
+## ❗ 4. Kairos certificate-chain evidence · `codex`
 
 [#310](https://github.com/cpheinrich/morpheus/issues/310) remains open. Its failed Actions run shows an imported identity and a generic trust-check failure, but does not reveal the public leaf certificate issuer or the detailed verification error. Please send the failed public certificate's issuer and validity dates, or the unquiet security verify-cert error. No private key, password, provisioning profile or production rerun is needed.
 
 ~
 
-## ❗ 6. One older claim remains · `codex`
+## ❗ 5. One older claim remains · `codex`
 
 `MO-26-09-16-00.36.07` shipped in [PR #390](https://github.com/cpheinrich/morpheus/pull/390), and its remote branch is deleted. That previous disposition request is resolved. `MO-055` still holds remote branch `mo-055-a-new-contributor-gets-an-inbox-in-one-c`; this automation did not take it over. The original context is in [the archived exchange](../../.agent/inbox-archive/2026-10-12-1945-cpheinrich.md).
 
