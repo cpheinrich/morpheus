@@ -287,6 +287,7 @@ test("UUID case variants retain distinct operation journals and replay their own
   const second = await fx.call("start", { ...args, operationId: lower });
   assert.notEqual(second.work.conversationId, first.work.conversationId);
   assert.notEqual(operationPath(upper), operationPath(lower));
+  assert.notEqual(operationPath(upper).toLowerCase(), operationPath(lower).toLowerCase());
   assert.equal(JSON.parse(await readFile(operationPath(upper), "utf8")).operationId, upper);
   assert.equal(JSON.parse(await readFile(operationPath(lower), "utf8")).operationId, lower);
   assert.equal((await fx.call("operation", { operationId: upper })).work.conversationId, first.work.conversationId);
