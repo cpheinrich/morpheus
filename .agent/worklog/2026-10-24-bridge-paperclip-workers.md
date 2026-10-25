@@ -754,3 +754,30 @@ plugin check and exact-merge review validation passed earlier this evening; CI a
 fully green. PM index remains unchanged and git diff --check passes. The four-document
 completion awaits the original reviewer's bounded finalization and final-head CI; PR #475
 remains WIP/draft with auto-merge off until that loop finishes.
+
+### Durable preference and handoff delivered
+
+Host-setup PR11 merged as795618e3f2f18bf67b75812284c204be1f1baae7 after its dispatcher CI
+passed. It retains the terminal/sudo preference in the reusable code-root guidance template
+and records the actual host change/limits in STATUS.md; both installed host instruction files
+were independently read back. The temporary host-setup worktree was removed cleanly and its
+pre-existing primary checkout/branch was left unchanged.
+
+Morpheus records-only PR485 merged as8ee9a13c266d8fc31918f523965fc0ce3a59ebe4 with seven
+passing checks/three skips. It closes the stale mini-login inbox request, preserves all three
+older unreplied items, and records the same bounded final-review budget request pending in
+chat. Six inbox items/four open validate. The prior inbox archive has the exact previous Git
+blob identity; its inherited EOF blank is retained verbatim, while changed non-archive paths
+pass whitespace checks. An initial PR-body conventions failure was fixed by adding the
+required Test plan/Open questions headings. Metadata checks then passed but GitHub still
+reported BLOCKED; a targeted rerun of only the original failed CI job passed and the PR
+merged. No previously passing suite was rerun by that repair.
+
+At04:08:49Z all three new qualification agents were freshly verified paused; all three account
+ledgers are[], no model run is active, and the native mini-login blocker is resolved. PR475
+remains WIP/draft, unlabelled, auto-merge off, awaiting the original reviewer's bounded
+finalization of completion Markdown. The one-point main-Claude budget exception (39→38%
+remaining) is requested but unanswered; no answer or approval is inferred from elapsed time.
+The private closeout-gui-retry.private.json and finalization-packet.private.json hold the
+exact resumption state. Current main also contains unrelated QA PR483; fetch and integrate
+trunk explicitly before the eventual finalization/merge. No new main-Claude call was made.
