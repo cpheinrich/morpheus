@@ -155,20 +155,25 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     // and hundreds of initial values per node can dwarf the visible content. Reset
     // every clone before copying differences, including explicit initial-valued children
     // of non-initial parents; simply dropping those declarations would inherit wrongly.
-    var defaults = {}, probe = document.createElement("div");
+    var defaults = {}, properties = [], probe = document.createElement("div");
     probe.style.cssText = "all:initial !important;display:none !important";
     document.documentElement.appendChild(probe);
     try {
-      var initial = window.getComputedStyle(probe);
-      for (var d = 0; d < initial.length; d++) if (initial[d].indexOf("--") !== 0) defaults[initial[d]] = initial.getPropertyValue(initial[d]);
+      var initial = window.getComputedStyle(probe), length = initial.length;
+      for (var d = 0; d < length; d++) {
+        var name = initial[d];
+        if (name.indexOf("--") !== 0) { properties.push(name); defaults[name] = initial.getPropertyValue(name); }
+      }
     } finally { probe.remove(); }
     function freezeStyle(cs, style) {
       // Keep the reset in one shared rule: CSSOM expands inline all + overrides
       // back to hundreds of longhands when serializing, defeating the size bound.
       style.cssText = "";
-      for (var i = 0; i < cs.length; i++) {
-        var key = cs[i];
-        if (key.indexOf("--") === 0) continue;
+      // Avoid repeating native enumeration of inherited custom-property dictionaries.
+      // The browser's ordinary property names are stable across elements/pseudos;
+      // enumerate once per freeze, while reading every resolved value at placement.
+      for (var i = 0; i < properties.length; i++) {
+        var key = properties[i];
         var value = cs.getPropertyValue(key);
         // Keep resolved colors: initial border/outline/decoration colors depend on currentColor.
         // display belongs to the hidden probe; all does not reset direction or unicode-bidi.
