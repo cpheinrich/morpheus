@@ -20,4 +20,75 @@ Graph evidence is Tier 2, project Users-chrisheinrich-code-morpheus generation 2
 
 Initial independent review by `/root/morpheus_web_pin_fix/preview_ownership_review` of `22e86c0e5bcbbd5d1a51b63f0013593fcf89db3a` was blocked on three substantive findings: OWN-1, an empty legacy directory could shadow a stable session sharing its launchd label; OWN-2, HTTP 500 orphan dev services were mistaken for absence; OWN-3, a registered job without a PID could be booted out while its spawned dev service remained, yet stop claimed success. Measured from 2026-10-25T06:59:40.826Z to 2026-10-25T07:01:39.098Z, 118272ms (1.9712 minutes), within the high-risk initial ceiling.
 
-Response: group candidate records by label and select the registered owner from the exact state-file argv; probe TCP presence separately from HTTP readiness before orphan cleanup and after bootout. Connection errors other than refusal and probe timeouts retain evidence. Added real isolated HTTP 200/500 surviving-dev regressions, a live raw-TCP orphan, empty-directory collision and a complete legacy-to-stable restart where the labels collide. The test harness waits on its own ephemeral listeners and tracks every spawned child. Typecheck, lint, compile and all 109 focused tests pass. No user process or installed CLI was changed. Same-reviewer verification is pending.
+Response: group candidate records by label and select the registered owner from the exact state-file argv; probe TCP presence separately from HTTP readiness before orphan cleanup and after bootout. Connection errors other than refusal and probe timeouts retain evidence. Added real isolated HTTP 200/500 surviving-dev regressions, a live raw-TCP orphan, empty-directory collision and a complete legacy-to-stable restart where the labels collide. The test harness waits on its own ephemeral listeners and tracks every spawned child. Typecheck, lint, compile and all 109 focused tests pass. No user process or installed CLI was changed. Same-reviewer verification cleared all three findings at `1b61d4baf7e14e550f19c30287b14d9afcc39d47`, independently reran all 109 focused tests and inspected source, generated output, docs and regressions. Follow-up measured from 2026-10-25T07:08:37.358Z to 2026-10-25T07:09:17.454Z, 40096ms, within the 15-minute high-risk follow-up ceiling. No remaining findings.
+
+Independent high-risk review found three ownership/stop-confirmation defects. The author fixed colliding legacy labels and replaced readiness-based absence with bounded TCP listener checks; the same reviewer cleared all three findings and independently passed 109 focused tests. No remaining findings or user-service mutations.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "fc7678e6cea4d7442c994173e1ae6e0fb2c311b5",
+  "reviewed": "22e86c0e5bcbbd5d1a51b63f0013593fcf89db3a",
+  "covered": "1b61d4baf7e14e550f19c30287b14d9afcc39d47",
+  "authorSession": "01a17121-d469-73a1-b304-3d770aabf560",
+  "reviewerSession": "/root/morpheus_web_pin_fix/preview_ownership_review",
+  "risk": "high",
+  "elapsedMinutes": 1.9712,
+  "timing": {
+    "source": "clock",
+    "durationMs": 118272,
+    "evidence": "Author clock readings around initial invocation of /root/morpheus_web_pin_fix/preview_ownership_review: 2026-10-25T06:59:40.826Z to 2026-10-25T07:01:39.098Z (1792911580826 to 1792911699098), including tools and waits."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk review found three ownership/stop-confirmation defects. The author fixed colliding legacy labels and replaced readiness-based absence with bounded TCP listener checks; the same reviewer cleared all three findings and independently passed 109 focused tests. No remaining findings or user-service mutations.",
+  "findings": [
+    {
+      "id": "OWN-1",
+      "severity": "substantive",
+      "description": "An empty legacy morpheus.qa directory could overwrite the stable candidate sharing its launchd target and hide a verifiable stable session.",
+      "paths": [
+        "src/qa/preview/web.ts",
+        "tests/qa-web-lifecycle.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Group candidate state records per target and select the owner by its actual registered state-file argument. Empty-directory regression and a real legacy-to-stable lifecycle with colliding labels pass; same reviewer cleared."
+    },
+    {
+      "id": "OWN-2",
+      "severity": "substantive",
+      "description": "Readiness excluded HTTP 500, so an unregistered preview with free overlay but a live unhealthy spawned dev server could lose its state.",
+      "paths": [
+        "src/qa/preview/web.ts",
+        "tests/qa-web-lifecycle.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Use bounded TCP listener-presence probes, independent of HTTP readiness, before inactive cleanup. HTTP 500 and raw TCP regressions retain state without bootout; non-refusal errors/timeouts retain evidence. Same reviewer cleared."
+    },
+    {
+      "id": "OWN-3",
+      "severity": "substantive",
+      "description": "After bootout a registered supervisor without a PID could leave a spawned dev server listening while stop claimed success and removed state.",
+      "paths": [
+        "src/qa/preview/web.ts",
+        "tests/qa-web-lifecycle.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Require both overlay and any spawned dev listener to disappear after job/PID shutdown. A real HTTP 200 survivor rejects successful stop and preserves state; same reviewer cleared."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/morpheus_web_pin_fix/preview_ownership_review",
+      "commit": "1b61d4baf7e14e550f19c30287b14d9afcc39d47",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.6682666666666667,
+      "timing": {
+        "source": "clock",
+        "durationMs": 40096,
+        "evidence": "Author clock readings around the same-reviewer follow-up: 2026-10-25T07:08:37.358Z to 2026-10-25T07:09:17.454Z (1792912117358 to 1792912157454), including tools and waits."
+      },
+      "summary": "Cleared OWN-1, OWN-2 and OWN-3 after inspecting source, generated output, docs and regressions. Independently ran all four focused suites: 109 tests passed; diff checks passed. No remaining findings or user services modified."
+    }
+  ]
+}
+```
