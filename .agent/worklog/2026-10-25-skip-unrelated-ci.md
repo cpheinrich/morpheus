@@ -63,3 +63,20 @@ conservative and must be updated when a suite gains a non-imported runtime input
 - GitHub runs and independent review are recorded below.
   No local full-suite rerun: this change touches workflows/scripts/tests, not
   shared core. CI owns the full suite. No visual surface changed.
+
+## Real GitHub reporting proof
+
+Temporary records-only [PR #500](https://github.com/cpheinrich/morpheus/pull/500)
+compared one added inert worklog against this feature branch, rather than comparing
+the feature's workflow edits against main. No protection or release setting changed.
+[CI run 40179629369](https://github.com/cpheinrich/morpheus/actions/runs/40179629369)
+passed: `changes`, `pm / pm`, `pr / conventions` succeeded; `node / check`,
+`codex-claude`, `qa-browser`, `artifact-abi` and the existing delivery/review jobs
+reported skipped. The required nested Node name is present. Probe closed unmerged.
+
+[Implementation CI run 40179606943](https://github.com/cpheinrich/morpheus/actions/runs/40179606943)
+selected all expensive jobs for the workflow/configuration changes. The macOS
+bridge and the single Python/Node 24 artifact transport job passed. Full Node and
+browser checks were still running when this evidence was prepared; their final
+conclusions and final-head CI remain required before merge. Draft conventions are
+intentionally unreported until the independent review record/label is complete.
