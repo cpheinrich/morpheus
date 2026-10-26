@@ -1767,3 +1767,14 @@ internal holds from unsettled operations and a remaining recorded-spend budget, 
 credit or a final invoice. Delayed/concurrent costs are an explicit tradeoff, not a hard
 spend guarantee. Existing Zod/canonical hash/Store suffice for this small domain-specific
 change; no generic grant framework, financial registry or new dependency is introduced.
+
+## Hard blockers need evidence and exhausted reasonable options — 2026-10-26
+
+MO-26-10-26-15.37.42. Chris requires the delivery session and shared DevOps persona to document
+what failed, why it prevents progress, alternatives tried with outcomes, remaining options and
+the smallest external action needed before declaring a hard blocker. Reasonable authorized
+diagnosis or recovery continues without waiting for a human prompt. The CTO guidance uses the
+same record and honors an explicit engagement spending policy instead of inventing internal
+holds. Default reservation accounting remains available; a campaign-specific spend-as-needed
+direction does not increase its cap, erase expenses or waive review, credentials or uncertain
+effect safety. Existing canonical/mirror/generated-guide distribution is sufficient.

@@ -79,6 +79,11 @@ the answers arrive.
   failing approach is not one. A decision or action only the person can take — reauthentication,
   missing access, unapproved spend, a product choice — goes to them as soon as you find it, while
   everything else continues.
+- **Prove a hard blocker before handing it back.** Write the [blocker record](references/mandate.md#blocker-record):
+  what failed, why it prevents progress, the reasonable alternatives tried and their outcomes,
+  and why the remaining options cannot proceed. Check claimed constraints against the person's
+  latest direction. While a reasonable authorized diagnosis, repair or recovery remains, do it;
+  an unresolved cause or an agent-created gate is not an exhausted set of options.
 
 ## 4. Own the loop to the result
 
@@ -101,10 +106,12 @@ never a reason to use a payment route the mandate did not name.
 
 ## 6. Spend like it is someone else's money
 
-Reserve before spending, settle from the provider's record, and count every outcome you cannot
-confirm at its maximum until it settles. Stop admitting paid work before the cap, leaving room
-for what is in flight. A granted budget exists to buy a better outcome, not to be hoarded; report
-actual spend and headroom per line. Rules: [references/mandate.md](references/mandate.md#budget).
+Follow the spending policy in the current mandate. By default, reserve before spending, settle
+from provider evidence and retain uncertain liabilities. If the person explicitly chooses
+spend-as-needed without internal holds, record that policy and track actual spend and unbilled
+or unknown usage without parking worst-case allowances as admission blockers. Keep the granted
+cap and report when remaining funds cannot support the next work; an internal counter alone is
+not evidence that a provider needs payment. Rules: [references/mandate.md](references/mandate.md#budget).
 
 ## 7. Gates CTO authority does not open
 
