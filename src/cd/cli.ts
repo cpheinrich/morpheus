@@ -3,12 +3,12 @@ import { constants } from "node:fs";
 import { open, readFile } from "node:fs/promises";
 import { dirname, resolve, basename } from "node:path";
 import { randomUUID } from "node:crypto";
-import { configSchema, configurationDigest, hash, type CdConfig, type Identity, type TestEvidence, type UploadEvidence } from "./schema.js";
+import { budgetSpendingPolicySchema, configSchema, configurationDigest, hash, type CdConfig, type Identity, type TestEvidence, type UploadEvidence } from "./schema.js";
 import { GhApi, GitHubStore } from "./store.js";
 import { ActionsAdapter, uploadEvidence } from "./actions.js";
 import { AppleAdapter, AppleHttp } from "./apple.js";
 import { Controller, status } from "./controller.js";
-import { checkIdentity, claimUpload, createIntent, invariant, recordTests, recordUpload, repairWork, sourceAt, reservePaid, settlePaid } from "./state.js";
+import { checkIdentity, claimUpload, createIntent, invariant, recordTests, recordUpload, repairWork, sourceAt, budgetStatus, setBudgetSpendingPolicy, reservePaid, settlePaid } from "./state.js";
 import { verifyConfiguration, verifySource, verifyValidator } from "./source.js";
 import { runWorker, scheduleHosted, QuotaReader } from "./worker.js";
 import { githubToken, probeGitHubToken } from "./github-token.js";
@@ -25,6 +25,7 @@ const HELP = `morpheus cd config|init|tick|request|status|verify-execution|claim
   record --kind repair-diagnostic --evidence FILE  Bounded data for an existing failed repair
   upload-hook --phase before|resource|after
   worker --executor local|hosted [--host-id ID] [--work-id ID --invocation-id ID --task-digest SHA256]
+  budget --operation spend-as-needed --campaign ID --cap-micros N --authorization-ref REF
   budget --operation reserve|settle --id ID [--request FILE --maximum-micros N|--actual-micros N]
     reserve [--authority FILE --authority-digest SHA256]  Explicit reviewed source CI grant
 All results are JSON. Upload claim exit 3 means skip safely; never retry bytes.
@@ -74,6 +75,7 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
     "source-age-waiver": { type: "string" },
     executor: { type: "string" }, "host-id": { type: "string" }, "work-id": { type: "string" }, "invocation-id": { type: "string" }, "task-digest": { type: "string" },
     operation: { type: "string" }, id: { type: "string" }, request: { type: "string" }, "maximum-micros": { type: "string" }, "actual-micros": { type: "string" },
+    campaign: { type: "string" }, "cap-micros": { type: "string" }, "authorization-ref": { type: "string" },
     authority: { type: "string" }, "authority-digest": { type: "string" },
     help: { type: "boolean", short: "h" }, json: { type: "boolean" }, revoke: { type: "boolean" }, probe: { type: "boolean" },
   } });
@@ -83,6 +85,12 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
     invariant(positionals.length === 1 && positionals[0] === "budget" && values.operation === "reserve" && !values.help, "Reviewed source authority is only valid for explicit budget reserve, without help");
     const allowed = new Set(["config", "operation", "id", "request", "maximum-micros", "authority", "authority-digest", "json"]);
     for (const key of Object.keys(values)) invariant(allowed.has(key), `Reviewed source budget reserve does not accept --${key}`);
+  }
+  const spendingPolicy = values.campaign !== undefined || values["cap-micros"] !== undefined || values["authorization-ref"] !== undefined || values.operation === "spend-as-needed";
+  if (spendingPolicy) {
+    invariant(positionals.length === 1 && positionals[0] === "budget" && values.operation === "spend-as-needed" && !sourceAuthority && !values.help, "Spending policy flags are only valid for explicit budget spend-as-needed");
+    const allowed = new Set(["config", "operation", "campaign", "cap-micros", "authorization-ref", "json"]);
+    for (const key of Object.keys(values)) invariant(allowed.has(key), `Spending policy does not accept --${key}`);
   }
   if (values.kind === "repair-diagnostic") {
     invariant(positionals.length === 1 && positionals[0] === "record" && !values.help, "Repair diagnostics require the explicit record command without help");
@@ -99,7 +107,7 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
     case "config": result = { valid: true, configurationDigest: configurationDigest(config), config }; break;
     case "quota": { invariant(values.executor === "local" || values.executor === "hosted", "Quota probe requires --executor local|hosted"); result = await new QuotaReader(config, values.executor, sourceDir, environment).read(now); break; }
     case "init": result = await store.initialize(now); break;
-    case "status": { const snapshot = await store.read(); result = { head: snapshot.head, epoch: snapshot.state.epoch, mode: config.mode, intents: status(snapshot.state, now), slots: snapshot.state.slots, agents: snapshot.state.agents, budget: snapshot.state.budget, pauses: snapshot.state.pauses }; break; }
+    case "status": { const snapshot = await store.read(); result = { head: snapshot.head, epoch: snapshot.state.epoch, mode: config.mode, intents: status(snapshot.state, now), slots: snapshot.state.slots, agents: snapshot.state.agents, budget: snapshot.state.budget, budgetStatus: budgetStatus(snapshot.state, config), pauses: snapshot.state.pauses }; break; }
     case "tick": {
       result = await new Controller(config, store, actions, new AppleAdapter(new AppleHttp(config, environment)), sourceDir).tick(now, values.observe);
       if (config.mode === "active" && !values.observe) await scheduleHosted(config, store, now);
@@ -178,6 +186,16 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
       result = await runWorker(config, store, sourceDir, { executor: values.executor ?? "local", hostId: values["host-id"], workId: values["work-id"], invocationId: values["invocation-id"], taskDigest: values["task-digest"] }, environment); break;
     }
     case "budget": {
+      if (values.operation === "spend-as-needed") {
+        const input = { campaignId: required(values.campaign, "--campaign"), capMicros: Number(required(values["cap-micros"], "--cap-micros")), authorizationRef: required(values["authorization-ref"], "--authorization-ref") };
+        // Validate before reading or writing the ledger; the transaction rechecks its live identity.
+        const policy = budgetSpendingPolicySchema.parse({ mode: "spend-as-needed", ...input, adoptedAt: now });
+        const transaction = await store.transact(`budget-policy-${hash(input)}`, "budget-spend-as-needed", now, state => setBudgetSpendingPolicy(state, config, input, now));
+        result = transaction;
+        const current = (await store.read()).state.budget.spendingPolicy;
+        invariant(hash(current) === hash(transaction.result) && current?.campaignId === policy.campaignId && current.capMicros === policy.capMicros && current.authorizationRef === policy.authorizationRef, "Spending policy replay differs from current policy");
+        break;
+      }
       const id = required(values.id, "--id");
       if (values.operation === "reserve") {
         if (sourceAuthority) {

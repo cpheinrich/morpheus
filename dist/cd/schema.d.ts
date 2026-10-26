@@ -114,6 +114,14 @@ export declare const configSchema: z.ZodObject<{
         deliveryHours: z.ZodDefault<z.ZodNumber>;
     }, z.core.$strip>>;
 }, z.core.$strict>;
+export declare const budgetSpendingPolicySchema: z.ZodObject<{
+    mode: z.ZodLiteral<"spend-as-needed">;
+    campaignId: z.ZodString;
+    capMicros: z.ZodNumber;
+    authorizationRef: z.ZodString;
+    adoptedAt: z.ZodISODateTime;
+}, z.core.$strict>;
+export type BudgetSpendingPolicy = z.infer<typeof budgetSpendingPolicySchema>;
 export type CdConfig = z.infer<typeof configSchema>;
 export type Channel = "staging" | "production";
 export interface SourceRevision {
@@ -423,6 +431,7 @@ export interface CdState {
         human: boolean;
     }[];
     budget: {
+        spendingPolicy?: BudgetSpendingPolicy;
         spentMicros: number;
         reservations: Record<string, {
             digest: string;

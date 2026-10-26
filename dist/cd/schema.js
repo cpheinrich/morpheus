@@ -47,6 +47,11 @@ export const configSchema = z.object({
             context.addIssue({ code: "custom", path: ["channels", name, "externalGroupIds"], message: "external groups must be unique and separate from internal/validation groups" });
     }
 });
+export const budgetSpendingPolicySchema = z.object({
+    mode: z.literal("spend-as-needed"), campaignId: z.string().regex(/^[A-Za-z0-9_.:-]{1,160}$/),
+    capMicros: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    authorizationRef: z.string().trim().min(10).max(2048), adoptedAt: timestamp,
+}).strict();
 export function canonical(value) {
     if (Array.isArray(value))
         return `[${value.map(canonical).join(",")}]`;
@@ -61,6 +66,8 @@ export function parseState(value) {
     const state = value;
     if (!state || state.schemaVersion !== 1 || !state.epoch || !state.repository || !state.transitions || !state.intents || !Array.isArray(state.sources) || !state.builds || !state.budget || !state.agents || !state.fences || !Array.isArray(state.slots) || !Array.isArray(state.pauses))
         throw new Error("Invalid or unsupported CD state; an explicit lossless migration is required");
+    if (state.budget.spendingPolicy !== undefined)
+        budgetSpendingPolicySchema.parse(state.budget.spendingPolicy);
     for (const intent of Object.values(state.intents)) {
         if (!Array.isArray(intent.attempts) || !Array.isArray(intent.lineage) || !intent.originalSource || !intent.oldestDebtAt || !intent.deadlineAt)
             throw new Error("Incomplete durable delivery intent");

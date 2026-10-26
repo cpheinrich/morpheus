@@ -3532,6 +3532,18 @@ Existing configured hosted normalization is unchanged; removing that route is an
 explicit consumer configuration migration, not a silent ledger reset. Source-level
 tests do not establish actual two-Mac readiness or failover acceptance.
 
+An explicitly human-authorized campaign may opt into a durable spend-as-needed budget
+policy through the normal audited `cd budget` transaction. The optional ledger policy
+records campaign/cap/authorization/time without changing configuration or epoch.
+Ordinary admission then checks recorded spend plus only the current bounded operation;
+old request maxima are audit records, not internal holds. Original IDs/digests, unknown
+operations and real settlement tombstones remain intact. Status reports zero internal
+holds and remaining against recorded spend, with unsettled operations/overspend visible;
+it makes no provider-balance/final-invoice or simultaneous-spend guarantee. Real late
+costs remain recordable. Default reservation/config250 and subscription80/90 policy
+remains for ledgers that have not explicitly opted in. See
+[the spending policy](docs/cd-v2-controller.md#human-authorized-spend-as-needed-campaigns).
+
 Administrative source publication funding has one explicit, optional budget-reserve
 path in `src/cd/source-finance.ts`. A strict independently reviewed grant pins the
 exact source request, repository, existing epoch, supplied and stored native
@@ -3540,8 +3552,8 @@ admission window. Values belong to the engagement, never shared campaign constan
 The existing owner-bound GitHub CAS and complete envelope receipt readback remain
 required; checks precede replay and repeat with fresh time/liability in every CAS
 callback. Native schema, ordinary paid reservation admission and controller behavior
-remain unchanged. The configured at-most-$250 guard in `reservePaid` and ordinary
-`cd budget reserve` refuses new paid reservations that would exceed it; exact old
+remain unchanged. Without the explicit spending-policy opt-in, the configured at-most-$250 guard in
+`reservePaid` and ordinary `cd budget reserve` refuses new paid reservations that would exceed it; exact old
 reserved paid identities still replay. Local delivery intent creation, attempt
 planning and dispatch are not gated by this dollar guard and retain their existing
 controls. A source grant itself authorizes no native operation. The
