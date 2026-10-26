@@ -60,6 +60,18 @@ Source clearance does not activate the live policy. Older callers can replay an 
   },
   "outcome": "complete",
   "summary": "Independent high-risk review cleared the opt-in spend-as-needed policy without findings; admission, status, replay, historical records and default controls were verified.",
-  "findings": []
+  "findings": [],
+  "trunkIntegrations": [
+    {
+      "commit": "cf4a6ab8e4d36a011618913b1d8dbeb57654bc46",
+      "reason": "Integrated protected main35ff883f containing independently reviewed hard-blocker guidance PR528. Resolved only the append conflict in .agent/decisions.md by retaining both reviewed decision entries verbatim; no CD implementation change."
+    }
+  ]
 }
 ```
+
+## Trunk integration
+
+Merged protected main35ff883f after PR528 landed. The only manual conflict was two appended decisions; both reviewed entries are retained without rewriting either. The merge is named in the review record. Final integrated-head checks follow; no additional implementation review is implied.
+
+Integrated-head validation: `pnpm exec vitest run tests/cd/spending-policy-cli.test.ts tests/agentic-cto-skill.test.ts` passed55tests across the policy CLI and newly integrated skill distribution; typecheck and compile also passed. This tests the combined normal CLI surfaces after the trunk integration without rerunning an unchanged full suite.
