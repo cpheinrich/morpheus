@@ -58,10 +58,7 @@ exact-head CI remains authoritative.
 
 ## Independent review
 
-Independent review cleared the normal-risk audit with no findings. The reviewer verified direct
-consumers and public exports, regenerated artifacts, report evidence, typecheck, and all 193
-focused tests. Exact-checkout graph transport was unavailable, so the reviewer used the exact-base
-graph plus direct source and repository search.
+Independent review cleared the normal-risk audit with no findings. The reviewer verified direct consumers and public exports, regenerated artifacts, report evidence, typecheck, and all 193 focused tests. Exact-checkout graph transport was unavailable, so the reviewer used the exact-base graph plus direct source and repository search.
 
 ```morpheus-review
 {
