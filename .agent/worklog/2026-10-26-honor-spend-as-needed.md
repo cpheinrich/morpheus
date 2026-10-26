@@ -34,3 +34,32 @@ No-holds mode deliberately does not promise a hard total bound on concurrent/unb
 ## Final replay-context correction
 
 The normal Store returns an existing transition without running its callback. Final self-review therefore added an explicit stored configuration-digest check to policy readback as well as the callback, with a regression proving a changed supplied configuration cannot successfully replay the policy or write state. After that correction, the four directly relevant CLI/policy/old source-grant/diagnostic files passed87 tests; final typecheck and compile passed. Existing state/source-finance regressions were already green on unchanged reducer/schema code. Root should review the final head, not the first implementation commit53c4aad8.
+
+## Independent review
+
+Independent high-risk review cleared the opt-in spend-as-needed policy without findings; admission, status, replay, historical records and default controls were verified.
+
+The reviewer independently ran six focused Vitest files:169passed, then typecheck and diff checks. It inspected the complete diff, generated JavaScript/declarations/maps, docs, validation manifest and both assertion-killed mutant logs. No findings or conditions.
+
+Source clearance does not activate the live policy. Older callers can replay an already-created exact paid identity but retain old admission for new IDs until updated CLI/runtime adoption. Remaining funds are against recorded spend, not account credit or a final invoice; concurrent operations and delayed billing can exceed a recorded-spend cap. The explicitly chosen no-holds mode reports this limitation instead of claiming a hard provider billing ceiling.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "9a2433aef3fdf39099b07baae347613a17f58b10",
+  "reviewed": "92f834b5fb83936e32e059b52c18ff5c832b40fa",
+  "covered": "92f834b5fb83936e32e059b52c18ff5c832b40fa",
+  "authorSession": "01a1572f-2ae1-77f2-be54-4265b3baca43",
+  "reviewerSession": "/root/spend_as_needed_policy_review_20261026",
+  "risk": "high",
+  "elapsedMinutes": 3.4833333333333334,
+  "timing": {
+    "source": "clock",
+    "durationMs": 209000,
+    "evidence": "Root invocation clock2026-10-26T22:51:58Z and completion observed2026-10-26T22:55:27Z for /root/spend_as_needed_policy_review_20261026; reviewer also reported last observed clock22:54:50Z. Actual clock observations, not workload estimates."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk review cleared the opt-in spend-as-needed policy without findings; admission, status, replay, historical records and default controls were verified.",
+  "findings": []
+}
+```
