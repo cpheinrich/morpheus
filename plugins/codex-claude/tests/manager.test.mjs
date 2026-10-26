@@ -285,3 +285,23 @@ test("guardian crash cleanup records process exit before releasing run lock", as
     "exited",
   );
 });
+test("inspect previews an unmapped model's fallback, and a launch carries it without a question", async () => {
+  const { previewSelection } = await import("../src/service.mjs");
+  const { claudeArgs } = await import("../src/claude.mjs");
+  const snapshot = { model: "gpt-6.1-sol", reasoningEffort: "high" };
+  const preview = previewSelection(defaults(), snapshot);
+  assert.equal(preview.model, "opus");
+  assert.equal(preview.source, "fallback");
+  assert.equal(preview.codexModel, "gpt-6.1-sol");
+  // The launch argv is built from the same selection: the provenance fields never reach
+  // the CLI, and the model is the family alias the installed CLI resolves.
+  const argv = claudeArgs(null, preview, "bypassPermissions");
+  assert.equal(argv[argv.indexOf("--model") + 1], "opus");
+  assert.equal(argv[argv.indexOf("--effort") + 1], "high");
+  assert.ok(!argv.some((value) => /fallback|gpt-6\.1-sol/.test(String(value))));
+  // A disabled fallback is reported by inspect rather than thrown at the coordinator.
+  assert.match(
+    previewSelection({ ...defaults(), modelFallback: null }, snapshot).error,
+    /modelFallback is disabled/,
+  );
+});

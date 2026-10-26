@@ -160,7 +160,8 @@ captures yourself; the independent reviewer must inspect their pixels. Replace t
 fixes. If a test cannot run, state the exact limitation and
 keep the PR draft until validation finishes; a later code correction spends a remaining review
 turn. Aim to finish in an initial review and one focused response. The third turn is a ceiling for
-a genuine late correction or unresolved substantive finding, not a planned step. Commit the
+a genuine late correction or unresolved substantive finding, not a planned step. One bounded
+same-reviewer verification turn may cover a small final correction under the runbook. Commit the
 implementation and tests. When CI, visual evidence or PR metadata matters to review, move the
 item to `review` and open an unlabelled draft PR first so the reviewer sees them. Then run
 `morpheus review prepare --base origin/main` (it prints a packet; it launches nothing), spawn
@@ -187,6 +188,11 @@ unrelated item's branch**. Waivers (`skip-tests:`, `records-only:`) need a real 
 **Append a worklog entry** to `.agent/worklog/YYYY-MM-DD-slug.md` before opening a PR — dead ends
 especially. Decisions in `.agent/decisions.md` are settled; if one looks wrong, ask rather than
 work around it ([`.agent/README.md`](.agent/README.md) relates the records).
+
+**Tag the subject, not the owner.** Give new roadmap items and their worklogs applicable `tags:`
+arrays; CI/CD or infrastructure work includes both `engineering` and `devops`, plus other relevant
+tags. Use repeated `pm new --tag` and `pm tagged <tag> [<tag> ...] --json` for context retrieval.
+Existing untagged history stays valid. See [`work-tags.md`](docs/work-tags.md).
 
 ### Testing: focused first
 

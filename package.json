@@ -46,7 +46,7 @@
     "dev": "tsc -p tsconfig.build.json --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:qa-browser": "playwright test tests/browser/qa-comments.spec.ts",
+    "test:qa-browser": "playwright test tests/browser/qa-comments.spec.ts tests/browser/qa-web-context.spec.ts --workers=1",
     "test:watch": "vitest",
     "test:rules": "pnpm compile && firebase emulators:exec --only firestore --project morpheus-rules-test 'node --test tests/firestore-rules.test.mjs'",
     "lint": "eslint src",

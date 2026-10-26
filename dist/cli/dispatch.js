@@ -1,6 +1,6 @@
 import { sessionHookInput, startSession } from "./session-start.js";
 import { resolve } from "node:path";
-import { block, claim, resume, cleanup, worktrees, claims, create, index, linkIssue, migrateIds, ship, unblock, validate, } from "./pm.js";
+import { block, claim, resume, cleanup, worktrees, claims, tagged, create, index, linkIssue, migrateIds, ship, unblock, validate, } from "./pm.js";
 import { INBOX_DIR } from "../paths.js";
 import { pr } from "./check.js";
 import { validate as validateInbox } from "./inbox.js";
@@ -453,6 +453,8 @@ async function dispatchPm({ flags, command, rest, dir }) {
             return worktrees(process.cwd(), rest[0], flags.dryRun || flags.check);
         case "claims":
             return claims(dir, process.cwd());
+        case "tagged":
+            return tagged(dir, process.cwd(), rest, flags.json);
         case "link-issue": {
             const { refused } = await guard(process.cwd(), "pm link-issue", GATED["pm link-issue"], flags.offline);
             if (refused !== null)
@@ -496,7 +498,7 @@ async function dispatchPm({ flags, command, rest, dir }) {
             if (refused !== null)
                 return refused;
             const [kind, ...titleParts] = rest;
-            return create(dir, kind ?? "", titleParts.join(" "), { priority: flags.priority, goal: flags.goal, slug: flags.slug, issue: flags.issue }, process.cwd());
+            return create(dir, kind ?? "", titleParts.join(" "), { priority: flags.priority, goal: flags.goal, slug: flags.slug, issue: flags.issue, tags: flags.tags }, process.cwd());
         }
         default:
             console.error(`Unknown pm command "${command ?? ""}".\n\n${HELP}`);

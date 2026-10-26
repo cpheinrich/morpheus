@@ -1,0 +1,84 @@
+{
+  "job": "inspect-tests",
+  "issueId": "ef2c23bf-0d44-4591-9405-afd4e4398ff0",
+  "sourceSha": "6ca59e8fedd3ee2552adfd3a365946049b3a4aef",
+  "nonce": "32795d6c0ec1454b912ca59cc3afcbac",
+  "artifactRelativePath": "artifacts/inspect-tests.json",
+  "artifactSha256": "6c2ffff08a0615ff686672f0660bdd1c228531391e4385a797ed39fed5925716",
+  "controllerVerification": {
+    "controller": "/root",
+    "artifactReadback": {
+      "identityMatches": true,
+      "sourceUnchanged": true,
+      "symlinksUnchanged": true,
+      "citedSymbolsExist": true,
+      "artifactSha256": "6c2ffff08a0615ff686672f0660bdd1c228531391e4385a797ed39fed5925716",
+      "note": "Full identity and source inventory assertions passed in preceding controller probe; hash captured before resealing."
+    },
+    "allFourCitedObservationsIndependentlyInspected": true,
+    "basis": "Controller compared claims to pinned source and checked whole file/symlink inventories before resealing workspaces."
+  },
+  "sourceFileInventory": {
+    "count": 1835,
+    "sha256": "18fd80c9a9b195553f0290a01d0062ea0902934cb15fd78683aaeacc91202928"
+  },
+  "nativeReceipt": {
+    "accountId": "controller-native",
+    "agentId": "b3f9a9e4-71f8-481b-8c85-4a2701e550e6",
+    "hostId": "repair-inspect-tests",
+    "paperclipRunId": "0c34fd38-e907-4cc7-80c5-f933a4808020",
+    "runUuid": "d149443599e94d41a923e744e5bc0548",
+    "requested": {
+      "effort": "xhigh",
+      "model": "gpt-6.1-sol"
+    },
+    "observed": {
+      "basis": "codex exec --json does not report the serving model or effort",
+      "effort": "unknown",
+      "model": "unknown"
+    },
+    "resume": false,
+    "state": "exited",
+    "exitCode": 0,
+    "termination": "verified"
+  },
+  "nativeCli": {
+    "version": "0.163.0",
+    "basis": "Controller-reported installed native CLI; serving model and effort are unknown, not inferred from requested settings."
+  },
+  "run": {
+    "id": "0c34fd38-e907-4cc7-80c5-f933a4808020",
+    "status": "succeeded",
+    "exitCode": 0,
+    "startedAt": "2026-10-24T02:56:31.853Z",
+    "finishedAt": "2026-10-24T02:57:41.311Z"
+  },
+  "usage": {
+    "provider": "openai",
+    "biller": "chatgpt",
+    "billingType": "subscription_included",
+    "costStatus": "unpriced",
+    "rawInputTokens": 339877,
+    "rawCachedInputTokens": 281216,
+    "rawOutputTokens": 3689,
+    "usageSource": "per_run"
+  },
+  "nativeThreadIds": [
+    "01a16bd6-ad2b-70d2-8b20-1484dd57974f"
+  ],
+  "nativeProviderUsage": [
+    {
+      "input_tokens": 339877,
+      "cached_input_tokens": 281216,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 3689,
+      "reasoning_output_tokens": 1642
+    }
+  ],
+  "upstreamDoneReadback": {
+    "job": "inspect-tests",
+    "issueId": "ef2c23bf-0d44-4591-9405-afd4e4398ff0",
+    "status": "done",
+    "sourceSha": "6ca59e8fedd3ee2552adfd3a365946049b3a4aef"
+  }
+}

@@ -104,6 +104,25 @@ The default has no holds. A hold is visible policy, not model judgment. Unsuppor
 remediation or an advisory with no safe fixed version fails the run and preserves the evidence; it
 does not dismiss or ignore the advisory.
 
+An optional `importOnlyCompatibility: true` adds a narrower replacement lane after the engine,
+review-only Manager workflow and both private caller pins are deployed. Morpheus is the first
+eligible repository. The engine's reviewed mapping names one advisory, vulnerable package,
+replacement registry package and exact version. A missing mapping leaves the finding open.
+The candidate changes only direct dependency manifests, their lockfile, and at most eight source
+files with twenty literal import substitutions. Policy, credential, trading and workflow paths,
+call-site logic and all other text changes are rejected. For Morpheus,
+`compatibilityGeneratedDist: true` permits only deterministic TypeScript output corresponding to
+the changed sources; it does not authorize an arbitrary build script or generated directory.
+
+The Security App attests the exact validated candidate head and stops. A distinct Manager App
+session reviews it with a read-only target token; its apply job publishes a head-bound comment,
+without editing or merging the candidate. The existing review-metadata workflow reruns the
+ordinary conventions checker on the review label after verifying both App receipts. Security's later reconciliation requires the
+clear review, the current mapping and opt-in, holds, all named successful checks, branch
+protection and a head-SHA-guarded merge. Lakina and Evo retain the existing dependency-only
+policy unless their maintainers separately opt in. No new App permission or credential transfer
+is part of this option.
+
 List in `requiredChecks` only checks that report success for exact bot PRs. Morpheus's
 `agent-review / delivery` check is intentionally skipped for that lane: GitHub branch protection
 still requires the reported check, while the security bot's success-only gate must omit it.

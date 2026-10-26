@@ -77,6 +77,8 @@ export declare const Priority: z.ZodEnum<{
     P2: "P2";
     P3: "P3";
 }>;
+/** Subject metadata, independent of a role, claim or execution permission. */
+export declare const WorkTags: z.ZodArray<z.ZodString>;
 export declare const RoadmapItem: z.ZodObject<{
     id: z.ZodString;
     title: z.ZodString;
@@ -94,6 +96,7 @@ export declare const RoadmapItem: z.ZodObject<{
         P2: "P2";
         P3: "P3";
     }>>;
+    tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
     goal: z.ZodOptional<z.ZodString>;
     owner: z.ZodDefault<z.ZodEnum<{
         agent: "agent";
@@ -153,6 +156,7 @@ export declare const JournalEntry: z.ZodObject<{
         codex: "codex";
     }>;
     roadmap: z.ZodOptional<z.ZodString>;
+    tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
     outcome: z.ZodEnum<{
         blocked: "blocked";
         shipped: "shipped";
@@ -187,6 +191,7 @@ export declare const ARTIFACTS: {
                 P2: "P2";
                 P3: "P3";
             }>>;
+            tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
             goal: z.ZodOptional<z.ZodString>;
             owner: z.ZodDefault<z.ZodEnum<{
                 agent: "agent";

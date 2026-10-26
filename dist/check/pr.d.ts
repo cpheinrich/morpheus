@@ -10,6 +10,8 @@ import { type VisualEvidencePolicy } from "./visual-evidence.js";
 export interface PrContext {
     /** Result of committed independent-review evidence verification. */
     agentReview?: Finding[];
+    /** Exact-head Security App candidate plus separate Manager App review, verified from GitHub. */
+    securityImportVerified?: boolean;
     /** PR body markdown. */
     body: string;
     /** PR title, which may become the squash commit subject. */

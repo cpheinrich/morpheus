@@ -36,6 +36,10 @@ on:
         type: string
         required: false
         default: main
+      artifact-stage-ref:
+        description: Exact bounded-artifact helper revision for CD; ordinary main callers retain a main default.
+        type: string
+        default: main
       watch-paths:
         description: Optional newline-separated Git pathspecs. Unrelated pull requests report success without native work; other events always run.
         type: string
@@ -368,6 +372,27 @@ jobs:
       # of the repository at `inputs.actions-ref` used by local path. The checkout is read-only,
       # credential-free (the repository is public), sparse, and lives in its own directory inside
       # the workspace; nothing else in this job reads that directory.
+      - name: Validate bounded artifact helper pin
+        if: ${{ steps.scope.outputs.run == 'true' }}
+        working-directory: .
+        env:
+          EXECUTION_ID: ${{ inputs.execution-id }}
+          ARTIFACT_STAGE_REF: ${{ inputs.artifact-stage-ref }}
+        run: |
+          if [[ -n "$EXECUTION_ID" && ! "$ARTIFACT_STAGE_REF" =~ ^[a-f0-9]{40}$ ]]; then
+            echo 'CD artifact-stage-ref must be an exact reviewed commit' >&2
+            exit 1
+          fi
+      - name: Check out the bounded artifact helper
+        if: ${{ steps.scope.outputs.run == 'true' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: cpheinrich/morpheus
+          ref: ${{ inputs.artifact-stage-ref }}
+          path: .morpheus-artifacts
+          persist-credentials: false
+          sparse-checkout: .github/actions/ios-testflight-upload/artifact-stage
+
       - name: Check out this workflow's actions
         if: ${{ steps.scope.outputs.run == 'true' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -881,15 +906,6 @@ jobs:
             echo "::warning title=Rendered attachments unavailable::xcresulttool could not export test attachments"
           fi
 
-      - name: Upload rendered test attachments
-        if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ios-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ steps.ios_paths.outputs.screenshots }}
-          if-no-files-found: ignore
-          retention-days: 14
-
       - name: Collect Firebase emulator diagnostics
         if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && inputs.firebase-emulators && steps.ios_paths.outcome == 'success' }}
         run: |
@@ -905,25 +921,83 @@ jobs:
           done
           echo "Firebase did not produce a debug log."
 
-      - name: Upload complete test evidence
+      - name: Capture native failure before artifact staging
+        id: native_failure
+        if: ${{ steps.scope.outputs.run == 'true' && failure() }}
+        run: echo 'failed=true' >> "$GITHUB_OUTPUT"
+
+      - name: Stage bounded native-screenshots
+        id: artifact_screenshots
         if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
+        uses: ./.morpheus-artifacts/.github/actions/ios-testflight-upload/artifact-stage
+        with:
+          channel: native-screenshots
+
+      - name: Stage bounded native-complete-evidence
+        id: artifact_complete
+        if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
+        uses: ./.morpheus-artifacts/.github/actions/ios-testflight-upload/artifact-stage
+        with:
+          channel: native-complete-evidence
+
+      - name: Stage bounded native-failure-evidence
+        id: artifact_failure
+        if: ${{ steps.scope.outputs.run == 'true' && always() && steps.native_failure.outputs.failed == 'true' && steps.ios_paths.outcome == 'success' }}
+        uses: ./.morpheus-artifacts/.github/actions/ios-testflight-upload/artifact-stage
+        with:
+          channel: native-failure-evidence
+
+      - name: Require all selected native artifact admissions
+        id: artifact_barrier
+        if: ${{ steps.scope.outputs.run == 'true' && always() && steps.ios_paths.outcome == 'success' }}
+        env:
+          RUN_TESTS: ${{ inputs.run-tests }}
+          SCREENSHOT_STAGE: ${{ steps.artifact_screenshots.outcome }}
+          COMPLETE_STAGE: ${{ steps.artifact_complete.outcome }}
+          FAILURE_STAGE: ${{ steps.artifact_failure.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$RUN_TESTS" == true ]]; then
+            test "$SCREENSHOT_STAGE" = success
+            test "$COMPLETE_STAGE" = success
+          else
+            test "$SCREENSHOT_STAGE" = skipped
+            test "$COMPLETE_STAGE" = skipped
+          fi
+          [[ "$FAILURE_STAGE" == success || "$FAILURE_STAGE" == skipped ]]
+
+      - name: Upload rendered test attachments
+        if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' && steps.artifact_screenshots.outcome == 'success' && steps.artifact_screenshots.outputs.admitted == 'true' && steps.artifact_screenshots.outputs.has-files == 'true' && steps.artifact_barrier.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ios-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.artifact_screenshots.outputs.payload-root }}
+          if-no-files-found: ignore
+          retention-days: 14
+          archive: true
+          compression-level: 0
+          overwrite: false
+
+      - name: Upload complete test evidence
+        if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' && steps.artifact_complete.outcome == 'success' && steps.artifact_complete.outputs.admitted == 'true' && steps.artifact_complete.outputs.has-files == 'true' && steps.artifact_barrier.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ inputs.execution-id != '' && format('ios-test-evidence-{0}', inputs.execution-id) || steps.ios_paths.outputs.evidence-name }}
-          path: |
-            ${{ steps.ios_paths.outputs.results }}/*.json
-            ${{ steps.ios_paths.outputs.results }}/*.txt
-            ${{ steps.ios_paths.outputs.logs }}
+          path: ${{ steps.artifact_complete.outputs.payload-root }}
           if-no-files-found: error
           retention-days: 30
+          archive: true
+          compression-level: 0
+          overwrite: false
 
       - name: Upload Xcode failure evidence
-        if: ${{ steps.scope.outputs.run == 'true' && failure() && steps.ios_paths.outcome == 'success' }}
+        if: ${{ steps.scope.outputs.run == 'true' && always() && steps.native_failure.outputs.failed == 'true' && steps.ios_paths.outcome == 'success' && steps.artifact_failure.outcome == 'success' && steps.artifact_failure.outputs.admitted == 'true' && steps.artifact_failure.outputs.has-files == 'true' && steps.artifact_barrier.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ios-ci-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ steps.ios_paths.outputs.results }}
-            ${{ steps.ios_paths.outputs.logs }}
+          path: ${{ steps.artifact_failure.outputs.payload-root }}
           if-no-files-found: warn
           retention-days: 14
+          archive: true
+          compression-level: 0
+          overwrite: false

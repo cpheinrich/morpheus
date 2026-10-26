@@ -9,8 +9,10 @@
 import {
   AGENTIC_CTO_SKILL,
   RESEARCH_ENGINEER_SKILL,
+  DEVOPS_ENGINEER_SKILL,
   agenticCtoSkillFiles,
   researchEngineerSkillFiles,
+  devopsEngineerSkillFiles,
 } from "./skill.js";
 
 /**
@@ -20,6 +22,7 @@ import {
  */
 const IC_SKILLS = new Map<string, () => Record<string, string>>([
   [RESEARCH_ENGINEER_SKILL, researchEngineerSkillFiles],
+  [DEVOPS_ENGINEER_SKILL, devopsEngineerSkillFiles],
 ]);
 
 const REFERENCE = /^references\/([\w-]+)\.md$/;

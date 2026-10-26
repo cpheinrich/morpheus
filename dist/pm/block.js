@@ -28,12 +28,13 @@ import { RoadmapItem } from "./schema.js";
  */
 export class BlockError extends Error {
 }
-function worklogBody(opts, title, date) {
+function worklogBody(opts, title, date, tags) {
     return [
         "---",
         `date: ${date}`,
         `agent: ${opts.agent ?? "claude"}`,
         `roadmap: ${opts.id}`,
+        ...(tags.length ? [`tags: ${JSON.stringify(tags)}`] : []),
         "outcome: blocked",
         `summary: ${JSON.stringify(`Stopped on ambiguity — needs: ${opts.needs}`)}`,
         "---",
@@ -138,7 +139,7 @@ export async function block(opts) {
     written.push(item.path);
     const worklogPath = join(root, ".agent/worklog", `${date}-${id.toLowerCase()}-blocked-${slugify(needs)}.md`);
     await mkdir(dirname(worklogPath), { recursive: true });
-    await writeFile(worklogPath, worklogBody(opts, item.data.title, date), "utf8");
+    await writeFile(worklogPath, worklogBody(opts, item.data.title, date, item.data.tags ?? []), "utf8");
     written.push(worklogPath);
     const inboxPath = join(root, INBOX_DIR, `${owner}.md`);
     const existing = await readIfExists(inboxPath);

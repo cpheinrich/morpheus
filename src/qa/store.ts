@@ -227,7 +227,7 @@ export async function writePendingBatch(
     await writeFile(join(staging, "batch.json"), `${JSON.stringify(batch, null, 2)}\n`, "utf8");
     if (frameBytes) await writeFile(join(staging, "frame.png"), frameBytes);
     for (const [name, bytes] of commentFrames) {
-      if (!/^comment-[A-Za-z0-9_-]+\.png$/.test(name)) throw new Error("Invalid QA comment frame name");
+      if (!/^comment-[A-Za-z0-9_-]+\.(png|jpg)$/.test(name)) throw new Error("Invalid QA comment frame name");
       await writeFile(join(staging, name), bytes);
     }
     await rename(staging, dir);

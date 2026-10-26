@@ -8,7 +8,7 @@ import { EXPECTED } from "../doctor/index.js";
 import { renderFirestoreRules, updateRoleHelpers } from "../hq/rules.js";
 import { installContext } from "../session/install.js";
 import * as t from "./templates.js";
-import { AGENTIC_CTO_SKILL, RESEARCH_ENGINEER_SKILL } from "../cto/skill.js";
+import { AGENTIC_CTO_SKILL, RESEARCH_ENGINEER_SKILL, DEVOPS_ENGINEER_SKILL } from "../cto/skill.js";
 import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
 import { ANALYTICS_SCHEMA_DIRECTORY, ANALYTICS_SCHEMA_PATH, findAnalyticsContracts, } from "../analytics/contract.js";
 async function readOptional(path) {
@@ -181,6 +181,8 @@ export async function scaffold(root, seed) {
     // kind of pointer, to `morpheus cto guide research-engineer`.
     await put(`.agents/skills/${RESEARCH_ENGINEER_SKILL}/SKILL.md`, t.researchEngineerPointerSkill());
     await put(`.claude/skills/${RESEARCH_ENGINEER_SKILL}/SKILL.md`, t.researchEngineerPointerSkill());
+    await put(`.agents/skills/${DEVOPS_ENGINEER_SKILL}/SKILL.md`, t.devopsEngineerPointerSkill());
+    await put(`.claude/skills/${DEVOPS_ENGINEER_SKILL}/SKILL.md`, t.devopsEngineerPointerSkill());
     // The generated exploration prompt is the session-specific handoff. This
     // small skill is the durable discovery point for any agent that returns once
     // the first review is complete, and makes visual-first review the default

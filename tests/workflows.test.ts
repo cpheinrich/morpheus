@@ -405,6 +405,29 @@ describe("central security remediation opt-in", () => {
   });
 });
 
+describe("Morpheus-only Security import review", () => {
+  it("keeps reviewer and publisher in separate jobs without a contents-write token", async () => {
+    const workflow = await readFile(join(DIR, "security-import-review.yml"), "utf8");
+    expect(workflow).toContain("permission-contents: read");
+    expect(workflow).not.toContain("permission-contents: write");
+    expect(workflow).not.toMatch(/gh pr merge|permission-workflows: write/);
+    expect(workflow).toContain("needs: [discover, review]");
+    expect(workflow).toContain("security-import-review.mjs apply");
+    expect(workflow).toContain("--restricted --safe-mode --strict-mcp-config --tools Read,Glob,Grep");
+    expect(workflow).not.toContain("--dangerously-skip-permissions");
+  });
+
+  it("uses the existing metadata check for a labeled Security PR without changing global CI events", async () => {
+    const workflow = await readFile(join(DIR, "review-metadata.yml"), "utf8");
+    expect(workflow).toContain("github.event.label.name == 'security-import-reviewed'");
+    expect(workflow).toContain("security-import-proof:");
+    expect(workflow).toContain("security-import-verified: ${{ needs.security-import-proof.outputs.verified == 'true' }}");
+    expect(workflow).toContain("always() &&");
+    const ci = await read("ci.yml") as { on?: { pull_request?: { types?: string[] } } };
+    expect(ci.on?.pull_request?.types).not.toContain("labeled");
+  });
+});
+
 describe("vercel-deploy.yml", () => {
   it("is an atomic reusable deploy workflow with explicit credentials", async () => {
     const wf = (await read("vercel-deploy.yml")) as {
@@ -946,14 +969,23 @@ describe("ci.yml", () => {
     expect(wf.on?.pull_request?.types).toContain("ready_for_review");
     expect(wf.on?.pull_request?.types).toContain("synchronize");
 
-    // No caller-level skip, on this job or any other: the delivery check must
-    // be reported on every push for required-check protection to be satisfiable.
+    // Required reusable callers must still report. Optional expensive jobs
+    // may skip on a verified path decision; node skips only inside its callee.
     // One deliberate exception: `pr` skips an unlabelled *draft*, using exactly
     // that unreported state as "waiting". A draft cannot merge anyway, and
     // marking it ready (a trigger here) or labelling it runs the check.
     for (const [name, job] of Object.entries(wf.jobs ?? {})) {
       if (name === "pr") {
         expect(job.if).toBe(`\${{ ${PR_CHECK_CALLER_IF} }}`);
+        continue;
+      }
+      if (name === "node") {
+        expect(job.if).toBe("${{ !cancelled() }}");
+        continue;
+      }
+      if (["codex-claude", "qa-browser", "artifact-abi"].includes(name)) {
+        expect(job.if).toContain("needs.changes.result != 'success'");
+        expect(job.if).toContain("!cancelled()");
         continue;
       }
       expect(job.if, `${name} must run on every push`).toBeUndefined();
@@ -2451,18 +2483,17 @@ describe("ios-ci.yml", () => {
     expect(String(upload?.if)).toContain("always()");
     expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     expect(String((upload?.with as Record<string, unknown>)?.path)).toContain(
-      "${{ steps.ios_paths.outputs.screenshots }}",
+      "${{ steps.artifact_screenshots.outputs.payload-root }}",
     );
   });
 
   it("uploads both xcresults and raw logs only when the run fails", async () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const upload = steps.find((step) => step.name === "Upload Xcode failure evidence");
-    expect(upload?.if).toBe("${{ steps.scope.outputs.run == 'true' && failure() && steps.ios_paths.outcome == 'success' }}");
+    expect(upload?.if).toBe("${{ steps.scope.outputs.run == 'true' && always() && steps.native_failure.outputs.failed == 'true' && steps.ios_paths.outcome == 'success' && steps.artifact_failure.outcome == 'success' && steps.artifact_failure.outputs.admitted == 'true' && steps.artifact_failure.outputs.has-files == 'true' && steps.artifact_barrier.outcome == 'success' }}");
     expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     const withBlock = upload?.with as Record<string, unknown> | undefined;
-    expect(String(withBlock?.path)).toContain("${{ steps.ios_paths.outputs.results }}");
-    expect(String(withBlock?.path)).toContain("${{ steps.ios_paths.outputs.logs }}");
+    expect(withBlock?.path).toBe("${{ steps.artifact_failure.outputs.payload-root }}");
   });
 
   it("passes caller-controlled values through env rather than script substitution", async () => {
@@ -2686,7 +2717,7 @@ describe("local review metadata", () => {
   it("reruns only conventions without replacing build/test statuses", async () => {
     const wf = await read("review-metadata.yml") as { on: { pull_request: { types: string[] } }; jobs: Record<string, { uses: string }> };
     expect(wf.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);
-    expect(Object.keys(wf.jobs)).toEqual(["pr"]);
+    expect(Object.keys(wf.jobs)).toEqual(["security-import-proof", "pr"]);
     expect(wf.jobs.pr?.uses).toContain("pr-check.yml");
   });
   it("puts the draft skip on every pr-check caller job, never inside the reusable workflow", async () => {
@@ -2700,7 +2731,8 @@ describe("local review metadata", () => {
     ];
     for (const [name, wf] of callers) {
       expect(wf.jobs.pr?.uses, name).toContain("pr-check.yml");
-      expect(wf.jobs.pr?.if, name).toBe(want);
+      expect(wf.jobs.pr?.if, name).toBe(name === "review-metadata.yml"
+        ? `\${{ always() && (${PR_CHECK_CALLER_IF}) }}` : want);
     }
     // Inside, a skip would report `pr / conventions` as skipped, which satisfies protection.
     const inner = await read("pr-check.yml") as { jobs: { conventions: { if?: string } } };

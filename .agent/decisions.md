@@ -1,7 +1,67 @@
 # Decisions
 
+**Continuous HQ reads extend the callable transport** — 2026-10-25.
+Keep one private per-company bounded board/agent/comment snapshot, published only by the
+configured connector and read only after current human authorization. Existing legacy HQ
+allowlists may pin exact verified UID/email pairs without migrating claims or widening access.
+The daemon uses first-party Firebase token refresh, distinct lifetime/pass ownership locks and
+the existing uncertain-operation journals; no second scheduler, Pool or chat authority.
+Considered p-retry8.0.1 (modified2026-09-01; one direct dependency) and Firebase13.1.0
+(modified2026-10-21;31 direct SDK packages). Fixed domain polling and the documented first-party
+refresh endpoint fit existing Node fetch/timers and Zod, without another runtime dependency.
+Source verification, consumer rollout and native-work acceptance remain separate.
+
+**Failed repair diagnostics are a separate evidence-only record** — 2026-10-25.
+Use `cd record --kind repair-diagnostic` with exact existing work/task and latest
+failed execution identity, bounded untrusted canonical JSON and the normal
+GitHubStore CAS/event path. Preserve existing active-attempt guards and every
+controller field except the exact work's deduplicated evidence. A genuine note
+receipt survives normal owner progression; target readback is observation, never
+permission to resume, fund or apply anything. Keep consumer operator adoption and
+runtime proof separate. This small CD-specific boundary reuses installed Zod,
+canonical hashing and the existing store; no generic module or dependency is needed.
+
+**HQ native qualification is a separate explicit operator path** — 2026-10-25.
+Use the dedicated Firebase demo emulators, actual Manager HQ facade and existing
+single Pool, with fixtures first and fresh native quota before bounded test turns.
+Keep default tests provider-free and retain unknown/refused providers honestly.
+Considered Commander15.0.0 (registry modified2026-09-02, no runtime dependencies);
+Node's existing `parseArgs` handles two fixed qualification modes without a new
+CLI framework. The admission/evidence harness is domain-specific and adds no package.
+
+**Paperclip Markdown views derive from exact canonical closeouts** — 2026-10-25.
+The optional operator prototype keeps its frozen canonical JSON identity and emits
+an adjacent deterministic view with inert display fences and digest-only local
+links. Preserve earlier records/views/blobs with a bounded exact-commit Git object
+comparison; Git storage alone is not append-only. Existing JSON-only records may
+gain views without changing their identity. This does not establish live-source
+atomicity, completeness, acceptance authority or PM completion.
+Considered marked 18.1.1 (modified 2026-10-12; no runtime dependencies) and simple-git
+4.0.2 (modified 2026-09-26; five direct dependencies). Fixed domain Markdown emission
+and native Git object/tree operations fit the existing Node/Zod/crypto boundary;
+no Markdown parsing engine, generic Git wrapper or new dependency is needed.
+
 Choices Chris made and why. Distilled from status replies — the archive in `status/` is the
 raw record; this is the part worth reading.
+
+**Claude-coordinated Codex runs are keyed by worktree, not by Claude session** — 2026-10-25.
+A Claude session may own multiple concurrent Codex delegations, subject to the existing global
+`maxConcurrent` cap, while one canonical working directory still admits only one active writer.
+Run history belongs to the Claude task; native Codex session ids and autonomous-supervision counts
+remain keyed by working directory so `needs_input` resumes cannot cross worktrees. Run-specific
+wait, view, status and stop operations accept `runId`; the single-run default remains compatible,
+but multiple active runs require an explicit id and report the choices. New installations route
+automatically only below 20% remaining; a saved explicit threshold is preserved.
+
+**Morpheus/Paperclip linkage is explicit and one-to-many** — 2026-10-23. Chris approved deeper
+integration with one roadmap parent linked to multiple execution jobs. Git retains repository,
+branch, source SHA, acceptance references, exact upstream IDs and independently verified evidence;
+Paperclip retains live jobs/status. Completion cannot close Git work or waive claim/review/CI/merge.
+The opt-in operator bridge uses existing PM parsing, Zod, Node Git/crypto/fetch and a small
+Python plist/auth rollout boundary; it adds no scheduler, login sharing or runtime dependency.
+Considered Commander 15.0.0 (registry modified 2026-09-02, no runtime dependencies); Node's
+existing `parseArgs` fits five fixed operator commands without a CLI framework. Authenticated
+private deployment and actual credential/isolation probes precede consumer qualification.
 
 **Consult this before proposing something that contradicts a settled choice.** If a decision
 here looks wrong, say so and ask — do not quietly work around it.
@@ -1168,6 +1228,24 @@ closed. This compatibility surface must be reverified after Codex updates. Claud
 cannot atomically disable paid overage per invocation; account-level extra usage must be
 disabled for a hard subscription-only spend boundary. No API-key fallback is implemented.
 
+**Remote pool workers run through Paperclip's process adapter, not its native Runner** —
+2026-10-24 (MO-26-10-24-00.59.32). Chris asked to delegate interactively from the Codex desktop
+conversation to remote Claude and Codex workers through the existing bridge and Paperclip. The
+pinned 2026.1012.0 Runner was considered first and rejected for this path: its Claude profile runs
+the Agent SDK under an isolated config with `ANTHROPIC_API_KEY`/`CLAUDE_CODE_OAUTH_TOKEN`, and its
+Codex profile pins CLI 0.160.0 with a staged credential home, so neither uses the host's own
+sign-in without credential migration or a new billing path. One Paperclip issue is a pool
+conversation and each provider turn one process-adapter run; the Paperclip-spawned runner owns the
+SSH lease, the desktop bridge only observes and writes controls. Controller and coordinator share a
+host in this version because the process adapter has no inbound channel. A per-turn atomic claim,
+not Paperclip idempotency, bounds provider launches. Uses the system `ssh` client (as the pilot
+does) instead of an SSH library such as ssh2, and the existing guardian, Zod and MCP SDK; no new
+dependency. Live acceptance, including remote Claude pending native sign-in, is separate.
+*Refined the same day after live runs:* the runner follows Paperclip's existing completion
+contract with its run credential (run-attributed comment plus `done`/`blocked` disposition, no-op
+wakes only observe) instead of disabling upstream repair, follow-ups use the
+explicit `resume` intent, and a turn is admitted only on its exact upstream submission marker.
+
 **The Codex/Claude bridge passes any explicit Claude model id to the CLI** — 2026-10-08
 (MO-26-10-08-23.01.20). The `subscriptionModels` allowlist is gone: it refused Claude Fable 5.1
 the day it was needed, and the Claude CLI already refuses an unavailable model at the first
@@ -1178,6 +1256,17 @@ paid-credit-only model — is kept as an explicit refusal of those aliases. Ids 
 bracketed context suffix such as `[1m]`, never a leading dash) so a value can never be read as
 another CLI flag. A saved
 `subscriptionModels` key still parses and is ignored, reported by `doctor`. No dependency.
+
+**An unmapped Codex model falls back to `opus` instead of blocking delegation** — 2026-10-24
+(MO-26-10-24-18.48.39, #479). "No Claude model mapping for Codex model gpt-6.1-sol" stopped a
+delegation until the user was asked to pick a model; every Codex release after the plugin's
+`modelMap` does the same. Chris authorized an automatic fallback (latest Opus or Fable) for the
+whole class. `modelFallback` defaults to the family alias `opus`, which the installed CLI
+resolves, so no discovery call or model question is needed; Fable is not assumed available.
+Explicit overrides and `modelMap` still win, moving aliases stay refused (the setting rejects
+them), and `null` restores the refusal with a message naming the setting. The run's
+`selection` and `claude_inspect` report `source`/`codexModel`/`reason`. It is not a retry on
+CLI errors and adds no API-key or overage path. Existing settings load with the default.
 
 **Selected native tests retain complete execution evidence** — 2026-09-26. The reusable iOS
 workflow accepts optional explicit test identifiers and a caller-owned selection manifest and
@@ -1504,3 +1593,139 @@ raw test results or refresh its artifact-verification time. Failed terminal clea
 and uploader lease expiry do not discard accepted bytes. Existing provider,
 pause/cursor and receipt guards remain unchanged. This small domain-specific guard
 needs no new dependency, cache, schema, API or generic recovery framework.
+
+## Artifact admission snapshots the source before uploading — 2026-10-23
+
+Keep the pinned maintained GitHub artifact uploader and normal archive layout; do not
+write another ZIP implementation or switch to raw/nested archives. A small domain
+boundary in dependency-free Python owns six exact source channels, checked byte/name
+accounting, stable copying and a final whole snapshot verification. This is specific to
+our native evidence/receipt/audit layouts, so no generic snapshot or retry dependency is
+introduced. Every selected native stage must succeed before any native uploader, and
+always/failure uploads still require their own successful admission. CI-only browser
+traces use a separate 64 MiB/one-day role. Explicit 1200/30 processing values preserve
+normal defaults without treating a wall-clock loop as a hard 41-call cap. See
+[the contract](../docs/artifact-snapshots.md); source/ABI review, consumer adoption,
+provider retention and financial/operational qualification stay separate.
+
+**Receipt staging follows the producer's invocation identity.** The run/attempt/channel
+key alone collides when the existing action uploads two apps in one job. Bind only that
+channel's leaf to the full SHA-256 of its validated canonical receipt directory; changed
+output availability must not buy a retry. Other leaves and all byte/retention limits stay
+unchanged. Distinguish missing optional audit roots from dangling links. This corrects
+the source boundary without adding a caller namespace, retry or provider behavior.
+
+## Reviewed source funding is an explicit administrative reserve boundary — 2026-10-24
+
+An independently reviewed source grant may fund one exact source publication request
+through `cd budget reserve`, with its own positive safe-integer amount and aggregate
+ceiling. Engagement values and human evidence stay in the reviewed input, never in
+shared constants. Keep native configuration, ordinary paid reservation admission,
+controller policy, stored epoch/digest and old paid identities unchanged. The
+configured at-most-$250 guard in `reservePaid` and ordinary `cd budget reserve`
+refuses new paid reservations that would exceed it; exact old reserved paid
+identities still replay. Local delivery intent creation, attempt planning and
+dispatch are not gated by this dollar guard and retain their existing controls.
+The grant pins a strict finite
+source request in the `source-ci-` namespace; it grants no native or provider action.
+Snapshot inputs, check before replay and at every fresh CAS callback, and require
+the complete owner-bound envelope receipt and exact reserved paid object at readback.
+The hash is operator attestation/input integrity, not human authentication or a
+same-user sandbox. This is a small domain-specific boundary using existing Zod,
+canonical hashing and normal GitHubStore CAS; no generic module or new dependency
+is needed. Actual source publication, financial review and consumer use remain
+separate gates.
+
+
+## Web QA pins preserve semantic HTML and viewport JPEGs at placement — 2026-10-24
+
+MO-26-10-24-20.37.28, #482. Chris requested compact underlying HTML/hierarchy and observable UI state as primary evidence, with a quality-0.5 JPEG of the visible application viewport at each pin (longest edge 1600). Freeze both before focus/navigation; asynchronous resource work renders an inert frozen clone rather than reading the later live page. Stable route/view/entity and target fingerprints control markers independently from captured transient state; element/view/page classification keeps general feedback meaningful. Bound metadata, clone work, image bytes and browser storage; image failures retain usable HTML evidence. Legacy full-page anchor coordinates and iOS PNG transport remain compatible.
+
+Reused modern-screenshot 4.7.0 (registry current 2026-04-16, zero runtime dependencies). Its public render API clones asynchronously, so it cannot freeze a live page at click without the small first-party synchronous snapshot boundary. A new capture framework was rejected; no dependency was added. IndexedDB is the native durable boundary for pending snapshots and images.
+
+## Placement freezes share initial-style resets instead of repeating token dictionaries — 2026-10-24
+
+MO-26-10-24-22.06.12, #488. Computed ordinary properties resolve CSS variables; copying every inherited custom property onto every node adds no frozen visual information. Compare resolved properties with an initial-value probe and put the initial reset in one shared clone/pseudo stylesheet. Keep resolved color properties explicit because initial border/outline/decoration colors depend on currentColor. Keep display, direction and unicode-bidi explicit; inline `all` is unsuitable because CSSOM expands it plus overrides into longhands. Preserve the existing first-party freeze boundary and modern-screenshot dependency, with unchanged 120 ms/4000-node/2 MiB/JPEG limits. No generic package or new dependency is needed for this correction. Apply document scroll exactly once; reserve child translation for nested scroll containers. Image errors remain beside the editor independently of transient save status.
+
+## Web preview identity is independent of project display labels — 2026-10-24
+
+MO-26-10-24-23.43.56, #494. A manifest rename must not hide an owned running supervisor or make stop falsely report success. Keep the checkout/dev-directory key but put new sessions under a stable web cache/launchd namespace. Discover legacy namespace records without moving a live lease, validate exact stored root/directory and registered supervisor argv/state-file binding, and refuse foreign or ambiguous owners. Endpoint identity includes the checkout root; port/upstream matches alone never authorize termination. Resolve colliding legacy/stable labels by the registered state-file argument, never directory order. Confirm absence of both overlay and spawned dev TCP listeners, including unhealthy or stalled HTTP services. Failed or unconfirmed stop keeps evidence and reports that limitation.
+
+Considered npm `launchctl` 1.1.1 (registry modified 2022-06-19; four direct native/legacy dependencies). It does not solve this ownership protocol. Reuse the existing command runner and native filesystem APIs for this small Morpheus-specific boundary; no new package or generic process manager.
+
+## Enumerate ordinary computed-style names once per placement freeze — 2026-10-24
+
+MO-26-10-24-23.34.43, #493. A populated guide modal makes repeated native computed-style enumeration expensive even when inherited custom-property values are discarded. Reuse ordinary property names from the existing browser initial-value probe within that one freeze; read every resolved value again per element/pseudo and retain explicit colors/reset exceptions. This adds no cross-pin cache, dependency or generic serializer. A bulk cssText assignment was measured and rejected because it did not reduce the dominant enumeration work. Production time/node/byte/JPEG caps and immutable capture remain unchanged.
+
+## Scope PR CI conservatively; keep required names and both Python boundaries — 2026-10-25
+
+MO-26-10-24-23.13.37. Ordinary prose can skip expensive checks only after a verified
+cumulative PR comparison; unknown paths/history/detector outputs run all. Main pushes
+remain the full integration backstop. PM and applicable PR conventions are independent.
+Always invoke the reusable Node workflow and skip its inner job to preserve the
+required `node / check` status. Its new boolean defaults true for existing consumers.
+Retain Python 3.9/3.14 filesystem/environment tests on one runner; run the fixed
+Node 24 artifact transport once with unchanged admission/pins/caps/retention.
+
+Considered dorny/paths-filter v4.0.3 (published 2026-08-05; Node >=24; four runtime
+dependencies: @actions/core, @actions/exec, @actions/github and picomatch). Native
+Git already supplies the complete checkout/diff and Node is already present. This
+repository-specific four-flag selector is under 100 lines and explicitly handles
+uncertain comparisons and both rename paths. Build it here without a new action,
+generic filtering framework or dependency. See docs/ci-scope.md for the input map.
+
+## DevOps responsibility and subject tags live in Morpheus — 2026-10-25
+
+MO-26-10-25-03.01.09. Chris asked for a DevOps persona like the CTO and research engineer,
+responsible primarily for timely CI/CD and incident follow-through, with event/deadline wakeups
+and deeper reasoning when needed. He accepted avoiding a forever chat; durable incident records
+and bounded reasoning preserve context while the existing controller remains the effect owner.
+The skill uses the existing canonical/mirror/generated-guide/scaffold-pointer path. Source
+availability does not claim that a new live supervisor has been deployed.
+
+Chris also explicitly wants multiple tags on Morpheus's own roadmap tickets and worklogs,
+regardless of separate Paperclip exploration. `tags` is optional open-vocabulary subject metadata;
+CI/CD or infrastructure work uses `engineering` and `devops`, with narrower tags added as useful.
+Tags confer no owner or authority. Legacy records remain valid, no blanket historical tagging is
+performed, and a queue can later project this contract without becoming its source of truth.
+Existing Zod/frontmatter/Node APIs fit these small domain fields and deterministic reads; no
+additional generic tag framework or dependency is introduced.
+
+## Codex-Claude installer probes exact shared tool-name contracts — 2026-10-25
+
+MO-26-10-25-05.52.02. The installer validates each installed MCP server by the exact set of
+names in one shared contract that also drives the server's registration loop. Counts are not a
+contract: adding the remote pool tools correctly grew the Codex-facing server from nine to twenty
+tools and made a valid installation fail its stale count assertion. A failure names the missing,
+unexpected and observed tools, and the installer prints that message before restoring the prior
+copy. Keep this as a small dependency-free module beside the server entry points; a second schema
+or generic contract package would add a drift surface rather than remove one.
+
+## Verify cancelled SourceCI by exact provider lineage — 2026-10-25
+
+MO-26-10-25-04.11.25. A repair can have unstarted cancelled Actions jobs and a
+newer successful SourceCI run at the same reviewed head in different check suites.
+The source-repair verifier may discharge only those cancellations through exact
+provider identities, complete/latest inventories, unique job context and a stable
+finite reacquisition; genuine failures, pending/unknown and external cancellations
+remain blocking. The authoritative current SourceCI contract permits floated control
+refs to advance. Retain their resolved provenance and reject contradictory immutable
+pins, rather than requiring incidental SHA equality across runs. Same-run rerun
+supersession remains unsupported. This is a small GitHub repair-domain join using
+existing Zod/API seams, so no generic retry framework or dependency is introduced.
+Runtime worker adoption remains a separately qualified normal operation.
+
+## Workflow status functions stay in supported conditionals — 2026-10-25
+
+MO-26-10-25-05.37.37. GitHub rejects status functions in step environment and
+script expressions before native jobs start. Capture native failure with a
+failure-only step conditional and a literal true output, before artifact stages;
+an absent output never selects diagnostics. Keep all-selected admission and
+allowed-skip/test rules unchanged.
+
+Adopt actionlint 1.7.12 (publisher release 2026-03-30; twelve direct and two
+indirect Go dependencies, distributed as one static binary), rather than building
+an Actions expression parser. Morpheus enables a default-off reusable Node CI
+input and verifies the official Linux X64 archive's SHA-256 before executing it
+inside the existing required check. Real checker regressions cover unsupported
+status contexts. No runtime package, new runner job or generic parser is added.

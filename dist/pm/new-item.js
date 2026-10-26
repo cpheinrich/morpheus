@@ -5,7 +5,7 @@ import { claimedNumbers } from "./claim.js";
 import { itemFilename, periodInZone, timestampId } from "./id.js";
 import { today } from "./frontmatter.js";
 import { parseArtifact } from "./parse.js";
-import { ARTIFACTS } from "./schema.js";
+import { ARTIFACTS, WorkTags } from "./schema.js";
 import { headSha } from "./git-sha.js";
 /** Infix per artifact kind. Roadmap items get the bare project prefix. */
 const INFIX = {
@@ -108,6 +108,9 @@ function frontmatter(fields) {
 }
 /** Create a new item file with valid frontmatter. */
 export async function createItem(opts) {
+    const tags = opts.tags === undefined ? undefined : WorkTags.parse(opts.tags);
+    if (tags?.length && opts.kind !== "roadmap")
+        throw new Error("Tags are supported on roadmap items and worklogs.");
     const { productDir, kind, prefix, title, cwd } = opts;
     const dir = join(productDir, ARTIFACTS[kind].dir);
     await mkdir(dir, { recursive: true });
@@ -126,6 +129,7 @@ export async function createItem(opts) {
                 title,
                 status: "backlog",
                 priority: opts.priority ?? "P2",
+                tags: tags?.length ? tags : undefined,
                 goal: opts.goal,
                 owner: "agent",
                 prs: [],

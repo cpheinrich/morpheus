@@ -11,6 +11,10 @@ name: Node CI
 on:
   workflow_call:
     inputs:
+      run-check:
+        description: Skip the inner job while retaining its reported check name.
+        type: boolean
+        default: true
       node-version:
         type: string
         default: "22"
@@ -34,6 +38,10 @@ on:
       run-lint:
         type: boolean
         default: false
+      run-workflow-lint:
+        description: Validate all repository workflows with pinned actionlint (Linux X64).
+        type: boolean
+        default: false
       build-script:
         description: Package script that produces the deployable output.
         type: string
@@ -53,6 +61,7 @@ on:
 
 jobs:
   check:
+    if: ${{ inputs.run-check }}
     runs-on: ${{ inputs.runner }}
     defaults:
       run:
@@ -72,6 +81,25 @@ jobs:
 
       - name: Install
         run: pnpm install --frozen-lockfile
+
+      - name: Validate GitHub Actions workflows
+        if: ${{ inputs.run-workflow-lint }}
+        working-directory: .
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          test "$RUNNER_OS/$RUNNER_ARCH" = Linux/X64
+          tool_dir="$(mktemp -d "$RUNNER_TEMP/actionlint.XXXXXX")"
+          curl --fail --silent --show-error --location --connect-timeout 15 --max-time 90 \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            --output "$tool_dir/actionlint.tar.gz"
+          printf '%s  %s\n' 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8 "$tool_dir/actionlint.tar.gz" \
+            | sha256sum --check --status
+          tar -xzf "$tool_dir/actionlint.tar.gz" -C "$tool_dir" actionlint
+          rm "$tool_dir/actionlint.tar.gz"
+          "$tool_dir/actionlint" -version
+          "$tool_dir/actionlint" -shellcheck= -pyflakes=
+          echo "$tool_dir" >> "$GITHUB_PATH"
 
       - name: Typecheck
         run: pnpm typecheck

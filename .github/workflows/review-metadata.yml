@@ -6,9 +6,34 @@ on:
     types: [edited, labeled, unlabeled]
 
 jobs:
+  security-import-proof:
+    if: github.repository == 'cpheinrich/morpheus' && github.event.action == 'labeled' && github.event.label.name == 'security-import-reviewed' && github.event.pull_request.user.login == 'morpheus-security[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      checks: read
+    outputs:
+      verified: ${{ steps.verify.outputs.verified }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify distinct App receipts and the exact PR head
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/security-import-review.mjs verify-pr "$PR_NUMBER" "$EXPECTED_HEAD"
+
   pr:
+    needs: security-import-proof
     # Same condition as ci.yml: an unreviewed draft waits instead of failing.
-    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'agent-reviewed') || contains(github.event.pull_request.labels.*.name, 'manager-reviewed') }}
+    # `always()` keeps ordinary metadata checks running when the narrow proof job is skipped.
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'agent-reviewed') || contains(github.event.pull_request.labels.*.name, 'manager-reviewed')) }}
     # The reusable check reads the live pull request through the job token;
     # a called workflow can only narrow what its caller grants.
     permissions:
@@ -17,3 +42,4 @@ jobs:
     uses: ./.github/workflows/pr-check.yml
     with:
       morpheus-ref: ${{ github.sha }}
+      security-import-verified: ${{ needs.security-import-proof.outputs.verified == 'true' }}

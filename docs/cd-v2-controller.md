@@ -145,6 +145,69 @@ pause, cursor and receipt checks still determine delivery; this is not authority
 reupload, manufacture raw results or count a workflow conclusion as availability.
 An artifact name, count or workflow conclusion never proves full tests.
 
+`cd record --kind repair-diagnostic --config ABS --evidence FILE` appends
+untrusted diagnostic data to one existing repair after its latest execution
+attempt has failed. This is separate from `record --kind failure`, which still
+requires a current active attempt. The strict JSON file contains:
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "repair-diagnostic",
+  "workId": "repair-staging-example-2",
+  "taskDigest": "<exact stored task SHA-256>",
+  "intentId": "staging-example",
+  "attemptId": "staging-example-a2",
+  "dispatchEffectId": "<exact failed dispatch identity>",
+  "sourceSha": "<exact 40-character failed/current source SHA>",
+  "controlSha": "<exact 40-character failed control SHA>",
+  "runId": "100",
+  "runAttempt": "1",
+  "diagnostic": {
+    "summary": "Separately qualified corrected capability",
+    "evidence": ["synthetic-proof:reviewed-source"]
+  }
+}
+```
+
+Use actual exact identities; the angle-bracket values above are placeholders.
+The work must be the unique latest noncomplete repair for that undelivered,
+still-repairing intent. Its stored task and supplied task digest must agree.
+The latest attempt must be failed, its source must still be the intent's current
+source, and both Actions run fields must already be bound exactly. The command
+never fills run identities, creates work or retargets a sibling. These conditions
+are checked before a new note and in every CAS callback after a conflict.
+
+The file must be a regular UTF-8 JSON file containing 1..16384 bytes; stdin is
+refused. Canonical JSON is also limited to 16384 UTF-8 bytes. Summary text is
+nonblank and at most 8192 characters, with at most eight nonblank evidence strings
+of at most 4096 characters each. Unknown fields and unrelated flags are refused.
+Only the exact work's `evidence` array gains one deduplicated canonical JSON string;
+all controller policy, ownership, leases/fences, task, source/lineage, clocks,
+attempt/test/upload/receipt history, pauses, cursors and funding remain unchanged.
+There is no dispatch, worker wake, provider/model action or capability approval.
+The existing regular worker timer remains the continuation owner.
+
+The full canonical SHA-256 names the `repair-diagnostic-<sha256>` transition/event.
+Success returns a small JSON result with `head`, `replayed`, `result` (the
+immutable work/task/intent/attempt and diagnostic SHA-256 receipt), `eventId`,
+`eventOwner`, `verifiedReadbackHead` and
+`targetCurrent`, an observation of the target at that readback. A normal owner may
+advance after the note commits: a genuine replay still acknowledges that saved
+note with `targetCurrent: false`, without restoring work or authorizing a retry.
+A new note for a completed or changed target is refused. Receipt/owner/evidence
+collisions are refused. An unknown write/readback outcome requires observing that
+exact transition and work; it does not justify a new ID, another target or a
+blind retry. Evidence remains diagnostic data, never instructions, authority,
+funding or proof of actual consumer/runtime adoption.
+The exported `recordRepairDiagnostic(store, input)` API returns the same bounded
+result. `appendRepairDiagnostic(state, input)` is its pure evidence-only reducer;
+the public CLI uses the normal store API and never emits the full state.
+A consumer that freezes runtime files must explicitly admit `dist/cd/index.js`
+as its package API entry and retain its transitive compiled imports, including
+`dist/cd/repair-diagnostic.js`. A working CLI entry does not prove that this
+additional package entry is included in the consumer's actual runtime manifest.
+
 ## Upload and internal completion
 
 The reusable upload hook is:
@@ -268,6 +331,31 @@ repairs may complete from direct evidence without inventing a code PR; pre-uploa
 retry still requires executor quiescence. Accepted/uncertain binaries continue
 provider reconciliation under their original identity.
 
+The repair check gate reads the exact head's paginated `filter=all` inventory.
+Failures, pending/unknown results and non-Actions cancellations still block. The
+only cancellation exception is a completed GitHub Actions job with explicit empty
+steps and unassigned runner fields, linked through its exact check/job/run IDs to
+a strictly later successful SourceCI run in the same PR head repository/ref,
+event, workflow ID/path and unambiguous job-name context. The successor workflow,
+job and check must all succeed; skipped/neutral do not discharge a cancellation.
+Same-run rerun supersession is deliberately unsupported.
+
+For that exception, the worker reads complete same-head workflow inventories,
+including newer queued runs that have not created checks, and complete selected
+attempt-job lists. Counts, duplicate identities, malformed metadata, API failures
+or changes across two finite acquisition views retain the checkpoint. The bounds
+are 10,000 checks/jobs and fewer than1,000 same-head runs, because GitHub caps the
+filtered workflow search at1,000. This establishes a bounded observed view, not
+a lock against future provider events. Resolved reusable-workflow provenance is
+retained in the verified result evidence. A floated `@main` may advance under
+authoritative SourceCI; a declared immutable reference cannot contradict its SHA.
+The exact merged PR/head, local independent-review record and actual merged-source
+checks still run. A source merge does not update an already loaded worker runtime;
+consumer adoption is a separate normal operation. See GitHub's
+[check-run filter](https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference),
+[workflow search bound](https://docs.github.com/en/rest/actions/workflow-runs#list-workflow-runs-for-a-repository)
+and [attempt jobs](https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run-attempt).
+
 For multiple native workers, pass `--host-id ID` to `cd worker --executor local`.
 Assign a distinct, stable nonsecret ID to each Mac/user/Codex session store; reuse
 it across restarts of that same store, and change it after replacing or moving the
@@ -375,6 +463,17 @@ timeouts retain liability and settled tombstones prevent duplicate charging.
 Together admission cannot exceed the configured ceiling, at most $250. The
 controller has no implicit paid-provider fallback. Operational acceptance must
 include any task spend incurred before ledger initialization.
+
+An optional explicit [reviewed source publication grant](cd-source-finance.md) applies
+only to budget reserve in the `source-ci-` namespace. It binds the actual request,
+supplied and stored configuration identities, epoch, finite source scope, amount,
+aggregate ceiling and short admission window, with normal CAS and complete receipt
+readback. Grant values come from that engagement's independently reviewed evidence.
+The ordinary `reservePaid`/`cd budget reserve` guard still refuses new paid reservations
+that would exceed its configured ceiling, at most $250; exact old reserved paid identities
+still replay. This dollar guard does not gate local delivery intent creation, attempt
+planning or dispatch, whose other existing controls remain unchanged. The source grant
+itself authorizes no native operation and dispatches no work or provider effect.
 
 Focused tests cover protocol counterexamples and actual local Git, ES256 signing,
 receipt producer and artifact bytes. They do not count

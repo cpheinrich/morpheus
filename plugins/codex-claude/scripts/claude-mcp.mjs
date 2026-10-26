@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { call } from "../src/client.mjs";
 import { delegatedMarker } from "../src/config.mjs";
+import { codexMethods } from "./tool-contract.mjs";
 const server = new McpServer({ name: "claude-codex", version: "0.1.0" });
 const session = {
   sessionId: z
@@ -13,7 +14,16 @@ const session = {
       "Current Claude session id, as given by the routing hook; never an invented id.",
     ),
 };
-const run = { runId: z.string().uuid() };
+const run = {
+  ...session,
+  runId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      "Delegated run id. Optional only when this session has at most one active run.",
+    ),
+};
 const specs = {
   inspect: [
     "codex.inspect",
@@ -26,6 +36,7 @@ const specs = {
     {
       ...session,
       prompt: z.string().min(1).max(200000),
+      runId: z.string().uuid().optional(),
       replySource: z.enum(["claude", "user"]).optional(),
       replyReason: z.string().optional(),
       cwd: z.string().optional(),
@@ -38,18 +49,18 @@ const specs = {
     },
   ],
   view: [
-    "view",
+    "codex.view",
     "Open a read-only live output page on the execution host.",
     run,
   ],
-  status: ["status", "Read persisted Codex run status.", run],
+  status: ["codex.status", "Read persisted Codex run status.", run],
   wait: [
-    "wait",
+    "codex.wait",
     "Wait up to 25 seconds for Codex progress or completion. Renews the owner lease.",
     { ...run, seconds: z.number().min(0).max(30).default(25) },
   ],
   stop: [
-    "stop",
+    "codex.stop",
     "Stop this run and its owned process group; retain the saved Codex session for resumption.",
     run,
   ],
@@ -64,7 +75,8 @@ const specs = {
     { ...session, owner: z.enum(["claude", "codex"]) },
   ],
 };
-for (const [name, [method, description, inputSchema]] of Object.entries(specs))
+for (const name of codexMethods) {
+  const [method, description, inputSchema] = specs[name];
   server.registerTool(
     `codex_${name}`,
     { description, inputSchema },
@@ -85,4 +97,5 @@ for (const [name, [method, description, inputSchema]] of Object.entries(specs))
       }
     },
   );
+}
 await server.connect(new StdioServerTransport());

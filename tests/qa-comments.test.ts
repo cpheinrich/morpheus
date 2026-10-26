@@ -206,7 +206,10 @@ setTimeout(() => {
     await writeFile(join(root, "local/qa-comments/responder.json"), JSON.stringify({ agent: "codex:background", command: [process.execPath, script], pollMs: 250 }));
     const config = await loadResponderConfig(root);
     const controller = new AbortController();
-    const worker = runQaResponder(relative(process.cwd(), root), config, controller.signal, () => undefined);
+    let secondCompleted = false;
+    const worker = runQaResponder(relative(process.cwd(), root), config, controller.signal, (message) => {
+      if (message === "QA responder: resolved responder-second") secondCompleted = true;
+    });
     try {
       for (let i = 0; i < 50; i++) {
         const marker = await responderStatus(root);
@@ -218,9 +221,11 @@ setTimeout(() => {
       expect(await isResponderActive(root)).toBe(true);
       await writePendingBatch(root, second);
       for (let i = 0; i < 100; i++) {
-        if ((await showBatch(root, second.id))?.batch.status === "resolved") break;
+        // A resolved file precedes child cleanup; wait for the owner's completion receipt.
+        if (secondCompleted) break;
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
+      expect(secondCompleted).toBe(true);
       expect((await showBatch(root, first.id))?.batch.status).toBe("resolved");
       expect((await showBatch(root, second.id))?.batch.status).toBe("resolved");
       expect(await readBatchClaim(root, first.id)).toBeNull();
@@ -868,12 +873,12 @@ describe("qa comment placement frames", () => {
     frame: { width: 100, height: 200, dataUrl },
   });
 
-  it("rejects a non-PNG or empty pin frame and writes nothing", async () => {
+  it("rejects unsupported or empty pin frames and writes nothing", async () => {
     const root = await mkdtemp(join(tmpdir(), "morpheus-qa-pin-frame-"));
     try {
       const preview = { url: "http://127.0.0.1:3200/", kind: "serve-sim" as const };
-      await expect(recordBatch(root, "evo", { comments: [comment("data:image/jpeg;base64,Zmlyc3Q=")] }, preview))
-        .rejects.toThrow(new BatchRejected("comment frame must be a PNG data URL"));
+      await expect(recordBatch(root, "evo", { comments: [comment("data:image/webp;base64,Zmlyc3Q=")] }, preview))
+        .rejects.toThrow(new BatchRejected("comment frame must be a PNG or JPEG data URL"));
       await expect(recordBatch(root, "evo", { comments: [comment("data:image/png;base64,")] }, preview))
         .rejects.toThrow(new BatchRejected("comment frame is empty"));
       expect(await listPending(root)).toEqual([]);
@@ -883,5 +888,21 @@ describe("qa comment placement frames", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("writes bounded JPEG placement frames alongside compatible PNG transport", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-qa-jpeg-"));
+    const preview = { url: "http://127.0.0.1:3200/", kind: "web" as const };
+    const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0xff, 0xd9]);
+    const jpeg = `data:image/jpeg;base64,${bytes.toString("base64")}`;
+    try {
+      const saved = await recordBatch(root, "site", { comments: [comment(jpeg)] }, preview);
+      expect(saved.batch.comments[0]?.frame?.path).toBe("comment-1.jpg");
+      expect(await readFile(join(saved.path, "comment-1.jpg"))).toEqual(bytes);
+      await expect(recordBatch(root, "site", { comments: [comment("data:image/jpeg;base64,Zmlyc3Q=")] }, preview)).rejects.toThrow("invalid signature");
+      await expect(recordBatch(root, "site", { comments: [comment("data:image/jpeg;base64," + "A".repeat(512 * 1024))] }, preview)).rejects.toThrow("exceeds 512 KiB");
+      await expect(recordBatch(root, "site", { comments: [{ ...comment(jpeg), frame: { width: 1601, height: 200, dataUrl: jpeg } }] }, preview)).rejects.toThrow("exceeds 1600 px");
+      await expect(recordBatch(root, "site", { comments: Array.from({ length: 31 }, () => comment(jpeg)) }, preview)).rejects.toThrow("at most 30");
+    } finally { await rm(root, { recursive: true, force: true }); }
   });
 });

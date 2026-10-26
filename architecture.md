@@ -516,6 +516,11 @@ needed.
   and distributed the same way — canonical files beside `agentic-cto`, printed by
   `morpheus cto guide research-engineer` (a reference as `research-engineer/<reference>`), and a
   one-file pointer from `morpheus init` — and the CTO's mandate, budget and gates apply to it.
+- **`devops-engineer`** owns CI/CD delivery health and incident follow-through under the same
+  mandate. It distinguishes eligible deadlines and actual availability from process health,
+  resumes existing repair ownership and keeps memory in durable incident records. It uses the
+  same provider mirrors, guide (`morpheus cto guide devops-engineer`) and scaffold pointers.
+  The skill defines responsibility; it does not activate a second controller or a live supervisor.
 
 ### 7.2 Conventions and how they are enforced
 
@@ -1384,6 +1389,10 @@ It follows the Morpheus Security shape (§18): a public reviewed engine in this 
 private operations repository holding the App key, the subscription token and the schedule, and a
 target that opts in with a committed policy file. Its review is a narrower record than the
 author's, bounded by path checks and refused outright for normative policy.
+The separate Morpheus-only Security import review workflow reuses the Manager's private caller
+and model credential, but gives its reviewer a read-only repository token. It accepts only a
+Security App-attested import candidate, records a separate App-owned result for the exact head,
+and never pushes or merges that candidate. The Security App alone reconciles it after all checks.
 [`docs/runbooks/gh-manager.md`](docs/runbooks/gh-manager.md) is authoritative.
 
 ### 7.14 Paperclip is an opt-in execution pilot, not the delivery authority
@@ -1407,6 +1416,46 @@ controller-restart adoption and served-model attribution are unqualified until a
 deployment and prospective evidence exist. No consumer repository is migrated or auto-dispatched.
 Historical decision evaluations ([`qa/evals/agent-stack/`](qa/evals/agent-stack/README.md)) freeze
 inputs, oracles, prompts and model/effort before execution and claim no productivity gain.
+
+The opt-in [explicit linkage bridge](docs/paperclip-integration.md) binds one roadmap item to
+many immutable Paperclip job records under `.agent/paperclip/`. Each record names repository,
+claimed branch, source SHA and acceptance references; only selected job instructions are copied.
+Git owns intent, exact issue linkage and operator-verified evidence. Paperclip retains live status.
+An operation journal in the common Git directory precedes issue creation; uncertain outcomes
+observe and link exact IDs instead of reposting. Result reconciliation never advances roadmap
+status or bypasses the normal delivery loop. Its private authentication rollout helper preserves
+the existing controller/database and stages reversible configuration; real deployment, worker
+authority isolation and consumer delivery remain explicit qualification gates.
+
+Interactive remote delegation ([design](docs/paperclip-interactive-bridge.md)) lets the Codex
+desktop conversation coordinate remote Claude and Codex workers through the optional
+`codex-claude` bridge (§18.0). One Paperclip issue is one pool conversation and each provider
+turn is one Paperclip process-adapter run; the Paperclip-spawned runner on the controller host
+claims the journaled turn, reserves the account, and holds the SSH session whose stdin is the
+remote guardian's lease. The desktop bridge only journals, reads the Paperclip run log through a
+persisted cursor and writes answer/stop controls, so its loss ends nothing. The native Runner was
+rejected for this path because it stages credentials or API tokens instead of using each host's
+own sign-in; follow-ups are turn-boundary only and live questions exist only for Claude. No
+Paperclip credential reaches a worker host. Live acceptance, including remote Claude (pending
+native sign-in), is separate from the deterministic transport tests.
+
+The opt-in [Firebase HQ transport](docs/paperclip-hq-transport.md) adds a single-company
+connection prototype for the accepted HQ design: Cloud Functions verify the current Firebase
+role or exact pre-existing verified-human mapping, private Firestore commands deliver fenced
+requests, and the Mac initiates outbound claims and publishes receipts through the existing Pool
+owner. A continuous connector renews its own Firebase identity with private refresh credentials
+and publishes one bounded, sanitized board/agent/comment observation through connector-only
+`hqPublish`; current HQ humans read it through `hqSnapshot` with server publication age and
+explicit caps. Paperclip remains the scheduler and live
+conversation authority. Applying commands are not blindly replayed after uncertainty; delivery
+receipts, native termination and Git acceptance are separate. Transport state stays outside the
+broad HQ rules namespace. The existing Mac controller remains v1; consumer deployment, actual
+continuous-authentication recovery, UI/streaming, multi-company routing and inbox migration
+require qualification. Crash-preserved local ownership locks still require operator inspection.
+The local [HQ admission facade](docs/paperclip-hq-actor.md) preserves profile/controller/repository
+pins, while [versioned closeout snapshots](docs/paperclip-closeout.md) preserve frozen input and
+verified attachment bytes without changing PM status. These prototypes are not extracted into
+the kit or installed in consumer HQs yet.
 
 ## 8. Project management as files
 
@@ -1514,6 +1563,15 @@ analytics loop), and `status` of `on-track | at-risk | missed | achieved`. `Requ
 A worklog entry carries `date`, `agent`, optional `roadmap`, `outcome`
 (`shipped | abandoned | blocked | research`), and `summary`.
 
+Roadmap items and worklogs also accept optional `tags: [engineering, devops]`: up to16 unique
+lowercase subject slugs, each up to48 characters. Vocabulary remains project-owned and supports
+multiple overlapping subjects. Tags never grant ownership or authority. New CI/CD/infrastructure
+work carries both `engineering` and `devops`; new worklogs copy applicable item tags, and `pm block`
+does so automatically. Legacy untagged records remain valid and are not silently classified.
+`pm new roadmap ... --tag engineering --tag devops` writes tags; read-only
+`pm tagged engineering devops --json` returns roadmap/worklogs explicitly matching every tag,
+with parse errors reported rather than interpreted as an empty result. See `docs/work-tags.md`.
+
 An item file is frontmatter plus free prose — the schema constrains the metadata, never the body.
 This is the same validation approach used for Firestore documents (§14.1): **one way to describe a
 shape, whether it lands in a markdown file or a database row.**
@@ -1526,6 +1584,12 @@ shape, whether it lands in a markdown file or a database row.**
 ## 9. Testing and QA
 
 Tests are first-class. Agents update tests in the same PR as the code, enforced by CI (§7.2).
+
+Morpheus's own PR CI selects expensive jobs from a verified cumulative diff;
+unknown inputs/comparisons and all main pushes run everything. PM and applicable
+PR conventions retain their existing behavior. The reusable Node workflow defaults
+to running, with an opt-in inner-job skip that preserves its required check name.
+See [CI scope](docs/ci-scope.md) for path inputs and artifact compatibility coverage.
 
 **Colocated with the code they test** — `apps/web/tests/`, `apps/ios/Tests/`, never centralised. An
 agent editing a component should find its test in the same tree. `qa/` holds what spans surfaces or
@@ -1555,6 +1619,12 @@ exclusive on-disk record before acting, resolves it after work, or releases the
 claim on failure. The queue and claim commands are agent-neutral. A webhook is
 an optional notification to a host-managed responder, not an agent scheduler;
 whether a chat can wake or work in parallel is determined by that host.
+Web preview ownership follows the checkout/dev-directory identity rather than a project display
+name. Legacy namespace records are discovered by that identity and acted on only when stored
+root/directory and the registered supervisor's exact state-file argument agree; ambiguous owners
+or unconfirmed shutdowns never become a successful stop report. A shared legacy/stable launchd
+label is resolved by its registered state-file argument. Confirmation requires disappearance of
+both the overlay and any spawned dev listener, irrespective of HTTP readiness.
 An opt-in checkout-local responder can instead invoke any configured agent CLI
 as a separate serial process. Its on-disk owner marker reserves the checkout
 until stopped; later batches accumulate without occupying the interactive chat.
@@ -1579,10 +1649,15 @@ Four of them, each catching what it can so the rung above only sees what genuine
 runs `morpheus review prepare` to print a packet, then explicitly spawns a fresh reviewer
 subagent/session without author chat, responds once, and resumes the same reviewer
 if substantive findings were raised. Minor-only findings need no second pass. A review is capped
-at three turns; a follow-up resolves a blocked turn, or spends a remaining turn on a late
+at three ordinary turns; a follow-up resolves a blocked turn, or spends a remaining turn on a late
 correction after clearance, named by its scope reason. Unresolved substantive disagreements,
 incomplete review, exhausted budgets and a correction needed after the last turn leave the PR
-open and flagged, with auto-merge disabled. No automatic fourth substantive turn; one automatic
+open and flagged, with auto-merge disabled. One additional same-reviewer verification turn may
+cover a small fix to a recorded finding or a late test-only correction: at most four exact changed
+paths, 80 changed test lines, 40 changed non-test lines, five minutes, and cumulative ordinary
+review time at most twice the initial risk ceiling. It cannot follow an incomplete turn or
+finalization, change normative policy, reset the reviewer, or authorize a fifth implementation
+turn. New substantive concerns still block. One automatic
 finalization-only turn per PR is allowed, at five minutes, recorded as `finalization` with the
 reviewer's attested paths, evidence and scope. It must be the last automatic turn and cleared; every later same-reviewer turn requires explicit
 `humanAuthorization`. Its original scope and predecessor stay checked. It cannot resolve a
@@ -3241,6 +3316,20 @@ pending run in a concurrency group even when `cancel-in-progress` is false; a ca
 run can leave an otherwise green pull request blocked. Job-level grouping governs a called job;
 a called workflow's top-level `concurrency` does not govern the caller's run.
 
+Artifact uploads use source-owned private snapshots with a checked ZIP byte envelope,
+not the size of a directory that another process can still grow. The reusable iOS
+workflow stages every selected native channel after its writers and requires one
+all-selected barrier plus each uploader's own successful admission. The upload action
+similarly stages accepted/resource receipts; persistence failure preserves uncertain
+Apple acceptance. Receipt namespaces bind the existing canonical per-invocation receipt
+directory, so two apps remain independent while the same successful/refused invocation
+stays spent even when outputs change. Optional audit absence does not admit dangling links. Names, archive layout and existing native/tool/controller policy stay
+independent of byte admission. A separate exact `artifact-stage-ref` is required for CD;
+ordinary callers retain `main`. Morpheus's browser failure diagnostics have a 64 MiB,
+one-day role, and a bounded synthetic Node 24/Python ABI job qualifies the artifact
+transport. The [artifact snapshot contract](docs/artifact-snapshots.md) states byte math,
+writer/ABI/provider limits and the separate consumer adoption requirements.
+
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
 [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
 Xcode 26.6, the iOS 26.5 simulator runtime, and an iPhone 17 Pro Max destination.
@@ -3388,6 +3477,18 @@ receipt dependency. Missing proof retains the download path; malformed reusable
 proof refuses. The proof is never treated as raw results or re-recorded, and fresh
 Apple readback still owns availability and receipt creation. Upload and group operations have
 durable claims; actual provider receipts complete the original obligation.
+A separate evidence-only repair-diagnostic recorder binds an existing unique
+latest repair/task to its already-bound latest failed attempt. It appends bounded
+canonical diagnostic JSON through the same CAS/event store without changing
+execution, ownership, source, policy, clocks or funding. Current-target checks
+guard each new append; a verified immutable note receipt survives later normal
+owner progression without granting applicability or restarting work.
+A **repair-only control** ([runbook](docs/runbooks/cd-repair-control.md)) can hold new repair-agent admission
+for one exact supplemental validation intent: a namespaced `repair:<intent>` pause that existing delivery
+gates ignore, enforced only by a worker-only entry around an injected unchanged `runWorker` and released
+only after the exact delivered receipt with all target work complete.
+Hosted scheduling (`cd tick` → `scheduleHosted`) is **not** held: a consumer must keep hosted scheduling off while any
+hold exists, and the unchanged `cd worker`/`cd tick` entry points ignore the hold.
 Bounded subscription workers retain immutable tasks, session checkpoints and
 actual quota telemetry. Hosted Claude admission joins shared and explicitly
 configured model-family windows; missing capacity remains a budget wait rather
@@ -3425,6 +3526,23 @@ or credentials. Owner and fence guard session, completion and error checkpoints.
 Existing configured hosted normalization is unchanged; removing that route is an
 explicit consumer configuration migration, not a silent ledger reset. Source-level
 tests do not establish actual two-Mac readiness or failover acceptance.
+
+Administrative source publication funding has one explicit, optional budget-reserve
+path in `src/cd/source-finance.ts`. A strict independently reviewed grant pins the
+exact source request, repository, existing epoch, supplied and stored native
+configuration digests, amount, finite source scope, aggregate ceiling and short
+admission window. Values belong to the engagement, never shared campaign constants.
+The existing owner-bound GitHub CAS and complete envelope receipt readback remain
+required; checks precede replay and repeat with fresh time/liability in every CAS
+callback. Native schema, ordinary paid reservation admission and controller behavior
+remain unchanged. The configured at-most-$250 guard in `reservePaid` and ordinary
+`cd budget reserve` refuses new paid reservations that would exceed it; exact old
+reserved paid identities still replay. Local delivery intent creation, attempt
+planning and dispatch are not gated by this dollar guard and retain their existing
+controls. A source grant itself authorizes no native operation. The
+[source finance contract](docs/cd-source-finance.md) defines the CLI,
+reserved `source-ci-` namespace and operator-attestation trust boundary.
+
 App-only
 repairs reset production age; unchanged input
 digests retain their first lineage age through controller repairs. These are
@@ -3565,8 +3683,10 @@ target opts in only when its installation, the reviewed central repository allow
 committed policy agree. The workflow owns full-tree
 OSV plus GitHub-alert ingestion, one-dependency PR creation, deterministic artifact and scope
 gates, reconciliation, and guarded merge. The schedule matters: a dependency can become vulnerable
-without any repository change. Missing evidence never counts as clean. No local host or model
-runtime participates. See [the execution contract](docs/runbooks/osv-maintenance.md).
+without any repository change. Missing evidence never counts as clean. Its normal dependency-only
+lane uses no model. A separate, explicitly opted-in import-only replacement lane requires a
+distinct Manager model review of the exact App-attested head before Security can merge; the model
+does not hold Security's write token. See [the execution contract](docs/runbooks/osv-maintenance.md).
 
 `release-preflight` is the secret-free gate before any job that publishes outside GitHub. It accepts
 no caller-selected source: the workflow requires `refs/heads/main`, checks out `github.sha`, refuses

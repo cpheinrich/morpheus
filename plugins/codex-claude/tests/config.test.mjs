@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { configRead, configWrite } from "../src/store.mjs";
@@ -19,8 +19,8 @@ test("off overrides automatic, project and manual choices", () => {
   c.projects[task.project] = "automatic";
   assert.equal(route(c, task, 1, "claude").executor, "codex");
   c.mode = "automatic";
-  assert.equal(route(c, task, 50).executor, "codex");
-  assert.equal(route(c, task, 49.99).executor, "claude");
+  assert.equal(route(c, task, 20).executor, "codex");
+  assert.equal(route(c, task, 19.99).executor, "claude");
   assert.equal(route(c, task, null).executor, "unknown");
   assert.equal(route(c, task, 0, "codex").executor, "codex");
   assert.equal(route(c, task, 90, "claude").executor, "claude");
@@ -32,7 +32,7 @@ test("off overrides automatic, project and manual choices", () => {
   assert.equal(route(c, task, 0).executor, "codex");
   assert.equal(route(c, task, 90, "claude").executor, "claude");
 });
-test("fresh settings default to 50 percent and preserve saved thresholds", async (t) => {
+test("fresh settings default to 20 percent and preserve saved thresholds", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "claude-threshold-"));
   const previous = process.env.CODEX_CLAUDE_HOME;
   process.env.CODEX_CLAUDE_HOME = directory;
@@ -42,15 +42,15 @@ test("fresh settings default to 50 percent and preserve saved thresholds", async
     await rm(directory, { recursive: true, force: true });
   });
   const fresh = await configRead();
-  assert.equal(fresh.threshold, 50);
+  assert.equal(fresh.threshold, 20);
   assert.equal(fresh.mode, "off");
   fresh.mode = "automatic";
-  assert.equal(route(fresh, task, 50.01).executor, "codex");
-  assert.equal(route(fresh, task, 50).executor, "codex");
-  assert.equal(route(fresh, task, 49.99).executor, "claude");
+  assert.equal(route(fresh, task, 20.01).executor, "codex");
+  assert.equal(route(fresh, task, 20).executor, "codex");
+  assert.equal(route(fresh, task, 19.99).executor, "claude");
   // The same threshold applies when Claude coordinates and Codex is the delegate.
-  assert.equal(route(fresh, task, 50, undefined, "claude").executor, "claude");
-  assert.equal(route(fresh, task, 49.99, undefined, "claude").executor, "codex");
+  assert.equal(route(fresh, task, 20, undefined, "claude").executor, "claude");
+  assert.equal(route(fresh, task, 19.99, undefined, "claude").executor, "codex");
   await configWrite({ ...fresh, threshold: 30 });
   const saved = await configRead();
   assert.equal(saved.threshold, 30);
@@ -85,41 +85,83 @@ test("allowance uses most depleted fresh known window and fails closed", () => {
   );
   assert.equal(remaining({}), null);
 });
-test("model and effort independent, unknown mappings rejected", () => {
+test("model and effort are mapped independently, with provenance", () => {
   const c = defaults();
   assert.deepEqual(
     modelSelection(c, { model: "gpt-6-astra", reasoningEffort: "xhigh" }),
-    { model: "opus", effort: "xhigh" },
+    { model: "opus", effort: "xhigh", source: "mapped", codexModel: "gpt-6-astra" },
   );
   assert.deepEqual(
     modelSelection(c, { model: "gpt-5.6-luna", reasoningEffort: "medium" }),
-    { model: "haiku", effort: "medium" },
-  );
-  assert.throws(
-    () => modelSelection(c, { model: "unknown", reasoningEffort: "medium" }),
-    /No Claude model mapping for Codex model "unknown"/,
+    { model: "haiku", effort: "medium", source: "mapped", codexModel: "gpt-5.6-luna" },
   );
   assert.throws(() =>
     modelSelection(c, { model: "gpt-6-astra", reasoningEffort: null }),
   );
+});
+test("an unmapped Codex model falls back to opus instead of blocking delegation", () => {
+  const c = defaults();
+  assert.equal(c.modelFallback, "opus");
+  // The model that blocked a real delegation and forced a model-choice question.
+  assert.deepEqual(
+    modelSelection(c, { model: "gpt-6.1-sol", reasoningEffort: "high" }),
+    {
+      model: "opus",
+      effort: "high",
+      source: "fallback",
+      codexModel: "gpt-6.1-sol",
+      reason: 'No modelMap entry for Codex model "gpt-6.1-sol"; used modelFallback "opus".',
+    },
+  );
+  // Any later model behaves the same, as does a snapshot that names none.
+  for (const model of ["gpt-9-nova", "o7-preview", "unknown"])
+    assert.equal(modelSelection(c, { model, reasoningEffort: "low" }).source, "fallback", model);
+  assert.equal(modelSelection(c, { reasoningEffort: "low" }).codexModel, null);
+  // The fallback never displaces a configured mapping or an explicit choice.
+  assert.equal(modelSelection(c, { model: "gpt-5.6-terra", reasoningEffort: "low" }).model, "sonnet");
+  assert.deepEqual(
+    modelSelection(c, { model: "gpt-6.1-sol", reasoningEffort: "high" }, { model: "claude-fable-5-1" }),
+    { model: "claude-fable-5-1", effort: "high", source: "override", codexModel: "gpt-6.1-sol" },
+  );
+  c.modelMap["gpt-6.1-sol"] = "sonnet";
+  assert.equal(modelSelection(c, { model: "gpt-6.1-sol", reasoningEffort: "high" }).source, "mapped");
+  // A configured fallback is any fixed model; effort mapping is unchanged by it.
+  const fable = configSchema.parse({ modelFallback: "fable" });
+  assert.deepEqual(
+    [modelSelection(fable, { model: "gpt-7", reasoningEffort: "ultra" }).model, modelSelection(fable, { model: "gpt-7", reasoningEffort: "ultra" }).effort],
+    ["fable", "max"],
+  );
+});
+test("a disabled or unusable fallback is a clear refusal, never a guess", () => {
+  const off = configSchema.parse({ modelFallback: null });
+  assert.throws(
+    () => modelSelection(off, { model: "gpt-6.1-sol", reasoningEffort: "high" }),
+    /No Claude model mapping for Codex model "gpt-6\.1-sol" and modelFallback is disabled/,
+  );
+  // Mapped models still work with the fallback off.
+  assert.equal(modelSelection(off, { model: "gpt-5.5", reasoningEffort: "high" }).model, "opus");
+  for (const fallback of ["best", "Latest", "default", "newest", "auto"])
+    assert.throws(() => configSchema.parse({ modelFallback: fallback }), /moving alias/, fallback);
+  for (const fallback of ["-opus", "opus;rm", "", "a/b"])
+    assert.throws(() => configSchema.parse({ modelFallback: fallback }), undefined, fallback);
+  // Saved settings from before the key existed load with the default.
+  assert.equal(configSchema.parse({ mode: "manual", modelMap: { "gpt-5.5": "opus" } }).modelFallback, "opus");
 });
 test("any explicit model id is passed to the CLI; moving aliases and unsafe ids are refused", () => {
   const c = defaults();
   assert.equal("subscriptionModels" in c, false);
   // A model released after the plugin needs no configuration change: the CLI decides
   // whether the subscription can run it.
+  const chosen = (selection) => [selection.model, selection.effort];
   assert.deepEqual(
-    modelSelection(c, {}, { model: "claude-fable-5-1", effort: "max" }),
-    { model: "claude-fable-5-1", effort: "max" },
+    chosen(modelSelection(c, {}, { model: "claude-fable-5-1", effort: "max" })),
+    ["claude-fable-5-1", "max"],
   );
-  assert.deepEqual(
-    modelSelection(c, {}, { model: "fable", effort: "high" }),
-    { model: "fable", effort: "high" },
-  );
+  assert.deepEqual(chosen(modelSelection(c, {}, { model: "fable", effort: "high" })), ["fable", "high"]);
   c.modelMap["gpt-7"] = "claude-opus-5-5";
   assert.deepEqual(
-    modelSelection(c, { model: "gpt-7", reasoningEffort: "low" }),
-    { model: "claude-opus-5-5", effort: "low" },
+    chosen(modelSelection(c, { model: "gpt-7", reasoningEffort: "low" })),
+    ["claude-opus-5-5", "low"],
   );
   for (const alias of ["best", "Latest", "default", "newest", "auto"])
     assert.throws(
@@ -132,8 +174,8 @@ test("any explicit model id is passed to the CLI; moving aliases and unsafe ids 
     /moves with releases/,
   );
   assert.deepEqual(
-    modelSelection(c, {}, { model: "claude-sonnet-5-5[1m]", effort: "high" }),
-    { model: "claude-sonnet-5-5[1m]", effort: "high" },
+    chosen(modelSelection(c, {}, { model: "claude-sonnet-5-5[1m]", effort: "high" })),
+    ["claude-sonnet-5-5[1m]", "high"],
   );
   // The guard, at its boundary: a leading dash is the one character that turns a
   // model value into another CLI flag.
@@ -143,9 +185,10 @@ test("any explicit model id is passed to the CLI; moving aliases and unsafe ids 
       /Unsupported Claude model identifier/,
       unsafe,
     );
+  // An empty explicit model is malformed input, not a reason to fall back.
   assert.throws(
     () => modelSelection(c, {}, { model: "", effort: "high" }),
-    /No Claude model mapping/,
+    /Unsupported Claude model identifier/,
   );
 });
 test("a saved subscriptionModels list still parses and no longer restricts the model", async (t) => {
@@ -161,11 +204,31 @@ test("a saved subscriptionModels list still parses and no longer restricts the m
   await configWrite({ ...fresh, subscriptionModels: ["opus", "sonnet", "haiku"] });
   const saved = await configRead();
   assert.deepEqual(saved.subscriptionModels, ["opus", "sonnet", "haiku"]);
-  assert.deepEqual(
-    modelSelection(saved, {}, { model: "claude-fable-5-1", effort: "max" }),
-    { model: "claude-fable-5-1", effort: "max" },
-  );
+  const selection = modelSelection(saved, {}, { model: "claude-fable-5-1", effort: "max" });
+  assert.deepEqual([selection.model, selection.effort], ["claude-fable-5-1", "max"]);
   assert.throws(() => configSchema.parse({ subscriptionModels: ["bad id"] }));
+});
+test("an installed configuration saved before modelFallback existed falls back to opus", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "claude-fallback-"));
+  const previous = process.env.CODEX_CLAUDE_HOME;
+  process.env.CODEX_CLAUDE_HOME = directory;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.CODEX_CLAUDE_HOME;
+    else process.env.CODEX_CLAUDE_HOME = previous;
+    await rm(directory, { recursive: true, force: true });
+  });
+  // Written by an earlier release: no modelFallback key, a customized mapping.
+  const legacy = { ...defaults(), mode: "manual", modelMap: { "gpt-5.5": "claude-opus-5-5" } };
+  delete legacy.modelFallback;
+  await writeFile(join(directory, "config.json"), JSON.stringify(legacy), { mode: 0o600 });
+  const saved = await configRead();
+  assert.equal(saved.mode, "manual");
+  assert.equal(saved.modelFallback, "opus");
+  assert.equal(modelSelection(saved, { model: "gpt-5.5", reasoningEffort: "high" }).model, "claude-opus-5-5");
+  assert.equal(modelSelection(saved, { model: "gpt-6.1-sol", reasoningEffort: "high" }).source, "fallback");
+  // Turning it off round-trips through the validated writer.
+  await configWrite({ ...saved, modelFallback: null });
+  assert.equal((await configRead()).modelFallback, null);
 });
 test("permissions never widened and credential overrides removed without changing memory setting", () => {
   assert.equal(

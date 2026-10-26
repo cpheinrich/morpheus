@@ -63,6 +63,166 @@ export declare const QaAnchor: z.ZodObject<{
         pageHeight: z.ZodNumber;
     }, z.core.$strict>>;
 }, z.core.$strict>;
+/** Small, allowlisted semantic HTML evidence, frozen synchronously at pin placement. */
+export declare const QaWebContext: z.ZodObject<{
+    version: z.ZodLiteral<1>;
+    scope: z.ZodEnum<{
+        view: "view";
+        element: "element";
+        page: "page";
+    }>;
+    capturedAt: z.ZodString;
+    route: z.ZodObject<{
+        pathname: z.ZodString;
+        query: z.ZodString;
+        hash: z.ZodString;
+    }, z.core.$strict>;
+    target: z.ZodObject<{
+        tag: z.ZodString;
+        attributes: z.ZodRecord<z.ZodEnum<{
+            name: "name";
+            id: "id";
+            type: "type";
+            alt: "alt";
+            role: "role";
+            "data-testid": "data-testid";
+            "data-qa-view": "data-qa-view";
+            "data-entity-id": "data-entity-id";
+            "data-artist-id": "data-artist-id";
+            "aria-label": "aria-label";
+            "aria-labelledby": "aria-labelledby";
+        }> & z.core.$partial, z.ZodString>;
+        text: z.ZodString;
+        bounds: z.ZodObject<{
+            x: z.ZodNumber;
+            y: z.ZodNumber;
+            width: z.ZodNumber;
+            height: z.ZodNumber;
+        }, z.core.$strict>;
+        styles: z.ZodRecord<z.ZodEnum<{
+            color: "color";
+            display: "display";
+            position: "position";
+            "background-color": "background-color";
+            "font-size": "font-size";
+            "text-decoration-line": "text-decoration-line";
+            padding: "padding";
+            overflow: "overflow";
+            "z-index": "z-index";
+        }> & z.core.$partial, z.ZodString>;
+    }, z.core.$strict>;
+    ancestors: z.ZodArray<z.ZodObject<{
+        tag: z.ZodString;
+        attributes: z.ZodRecord<z.ZodEnum<{
+            name: "name";
+            id: "id";
+            type: "type";
+            alt: "alt";
+            role: "role";
+            "data-testid": "data-testid";
+            "data-qa-view": "data-qa-view";
+            "data-entity-id": "data-entity-id";
+            "data-artist-id": "data-artist-id";
+            "aria-label": "aria-label";
+            "aria-labelledby": "aria-labelledby";
+        }> & z.core.$partial, z.ZodString>;
+        text: z.ZodString;
+        bounds: z.ZodObject<{
+            x: z.ZodNumber;
+            y: z.ZodNumber;
+            width: z.ZodNumber;
+            height: z.ZodNumber;
+        }, z.core.$strict>;
+        styles: z.ZodRecord<z.ZodEnum<{
+            color: "color";
+            display: "display";
+            position: "position";
+            "background-color": "background-color";
+            "font-size": "font-size";
+            "text-decoration-line": "text-decoration-line";
+            padding: "padding";
+            overflow: "overflow";
+            "z-index": "z-index";
+        }> & z.core.$partial, z.ZodString>;
+    }, z.core.$strict>>;
+    view: z.ZodObject<{
+        kind: z.ZodEnum<{
+            view: "view";
+            page: "page";
+            dialog: "dialog";
+        }>;
+        identity: z.ZodString;
+        root: z.ZodObject<{
+            tag: z.ZodString;
+            attributes: z.ZodRecord<z.ZodEnum<{
+                name: "name";
+                id: "id";
+                type: "type";
+                alt: "alt";
+                role: "role";
+                "data-testid": "data-testid";
+                "data-qa-view": "data-qa-view";
+                "data-entity-id": "data-entity-id";
+                "data-artist-id": "data-artist-id";
+                "aria-label": "aria-label";
+                "aria-labelledby": "aria-labelledby";
+            }> & z.core.$partial, z.ZodString>;
+            text: z.ZodString;
+            bounds: z.ZodObject<{
+                x: z.ZodNumber;
+                y: z.ZodNumber;
+                width: z.ZodNumber;
+                height: z.ZodNumber;
+            }, z.core.$strict>;
+            styles: z.ZodRecord<z.ZodEnum<{
+                color: "color";
+                display: "display";
+                position: "position";
+                "background-color": "background-color";
+                "font-size": "font-size";
+                "text-decoration-line": "text-decoration-line";
+                padding: "padding";
+                overflow: "overflow";
+                "z-index": "z-index";
+            }> & z.core.$partial, z.ZodString>;
+        }, z.core.$strict>;
+    }, z.core.$strict>;
+    state: z.ZodArray<z.ZodObject<{
+        kind: z.ZodString;
+        label: z.ZodString;
+        value: z.ZodString;
+    }, z.core.$strict>>;
+    scroll: z.ZodArray<z.ZodObject<{
+        selector: z.ZodString;
+        x: z.ZodNumber;
+        y: z.ZodNumber;
+    }, z.core.$strict>>;
+    viewport: z.ZodObject<{
+        width: z.ZodNumber;
+        height: z.ZodNumber;
+        scrollX: z.ZodNumber;
+        scrollY: z.ZodNumber;
+    }, z.core.$strict>;
+    limitations: z.ZodArray<z.ZodString>;
+    image: z.ZodOptional<z.ZodObject<{
+        status: z.ZodEnum<{
+            pending: "pending";
+            failed: "failed";
+            captured: "captured";
+        }>;
+        coordinateSpace: z.ZodLiteral<"viewport">;
+        scale: z.ZodNumber;
+        scaleX: z.ZodOptional<z.ZodNumber>;
+        scaleY: z.ZodOptional<z.ZodNumber>;
+        quality: z.ZodLiteral<0.5>;
+        point: z.ZodObject<{
+            x: z.ZodNumber;
+            y: z.ZodNumber;
+        }, z.core.$strict>;
+        omitted: z.ZodOptional<z.ZodArray<z.ZodString>>;
+        error: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
 export declare const QaComment: z.ZodObject<{
     id: z.ZodString;
     text: z.ZodString;
@@ -92,6 +252,165 @@ export declare const QaComment: z.ZodObject<{
             pageHeight: z.ZodNumber;
         }, z.core.$strict>>;
     }, z.core.$strict>;
+    webContext: z.ZodOptional<z.ZodObject<{
+        version: z.ZodLiteral<1>;
+        scope: z.ZodEnum<{
+            view: "view";
+            element: "element";
+            page: "page";
+        }>;
+        capturedAt: z.ZodString;
+        route: z.ZodObject<{
+            pathname: z.ZodString;
+            query: z.ZodString;
+            hash: z.ZodString;
+        }, z.core.$strict>;
+        target: z.ZodObject<{
+            tag: z.ZodString;
+            attributes: z.ZodRecord<z.ZodEnum<{
+                name: "name";
+                id: "id";
+                type: "type";
+                alt: "alt";
+                role: "role";
+                "data-testid": "data-testid";
+                "data-qa-view": "data-qa-view";
+                "data-entity-id": "data-entity-id";
+                "data-artist-id": "data-artist-id";
+                "aria-label": "aria-label";
+                "aria-labelledby": "aria-labelledby";
+            }> & z.core.$partial, z.ZodString>;
+            text: z.ZodString;
+            bounds: z.ZodObject<{
+                x: z.ZodNumber;
+                y: z.ZodNumber;
+                width: z.ZodNumber;
+                height: z.ZodNumber;
+            }, z.core.$strict>;
+            styles: z.ZodRecord<z.ZodEnum<{
+                color: "color";
+                display: "display";
+                position: "position";
+                "background-color": "background-color";
+                "font-size": "font-size";
+                "text-decoration-line": "text-decoration-line";
+                padding: "padding";
+                overflow: "overflow";
+                "z-index": "z-index";
+            }> & z.core.$partial, z.ZodString>;
+        }, z.core.$strict>;
+        ancestors: z.ZodArray<z.ZodObject<{
+            tag: z.ZodString;
+            attributes: z.ZodRecord<z.ZodEnum<{
+                name: "name";
+                id: "id";
+                type: "type";
+                alt: "alt";
+                role: "role";
+                "data-testid": "data-testid";
+                "data-qa-view": "data-qa-view";
+                "data-entity-id": "data-entity-id";
+                "data-artist-id": "data-artist-id";
+                "aria-label": "aria-label";
+                "aria-labelledby": "aria-labelledby";
+            }> & z.core.$partial, z.ZodString>;
+            text: z.ZodString;
+            bounds: z.ZodObject<{
+                x: z.ZodNumber;
+                y: z.ZodNumber;
+                width: z.ZodNumber;
+                height: z.ZodNumber;
+            }, z.core.$strict>;
+            styles: z.ZodRecord<z.ZodEnum<{
+                color: "color";
+                display: "display";
+                position: "position";
+                "background-color": "background-color";
+                "font-size": "font-size";
+                "text-decoration-line": "text-decoration-line";
+                padding: "padding";
+                overflow: "overflow";
+                "z-index": "z-index";
+            }> & z.core.$partial, z.ZodString>;
+        }, z.core.$strict>>;
+        view: z.ZodObject<{
+            kind: z.ZodEnum<{
+                view: "view";
+                page: "page";
+                dialog: "dialog";
+            }>;
+            identity: z.ZodString;
+            root: z.ZodObject<{
+                tag: z.ZodString;
+                attributes: z.ZodRecord<z.ZodEnum<{
+                    name: "name";
+                    id: "id";
+                    type: "type";
+                    alt: "alt";
+                    role: "role";
+                    "data-testid": "data-testid";
+                    "data-qa-view": "data-qa-view";
+                    "data-entity-id": "data-entity-id";
+                    "data-artist-id": "data-artist-id";
+                    "aria-label": "aria-label";
+                    "aria-labelledby": "aria-labelledby";
+                }> & z.core.$partial, z.ZodString>;
+                text: z.ZodString;
+                bounds: z.ZodObject<{
+                    x: z.ZodNumber;
+                    y: z.ZodNumber;
+                    width: z.ZodNumber;
+                    height: z.ZodNumber;
+                }, z.core.$strict>;
+                styles: z.ZodRecord<z.ZodEnum<{
+                    color: "color";
+                    display: "display";
+                    position: "position";
+                    "background-color": "background-color";
+                    "font-size": "font-size";
+                    "text-decoration-line": "text-decoration-line";
+                    padding: "padding";
+                    overflow: "overflow";
+                    "z-index": "z-index";
+                }> & z.core.$partial, z.ZodString>;
+            }, z.core.$strict>;
+        }, z.core.$strict>;
+        state: z.ZodArray<z.ZodObject<{
+            kind: z.ZodString;
+            label: z.ZodString;
+            value: z.ZodString;
+        }, z.core.$strict>>;
+        scroll: z.ZodArray<z.ZodObject<{
+            selector: z.ZodString;
+            x: z.ZodNumber;
+            y: z.ZodNumber;
+        }, z.core.$strict>>;
+        viewport: z.ZodObject<{
+            width: z.ZodNumber;
+            height: z.ZodNumber;
+            scrollX: z.ZodNumber;
+            scrollY: z.ZodNumber;
+        }, z.core.$strict>;
+        limitations: z.ZodArray<z.ZodString>;
+        image: z.ZodOptional<z.ZodObject<{
+            status: z.ZodEnum<{
+                pending: "pending";
+                failed: "failed";
+                captured: "captured";
+            }>;
+            coordinateSpace: z.ZodLiteral<"viewport">;
+            scale: z.ZodNumber;
+            scaleX: z.ZodOptional<z.ZodNumber>;
+            scaleY: z.ZodOptional<z.ZodNumber>;
+            quality: z.ZodLiteral<0.5>;
+            point: z.ZodObject<{
+                x: z.ZodNumber;
+                y: z.ZodNumber;
+            }, z.core.$strict>;
+            omitted: z.ZodOptional<z.ZodArray<z.ZodString>>;
+            error: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>>;
+    }, z.core.$strict>>;
     screenId: z.ZodOptional<z.ZodString>;
     frame: z.ZodOptional<z.ZodObject<{
         path: z.ZodOptional<z.ZodString>;
@@ -164,6 +483,165 @@ export declare const QaCommentBatch: z.ZodObject<{
                 pageHeight: z.ZodNumber;
             }, z.core.$strict>>;
         }, z.core.$strict>;
+        webContext: z.ZodOptional<z.ZodObject<{
+            version: z.ZodLiteral<1>;
+            scope: z.ZodEnum<{
+                view: "view";
+                element: "element";
+                page: "page";
+            }>;
+            capturedAt: z.ZodString;
+            route: z.ZodObject<{
+                pathname: z.ZodString;
+                query: z.ZodString;
+                hash: z.ZodString;
+            }, z.core.$strict>;
+            target: z.ZodObject<{
+                tag: z.ZodString;
+                attributes: z.ZodRecord<z.ZodEnum<{
+                    name: "name";
+                    id: "id";
+                    type: "type";
+                    alt: "alt";
+                    role: "role";
+                    "data-testid": "data-testid";
+                    "data-qa-view": "data-qa-view";
+                    "data-entity-id": "data-entity-id";
+                    "data-artist-id": "data-artist-id";
+                    "aria-label": "aria-label";
+                    "aria-labelledby": "aria-labelledby";
+                }> & z.core.$partial, z.ZodString>;
+                text: z.ZodString;
+                bounds: z.ZodObject<{
+                    x: z.ZodNumber;
+                    y: z.ZodNumber;
+                    width: z.ZodNumber;
+                    height: z.ZodNumber;
+                }, z.core.$strict>;
+                styles: z.ZodRecord<z.ZodEnum<{
+                    color: "color";
+                    display: "display";
+                    position: "position";
+                    "background-color": "background-color";
+                    "font-size": "font-size";
+                    "text-decoration-line": "text-decoration-line";
+                    padding: "padding";
+                    overflow: "overflow";
+                    "z-index": "z-index";
+                }> & z.core.$partial, z.ZodString>;
+            }, z.core.$strict>;
+            ancestors: z.ZodArray<z.ZodObject<{
+                tag: z.ZodString;
+                attributes: z.ZodRecord<z.ZodEnum<{
+                    name: "name";
+                    id: "id";
+                    type: "type";
+                    alt: "alt";
+                    role: "role";
+                    "data-testid": "data-testid";
+                    "data-qa-view": "data-qa-view";
+                    "data-entity-id": "data-entity-id";
+                    "data-artist-id": "data-artist-id";
+                    "aria-label": "aria-label";
+                    "aria-labelledby": "aria-labelledby";
+                }> & z.core.$partial, z.ZodString>;
+                text: z.ZodString;
+                bounds: z.ZodObject<{
+                    x: z.ZodNumber;
+                    y: z.ZodNumber;
+                    width: z.ZodNumber;
+                    height: z.ZodNumber;
+                }, z.core.$strict>;
+                styles: z.ZodRecord<z.ZodEnum<{
+                    color: "color";
+                    display: "display";
+                    position: "position";
+                    "background-color": "background-color";
+                    "font-size": "font-size";
+                    "text-decoration-line": "text-decoration-line";
+                    padding: "padding";
+                    overflow: "overflow";
+                    "z-index": "z-index";
+                }> & z.core.$partial, z.ZodString>;
+            }, z.core.$strict>>;
+            view: z.ZodObject<{
+                kind: z.ZodEnum<{
+                    view: "view";
+                    page: "page";
+                    dialog: "dialog";
+                }>;
+                identity: z.ZodString;
+                root: z.ZodObject<{
+                    tag: z.ZodString;
+                    attributes: z.ZodRecord<z.ZodEnum<{
+                        name: "name";
+                        id: "id";
+                        type: "type";
+                        alt: "alt";
+                        role: "role";
+                        "data-testid": "data-testid";
+                        "data-qa-view": "data-qa-view";
+                        "data-entity-id": "data-entity-id";
+                        "data-artist-id": "data-artist-id";
+                        "aria-label": "aria-label";
+                        "aria-labelledby": "aria-labelledby";
+                    }> & z.core.$partial, z.ZodString>;
+                    text: z.ZodString;
+                    bounds: z.ZodObject<{
+                        x: z.ZodNumber;
+                        y: z.ZodNumber;
+                        width: z.ZodNumber;
+                        height: z.ZodNumber;
+                    }, z.core.$strict>;
+                    styles: z.ZodRecord<z.ZodEnum<{
+                        color: "color";
+                        display: "display";
+                        position: "position";
+                        "background-color": "background-color";
+                        "font-size": "font-size";
+                        "text-decoration-line": "text-decoration-line";
+                        padding: "padding";
+                        overflow: "overflow";
+                        "z-index": "z-index";
+                    }> & z.core.$partial, z.ZodString>;
+                }, z.core.$strict>;
+            }, z.core.$strict>;
+            state: z.ZodArray<z.ZodObject<{
+                kind: z.ZodString;
+                label: z.ZodString;
+                value: z.ZodString;
+            }, z.core.$strict>>;
+            scroll: z.ZodArray<z.ZodObject<{
+                selector: z.ZodString;
+                x: z.ZodNumber;
+                y: z.ZodNumber;
+            }, z.core.$strict>>;
+            viewport: z.ZodObject<{
+                width: z.ZodNumber;
+                height: z.ZodNumber;
+                scrollX: z.ZodNumber;
+                scrollY: z.ZodNumber;
+            }, z.core.$strict>;
+            limitations: z.ZodArray<z.ZodString>;
+            image: z.ZodOptional<z.ZodObject<{
+                status: z.ZodEnum<{
+                    pending: "pending";
+                    failed: "failed";
+                    captured: "captured";
+                }>;
+                coordinateSpace: z.ZodLiteral<"viewport">;
+                scale: z.ZodNumber;
+                scaleX: z.ZodOptional<z.ZodNumber>;
+                scaleY: z.ZodOptional<z.ZodNumber>;
+                quality: z.ZodLiteral<0.5>;
+                point: z.ZodObject<{
+                    x: z.ZodNumber;
+                    y: z.ZodNumber;
+                }, z.core.$strict>;
+                omitted: z.ZodOptional<z.ZodArray<z.ZodString>>;
+                error: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>>;
+        }, z.core.$strict>>;
         screenId: z.ZodOptional<z.ZodString>;
         frame: z.ZodOptional<z.ZodObject<{
             path: z.ZodOptional<z.ZodString>;

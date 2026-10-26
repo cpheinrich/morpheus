@@ -19,9 +19,9 @@
  *
  * Pins. Right-click (or Comment mode + click) pins a comment on the element under the pointer; the
  * anchor records a CSS path that resolved to exactly that element, the point within it, the page
- * point as a fraction of the whole page, and the scroll and viewport. Send captures the whole page
- * with modern-screenshot (loaded into the site's own window), and posts the batch; a failed capture
- * still sends, without a frame.
+ * point and viewport. Each click synchronously freezes compact allowlisted semantic HTML and UI
+ * state. Send reuses that evidence. Markers only appear in their original route/view and on an
+ * element whose identity still matches; the sidebar keeps comments accessible elsewhere.
  */
 export declare const WEB_OVERLAY_JS: string;
 /** Width of the comment column, mirrored in the shell's initial frame width so the first paint is right. */

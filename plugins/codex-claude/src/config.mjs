@@ -19,13 +19,19 @@ export const modelIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*(\[[a-zA-Z0-9]+\])?$/;
  * haiku, fable) or a full id names one thing and is passed through.
  */
 export const MOVING_MODEL_ALIASES = new Set(["best", "latest", "default", "newest", "auto"]);
+const fixedModel = z
+  .string()
+  .regex(modelIdPattern)
+  .refine((model) => !MOVING_MODEL_ALIASES.has(model.toLowerCase()), {
+    message: "A moving alias (best, latest, default, newest, auto) cannot be the fallback model.",
+  });
 export const configSchema = z
   .object({
     version: z.literal(1).default(1),
     mode: modeSchema.default("off"),
     // Applies to whichever agent is coordinating: below this share of its own allowance
     // remaining, it hands substantive work to the other agent.
-    threshold: z.number().min(1).max(90).default(50),
+    threshold: z.number().min(1).max(90).default(20),
     maxConcurrent: z.number().int().min(1).max(8).default(2),
     disconnectGraceSeconds: z.number().int().min(5).max(300).default(60),
     maxRunSeconds: z.number().int().min(10).max(28800).default(7200),
@@ -36,6 +42,11 @@ export const configSchema = z
     // authority on what the subscription can run (an unavailable id fails the run with a
     // clear error and no cost). Accepted so an installed configuration keeps parsing.
     subscriptionModels: z.array(z.string().regex(modelIdPattern)).optional(),
+    // Used when neither an explicit model nor modelMap names one for the active Codex model.
+    // Codex ships models faster than this map is updated; "gpt-6.1-sol" blocked delegation
+    // until the user was asked to pick a Claude model. A family alias follows whatever the
+    // installed Claude CLI resolves it to. null restores the refusal.
+    modelFallback: fixedModel.nullable().default("opus"),
     modelMap: z.record(z.string(), z.string()).default({
       "gpt-6-astra": "opus",
       "gpt-5.6-sol": "opus",
@@ -164,12 +175,29 @@ export function claudeRemaining(snapshot, now = Date.now(), maxAgeMs = 20 * 6000
     return null;
   return Math.min(...windows.map((v) => 100 - v.used_percentage));
 }
+/**
+ * The Claude model and effort for a delegated run, with where the model came from:
+ * `override` (named by the user for this run), `mapped` (modelMap), or `fallback`
+ * (modelFallback, when the active Codex model has no mapping). The provenance travels
+ * with the run's selection so a coordinator can say what ran without asking.
+ */
 export function modelSelection(config, snapshot, override = {}) {
-  const model = override.model ?? config.modelMap[snapshot.model];
+  const requested = snapshot.model ?? null;
+  const mapped = requested == null ? undefined : config.modelMap[requested];
+  const fallback = config.modelFallback ?? null;
+  let model;
+  let source;
+  if (override.model != null) [model, source] = [override.model, "override"];
+  else if (mapped != null) [model, source] = [mapped, "mapped"];
+  else if (fallback) [model, source] = [fallback, "fallback"];
   const effort = override.effort ?? config.effortMap[snapshot.reasoningEffort];
+  if (!model && source)
+    throw new Error(
+      "Unsupported Claude model identifier. Pass a full model id or a family alias as `claude --model` accepts it.",
+    );
   if (!model)
     throw new Error(
-      `No Claude model mapping for Codex model "${snapshot.model ?? "unknown"}". Add it to modelMap or pass an explicit model.`,
+      `No Claude model mapping for Codex model "${requested ?? "unknown"}" and modelFallback is disabled. Add it to modelMap, set modelFallback (for example "opus"), or pass an explicit model.`,
     );
   if (typeof model !== "string" || !modelIdPattern.test(model))
     throw new Error(
@@ -181,7 +209,15 @@ export function modelSelection(config, snapshot, override = {}) {
     );
   if (!["low", "medium", "high", "xhigh", "max"].includes(effort))
     throw new Error("No effort mapping for the current Codex selection.");
-  return { model, effort };
+  return {
+    model,
+    effort,
+    source,
+    codexModel: requested,
+    ...(source === "fallback"
+      ? { reason: `No modelMap entry for Codex model "${requested ?? "unknown"}"; used modelFallback "${model}".` }
+      : {}),
+  };
 }
 export function permissionMode(snapshot) {
   // Approval mode and filesystem confinement are independent. No prompt-only sandbox emulation.
@@ -192,6 +228,23 @@ export function permissionMode(snapshot) {
   if (snapshot.approvalPolicy === "never") return "bypassPermissions";
   if (snapshot.approvalPolicy === "on-request") return "default";
   throw new Error("Unsupported approval policy; delegation refused.");
+}
+// A remote pool profile may not exceed the calling Codex task's own sandbox. Writes
+// without a per-action user approval need a writable coordinator; read-only profiles
+// fit any verified sandbox. Unknown sandboxes or approval policies refuse.
+const POOL_SANDBOX_RANK = { readOnly: 0, workspaceWrite: 1, dangerFullAccess: 2 };
+const POOL_PERMISSION_RANK = { plan: 0, "read-only": 0, default: 1, acceptEdits: 1, "workspace-write": 1 };
+const APPROVAL_POLICIES = new Set(["never", "on-request", "on-failure", "untrusted"]);
+export function assertPoolAuthority(snapshot, permission) {
+  const rank = POOL_SANDBOX_RANK[snapshot?.sandbox?.type];
+  if (rank === undefined || !APPROVAL_POLICIES.has(snapshot?.approvalPolicy))
+    throw new Error("This Codex task's permissions could not be verified; pool delegation refused.");
+  const needed = POOL_PERMISSION_RANK[permission];
+  if (needed === undefined) throw new Error("Unknown pool permission; refused.");
+  if (needed > rank)
+    throw new Error(
+      `Pool permission ${permission} exceeds this Codex task's ${snapshot.sandbox.type} sandbox; permissions were not widened.`,
+    );
 }
 export function subscriptionEnv(env) {
   const clean = { ...env };
