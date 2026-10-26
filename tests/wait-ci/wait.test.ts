@@ -26,16 +26,21 @@ const SHA_B = "dcd95b702c31929528dd99a27fe9a6b65228d6ed";
  * A scripted `gh`: `pr view` resolves the PR, each `api graphql` call takes the
  * next scripted poll (the last repeats), and `run view` answers from `logs`.
  */
-function fakeGh(polls: GhResult[], logs: Record<string, GhResult> = {}, resolve: GhResult = PR) {
+function fakeGh(polls: GhResult[], logs: Record<string, GhResult> = {}, resolve: GhResult = PR, runLists?: GhResult[]) {
   const calls: string[][] = [];
   const sleeps: number[] = [];
   let t = 0;
   let i = 0;
+  let runsIndex = 0;
   const deps: WaitDeps = {
     gh: async (args) => {
       calls.push(args);
       if (args[0] === "pr") return resolve;
       if (args[0] === "api") return polls[Math.min(i++, polls.length - 1)]!;
+      if (args[0] === "run" && args[1] === "list") {
+        if (!runLists) return ok([{ headSha: args[args.indexOf("--commit") + 1], status: "completed", conclusion: "success", databaseId: 1 }]);
+        return runLists[Math.min(runsIndex++, runLists.length - 1)]!;
+      }
       if (args[0] === "run") return logs[args[args.indexOf("--job") + 1]!] ?? fail("no log scripted");
       throw new Error(`unexpected gh ${args.join(" ")}`);
     },
@@ -70,7 +75,107 @@ describe("waitCi", () => {
     expect(result).toEqual({ exitCode: 0, output: "✓ CI green — cpheinrich/morpheus#354 @ 59cb7d5 (2 checks: 2 passed) after 48s" });
     expect(sleeps).toEqual([10_000, 15_000, 10_000 * 1.5 * 1.5]);
     expect(calls[0]).toEqual(["pr", "view", "354", "--json", "number,url"]);
-    expect(calls.filter((c) => c[0] === "run")).toEqual([]);
+    expect(calls.filter((c) => c[0] === "run")).toEqual([["run", "list", "--repo", "cpheinrich/morpheus", "--commit", SHA_A, "--limit", "100", "--json", "headSha,status,conclusion,databaseId"]]);
+  });
+
+  it("waits for a current-head workflow even when the first four visible checks are green", async () => {
+    const early = ok(rollup(SHA_A, [run("pm", "COMPLETED", "SUCCESS"), run("conventions", "COMPLETED", "SUCCESS"), run("vercel", "COMPLETED", "SUCCESS"), run("preview", "COMPLETED", "SUCCESS")]));
+    const fullPending = ok(rollup(SHA_A, [run("pm", "COMPLETED", "SUCCESS"), run("conventions", "COMPLETED", "SUCCESS"), run("vercel", "COMPLETED", "SUCCESS"), run("preview", "COMPLETED", "SUCCESS"), run("lint", "IN_PROGRESS", null), run("build", "IN_PROGRESS", null), run("digest", "IN_PROGRESS", null)]));
+    const fullGreen = ok(rollup(SHA_A, [run("pm", "COMPLETED", "SUCCESS"), run("conventions", "COMPLETED", "SUCCESS"), run("vercel", "COMPLETED", "SUCCESS"), run("preview", "COMPLETED", "SUCCESS"), run("lint", "COMPLETED", "SUCCESS"), run("build", "COMPLETED", "SUCCESS"), run("digest", "COMPLETED", "SUCCESS")]));
+    const { deps, calls, sleeps } = fakeGh([early, fullPending, fullGreen], {}, PR, [
+      ok([{ headSha: SHA_A, status: "in_progress", conclusion: null, databaseId: 39741854466 }]),
+      ok([{ headSha: SHA_A, status: "completed", conclusion: "success", databaseId: 39741854466 }]),
+    ]);
+    const result = await waitCi(deps, opts);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("7 checks: 7 passed");
+    expect(sleeps).toEqual([10_000, 15_000]);
+    expect(calls.filter((c) => c[0] === "run" && c[1] === "list")).toHaveLength(2);
+  });
+
+  it("does not call CI green when the current-head run census is unreadable", async () => {
+    const result = await waitCi(fakeGh([green()], {}, PR, [fail("HTTP 403")]).deps, opts);
+    expect(result.exitCode).toBe(3);
+    expect(result.output).toContain("could not verify current-head workflow runs");
+  });
+
+  it("refuses an empty workflow census when Actions checks are already visible", async () => {
+    const result = await waitCi(fakeGh([green()], {}, PR, [ok([])]).deps, opts);
+    expect(result.exitCode).toBe(3);
+    expect(result.output).toContain("workflow run census is incomplete");
+  });
+
+  it("times out rather than reporting green when only the workflow run is pending", async () => {
+    const running = ok([{ headSha: SHA_A, status: "in_progress", conclusion: null, databaseId: 123 }]);
+    const result = await waitCi(fakeGh([green()], {}, PR, [running]).deps, { ...opts, timeoutMs: 30_000 });
+    expect(result.exitCode).toBe(2);
+    expect(result.output).toContain("CI still running at the deadline");
+    expect(result.output).toContain("current-head Actions workflow runs pending or not yet verified");
+  });
+
+  it("rechecks the rollup after the run census discovers newly registered jobs", async () => {
+    const first = ok(rollup(SHA_A, [run("pm", "COMPLETED", "SUCCESS")]));
+    const late = ok(rollup(SHA_A, [run("pm", "COMPLETED", "SUCCESS"), run("build", "IN_PROGRESS", null)]));
+    const done = ok(rollup(SHA_A, [run("pm", "COMPLETED", "SUCCESS"), run("build", "COMPLETED", "SUCCESS")]));
+    const { deps, sleeps } = fakeGh([first, late, done]);
+    const result = await waitCi(deps, opts);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("2 checks: 2 passed");
+    expect(sleeps).toEqual([10_000]);
+  });
+
+  it("checks workflow runs on the replacement head after a push", async () => {
+    const movedGreen = ok(rollup(SHA_B, [run("pm", "COMPLETED", "SUCCESS")]));
+    const movedPending = ok(rollup(SHA_B, [run("pm", "COMPLETED", "SUCCESS"), run("build", "IN_PROGRESS", null)]));
+    const movedDone = ok(rollup(SHA_B, [run("pm", "COMPLETED", "SUCCESS"), run("build", "COMPLETED", "SUCCESS")]));
+    const { deps, calls } = fakeGh([pending(SHA_A), movedGreen, movedPending, movedDone], {}, PR, [
+      ok([{ headSha: SHA_B, status: "queued", conclusion: null, databaseId: 123 }]),
+      ok([{ headSha: SHA_B, status: "completed", conclusion: "success", databaseId: 123 }]),
+    ]);
+    const result = await waitCi(deps, opts);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("head moved during the wait: 59cb7d5 → dcd95b7");
+    expect(calls.filter((c) => c[0] === "run" && c[1] === "list").every((c) => c[c.indexOf("--commit") + 1] === SHA_B)).toBe(true);
+  });
+
+  it("does not call a replacement head green when confirmation reaches the deadline", async () => {
+    const scripted = fakeGh([green(SHA_A), green(SHA_B)]);
+    let time = 0;
+    let polls = 0;
+    const deps: WaitDeps = {
+      ...scripted.deps,
+      now: () => time,
+      gh: async (args) => {
+        const result = await scripted.deps.gh(args);
+        if (args[0] === "api" && ++polls === 2) time = 1_000;
+        return result;
+      },
+    };
+    const result = await waitCi(deps, { ...opts, timeoutMs: 1_000 });
+    expect(result.exitCode).toBe(2);
+    expect(result.output).toContain("CI still running at the deadline");
+    expect(result.output).toContain(`@ ${SHA_B.slice(0, 7)}`);
+    expect(scripted.calls.filter((c) => c[0] === "run" && c[1] === "list").map((c) => c[c.indexOf("--commit") + 1])).toEqual([SHA_A]);
+  });
+
+  it("reports a failed replacement-head check even when confirmation reaches the deadline", async () => {
+    const failedHead = ok(rollup(SHA_B, [run("node / check", "COMPLETED", "FAILURE")]));
+    const scripted = fakeGh([green(SHA_A), failedHead]);
+    let time = 0;
+    let polls = 0;
+    const deps: WaitDeps = {
+      ...scripted.deps,
+      now: () => time,
+      gh: async (args) => {
+        const result = await scripted.deps.gh(args);
+        if (args[0] === "api" && ++polls === 2) time = 1_000;
+        return result;
+      },
+    };
+    const result = await waitCi(deps, { ...opts, timeoutMs: 1_000 });
+    expect(result.exitCode).toBe(1);
+    expect(result.output).toContain(`CI failed — cpheinrich/morpheus#354 @ ${SHA_B.slice(0, 7)}`);
+    expect(result.output).not.toContain("Actions workflow runs pending or not yet verified");
   });
 
   it("passes --repo through to the PR lookup", async () => {
