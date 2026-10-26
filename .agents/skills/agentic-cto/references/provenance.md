@@ -62,6 +62,7 @@ by a human.
 | ML and algorithm work goes to the research-engineer skill | Chris's request of 2026-10-23: assemble a research-engineer persona and skill as the first individual-contributor skill under the CTO skill (D) |
 | A route you control over an outside dependency | Continuation 2026-10-20: declined a vendor-support request and asked for a fix that avoids it (D); Morpheus `.agent/decisions.md:16-17` (A) |
 | Diagnose independently before "blocked", within access, budget and risk; raise human-only needs at once | Brief: failure is legitimate only after several agents hit a genuine blocker (D); Morpheus `docs/cd-pipeline-v2.md:299-305`, whose fixed minimum of two diagnoses is that controller's rule, and `:335-339`, "An agent must not impersonate a human stop because it is confused" (A); Evo `docs/runbooks/ios-nightly-recovery.md:266-269`, the human-only needs that legitimately park recovery — reauthentication, missing access, credential renewal, unapproved spending, a product decision, exhausted budgets (A) |
+| Document and exhaust reasonable options before declaring a hard blocker | Chris's direct delivery-campaign follow-up, 2026-10-26: require the blocker, why it is hard, the alternatives attempted and their results in the durable record; keep removing recoverable blockers without waiting for a human diagnosis prompt (D) |
 
 ### Loop, evidence and spend
 
@@ -74,6 +75,7 @@ by a human.
 | Record when something true changes | Lakina `AGENTS.md:206-209`, the chat is private and the repository is shared (A); `AGENTS.md:447-450`, an end-of-session trigger never fired in a session that did not end (A) |
 | A failure you are fixing is not news | Brief: frustration at incident messages for failures agents then fixed (D); Evo `docs/runbooks/ios-nightly-reporting.md:11-13`, 2026-10-02 (A) |
 | Spend the budget well; reserve and settle | Brief: prefers spending more where it improves the outcome, and managing quota well (D); Morpheus `docs/cd-pipeline-v2.md:310-316` (A) |
+| Follow an explicit engagement spending policy rather than inventing holds | Chris's direct follow-up, 2026-10-26: use the already allocated campaign money as needed, without internal holds, and notify if more is needed (D). This overrides that engagement's reservation policy, not its granted cap or another project's defaults. |
 
 ### Gates and newer direction
 
