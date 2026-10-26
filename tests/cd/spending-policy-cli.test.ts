@@ -42,6 +42,15 @@ describe("audited spending policy CLI", () => {
     const output = JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0] as string);
     expect(output.budgetStatus).toMatchObject({ mode: "spend-as-needed", internalHeldMicros: 0, remainingMicros: 305_767_172, unsettledOperationCount: 2, remainingIsProviderBalance: false });
   });
+  it("rechecks configuration on read-only policy replay, without writing", async () => {
+    const f = await setup(); expect(await cd(f.argv, {})).toBe(0);
+    const before = (await f.store.read()).state;
+    await writeFile(f.config, JSON.stringify({ ...f.cfg, budget: { ...f.cfg.budget, subscriptionAdmitBelowPercent: 79 } }));
+    f.api.calls.length = 0;
+    await expect(cd(f.argv, {})).rejects.toThrow("configuration differs from ledger");
+    expect(f.api.calls.every(call => call.method === "GET")).toBe(true);
+    expect((await f.store.read()).state).toEqual(before);
+  });
   it.each([["status"], ["github-token"], ["worker"], ["budget", "--help"], ["budget", "--operation", "reserve"], ["budget", "--operation", "settle"]].map(command => ({ command })))("rejects policy flags on incompatible command $command before provider reads", async ({ command }) => {
     await expect(cd([...command, "--campaign", "fixture", "--config", "/missing"], {})).rejects.toThrow("only valid for explicit budget spend-as-needed"); expect(GhApi.prototype.request).not.toHaveBeenCalled();
     for (const effect of [githubToken, probeGitHubToken, execFile, spawn, fetch]) expect(effect).not.toHaveBeenCalled();

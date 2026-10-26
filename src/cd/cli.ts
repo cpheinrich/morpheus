@@ -192,7 +192,9 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
         const policy = budgetSpendingPolicySchema.parse({ mode: "spend-as-needed", ...input, adoptedAt: now });
         const transaction = await store.transact(`budget-policy-${hash(input)}`, "budget-spend-as-needed", now, state => setBudgetSpendingPolicy(state, config, input, now));
         result = transaction;
-        const current = (await store.read()).state.budget.spendingPolicy;
+        const final = (await store.read()).state;
+        invariant(final.configurationDigest === configurationDigest(config), "Budget policy configuration differs from ledger");
+        const current = final.budget.spendingPolicy;
         invariant(hash(current) === hash(transaction.result) && current?.campaignId === policy.campaignId && current.capMicros === policy.capMicros && current.authorizationRef === policy.authorizationRef, "Spending policy replay differs from current policy");
         break;
       }
