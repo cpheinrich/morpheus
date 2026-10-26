@@ -1753,3 +1753,15 @@ The explicit-ID command is a deliberate manual shipping escape hatch; `--check` 
 a merged-PR reconciliation drift report. Combining them now fails before any item
 write, instead of silently mutating files. This existing CLI guard needs no generic
 module or dependency. Issue #421; MO-26-10-26-12.12.30.
+
+
+## Hard blockers need evidence and exhausted reasonable options — 2026-10-26
+
+MO-26-10-26-15.37.42. Chris requires the delivery session and shared DevOps persona to document
+what failed, why it prevents progress, alternatives tried with outcomes, remaining options and
+the smallest external action needed before declaring a hard blocker. Reasonable authorized
+diagnosis or recovery continues without waiting for a human prompt. The CTO guidance uses the
+same record and honors an explicit engagement spending policy instead of inventing internal
+holds. Default reservation accounting remains available; a campaign-specific spend-as-needed
+direction does not increase its cap, erase expenses or waive review, credentials or uncertain
+effect safety. Existing canonical/mirror/generated-guide distribution is sufficient.
