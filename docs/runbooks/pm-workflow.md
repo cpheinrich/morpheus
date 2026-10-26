@@ -227,7 +227,7 @@ Running it after a merge instead leaves the status change in a dirty working tre
 `main` with nowhere to go, which is how a housekeeping step gets quietly dropped. `morpheus pm ship`
 still exists for running it deliberately, and `morpheus pm ship <ID>` for work that shipped without
 a PR it can see. `morpheus pm ship --check` reports merged-PR reconciliation without
-writing roadmap files and exits 1 when they would change. It cannot be combined with
+writing roadmap files. It cannot be combined with
 explicit item IDs: that combination exits 1 before changing any item. It does not
 check whether manually selected work is ready to ship.
 
