@@ -21,7 +21,7 @@ export const ROLLUP_QUERY = `query($owner: String!, $name: String!, $number: Int
         nodes {
           __typename
           ... on CheckRun { name status conclusion detailsUrl startedAt isRequired(pullRequestNumber: $number)
-            checkSuite { workflowRun { workflow { name } } } }
+            checkSuite { id workflowRun { workflow { id name } } } }
           ... on StatusContext { context state targetUrl createdAt isRequired(pullRequestNumber: $number) }
         }
       } } } } }
@@ -83,9 +83,13 @@ export function parseRollup(json) {
     const checks = [];
     for (const node of contexts?.nodes ?? []) {
         if (node.__typename === "CheckRun") {
+            if (!node.checkSuite?.id)
+                return { error: `check ${node.name ?? "(unnamed check)"} has no check suite identity` };
             checks.push({
                 name: node.name ?? "(unnamed check)",
                 workflow: node.checkSuite?.workflowRun?.workflow?.name ?? undefined,
+                suiteId: node.checkSuite.id,
+                workflowId: node.checkSuite.workflowRun?.workflow?.id,
                 outcome: checkRunOutcome(node.status, node.conclusion),
                 url: node.detailsUrl ?? undefined,
                 required: node.isRequired === true,
@@ -114,14 +118,18 @@ export function parseRollup(json) {
 /**
  * The identity two rollup rows share when one supersedes the other.
  *
- * A required check is keyed by name alone — the rule branch protection itself
- * applies — so the `pr / conventions` a label-triggered workflow adds supersedes
- * CI's own. Anything else is keyed by workflow and name, so two unrelated
- * workflows that each have a `test` job stay two rows and one cannot hide the
- * other's failure.
+ * Required names can occur in multiple workflows and runs, all of which can
+ * block protection. Only attempts of the same named job in the same workflow
+ * supersede one another. External checks retain suite identity when there is no
+ * Actions workflow. Workflow display names are not identities. Commit
+ * statuses occupy a separate namespace and retain their latest-context rule.
  */
 export function checkKey(check) {
-    return check.required ? check.name : `${check.workflow ?? ""}\u0000${check.name}`;
+    if (check.workflowId)
+        return JSON.stringify(["workflow", check.workflowId, check.name]);
+    return check.suiteId
+        ? JSON.stringify(["suite", check.suiteId, check.name])
+        : JSON.stringify(["status", check.workflow ?? "", check.name]);
 }
 /** Sorts after any ISO timestamp: a run that has not started yet is the newest attempt. */
 const NOT_STARTED = "\uffff";
