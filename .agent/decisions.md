@@ -1730,6 +1730,14 @@ input and verifies the official Linux X64 archive's SHA-256 before executing it
 inside the existing required check. Real checker regressions cover unsupported
 status contexts. No runtime package, new runner job or generic parser is added.
 
+### 2026-10-26 — Concise research records with detailed appendices
+
+Research records put the ask, implementation, plain-language result and decision in the body.
+Per-item evidence, formulas, commands, digests, spend detail and review records live in bottom
+appendices. Ratio-based metrics retain their existing definitions and selection rules, while
+headline values are presented as percentages and bias direction. Issue #497; no new module
+or dependency is needed for this guidance change.
+
 ## CI receipts preserve workflow identity — 2026-10-26
 
 Issue #492 proves that required-name matching does not make a later metadata job
