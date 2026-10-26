@@ -8,20 +8,6 @@
  * the dependency circular — and duplicating it would recreate the risk the
  * second caller exists to close.
  */
-/**
- * Where collaborative context lives.
- *
- * One definition, because nine modules held the old path as a literal and the
- * move to `hq/team/` would have needed all nine changed in step. Three bugs in
- * one week here came from a value written twice and drifting — the branch-id
- * pattern, the fetch arguments, and the `today()` timezone. A tenth copy was
- * not going to be the one that held.
- *
- * **Inboxes sit at the root of `hq/team/`**, not in a subdirectory:
- * `hq/team/cpheinrich.md`. A person is the primary thing in this folder, and
- * `hq/team/inbox/cpheinrich.md` would put a medium above a person.
- */
-export declare const TEAM_DIR = "hq/team";
 /** Inboxes are files directly under `hq/team/`, one per GitHub handle. */
 export declare const INBOX_DIR = "hq/team";
 export declare const MEETING_NOTES_DIR = "hq/team/meeting-notes";
