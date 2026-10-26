@@ -1737,3 +1737,10 @@ Per-item evidence, formulas, commands, digests, spend detail and review records 
 appendices. Ratio-based metrics retain their existing definitions and selection rules, while
 headline values are presented as percentages and bias direction. Issue #497; no new module
 or dependency is needed for this guidance change.
+
+### 2026-10-26 — Reject explicit IDs with pm ship --check
+
+The explicit-ID command is a deliberate manual shipping escape hatch; `--check` is
+a merged-PR reconciliation drift report. Combining them now fails before any item
+write, instead of silently mutating files. This existing CLI guard needs no generic
+module or dependency. Issue #421; MO-26-10-26-12.12.30.

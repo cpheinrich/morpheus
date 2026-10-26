@@ -39,3 +39,7 @@ The CLI dispatches to the guide; the reference is selected from its skill map.
 Coverage reports no recorded gaps for canonical files, generator, source, tests and
 architecture. Claude mirrors and dist are excluded from the graph; direct file
 comparison and generated-output tests cover them. Branch edits were read directly.
+
+Merged fresh main at 8a5e9506 before independent review. The only conflict was the
+two appended decision entries, both preserved. Focused guide checks and typecheck
+were rerun on the integrated result; the full local suite was not repeated.
