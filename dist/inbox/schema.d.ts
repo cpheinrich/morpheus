@@ -10,7 +10,7 @@ import { z } from "zod";
 export declare const HANDLE: RegExp;
 export declare const Inbox: z.ZodObject<{
     owner: z.ZodString;
-    date: z.ZodPreprocess<z.ZodISODate>;
+    date: z.ZodPreprocess<z.ZodISODate, unknown>;
     agents: z.ZodArray<z.ZodEnum<{
         human: "human";
         claude: "claude";
