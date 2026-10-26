@@ -3224,7 +3224,10 @@ blocking line is the missing `agent-reviewed` label is labelled as that race, no
 failure. Before the default all-checks wait reports green, it also confirms that current-head
 Actions runs have finished and rereads the check rollup. A run can be queued before its job check
 appears; visible passing checks alone do not prove completion. `--required-only` retains its
-required-check scope. Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
+required-check scope. Check-run identity includes the stable Actions workflow ID and job name, so a
+metadata workflow cannot replace another workflow's failed required job. Only rerun attempts
+inside the same workflow supersede each other; missing suite identity refuses the receipt.
+Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
 
 ### 18.2 Reusable GitHub workflows
 

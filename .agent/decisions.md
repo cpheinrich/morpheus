@@ -1730,6 +1730,15 @@ input and verifies the official Linux X64 archive's SHA-256 before executing it
 inside the existing required check. Real checker regressions cover unsupported
 status contexts. No runtime package, new runner job or generic parser is added.
 
+## CI receipts preserve workflow identity — 2026-10-26
+
+Issue #492 proves that required-name matching does not make a later metadata job
+replace an earlier failed CI job. Deduplicate only the same named job within one
+Actions workflow ID. Display names may collide; different workflows and commit-status
+contexts remain separate. External checks without a workflow retain suite identity, and missing suite identity refuses
+the receipt. This corrects the existing GitHub-specific reducer using the current
+GraphQL query and Map; no generic module or dependency is introduced.
+
 ### 2026-10-26 — Reject explicit IDs with pm ship --check
 
 The explicit-ID command is a deliberate manual shipping escape hatch; `--check` is
