@@ -56,5 +56,30 @@ was not repeated under the repository's at-most-once policy. The audit branch it
 a separate full-suite run because it does not touch a repository-designated shared-core path;
 exact-head CI remains authoritative.
 
-Fresh independent review is pending. The audit pull request must remain an unlabelled draft until
-the review record is committed and validated.
+## Independent review
+
+Independent review cleared the normal-risk audit with no findings. The reviewer verified direct
+consumers and public exports, regenerated artifacts, report evidence, typecheck, and all 193
+focused tests. Exact-checkout graph transport was unavailable, so the reviewer used the exact-base
+graph plus direct source and repository search.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "a50cdbb1cb844de4a3137a7f803b195d62fd2421",
+  "reviewed": "c0761e04eaeecabc6f538eb4410f37dd98c2c50a",
+  "covered": "c0761e04eaeecabc6f538eb4410f37dd98c2c50a",
+  "authorSession": "01a178f3-bf67-7261-94d7-a773e43d0871",
+  "reviewerSession": "/root/review_morpheus_523",
+  "risk": "normal",
+  "elapsedMinutes": 3.5584333333333333,
+  "timing": {
+    "source": "clock",
+    "durationMs": 213506,
+    "evidence": "Reviewer dispatch clock 2026-10-26T16:40:51.728Z; final response receipt clock 2026-10-26T16:44:25.234Z."
+  },
+  "outcome": "complete",
+  "summary": "Independent review cleared the normal-risk audit with no findings. The reviewer verified direct consumers and public exports, regenerated artifacts, report evidence, typecheck, and all 193 focused tests. Exact-checkout graph transport was unavailable, so the reviewer used the exact-base graph plus direct source and repository search.",
+  "findings": []
+}
+```
