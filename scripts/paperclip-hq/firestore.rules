@@ -1,0 +1,7 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Keep this OUTSIDE /hq/**; an overlapping broad allow would override denial.
+    match /paperclipTransport/{document=**} { allow read, write: if false; }
+  }
+}

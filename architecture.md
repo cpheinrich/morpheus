@@ -1439,6 +1439,24 @@ own sign-in; follow-ups are turn-boundary only and live questions exist only for
 Paperclip credential reaches a worker host. Live acceptance, including remote Claude (pending
 native sign-in), is separate from the deterministic transport tests.
 
+The opt-in [Firebase HQ transport](docs/paperclip-hq-transport.md) adds a single-company
+connection prototype for the accepted HQ design: Cloud Functions verify the current Firebase
+role or exact pre-existing verified-human mapping, private Firestore commands deliver fenced
+requests, and the Mac initiates outbound claims and publishes receipts through the existing Pool
+owner. A continuous connector renews its own Firebase identity with private refresh credentials
+and publishes one bounded, sanitized board/agent/comment observation through connector-only
+`hqPublish`; current HQ humans read it through `hqSnapshot` with server publication age and
+explicit caps. Paperclip remains the scheduler and live
+conversation authority. Applying commands are not blindly replayed after uncertainty; delivery
+receipts, native termination and Git acceptance are separate. Transport state stays outside the
+broad HQ rules namespace. The existing Mac controller remains v1; consumer deployment, actual
+continuous-authentication recovery, UI/streaming, multi-company routing and inbox migration
+require qualification. Crash-preserved local ownership locks still require operator inspection.
+The local [HQ admission facade](docs/paperclip-hq-actor.md) preserves profile/controller/repository
+pins, while [versioned closeout snapshots](docs/paperclip-closeout.md) preserve frozen input and
+verified attachment bytes without changing PM status. These prototypes are not extracted into
+the kit or installed in consumer HQs yet.
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.
@@ -3456,6 +3474,12 @@ receipt dependency. Missing proof retains the download path; malformed reusable
 proof refuses. The proof is never treated as raw results or re-recorded, and fresh
 Apple readback still owns availability and receipt creation. Upload and group operations have
 durable claims; actual provider receipts complete the original obligation.
+A separate evidence-only repair-diagnostic recorder binds an existing unique
+latest repair/task to its already-bound latest failed attempt. It appends bounded
+canonical diagnostic JSON through the same CAS/event store without changing
+execution, ownership, source, policy, clocks or funding. Current-target checks
+guard each new append; a verified immutable note receipt survives later normal
+owner progression without granting applicability or restarting work.
 A **repair-only control** ([runbook](docs/runbooks/cd-repair-control.md)) can hold new repair-agent admission
 for one exact supplemental validation intent: a namespaced `repair:<intent>` pause that existing delivery
 gates ignore, enforced only by a worker-only entry around an injected unchanged `runWorker` and released

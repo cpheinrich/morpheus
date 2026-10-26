@@ -32,8 +32,10 @@ From this package directory, explicitly run:
 node scripts/install.mjs
 ```
 
-The installer copies the package, installs its locked dependencies, tests it, and uses
-Codex's bundled plugin-creator helper to register it in the personal marketplace. It
+The installer copies the package, installs its locked dependencies, tests it, verifies the
+installed MCP servers against their exact shared tool-name contracts, and uses Codex's
+bundled plugin-creator helper to register it in the personal marketplace. A contract error
+lists the missing, unexpected, and observed tool names. It
 preserves other marketplace entries. If that helper is elsewhere, set
 `CODEX_PLUGIN_CREATOR` to its `create_basic_plugin.py` path. Installation does not choose
 manual or automatic mode. Finish existing delegated runs before updating the package;
@@ -71,13 +73,12 @@ Ask Codex naturally:
 - “Show Claude's live output.”
 
 Automatic mode checks the least remaining fresh reported Codex allowance window. At
-**less than 50% remaining** by default, Codex delegates at the next safe checkpoint.
-At exactly 50%, Codex continues. The same threshold applies in the other direction. This is subscription allowance, not a token count for a
+**less than 20% remaining** by default, Codex delegates at the next safe checkpoint.
+At exactly 20%, Codex continues. The same threshold applies in the other direction. This is subscription allowance, not a token count for a
 single chat. Codex still consumes allowance while supervising; this cannot keep Codex
 coordinating once its account is exhausted. Missing/stale usage is reported as unknown.
-The 50% default hands work over while half the coordinator's allowance remains, leaving
-ample headroom for supervision and other active chats. Existing saved thresholds are
-preserved when updating the plugin; change one with `bridge.mjs config`.
+Existing saved thresholds are preserved when updating the plugin; change one with
+`bridge.mjs config`.
 Routing hooks advise the coordinating agent; they do not replace the desktop's model
 engine or forcibly preempt a running generation.
 
@@ -151,7 +152,13 @@ both. Start a new Claude session after installing, and review its hooks.
   cap and run limit as Claude workers, with the prompt on stdin. The saved Codex session id is
   resumed per working directory with `codex exec resume`. Codex cannot ask mid-run, so a
   question arrives as a `needs_input` result and is answered by starting again with
-  `replySource` (`claude` or `user`) and `replyReason`, within the same supervision budget.
+  that result's `runId`, `replySource` (`claude` or `user`) and `replyReason`, within the
+  same supervision budget.
+  One Claude session may run multiple Codex delegations concurrently when each uses a
+  different worktree. A second writer in the same working directory is refused with the
+  owning run id; the global `maxConcurrent` limit still applies. `codex_inspect` lists all
+  active runs and the five most recent terminal runs. Pass `runId` to wait, view, status or
+  stop when more than one run is active; a single run remains the default.
 - **Subscription only.** The bridge requires `codex login status` to report a ChatGPT
   sign-in and strips `OPENAI_*`/`CODEX_API_KEY` from the worker. Paid Codex credits cannot be
   detected from `exec` output; manage that in your ChatGPT account.
@@ -265,13 +272,18 @@ worktree's saved Claude conversation. Codex must wait for the Claude writer to s
 editing the same files. The bridge prevents overlapping Claude runs per directory, limits
 concurrency to two, and never replays a task automatically after a crash.
 
+In the reverse direction, a Claude session can own multiple concurrent Codex runs in
+different worktrees. Native Codex session ids, `needs_input` resumes and supervision counts
+remain keyed by working directory. The bridge never permits two active writers in the same
+working directory, even when both belong to that Claude session.
+
 Claude questions return through its permission-control stream. Codex may answer routine,
 reversible clarifications with a recorded reason; substantive product decisions, new
 permissions, sending, publishing, spending, and destructive operations still need the user.
 A tool permission is not interchangeable with a clarification. The `source: user` field
 is the coordinating agent's attestation to an actual user answer, not an independent
-approval UI. Structured/prose `needs_input` results resume the same conversation with
-`replySource` and `replyReason`. Autonomous supervision is capped at eight replies by default. A genuine user answer
+approval UI. Structured/prose `needs_input` results resume the same conversation with its
+`runId`, `replySource` and `replyReason`. Autonomous supervision is capped at eight replies by default. A genuine user answer
 remains allowed at the limit and resets that autonomous budget; its audit record is retained.
 
 Full-access/never-approval Codex turns launch Claude with `bypassPermissions`.

@@ -1,7 +1,57 @@
 # Decisions
 
+**Continuous HQ reads extend the callable transport** — 2026-10-25.
+Keep one private per-company bounded board/agent/comment snapshot, published only by the
+configured connector and read only after current human authorization. Existing legacy HQ
+allowlists may pin exact verified UID/email pairs without migrating claims or widening access.
+The daemon uses first-party Firebase token refresh, distinct lifetime/pass ownership locks and
+the existing uncertain-operation journals; no second scheduler, Pool or chat authority.
+Considered p-retry8.0.1 (modified2026-09-01; one direct dependency) and Firebase13.1.0
+(modified2026-10-21;31 direct SDK packages). Fixed domain polling and the documented first-party
+refresh endpoint fit existing Node fetch/timers and Zod, without another runtime dependency.
+Source verification, consumer rollout and native-work acceptance remain separate.
+
+**Failed repair diagnostics are a separate evidence-only record** — 2026-10-25.
+Use `cd record --kind repair-diagnostic` with exact existing work/task and latest
+failed execution identity, bounded untrusted canonical JSON and the normal
+GitHubStore CAS/event path. Preserve existing active-attempt guards and every
+controller field except the exact work's deduplicated evidence. A genuine note
+receipt survives normal owner progression; target readback is observation, never
+permission to resume, fund or apply anything. Keep consumer operator adoption and
+runtime proof separate. This small CD-specific boundary reuses installed Zod,
+canonical hashing and the existing store; no generic module or dependency is needed.
+
+**HQ native qualification is a separate explicit operator path** — 2026-10-25.
+Use the dedicated Firebase demo emulators, actual Manager HQ facade and existing
+single Pool, with fixtures first and fresh native quota before bounded test turns.
+Keep default tests provider-free and retain unknown/refused providers honestly.
+Considered Commander15.0.0 (registry modified2026-09-02, no runtime dependencies);
+Node's existing `parseArgs` handles two fixed qualification modes without a new
+CLI framework. The admission/evidence harness is domain-specific and adds no package.
+
+**Paperclip Markdown views derive from exact canonical closeouts** — 2026-10-25.
+The optional operator prototype keeps its frozen canonical JSON identity and emits
+an adjacent deterministic view with inert display fences and digest-only local
+links. Preserve earlier records/views/blobs with a bounded exact-commit Git object
+comparison; Git storage alone is not append-only. Existing JSON-only records may
+gain views without changing their identity. This does not establish live-source
+atomicity, completeness, acceptance authority or PM completion.
+Considered marked 18.1.1 (modified 2026-10-12; no runtime dependencies) and simple-git
+4.0.2 (modified 2026-09-26; five direct dependencies). Fixed domain Markdown emission
+and native Git object/tree operations fit the existing Node/Zod/crypto boundary;
+no Markdown parsing engine, generic Git wrapper or new dependency is needed.
+
 Choices Chris made and why. Distilled from status replies — the archive in `status/` is the
 raw record; this is the part worth reading.
+
+**Claude-coordinated Codex runs are keyed by worktree, not by Claude session** — 2026-10-25.
+A Claude session may own multiple concurrent Codex delegations, subject to the existing global
+`maxConcurrent` cap, while one canonical working directory still admits only one active writer.
+Run history belongs to the Claude task; native Codex session ids and autonomous-supervision counts
+remain keyed by working directory so `needs_input` resumes cannot cross worktrees. Run-specific
+wait, view, status and stop operations accept `runId`; the single-run default remains compatible,
+but multiple active runs require an explicit id and report the choices. New installations route
+automatically only below 20% remaining; a saved explicit threshold is preserved.
 
 **Morpheus/Paperclip linkage is explicit and one-to-many** — 2026-10-23. Chris approved deeper
 integration with one roadmap parent linked to multiple execution jobs. Git retains repository,
@@ -1640,3 +1690,42 @@ Tags confer no owner or authority. Legacy records remain valid, no blanket histo
 performed, and a queue can later project this contract without becoming its source of truth.
 Existing Zod/frontmatter/Node APIs fit these small domain fields and deterministic reads; no
 additional generic tag framework or dependency is introduced.
+
+## Codex-Claude installer probes exact shared tool-name contracts — 2026-10-25
+
+MO-26-10-25-05.52.02. The installer validates each installed MCP server by the exact set of
+names in one shared contract that also drives the server's registration loop. Counts are not a
+contract: adding the remote pool tools correctly grew the Codex-facing server from nine to twenty
+tools and made a valid installation fail its stale count assertion. A failure names the missing,
+unexpected and observed tools, and the installer prints that message before restoring the prior
+copy. Keep this as a small dependency-free module beside the server entry points; a second schema
+or generic contract package would add a drift surface rather than remove one.
+
+## Verify cancelled SourceCI by exact provider lineage — 2026-10-25
+
+MO-26-10-25-04.11.25. A repair can have unstarted cancelled Actions jobs and a
+newer successful SourceCI run at the same reviewed head in different check suites.
+The source-repair verifier may discharge only those cancellations through exact
+provider identities, complete/latest inventories, unique job context and a stable
+finite reacquisition; genuine failures, pending/unknown and external cancellations
+remain blocking. The authoritative current SourceCI contract permits floated control
+refs to advance. Retain their resolved provenance and reject contradictory immutable
+pins, rather than requiring incidental SHA equality across runs. Same-run rerun
+supersession remains unsupported. This is a small GitHub repair-domain join using
+existing Zod/API seams, so no generic retry framework or dependency is introduced.
+Runtime worker adoption remains a separately qualified normal operation.
+
+## Workflow status functions stay in supported conditionals — 2026-10-25
+
+MO-26-10-25-05.37.37. GitHub rejects status functions in step environment and
+script expressions before native jobs start. Capture native failure with a
+failure-only step conditional and a literal true output, before artifact stages;
+an absent output never selects diagnostics. Keep all-selected admission and
+allowed-skip/test rules unchanged.
+
+Adopt actionlint 1.7.12 (publisher release 2026-03-30; twelve direct and two
+indirect Go dependencies, distributed as one static binary), rather than building
+an Actions expression parser. Morpheus enables a default-off reusable Node CI
+input and verifies the official Linux X64 archive's SHA-256 before executing it
+inside the existing required check. Real checker regressions cover unsupported
+status contexts. No runtime package, new runner job or generic parser is added.

@@ -1,0 +1,40 @@
+name: Paperclip closeout history
+
+on:
+  pull_request:
+    paths:
+      - '.agent/paperclip-closeouts/**'
+      # Case aliases and ancestor replacement are relevant on case-sensitive Git.
+      - '.[aA][gG][eE][nN][tT]'
+      - '.[aA][gG][eE][nN][tT]/[pP][aA][pP][eE][rR][cC][lL][iI][pP]-[cC][lL][oO][sS][eE][oO][uU][tT][sS]'
+      - '.[aA][gG][eE][nN][tT]/[pP][aA][pP][eE][rR][cC][lL][iI][pP]-[cC][lL][oO][sS][eE][oO][uU][tT][sS]/**'
+      - 'scripts/paperclip-closeout/**'
+      - 'tests/paperclip-closeout*.test.ts'
+      - '.github/workflows/paperclip-closeout-history.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck the standalone closeout CLI
+        run: pnpm exec tsc --noEmit --target ES2023 --module NodeNext --moduleResolution NodeNext --strict --skipLibCheck scripts/paperclip-closeout/cli.ts
+      - name: Preserve committed snapshots and validate additions
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm exec tsx scripts/paperclip-closeout/cli.ts --repo . --check-history --base "$BASE_SHA" --head "$HEAD_SHA"
