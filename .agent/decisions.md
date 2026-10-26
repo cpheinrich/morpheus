@@ -1738,3 +1738,10 @@ Actions workflow ID. Display names may collide; different workflows and commit-s
 contexts remain separate. External checks without a workflow retain suite identity, and missing suite identity refuses
 the receipt. This corrects the existing GitHub-specific reducer using the current
 GraphQL query and Map; no generic module or dependency is introduced.
+
+### 2026-10-26 — Reject explicit IDs with pm ship --check
+
+The explicit-ID command is a deliberate manual shipping escape hatch; `--check` is
+a merged-PR reconciliation drift report. Combining them now fails before any item
+write, instead of silently mutating files. This existing CLI guard needs no generic
+module or dependency. Issue #421; MO-26-10-26-12.12.30.
