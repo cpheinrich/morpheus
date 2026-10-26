@@ -479,6 +479,9 @@ sophisticated one you can build.
 
 ## 5. Leave a record that reproduces every number
 
+Keep a concise body with the ask, what was built, plain-language results and the decision;
+put detailed tables, methods and reproducibility evidence in appendices at the bottom.
+
 - **An experiment ledger entry per run**: hypothesis, change, baseline, code commit, corpus digest,
   verdict. Store each case's whole output (not just the scored number) in private storage, with a
   pointer and digest in the repository.
@@ -604,6 +607,7 @@ project · **L** an agent's lesson, not stated by a human.
 
 | Rule | Sources |
 |---|---|
+| Concise body with plain metrics; detailed evidence in bottom appendices | [Morpheus #497](https://github.com/cpheinrich/morpheus/issues/497), carrying Chris’s research-record preference from Evo #632 (D) |
 | A ledger entry per run, whole outputs stored | Evo \`benchmarks/rgbd-calorie/README.md\`, the experiment ledger (A); Evo \`.agent/learned.md\`, store the model's whole answer (A) |
 | Scripts that rebuild every table | Evo session 2026-10-23 06:18: a solid record of the experiments with the implementation (D) |
 | Worklog dead ends | Evo \`.agent/worklog/2026-10-22-sam3d-food-volume.md\`, "Dead ends and surprises" (L) |
@@ -643,6 +647,26 @@ project · **L** an agent's lesson, not stated by a human.
 Read this when starting an experiment series, before publishing results, and before the pull
 request. A project's own benchmark plumbing (ledger, report format, storage) takes precedence over
 these shapes; use them where the project has none.
+
+## Shape of the record
+
+Keep the body short: the ask, what was built, the result in plain words, and the decision
+or open questions. Put per-item tables, paths taken, counterfactuals, commands, digests,
+spend details and the review record in appendices at the bottom. Keep any cost or uncertainty
+that changes the decision in the body too; the appendices retain the reproducible evidence.
+
+Present headline metrics in plain language, with a one-line definition on first use. For
+positive quantities compared by ratio, report typical error as a percentage, the direction
+and percentage of bias (high or low), and the share within the declared tolerance. Use the
+project's appropriate metrics for other tasks; this presentation rule does not change the
+predeclared selection rule.
+
+Put the log-ratio definition, formulas and bootstrap details in an appendix. With
+\`r = ln(estimate / truth)\`, the natural-log ratio of a positive estimate to its positive
+reference, typical multiplicative error is \`100 * (exp(median(abs(r))) - 1)\` percent;
+signed bias is \`100 * (exp(median(r)) - 1)\` percent (positive means high, negative low).
+State the tolerance rule and denominator for the share within tolerance, including how
+invalid or failed cases are handled. Do not silently omit them.
 
 ## The plan (write it before the first paid run)
 

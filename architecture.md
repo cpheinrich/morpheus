@@ -516,6 +516,8 @@ needed.
   and distributed the same way — canonical files beside `agentic-cto`, printed by
   `morpheus cto guide research-engineer` (a reference as `research-engineer/<reference>`), and a
   one-file pointer from `morpheus init` — and the CTO's mandate, budget and gates apply to it.
+  Its record puts the ask, plain-language results and decision in a concise body, with detailed
+  tables, metric formulas and reproducibility evidence in bottom appendices.
 - **`devops-engineer`** owns CI/CD delivery health and incident follow-through under the same
   mandate. It distinguishes eligible deadlines and actual availability from process health,
   resumes existing repair ownership and keeps memory in durable incident records. It uses the
