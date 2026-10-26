@@ -30,7 +30,7 @@ export declare function prefixOf(id: string): string | null;
  * not the UTC day, the same choice `isoDateTime` makes for offsets. Legacy Date
  * values are UTC, so slicing their ISO string cannot shift the day.
  */
-export declare const isoDate: z.ZodPreprocess<z.ZodISODate>;
+export declare const isoDate: z.ZodPreprocess<z.ZodISODate, unknown>;
 /**
  * An ISO timestamp with an offset, compatible with legacy YAML date handling.
  *
@@ -44,7 +44,7 @@ export declare const isoDate: z.ZodPreprocess<z.ZodISODate>;
  * A Date has already lost the offset, so one recovered from YAML is rendered in
  * UTC and will simply not match — which is the honest outcome: quote the value.
  */
-export declare const isoDateTime: z.ZodPreprocess<z.ZodISODateTime>;
+export declare const isoDateTime: z.ZodPreprocess<z.ZodISODateTime, unknown>;
 /**
  * A scalar that YAML will happily turn into a number.
  *
@@ -54,7 +54,7 @@ export declare const isoDateTime: z.ZodPreprocess<z.ZodISODateTime>;
  * nobody made. Same family as `isoDate`: the file is right and the parser
  * has to meet it.
  */
-export declare const looseString: z.ZodPreprocess<z.ZodString>;
+export declare const looseString: z.ZodPreprocess<z.ZodString, unknown>;
 /**
  * `blocked` is the third exit, alongside finishing and failing.
  *
@@ -107,8 +107,8 @@ export declare const RoadmapItem: z.ZodObject<{
     issuesToKeepOpen: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
     acceptance: z.ZodOptional<z.ZodString>;
     needs: z.ZodOptional<z.ZodString>;
-    created: z.ZodPreprocess<z.ZodISODate>;
-    updated: z.ZodPreprocess<z.ZodISODate>;
+    created: z.ZodPreprocess<z.ZodISODate, unknown>;
+    updated: z.ZodPreprocess<z.ZodISODate, unknown>;
 }, z.core.$strip>;
 export declare const Goal: z.ZodObject<{
     id: z.ZodString;
@@ -118,9 +118,9 @@ export declare const Goal: z.ZodObject<{
         quarterly: "quarterly";
     }>;
     period: z.ZodString;
-    metric: z.ZodPreprocess<z.ZodString>;
-    target: z.ZodPreprocess<z.ZodString>;
-    current: z.ZodOptional<z.ZodPreprocess<z.ZodString>>;
+    metric: z.ZodPreprocess<z.ZodString, unknown>;
+    target: z.ZodPreprocess<z.ZodString, unknown>;
+    current: z.ZodOptional<z.ZodPreprocess<z.ZodString, unknown>>;
     status: z.ZodEnum<{
         "on-track": "on-track";
         "at-risk": "at-risk";
@@ -146,10 +146,10 @@ export declare const Request: z.ZodObject<{
         declined: "declined";
     }>;
     roadmap: z.ZodOptional<z.ZodString>;
-    created: z.ZodPreprocess<z.ZodISODate>;
+    created: z.ZodPreprocess<z.ZodISODate, unknown>;
 }, z.core.$strip>;
 export declare const JournalEntry: z.ZodObject<{
-    date: z.ZodPreprocess<z.ZodISODate>;
+    date: z.ZodPreprocess<z.ZodISODate, unknown>;
     agent: z.ZodEnum<{
         human: "human";
         claude: "claude";
@@ -202,8 +202,8 @@ export declare const ARTIFACTS: {
             issuesToKeepOpen: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
             acceptance: z.ZodOptional<z.ZodString>;
             needs: z.ZodOptional<z.ZodString>;
-            created: z.ZodPreprocess<z.ZodISODate>;
-            updated: z.ZodPreprocess<z.ZodISODate>;
+            created: z.ZodPreprocess<z.ZodISODate, unknown>;
+            updated: z.ZodPreprocess<z.ZodISODate, unknown>;
         }, z.core.$strip>;
         readonly dir: "roadmap";
         readonly label: "Roadmap";
@@ -217,9 +217,9 @@ export declare const ARTIFACTS: {
                 quarterly: "quarterly";
             }>;
             period: z.ZodString;
-            metric: z.ZodPreprocess<z.ZodString>;
-            target: z.ZodPreprocess<z.ZodString>;
-            current: z.ZodOptional<z.ZodPreprocess<z.ZodString>>;
+            metric: z.ZodPreprocess<z.ZodString, unknown>;
+            target: z.ZodPreprocess<z.ZodString, unknown>;
+            current: z.ZodOptional<z.ZodPreprocess<z.ZodString, unknown>>;
             status: z.ZodEnum<{
                 "on-track": "on-track";
                 "at-risk": "at-risk";
@@ -249,7 +249,7 @@ export declare const ARTIFACTS: {
                 declined: "declined";
             }>;
             roadmap: z.ZodOptional<z.ZodString>;
-            created: z.ZodPreprocess<z.ZodISODate>;
+            created: z.ZodPreprocess<z.ZodISODate, unknown>;
         }, z.core.$strip>;
         readonly dir: "requests";
         readonly label: "Requests";

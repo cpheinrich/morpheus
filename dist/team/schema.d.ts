@@ -59,7 +59,7 @@ export declare const NoteSource: z.ZodEnum<{
 export declare const MeetingNote: z.ZodObject<{
     id: z.ZodString;
     title: z.ZodString;
-    occurred: z.ZodPreprocess<z.ZodISODateTime>;
+    occurred: z.ZodPreprocess<z.ZodISODateTime, unknown>;
     attendees: z.ZodArray<z.ZodString>;
     recorded_by: z.ZodString;
     source: z.ZodEnum<{
@@ -73,6 +73,6 @@ export declare const MeetingNote: z.ZodObject<{
     duration_minutes: z.ZodOptional<z.ZodNumber>;
     roadmap: z.ZodDefault<z.ZodArray<z.ZodString>>;
     redacted: z.ZodDefault<z.ZodBoolean>;
-    created: z.ZodPreprocess<z.ZodISODate>;
+    created: z.ZodPreprocess<z.ZodISODate, unknown>;
 }, z.core.$strip>;
 export type MeetingNote = z.infer<typeof MeetingNote>;
