@@ -1,46 +1,55 @@
 ---
 owner: cpheinrich
-date: 2026-10-24
+date: 2026-10-26
 agents:
   - codex
-previous: .agent/inbox-archive/2026-10-24-2127-cpheinrich.md
+previous: .agent/inbox-archive/2026-10-26-1927-cpheinrich.md
 ---
-# Inbox — 2026-10-24
+# Inbox — 2026-10-26
 
-The interactive Paperclip worker bridge is delivered in [merged PR475](https://github.com/cpheinrich/morpheus/pull/475), commit53b7477, after the original independent reviewer finalized the real remote Claude evidence and final-head CI passed. Remote Claude and Codex both passed the requested interactive flows. Your terminal/sudo preference is retained on both Macs and the canonical host setup template. You authorized Claude down to20% remaining to finish this task; the final review finished with39% weekly remaining, so the old budget request is closed. All test workers are paused and reservations clear. The three older unreplied items below remain unchanged.
+The issue automation reconciled all open issues and the fixes merged by other sessions since the previous run. It verified that #516 was already implemented in PR408 and closed it with current-code and regression-test evidence. The read-only shipping fix is merged in PR525; #421 is closed and its branch deleted. The CI identity fix is also merged in PR524; #492 is closed and its branch deleted. The research-record update in PR526 has independent review clearance and is completing final-head CI. The Paperclip delivery and terminal-preference results remain in the archived inbox. Unreplied decisions below are preserved.
 
-## ✅ 1. Remote worker bridge delivered · `codex`
+## ✅ 1. Issue maintenance this run · `codex`
 
-Codex desktop can coordinate the staged pool bridge while Paperclip owns execution and logs. The real remote tests cover streamed progress, questions/answers, remembered follow-ups, reconnect, native-worker stop and supported recovery. Exact identities, independently read nonce artifacts and retained failures are in the [worklog](../../.agent/worklog/2026-10-24-bridge-paperclip-workers.md). The source has95 passing plugin tests, passing typecheck/compile/PM validation, and seven passing CI checks with four expected skips at final source head9f5c577. The same reviewer cleared implementation fixes and the four completion Markdown files; no reviewer was replaced.
+[#516](https://github.com/cpheinrich/morpheus/issues/516) is closed: the existing `issuesToKeepOpen` relationship preserves incident ownership and requires `Refs` instead of closing keywords. Current-code checks passed 189 tests.
 
-Claude's stopped turn was waiting for an unapproved Bash permission. Its CLI/MCP child were stopped and independently absent; the proposed sleep never ran. A running Claude shell-command stop and logout/reboot readiness remain untested. Remote Codex's actual foreground-command stop is separate. Follow-ups occur at turn boundaries. This is a qualified prototype with private controller/worker runtimes; the existing personal plugin was not hot-replaced during the active desktop session. The documented CLI fallback works in this conversation; broad consumer/simulator rollout remains separate.
+Merged [PR524](https://github.com/cpheinrich/morpheus/pull/524) keeps CI checks from different workflows separate while allowing later attempts of the same workflow to supersede earlier ones. Its independent review and integrated-head checks passed (7 passed, 2 expected skips); #492 closure and branch deletion are verified. Merged [PR525](https://github.com/cpheinrich/morpheus/pull/525) rejects explicit roadmap IDs with `pm ship --check` before writing any file. Its independent review, 127 focused tests, 3302 full-suite tests and final-head GitHub checks passed; merge, #421 closure and branch deletion are verified. [PR526](https://github.com/cpheinrich/morpheus/pull/526) updates research records to use a concise body and detailed appendices. PR526 has independent review clearance with no findings; final CI is pending.
 
-## ✅ 2. Terminal preference and final-review budget request resolved · `codex`
+## ❗ 2. PR414 conflict integration needs scoped review coverage · `codex`
 
-The host-level instructions on both Macs and [merged host-setup PR11](https://github.com/cpheinrich/agent-host-setup/pull/11) retain supported terminal commands and already-authorized sudo before blocking UI flows. The exact mini command enters Zoe's existing GUI audit session and restores her uid/home before Node/model execution. Native Pro authentication works; no token or credential copy was needed.
+The policy choice for [#248](https://github.com/cpheinrich/morpheus/issues/248) is approved, and your current automation request authorizes reviewed merges. The original reviewer's fourth turn is complete: it cleared the test-only correction at `74290f6`, with 74 tests passing. It does not need to be repeated.
 
-Your chat reply authorized Claude down to20% weekly remaining if needed to finish this task, replacing its former40% floor. The original reviewer's single finalization-only turn took61,929ms. Main-Claude native usage remained61% used/39% remaining (rounded/shared telemetry); no further model work is running. This resolves only PR475's budget question, and does not grant an extra review turn for PR414 below.
+[Your recorded authorization](https://github.com/cpheinrich/morpheus/pull/414#issuecomment-6377285624) separately requires review coverage for authored conflict-resolution edits. Current main has nine conflicts, including the check CLI, metadata workflow, their tests, two policy documents and generated output. The original author is no longer running. The general runbook permits named trunk integrations, but that does not erase your narrower recorded condition. Draft [PR414](https://github.com/cpheinrich/morpheus/pull/414) keeps its original author/reviewer history and auto-merge remains off. This corrects the stale request for the already-completed fourth turn, also identified in records-only PR463.
 
-## ❗ 3. One further review turn for PR #414 · `codex`
-
-[#248](https://github.com/cpheinrich/morpheus/issues/248) now has draft [PR #414](https://github.com/cpheinrich/morpheus/pull/414). Its worklog records approval of the human-override policy and three independent review turns clearing the implementation through `249285c`. The final test-only correction `74290f6` updates the scaffold expectation for the already-reviewed comment-revocation workflow. Its build/test jobs pass, but that correction is outside review coverage. Current-main `verifyReviewRecord` reproduces the coverage refusal. GitHub also reports a conflict with current main; the existing author must integrate trunk before final validation. The PR remains draft with auto-merge off.
-
-The [independent-review runbook](../../docs/runbooks/independent-review.md) requires explicit authorization for each extra same-reviewer turn and says: “Never infer approval from a merge request or manufacture it.” This is the existing PR request, consolidated here; it is not a request to decide the policy again.
-
-- **A — authorize one additional same-reviewer turn (recommended).** Resume the original author and reviewer for the test correction, then merge only after review validation and required final-head checks pass.
-- **B — keep the PR draft.** Preserve the implementation and defer the additional review.
-- **C — decline the override feature.** Record that maintainer decision before closing the draft and issue.
+- **A — authorize one original-reviewer turn for the current-main conflict integration (recommended).** Resolve those conflicts, have that reviewer assess the integrated result, and merge only after required checks pass.
+- **B — keep PR414 draft.** Preserve the approved implementation while deferring integration.
+- **C — decline the feature.** Record that new maintainer decision before closing the PR and issue.
 - **Other —** a different disposition.
 
 ~
 
-## ❗ 4. Kairos certificate-chain evidence · `codex`
+## ❗ 3. Kairos certificate-chain evidence · `codex`
 
-[#310](https://github.com/cpheinrich/morpheus/issues/310) remains open. Its failed Actions run shows an imported identity and a generic trust-check failure, but does not reveal the public leaf certificate issuer or the detailed verification error. Please send the failed public certificate's issuer and validity dates, or the unquiet security verify-cert error. No private key, password, provisioning profile or production rerun is needed.
+[#310](https://github.com/cpheinrich/morpheus/issues/310) still lacks the failed public leaf certificate's issuer and validity dates, or the detailed unquiet `security verify-cert` error. The generic trust failure does not identify a correct certificate-chain change. No private key, password, provisioning profile or production rerun is requested.
 
 ~
 
-## ❗ 5. One older claim remains · `codex`
+## ❗ 4. Adopt the worktree-storage report · `codex`
+
+[#423](https://github.com/cpheinrich/morpheus/issues/423) requests durable/configurable worktree storage after temporary-directory loss. Its reporter has CONTRIBUTOR association and read-only repository permission, so the repository's trusted-intake policy prevents implementing that request without maintainer adoption.
+
+- **A — adopt the report for investigation (recommended).** Reproduce the loss and evaluate a durable root alongside missing-worktree recovery #430 before choosing a design.
+- **B — retain temporary roots.** Investigate recovery under #430 while leaving storage policy unchanged.
+- **C — defer #423.** Keep it open until a consumer provides more concrete requirements.
+- **Other —** a different approach.
+
+~
+
+## ✅ 5. Remaining implementation queue is recorded · `codex`
+
+Next groups are missing-worktree recovery (#430, checking overlap with PR508), legacy website detection (#433), manager-review preflight (#444), shallow Git source ancestry (#445), exact roadmap-ID search (#478), active plugin-run preservation (#481), opt-in Swift brand output (#491). Audit-log issues #335 and #451 remain open intentionally. The atomic local issue ledger retains evidence, claims, exact review/check state and next actions; the weekly schedule stays active. Audit-owned and unrelated PRs remain untouched.
+
+## ❗ 6. One older claim remains · `codex`
 
 `MO-26-09-16-00.36.07` shipped in [PR #390](https://github.com/cpheinrich/morpheus/pull/390), and its remote branch is deleted. That previous disposition request is resolved. `MO-055` still holds remote branch `mo-055-a-new-contributor-gets-an-inbox-in-one-c`; this automation did not take it over. The original context is in [the archived exchange](../../.agent/inbox-archive/2026-10-12-1945-cpheinrich.md).
 
