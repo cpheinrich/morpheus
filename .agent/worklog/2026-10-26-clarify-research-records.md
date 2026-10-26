@@ -65,6 +65,12 @@ Independent reviewer /root/review_research_records cleared exact remote head 485
   },
   "outcome": "complete",
   "summary": "Independent reviewer /root/review_research_records cleared exact remote head 485a1b51 with no findings or conditions. It verified the metric definitions through numerical probes, appropriate scope for other domains, reproducibility and uncertainty guidance, and byte-for-byte agreement among canonical files, Claude mirrors, TypeScript and compiled exports. Final-head CI remains required.",
-  "findings": []
+  "findings": [],
+  "trunkIntegrations": [
+    {
+      "commit": "d0bb85b9d7dbfe27455ce04947aa859b6a3e96f2",
+      "reason": "Merge origin/main at a0176575060f2cef5b0ccde1eea4f1651f1354fd after PR524. The only manual resolution retained both independent decision-note additions. Architecture merged automatically; no implementation conflict was resolved. This records the unreviewed prose integration as the runbook requires."
+    }
+  ]
 }
 ```
