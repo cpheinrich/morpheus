@@ -1729,3 +1729,10 @@ an Actions expression parser. Morpheus enables a default-off reusable Node CI
 input and verifies the official Linux X64 archive's SHA-256 before executing it
 inside the existing required check. Real checker regressions cover unsupported
 status contexts. No runtime package, new runner job or generic parser is added.
+
+### 2026-10-26 — Reject explicit IDs with pm ship --check
+
+The explicit-ID command is a deliberate manual shipping escape hatch; `--check` is
+a merged-PR reconciliation drift report. Combining them now fails before any item
+write, instead of silently mutating files. This existing CLI guard needs no generic
+module or dependency. Issue #421; MO-26-10-26-12.12.30.
