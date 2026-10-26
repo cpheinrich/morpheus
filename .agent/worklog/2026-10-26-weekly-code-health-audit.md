@@ -50,8 +50,11 @@ claim of graph completeness.
 `pnpm exec vitest run tests/web-scaffold.test.ts tests/team.test.ts tests/check.test.ts` passed
 193 tests in three files. `pnpm typecheck`, `pnpm lint`, `pnpm compile`, `pnpm morpheus pm index`,
 `pnpm morpheus pm validate`, `pnpm morpheus team validate`, `pnpm morpheus inbox validate`, and
-`git diff --check` pass. The full suite was not run locally because the edits do not touch one of
-the repository's shared-core paths; exact-head CI owns the complete suite.
+`git diff --check` pass. One full-suite attempt was run once in the separate root-Zod worktree;
+the orchestration PTY detached before returning its final status, so that result is unknown and
+was not repeated under the repository's at-most-once policy. The audit branch itself did not need
+a separate full-suite run because it does not touch a repository-designated shared-core path;
+exact-head CI remains authoritative.
 
 Fresh independent review is pending. The audit pull request must remain an unlabelled draft until
 the review record is committed and validated.
