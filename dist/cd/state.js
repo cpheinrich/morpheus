@@ -1,4 +1,4 @@
-import { configurationDigest, hash, sourceAgeWaiverSchema } from "./schema.js";
+import { budgetSpendingPolicySchema, configurationDigest, hash, sourceAgeWaiverSchema } from "./schema.js";
 import { CdWait } from "./errors.js";
 export const milliseconds = (minutes) => minutes * 60_000;
 export const after = (at, minutes) => new Date(Date.parse(at) + milliseconds(minutes)).toISOString();
@@ -361,6 +361,32 @@ export function completeOperationalRepair(state, intentId, evidence, now) {
     intent.nextCheckAt = now;
     intent.blocker = undefined;
 }
+/** Explicit opt-in for one ledger/campaign; never reinterpret old requests as settlements. */
+export function setBudgetSpendingPolicy(state, config, input, now) {
+    invariant(state.repository === config.repository && state.configurationDigest === configurationDigest(config), "Budget policy configuration differs from ledger");
+    const policy = budgetSpendingPolicySchema.parse({ mode: "spend-as-needed", ...input, adoptedAt: now });
+    budgetStatus(state, config);
+    const previous = state.budget.spendingPolicy;
+    invariant(!previous || previous.campaignId === policy.campaignId, "Budget policy belongs to another campaign");
+    if (previous?.capMicros === policy.capMicros && previous.authorizationRef === policy.authorizationRef)
+        return previous;
+    invariant(!previous || previous.authorizationRef !== policy.authorizationRef, "Changed budget cap requires a new human authorization reference");
+    state.budget.spendingPolicy = policy;
+    return policy;
+}
+/** Remaining is against recorded spend, not a provider balance or final invoice. */
+export function budgetStatus(state, config) {
+    const policy = state.budget.spendingPolicy === undefined ? undefined : budgetSpendingPolicySchema.parse(state.budget.spendingPolicy);
+    const spent = state.budget.spentMicros;
+    invariant(Number.isSafeInteger(spent) && spent >= 0, "Invalid recorded spend");
+    const unsettled = Object.values(state.budget.reservations).filter(row => row.status === "reserved");
+    const held = policy ? 0 : unsettled.reduce((sum, row) => sum + row.maximumMicros, 0);
+    const cap = policy?.capMicros ?? Math.floor(config.budget.togetherLimitUsd * 1_000_000);
+    invariant(Number.isSafeInteger(held) && Number.isSafeInteger(cap), "Budget accounting overflow");
+    return { mode: policy?.mode ?? "reserved-liability", campaignId: policy?.campaignId, capMicros: cap,
+        recordedSpentMicros: spent, internalHeldMicros: held, remainingMicros: Math.max(0, cap - spent - held),
+        recordedOverspendMicros: Math.max(0, spent - cap), unsettledOperationCount: unsettled.length, remainingIsProviderBalance: false };
+}
 export function reservePaid(state, config, id, request, maximumMicros) {
     invariant(Number.isSafeInteger(maximumMicros) && maximumMicros >= 0, "Paid request requires bounded maximum liability");
     const requestDigest = hash(request), existing = state.budget.reservations[id];
@@ -368,8 +394,9 @@ export function reservePaid(state, config, id, request, maximumMicros) {
         invariant(existing.digest === requestDigest && existing.maximumMicros === maximumMicros, "Paid reservation replay changed request/configuration");
         return;
     }
-    const liability = Object.values(state.budget.reservations).reduce((sum, reservation) => sum + (reservation.status === "reserved" ? reservation.maximumMicros : 0), state.budget.spentMicros);
-    invariant(liability + maximumMicros <= Math.floor(config.budget.togetherLimitUsd * 1_000_000), "Together budget exhausted; preserve durable budget wait");
+    const budget = budgetStatus(state, config);
+    const total = budget.recordedSpentMicros + budget.internalHeldMicros + maximumMicros;
+    invariant(Number.isSafeInteger(total) && total <= budget.capMicros, budget.mode === "spend-as-needed" ? "Campaign budget exhausted against recorded spend; notify the human" : "Together budget exhausted; preserve durable budget wait");
     state.budget.reservations[id] = { digest: requestDigest, maximumMicros, status: "reserved" };
 }
 export function settlePaid(state, id, actualMicros) {

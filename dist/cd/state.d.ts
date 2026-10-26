@@ -39,6 +39,30 @@ export declare function claimGroup(state: CdState, intentId: string, attemptId: 
 export declare function repairWork(state: CdState, intentId: string, evidence: string[], now: string): string;
 export declare function adoptRepair(state: CdState, config: CdConfig, intentId: string, source: SourceRevision, evidence: string, now: string): void;
 export declare function completeOperationalRepair(state: CdState, intentId: string, evidence: string[], now: string): void;
+/** Explicit opt-in for one ledger/campaign; never reinterpret old requests as settlements. */
+export declare function setBudgetSpendingPolicy(state: CdState, config: CdConfig, input: {
+    campaignId: string;
+    capMicros: number;
+    authorizationRef: string;
+}, now: string): {
+    mode: "spend-as-needed";
+    campaignId: string;
+    capMicros: number;
+    authorizationRef: string;
+    adoptedAt: string;
+};
+/** Remaining is against recorded spend, not a provider balance or final invoice. */
+export declare function budgetStatus(state: CdState, config: CdConfig): {
+    mode: string;
+    campaignId: string | undefined;
+    capMicros: number;
+    recordedSpentMicros: number;
+    internalHeldMicros: number;
+    remainingMicros: number;
+    recordedOverspendMicros: number;
+    unsettledOperationCount: number;
+    remainingIsProviderBalance: boolean;
+};
 export declare function reservePaid(state: CdState, config: CdConfig, id: string, request: unknown, maximumMicros: number): void;
 export declare function settlePaid(state: CdState, id: string, actualMicros: number): void;
 export declare function quotaUsed(snapshot: QuotaSnapshot | undefined, now: string): number | undefined;

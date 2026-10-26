@@ -1755,6 +1755,19 @@ write, instead of silently mutating files. This existing CLI guard needs no gene
 module or dependency. Issue #421; MO-26-10-26-12.12.30.
 
 
+Human-authorized campaign spending can explicitly remove internal holds — 2026-10-26
+
+Chris directed this campaign to spend as needed inside its existing350 total and notify
+him when it runs out, instead of blocking on parked internal maxima. An optional durable
+ledger policy records campaign/cap/human reference/time through normal audited Store CAS.
+It changes ordinary admission to recorded spend plus the current bounded request; it never
+rewrites old reservations, invents zero settlement or changes configuration/subscription
+limits. Default ledgers retain the reserved-liability guard. Status distinguishes zero
+internal holds from unsettled operations and a remaining recorded-spend budget, not provider
+credit or a final invoice. Delayed/concurrent costs are an explicit tradeoff, not a hard
+spend guarantee. Existing Zod/canonical hash/Store suffice for this small domain-specific
+change; no generic grant framework, financial registry or new dependency is introduced.
+
 ## Hard blockers need evidence and exhausted reasonable options — 2026-10-26
 
 MO-26-10-26-15.37.42. Chris requires the delivery session and shared DevOps persona to document
