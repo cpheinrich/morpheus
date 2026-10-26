@@ -13,7 +13,7 @@ export function rollup(sha: string, nodes: unknown[], hasNextPage = false): unkn
   };
 }
 
-export function run(name: string, status: string, conclusion: string | null, opts: { required?: boolean; startedAt?: string; job?: string; workflow?: string } = {}) {
+export function run(name: string, status: string, conclusion: string | null, opts: { required?: boolean; startedAt?: string; job?: string; workflow?: string; suite?: string; workflowId?: string } = {}) {
   return {
     __typename: "CheckRun",
     name,
@@ -22,7 +22,7 @@ export function run(name: string, status: string, conclusion: string | null, opt
     detailsUrl: `https://github.com/cpheinrich/morpheus/actions/runs/37724037716/job/${opts.job ?? "113138012168"}`,
     startedAt: opts.startedAt ?? "2026-10-08T03:43:05Z",
     isRequired: opts.required ?? false,
-    checkSuite: { workflowRun: { workflow: { name: opts.workflow ?? "CI" } } },
+    checkSuite: { id: opts.suite ?? `suite-${opts.workflow ?? "CI"}`, workflowRun: { workflow: { id: opts.workflowId ?? `workflow-${opts.workflow ?? "CI"}`, name: opts.workflow ?? "CI" } } },
   };
 }
 

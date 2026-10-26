@@ -78,6 +78,20 @@ describe("waitCi", () => {
     expect(calls.filter((c) => c[0] === "run")).toEqual([["run", "list", "--repo", "cpheinrich/morpheus", "--commit", SHA_A, "--limit", "100", "--json", "headSha,status,conclusion,databaseId"]]);
   });
 
+  it.each([false, true])("reports a failed sibling workflow with requiredOnly=%s", async (requiredOnly) => {
+    const snapshot = ok(rollup(SHA_A, [
+      run("pr / conventions", "COMPLETED", "FAILURE", { required: true, workflow: "CI", suite: "suite-ci", job: "121087621483", startedAt: "2026-10-25T05:37:16Z" }),
+      run("pr / conventions", "COMPLETED", "SUCCESS", { required: true, workflow: "Review metadata", suite: "suite-metadata", job: "121088242267", startedAt: "2026-10-25T05:40:48Z" }),
+    ]));
+    const { deps, calls } = fakeGh([snapshot], { "121087621483": fail("retained job log unavailable") });
+    const result = await waitCi(deps, { ...opts, requiredOnly });
+    expect(result.exitCode).toBe(1);
+    expect(result.output).toContain("pr / conventions");
+    expect(result.output).toContain("121087621483");
+    expect(result.output).not.toContain("CI green");
+    expect(calls.filter((args) => args[0] === "run")).toEqual([["run", "view", "--repo", "cpheinrich/morpheus", "--job", "121087621483", "--log-failed"]]);
+  });
+
   it("waits for a current-head workflow even when the first four visible checks are green", async () => {
     const early = ok(rollup(SHA_A, [run("pm", "COMPLETED", "SUCCESS"), run("conventions", "COMPLETED", "SUCCESS"), run("vercel", "COMPLETED", "SUCCESS"), run("preview", "COMPLETED", "SUCCESS")]));
     const fullPending = ok(rollup(SHA_A, [run("pm", "COMPLETED", "SUCCESS"), run("conventions", "COMPLETED", "SUCCESS"), run("vercel", "COMPLETED", "SUCCESS"), run("preview", "COMPLETED", "SUCCESS"), run("lint", "IN_PROGRESS", null), run("build", "IN_PROGRESS", null), run("digest", "IN_PROGRESS", null)]));

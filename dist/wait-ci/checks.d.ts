@@ -10,6 +10,10 @@ export interface Check {
     name: string;
     /** The Actions workflow, when the check is a job. */
     workflow?: string;
+    /** Stable workflow identity, independent of its display name. */
+    workflowId?: string;
+    /** Stable across reruns of one Actions run; distinct workflows/runs have distinct suites. */
+    suiteId?: string;
     outcome: Outcome;
     url?: string;
     required: boolean;
@@ -38,7 +42,7 @@ export declare const EXIT: {
  * `commits(last: 1)` node, so a push between two requests can never pair one
  * commit's id with another commit's checks.
  */
-export declare const ROLLUP_QUERY = "query($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    pullRequest(number: $number) {\n      number\n      url\n      commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) {\n        pageInfo { hasNextPage }\n        nodes {\n          __typename\n          ... on CheckRun { name status conclusion detailsUrl startedAt isRequired(pullRequestNumber: $number)\n            checkSuite { workflowRun { workflow { name } } } }\n          ... on StatusContext { context state targetUrl createdAt isRequired(pullRequestNumber: $number) }\n        }\n      } } } } }\n    }\n  }\n}";
+export declare const ROLLUP_QUERY = "query($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    pullRequest(number: $number) {\n      number\n      url\n      commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) {\n        pageInfo { hasNextPage }\n        nodes {\n          __typename\n          ... on CheckRun { name status conclusion detailsUrl startedAt isRequired(pullRequestNumber: $number)\n            checkSuite { id workflowRun { workflow { id name } } } }\n          ... on StatusContext { context state targetUrl createdAt isRequired(pullRequestNumber: $number) }\n        }\n      } } } } }\n    }\n  }\n}";
 /** A check run's lifecycle and conclusion, as GitHub's GraphQL enum values. */
 export declare function checkRunOutcome(status: string | null | undefined, conclusion: string | null | undefined): Outcome;
 /** A commit status (the older API that Vercel and similar integrations use). */
@@ -51,11 +55,11 @@ export declare function parseRollup(json: unknown): Snapshot | {
 /**
  * The identity two rollup rows share when one supersedes the other.
  *
- * A required check is keyed by name alone — the rule branch protection itself
- * applies — so the `pr / conventions` a label-triggered workflow adds supersedes
- * CI's own. Anything else is keyed by workflow and name, so two unrelated
- * workflows that each have a `test` job stay two rows and one cannot hide the
- * other's failure.
+ * Required names can occur in multiple workflows and runs, all of which can
+ * block protection. Only attempts of the same named job in the same workflow
+ * supersede one another. External checks retain suite identity when there is no
+ * Actions workflow. Workflow display names are not identities. Commit
+ * statuses occupy a separate namespace and retain their latest-context rule.
  */
 export declare function checkKey(check: Check): string;
 /**
