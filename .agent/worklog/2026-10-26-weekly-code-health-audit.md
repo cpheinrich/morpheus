@@ -80,3 +80,16 @@ Independent review cleared the normal-risk audit with no findings. The reviewer 
   "findings": []
 }
 ```
+
+## Post-review trunk integration
+
+Merged current `origin/main` `e38069785a350b05f6eac5847178f259aaabf348` through exact merge
+commit `325fefaefc6b0c4f5770b0e6a554f579d9e4dbba`. The merge was conflict-free, and its tree
+`755307a1ff71c925517a15202035803f3457b96f` exactly matches `git merge-tree --write-tree` for
+the two parents, so the reviewed audit implementation is unchanged. The dated report retains its
+audited `a50cdbb1` baseline; the integrated trunk change is the separately reviewed wait-ci repair
+from #459.
+
+Post-integration validation passes: 222 focused tests across the audit paths and integrated
+wait-ci path, typecheck, lint, compile, PM index/validation, review-record validation, and
+`git diff --check`.
