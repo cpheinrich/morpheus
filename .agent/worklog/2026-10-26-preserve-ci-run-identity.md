@@ -68,6 +68,16 @@ Independent reviewer /root/review_ci_identity cleared the exact remote implement
   },
   "outcome": "complete",
   "summary": "Independent reviewer /root/review_ci_identity cleared the exact remote implementation head with no findings or conditions. The reviewer independently ran all 105 wait-ci tests and inspected the provider snapshots, generated output, relevant callers, and retained validation logs. Required CI remains a merge prerequisite.",
-  "findings": []
+  "findings": [],
+  "trunkIntegrations": [
+    {
+      "commit": "6ecbcd8ba979c4f63af82b47d55811b54df90467",
+      "reason": "Merge origin/main at 8a5e95064d534ce14d6c21355de007c814f37d0e after PR525. The only manual conflict concatenated the two independent appended decision entries; no implementation resolution was needed. This names the unreviewed documentation integration under the runbook."
+    }
+  ]
 }
 ```
+
+Current-main integration retained both decision entries. Required checks will run on
+the integrated head. One previous browser setup stalled for 17 minutes; that run
+was cancelled, and the integrated head receives a fresh run.
