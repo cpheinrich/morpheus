@@ -1,12 +1,126 @@
 import { z } from "zod";
-export declare const sha: any;
-export declare const digest: any;
-export declare const decimal: any;
-export declare const timestamp: any;
-export declare const sourceAgeWaiverSchema: any;
+export declare const sha: z.ZodString;
+export declare const digest: z.ZodString;
+export declare const decimal: z.ZodString;
+export declare const timestamp: z.ZodISODateTime;
+export declare const sourceAgeWaiverSchema: z.ZodObject<{
+    authorizationRef: z.ZodString;
+    grantedAt: z.ZodISODateTime;
+}, z.core.$strict>;
 export type SourceAgeWaiver = z.infer<typeof sourceAgeWaiverSchema>;
-export declare const configSchema: any;
-export declare const budgetSpendingPolicySchema: any;
+export declare const configSchema: z.ZodObject<{
+    schemaVersion: z.ZodLiteral<1>;
+    repository: z.ZodString;
+    mainBranch: z.ZodDefault<z.ZodString>;
+    stateBranch: z.ZodDefault<z.ZodString>;
+    mode: z.ZodDefault<z.ZodEnum<{
+        observe: "observe";
+        active: "active";
+    }>>;
+    inputs: z.ZodArray<z.ZodString>;
+    controlRef: z.ZodDefault<z.ZodString>;
+    deliveryWorkflow: z.ZodDefault<z.ZodString>;
+    channels: z.ZodObject<{
+        staging: z.ZodObject<{
+            appId: z.ZodString;
+            bundleId: z.ZodString;
+            version: z.ZodString;
+            internalGroupId: z.ZodString;
+            environment: z.ZodString;
+            appEnvironment: z.ZodOptional<z.ZodString>;
+            schedule: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                kind: z.ZodLiteral<"six-hour">;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"daily">;
+                hourUtc: z.ZodNumber;
+            }, z.core.$strict>], "kind">;
+            minimumAgeHours: z.ZodDefault<z.ZodNumber>;
+            scheme: z.ZodOptional<z.ZodString>;
+            configuration: z.ZodOptional<z.ZodString>;
+            validationGroupId: z.ZodOptional<z.ZodString>;
+            externalGroupIds: z.ZodOptional<z.ZodArray<z.ZodString>>;
+        }, z.core.$strict>;
+        production: z.ZodObject<{
+            appId: z.ZodString;
+            bundleId: z.ZodString;
+            version: z.ZodString;
+            internalGroupId: z.ZodString;
+            environment: z.ZodString;
+            appEnvironment: z.ZodOptional<z.ZodString>;
+            schedule: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                kind: z.ZodLiteral<"six-hour">;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"daily">;
+                hourUtc: z.ZodNumber;
+            }, z.core.$strict>], "kind">;
+            minimumAgeHours: z.ZodDefault<z.ZodNumber>;
+            scheme: z.ZodOptional<z.ZodString>;
+            configuration: z.ZodOptional<z.ZodString>;
+            validationGroupId: z.ZodOptional<z.ZodString>;
+            externalGroupIds: z.ZodOptional<z.ZodArray<z.ZodString>>;
+        }, z.core.$strict>;
+    }, z.core.$strict>;
+    tests: z.ZodDefault<z.ZodObject<{
+        allowedSkips: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    }, z.core.$strip>>;
+    native: z.ZodOptional<z.ZodObject<{
+        workingDirectory: z.ZodString;
+        project: z.ZodString;
+        testScheme: z.ZodString;
+        xcodeVersion: z.ZodString;
+        destination: z.ZodString;
+    }, z.core.$strip>>;
+    execution: z.ZodOptional<z.ZodObject<{
+        localRunner: z.ZodString;
+        hostedRunner: z.ZodDefault<z.ZodString>;
+        maxNativeJobs: z.ZodDefault<z.ZodNumber>;
+    }, z.core.$strip>>;
+    hooks: z.ZodOptional<z.ZodObject<{
+        preflightScript: z.ZodOptional<z.ZodString>;
+        verifyScript: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>;
+    apple: z.ZodObject<{
+        issuerIdEnv: z.ZodString;
+        keyIdEnv: z.ZodString;
+        privateKeyPathEnv: z.ZodString;
+    }, z.core.$strict>;
+    agents: z.ZodOptional<z.ZodObject<{
+        local: z.ZodObject<{
+            command: z.ZodDefault<z.ZodArray<z.ZodString>>;
+            model: z.ZodOptional<z.ZodString>;
+            quotaFile: z.ZodOptional<z.ZodString>;
+        }, z.core.$strip>;
+        hosted: z.ZodOptional<z.ZodObject<{
+            workflow: z.ZodString;
+            ref: z.ZodDefault<z.ZodString>;
+            command: z.ZodDefault<z.ZodArray<z.ZodString>>;
+            model: z.ZodOptional<z.ZodString>;
+            quotaFile: z.ZodOptional<z.ZodString>;
+        }, z.core.$strip>>;
+    }, z.core.$strip>>;
+    budget: z.ZodDefault<z.ZodObject<{
+        togetherLimitUsd: z.ZodDefault<z.ZodNumber>;
+        subscriptionAdmitBelowPercent: z.ZodDefault<z.ZodNumber>;
+        subscriptionStopAtPercent: z.ZodDefault<z.ZodNumber>;
+    }, z.core.$strip>>;
+    deadlines: z.ZodDefault<z.ZodObject<{
+        wakeMinutes: z.ZodDefault<z.ZodNumber>;
+        admissionMinutes: z.ZodDefault<z.ZodNumber>;
+        testMinutes: z.ZodDefault<z.ZodNumber>;
+        uploadMinutes: z.ZodDefault<z.ZodNumber>;
+        agentMinutes: z.ZodDefault<z.ZodNumber>;
+        appleObservationMinutes: z.ZodDefault<z.ZodNumber>;
+        pollMinutes: z.ZodDefault<z.ZodNumber>;
+        deliveryHours: z.ZodDefault<z.ZodNumber>;
+    }, z.core.$strip>>;
+}, z.core.$strict>;
+export declare const budgetSpendingPolicySchema: z.ZodObject<{
+    mode: z.ZodLiteral<"spend-as-needed">;
+    campaignId: z.ZodString;
+    capMicros: z.ZodNumber;
+    authorizationRef: z.ZodString;
+    adoptedAt: z.ZodISODateTime;
+}, z.core.$strict>;
 export type BudgetSpendingPolicy = z.infer<typeof budgetSpendingPolicySchema>;
 export type CdConfig = z.infer<typeof configSchema>;
 export type Channel = "staging" | "production";

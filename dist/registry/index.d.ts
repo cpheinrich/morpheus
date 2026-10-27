@@ -9,9 +9,32 @@ import { z } from "zod";
  * prefix collision at allocation time.
  */
 export declare const PREFIX: RegExp;
-export declare const RegisteredProject: any;
+export declare const RegisteredProject: z.ZodObject<{
+    name: z.ZodString;
+    prefix: z.ZodString;
+    path: z.ZodString;
+    kind: z.ZodEnum<{
+        company: "company";
+        personal: "personal";
+        internal: "internal";
+    }>;
+    org: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>;
 export type RegisteredProject = z.infer<typeof RegisteredProject>;
-export declare const Registry: any;
+export declare const Registry: z.ZodObject<{
+    version: z.ZodDefault<z.ZodLiteral<1>>;
+    projects: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        prefix: z.ZodString;
+        path: z.ZodString;
+        kind: z.ZodEnum<{
+            company: "company";
+            personal: "personal";
+            internal: "internal";
+        }>;
+        org: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>>;
+}, z.core.$strip>;
 export type Registry = z.infer<typeof Registry>;
 export declare function registryPath(): string;
 export declare function readRegistry(path?: string): Promise<Registry>;

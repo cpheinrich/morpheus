@@ -17,7 +17,7 @@ export declare class ActionsAdapter {
     readonly api: GitHubApi;
     readonly config: CdConfig;
     constructor(api: GitHubApi, config: CdConfig);
-    runs(effectId: string, workflow?: any): Promise<WorkflowRun[]>;
+    runs(effectId: string, workflow?: string): Promise<WorkflowRun[]>;
     run(id: string): Promise<WorkflowRun>;
     runAttempt(id: string, attempt: string): Promise<WorkflowRun>;
     executionRef(controlSha: string): Promise<string>;

@@ -80,11 +80,21 @@ Independent high-risk review found substantive R1: directory-removing Git cleanu
   ],
   "trunkIntegrations": [
     {
+      "commit": "104abd30951abbbb2fbc06147f5b4de3bfd630ea",
+      "reason": "GitHub Manager integrated main a50cdbb1. Named explicitly because review validation reported an unnamed integration; local git show --remerge-diff shows no authored delta. The same original reviewer inspects it in the late-correction turn."
+    },
+    {
       "commit": "f1aeeef05831618aa7d5fe0c5cb22cd6f90f6e8b",
-      "reason": "Merged main 6cb1caf before merge at Chris's request. The only conflict was the generated dist/cli/pm.js.map; it took main's copy, and a clean pnpm compile reproduces the committed dist/cli/pm.js and pm.js.map exactly. src/cli/pm.ts merged without conflict."
+      "reason": "Integrated main 6cb1caf7 and resolved the generated CLI source-map conflict. This merge accidentally included 27 declarations degraded to any by an incomplete dependency resolution. The subsequent correction restores those exact declarations from the supplied stash and verifies a clean compile is byte-identical; only the original five generated PR files differ from current main. Covered by the same reviewer late-correction turn."
     }
   ]
 }
 ```
 
 Final correction validation: `pnpm exec vitest run tests/worktree-cleanup.test.ts` passed all 20 tests; `pnpm typecheck`, `pnpm compile`, and `pnpm lint` passed. The reviewer independently ran all seven pruning regressions. The full suite passed before R1 correction; CI supplies full-suite coverage for the final head.
+
+## 2026-10-26 authorized merge recovery
+
+Chris explicitly authorized merging #508, superseding the earlier keep-open instruction. Applied stash f31de587a2f5a58c458e2c5763faddafed6723a5 (regen-dist-508); SHA-256 comparison across all dist files before/after `pnpm compile` found no differences. Exactly 27 declaration files were restored, all now identical to origin/main 6cb1caf779cffcb08105ebe8f2efe79ae4d96d09. Only dist/cli/pm.js, its map, and dist/pm/cleanup.d.ts, cleanup.js and its map differ from main. Dropped only the stash entry matched by both SHA and message. `pnpm typecheck` passed.
+
+Named both inherited trunk integrations explicitly, preserving review history. The late correction covers declaration regeneration and both integrations; no source behavior was added.

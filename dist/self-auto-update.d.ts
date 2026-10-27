@@ -12,7 +12,7 @@ export interface AutoUpdateConfigState {
 }
 export declare function autoUpdateConfigPath(): string;
 export declare function readAutoUpdateConfig(path?: string): Promise<AutoUpdateConfigState>;
-export declare function findMorpheusBinary(pathValue?: any): Promise<string | null>;
+export declare function findMorpheusBinary(pathValue?: string): Promise<string | null>;
 export declare function autoUpdateHookBlock(binaryPath: string): string;
 export type HookOutcome = "created" | "updated" | "present" | "removed" | "absent" | "blocked";
 export interface HookRepair {

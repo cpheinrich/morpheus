@@ -41,7 +41,26 @@ export declare const TRUSTED_ASSOCIATIONS: Set<string>;
 export declare const TRUSTED_PERMISSIONS: Set<string>;
 /** Lanes with their own deterministic maintainer. The manager reports on them and never touches them. */
 export declare const BOT_LANES: Set<string>;
-export declare const GhManagerPolicy: any;
+export declare const GhManagerPolicy: z.ZodObject<{
+    version: z.ZodLiteral<1>;
+    enabled: z.ZodDefault<z.ZodBoolean>;
+    quietHours: z.ZodDefault<z.ZodNumber>;
+    draftQuietHours: z.ZodDefault<z.ZodNumber>;
+    maxSessionsPerRun: z.ZodDefault<z.ZodNumber>;
+    maxAttemptsPerPullRequest: z.ZodDefault<z.ZodNumber>;
+    sessionBeforeMerge: z.ZodDefault<z.ZodBoolean>;
+    closeGraceDays: z.ZodDefault<z.ZodNumber>;
+    protectedPaths: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    model: z.ZodDefault<z.ZodString>;
+    actions: z.ZodDefault<z.ZodObject<{
+        merge: z.ZodDefault<z.ZodBoolean>;
+        repair: z.ZodDefault<z.ZodBoolean>;
+        review: z.ZodDefault<z.ZodBoolean>;
+        undraft: z.ZodDefault<z.ZodBoolean>;
+        triage: z.ZodDefault<z.ZodBoolean>;
+        close: z.ZodDefault<z.ZodBoolean>;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
 export type GhManagerPolicy = z.infer<typeof GhManagerPolicy>;
 export declare function parsePolicy(raw: string): GhManagerPolicy;
 /**

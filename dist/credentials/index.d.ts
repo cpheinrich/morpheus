@@ -15,7 +15,7 @@ export declare function projectRoots(cwd: string): {
 export declare function readConfig(root: string): CredentialsConfig;
 export declare function locate(cwd: string, env?: NodeJS.ProcessEnv): {
     config: CredentialsConfig;
-    path: any;
+    path: string;
     root: string;
     primary: string;
     common: string;
@@ -26,4 +26,4 @@ export declare function configure(cwd: string, repository: string, options?: {
     path?: string;
     command?: string;
 }): void;
-export declare function credentials(argv: string[], cwd?: any): number;
+export declare function credentials(argv: string[], cwd?: string): number;

@@ -30,7 +30,7 @@ export declare function prefixOf(id: string): string | null;
  * not the UTC day, the same choice `isoDateTime` makes for offsets. Legacy Date
  * values are UTC, so slicing their ISO string cannot shift the day.
  */
-export declare const isoDate: any;
+export declare const isoDate: z.ZodPreprocess<z.ZodISODate>;
 /**
  * An ISO timestamp with an offset, compatible with legacy YAML date handling.
  *
@@ -44,7 +44,7 @@ export declare const isoDate: any;
  * A Date has already lost the offset, so one recovered from YAML is rendered in
  * UTC and will simply not match — which is the honest outcome: quote the value.
  */
-export declare const isoDateTime: any;
+export declare const isoDateTime: z.ZodPreprocess<z.ZodISODateTime>;
 /**
  * A scalar that YAML will happily turn into a number.
  *
@@ -54,7 +54,7 @@ export declare const isoDateTime: any;
  * nobody made. Same family as `isoDate`: the file is right and the parser
  * has to meet it.
  */
-export declare const looseString: any;
+export declare const looseString: z.ZodPreprocess<z.ZodString>;
 /**
  * `blocked` is the third exit, alongside finishing and failing.
  *
@@ -63,14 +63,108 @@ export declare const looseString: any;
  * need". It sits next to `in-progress` rather than near `dropped`: the work is
  * live and its branch is still held, it is just waiting on an answer.
  */
-export declare const RoadmapStatus: any;
-export declare const Priority: any;
+export declare const RoadmapStatus: z.ZodEnum<{
+    backlog: "backlog";
+    "in-progress": "in-progress";
+    blocked: "blocked";
+    review: "review";
+    shipped: "shipped";
+    dropped: "dropped";
+}>;
+export declare const Priority: z.ZodEnum<{
+    P0: "P0";
+    P1: "P1";
+    P2: "P2";
+    P3: "P3";
+}>;
 /** Subject metadata, independent of a role, claim or execution permission. */
-export declare const WorkTags: any;
-export declare const RoadmapItem: any;
-export declare const Goal: any;
-export declare const Request: any;
-export declare const JournalEntry: any;
+export declare const WorkTags: z.ZodArray<z.ZodString>;
+export declare const RoadmapItem: z.ZodObject<{
+    id: z.ZodString;
+    title: z.ZodString;
+    status: z.ZodEnum<{
+        backlog: "backlog";
+        "in-progress": "in-progress";
+        blocked: "blocked";
+        review: "review";
+        shipped: "shipped";
+        dropped: "dropped";
+    }>;
+    priority: z.ZodDefault<z.ZodEnum<{
+        P0: "P0";
+        P1: "P1";
+        P2: "P2";
+        P3: "P3";
+    }>>;
+    tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    goal: z.ZodOptional<z.ZodString>;
+    owner: z.ZodDefault<z.ZodEnum<{
+        agent: "agent";
+        human: "human";
+    }>>;
+    prs: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
+    issues: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
+    issuesToKeepOpen: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
+    acceptance: z.ZodOptional<z.ZodString>;
+    needs: z.ZodOptional<z.ZodString>;
+    created: z.ZodPreprocess<z.ZodISODate>;
+    updated: z.ZodPreprocess<z.ZodISODate>;
+}, z.core.$strip>;
+export declare const Goal: z.ZodObject<{
+    id: z.ZodString;
+    title: z.ZodString;
+    horizon: z.ZodEnum<{
+        annual: "annual";
+        quarterly: "quarterly";
+    }>;
+    period: z.ZodString;
+    metric: z.ZodPreprocess<z.ZodString>;
+    target: z.ZodPreprocess<z.ZodString>;
+    current: z.ZodOptional<z.ZodPreprocess<z.ZodString>>;
+    status: z.ZodEnum<{
+        "on-track": "on-track";
+        "at-risk": "at-risk";
+        missed: "missed";
+        achieved: "achieved";
+    }>;
+}, z.core.$strip>;
+export declare const Request: z.ZodObject<{
+    id: z.ZodString;
+    title: z.ZodString;
+    source: z.ZodEnum<{
+        agent: "agent";
+        support: "support";
+        analytics: "analytics";
+        investor: "investor";
+        founder: "founder";
+    }>;
+    status: z.ZodEnum<{
+        duplicate: "duplicate";
+        new: "new";
+        triaged: "triaged";
+        accepted: "accepted";
+        declined: "declined";
+    }>;
+    roadmap: z.ZodOptional<z.ZodString>;
+    created: z.ZodPreprocess<z.ZodISODate>;
+}, z.core.$strip>;
+export declare const JournalEntry: z.ZodObject<{
+    date: z.ZodPreprocess<z.ZodISODate>;
+    agent: z.ZodEnum<{
+        human: "human";
+        claude: "claude";
+        codex: "codex";
+    }>;
+    roadmap: z.ZodOptional<z.ZodString>;
+    tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    outcome: z.ZodEnum<{
+        blocked: "blocked";
+        shipped: "shipped";
+        abandoned: "abandoned";
+        research: "research";
+    }>;
+    summary: z.ZodString;
+}, z.core.$strip>;
 export type RoadmapItem = z.infer<typeof RoadmapItem>;
 export type Goal = z.infer<typeof Goal>;
 export type Request = z.infer<typeof Request>;
@@ -80,17 +174,83 @@ export type Priority = z.infer<typeof Priority>;
 /** The artifact kinds that live as one-file-per-item under hq/product/. */
 export declare const ARTIFACTS: {
     readonly roadmap: {
-        readonly schema: any;
+        readonly schema: z.ZodObject<{
+            id: z.ZodString;
+            title: z.ZodString;
+            status: z.ZodEnum<{
+                backlog: "backlog";
+                "in-progress": "in-progress";
+                blocked: "blocked";
+                review: "review";
+                shipped: "shipped";
+                dropped: "dropped";
+            }>;
+            priority: z.ZodDefault<z.ZodEnum<{
+                P0: "P0";
+                P1: "P1";
+                P2: "P2";
+                P3: "P3";
+            }>>;
+            tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
+            goal: z.ZodOptional<z.ZodString>;
+            owner: z.ZodDefault<z.ZodEnum<{
+                agent: "agent";
+                human: "human";
+            }>>;
+            prs: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
+            issues: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
+            issuesToKeepOpen: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
+            acceptance: z.ZodOptional<z.ZodString>;
+            needs: z.ZodOptional<z.ZodString>;
+            created: z.ZodPreprocess<z.ZodISODate>;
+            updated: z.ZodPreprocess<z.ZodISODate>;
+        }, z.core.$strip>;
         readonly dir: "roadmap";
         readonly label: "Roadmap";
     };
     readonly goals: {
-        readonly schema: any;
+        readonly schema: z.ZodObject<{
+            id: z.ZodString;
+            title: z.ZodString;
+            horizon: z.ZodEnum<{
+                annual: "annual";
+                quarterly: "quarterly";
+            }>;
+            period: z.ZodString;
+            metric: z.ZodPreprocess<z.ZodString>;
+            target: z.ZodPreprocess<z.ZodString>;
+            current: z.ZodOptional<z.ZodPreprocess<z.ZodString>>;
+            status: z.ZodEnum<{
+                "on-track": "on-track";
+                "at-risk": "at-risk";
+                missed: "missed";
+                achieved: "achieved";
+            }>;
+        }, z.core.$strip>;
         readonly dir: "goals";
         readonly label: "Goals";
     };
     readonly requests: {
-        readonly schema: any;
+        readonly schema: z.ZodObject<{
+            id: z.ZodString;
+            title: z.ZodString;
+            source: z.ZodEnum<{
+                agent: "agent";
+                support: "support";
+                analytics: "analytics";
+                investor: "investor";
+                founder: "founder";
+            }>;
+            status: z.ZodEnum<{
+                duplicate: "duplicate";
+                new: "new";
+                triaged: "triaged";
+                accepted: "accepted";
+                declined: "declined";
+            }>;
+            roadmap: z.ZodOptional<z.ZodString>;
+            created: z.ZodPreprocess<z.ZodISODate>;
+        }, z.core.$strip>;
         readonly dir: "requests";
         readonly label: "Requests";
     };

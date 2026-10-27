@@ -1,7 +1,7 @@
 export declare const MORPHEUS_REMOTE = "https://github.com/cpheinrich/morpheus.git";
 export declare const INSTALL_RECEIPT = "morpheus-install.json";
 export declare const MORPHEUS_PACKAGE = "morpheus-kit";
-export declare const MORPHEUS_PACKAGE_ROOT: any;
+export declare const MORPHEUS_PACKAGE_ROOT: string;
 export interface MorpheusCommandResult {
     code: number;
     stdout: string;

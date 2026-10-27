@@ -44,12 +44,18 @@ export declare function setBudgetSpendingPolicy(state: CdState, config: CdConfig
     campaignId: string;
     capMicros: number;
     authorizationRef: string;
-}, now: string): any;
+}, now: string): {
+    mode: "spend-as-needed";
+    campaignId: string;
+    capMicros: number;
+    authorizationRef: string;
+    adoptedAt: string;
+};
 /** Remaining is against recorded spend, not a provider balance or final invoice. */
 export declare function budgetStatus(state: CdState, config: CdConfig): {
-    mode: any;
-    campaignId: any;
-    capMicros: any;
+    mode: string;
+    campaignId: string | undefined;
+    capMicros: number;
     recordedSpentMicros: number;
     internalHeldMicros: number;
     remainingMicros: number;

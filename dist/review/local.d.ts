@@ -1,6 +1,44 @@
 import { z } from "zod";
 import type { Finding } from "../check/pr.js";
-declare const FollowUp: any;
+declare const FollowUp: z.ZodObject<{
+    reviewerSession: z.ZodString;
+    commit: z.ZodString;
+    base: z.ZodOptional<z.ZodString>;
+    scopeReason: z.ZodOptional<z.ZodString>;
+    humanAuthorization: z.ZodOptional<z.ZodObject<{
+        approvedBy: z.ZodString;
+        approvedAt: z.ZodISODateTime;
+        reason: z.ZodString;
+    }, z.core.$strict>>;
+    verification: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            "finding-fix": "finding-fix";
+            "late-test": "late-test";
+        }>;
+        paths: z.ZodArray<z.ZodString>;
+        evidence: z.ZodString;
+    }, z.core.$strict>>;
+    finalization: z.ZodOptional<z.ZodObject<{
+        paths: z.ZodArray<z.ZodString>;
+        evidence: z.ZodString;
+        attestation: z.ZodString;
+    }, z.core.$strict>>;
+    outcome: z.ZodEnum<{
+        blocked: "blocked";
+        incomplete: "incomplete";
+        cleared: "cleared";
+    }>;
+    elapsedMinutes: z.ZodNumber;
+    timing: z.ZodOptional<z.ZodObject<{
+        source: z.ZodEnum<{
+            runner: "runner";
+            clock: "clock";
+        }>;
+        durationMs: z.ZodNumber;
+        evidence: z.ZodString;
+    }, z.core.$strict>>;
+    summary: z.ZodString;
+}, z.core.$strict>;
 export type ReviewFollowUp = z.infer<typeof FollowUp>;
 /**
  * Reviewer turns after the initial review. Three turns in total is the cap that stops an
@@ -23,7 +61,150 @@ export declare const FINALIZATION_CEILING_MINUTES = 5;
  * exemption. Explanatory prose that restates behaviour already reviewed is a different thing.
  */
 export declare const NORMATIVE: RegExp;
-export declare const ReviewRecord: any;
+export declare const ReviewRecord: z.ZodObject<{
+    version: z.ZodUnion<readonly [z.ZodLiteral<1>, z.ZodLiteral<2>]>;
+    base: z.ZodString;
+    reviewed: z.ZodString;
+    covered: z.ZodString;
+    authorSession: z.ZodString;
+    reviewerSession: z.ZodString;
+    risk: z.ZodEnum<{
+        small: "small";
+        normal: "normal";
+        high: "high";
+    }>;
+    elapsedMinutes: z.ZodNumber;
+    timing: z.ZodOptional<z.ZodObject<{
+        source: z.ZodEnum<{
+            runner: "runner";
+            clock: "clock";
+        }>;
+        durationMs: z.ZodNumber;
+        evidence: z.ZodString;
+    }, z.core.$strict>>;
+    extensionReason: z.ZodOptional<z.ZodString>;
+    outcome: z.ZodEnum<{
+        blocked: "blocked";
+        incomplete: "incomplete";
+        complete: "complete";
+    }>;
+    initialOutcome: z.ZodOptional<z.ZodLiteral<"incomplete">>;
+    summary: z.ZodString;
+    trunkIntegrations: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        commit: z.ZodString;
+        reason: z.ZodString;
+    }, z.core.$strict>>>;
+    documentationIntegrations: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        base: z.ZodString;
+        commit: z.ZodString;
+        reason: z.ZodString;
+        sources: z.ZodArray<z.ZodObject<{
+            commit: z.ZodString;
+            reviewRecord: z.ZodString;
+        }, z.core.$strict>>;
+    }, z.core.$strict>>>;
+    findings: z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        severity: z.ZodEnum<{
+            minor: "minor";
+            substantive: "substantive";
+            incidental: "incidental";
+        }>;
+        description: z.ZodString;
+        paths: z.ZodArray<z.ZodString>;
+        disposition: z.ZodEnum<{
+            open: "open";
+            fixed: "fixed";
+            deferred: "deferred";
+            disputed: "disputed";
+        }>;
+        response: z.ZodString;
+        roadmap: z.ZodOptional<z.ZodString>;
+        condition: z.ZodOptional<z.ZodObject<{
+            paths: z.ZodArray<z.ZodString>;
+            evidence: z.ZodString;
+        }, z.core.$strict>>;
+        conditionMet: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>;
+    followUp: z.ZodOptional<z.ZodObject<{
+        reviewerSession: z.ZodString;
+        commit: z.ZodString;
+        base: z.ZodOptional<z.ZodString>;
+        scopeReason: z.ZodOptional<z.ZodString>;
+        humanAuthorization: z.ZodOptional<z.ZodObject<{
+            approvedBy: z.ZodString;
+            approvedAt: z.ZodISODateTime;
+            reason: z.ZodString;
+        }, z.core.$strict>>;
+        verification: z.ZodOptional<z.ZodObject<{
+            kind: z.ZodEnum<{
+                "finding-fix": "finding-fix";
+                "late-test": "late-test";
+            }>;
+            paths: z.ZodArray<z.ZodString>;
+            evidence: z.ZodString;
+        }, z.core.$strict>>;
+        finalization: z.ZodOptional<z.ZodObject<{
+            paths: z.ZodArray<z.ZodString>;
+            evidence: z.ZodString;
+            attestation: z.ZodString;
+        }, z.core.$strict>>;
+        outcome: z.ZodEnum<{
+            blocked: "blocked";
+            incomplete: "incomplete";
+            cleared: "cleared";
+        }>;
+        elapsedMinutes: z.ZodNumber;
+        timing: z.ZodOptional<z.ZodObject<{
+            source: z.ZodEnum<{
+                runner: "runner";
+                clock: "clock";
+            }>;
+            durationMs: z.ZodNumber;
+            evidence: z.ZodString;
+        }, z.core.$strict>>;
+        summary: z.ZodString;
+    }, z.core.$strict>>;
+    followUps: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        reviewerSession: z.ZodString;
+        commit: z.ZodString;
+        base: z.ZodOptional<z.ZodString>;
+        scopeReason: z.ZodOptional<z.ZodString>;
+        humanAuthorization: z.ZodOptional<z.ZodObject<{
+            approvedBy: z.ZodString;
+            approvedAt: z.ZodISODateTime;
+            reason: z.ZodString;
+        }, z.core.$strict>>;
+        verification: z.ZodOptional<z.ZodObject<{
+            kind: z.ZodEnum<{
+                "finding-fix": "finding-fix";
+                "late-test": "late-test";
+            }>;
+            paths: z.ZodArray<z.ZodString>;
+            evidence: z.ZodString;
+        }, z.core.$strict>>;
+        finalization: z.ZodOptional<z.ZodObject<{
+            paths: z.ZodArray<z.ZodString>;
+            evidence: z.ZodString;
+            attestation: z.ZodString;
+        }, z.core.$strict>>;
+        outcome: z.ZodEnum<{
+            blocked: "blocked";
+            incomplete: "incomplete";
+            cleared: "cleared";
+        }>;
+        elapsedMinutes: z.ZodNumber;
+        timing: z.ZodOptional<z.ZodObject<{
+            source: z.ZodEnum<{
+                runner: "runner";
+                clock: "clock";
+            }>;
+            durationMs: z.ZodNumber;
+            evidence: z.ZodString;
+        }, z.core.$strict>>;
+        summary: z.ZodString;
+    }, z.core.$strict>>>;
+}, z.core.$strict>;
 export type LocalReviewRecord = z.infer<typeof ReviewRecord>;
 /** Follow-up turns in order, whichever field the record used. */
 export declare function followUpTurns(record: LocalReviewRecord): ReviewFollowUp[];
