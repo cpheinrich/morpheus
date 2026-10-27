@@ -233,7 +233,10 @@ and a board that lags reality stops being read — thirteen items had drifted be
 Running it after a merge instead leaves the status change in a dirty working tree on protected
 `main` with nowhere to go, which is how a housekeeping step gets quietly dropped. `morpheus pm ship`
 still exists for running it deliberately, and `morpheus pm ship <ID>` for work that shipped without
-a PR it can see.
+a PR it can see. `morpheus pm ship --check` reports merged-PR reconciliation without
+writing roadmap files. It cannot be combined with
+explicit item IDs: that combination exits 1 before changing any item. It does not
+check whether manually selected work is ready to ship.
 
 It confirms against a merged PR rather than inferring from a missing branch, and writes nothing when
 `gh` is unavailable. It also reports merged branches that were never deleted — those read as live

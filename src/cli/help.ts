@@ -23,7 +23,8 @@ Usage
   morpheus pm block <MO-051> --needs "<what would unblock this>" [--owner <handle>]
                             [--context "<where it stopped>"]
   morpheus pm unblock <MO-051>
-  morpheus pm ship [<MO-020> ...]  [--check]
+  morpheus pm ship [--check]  — reconcile merged PRs; --check reports without writing
+  morpheus pm ship <MO-020> ...  — mark explicit items shipped; cannot use --check
   morpheus pm migrate-ids   [--check] — integer roadmap ids to the dated scheme (MO-057)
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus review prepare   independent local review handoff and worklog template [--base <ref>]

@@ -1,4 +1,4 @@
-import { hash, sourceAgeWaiverSchema, type CdState } from "./schema.js";
+import { budgetSpendingPolicySchema, hash, sourceAgeWaiverSchema, type CdState } from "./schema.js";
 import { invariant } from "./state.js";
 
 /** Runs before every commit, including transitions introduced by later controller versions. */
@@ -42,6 +42,14 @@ export function assertTransition(previous: CdState, next: CdState): void {
   for (const [key, before] of Object.entries(previous.builds)) {
     const after = next.builds[key]; invariant(after && BigInt(after.maximum) >= BigInt(before.maximum), "Build sequence cannot regress");
     for (const [id, reservation] of Object.entries(before.reservations)) invariant(hash(after.reservations[id]) === hash(reservation), "Build reservations remain burned forever");
+  }
+  if (next.budget.spendingPolicy !== undefined) budgetSpendingPolicySchema.parse(next.budget.spendingPolicy);
+  if (previous.budget.spendingPolicy) {
+    invariant(next.budget.spendingPolicy?.campaignId === previous.budget.spendingPolicy.campaignId, "Campaign spending policy cannot be removed or reassigned");
+    if (next.budget.spendingPolicy.capMicros !== previous.budget.spendingPolicy.capMicros)
+      invariant(next.budget.spendingPolicy.authorizationRef !== previous.budget.spendingPolicy.authorizationRef, "Changed budget cap requires a new human authorization reference");
+    if (next.budget.spendingPolicy.capMicros === previous.budget.spendingPolicy.capMicros && next.budget.spendingPolicy.authorizationRef === previous.budget.spendingPolicy.authorizationRef)
+      invariant(hash(next.budget.spendingPolicy) === hash(previous.budget.spendingPolicy), "Unchanged spending policy must retain its adoption record");
   }
   invariant(next.budget.spentMicros >= previous.budget.spentMicros, "Settled spend cannot decrease");
   for (const [id, before] of Object.entries(previous.budget.reservations)) {

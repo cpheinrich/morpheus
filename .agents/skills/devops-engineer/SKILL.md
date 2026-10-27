@@ -48,6 +48,13 @@ and uncertain attempts. Diagnose the failing boundary before changing credential
 or quotas. A quota reader timeout is not proof of exhausted quota; a successful test command is not
 proof that its required evidence or upload succeeded.
 
+Before calling the incident a hard blocker, write the guide's blocker record: the symptom, why it
+prevents progress, alternatives tried with their results, and why no reasonable authorized option
+remains. Check for a stale rule, an agent-created gate or an unresolved diagnosis. At a failed
+step or resumed stalled incident, ask what you would try if the person asked why delivery still
+had not happened, then perform that authorized work. The role owns removing recoverable blockers;
+it does not wait for the person to suggest the next diagnosis.
+
 Repair the reusable owner of the defect and keep consumers thin. Follow the repository's normal
 claim, focused validation, independent review, CI and protected merge path. Treat merged source,
 consumer adoption and runtime verification separately. Prefer an available reviewed safe increment

@@ -1729,3 +1729,52 @@ an Actions expression parser. Morpheus enables a default-off reusable Node CI
 input and verifies the official Linux X64 archive's SHA-256 before executing it
 inside the existing required check. Real checker regressions cover unsupported
 status contexts. No runtime package, new runner job or generic parser is added.
+
+### 2026-10-26 — Concise research records with detailed appendices
+
+Research records put the ask, implementation, plain-language result and decision in the body.
+Per-item evidence, formulas, commands, digests, spend detail and review records live in bottom
+appendices. Ratio-based metrics retain their existing definitions and selection rules, while
+headline values are presented as percentages and bias direction. Issue #497; no new module
+or dependency is needed for this guidance change.
+
+## CI receipts preserve workflow identity — 2026-10-26
+
+Issue #492 proves that required-name matching does not make a later metadata job
+replace an earlier failed CI job. Deduplicate only the same named job within one
+Actions workflow ID. Display names may collide; different workflows and commit-status
+contexts remain separate. External checks without a workflow retain suite identity, and missing suite identity refuses
+the receipt. This corrects the existing GitHub-specific reducer using the current
+GraphQL query and Map; no generic module or dependency is introduced.
+
+### 2026-10-26 — Reject explicit IDs with pm ship --check
+
+The explicit-ID command is a deliberate manual shipping escape hatch; `--check` is
+a merged-PR reconciliation drift report. Combining them now fails before any item
+write, instead of silently mutating files. This existing CLI guard needs no generic
+module or dependency. Issue #421; MO-26-10-26-12.12.30.
+
+
+Human-authorized campaign spending can explicitly remove internal holds — 2026-10-26
+
+Chris directed this campaign to spend as needed inside its existing350 total and notify
+him when it runs out, instead of blocking on parked internal maxima. An optional durable
+ledger policy records campaign/cap/human reference/time through normal audited Store CAS.
+It changes ordinary admission to recorded spend plus the current bounded request; it never
+rewrites old reservations, invents zero settlement or changes configuration/subscription
+limits. Default ledgers retain the reserved-liability guard. Status distinguishes zero
+internal holds from unsettled operations and a remaining recorded-spend budget, not provider
+credit or a final invoice. Delayed/concurrent costs are an explicit tradeoff, not a hard
+spend guarantee. Existing Zod/canonical hash/Store suffice for this small domain-specific
+change; no generic grant framework, financial registry or new dependency is introduced.
+
+## Hard blockers need evidence and exhausted reasonable options — 2026-10-26
+
+MO-26-10-26-15.37.42. Chris requires the delivery session and shared DevOps persona to document
+what failed, why it prevents progress, alternatives tried with outcomes, remaining options and
+the smallest external action needed before declaring a hard blocker. Reasonable authorized
+diagnosis or recovery continues without waiting for a human prompt. The CTO guidance uses the
+same record and honors an explicit engagement spending policy instead of inventing internal
+holds. Default reservation accounting remains available; a campaign-specific spend-as-needed
+direction does not increase its cap, erase expenses or waive review, credentials or uncertain
+effect safety. Existing canonical/mirror/generated-guide distribution is sufficient.

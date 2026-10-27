@@ -22,32 +22,12 @@ import { z } from "zod";
  * Two lists of people, one of which is load-bearing for auth, is how somebody
  * gets access by editing the wrong file.
  */
-export declare const Member: z.ZodObject<{
-    github: z.ZodString;
-    name: z.ZodString;
-    role: z.ZodOptional<z.ZodString>;
-    context: z.ZodOptional<z.ZodString>;
-    channels: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
-}, z.core.$strip>;
+export declare const Member: any;
 export type Member = z.infer<typeof Member>;
-export declare const Members: z.ZodObject<{
-    members: z.ZodArray<z.ZodObject<{
-        github: z.ZodString;
-        name: z.ZodString;
-        role: z.ZodOptional<z.ZodString>;
-        context: z.ZodOptional<z.ZodString>;
-        channels: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
-    }, z.core.$strip>>;
-}, z.core.$strip>;
+export declare const Members: any;
 export type Members = z.infer<typeof Members>;
 /** Where a meeting note came from. `session` is an agent in the meeting. */
-export declare const NoteSource: z.ZodEnum<{
-    readonly session: "session";
-    readonly granola: "granola";
-    readonly manual: "manual";
-    readonly otter: "otter";
-    readonly zoom: "zoom";
-}>;
+export declare const NoteSource: any;
 /**
  * A meeting note — a **summary**, never a transcript.
  *
@@ -56,23 +36,5 @@ export declare const NoteSource: z.ZodEnum<{
  * this affordable — a transcript is high volume and low signal, and storing
  * transcripts would make an agent's context worse rather than better.
  */
-export declare const MeetingNote: z.ZodObject<{
-    id: z.ZodString;
-    title: z.ZodString;
-    occurred: z.ZodPreprocess<z.ZodISODateTime>;
-    attendees: z.ZodArray<z.ZodString>;
-    recorded_by: z.ZodString;
-    source: z.ZodEnum<{
-        readonly session: "session";
-        readonly granola: "granola";
-        readonly manual: "manual";
-        readonly otter: "otter";
-        readonly zoom: "zoom";
-    }>;
-    source_ref: z.ZodOptional<z.ZodString>;
-    duration_minutes: z.ZodOptional<z.ZodNumber>;
-    roadmap: z.ZodDefault<z.ZodArray<z.ZodString>>;
-    redacted: z.ZodDefault<z.ZodBoolean>;
-    created: z.ZodPreprocess<z.ZodISODate>;
-}, z.core.$strip>;
+export declare const MeetingNote: any;
 export type MeetingNote = z.infer<typeof MeetingNote>;

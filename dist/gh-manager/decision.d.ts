@@ -1,46 +1,7 @@
 import { z } from "zod";
 import { type GhManagerPolicy } from "./policy.js";
 import { type ManagerMarker, type Routed } from "./sweep.js";
-export declare const Decision: z.ZodObject<{
-    version: z.ZodLiteral<1>;
-    pr: z.ZodNumber;
-    head: z.ZodString;
-    action: z.ZodEnum<{
-        merge: "merge";
-        ready: "ready";
-        incomplete: "incomplete";
-        close: "close";
-        escalate: "escalate";
-        dormant: "dormant";
-        wait: "wait";
-    }>;
-    summary: z.ZodString;
-    reasoning: z.ZodString;
-    usedManagerReview: z.ZodDefault<z.ZodBoolean>;
-    body: z.ZodOptional<z.ZodString>;
-    evidence: z.ZodDefault<z.ZodArray<z.ZodObject<{
-        file: z.ZodString;
-        caption: z.ZodString;
-    }, z.core.$strict>>>;
-    markReady: z.ZodDefault<z.ZodBoolean>;
-    supersededBy: z.ZodOptional<z.ZodNumber>;
-    missing: z.ZodOptional<z.ZodString>;
-    remainingChecks: z.ZodOptional<z.ZodString>;
-    needsHuman: z.ZodOptional<z.ZodString>;
-    findings: z.ZodDefault<z.ZodArray<z.ZodObject<{
-        id: z.ZodString;
-        severity: z.ZodEnum<{
-            minor: "minor";
-            substantive: "substantive";
-            incidental: "incidental";
-        }>;
-        description: z.ZodString;
-        disposition: z.ZodEnum<{
-            fixed: "fixed";
-            noted: "noted";
-        }>;
-    }, z.core.$strict>>>;
-}, z.core.$strict>;
+export declare const Decision: any;
 export type Decision = z.infer<typeof Decision>;
 export type Operation = {
     kind: "set-body";

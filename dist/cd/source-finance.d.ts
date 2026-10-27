@@ -1,37 +1,8 @@
 import { z } from "zod";
 import { type CdConfig, type CdState } from "./schema.js";
 import { type GitHubApi, type Transaction } from "./store.js";
-declare const grantSchema: z.ZodObject<{
-    version: z.ZodLiteral<1>;
-    kind: z.ZodLiteral<"reviewed-source-financial-authority">;
-    grantId: z.ZodString;
-    humanEvidenceSha256: z.ZodString;
-    repository: z.ZodString;
-    epoch: z.ZodString;
-    configurationDigest: z.ZodString;
-    reservationId: z.ZodString;
-    requestDigest: z.ZodString;
-    maximumMicros: z.ZodNumber;
-    totalCeilingMicros: z.ZodNumber;
-    purpose: z.ZodLiteral<"source-ci-publication">;
-    issuedAt: z.ZodString;
-    expiresAt: z.ZodString;
-}, z.core.$strict>;
-declare const requestSchema: z.ZodObject<{
-    version: z.ZodLiteral<1>;
-    kind: z.ZodLiteral<"source-ci-publication">;
-    repository: z.ZodString;
-    taskId: z.ZodString;
-    branch: z.ZodString;
-    fullCiMax: z.ZodNumber;
-    metadataCiMax: z.ZodNumber;
-    gitBranchPreviewsMax: z.ZodNumber;
-    productionDeploymentsMax: z.ZodNumber;
-    budgetTransactionsMax: z.ZodLiteral<1>;
-    nativeEffects: z.ZodLiteral<false>;
-    paidModelFallback: z.ZodLiteral<false>;
-    previewSettingsEffects: z.ZodLiteral<false>;
-}, z.core.$strict>;
+declare const grantSchema: any;
+declare const requestSchema: any;
 export interface ReviewedSourceInput {
     grant: unknown;
     approvedGrantDigest: string;

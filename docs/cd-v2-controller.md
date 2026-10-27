@@ -457,6 +457,52 @@ responses do not establish working credentials.
 The initial repository metadata read uses GitHub's exact `/repos/{owner}/{repo}`
 route; a trailing slash can return 404 even when the token can read the repository.
 
+### Human-authorized spend-as-needed campaigns
+
+A campaign can explicitly opt out of internal reservation holds without changing its
+configuration identity or another ledger's defaults:
+
+```sh
+morpheus cd budget --operation spend-as-needed --config NATIVE_CONFIG \
+  --campaign CAMPAIGN_ID --cap-micros 350000000 --authorization-ref HUMAN_APPROVAL_REF
+```
+
+These are placeholders. This audited normal Store transaction records the campaign,
+cap, human authorization reference and adoption time in `budget.spendingPolicy`.
+Use this mode only when the human has authorized spending without internal holds.
+It is not a provider operation, account balance, new money or permission to change
+credentials, source-review protections, subscription limits or uncertain-effect rules.
+The policy remains attached to that campaign; changing its cap needs a new human
+reference and a new audited transaction.
+
+In this mode ordinary reserve admission checks **recorded spend plus the current
+bounded request** against the campaign cap. It does not add outstanding reservation
+maxima. All original request IDs/digests/statuses and real settlement tombstones remain
+unchanged. A reservation records an operation identity, not money held aside; it does
+not subtract from remaining budget until actual spend is recorded. Multiple outstanding
+operations can therefore overlap, and delayed/unknown provider charges can exceed the
+cap before accounting catches up. Monitor actual costs and notify the human when the
+budget is exhausted; do not infer zero charges or invent settlements. Recording a real
+late expense is allowed even if it reveals an overspend.
+
+`cd status` includes `budgetStatus`: mode/campaign, cap, recorded spend, zero internal
+holds, remaining against recorded spend, unsettled-operation count and any recorded
+overspend. Remaining is explicitly **not** provider credit, bank balance or final invoice.
+For example recorded spend44.232828 against cap350 reports305.767172 remaining even
+when historical request maxima total238.515115. Raw reservation history is still present.
+
+Without this opt-in, ordinary admission still uses recorded spend plus reserved maxima
+against the configured limit (at most250); subscription80/90 defaults remain unchanged.
+The explicit source-grant route is separate and retains its strict source-only contract.
+No financial grant/reviewer is needed merely to activate a human-authorized no-holds
+policy; normal source review/CI and operational authorization still apply.
+
+Older runtimes do not understand the new admission mode. A qualified updated CLI can
+activate it and reserve an exact original request/ID/maximum. The unchanged older CLI
+can replay that already-reserved identity without another liability; it will still apply
+its old cap to NEW IDs. Autonomous future new-request admission therefore needs normal
+updated-runtime adoption; the policy command does not install or restart services.
+
 `cd budget --operation reserve|settle` exposes replay-safe paid request reservations
 in integer microdollars. Request identity and maximum liability are immutable;
 timeouts retain liability and settled tombstones prevent duplicate charging.
@@ -469,7 +515,7 @@ only to budget reserve in the `source-ci-` namespace. It binds the actual reques
 supplied and stored configuration identities, epoch, finite source scope, amount,
 aggregate ceiling and short admission window, with normal CAS and complete receipt
 readback. Grant values come from that engagement's independently reviewed evidence.
-The ordinary `reservePaid`/`cd budget reserve` guard still refuses new paid reservations
+Without an opted-in spending policy, the ordinary `reservePaid`/`cd budget reserve` guard refuses new paid reservations
 that would exceed its configured ceiling, at most $250; exact old reserved paid identities
 still replay. This dollar guard does not gate local delivery intent creation, attempt
 planning or dispatch, whose other existing controls remain unchanged. The source grant

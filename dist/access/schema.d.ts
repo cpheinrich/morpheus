@@ -15,48 +15,17 @@ import { z } from "zod";
  * restated: this module *writes* claims and the gates *read* them, so a
  * divergence here would grant a role nothing downstream recognises.
  */
-export declare const Role: z.ZodEnum<{
-    admin: "admin";
-    investor: "investor";
-    employee: "employee";
-}>;
+export declare const Role: any;
 export type Role = z.infer<typeof Role>;
 export { ROLES, HQ_ROLES, canAccessHq, isAdmin, isRole } from "../hq/roles.js";
-export declare const AccessEntry: z.ZodObject<{
-    email: z.ZodEmail;
-    role: z.ZodEnum<{
-        admin: "admin";
-        investor: "investor";
-        employee: "employee";
-    }>;
-}, z.core.$strip>;
+export declare const AccessEntry: any;
 export type AccessEntry = z.infer<typeof AccessEntry>;
 /** The `hq` block of morpheus.json. */
-export declare const HqConfig: z.ZodObject<{
-    route: z.ZodDefault<z.ZodString>;
-    allowlist: z.ZodDefault<z.ZodArray<z.ZodEmail>>;
-    investorAllowlist: z.ZodDefault<z.ZodArray<z.ZodEmail>>;
-    admins: z.ZodDefault<z.ZodArray<z.ZodEmail>>;
-}, z.core.$strip>;
+export declare const HqConfig: any;
 export type HqConfig = z.infer<typeof HqConfig>;
-export declare const SupportEmail: z.ZodEmail;
-export declare const AuthorizedDomain: z.ZodString;
-export declare const ProjectManifest: z.ZodObject<{
-    name: z.ZodString;
-    prefix: z.ZodOptional<z.ZodString>;
-    displayName: z.ZodOptional<z.ZodString>;
-    publicDomain: z.ZodOptional<z.ZodString>;
-    stagingDomain: z.ZodOptional<z.ZodString>;
-    supportEmail: z.ZodOptional<z.ZodEmail>;
-    authorizedDomains: z.ZodDefault<z.ZodArray<z.ZodString>>;
-    hq: z.ZodObject<{
-        route: z.ZodDefault<z.ZodString>;
-        allowlist: z.ZodDefault<z.ZodArray<z.ZodEmail>>;
-        investorAllowlist: z.ZodDefault<z.ZodArray<z.ZodEmail>>;
-        admins: z.ZodDefault<z.ZodArray<z.ZodEmail>>;
-    }, z.core.$strip>;
-    accounts: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
-}, z.core.$strip>;
+export declare const SupportEmail: any;
+export declare const AuthorizedDomain: any;
+export declare const ProjectManifest: any;
 export type ProjectManifest = z.infer<typeof ProjectManifest>;
 /**
  * Flatten the three lists into one email→role mapping.

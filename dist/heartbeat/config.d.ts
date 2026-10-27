@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { type HeartbeatConfig } from "./assess.js";
 /**
  * The `heartbeat` block of `morpheus.json`.
@@ -8,10 +7,7 @@ import { type HeartbeatConfig } from "./assess.js";
  * run a beat. `dispatch` lives here for the same reason and defaults to false:
  * turning it on is a decision that should appear in a diff.
  */
-export declare const HeartbeatSettings: z.ZodObject<{
-    ceiling: z.ZodDefault<z.ZodNumber>;
-    dispatch: z.ZodDefault<z.ZodBoolean>;
-}, z.core.$strip>;
+export declare const HeartbeatSettings: any;
 /**
  * Read heartbeat settings from a repo's manifest.
  *

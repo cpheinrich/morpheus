@@ -12,6 +12,13 @@ His follow-up makes Morpheus's own ticket/worklog structure primary even while a
 explores Paperclip. Mapping additional queue tasks is a later adapter concern. This source change
 adds no runtime supervisor and grants no new model, provider, spending or credential capability.
 
+On 2026-10-26 Chris required agents in the delivery campaign and this shared persona to document
+what a blocker was, why it was hard, and the attempts and outcomes from trying to get around it;
+only exhaustion of reasonable authorized options justifies calling it hard. He wanted the agent
+to remove recoverable obstacles without waiting for him to ask why delivery had stalled. His
+campaign-specific removal of internal budget holds is an example of newer mandate authority,
+not a universal waiver of every project's spending controls.
+
 ## Recorded lessons
 
 Morpheus's `.agent/decisions.md` records deterministic heartbeat assessment, GitHub Manager as PR

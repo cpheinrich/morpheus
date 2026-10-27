@@ -19,5 +19,5 @@ export interface InitResult {
     /** Explanations and follow-up constraints that do not belong in written/skipped. */
     notes: string[];
 }
-export declare const KIND_DIRS: Record<"company" | "personal" | "internal", string[]>;
+export declare const KIND_DIRS: Record<z.infer<any>, string[]>;
 export declare function scaffold(root: string, seed: Seed): Promise<InitResult>;

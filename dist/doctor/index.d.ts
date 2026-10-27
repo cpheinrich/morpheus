@@ -9,19 +9,9 @@ import { z } from "zod";
  *
  * **Never writes.** Anything it cannot fix, it names.
  */
-export declare const Kind: z.ZodEnum<{
-    company: "company";
-    personal: "personal";
-    internal: "internal";
-}>;
+export declare const Kind: any;
 export type Kind = z.infer<typeof Kind>;
-export declare const Manifest: z.ZodObject<{
-    name: z.ZodOptional<z.ZodUnknown>;
-    prefix: z.ZodOptional<z.ZodUnknown>;
-    kind: z.ZodOptional<z.ZodUnknown>;
-    context: z.ZodOptional<z.ZodUnknown>;
-    inherits: z.ZodOptional<z.ZodUnknown>;
-}, z.core.$strip>;
+export declare const Manifest: any;
 export type Severity = "error" | "warning";
 export interface Finding {
     severity: Severity;

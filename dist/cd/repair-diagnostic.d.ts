@@ -2,23 +2,7 @@ import { z } from "zod";
 import { type CdState } from "./schema.js";
 import { type GitHubStore } from "./store.js";
 export declare const REPAIR_DIAGNOSTIC_MAX_BYTES = 16384;
-export declare const repairDiagnosticSchema: z.ZodObject<{
-    schemaVersion: z.ZodLiteral<1>;
-    kind: z.ZodLiteral<"repair-diagnostic">;
-    workId: z.ZodString;
-    taskDigest: z.ZodString;
-    intentId: z.ZodString;
-    attemptId: z.ZodString;
-    dispatchEffectId: z.ZodString;
-    sourceSha: z.ZodString;
-    controlSha: z.ZodString;
-    runId: z.ZodString;
-    runAttempt: z.ZodString;
-    diagnostic: z.ZodObject<{
-        summary: z.ZodString;
-        evidence: z.ZodArray<z.ZodString>;
-    }, z.core.$strict>;
-}, z.core.$strict>;
+export declare const repairDiagnosticSchema: any;
 export type RepairDiagnostic = z.infer<typeof repairDiagnosticSchema>;
 export interface RepairDiagnosticReceipt {
     workId: string;

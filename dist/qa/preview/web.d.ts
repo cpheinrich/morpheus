@@ -79,7 +79,7 @@ interface WebContext {
     run: Run;
     log: (l: string) => void;
 }
-export declare function webContext(root: string, config: WebPreviewConfig, run?: Run, log?: (l: string) => void, cacheRoot?: string): WebContext;
+export declare function webContext(root: string, config: WebPreviewConfig, run?: Run, log?: (l: string) => void, cacheRoot?: any): WebContext;
 /** Healthy only when the overlay names this checkout and dev server, not just the same port. */
 export declare function webHealthy(state: WebPreviewState | undefined): Promise<boolean>;
 /** A registered job may be pending its first launch; only a missing or exited job is fatal. */

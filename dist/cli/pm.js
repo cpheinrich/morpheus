@@ -633,6 +633,10 @@ export async function unblock(productDir, id) {
  * without a PR this tool can see.
  */
 export async function ship(productDir, ids, cwd, check = false) {
+    if (check && ids.length) {
+        console.error("pm ship --check cannot be combined with item IDs. Run pm ship --check without IDs to inspect merged-PR reconciliation.");
+        return 1;
+    }
     if (ids.length) {
         for (const id of ids) {
             await markShipped(productDir, id);
