@@ -196,6 +196,23 @@ describe("project-skill synchronization", () => {
     expect(await readFile(join(root, path), "utf8")).toBe(invalid);
   });
 
+  it("publishes complete entrypoints when two syncs start concurrently", async () => {
+    const expected = applicableProjectSkills("internal")
+      .flatMap((skill) => skill.providers.map((provider) => projectSkillPath(provider, skill.name)))
+      .sort();
+
+    const results = await Promise.all([
+      syncProjectSkills(root, "internal", false),
+      syncProjectSkills(root, "internal", false),
+    ]);
+
+    for (const result of results) {
+      expect(result.issues).toEqual([]);
+      expect([...result.created, ...result.present].sort()).toEqual(expected);
+    }
+    expect(await skillFiles(root)).toEqual(expected);
+  });
+
   it("reads project kind from the manifest and refuses a missing or invalid manifest honestly", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const log = vi.spyOn(console, "log").mockImplementation(() => {});

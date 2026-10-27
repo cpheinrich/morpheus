@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { link, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { basename, dirname, join } from "node:path";
 import matter from "@11ty/gray-matter";
 import {
   agenticCtoPointerSkill,
@@ -166,6 +167,25 @@ const missing = (error: unknown): boolean =>
 const alreadyExists = (error: unknown): boolean =>
   error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EEXIST";
 
+/** Publish complete contents without ever replacing a path another session already owns. */
+async function publishExclusive(path: string, content: string): Promise<"created" | "present"> {
+  const temporary = join(
+    dirname(path),
+    `.${basename(path)}.${process.pid}.${randomUUID()}.morpheus-skill-tmp`,
+  );
+  await writeFile(temporary, content, { encoding: "utf8", flag: "wx" });
+  try {
+    // A hard link is an atomic no-clobber publication of the fully closed temporary inode.
+    await link(temporary, path);
+    return "created";
+  } catch (error) {
+    if (alreadyExists(error)) return "present";
+    throw error;
+  } finally {
+    await unlink(temporary);
+  }
+}
+
 const validateExisting = (path: string, expectedName: string, content: string): string | null => {
   try {
     const data = matter(content).data as { name?: unknown; description?: unknown };
@@ -216,26 +236,21 @@ export async function syncProjectSkills(
         }
         try {
           await mkdir(dirname(absolute), { recursive: true });
-          // Exclusive creation closes the read/write race without ever replacing a project file.
-          await writeFile(absolute, definition.render(), { encoding: "utf8", flag: "wx" });
-          result.created.push(path);
-        } catch (writeError) {
-          if (alreadyExists(writeError)) {
-            try {
-              const appeared = await readFile(absolute, "utf8");
-              const issue = validateExisting(path, definition.name, appeared);
-              if (issue) result.issues.push(issue);
-              else result.present.push(path);
-            } catch (readError) {
-              result.issues.push(
-                `${path}: appeared during sync but could not be read (${readError instanceof Error ? readError.message : String(readError)})`,
-              );
-            }
-          } else {
-            result.issues.push(
-              `${path}: could not create skill (${writeError instanceof Error ? writeError.message : String(writeError)})`,
-            );
+          const publication = await publishExclusive(absolute, definition.render());
+          if (publication === "created") {
+            result.created.push(path);
+            continue;
           }
+
+          // Every sync publishes by linking a fully written inode, so an EEXIST path is complete.
+          const appeared = await readFile(absolute, "utf8");
+          const issue = validateExisting(path, definition.name, appeared);
+          if (issue) result.issues.push(issue);
+          else result.present.push(path);
+        } catch (writeError) {
+          result.issues.push(
+            `${path}: could not create skill (${writeError instanceof Error ? writeError.message : String(writeError)})`,
+          );
         }
         continue;
       }

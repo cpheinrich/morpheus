@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { link, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { basename, dirname, join } from "node:path";
 import matter from "@11ty/gray-matter";
 import { agenticCtoPointerSkill, brandReviewSkill, commentQaSkill, devopsEngineerPointerSkill, motionDesignExplorationSkill, researchEngineerPointerSkill, websiteInitSkill, } from "./init/templates.js";
 import { AGENTIC_CTO_SKILL, DEVOPS_ENGINEER_SKILL, RESEARCH_ENGINEER_SKILL, } from "./cto/skill.js";
@@ -107,6 +108,24 @@ export function applicableProjectSkills(kind) {
 export const projectSkillPath = (provider, name) => `${provider === "agents" ? ".agents" : ".claude"}/skills/${name}/SKILL.md`;
 const missing = (error) => error instanceof Error && "code" in error && error.code === "ENOENT";
 const alreadyExists = (error) => error instanceof Error && "code" in error && error.code === "EEXIST";
+/** Publish complete contents without ever replacing a path another session already owns. */
+async function publishExclusive(path, content) {
+    const temporary = join(dirname(path), `.${basename(path)}.${process.pid}.${randomUUID()}.morpheus-skill-tmp`);
+    await writeFile(temporary, content, { encoding: "utf8", flag: "wx" });
+    try {
+        // A hard link is an atomic no-clobber publication of the fully closed temporary inode.
+        await link(temporary, path);
+        return "created";
+    }
+    catch (error) {
+        if (alreadyExists(error))
+            return "present";
+        throw error;
+    }
+    finally {
+        await unlink(temporary);
+    }
+}
 const validateExisting = (path, expectedName, content) => {
     try {
         const data = matter(content).data;
@@ -152,27 +171,21 @@ export async function syncProjectSkills(root, kind, check) {
                 }
                 try {
                     await mkdir(dirname(absolute), { recursive: true });
-                    // Exclusive creation closes the read/write race without ever replacing a project file.
-                    await writeFile(absolute, definition.render(), { encoding: "utf8", flag: "wx" });
-                    result.created.push(path);
+                    const publication = await publishExclusive(absolute, definition.render());
+                    if (publication === "created") {
+                        result.created.push(path);
+                        continue;
+                    }
+                    // Every sync publishes by linking a fully written inode, so an EEXIST path is complete.
+                    const appeared = await readFile(absolute, "utf8");
+                    const issue = validateExisting(path, definition.name, appeared);
+                    if (issue)
+                        result.issues.push(issue);
+                    else
+                        result.present.push(path);
                 }
                 catch (writeError) {
-                    if (alreadyExists(writeError)) {
-                        try {
-                            const appeared = await readFile(absolute, "utf8");
-                            const issue = validateExisting(path, definition.name, appeared);
-                            if (issue)
-                                result.issues.push(issue);
-                            else
-                                result.present.push(path);
-                        }
-                        catch (readError) {
-                            result.issues.push(`${path}: appeared during sync but could not be read (${readError instanceof Error ? readError.message : String(readError)})`);
-                        }
-                    }
-                    else {
-                        result.issues.push(`${path}: could not create skill (${writeError instanceof Error ? writeError.message : String(writeError)})`);
-                    }
+                    result.issues.push(`${path}: could not create skill (${writeError instanceof Error ? writeError.message : String(writeError)})`);
                 }
                 continue;
             }
