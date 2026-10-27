@@ -77,6 +77,12 @@ Independent high-risk review found substantive R1: directory-removing Git cleanu
       },
       "summary": "R1 resolved; reviewed metadata-only removal, generated output, documentation, and regression. Independently ran seven pruning tests, all passing. No new findings; final CI required."
     }
+  ],
+  "trunkIntegrations": [
+    {
+      "commit": "f1aeeef05831618aa7d5fe0c5cb22cd6f90f6e8b",
+      "reason": "Merged main 6cb1caf before merge at Chris's request. The only conflict was the generated dist/cli/pm.js.map; it took main's copy, and a clean pnpm compile reproduces the committed dist/cli/pm.js and pm.js.map exactly. src/cli/pm.ts merged without conflict."
+    }
   ]
 }
 ```
