@@ -45,9 +45,7 @@ changed and new files were read directly and covered by TypeScript, focused test
 
 ## Independent review
 
-Independent normal-risk review found one substantive concurrency race and conditionally cleared an
-atomic no-clobber publication fix; the focused regression, typecheck, compile and compiled
-concurrent smoke probe all passed, with no other findings.
+Independent normal-risk review found one substantive concurrency race and conditionally cleared an atomic no-clobber publication fix; the focused regression, typecheck, compile and compiled concurrent smoke probe all passed, with no other findings.
 
 ```morpheus-review
 {
