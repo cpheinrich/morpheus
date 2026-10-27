@@ -210,3 +210,100 @@ The packet names each IR regression and preserves the initial blocked review.
 This author did not push, perform CI, open/change a PR, start a reviewer or mutate
 any provider/host/native/ledger/credential/service. Root owns the same reviewer's
 remaining ordinary follow-up and the protected publication lifecycle.
+
+
+## Independent implementation review and same-reviewer correction
+
+The initial high-risk implementation review was complete and blocked on five substantive findings (IR-01 through IR-05). The same author corrected the real yield CAS race, ordinary group-cursor isolation, rejected-executor occupancy, fresh/replayed native authority, and bounded optional external reads. The same reviewer cleared all five fixes at 1a78ef0f6db24dd8d80d7f44fc846ab3aac0e41c with original severities retained and no new findings. Independent correction checks passed 14 targeted tests and matched all 12 correction-generated outputs. This is source clearance; required CI, protected merge, future consumer/runtime qualification and empirical recovery acceptance remain separate.
+
+The original initial report remains blocked in history; its five substantive findings are preserved below as fixed following the same reviewer’s ordinary follow-up. Initial clock duration was20.916666666666668minutes; follow-up was4.5minutes. The author correction packet retains all29 payloads, 500 direct tests before the final stronger IR02 fixture, 82 final strengthened tests, six distinct assertion-killed mutants plus the stronger IR02 requalification, and the corrected allocated-build fixture failure. No live effect or runtime adoption was performed.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "3ec4e72f406e3f1f90190cfc95bf01315b8cd7ed",
+  "reviewed": "e67028a902da7bd7e8fb09110bcc5d69ed580884",
+  "covered": "1a78ef0f6db24dd8d80d7f44fc846ab3aac0e41c",
+  "authorSession": "01a1572f-2ae1-77f2-be54-4265b3baca43",
+  "reviewerSession": "/root/post_resume_cd_implementation_review_530",
+  "risk": "high",
+  "elapsedMinutes": 20.916666666666668,
+  "timing": {
+    "source": "clock",
+    "durationMs": 1255000,
+    "evidence": "Parent clock readings for initial invocation /root/post_resume_cd_implementation_review_530: start 2026-10-27T04:15:09Z, terminal completion observed 2026-10-27T04:36:04Z, including tools and waits. Initial complete BLOCKED report/manifest retained with SHA e4b0675eb855a39a8b45e2e280204cb2a753394ce1d3ca1bff6680f2950b211e / f3916c3247b7450112f1cfce95886b657e437d57dc8f3c556e5d41b44757bbb0."
+  },
+  "outcome": "complete",
+  "summary": "The initial high-risk implementation review was complete and blocked on five substantive findings (IR-01 through IR-05). The same author corrected the real yield CAS race, ordinary group-cursor isolation, rejected-executor occupancy, fresh/replayed native authority, and bounded optional external reads. The same reviewer cleared all five fixes at 1a78ef0f6db24dd8d80d7f44fc846ab3aac0e41c with original severities retained and no new findings. Independent correction checks passed 14 targeted tests and matched all 12 correction-generated outputs. This is source clearance; required CI, protected merge, future consumer/runtime qualification and empirical recovery acceptance remain separate.",
+  "findings": [
+    {
+      "id": "IR-01",
+      "severity": "substantive",
+      "description": "A no-op yield becomes a permanent tombstone and prevents later ordinary-priority yielding. A never-dispatched optional attempt sees ordinary demand. Before its yield CAS callback runs, the last ordinary operation completes. The callback returns null at line 250, but GitHubStore commits the stable post-resume-yield-<attempt> transition with result:null. When new ordinary demand arrives, every attempt to yield replays that null transition without executing yieldPostResumeAttempt. The optional plan remains active and occupies a native slot indefinitely while demand is present; two ordinary channels then cannot both reserve the two real slots, although this optional attempt has never dispatched.",
+      "paths": [
+        "src/cd/controller.ts",
+        "src/cd/store.ts"
+      ],
+      "disposition": "fixed",
+      "response": "The vanished-demand callback throws CdWait before GitHubStore can write the stable yield transition. No null tombstone exists to replay. A later real demand can commit the one immutable zero-effect yield, retaining the burned build. The regression interleaves a genuine ordinary receipt between selection and callback, then creates both ordinary channels and proves both plans fit after the later yield. Independently passed the new real Store/controller race regression. Read the assertion-killed null-tombstone mutant log; its promise incorrectly resolves after the defect is restored. The ordinary catch/wait path preserves the existing bounded poll policy; no zero-delay guarantee is inferred."
+    },
+    {
+      "id": "IR-02",
+      "severity": "substantive",
+      "description": "Optional receipt creation mutates the ordinary group cursor. deliver() correctly skips the channel cursor for validation work, but unconditionally replaces groupCursors[intent.groupId] with the optional receipt. In the new additive B route that is the live ordinary internal group. After optional source order 1 delivers over ordinary cursor order 0, a later valid ordinary request for order 0 is admitted by createIntent and planAttempt and uploads successfully, then claimGroup refuses with 'Group promotion would regress the live cursor'. This changes ordinary behavior and contradicts SD3 and the new documentation's unchanged ordinary cursors contract.",
+      "paths": [
+        "src/cd/state.ts"
+      ],
+      "disposition": "fixed",
+      "response": "The post-resume receipt now records its own receipt and optional membership observation without writing shared groupCursors or completing ordinary groupOperations. Legacy/ordinary behavior remains on the existing branch. Both ordinary and group monotonic guards still run before the first optional receipt. Strengthened regressions preserve an actual pre-existing ordinary production receipt, complete ownership, cursors and fences, allow the later valid ordinary staging promotion, and reject a first old optional receipt after a newer completed ordinary receipt. Independently passed both IR-02 regressions, including the strengthened existing ordinary receipt fixture. Read the strengthened cursor mutant's exact whole-object comparison failure. This is stronger than checking an empty receipt set or only the channel cursor."
+    },
+    {
+      "id": "IR-03",
+      "severity": "substantive",
+      "description": "Provider rejection releases optional native occupancy without executor quiescence. Both rejection writers mark the optional attempt status='failed' immediately. occupiesNative() then returns false based on status, even when workflowTerminalAt, owned quiescence and the execution-release record are all absent. A definitive provider rejection says what happened to the upload, not that the native executor/uploader and descendants have stopped. Two ordinary attempts can consequently be planned while that unquiesced optional executor still exists, exceeding the actual maxNativeJobs=2 resource contract. The acceptedAt exception is explicitly retained by the design; rejection has no corresponding executor proof.",
+      "paths": [
+        "src/cd/state.ts",
+        "src/cd/controller.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Both receipt and controller rejection writers retain the same active optional execution and honest rejected upload. The invariant refuses failed/retired unreleased optional uploads, and the occupancy predicate conservatively counts rejected optional execution until exact release. Release remains tied to the bound run, terminal/quiescence proof, owner/fence and closure. After release, both normal slots can be admitted without creating another optional attempt/purpose. Ordinary accepted-upload fast release remains unchanged. Independently passed both writer-path regressions: before release the second ordinary plan fails capacity; exact release frees the same rejected identity and the later ordinary plan succeeds. Read the rejected-as-failed mutant's actual active-status assertion failure and the unchanged source-side no-retry guards."
+    },
+    {
+      "id": "IR-04",
+      "severity": "substantive",
+      "description": "The documented native execution gate still grants authority after execution release. verifyExecution is the exported/CLI gate consumers are instructed to call before native work and archive. It checks immutable identity and pauses, then commits/replays a verify transition and returns authorized:true. It never checks the new execution-release record. A released optional attempt deliberately remains active for same-upload receipts, so checkIdentity still succeeds. A stale/direct preflight call for that exact released identity can therefore regain native/archive authority while the attempt is excluded from native occupancy. Protecting claimUpload later does not prevent this native work.",
+      "paths": [
+        "src/cd/cli.ts",
+        "docs/cd-v2-controller.md"
+      ],
+      "disposition": "fixed",
+      "response": "New native/archive authorization is checked before factual validation, inside every new verify CAS callback with fresh current time, and again on optional current-state readback because Store replay skips the callback. Released/yielded authority cannot return authorized:true, including when release wins during provider/provenance reads. The separate provenance helper returns only verified:true and writes no verification claim. The optional full-test recorder uses that observation helper followed by immutable recordTests; ordinary test recording and the native/before-upload callers retain verifyExecution. Existing upload resource/after receipts remain observation-only exact-claim paths. Independently passed fresh/replayed release tests, release-during-validation CAS/readback tests, and yielded direct/CLI gate tests. Those cases also prove matching existing proof/accepted resource receipts still append after release and leave verification claims unchanged. Read both native-gate and replay-readback assertion-killed mutant logs. Graph baseline identified the old CLI caller; new helper/caller closure was read directly because the primary index does not contain the correction."
+    },
+    {
+      "id": "IR-05",
+      "severity": "substantive",
+      "description": "Delivered optional external follow-up bypasses the new observation budget. The new origin is uncounted validation with isolatedValidation=false, so when externalGroupIds is configured it enters reconcileExternal after delivery. That method calls AppleAdapter.external without a bounded API; external/group/Apple pagination has no request-count or shared observation deadline. The new optional limit is applied to maximum/observe only. A large or continually paginated external membership census can consume arbitrarily many serial requests and keep the tick from completing, delaying the next ordinary reconciliation and CLI scheduleHosted step despite the promised finite optional work.",
+      "paths": [
+        "src/cd/controller.ts",
+        "src/cd/apple.ts"
+      ],
+      "disposition": "fixed",
+      "response": "The delivered post-resume route now supplies one shared eight-GET/30-second Apple observation budget across the build, review, groups, pagination and response-body reads. Exhaustion/abort produces CdWait and the optional external state remains uncertain without mutations from partial data. The ordinary three-argument external call and default adapter remain unchanged. Independently passed the eight-request no-mutation/UNKNOWN case, stalled response-body shared-deadline case, and ordinary complete ten-membership-page compatibility case. Read the unbounded-external mutant assertion, which reaches the sentinel instead of the expected budget refusal. Promise.all group work shares the same wrapper/counter/deadline."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/post_resume_cd_implementation_review_530",
+      "commit": "1a78ef0f6db24dd8d80d7f44fc846ab3aac0e41c",
+      "outcome": "cleared",
+      "elapsedMinutes": 4.5,
+      "timing": {
+        "source": "clock",
+        "durationMs": 270000,
+        "evidence": "Parent clock readings for ordinary fix follow-up1 of /root/post_resume_cd_implementation_review_530: start 2026-10-27T05:08:10Z, actual terminal completion observed 2026-10-27T05:12:40Z, including tools and waits. Authenticated report SHA5a786042b07f30e151871f909cbd6dc1e959f0e1c589ba3c44ae51783ec7a1e9; manifest SHA60688ecf1f2762728fc5c4f900c0415fe2bc712ddcc320dd7d19c77f2e037608."
+      },
+      "summary": "Same reviewer verified all five substantive fixes and their affected caller paths at the corrected commit; original priorities/severities retained, no new findings or conditions. Independent targeted correction run:14PASS/21intentional name-filter exclusions. All12 changed generated outputs matched fresh in-memory compiler emit. Required CI and later runtime/live acceptance remain outstanding."
+    }
+  ]
+}
+```
