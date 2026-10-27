@@ -1788,3 +1788,15 @@ idempotent missing-entrypoint sync; descriptions are parsed from the rendered fr
 than repeated. Existing project-owned files are validated but never replaced. Canonical skill
 directories must be classified as project-facing or Morpheus-only, and tests reject omissions and
 provider drift so future additions cannot remain undiscoverable in managed projects.
+
+## Gemini meeting intake shares mechanics, while projects own topology — 2026-10-27
+
+MO-26-10-27-13.40.43. Evo's pilot became reusable when Lakina needed the same intake. Morpheus owns
+the discovery schema, topic-policy validation, source-identity deduplication, immutable Git reader,
+bounded search, optional projection and notice gate. Each project config owns its people, account,
+topics, canonical storage, optional destinations, timezone and explicit notification authority.
+Same-repository notes require no projection; historical imports never create actions or notices.
+The shared guide retains source interpretation, redaction and participant resolution as agent
+judgment, and factual notes remain separate from later interpretation. Considered `simple-git`
+4.0.2 (published 2026-09-26, five direct dependencies); retained Node's argument-safe Git process
+call because the adapter is small and the pilot already proved that boundary.

@@ -89,6 +89,7 @@ describe("the reusable project-skill registry", () => {
     expect(catalog.map((skill) => skill.name)).toEqual([
       "motion-design-exploration",
       "comment-qa",
+      "meeting-intake",
       "agentic-cto",
       "research-engineer",
       "devops-engineer",
@@ -231,7 +232,7 @@ describe("project-skill synchronization", () => {
       await writeFile(join(root, "morpheus.json"), '{"kind":"internal"}\n');
       expect(await syncProjectSkillEntrypoints(root, false)).toBe(0);
       expect(error).not.toHaveBeenCalled();
-      expect(log.mock.calls.flat().join(" ")).toContain("Created 9 Morpheus project skill");
+      expect(log.mock.calls.flat().join(" ")).toContain("Created 11 Morpheus project skill");
     } finally {
       error.mockRestore();
       log.mockRestore();
@@ -251,7 +252,7 @@ describe("morpheus skills list", () => {
 
     const defaultCommand = await cli("skills");
     expect(defaultCommand.code).toBe(0);
-    expect(defaultCommand.out).toContain("Morpheus project skills (7)");
+    expect(defaultCommand.out).toContain("Morpheus project skills (8)");
     expect(defaultCommand.out).toContain("morpheus skills sync");
   });
 

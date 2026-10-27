@@ -7,6 +7,7 @@ import {
   brandReviewSkill,
   commentQaSkill,
   devopsEngineerPointerSkill,
+  meetingIntakeSkill,
   motionDesignExplorationSkill,
   researchEngineerPointerSkill,
   websiteInitSkill,
@@ -60,6 +61,15 @@ export const PROJECT_SKILLS: readonly ProjectSkillDefinition[] = [
     canonical: true,
     guide: "morpheus qa guide",
     render: commentQaSkill,
+  },
+  {
+    name: "meeting-intake",
+    providers: ["agents", "claude"],
+    kinds: ALL_KINDS,
+    distribution: "pointer",
+    canonical: true,
+    guide: "morpheus meeting-intake guide",
+    render: meetingIntakeSkill,
   },
   {
     name: AGENTIC_CTO_SKILL,

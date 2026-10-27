@@ -82,6 +82,14 @@ Usage
   morpheus skills list      [--json] — discover reusable Morpheus project skills
   morpheus skills sync      [--check] — add missing loader-native skill entrypoints;
                             existing project-owned skill files are never overwritten
+  morpheus meeting-intake guide
+                            shared Gemini note-intake procedure and delivery boundaries
+  morpheus meeting-intake index --source <absolute-repo> --revision <ref> [--check]
+                            project an exact canonical Git revision when the profile declares one
+  morpheus meeting-intake search [--query <text>] [--topic <slug>] [--limit 1-20]
+                            bounded metadata search; same-repo profiles need no projection
+  morpheus meeting-intake notification --state <journal> --meeting <source-id>
+                            format, but never send, a fully verified current-intake notice
   morpheus tokens build     [--source hq/brand/tokens.json] [--css <path>] [--ts <path>]
                             [--prefix brand] [--check]
   morpheus context refresh  take a receipt — run it after reading the canonical records

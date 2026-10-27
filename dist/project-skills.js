@@ -2,7 +2,7 @@ import { link, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import matter from "@11ty/gray-matter";
-import { agenticCtoPointerSkill, brandReviewSkill, commentQaSkill, devopsEngineerPointerSkill, motionDesignExplorationSkill, researchEngineerPointerSkill, websiteInitSkill, } from "./init/templates.js";
+import { agenticCtoPointerSkill, brandReviewSkill, commentQaSkill, devopsEngineerPointerSkill, meetingIntakeSkill, motionDesignExplorationSkill, researchEngineerPointerSkill, websiteInitSkill, } from "./init/templates.js";
 import { AGENTIC_CTO_SKILL, DEVOPS_ENGINEER_SKILL, RESEARCH_ENGINEER_SKILL, } from "./cto/skill.js";
 const ALL_KINDS = ["company", "personal", "internal"];
 const USER_FACING_KINDS = ["company", "personal"];
@@ -30,6 +30,15 @@ export const PROJECT_SKILLS = [
         canonical: true,
         guide: "morpheus qa guide",
         render: commentQaSkill,
+    },
+    {
+        name: "meeting-intake",
+        providers: ["agents", "claude"],
+        kinds: ALL_KINDS,
+        distribution: "pointer",
+        canonical: true,
+        guide: "morpheus meeting-intake guide",
+        render: meetingIntakeSkill,
     },
     {
         name: AGENTIC_CTO_SKILL,
