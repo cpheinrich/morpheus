@@ -95,7 +95,7 @@ export async function scheduleHosted(config, store, now) {
         return;
     const snapshot = await store.read(), actions = new ActionsAdapter(store.api, config);
     for (const work of Object.values(snapshot.state.agents)) {
-        if (work.state === "complete" || paused(snapshot.state, work.intentId) || Date.parse(work.nextCheckAt) > Date.parse(now))
+        if (snapshot.state.intents[work.intentId]?.postResumeKey || work.state === "complete" || paused(snapshot.state, work.intentId) || Date.parse(work.nextCheckAt) > Date.parse(now))
             continue;
         const running = work.invocations.at(-1);
         if (running && !running.endedAt && work.lease && Date.parse(work.lease.expiresAt) > Date.parse(now))
@@ -128,6 +128,7 @@ export async function scheduleHosted(config, store, now) {
         const claim = await store.transact(`hosted-dispatch-${invocationId}-${ordinal}`, "claim-hosted-agent-dispatch", now, state => {
             const current = state.agents[work.id];
             invariant(current.state !== "complete", "Repair task already completed");
+            invariant(!state.intents[current.intentId]?.postResumeKey, "Post-resume acceptance cannot launch a repair model");
             invariant(!paused(state, current.intentId), "Repair is explicitly paused");
             invariant(!current.lease || Date.parse(current.lease.expiresAt) <= Date.parse(now), "Repair agent lease is still live");
             if (!current.invocations.some(item => item.id === invocationId))
@@ -180,6 +181,8 @@ export async function runWorker(config, store, sourceDir, options, environment =
     const snapshot = await store.read(), work = options.workId ? snapshot.state.agents[options.workId] : Object.values(snapshot.state.agents).find(item => item.state !== "complete" && Date.parse(item.nextCheckAt) <= Date.parse(now) && (!item.lease || Date.parse(item.lease.expiresAt) <= Date.parse(now)));
     if (!work || work.state === "complete")
         return { state: "idle" };
+    if (snapshot.state.intents[work.intentId]?.postResumeKey)
+        return { state: "observe-post-resume", workId: work.id };
     if (paused(snapshot.state, work.intentId))
         return { state: "paused", workId: work.id };
     invariant(!options.taskDigest || options.taskDigest === work.taskDigest, "Hosted task digest differs from immutable repair task");
@@ -215,6 +218,7 @@ export async function runWorker(config, store, sourceDir, options, environment =
         invariant(used !== undefined && used < config.budget.subscriptionAdmitBelowPercent, "Subscription admission telemetry expired or threshold reached before claim");
         const current = state.agents[work.id];
         invariant(current.state !== "complete" && (!current.lease || Date.parse(current.lease.expiresAt) <= Date.parse(claimedAt)), "Agent work already owned");
+        invariant(!state.intents[current.intentId]?.postResumeKey, "Post-resume acceptance cannot launch a repair model");
         invariant(!paused(state, current.intentId), "Repair is explicitly paused");
         invariant(!Object.values(state.agents).some(other => other.id !== current.id && other.lease && Date.parse(other.lease.expiresAt) > Date.parse(claimedAt) && other.invocations.at(-1)?.executor === options.executor), "This subscription executor already has an in-flight reservation");
         const fence = (state.fences[current.id] ?? 0) + 1;

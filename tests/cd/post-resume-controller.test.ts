@@ -1,0 +1,192 @@
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Controller } from "../../src/cd/controller.js";
+import { ActionsAdapter, type WorkflowRun } from "../../src/cd/actions.js";
+import { AppleAdapter } from "../../src/cd/apple.js";
+import { GitHubStore } from "../../src/cd/store.js";
+import { loadSources, verifyValidator } from "../../src/cd/source.js";
+import { hash, type Attempt } from "../../src/cd/schema.js";
+import { after, assertPostResumeAdmission, claimGroup, createIntent, postResumeExecutionFingerprint, postResumeAcceptance, qualifyPostResumeAcceptance, releasePostResumeExecution, yieldPostResumeAttempt } from "../../src/cd/state.js";
+import { FakeGitHub } from "./fake-github.js";
+import { now, observation, source } from "./fixtures.js";
+import { optionalFixture } from "./post-resume-fixtures.js";
+
+vi.mock("../../src/cd/source.js", async original => ({ ...await original<typeof import("../../src/cd/source.js")>(), loadSources: vi.fn(), verifyValidator: vi.fn() }));
+beforeEach(() => { vi.clearAllMocks(); vi.mocked(loadSources).mockResolvedValue([source(), source("b", 1)]); vi.mocked(verifyValidator).mockImplementation(() => {}); });
+async function harness(upload = true) {
+  const f = optionalFixture(upload), api = new FakeGitHub(), original = api.request.bind(api);
+  api.request = async <T>(method: string, path: string, body?: unknown): Promise<T> => path.endsWith("/commits/main") ? { sha: "c".repeat(40) } as T : original<T>(method, path, body);
+  f.state.intents[f.intentId]!.nextCheckAt = now;
+  const store = new GitHubStore(api, f.cfg); await store.initialize(now, "epoch");
+  await store.transact("seed", "synthetic-fixture", now, state => { Object.assign(state, { ...f.state, transitions: state.transitions }); return null; });
+  const actions = new ActionsAdapter(api, f.cfg), run: WorkflowRun = { id: 100, run_attempt: 1, status: "completed", conclusion: "success", head_sha: "c".repeat(40), event: "workflow_dispatch", path: ".github/workflows/cd-v2-delivery.yml", display_title: `CD ${f.attempt.dispatchEffectId}`, created_at: now, updated_at: now };
+  vi.spyOn(actions, "runs").mockResolvedValue([run]); vi.spyOn(actions, "verifyRun").mockImplementation(() => {});
+  vi.spyOn(actions, "evidence").mockResolvedValue({ tests: upload ? [f.tests] : [], uploads: [], failures: [] });
+  const dispatch = vi.spyOn(actions, "dispatch").mockResolvedValue(), cancel = vi.spyOn(actions, "cancel").mockResolvedValue();
+  const apple = new AppleAdapter({ request: vi.fn() }), observe = vi.spyOn(apple, "observe").mockResolvedValue({}), assign = vi.spyOn(apple, "assign").mockResolvedValue(); vi.spyOn(apple, "maximum").mockResolvedValue("8");
+  let clock = now; const setClock = (value: string) => { clock = value; };
+  const controller = new Controller(f.cfg, store, actions, apple, "/unused", () => clock);
+  return { ...f, api, store, actions, run, apple, observe, assign, dispatch, cancel, controller, setClock };
+}
+function direct(h: Awaited<ReturnType<typeof harness>>) { return h.controller as unknown as { dispatch(intentId: string, channel: string, attempt: Attempt, now: string, suffix?: string): Promise<void>; reconcileUpload(intentId: string, attempt: Attempt, run: WorkflowRun, now: string): Promise<void> }; }
+async function release(h: Awaited<ReturnType<typeof harness>>) {
+  await h.store.transact("release", "synthetic-authenticated-quiescence", now, state => {
+    const a = state.intents[h.intentId]!.attempts[0]!; a.workflowTerminalAt = now; a.quiescence = { kind: "host-terminated", ref: "synthetic:verified-owned-executor-gone", observedAt: now };
+    releasePostResumeExecution(state, h.identity, { fingerprint: postResumeExecutionFingerprint(state, h.identity), qualifiedAt: now, expiresAt: after(now, 5), quiescenceDigest: hash(a.quiescence), authorityClosureDigest: hash("actual-closed-actors"), evidenceRef: "synthetic:closed-execution-proof" }, now); return null;
+  });
+}
+describe("post-resume actual controller and Store seams", () => {
+  it("preserves the same protected active upload over MANY timeout polls/diagnosis, then recovers one real receipt without another upload", async () => {
+    const h = await harness(); await release(h); const before = (await h.store.read()).state;
+    for (const minute of [31, 62, 93, 124]) { const time = after(now, minute); h.setClock(time); const tick = await h.controller.tick(time); expect(tick.errors).toEqual([]); }
+    let state = (await h.store.read()).state, a = state.intents[h.intentId]!.attempts[0]!;
+    expect({ status: a.status, build: a.buildNumber, source: a.sourceSha, upload: a.upload }).toEqual({ status: "active", build: "8", source: source("b", 1).sha, upload: before.intents[h.intentId]!.attempts[0]!.upload });
+    expect(state.agents).toEqual({}); expect(state.intents[h.intentId]!.attempts).toHaveLength(1); expect(h.dispatch).not.toHaveBeenCalled(); expect(h.cancel).not.toHaveBeenCalled();
+    h.observe.mockResolvedValue({ observation: observation() }); h.setClock(after(now, 130)); const recovered = await h.controller.tick(after(now, 130)); expect(recovered.errors).toEqual([]);
+    state = (await h.store.read()).state; expect(state.intents[h.intentId]!.receipt).toMatchObject({ attemptId: h.attemptId, observation: { buildNumber: "8" }, sourceSha: source("b", 1).sha, ipaSha256: h.upload.ipaSha256 }); expect(h.assign).not.toHaveBeenCalled(); expect(state.cursors).toEqual(before.cursors);
+  });
+  it("retains old retired-uncertain late appearance as observation-only", async () => {
+    const h = await harness();
+    // Old, untyped validation lineage remains under its original behavior.
+    await h.store.transact("legacy", "synthetic-legacy-retired", now, state => { const old = structuredClone(state.intents[h.intentId]!); old.id = "legacy"; delete old.postResumeKey; old.attempts[0]!.id = "legacy-a1"; old.attempts[0]!.status = "retired-uncertain"; old.state = "paused"; state.intents.legacy = old; return null; });
+    h.observe.mockResolvedValue({ observation: observation() }); await h.controller.tick(now);
+    const state = (await h.store.read()).state; expect(state.intents.legacy!.attempts[0]!.status).toBe("retired-uncertain"); expect(state.intents.legacy!.receipt).toBeUndefined(); expect(state.intents.legacy!.attempts[0]!.uploadObservations!.at(-1)!.buildId).toBe("apple-build");
+  });
+  it("stale direct dispatch and late before-upload authority cannot revive a yielded attempt", async () => {
+    const h = await harness(false), stale = structuredClone(h.attempt);
+    await h.store.transact("yield", "yield-post-resume", now, state => { yieldPostResumeAttempt(state, h.intentId, h.attemptId, now); return null; });
+    await expect(direct(h).dispatch(h.intentId, "staging", stale, now)).rejects.toThrow("Yielded/released"); expect(h.dispatch).not.toHaveBeenCalled();
+    const final = (await h.store.read()).state; expect(final.intents[h.intentId]!.attempts[0]!.dispatch.state).toBe("intended");
+  });
+  it("does not invent an optional cancellation operation for duplicates or an overdue live native executor", async () => {
+    const duplicate = await harness(); vi.mocked(duplicate.actions.runs).mockResolvedValue([duplicate.run, { ...duplicate.run, id: 101, status: "in_progress", conclusion: null }]);
+    const first = await duplicate.controller.tick(now); expect(first.errors[0]!.message).toContain("no automatic cancellation"); expect(duplicate.cancel).not.toHaveBeenCalled();
+    const h = await harness(false), original = h.api.request.bind(h.api); h.run.status = "in_progress"; h.run.conclusion = null;
+    h.api.request = async <T>(method: string, path: string, body?: unknown): Promise<T> => path.includes("/jobs?") ? { total_count: 1, jobs: [{ id: 1, run_id: 100, run_attempt: 1, head_sha: "c".repeat(40), status: "in_progress", conclusion: null, started_at: now, completed_at: null, labels: ["self-hosted"], runner_id: 1, runner_name: "synthetic-owned-vm", steps: [{ status: "in_progress", conclusion: null }] }] } as T : original<T>(method, path, body);
+    h.setClock(after(now, 181)); const overdue = await h.controller.tick(after(now, 181));
+    expect(overdue.errors[0]!.message).toContain("no automatic cancellation or replacement"); expect(h.cancel).not.toHaveBeenCalled(); const final = (await h.store.read()).state; expect(final.intents[h.intentId]!.attempts[0]!.status).toBe("active"); expect(final.agents).toEqual({});
+  });
+  it("one successful dispatch claim linearizes; uncertainty never enters optional retry or a later yield", async () => {
+    const h = await harness(false); h.dispatch.mockRejectedValue(new Error("synthetic lost dispatch reply"));
+    await expect(direct(h).dispatch(h.intentId, "staging", h.attempt, now)).rejects.toThrow("lost dispatch");
+    await expect(direct(h).dispatch(h.intentId, "staging", h.attempt, now, "retry-1")).rejects.toThrow("cannot retry");
+    await expect(h.store.transact("invalid-yield", "yield", now, state => yieldPostResumeAttempt(state, h.intentId, h.attemptId, now))).rejects.toThrow("Possible dispatch");
+    expect(h.dispatch).toHaveBeenCalledTimes(1);
+  });
+  it.each(["expiry", "due-slot"])("fresh injected clock inside CAS retry rejects a time-only %s race", async kind => {
+    const h = await harness(false), original = h.api.request.bind(h.api); let raced = false;
+    if (kind === "due-slot") {
+      await h.store.transact("long-qualified", "synthetic-window", now, state => { qualifyPostResumeAcceptance(state, h.intentId, { ...h.qualification, expiresAt: after(now, 600), executionDeadlineAt: after(now, 600) }, now); return null; });
+      h.setClock(after(now, 359));
+    }
+    h.api.request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+      if (!raced && method === "PATCH" && path.endsWith("git/refs/heads/morpheus-cd-state")) {
+        raced = true; await h.store.transact("unrelated-racer", "synthetic-contender", now, state => { state.budget.telemetry.racer = { observedAt: now, source: "unrelated", windows: [] }; return null; });
+        h.setClock(kind === "expiry" ? h.qualification.expiresAt : after(now, 360));
+      }
+      return original<T>(method, path, body);
+    };
+    await expect(direct(h).dispatch(h.intentId, "staging", h.attempt, now)).rejects.toThrow(kind === "expiry" ? "expired" : "priority");
+    expect(h.dispatch).not.toHaveBeenCalled(); const final = (await h.store.read()).state;
+    expect(final.transitions[`dispatch-call-${h.attemptId}-initial`]).toBeUndefined(); expect(final.intents[h.intentId]!.attempts[0]!.dispatch.state).toBe("intended");
+  });
+  it("ordinary internal dispatch precedes optional and late observations; ordinary arrival yields only the zero-effect optional plan", async () => {
+    const h = await harness(false), trace: string[] = [];
+    await h.store.transact("ordinary", "synthetic-due-ordinary", now, state => { createIntent(state, h.cfg, "production", state.sources[0]!, now, now); return null; });
+    await h.store.transact("legacy-late", "synthetic-retired-obligation", now, state => { const legacy = structuredClone(state.intents[h.intentId]!); legacy.id = "legacy-retired"; delete legacy.postResumeKey; legacy.state = "paused"; legacy.attempts[0]!.status = "retired-uncertain"; state.intents[legacy.id] = legacy; return null; });
+    h.dispatch.mockImplementation(async () => { trace.push("ordinary-dispatch"); }); h.observe.mockImplementation(async () => { trace.push("late-observation"); return {}; });
+    const ordered = await h.controller.tick(now); expect(ordered.errors).toEqual([]);
+    const state = (await h.store.read()).state; expect(h.dispatch).toHaveBeenCalledTimes(1); expect(trace).toEqual(["ordinary-dispatch", "late-observation"]);
+    expect(postResumeAcceptance(state, state.intents[h.intentId]!)!.yielded).toEqual({ attemptId: h.attemptId, at: now });
+  });
+  it("B has one stable fresh claim owner under concurrent reconciliation and lost state-write acknowledgment", async () => {
+    const h = await harness(), original = h.api.request.bind(h.api); const absent = observation(); absent.group.buildIds = [];
+    h.observe.mockResolvedValue({ observation: absent });
+    h.api.request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+      if (method === "POST" && path.endsWith("/git/commits") && String((body as { message?: string })?.message).includes("claim-post-resume-membership")) h.api.loseNextAcknowledgment = true;
+      return original<T>(method, path, body);
+    };
+    await Promise.all([direct(h).reconcileUpload(h.intentId, h.attempt, h.run, now), direct(h).reconcileUpload(h.intentId, h.attempt, h.run, now)]);
+    expect(h.assign).toHaveBeenCalledExactlyOnceWith("apple-build", "staging");
+    const final = (await h.store.read()).state, groups = postResumeAcceptance(final, final.intents[h.intentId]!)!.groups;
+    expect(Object.keys(groups)).toHaveLength(1); expect(final.groupOperations).toEqual({});
+  });
+  it("B UNKNOWN plus absent readback remains read-only; later positive membership recovers with no repeated POST", async () => {
+    const h = await harness(), absent = observation(); absent.group.buildIds = []; h.observe.mockResolvedValue({ observation: absent }); h.assign.mockRejectedValue(new Error("synthetic lost POST reply"));
+    const claimed = await h.controller.tick(now); expect(claimed.errors).toEqual([{ intentId: h.intentId, message: "synthetic lost POST reply" }]); expect(h.assign).toHaveBeenCalledTimes(1);
+    for (const minute of [5, 10, 15]) { h.setClock(after(now, minute)); await h.controller.tick(after(now, minute)); }
+    expect(h.assign).toHaveBeenCalledTimes(1);
+    h.observe.mockResolvedValue({ observation: observation() }); h.setClock(after(now, 20)); await h.controller.tick(after(now, 20));
+    const final = (await h.store.read()).state; expect(final.intents[h.intentId]!.receipt!.observation.buildId).toBe("apple-build");
+    expect(Object.values(postResumeAcceptance(final, final.intents[h.intentId]!)!.groups)[0]!.observedAt).toBe(after(now, 20)); expect(h.assign).toHaveBeenCalledTimes(1);
+  });
+  it("retains both exact memberships when an optional reply is lost and a normal ordinary add follows", async () => {
+    const h = await harness(), members = new Set<string>();
+    h.observe.mockImplementation(async () => { const current = observation(); current.group.buildIds = [...members]; return { observation: current }; });
+    h.assign.mockImplementation(async (build, group) => { expect(group).toBe("staging"); members.add(build); if (build === "apple-build") throw new Error("synthetic withheld reply after additive success"); });
+    await h.controller.tick(now); expect(members).toEqual(new Set(["apple-build"]));
+    await h.store.transact("ordinary-add", "synthetic-normal-ordinary-group-claim", now, state => { const i = createIntent(state, h.cfg, "staging", state.sources[1]!, now, now), a = structuredClone(state.intents[h.intentId]!.attempts[0]!); a.id = `${i.id}-a1`; i.attempts.push(a); claimGroup(state, i.id, a.id, now); return null; });
+    const before = (await h.store.read()).state; await h.apple.assign("ordinary-build", "staging");
+    h.setClock(after(now, 5)); await expect(direct(h).reconcileUpload(h.intentId, h.attempt, h.run, after(now, 5))).rejects.toThrow("priority");
+    expect(members).toEqual(new Set(["apple-build", "ordinary-build"])); expect(h.assign).toHaveBeenCalledTimes(2);
+    expect((await h.store.read()).state.groupOperations).toEqual(before.groupOperations);
+  });
+  it("ordinary group fence and newer cursor remain independent from an old optional additive obligation", async () => {
+    const h = await harness(), absent = observation(); absent.group.buildIds = []; h.observe.mockResolvedValue({ observation: absent }); await h.controller.tick(now);
+    await h.store.transact("ordinary-newer", "synthetic-newer-ordinary", now, state => { state.sources.push(source("d", 2)); const i = createIntent(state, h.cfg, "staging", state.sources[2]!, now, now); const a = structuredClone(state.intents[h.intentId]!.attempts[0]!); a.id = `${i.id}-a1`; a.sourceSha = state.sources[2]!.sha; a.upload!.acceptedAt = now; i.attempts.push(a); claimGroup(state, i.id, a.id, now); state.cursors.staging = { sourceSha: a.sourceSha, order: 2, receiptId: "newer-receipt" }; return null; });
+    const before = (await h.store.read()).state; h.observe.mockResolvedValue({ observation: observation() }); h.setClock(after(now, 5));
+    await expect(direct(h).reconcileUpload(h.intentId, h.attempt, h.run, after(now, 5))).rejects.toThrow(/priority|differs|regress/);
+    const final = (await h.store.read()).state; expect(final.groupOperations).toEqual(before.groupOperations); expect(final.cursors).toEqual(before.cursors); expect(final.intents[h.intentId]!.receipt).toBeUndefined(); expect(h.assign).toHaveBeenCalledTimes(1);
+  });
+});
+describe("finite optional Apple reads", () => {
+  it("bounds pagination by exact call count without changing normal API behavior", async () => {
+    const request = vi.fn(async () => ({ data: [], links: { next: "/another" } }));
+    const adapter = new AppleAdapter({ request: request as never });
+    await expect(adapter.maximum("123", "1.0", { maximumRequests: 1, timeoutMs: 100 })).rejects.toThrow("budget exhausted"); expect(request).toHaveBeenCalledTimes(1);
+  });
+  it("bounds a stalled read by an abortable whole-observation deadline", async () => {
+    let signal: AbortSignal | undefined;
+    const adapter = new AppleAdapter({ request: async <T>(_method: string, _path: string, _body?: unknown, current?: AbortSignal): Promise<T> => { signal = current; return new Promise<T>(() => {}); } });
+    await expect(adapter.maximum("123", "1.0", { maximumRequests: 2, timeoutMs: 5 })).rejects.toThrow("deadline reached"); expect(signal?.aborted).toBe(true);
+  });
+});
+
+describe("optional Actions read completeness and abort budgets", () => {
+  it("never treats a page-limited workflow sweep as an empty census or permission to dispatch", async () => {
+    const h = await harness(false), original = h.api.request.bind(h.api); vi.mocked(h.actions.runs).mockRestore(); let pages = 0;
+    h.api.request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+      if (path.includes("/actions/workflows/") && path.includes("/runs?")) { pages++; return { workflow_runs: Array.from({ length: 100 }, (_v, i) => ({ ...h.run, id: pages * 100 + i, display_title: "unrelated-effect" })) } as T; }
+      return original<T>(method, path, body);
+    };
+    const result = await h.controller.tick(now); expect(result.errors[0]!.message).toContain("budget exhausted"); expect(pages).toBe(8); expect(h.dispatch).not.toHaveBeenCalled(); expect((await h.store.read()).state.intents[h.intentId]!.attempts).toHaveLength(1);
+  });
+  it.each([0, 1, 2])("completes an exact one-request census of %i rows with no truncation", async count => {
+    const f = optionalFixture(), request = vi.fn(async () => ({ workflow_runs: Array.from({ length: count }, () => ({ display_title: `CD ${f.attempt.dispatchEffectId}` })) }));
+    const actions = new ActionsAdapter({ request: request as never }, f.cfg);
+    expect(await actions.runs(f.attempt.dispatchEffectId, undefined, { maximumRequests: 1, timeoutMs: 100 })).toHaveLength(count); expect(request).toHaveBeenCalledTimes(1);
+  });
+  it("aborts a stalled Actions request rather than returning an empty result", async () => {
+    const f = optionalFixture(); let signal: AbortSignal | undefined;
+    const actions = new ActionsAdapter({ request: async <T>(_m: string, _p: string, _b?: unknown, current?: AbortSignal): Promise<T> => { signal = current; return new Promise<T>(() => {}); } }, f.cfg);
+    await expect(actions.runs(f.attempt.dispatchEffectId, undefined, { maximumRequests: 1, timeoutMs: 5 })).rejects.toThrow("deadline reached"); expect(signal?.aborted).toBe(true);
+  });
+  it("admits exactly four bounded artifact downloads using only a hermetic fake gh executable", async () => {
+    const f = optionalFixture(), request = vi.fn(async () => ({ artifacts: Array.from({ length: 4 }, (_v, i) => ({ id: i + 1, name: `cd-v2-${i}`, expired: false })) }));
+    const actions = new ActionsAdapter({ request: request as never }, f.cfg), directory = await mkdtemp(join(tmpdir(), "post-resume-fake-tools-")), marker = join(directory, "calls");
+    await writeFile(join(directory, "gh"), '#!/bin/sh\nprintf x >> "$POST_RESUME_TEST_DOWNLOADS"\n', { mode: 0o700 });
+    const previous = process.env.PATH, previousMarker = process.env.POST_RESUME_TEST_DOWNLOADS; process.env.PATH = directory; process.env.POST_RESUME_TEST_DOWNLOADS = marker;
+    const run: WorkflowRun = { id: 100, run_attempt: 1, status: "completed", conclusion: "success", head_sha: f.attempt.controlSha, event: "workflow_dispatch", path: ".github/workflows/cd-v2-delivery.yml", display_title: `CD ${f.attempt.dispatchEffectId}`, created_at: now, updated_at: now };
+    try { expect(await actions.evidence(run, f.attempt, { maximumRequests: 1, timeoutMs: 3000 })).toEqual({ tests: [], uploads: [], failures: [] }); expect(await readFile(marker, "utf8")).toBe("xxxx"); expect(request).toHaveBeenCalledTimes(1); }
+    finally { process.env.PATH = previous; if (previousMarker === undefined) delete process.env.POST_RESUME_TEST_DOWNLOADS; else process.env.POST_RESUME_TEST_DOWNLOADS = previousMarker; await rm(directory, { recursive: true, force: true }); }
+  });
+  it("refuses an over-budget artifact census before invoking any download command", async () => {
+    const f = optionalFixture(), request = vi.fn(async () => ({ artifacts: Array.from({ length: 5 }, (_v, i) => ({ id: i + 1, name: `cd-v2-${i}`, expired: false })) }));
+    const actions = new ActionsAdapter({ request: request as never }, f.cfg), previous = process.env.PATH; process.env.PATH = "/nonexistent-post-resume-test-tools";
+    const run: WorkflowRun = { id: 100, run_attempt: 1, status: "completed", conclusion: "success", head_sha: f.attempt.controlSha, event: "workflow_dispatch", path: ".github/workflows/cd-v2-delivery.yml", display_title: `CD ${f.attempt.dispatchEffectId}`, created_at: now, updated_at: now };
+    try { await expect(actions.evidence(run, f.attempt, { maximumRequests: 1, timeoutMs: 100 })).rejects.toThrow("exceeds four downloads"); expect(request).toHaveBeenCalledTimes(1); }
+    finally { process.env.PATH = previous; }
+  });
+});

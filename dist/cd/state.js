@@ -1,4 +1,4 @@
-import { budgetSpendingPolicySchema, configurationDigest, hash, sourceAgeWaiverSchema } from "./schema.js";
+import { postResumeExecutionProofSchema, postResumeOriginSchema, postResumeQualificationSchema, budgetSpendingPolicySchema, configurationDigest, hash, sourceAgeWaiverSchema } from "./schema.js";
 import { CdWait } from "./errors.js";
 export const milliseconds = (minutes) => minutes * 60_000;
 export const after = (at, minutes) => new Date(Date.parse(at) + milliseconds(minutes)).toISOString();
@@ -9,8 +9,12 @@ export function newState(config, epoch, now) {
 }
 export function externalReviewKey(appId, buildId) { return hash({ appId, buildId }); }
 /** A committed claim authorizes one call; uncertainty never authorizes another. */
-export function claimExternalReview(state, intentId, now) {
+export function claimExternalReview(state, intentId, now, config) {
     const intent = intentAt(state, intentId), receipt = intent.receipt;
+    if (intent.postResumeKey) {
+        invariant(config, "Post-resume external claim needs current configuration");
+        assertPostResumeAdmission(state, config, intentId, now);
+    }
     invariant(intent.state === "delivered" && receipt && !intent.isolatedValidation, "External review requires its ordinary immutable internal receipt");
     invariant(receipt.configurationDigest === state.configurationDigest, "Historical receipts cannot acquire review under a later configuration");
     invariant(!intent.external?.terminal && intent.external?.status !== "available", "Completed external follow-up cannot submit review");
@@ -169,7 +173,11 @@ export function planAttempt(state, config, intentId, controlSha, providerMaximum
     invariant(intent.state !== "delivered" && !intent.attempts.some(attempt => attempt.status === "active"), "Intent already has an active or delivered attempt");
     const lineageAge = intent.lineage.find(item => item.inputDigest === source.inputDigest)?.mainEnteredAt ?? source.mainEnteredAt;
     invariant(intent.validation && intent.sourceAgeWaiver || Date.parse(lineageAge) + config.channels[intent.channel].minimumAgeHours * 3_600_000 <= Date.parse(now), "Production source is not old enough");
-    const occupied = Object.values(state.intents).flatMap(item => item.attempts).filter(item => item.status === "active" && !item.upload?.acceptedAt).length;
+    if (intent.postResumeKey) {
+        assertPostResumeAdmission(state, config, intentId, now, true);
+        invariant(intent.attempts.length === 0, "Post-resume acceptance cannot retry or replace an attempt");
+    }
+    const occupied = Object.values(state.intents).flatMap(item => item.attempts.filter(attempt => occupiesNative(state, item, attempt))).length;
     if (occupied >= (config.execution?.maxNativeJobs ?? 2))
         throw new CdWait("Native execution capacity is reserved", "native-capacity");
     const id = `${intent.id}-a${intent.attempts.length + 1}`, app = config.channels[intent.channel];
@@ -192,6 +200,8 @@ export function checkIdentity(state, identity) {
     return found;
 }
 export function recordTests(state, config, evidence) {
+    const before = attemptAt(state, evidence.intentId, evidence.attemptId), optional = postResumeAcceptance(state, before.intent);
+    invariant(!optional?.yielded && (!optional?.releases[before.attempt.id] || before.attempt.tests), "Released/yielded acceptance cannot acquire new test authority");
     const { intent, attempt } = checkIdentity(state, evidence);
     invariant(evidence.scope === "full" && evidence.appInputDigest === attempt.appInputDigest && evidence.configurationDigest === attempt.configurationDigest, "Full-test/source/configuration evidence mismatch");
     const ids = evidence.inventory.ids;
@@ -210,6 +220,8 @@ export function recordTests(state, config, evidence) {
     intent.nextAction = "await-upload-claim";
 }
 export function claimUpload(state, config, evidence, now) {
+    const before = attemptAt(state, evidence.intentId, evidence.attemptId);
+    assertPostResumeNewEffect(state, config, before.intent, before.attempt, now);
     const { intent, attempt } = checkIdentity(state, evidence);
     invariant(attempt.tests, "A complete passing full-test inventory is required before upload");
     invariant(!attempt.upload, "Upload already claimed; reconcile the existing operation");
@@ -248,6 +260,11 @@ export function recordUpload(state, evidence, now) {
         return; // A late resource is retained for observation, never promotion/credit.
     if (operation.outcome === "rejected") {
         attempt.status = "failed";
+        if (intent.postResumeKey) {
+            intent.state = "waiting";
+            intent.nextAction = "observe-rejected-acceptance";
+            return;
+        }
         repairWork(state, intent.id, [`Apple rejected ${attempt.appId}/${attempt.version}/${attempt.buildNumber}`, evidence.diagnostics ?? "No provider diagnostics"], now);
     }
     else {
@@ -262,11 +279,15 @@ export function validateObservation(intent, attempt, observation) {
     invariant(observation.group.id === intent.groupId && observation.group.appId === attempt.appId && observation.group.internal && !observation.group.automaticDistribution, "Internal group identity/type/automatic distribution mismatch");
     invariant(observation.group.buildIds.includes(observation.buildId) && observation.group.testerIds.length > 0, "Exact build is unavailable to internal group members");
 }
-export function deliver(state, intentId, attemptId, observation, now) {
+export function deliver(state, intentId, attemptId, observation, now, config) {
     const { intent, attempt } = attemptAt(state, intentId, attemptId);
     if (intent.receipt) {
         invariant(intent.receipt.attemptId === attemptId, "A sibling receipt cannot replace delivery");
         return intent.receipt;
+    }
+    if (intent.postResumeKey) {
+        invariant(config, "Post-resume receipt requires current configuration");
+        assertPostResumeAdmission(state, config, intentId, now);
     }
     invariant(!state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope)), "Delivery is explicitly paused");
     invariant(attempt.status === "active" && intent.attempts.at(-1)?.id === attemptId && attempt.tests && attempt.artifactsVerifiedAt && attempt.upload?.acceptedAt && attempt.runId && attempt.runAttempt, "Delivery lacks current accepted upload and downloaded full-test provenance");
@@ -275,6 +296,12 @@ export function deliver(state, intentId, attemptId, observation, now) {
     invariant(intent.isolatedValidation || (!cursor || source.order >= cursor.order) && (!promoted || source.order >= promoted.order), "Delivery would regress the live ordinary/group cursor");
     validateObservation(intent, attempt, observation);
     const receipt = { schemaVersion: 1, intentId, attemptId, dispatchEffectId: attempt.dispatchEffectId, sourceSha: attempt.sourceSha, controlSha: attempt.controlSha, runId: attempt.runId, runAttempt: attempt.runAttempt, appInputDigest: attempt.appInputDigest, configurationDigest: attempt.configurationDigest, ipaSha256: attempt.upload.identity.ipaSha256, uploadOperationId: attempt.upload.id, providerUploadId: attempt.upload.providerUploadId, testEvidenceHash: attempt.tests.evidenceHash, observation, deliveredAt: now };
+    const optional = postResumeAcceptance(state, intent);
+    if (optional) {
+        const key = postResumeGroupKey(optional, attemptId, intent.groupId, observation.buildId);
+        if (optional.groups[key])
+            optional.groups[key].observedAt ??= now;
+    }
     intent.receipt = receipt;
     intent.state = "delivered";
     intent.nextAction = "complete";
@@ -303,6 +330,7 @@ export function deliver(state, intentId, attemptId, observation, now) {
 }
 export function claimGroup(state, intentId, attemptId, now) {
     const { intent, attempt } = attemptAt(state, intentId, attemptId), cursor = state.cursors[intent.channel];
+    invariant(!intent.postResumeKey, "Post-resume membership uses its separate stable obligation");
     invariant(attempt.status === "active" && intent.attempts.at(-1)?.id === attemptId && attempt.upload?.acceptedAt, "Only a current accepted attempt may promote a group");
     invariant(!state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope)), "Delivery is explicitly paused");
     const source = sourceAt(state, attempt.sourceSha), promoted = state.groupCursors?.[intent.groupId];
@@ -314,7 +342,10 @@ export function claimGroup(state, intentId, attemptId, now) {
         state.groupOperations[intent.groupId] = { attemptId, claimedAt: now };
 }
 export function repairWork(state, intentId, evidence, now) {
-    const intent = intentAt(state, intentId), existing = Object.values(state.agents).find(work => work.intentId === intentId && work.state !== "complete");
+    const intent = intentAt(state, intentId);
+    if (intent.postResumeKey)
+        throw new CdWait("Post-resume acceptance retains its exact operation; no automatic repair/replacement", "post-resume-observation");
+    const existing = Object.values(state.agents).find(work => work.intentId === intentId && work.state !== "complete");
     if (existing) {
         existing.evidence = [...new Set([...existing.evidence, ...evidence])];
         return existing.id;
@@ -328,6 +359,7 @@ export function repairWork(state, intentId, evidence, now) {
 }
 export function adoptRepair(state, config, intentId, source, evidence, now) {
     const intent = intentAt(state, intentId), previous = sourceAt(state, intent.source);
+    invariant(!intent.postResumeKey, "Post-resume acceptance source cannot be adopted or retargeted");
     invariant(source.order >= previous.order, "Repair source must descend along configured main history");
     intent.source = source.sha;
     intent.lineage.push({ source: source.sha, inputDigest: source.inputDigest, mainEnteredAt: source.mainEnteredAt, reason: "reviewed merged repair", evidence });
@@ -345,6 +377,7 @@ export function adoptRepair(state, config, intentId, source, evidence, now) {
 }
 export function completeOperationalRepair(state, intentId, evidence, now) {
     const intent = intentAt(state, intentId), attempt = intent.attempts.at(-1);
+    invariant(!intent.postResumeKey, "Post-resume acceptance cannot enter operational repair/retry");
     invariant(evidence.length > 0 && evidence.every(item => typeof item === "string" && item.length > 0), "Operational repair needs direct host/provider evidence");
     if (attempt?.upload && attempt.upload.outcome !== "rejected") {
         intent.state = attempt.upload.acceptedAt ? "processing" : "waiting";
@@ -416,5 +449,132 @@ export function quotaUsed(snapshot, now) {
     if (snapshot.windows.some(window => !Number.isFinite(window.usedPercent) || window.usedPercent < 0 || window.usedPercent > 100 || !(Date.parse(window.resetsAt) > Date.parse(now))))
         return undefined;
     return Math.max(...snapshot.windows.map(window => window.usedPercent));
+}
+/** Separate journal: deliberately no legacy campaign result.fenceBinding shape. */
+export function postResumeAcceptance(state, intent) {
+    if (!intent.postResumeKey)
+        return undefined;
+    const record = state.postResumeAcceptances?.[intent.postResumeKey];
+    invariant(record && record.intentId === intent.id && intent.validation && !intent.isolatedValidation && !intent.sourceAgeWaiver, "Invalid post-resume origin association");
+    postResumeOriginSchema.parse(record.origin);
+    invariant(intent.postResumeKey === hash({ campaignId: record.origin.campaignId, purpose: record.origin.purpose }) && record.origin.sourceSha === intent.originalSource && intent.source === intent.originalSource, "Post-resume purpose/source identity differs");
+    return record;
+}
+/** Ordinary eligibility includes due slots even before the evaluator commits them. */
+export function ordinaryDemand(state, config, now) {
+    invariant(Number.isFinite(Date.parse(now)), "Invalid admission clock");
+    if (Object.values(state.groupOperations).some(operation => !operation.completedAt) || Object.values(state.agents).some(work => work.state !== "complete" || work.lease))
+        return true;
+    if (Object.values(state.intents).some(intent => !intent.validation && intent.state !== "delivered" && (!intent.eligibleAt || Date.parse(intent.eligibleAt) <= Date.parse(now))))
+        return true;
+    return ["staging", "production"].some(channel => dueSlots(config, channel, state.evaluatedSlots[channel], now).some(slot => {
+        const candidate = state.sources.filter(source => eligible(source, config, channel, slot)).at(-1);
+        const cursor = state.cursors[channel], previous = cursor && state.sources.find(source => source.sha === cursor.sourceSha);
+        return Boolean(candidate && (channel === "production" || !previous || candidate.inputDigest !== previous.inputDigest));
+    }));
+}
+/** Fingerprints relevant external qualification, without treating budget maxima as holds. */
+export function postResumeFingerprint(state) {
+    return hash({ epoch: state.epoch, repository: state.repository, configurationDigest: state.configurationDigest, sources: state.sources, cursors: state.cursors, groupCursors: state.groupCursors, groupOperations: state.groupOperations, agents: state.agents, pauses: state.pauses, ordinary: Object.values(state.intents).filter(intent => !intent.validation) });
+}
+export function createPostResumeAcceptance(state, config, channel, raw, qualification, now) {
+    invariant(configurationDigest(config) === state.configurationDigest, "Post-resume configuration changed");
+    const origin = postResumeOriginSchema.parse(raw), q = postResumeQualificationSchema.parse(qualification), key = hash({ campaignId: origin.campaignId, purpose: origin.purpose });
+    invariant(!state.postResumeAcceptances?.[key], "Post-resume purpose already exists; no renamed replay");
+    invariant(Date.parse(origin.createdAt) <= Date.parse(now) && Date.parse(now) - Date.parse(origin.createdAt) <= 300_000 && origin.iosTreeSha !== origin.previousIosTreeSha && origin.iosTreeSha !== origin.receiptIosTreeSha, "Post-resume request needs a genuine newly qualified iOS tree");
+    const source = sourceAt(state, origin.sourceSha);
+    invariant(source.sha === state.sources.at(-1)?.sha, "Post-resume source must be current verified main");
+    const dispatched = Object.values(state.intents).flatMap(intent => intent.attempts).filter(attempt => attempt.dispatch.sentAt);
+    invariant(dispatched.every(attempt => source.order > sourceAt(state, attempt.sourceSha).order), "Post-resume source must be newer than every actual prior dispatch");
+    invariant(eligible(source, config, channel, now) && !ordinaryDemand(state, config, now), "Ordinary delivery/source age takes priority");
+    invariant(q.fingerprint === postResumeFingerprint(state) && Date.parse(q.qualifiedAt) <= Date.parse(now) && Date.parse(now) < Date.parse(q.expiresAt) && Date.parse(now) < Date.parse(q.executionDeadlineAt), "Post-resume qualification is expired or differs");
+    const intent = createIntent(state, config, channel, source, now, now, true, config.channels[channel].internalGroupId, `post-resume-${key}`);
+    intent.postResumeKey = key;
+    (state.postResumeAcceptances ??= {})[key] = { origin, intentId: intent.id, qualifications: [q], releases: {}, groups: {} };
+    return intent.id;
+}
+export function qualifyPostResumeAcceptance(state, intentId, raw, now) {
+    const intent = intentAt(state, intentId), record = postResumeAcceptance(state, intent);
+    invariant(record, "No post-resume origin");
+    const q = postResumeQualificationSchema.parse(raw);
+    invariant(q.fingerprint === postResumeFingerprint(state) && Date.parse(q.qualifiedAt) <= Date.parse(now) && Date.parse(now) < Date.parse(q.expiresAt) && Date.parse(now) < Date.parse(q.executionDeadlineAt), "Post-resume qualification is expired or differs");
+    if (hash(record.qualifications.at(-1)) !== hash(q))
+        record.qualifications.push(q);
+}
+export function assertPostResumeAdmission(state, config, intentId, now, initial = false) {
+    const intent = intentAt(state, intentId), record = postResumeAcceptance(state, intent);
+    if (!record)
+        return;
+    invariant(state.configurationDigest === configurationDigest(config), "Post-resume configuration changed");
+    const q = postResumeQualificationSchema.parse(record.qualifications.at(-1));
+    invariant(!record.yielded && !ordinaryDemand(state, config, now), "Ordinary delivery takes priority over acceptance");
+    invariant(q.fingerprint === postResumeFingerprint(state) && Date.parse(q.qualifiedAt) <= Date.parse(now) && Date.parse(now) < Date.parse(q.expiresAt) && Date.parse(now) < Date.parse(q.executionDeadlineAt), "Post-resume qualification is expired or differs");
+    const order = sourceAt(state, intent.source).order, cursor = state.cursors[intent.channel], group = state.groupCursors?.[intent.groupId];
+    invariant((!cursor || order >= cursor.order) && (!group || order >= group.order), "Post-resume source would regress an ordinary/group cursor");
+    if (initial) {
+        const dispatches = Object.values(state.intents).flatMap(item => item.attempts).filter(attempt => attempt.dispatch.sentAt && !intent.attempts.includes(attempt));
+        invariant(dispatches.every(attempt => Date.parse(now) - Date.parse(attempt.dispatch.sentAt) >= 15 * 60_000 && order > sourceAt(state, attempt.sourceSha).order), "Post-resume source/stagger no longer qualifies");
+    }
+}
+export function assertPostResumeNewEffect(state, config, intent, attempt, now, initial = false) {
+    const record = postResumeAcceptance(state, intent);
+    if (!record)
+        return;
+    invariant(!record.yielded && !record.releases[attempt.id], "Yielded/released acceptance cannot claim a new effect");
+    assertPostResumeAdmission(state, config, intent.id, now, initial);
+}
+export function occupiesNative(state, intent, attempt) {
+    const record = postResumeAcceptance(state, intent);
+    return attempt.status === "active" && !attempt.upload?.acceptedAt && !record?.releases[attempt.id] && record?.yielded?.attemptId !== attempt.id;
+}
+export function protectedPostResumeUpload(state, intent, attempt) {
+    return Boolean(postResumeAcceptance(state, intent) && attempt.status === "active" && attempt.upload && !attempt.upload.acceptedAt && attempt.upload.outcome !== "rejected");
+}
+export function yieldPostResumeAttempt(state, intentId, attemptId, now) {
+    const { intent, attempt } = attemptAt(state, intentId, attemptId), record = postResumeAcceptance(state, intent);
+    invariant(record, "No post-resume origin");
+    invariant(!record.yielded && !record.releases[attemptId] && attempt.status === "active" && attempt.dispatch.state === "intended" && !attempt.dispatch.sentAt && !attempt.runId && !attempt.runAttempt && attempt.dispatch.runIds.length === 0 && !attempt.tests && !attempt.upload && !Object.keys(state.transitions).some(id => id.startsWith(`dispatch-call-${attemptId}-`)), "Possible dispatch/effect cannot be yielded as never-dispatched");
+    record.yielded = { attemptId, at: now };
+}
+export function postResumeExecutionFingerprint(state, identity) {
+    const { intent, attempt } = attemptAt(state, identity.intentId, identity.attemptId);
+    return hash({ identity, dispatch: attempt.dispatch, lease: attempt.lease, fence: state.fences[attempt.id], terminal: attempt.workflowTerminalAt, quiescence: attempt.quiescence, agents: Object.values(state.agents).filter(work => work.intentId === intent.id) });
+}
+export function releasePostResumeExecution(state, identity, raw, now) {
+    const proof = postResumeExecutionProofSchema.parse(raw), found = attemptAt(state, identity.intentId, identity.attemptId);
+    invariant(found.attempt.runId === identity.runId && found.attempt.runAttempt === identity.runAttempt, "Release requires already-bound exact run identity");
+    invariant(proof.fingerprint === postResumeExecutionFingerprint(state, identity) && Date.parse(proof.qualifiedAt) <= Date.parse(now) && Date.parse(now) < Date.parse(proof.expiresAt), "Execution release qualification expired or changed");
+    const { intent, attempt } = checkIdentity(state, identity), record = postResumeAcceptance(state, intent);
+    invariant(record, "No post-resume origin");
+    invariant(!record.yielded && !record.releases[attempt.id] && attempt.workflowTerminalAt && Number.isFinite(Date.parse(attempt.workflowTerminalAt)) && Date.parse(attempt.workflowTerminalAt) <= Date.parse(now) && attempt.quiescence && Number.isFinite(Date.parse(attempt.quiescence.observedAt)) && Date.parse(attempt.quiescence.observedAt) <= Date.parse(now) && attempt.lease && state.fences[attempt.id] === attempt.lease.fence && proof.quiescenceDigest === hash(attempt.quiescence), "Execution release needs exact authenticated quiescence/authority closure");
+    invariant(!Object.values(state.agents).some(work => work.intentId === intent.id && (work.state !== "complete" || work.lease)), "Execution authority still outstanding");
+    record.releases[attempt.id] = { identityDigest: hash(identity), leaseOwner: attempt.lease.owner, fence: attempt.lease.fence, ...proof, at: now };
+}
+export function postResumeGroupKey(record, attemptId, groupId, buildId) { return hash({ origin: record.origin, attemptId, groupId, buildId }); }
+export function claimPostResumeGroup(state, config, intentId, attemptId, buildId, now) {
+    const { intent, attempt } = attemptAt(state, intentId, attemptId), record = postResumeAcceptance(state, intent);
+    invariant(record, "No post-resume origin");
+    assertPostResumeAdmission(state, config, intentId, now);
+    invariant(attempt.status === "active" && intent.attempts.at(-1)?.id === attemptId && attempt.upload?.acceptedAt && buildId === attempt.observation?.buildId, "Optional group requires exact accepted observed build");
+    const cursor = state.cursors[intent.channel], group = state.groupCursors?.[intent.groupId], order = sourceAt(state, attempt.sourceSha).order;
+    invariant((!cursor || order >= cursor.order) && (!group || order >= group.order) && !state.pauses.some(pause => ["all", intent.channel, intentId].includes(pause.scope)), "Optional group would regress or override a pause");
+    const key = postResumeGroupKey(record, attemptId, intent.groupId, buildId);
+    invariant(!record.groups[key], "Optional membership claim is already UNKNOWN; readback only");
+    record.groups[key] = { attemptId, groupId: intent.groupId, buildId, claimedAt: now };
+    return key;
+}
+/** Supported normal Store entry; exact replay is observation, never an arm/dispatch. */
+export async function applyPostResumeAcceptance(store, config, channel, rawOrigin, rawQualification, clock = () => new Date().toISOString()) {
+    const origin = postResumeOriginSchema.parse(rawOrigin), qualification = postResumeQualificationSchema.parse(rawQualification);
+    const key = hash({ campaignId: origin.campaignId, purpose: origin.purpose }), intentId = `post-resume-${key}`;
+    const receipt = { kind: "post-resume-origin-v1", key, intentId, originDigest: hash(origin), qualificationDigest: hash(qualification) };
+    const transaction = await store.transact(`post-resume-origin-${key}`, "create-post-resume-acceptance", clock(), state => {
+        createPostResumeAcceptance(state, config, channel, origin, qualification, clock());
+        return receipt;
+    });
+    const final = await store.read(), record = final.state.postResumeAcceptances?.[key];
+    invariant(final.state.configurationDigest === configurationDigest(config) && hash(transaction.result) === hash(receipt) && record && hash(record.origin) === receipt.originDigest && hash(record.qualifications[0]) === receipt.qualificationDigest && record.intentId === intentId && final.state.intents[intentId]?.channel === channel, "Post-resume replay/readback differs from exact original payload");
+    postResumeAcceptance(final.state, final.state.intents[intentId]);
+    return { head: transaction.head, replayed: transaction.replayed, result: receipt, verifiedReadbackHead: final.head };
 }
 //# sourceMappingURL=state.js.map

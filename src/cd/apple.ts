@@ -4,7 +4,7 @@ import { type Attempt, type CdConfig, type ExternalObservation, type InternalObs
 import { invariant } from "./state.js";
 import { CdWait } from "./errors.js";
 
-export interface AppleApi { request<T>(method: string, path: string, body?: unknown): Promise<T> }
+export interface AppleApi { request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> }
 interface Resource { id: string; type: string; attributes?: Record<string, unknown>; relationships?: Record<string, { data: { id: string; type: string } | { id: string; type: string }[] | null }> }
 interface Document { data: Resource | Resource[] | null; included?: Resource[]; links?: { next?: string | null } }
 export class AppleRequestError extends Error {
@@ -21,12 +21,12 @@ export class AppleHttp implements AppleApi {
     const value = await new SignJWT({}).setProtectedHeader({ alg: "ES256", kid: keyId, typ: "JWT" }).setIssuer(issuer).setAudience("appstoreconnect-v1").setIssuedAt(now).setExpirationTime(now + 600).sign(key);
     this.token = { value, expiresAt: (now + 600) * 1000 }; return value;
   }
-  async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
     const url = new URL(path, "https://api.appstoreconnect.apple.com");
     invariant(url.origin === "https://api.appstoreconnect.apple.com", "Apple pagination cannot redirect credentials to another host");
     let response: Response;
     const authorization = await this.authorization();
-    try { response = await this.fetcher(url, { method, headers: { Authorization: `Bearer ${authorization}`, Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(30_000), redirect: "error" }); }
+    try { response = await this.fetcher(url, { method, headers: { Authorization: `Bearer ${authorization}`, Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000), redirect: "error" }); }
     catch { throw new CdWait(`Apple ${method} ${url.pathname} observation/network outcome unavailable`, "apple-network"); }
     const text = await response.text();
     if (response.status === 429 || response.status >= 500) throw new CdWait(`Apple ${method} ${url.pathname} HTTP ${response.status}`, "apple-provider");
@@ -44,6 +44,20 @@ export async function applePages(api: AppleApi, path: string): Promise<{ data: R
   return { data: result, included };
 }
 const filter = (values: Record<string, string>) => new URLSearchParams(values).toString();
+export interface AppleReadLimit { maximumRequests: number; timeoutMs: number }
+/** One bounded optional observation, including all pagination and body reads. */
+function boundedReadApi(api: AppleApi, limits: AppleReadLimit): AppleApi {
+  invariant(Number.isSafeInteger(limits.maximumRequests) && limits.maximumRequests > 0 && limits.maximumRequests <= 8 && Number.isFinite(limits.timeoutMs) && limits.timeoutMs > 0 && limits.timeoutMs <= 30_000, "Invalid optional Apple read limit");
+  const signal = AbortSignal.timeout(limits.timeoutMs); let calls = 0;
+  return { async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    invariant(method === "GET" && body === undefined && ++calls <= limits.maximumRequests && !signal.aborted, "Optional Apple read budget exhausted");
+    let abort: () => void;
+    const unavailable = new Promise<never>((_resolve, reject) => { abort = () => reject(new CdWait("Optional Apple observation deadline reached", "apple-network")); signal.addEventListener("abort", abort, { once: true }); });
+    try { return await Promise.race([api.request<T>(method, path, undefined, signal), unavailable]); }
+    finally { signal.removeEventListener("abort", abort!); }
+  } };
+}
+
 export class AppleAdapter {
   constructor(readonly api: AppleApi) {}
   async group(groupId: string): Promise<InternalObservation["group"]> {
@@ -59,11 +73,13 @@ export class AppleAdapter {
     const automaticDistribution = internal ? group.attributes?.hasAccessToAllBuilds !== false : group.attributes?.hasAccessToAllBuilds === true;
     return { id: group.id, appId: groupApp && !Array.isArray(groupApp) ? groupApp.id : "UNKNOWN", internal, automaticDistribution, buildIds: assigned.data.map(item => item.id), testerIds: members.data.map(item => item.id) };
   }
-  async maximum(appId: string, version: string): Promise<string> {
+  async maximum(appId: string, version: string, limits?: AppleReadLimit): Promise<string> {
+    if (limits) return new AppleAdapter(boundedReadApi(this.api, limits)).maximum(appId, version);
     const builds = await applePages(this.api, `/v1/builds?${filter({ "filter[app]": appId, "filter[preReleaseVersion.version]": version, "fields[builds]": "version", limit: "200" })}`);
     return String(builds.data.reduce((maximum, build) => { const value = String(build.attributes?.version); invariant(/^[0-9]+$/.test(value), "Provider build number is not a decimal identity"); return BigInt(value) > maximum ? BigInt(value) : maximum; }, 0n));
   }
-  async observe(attempt: Attempt, groupId: string, now: string): Promise<{ uploadState?: string; diagnostics?: string; observation?: InternalObservation }> {
+  async observe(attempt: Attempt, groupId: string, now: string, limits?: AppleReadLimit): Promise<{ uploadState?: string; diagnostics?: string; observation?: InternalObservation }> {
+    if (limits) return new AppleAdapter(boundedReadApi(this.api, limits)).observe(attempt, groupId, now);
     let uploadState: string | undefined, diagnostics: string | undefined;
     if (attempt.upload?.providerUploadId) {
       const upload = await this.api.request<Document>("GET", `/v1/buildUploads/${encodeURIComponent(attempt.upload.providerUploadId)}`), resource = upload.data as Resource;

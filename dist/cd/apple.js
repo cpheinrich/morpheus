@@ -29,13 +29,13 @@ export class AppleHttp {
         this.token = { value, expiresAt: (now + 600) * 1000 };
         return value;
     }
-    async request(method, path, body) {
+    async request(method, path, body, signal) {
         const url = new URL(path, "https://api.appstoreconnect.apple.com");
         invariant(url.origin === "https://api.appstoreconnect.apple.com", "Apple pagination cannot redirect credentials to another host");
         let response;
         const authorization = await this.authorization();
         try {
-            response = await this.fetcher(url, { method, headers: { Authorization: `Bearer ${authorization}`, Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(30_000), redirect: "error" });
+            response = await this.fetcher(url, { method, headers: { Authorization: `Bearer ${authorization}`, Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000), redirect: "error" });
         }
         catch {
             throw new CdWait(`Apple ${method} ${url.pathname} observation/network outcome unavailable`, "apple-network");
@@ -62,6 +62,23 @@ export async function applePages(api, path) {
     return { data: result, included };
 }
 const filter = (values) => new URLSearchParams(values).toString();
+/** One bounded optional observation, including all pagination and body reads. */
+function boundedReadApi(api, limits) {
+    invariant(Number.isSafeInteger(limits.maximumRequests) && limits.maximumRequests > 0 && limits.maximumRequests <= 8 && Number.isFinite(limits.timeoutMs) && limits.timeoutMs > 0 && limits.timeoutMs <= 30_000, "Invalid optional Apple read limit");
+    const signal = AbortSignal.timeout(limits.timeoutMs);
+    let calls = 0;
+    return { async request(method, path, body) {
+            invariant(method === "GET" && body === undefined && ++calls <= limits.maximumRequests && !signal.aborted, "Optional Apple read budget exhausted");
+            let abort;
+            const unavailable = new Promise((_resolve, reject) => { abort = () => reject(new CdWait("Optional Apple observation deadline reached", "apple-network")); signal.addEventListener("abort", abort, { once: true }); });
+            try {
+                return await Promise.race([api.request(method, path, undefined, signal), unavailable]);
+            }
+            finally {
+                signal.removeEventListener("abort", abort);
+            }
+        } };
+}
 export class AppleAdapter {
     api;
     constructor(api) {
@@ -80,11 +97,15 @@ export class AppleAdapter {
         const automaticDistribution = internal ? group.attributes?.hasAccessToAllBuilds !== false : group.attributes?.hasAccessToAllBuilds === true;
         return { id: group.id, appId: groupApp && !Array.isArray(groupApp) ? groupApp.id : "UNKNOWN", internal, automaticDistribution, buildIds: assigned.data.map(item => item.id), testerIds: members.data.map(item => item.id) };
     }
-    async maximum(appId, version) {
+    async maximum(appId, version, limits) {
+        if (limits)
+            return new AppleAdapter(boundedReadApi(this.api, limits)).maximum(appId, version);
         const builds = await applePages(this.api, `/v1/builds?${filter({ "filter[app]": appId, "filter[preReleaseVersion.version]": version, "fields[builds]": "version", limit: "200" })}`);
         return String(builds.data.reduce((maximum, build) => { const value = String(build.attributes?.version); invariant(/^[0-9]+$/.test(value), "Provider build number is not a decimal identity"); return BigInt(value) > maximum ? BigInt(value) : maximum; }, 0n));
     }
-    async observe(attempt, groupId, now) {
+    async observe(attempt, groupId, now, limits) {
+        if (limits)
+            return new AppleAdapter(boundedReadApi(this.api, limits)).observe(attempt, groupId, now);
         let uploadState, diagnostics;
         if (attempt.upload?.providerUploadId) {
             const upload = await this.api.request("GET", `/v1/buildUploads/${encodeURIComponent(attempt.upload.providerUploadId)}`), resource = upload.data;

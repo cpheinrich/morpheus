@@ -133,7 +133,7 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
       await verifyExecution(config, store, actions, sourceDir, evidence, environment);
       await uploadGroupPreflight(config, store, evidence, environment);
       try {
-        const claim = await store.transact(`upload-claim-${evidence.attemptId}`, "claim-upload", now, state => ({ uploadOperationId: claimUpload(state, config, evidence, now) }));
+        const claim = await store.transact(`upload-claim-${evidence.attemptId}`, "claim-upload", now, state => ({ uploadOperationId: claimUpload(state, config, evidence, state.intents[evidence.intentId]?.postResumeKey ? new Date().toISOString() : now) }));
         console.log(JSON.stringify({ authorized: !claim.replayed, ...claim.result, reason: claim.replayed ? "already-claimed-reconcile-existing-operation" : "new-upload-claim" })); return claim.replayed ? 3 : 0;
       } catch (error) { if (/Upload already claimed|no longer current|Sibling workflow|rerun cannot reuse/.test(String(error))) { console.log(JSON.stringify({ authorized: false, reason: String(error) })); return 3; } throw error; }
     }
@@ -149,7 +149,7 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
         try {
           await verifyExecution(config, store, actions, sourceDir, identity, environment);
           await uploadGroupPreflight(config, store, identity, environment);
-          const claim = await store.transact(`upload-claim-${identity.attemptId}`, "claim-upload", now, state => ({ uploadOperationId: claimUpload(state, config, common, now) }));
+          const claim = await store.transact(`upload-claim-${identity.attemptId}`, "claim-upload", now, state => ({ uploadOperationId: claimUpload(state, config, common, state.intents[identity.intentId]?.postResumeKey ? new Date().toISOString() : now) }));
           console.log(JSON.stringify({ authorized: !claim.replayed, ...claim.result })); return claim.replayed ? 3 : 0;
         } catch (error) { if (/already claimed|no longer current|Sibling workflow|rerun cannot reuse/.test(String(error))) { console.log(JSON.stringify({ authorized: false, reason: String(error) })); return 3; } throw error; }
       }
