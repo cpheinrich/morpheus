@@ -698,6 +698,16 @@ reviewers can distinguish what happened in the meeting from what an agent later 
 A roadmap follow-up backfills filed ids into the note's `roadmap:` field; that link is bookkeeping,
 not interpretation.
 
+**Gemini meeting intake is shared machinery with project-owned topology.** On its second use,
+Morpheus owns the discovery extension, project-policy validation, immutable Git reader,
+deduplication, bounded search, optional catalog projection and completion-notice gate. A project's
+`.morpheus/meeting-intake.json` owns its collaborators, source account, topic vocabulary,
+canonical repository/directory, timezone, optional projection and notification authority. The
+canonical repository may be the project itself; a catalog is never mandatory merely because Evo
+projects Darwin-owned notes. Source interpretation, redaction, participant resolution and factual
+writing remain agent judgment under the shared guide. Historical imports are notes only and cannot
+promote actions or pass the notice gate.
+
 Git rather than cloud storage because these are small, textual, appear in PR diffs, and are
 greppable with no authentication. Indexing markdown later is easy; migrating off a bespoke store is
 not.
