@@ -907,8 +907,8 @@ export async function cleanup(productDir: string, id: string, cwd: string, dryRu
 export async function worktrees(cwd: string, action?: string, dryRun = false): Promise<number> {
   try {
     if (action && action !== "prune") throw new Error("Usage: morpheus pm worktrees [prune] [--dry-run]");
-    console.log((await worktreeStatus(cwd)).join("\n"));
     if (action === "prune") console.log(await pruneStaleWorktrees(cwd, dryRun) || "No stale registrations pruned.");
+    else console.log((await worktreeStatus(cwd)).join("\n"));
     return 0;
   } catch (error) { console.error(error instanceof Error ? error.message : String(error)); return 1; }
 }

@@ -79,7 +79,14 @@ another session, confirm that session has ended before using `--release-stale-se
 the command still checks for open processes and preserves all other safety proofs.
 `morpheus pm worktrees` inventories legacy sibling worktrees;
 `morpheus pm worktrees prune` clears only Git registrations whose directories are
-already missing. Do not delete directories directly: Git registration and branches
+already missing and unlocked, preserving their branches. Pruning reads Git registrations
+from the caller checkout; it does not require a full inventory of other checkouts. Existing
+directories (including those missing their `.git` file), locked registrations, and all branch
+refs remain untouched. Removal touches only the matching Git administrative registration,
+never the checkout directory, so a concurrently restored checkout keeps its files (its
+registration may need repair). `--dry-run` lists eligible registrations without removing them.
+Branch-only cleanup after a worktree registration is gone still requires manual resolution.
+Do not delete directories directly: Git registration and branches
 must be reconciled together.
 
 ## Blocking
