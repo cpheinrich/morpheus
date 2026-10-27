@@ -33,14 +33,14 @@ Added a deterministic test restoring the checkout immediately before the mutatio
 
 ## Review record
 
-Independent high-risk review found substantive R1: directory-removing Git cleanup could delete a concurrently restored checkout and ignored data. Replaced it with registration-only metadata deletion and added a deterministic restoration regression. The same reviewer cleared the correction after seven focused pruning tests passed; no new findings. Final CI is required before Chris merges.
+Independent high-risk review found substantive R1: directory-removing Git cleanup could delete a concurrently restored checkout and ignored data. Replaced it with registration-only metadata deletion and added a deterministic restoration regression. The same reviewer cleared the correction after seven focused pruning tests passed; no new findings. Final CI is required before Chris merges. The same reviewer cleared the later declaration repair and both trunk integrations, with no new findings.
 
 ```morpheus-review
 {
   "version": 2,
   "base": "e4ea3aa6fe14b3a9740efa1bde8ccd94c56b7d27",
   "reviewed": "7a64366727108e17452f23a5e7632fc1ca4e10bd",
-  "covered": "6a8928381a6e8defa3c8daacf4bb891e27654f28",
+  "covered": "7d759d57905ecef2a83e0344159bd2419b8a0fd1",
   "authorSession": "01a172b7-b042-7f62-9bc0-9e93c1745b2a",
   "reviewerSession": "/root/prune_review",
   "risk": "high",
@@ -51,7 +51,7 @@ Independent high-risk review found substantive R1: directory-removing Git cleanu
     "evidence": "Author clock around /root/prune_review initial invocation: 2026-10-25T11:35:39.335Z to 2026-10-25T11:36:29.901Z."
   },
   "outcome": "complete",
-  "summary": "Independent high-risk review found substantive R1: directory-removing Git cleanup could delete a concurrently restored checkout and ignored data. Replaced it with registration-only metadata deletion and added a deterministic restoration regression. The same reviewer cleared the correction after seven focused pruning tests passed; no new findings. Final CI is required before Chris merges.",
+  "summary": "Independent high-risk review found substantive R1: directory-removing Git cleanup could delete a concurrently restored checkout and ignored data. Replaced it with registration-only metadata deletion and added a deterministic restoration regression. The same reviewer cleared the correction after seven focused pruning tests passed; no new findings. Final CI is required before Chris merges. The same reviewer cleared the later declaration repair and both trunk integrations, with no new findings.",
   "findings": [
     {
       "id": "R1-race",
@@ -76,6 +76,20 @@ Independent high-risk review found substantive R1: directory-removing Git cleanu
         "evidence": "Author clock around /root/prune_review follow-up invocation: 2026-10-25T11:38:02.139Z to 2026-10-25T11:38:30.036Z."
       },
       "summary": "R1 resolved; reviewed metadata-only removal, generated output, documentation, and regression. Independently ran seven pruning tests, all passing. No new findings; final CI required."
+    },
+    {
+      "reviewerSession": "/root/prune_review",
+      "commit": "7d759d57905ecef2a83e0344159bd2419b8a0fd1",
+      "base": "6cb1caf779cffcb08105ebe8f2efe79ae4d96d09",
+      "outcome": "cleared",
+      "scopeReason": "Late CI correction: restore 27 degraded generated declarations and inspect trunk integrations 104abd3 and f1aeeef0.",
+      "elapsedMinutes": 0.70505,
+      "timing": {
+        "source": "clock",
+        "durationMs": 42303,
+        "evidence": "Author clock around /root/prune_review late-correction turn: 2026-10-27T00:37:43.990Z to 2026-10-27T00:38:26.293Z."
+      },
+      "summary": "Same reviewer cleared declaration regeneration and both trunk integrations; all 27 repaired declarations exactly match main. Previously reviewed pruning behavior is unchanged. No new findings; required final-head CI remains the merge gate."
     }
   ],
   "trunkIntegrations": [
@@ -98,3 +112,5 @@ Final correction validation: `pnpm exec vitest run tests/worktree-cleanup.test.t
 Chris explicitly authorized merging #508, superseding the earlier keep-open instruction. Applied stash f31de587a2f5a58c458e2c5763faddafed6723a5 (regen-dist-508); SHA-256 comparison across all dist files before/after `pnpm compile` found no differences. Exactly 27 declaration files were restored, all now identical to origin/main 6cb1caf779cffcb08105ebe8f2efe79ae4d96d09. Only dist/cli/pm.js, its map, and dist/pm/cleanup.d.ts, cleanup.js and its map differ from main. Dropped only the stash entry matched by both SHA and message. `pnpm typecheck` passed.
 
 Named both inherited trunk integrations explicitly, preserving review history. The late correction covers declaration regeneration and both integrations; no source behavior was added.
+
+Comparison at origin/main 6cb1caf7: all six workflow-expression failures reproduce on main with spawnSync actionlint ENOENT (local tool absent). Metering tests pass on both. The branch run also hit an unrelated orphan-supervisor timeout during concurrent batches; that exact test and the meter test both pass serially (2 passed). Main snapshot passed all 54 pilot and 45 native-worker tests. Branch passed all 20 cleanup and 45 native-worker tests. Logs retained locally in /tmp/pr508-focused.log, /tmp/pr508-main-focused.log and /tmp/pr508-pilot-focused.log. No source/test changes were made for those environmental or timing failures.
