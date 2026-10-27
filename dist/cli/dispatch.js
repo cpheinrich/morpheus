@@ -32,6 +32,7 @@ import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js"
 import { profileExtract, profileReport } from "./profile.js";
 import { waitCiCommand } from "./wait-ci.js";
 import { ctoGuide } from "../cto/guide.js";
+import { listProjectSkills, syncProjectSkillEntrypoints } from "./skills.js";
 import { HELP } from "./help.js";
 async function dispatchSelf({ flags, command, rest }) {
     if (command === "check" || command === undefined)
@@ -422,6 +423,14 @@ async function dispatchCto({ command, rest }) {
     console.error(`Unknown cto command "${command ?? ""}".\n\n${HELP}`);
     return 1;
 }
+async function dispatchSkills({ flags, command }) {
+    if (command === "list" || command === undefined)
+        return listProjectSkills(flags.json);
+    if (command === "sync")
+        return syncProjectSkillEntrypoints(process.cwd(), flags.check);
+    console.error(`Unknown skills command "${command}".\n\n${HELP}`);
+    return 1;
+}
 async function dispatchCheck({ flags, command, dir }) {
     if (command === "pr")
         return pr(dir, flags.base);
@@ -541,6 +550,7 @@ const groups = {
     "check": dispatchCheck,
     "qa": dispatchQa,
     "cto": dispatchCto,
+    "skills": dispatchSkills,
     "profile": dispatchProfile,
     "wait-ci": dispatchWaitCi,
     pm: dispatchPm,

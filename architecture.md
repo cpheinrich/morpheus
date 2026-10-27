@@ -504,11 +504,20 @@ needed.
   of discoverable procedure. `launch-company` owns the cross-provider greenfield path from an
   optional domain purchase through a verified public site and role-gated `/hq`; provider
   commands remain the deterministic implementation beneath it.
+- **The loaders' local `SKILL.md` frontmatter is the project skill index.** Morpheus does not add a
+  second `morpheus-skills.json` whose names and descriptions could drift. One typed registry in
+  `src/project-skills.ts` classifies each reusable skill's providers, project kinds and distribution
+  mode; it derives descriptions from the rendered frontmatter and drives `morpheus init`,
+  `morpheus skills list [--json]` and the idempotent `morpheus skills sync [--check]`. Sync adds
+  only missing entrypoints and reports malformed existing ones without overwriting project-owned
+  files. A test compares the registry with both canonical skill directories, so adding a canonical
+  skill without declaring it project-facing or Morpheus-only fails CI instead of disappearing from
+  older projects.
 - **`agentic-cto`** is how an agent runs an outcome delegated with authority and a budget: a
   written mandate, design before building, parallel delegation, a reserved spend ledger, evidence
   before claims, and the gates a mandate never opens. Its canonical files live only in Morpheus's
   two skill directories and `morpheus cto guide` prints them; `morpheus init` gives every project
-  kind a one-file pointer to that command, added to an existing project by re-running `init`.
+  kind a one-file pointer to that command, while `morpheus skills sync` adds it to an older project.
   Morpheus's `references/provenance.md` traces each rule to the direction it came from.
 - **`research-engineer`** is the first individual-contributor skill under the CTO: hands-on ML and
   algorithm research that frames the problem, benchmarks before building, iterates in rounds,
