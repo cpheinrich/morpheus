@@ -447,3 +447,86 @@ active, and write the reusable Agentic CTO skill in Morpheus. Its contract takes
 a brief specification, concrete success criteria and budget; it requires
 requirements-first design, independent review, empirical prototypes, delegated
 implementation, outcome-based validation, durable ownership and honest closure.
+
+### Additive post-resume recovery acceptance source boundary
+
+The package exposes a separate `applyPostResumeAcceptance` Store API for a
+closed, uncounted `validation=true` origin. It does not enroll ordinary delivery,
+change a campaign's original eight requests/receipts or its old journal/resume
+fences, select a live fault, or dispatch by recording provenance. No installed
+consumer adoption is implied. The origin result has kind
+`post-resume-origin-v1` and deliberately has no legacy `fenceBinding` property.
+A deterministic campaign/purpose key admits one origin; exact replay verifies
+its original payload and is read-only. Changed input under that purpose refuses.
+
+A future qualified consumer supplies the actual history/resume hashes,
+independently reviewed current protected source and **genuine** iOS tree evidence,
+latest actual dispatch/receipt comparison and a state-fingerprinted, expiring
+qualification. Tree hashes and references in this API are evidence bindings,
+not a Git verifier or an approval flag; the complete consumer caller must verify
+them. No artificial app edit, age waiver, old build or ordinary `validation=false`
+fault branch is introduced. Creation is limited to a five-minute plan, normal
+source age and an ordinary-free baseline. Normal configuration, epoch, maximum
+two native slots, subscription80/90 and ordinary source/cursor behavior stay intact.
+The retained original campaign's active/per-channel restriction remains distinct
+from the normal one-ordinary-intent-per-channel invariant. This source extension
+grants no campaign exemption or guarantee of zero delay for unexpected demand.
+
+Ordinary current work, unevaluated due slots and unresolved repair/group owners
+win before optional planning, dispatch, upload and membership claims. Each optional
+CAS retry samples its injected current clock and checks the current qualification
+fingerprint/expiry. Initial planning/dispatch also recheck the15minute stagger
+and source newer than prior actual dispatches. Later recovery preserves its
+already-selected source and applies monotonic ordinary/group cursors; it does not
+pretend a late receipt is another fresh request. Expired or drifting external
+facts require an honestly refreshed qualification. There is no internal financial
+hold or grant-review gate in this boundary; the campaign's spend-as-needed policy
+and actual350USD cap remain separate normal accounting.
+
+The ordinary controller processes internal ordinary work first, then at most one
+optional intent, then bounded external/late observation. Optional Apple reads
+have a total30second deadline and at most eight API requests per sweep. Optional
+Actions run/job/artifact sweeps have the same finite GET budget; artifact evidence
+admits at most four downloads within a shared30second abort deadline. The same shared optional Apple budget covers delivered external follow-up,
+including build/review/group pagination and response bodies. A limited, truncated
+or aborted census is UNKNOWN, never empty success or mutation/retry permission.
+Ordinary external observation keeps its established default behavior. A yielded optional
+plan is permitted only before any dispatch claim/run/test/upload authority exists;
+its build stays burned. A disappeared ordinary-demand proposal aborts without a stable yield transition;
+later real demand can still yield the same zero-effect plan. Yield and
+execution-release records are closed and append-only. Direct stale callers and late before-upload hooks cannot revive them. Optional
+duplicate/live-overdue executions require exact owned-quiescence qualification;
+they do not select an automatic cancel or replacement operation.
+A successful effect claim is the linearization boundary: a lost reply/empty run
+list cannot convert that effect into never-dispatched or authorize another call.
+
+`releasePostResumeExecution` requires already-bound identity, actual terminal
+workflow and authenticated owned executor/uploader quiescence, exact lease/fence,
+no remaining repair/descendant authority, and fresh fingerprinted closure proof.
+It releases **execution occupancy**, not provider uncertainty. A protected unknown
+upload remains the same active attempt/source/build/IPA/claim through later absent
+polls, timeout diagnosis and repair paths. It cannot be retired, retargeted,
+automatically retried or repaired into a new optional purpose. Exact existing
+upload receipts, matching test proof and Apple readback can still recover its
+actual receipt. Definitive rejection is recorded without an automatic new attempt and does not
+prove executor quiescence: the optional execution remains counted until exact
+release (while normal accepted-upload fast release remains intact).
+Old retired-uncertain uploads remain observation-only; ordinary recovery is unchanged.
+
+Optional internal group membership uses a separate stable purpose/group/build/
+attempt obligation. Only the fresh Store invocation owner may issue its one
+add-one-build POST. Concurrent/replayed callers cannot post. Once a call may have
+escaped, UNKNOWN plus a negative membership readback remains read-only; no retry
+is selected. Positive exact membership readback can recover without another POST.
+The retained additive/multiple-build Apple contract supports this narrow source
+policy; no provider linearizability/SLA or new concurrency experiment is claimed.
+Optional receipt creation records only its own receipt and separate membership
+observation. Ordinary `groupOperations`, membership, channel/group cursors, fences
+and existing receipts remain unchanged. A newer
+ordinary cursor prevents an old optional receipt; it does not trigger rollback,
+removal, reupload or a fabricated acceptance result.
+
+These APIs and hermetic tests prepare source only. A future consumer source,
+complete caller/writer/runtime closure, actual relevant app input and qualified
+operational plan/window remain separate work. Creating an origin does not arm
+faults, create a model owner, change any service or authorize provider execution.

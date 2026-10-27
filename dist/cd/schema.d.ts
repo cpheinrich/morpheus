@@ -122,6 +122,83 @@ export declare const budgetSpendingPolicySchema: z.ZodObject<{
     adoptedAt: z.ZodISODateTime;
 }, z.core.$strict>;
 export type BudgetSpendingPolicy = z.infer<typeof budgetSpendingPolicySchema>;
+export declare const postResumeOriginSchema: z.ZodObject<{
+    kind: z.ZodLiteral<"post-resume-acceptance-v1">;
+    campaignId: z.ZodString;
+    purpose: z.ZodLiteral<"replyloss-and-wake-v1">;
+    historyDigest: z.ZodString;
+    resumeDigest: z.ZodString;
+    sourceSha: z.ZodString;
+    iosTreeSha: z.ZodString;
+    previousIosTreeSha: z.ZodString;
+    receiptIosTreeSha: z.ZodString;
+    sourceReviewRef: z.ZodString;
+    createdAt: z.ZodISODateTime;
+}, z.core.$strict>;
+export declare const postResumeQualificationSchema: z.ZodObject<{
+    fingerprint: z.ZodString;
+    qualifiedAt: z.ZodISODateTime;
+    expiresAt: z.ZodISODateTime;
+    executionDeadlineAt: z.ZodISODateTime;
+    evidenceRef: z.ZodString;
+}, z.core.$strict>;
+export type PostResumeOrigin = z.infer<typeof postResumeOriginSchema>;
+export type PostResumeQualification = z.infer<typeof postResumeQualificationSchema>;
+export declare const postResumeExecutionProofSchema: z.ZodObject<{
+    quiescenceDigest: z.ZodString;
+    authorityClosureDigest: z.ZodString;
+    evidenceRef: z.ZodString;
+    fingerprint: z.ZodString;
+    qualifiedAt: z.ZodISODateTime;
+    expiresAt: z.ZodISODateTime;
+}, z.core.$strict>;
+export declare const postResumeAcceptanceSchema: z.ZodObject<{
+    origin: z.ZodObject<{
+        kind: z.ZodLiteral<"post-resume-acceptance-v1">;
+        campaignId: z.ZodString;
+        purpose: z.ZodLiteral<"replyloss-and-wake-v1">;
+        historyDigest: z.ZodString;
+        resumeDigest: z.ZodString;
+        sourceSha: z.ZodString;
+        iosTreeSha: z.ZodString;
+        previousIosTreeSha: z.ZodString;
+        receiptIosTreeSha: z.ZodString;
+        sourceReviewRef: z.ZodString;
+        createdAt: z.ZodISODateTime;
+    }, z.core.$strict>;
+    intentId: z.ZodString;
+    qualifications: z.ZodArray<z.ZodObject<{
+        fingerprint: z.ZodString;
+        qualifiedAt: z.ZodISODateTime;
+        expiresAt: z.ZodISODateTime;
+        executionDeadlineAt: z.ZodISODateTime;
+        evidenceRef: z.ZodString;
+    }, z.core.$strict>>;
+    yielded: z.ZodOptional<z.ZodObject<{
+        attemptId: z.ZodString;
+        at: z.ZodISODateTime;
+    }, z.core.$strict>>;
+    releases: z.ZodRecord<z.ZodUnion<[z.ZodString, z.ZodString]>, z.ZodObject<{
+        quiescenceDigest: z.ZodString;
+        authorityClosureDigest: z.ZodString;
+        evidenceRef: z.ZodString;
+        fingerprint: z.ZodString;
+        qualifiedAt: z.ZodISODateTime;
+        expiresAt: z.ZodISODateTime;
+        identityDigest: z.ZodString;
+        leaseOwner: z.ZodString;
+        fence: z.ZodNumber;
+        at: z.ZodISODateTime;
+    }, z.core.$strict>>;
+    groups: z.ZodRecord<z.ZodString, z.ZodObject<{
+        attemptId: z.ZodString;
+        groupId: z.ZodString;
+        buildId: z.ZodString;
+        claimedAt: z.ZodISODateTime;
+        observedAt: z.ZodOptional<z.ZodISODateTime>;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+export type PostResumeAcceptance = z.infer<typeof postResumeAcceptanceSchema>;
 export type CdConfig = z.infer<typeof configSchema>;
 export type Channel = "staging" | "production";
 export interface SourceRevision {
@@ -331,6 +408,7 @@ export interface DeliveryIntent {
     createdAt: string;
     deadlineAt: string;
     sourceAgeWaiver?: SourceAgeWaiver;
+    postResumeKey?: string;
     state: "pending" | "testing" | "uploading" | "processing" | "delivered" | "repairing" | "waiting" | "paused";
     nextAction: string;
     nextCheckAt: string;
@@ -381,6 +459,7 @@ export interface CdState {
     repository: string;
     configurationDigest: string;
     initializedAt: string;
+    postResumeAcceptances?: Record<string, PostResumeAcceptance>;
     transitions: Record<string, {
         at: string;
         result: unknown;

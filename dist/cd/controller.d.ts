@@ -19,7 +19,9 @@ export declare class Controller {
     readonly actions: ActionsAdapter;
     readonly apple: AppleAdapter;
     readonly sourceDir: string;
-    constructor(config: CdConfig, store: GitHubStore, actions: ActionsAdapter, apple: AppleAdapter, sourceDir: string);
+    readonly clock: () => string;
+    constructor(config: CdConfig, store: GitHubStore, actions: ActionsAdapter, apple: AppleAdapter, sourceDir: string, clock?: () => string);
+    private currentTime;
     tick(now: string, observe?: boolean): Promise<TickResult>;
     private reconcileExternal;
     private reconcileIntent;

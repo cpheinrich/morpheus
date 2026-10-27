@@ -1,11 +1,12 @@
-import { type SourceAgeWaiver, type Attempt, type CdConfig, type CdState, type Channel, type DeliveryIntent, type Identity, type InternalObservation, type QuotaSnapshot, type Receipt, type SourceRevision, type TestEvidence, type UploadEvidence } from "./schema.js";
+import { type PostResumeOrigin, type PostResumeQualification, type PostResumeAcceptance, type SourceAgeWaiver, type Attempt, type CdConfig, type CdState, type Channel, type DeliveryIntent, type Identity, type InternalObservation, type QuotaSnapshot, type Receipt, type SourceRevision, type TestEvidence, type UploadEvidence } from "./schema.js";
+import { type GitHubStore } from "./store.js";
 export declare const milliseconds: (minutes: number) => number;
 export declare const after: (at: string, minutes: number) => string;
 export declare function invariant(condition: unknown, message: string): asserts condition;
 export declare function newState(config: CdConfig, epoch: string, now: string): CdState;
 export declare function externalReviewKey(appId: string, buildId: string): string;
 /** A committed claim authorizes one call; uncertainty never authorizes another. */
-export declare function claimExternalReview(state: CdState, intentId: string, now: string): {
+export declare function claimExternalReview(state: CdState, intentId: string, now: string, config?: CdConfig): {
     key: string;
     index: number;
     claimed: boolean;
@@ -34,7 +35,7 @@ export declare function recordTests(state: CdState, config: CdConfig, evidence: 
 export declare function claimUpload(state: CdState, config: CdConfig, evidence: UploadEvidence, now: string): string;
 export declare function recordUpload(state: CdState, evidence: UploadEvidence, now: string): void;
 export declare function validateObservation(intent: DeliveryIntent, attempt: Attempt, observation: InternalObservation): void;
-export declare function deliver(state: CdState, intentId: string, attemptId: string, observation: InternalObservation, now: string): Receipt;
+export declare function deliver(state: CdState, intentId: string, attemptId: string, observation: InternalObservation, now: string, config?: CdConfig): Receipt;
 export declare function claimGroup(state: CdState, intentId: string, attemptId: string, now: string): void;
 export declare function repairWork(state: CdState, intentId: string, evidence: string[], now: string): string;
 export declare function adoptRepair(state: CdState, config: CdConfig, intentId: string, source: SourceRevision, evidence: string, now: string): void;
@@ -66,3 +67,40 @@ export declare function budgetStatus(state: CdState, config: CdConfig): {
 export declare function reservePaid(state: CdState, config: CdConfig, id: string, request: unknown, maximumMicros: number): void;
 export declare function settlePaid(state: CdState, id: string, actualMicros: number): void;
 export declare function quotaUsed(snapshot: QuotaSnapshot | undefined, now: string): number | undefined;
+/** Separate journal: deliberately no legacy campaign result.fenceBinding shape. */
+export declare function postResumeAcceptance(state: CdState, intent: DeliveryIntent): PostResumeAcceptance | undefined;
+/** Ordinary eligibility includes due slots even before the evaluator commits them. */
+export declare function ordinaryDemand(state: CdState, config: CdConfig, now: string): boolean;
+/** Fingerprints relevant external qualification, without treating budget maxima as holds. */
+export declare function postResumeFingerprint(state: CdState): string;
+export declare function createPostResumeAcceptance(state: CdState, config: CdConfig, channel: Channel, raw: PostResumeOrigin, qualification: PostResumeQualification, now: string): string;
+export declare function qualifyPostResumeAcceptance(state: CdState, intentId: string, raw: PostResumeQualification, now: string): void;
+export declare function assertPostResumeAdmission(state: CdState, config: CdConfig, intentId: string, now: string, initial?: boolean): void;
+export declare function assertPostResumeNewEffect(state: CdState, config: CdConfig, intent: DeliveryIntent, attempt: Attempt, now: string, initial?: boolean): void;
+export declare function occupiesNative(state: CdState, intent: DeliveryIntent, attempt: Attempt): boolean;
+export declare function protectedPostResumeUpload(state: CdState, intent: DeliveryIntent, attempt: Attempt): boolean;
+export declare function yieldPostResumeAttempt(state: CdState, intentId: string, attemptId: string, now: string): void;
+export declare function postResumeExecutionFingerprint(state: CdState, identity: Identity): string;
+export declare function releasePostResumeExecution(state: CdState, identity: Identity, raw: {
+    quiescenceDigest: string;
+    authorityClosureDigest: string;
+    evidenceRef: string;
+    fingerprint: string;
+    qualifiedAt: string;
+    expiresAt: string;
+}, now: string): void;
+export declare function postResumeGroupKey(record: PostResumeAcceptance, attemptId: string, groupId: string, buildId: string): string;
+export declare function claimPostResumeGroup(state: CdState, config: CdConfig, intentId: string, attemptId: string, buildId: string, now: string): string;
+/** Supported normal Store entry; exact replay is observation, never an arm/dispatch. */
+export declare function applyPostResumeAcceptance(store: GitHubStore, config: CdConfig, channel: Channel, rawOrigin: PostResumeOrigin, rawQualification: PostResumeQualification, clock?: () => string): Promise<{
+    head: string;
+    replayed: boolean;
+    result: {
+        kind: string;
+        key: string;
+        intentId: string;
+        originDigest: string;
+        qualificationDigest: string;
+    };
+    verifiedReadbackHead: string;
+}>;

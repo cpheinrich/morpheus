@@ -3488,6 +3488,17 @@ canonical diagnostic JSON through the same CAS/event store without changing
 execution, ownership, source, policy, clocks or funding. Current-target checks
 guard each new append; a verified immutable note receipt survives later normal
 owner progression without granting applicability or restarting work.
+A separate post-resume acceptance origin can prepare uncounted validation work
+without changing the original campaign journal or enrolling ordinary deliveries.
+The normal Store binds its closed origin, qualifications, zero-effect yield and
+owned execution-release records. Ordinary demand wins every new optional effect
+claim with fresh time on each CAS retry. A quiesced unknown optional upload keeps
+its same active source/build/claim for readback instead of retiring or retargeting.
+Its additive internal membership claim has one stable invocation owner; unknown
+replies stay read-only until positive membership appears. Normal ordinary group
+ownership, cursor monotonicity and old retired observation-only behavior remain.
+This is a source boundary, not consumer adoption or fault/operational authority;
+see [the post-resume contract](docs/cd-pipeline-v2.md#additive-post-resume-recovery-acceptance-source-boundary).
 A **repair-only control** ([runbook](docs/runbooks/cd-repair-control.md)) can hold new repair-agent admission
 for one exact supplemental validation intent: a namespaced `repair:<intent>` pause that existing delivery
 gates ignore, enforced only by a worker-only entry around an injected unchanged `runWorker` and released
