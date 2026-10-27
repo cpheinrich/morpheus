@@ -1778,3 +1778,13 @@ same record and honors an explicit engagement spending policy instead of inventi
 holds. Default reservation accounting remains available; a campaign-specific spend-as-needed
 direction does not increase its cap, erase expenses or waive review, credentials or uncertain
 effect safety. Existing canonical/mirror/generated-guide distribution is sufficient.
+
+## Project skill discovery uses loader-native entrypoints, not a second index — 2026-10-27
+
+MO-26-10-27-13.11.05. `.agents/skills/*/SKILL.md` and `.claude/skills/*/SKILL.md` are already the
+indexes each provider loads, so projects do not carry a duplicate `morpheus-skills.json`. A typed
+Morpheus registry classifies project-facing skills and drives scaffolding, `skills list --json` and
+idempotent missing-entrypoint sync; descriptions are parsed from the rendered frontmatter rather
+than repeated. Existing project-owned files are validated but never replaced. Canonical skill
+directories must be classified as project-facing or Morpheus-only, and tests reject omissions and
+provider drift so future additions cannot remain undiscoverable in managed projects.

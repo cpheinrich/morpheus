@@ -20,14 +20,15 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `architecture.md` | The specification. Update it when a decision changes. |
 | `src/pm/` | Project management: schemas, parser, index generator |
 | `src/cli/` | The `morpheus` command |
+| `src/project-skills.ts` | Reusable project-skill registry consumed by scaffold, discovery and sync |
 | `src/gh-manager/` | The GitHub Manager: sweep, session brief, decision checks — see its runbook |
 | `src/init/templates.ts` | What every scaffolded project's `AGENTS.md` and files say — keep aligned with this file |
 | `hq/product/` | Morpheus's own roadmap and goals — it eats its own dog food |
 | `.github/workflows/` | Reusable workflows called by every project |
 | `docs/runbooks/` | Procedures, for humans and agents — read on demand (index below) |
 | `.github/agent-review-prompt.md` | The rung-2 reviewer persona — versioned, so it is reviewable |
-| `.claude/skills/` | Named, repeatable procedures — `voice-handoff`, `voice-import`, `agentic-cto`, `research-engineer` |
-| `.agents/skills/` | Repository-owned Codex skills — `motion-design-exploration` (copied into every scaffold), `agentic-cto` and `research-engineer`, the first individual-contributor skill under it (canonical here; scaffolds get pointers to `morpheus cto guide`) |
+| `.claude/skills/` | Canonical Claude procedures; project-facing entries are classified in `src/project-skills.ts` |
+| `.agents/skills/` | Canonical Codex/Grok procedures; project-facing entries are classified in `src/project-skills.ts` |
 | `local/handoffs/` | Handoff docs, both directions. Gitignored — never committed |
 | `qa/acceptance/` | Acceptance criteria per item, named by `RoadmapItem.acceptance` |
 | `tests/` | Vitest, mirroring `src/` |
@@ -121,6 +122,13 @@ remove after these checks; other ignored local data remains protected.
 voice and browser chat enter the same lifecycle: create or link the roadmap item, claim it, work
 on its branch, test it, open a PR and merge it. A trusted author can authorize the work; the
 channel cannot waive the records or review path. Never edit or release directly from a transcript.
+
+**Register every reusable skill once.** A new canonical directory under `.agents/skills/` or
+`.claude/skills/` must be classified in `src/project-skills.ts` as project-facing or Morpheus-only.
+Project-facing definitions drive `morpheus init`, `morpheus skills list [--json]` and
+`morpheus skills sync`; descriptions come from the rendered `SKILL.md` frontmatter. Do not add a
+second hand-maintained JSON catalog. The project-skill tests refuse an unclassified directory or a
+provider entrypoint that is absent from the registry.
 
 **An external mutation ships with an exact target and proof.** Prefer a pasted one-shot CLI command
 with explicit account, project and resource identifiers (console prose is fallback only), with a
