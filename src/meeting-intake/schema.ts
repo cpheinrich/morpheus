@@ -7,6 +7,10 @@ const handle = z.string().regex(/^[A-Za-z0-9-]+$/);
 const relativeDirectory = z
   .string()
   .min(1)
+  .regex(
+    /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/,
+    "must use safe repository-relative path segments",
+  )
   .refine(
     (value) =>
       !value.startsWith("/") &&

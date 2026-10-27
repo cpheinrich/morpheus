@@ -150,6 +150,14 @@ describe("meeting-intake profiles and projection", () => {
         },
       }),
     ).toThrow(/already assigned/);
+    for (const directory of ["../outside", "..\\outside", "line\nbreak"]) {
+      expect(() =>
+        parseMeetingIntakeConfig({
+          ...lakina,
+          canonical: { ...lakina.canonical, directory },
+        }),
+      ).toThrow(/repository-relative/);
+    }
   });
 
   it("projects Evo records, selects a scoped mixed summary and never copies the body", () => {
@@ -189,6 +197,13 @@ describe("meeting-intake profiles and projection", () => {
     expect(() => buildCatalog([record(evo, "26", { topics: ["legal"] })], revision, evo)).toThrow(
       /Unknown topic/,
     );
+    expect(
+      buildCatalog(
+        [record(evo, "26", { projects: ["darwin"], topics: ["darwin-only"] })],
+        revision,
+        evo,
+      ).entries,
+    ).toEqual([]);
     expect(() =>
       buildCatalog([record(evo, "26", { projects: ["darwin", "evo"] })], revision, evo),
     ).toThrow(/Mixed meeting/);
@@ -284,6 +299,13 @@ describe("publication completion gate", () => {
         /reconcile/,
       );
     }
+    expect(completionNotice({ ...ready(evo), notification: { status: "pending" } }, evo)).toContain(
+      "Meeting notes",
+    );
+    expect(() => completionNotice({ ...ready(evo), notification: "sent" }, evo)).toThrow();
+    expect(() =>
+      completionNotice({ ...ready(evo), notification: { status: "unexpected" } }, evo),
+    ).toThrow();
     expect(() => completionNotice(ready(lakina), lakina)).toThrow(/does not authorize/);
     const offProject = ready(evo);
     offProject.projects = ["darwin"];

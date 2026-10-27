@@ -1,5 +1,5 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import { buildCatalog, completionNotice, renderIndex, searchCatalog, type Catalog } from "./core.js";
 import { readCanonicalRecords } from "./git.js";
@@ -11,6 +11,15 @@ async function loadConfig(root: string, path: string): Promise<MeetingIntakeConf
   return parseMeetingIntakeConfig(JSON.parse(await readFile(absolute, "utf8")));
 }
 
+function projectPath(root: string, relative: string): string {
+  const base = resolve(root);
+  const target = resolve(base, ...relative.split("/"));
+  if (target !== base && !target.startsWith(`${base}${sep}`)) {
+    throw new Error(`Configured path escapes the project: ${relative}`);
+  }
+  return target;
+}
+
 async function catalogForSearch(
   root: string,
   config: MeetingIntakeConfig,
@@ -19,7 +28,7 @@ async function catalogForSearch(
 ): Promise<Catalog> {
   if (config.projection) {
     return JSON.parse(
-      await readFile(join(root, config.projection.directory, "catalog.json"), "utf8"),
+      await readFile(projectPath(root, `${config.projection.directory}/catalog.json`), "utf8"),
     ) as Catalog;
   }
   const canonical = source ? resolve(source) : root;
@@ -64,7 +73,7 @@ export async function runMeetingIntake(argv: string[], root = process.cwd()): Pr
     if (catalog.entries.length === 0) {
       throw new Error("No records match the configured project; refusing empty projection");
     }
-    const destination = join(root, config.projection.directory);
+    const destination = projectPath(root, config.projection.directory);
     if (!values.check) await mkdir(destination, { recursive: true });
     const outputs: Array<[string, string]> = [
       ["catalog.json", `${JSON.stringify(catalog, null, 2)}\n`],

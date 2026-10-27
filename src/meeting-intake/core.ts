@@ -70,7 +70,6 @@ export function buildCatalog(
 
   for (const record of records) {
     const note = DiscoveryNote.parse(record.data);
-    validateNotePolicy(note, config);
     if (ids.has(note.id)) throw new Error(`Duplicate meeting id: ${note.id}`);
     ids.add(note.id);
     for (const key of sourceKeys(note)) {
@@ -80,6 +79,7 @@ export function buildCatalog(
     }
     if (!paths.test(record.path)) throw new Error(`Invalid canonical record path: ${record.path}`);
     if (!note.projects.includes(config.project)) continue;
+    validateNotePolicy(note, config);
     const summary =
       note.project_summaries[config.project] ??
       (note.projects.length === 1 ? note.summary : undefined);
@@ -246,7 +246,11 @@ export function completionNotice(
   if (delivery.index.status === "verified" && delivery.index.noteDigest !== note.noteSha256) {
     throw new Error("The project index is stale");
   }
-  const notification = record.notification as { status?: string } | undefined;
+  const notification = z
+    .object({ status: z.enum(["pending", "sending", "sent", "uncertain"]) })
+    .passthrough()
+    .optional()
+    .parse(record.notification);
   if (notification?.status && notification.status !== "pending") {
     throw new Error("Notice already sent or delivery uncertain: reconcile before retry");
   }
