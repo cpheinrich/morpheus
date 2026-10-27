@@ -50,7 +50,8 @@ function boundedReadApi(api: AppleApi, limits: AppleReadLimit): AppleApi {
   invariant(Number.isSafeInteger(limits.maximumRequests) && limits.maximumRequests > 0 && limits.maximumRequests <= 8 && Number.isFinite(limits.timeoutMs) && limits.timeoutMs > 0 && limits.timeoutMs <= 30_000, "Invalid optional Apple read limit");
   const signal = AbortSignal.timeout(limits.timeoutMs); let calls = 0;
   return { async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    invariant(method === "GET" && body === undefined && ++calls <= limits.maximumRequests && !signal.aborted, "Optional Apple read budget exhausted");
+    invariant(method === "GET" && body === undefined, "Optional Apple observations are read-only");
+    if (++calls > limits.maximumRequests || signal.aborted) throw new CdWait("Optional Apple read budget exhausted; observation outcome is unknown", "apple-observation-limit");
     let abort: () => void;
     const unavailable = new Promise<never>((_resolve, reject) => { abort = () => reject(new CdWait("Optional Apple observation deadline reached", "apple-network")); signal.addEventListener("abort", abort, { once: true }); });
     try { return await Promise.race([api.request<T>(method, path, undefined, signal), unavailable]); }
@@ -98,7 +99,8 @@ export class AppleAdapter {
   async assign(buildId: string, groupId: string): Promise<void> {
     await this.api.request("POST", `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds`, { data: [{ type: "builds", id: buildId }] });
   }
-  async external(receipt: Receipt, groupIds: string[], now: string): Promise<ExternalObservation> {
+  async external(receipt: Receipt, groupIds: string[], now: string, limits?: AppleReadLimit): Promise<ExternalObservation> {
+    if (limits) return new AppleAdapter(boundedReadApi(this.api, limits)).external(receipt, groupIds, now);
     const identity = receipt.observation;
     const document = await this.api.request<Document>("GET", `/v1/builds/${encodeURIComponent(identity.buildId)}?include=app,preReleaseVersion,buildBetaDetail`);
     const build = document.data as Resource;

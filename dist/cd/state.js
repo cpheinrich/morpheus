@@ -259,7 +259,8 @@ export function recordUpload(state, evidence, now) {
     if (retired)
         return; // A late resource is retained for observation, never promotion/credit.
     if (operation.outcome === "rejected") {
-        attempt.status = "failed";
+        if (!intent.postResumeKey)
+            attempt.status = "failed";
         if (intent.postResumeKey) {
             intent.state = "waiting";
             intent.nextAction = "observe-rejected-acceptance";
@@ -310,8 +311,10 @@ export function deliver(state, intentId, attemptId, observation, now, config) {
     attempt.observation = observation;
     if (!intent.validation)
         state.cursors[intent.channel] = { sourceSha: source.sha, order: source.order, receiptId: intent.id };
-    state.groupCursors ??= {};
-    state.groupCursors[intent.groupId] = { sourceSha: source.sha, order: source.order, receiptId: intent.id };
+    if (!optional) {
+        state.groupCursors ??= {};
+        state.groupCursors[intent.groupId] = { sourceSha: source.sha, order: source.order, receiptId: intent.id };
+    }
     if (!intent.validation)
         for (const slot of state.slots.filter(item => item.channel === intent.channel && item.decision === "missed" && !item.intentId)) {
             const selectedAtSlot = state.sources.filter(item => Date.parse(item.mainEnteredAt) <= Date.parse(slot.slot)).at(-1);
@@ -321,7 +324,7 @@ export function deliver(state, intentId, attemptId, observation, now, config) {
                     intent.coveredSlots.push(slot.slot);
             }
         }
-    if (state.groupOperations[intent.groupId]?.attemptId === attempt.id)
+    if (!optional && state.groupOperations[intent.groupId]?.attemptId === attempt.id)
         state.groupOperations[intent.groupId].completedAt = now;
     for (const work of Object.values(state.agents))
         if (work.intentId === intentId)
@@ -525,7 +528,7 @@ export function assertPostResumeNewEffect(state, config, intent, attempt, now, i
 }
 export function occupiesNative(state, intent, attempt) {
     const record = postResumeAcceptance(state, intent);
-    return attempt.status === "active" && !attempt.upload?.acceptedAt && !record?.releases[attempt.id] && record?.yielded?.attemptId !== attempt.id;
+    return (attempt.status === "active" || Boolean(record && attempt.upload?.outcome === "rejected")) && !attempt.upload?.acceptedAt && !record?.releases[attempt.id] && record?.yielded?.attemptId !== attempt.id;
 }
 export function protectedPostResumeUpload(state, intent, attempt) {
     return Boolean(postResumeAcceptance(state, intent) && attempt.status === "active" && attempt.upload && !attempt.upload.acceptedAt && attempt.upload.outcome !== "rejected");

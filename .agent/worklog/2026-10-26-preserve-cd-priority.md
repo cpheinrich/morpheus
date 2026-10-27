@@ -129,3 +129,84 @@ ordinary delivery observer and native repair/source owners were not queried or
 changed. All future operational source/target/window/fault/run/IPA/build/nonce/
 release bindings remain unselected. The design's completed review is not reused
 as implementation review or effect authority.
+
+
+## PR530 initial independent implementation review and correction
+
+The initial independent implementation review was **blocked**, despite the prior
+passing tests. The five findings were substantive source defects. Reviewer
+`/root/post_resume_cd_implementation_review_530` report JSON SHA-256
+`e4b0675eb855a39a8b45e2e280204cb2a753394ce1d3ca1bff6680f2950b211e`
+and manifest `f3916c3247b7450112f1cfce95886b657e437d57dc8f3c556e5d41b44757bbb0`
+were authenticated in full. This correction starts from Root's published
+`e67028a902da7bd7e8fb09110bcc5d69ed580884`, preserving its roadmap status metadata
+and the original review/validation history. No different task or reviewer is used.
+
+- **IR-01 fixed:** a vanished-demand yield proposal throws before the Store can
+  commit the stable transition. A genuine later yield remains possible. The real
+  CAS interleaving completes an actual synthetic ordinary receipt between the
+  selector and callback, then proves both ordinary channel plans fit after yield.
+- **IR-02 fixed:** optional receipt creation no longer writes ordinary group
+  cursors or group ownership. Whole ordinary cursor/owner/fence comparisons and
+  subsequent valid ordinary delivery prove the isolation; a genuinely newer
+  completed ordinary receipt still prevents a first old optional receipt.
+- **IR-03 fixed:** neither rejection writer marks an unquiesced optional executor
+  failed. Rejection is recorded honestly on the same spent upload, but occupancy
+  remains counted until authenticated release. The transition invariant and
+  occupancy helper also preserve this distinction; ordinary accepted fast release
+  is unchanged. Both writer paths and post-release normal capacity are exercised.
+- **IR-04 fixed:** the native/archive verification gate rejects released/yielded
+  authority before validation, in every new CAS callback and at optional replay
+  readback. `verifyExecutionFacts` is internal factual validation;
+  `verifyExecutionProvenance` returns only `verified` and creates no native claim.
+  The public native CLI/direct function and both before-upload callers retain
+  execution authorization; optional full-test evidence uses provenance followed
+  by immutable `recordTests`. Ordinary full-test recording retains its old native
+  verification path. Existing resource/after upload receipts remain exact-claim
+  observations. Tests cover fresh/replayed gates and release during validation.
+- **IR-05 fixed:** delivered optional external observation uses one shared bounded
+  Apple API across build, review, every group and all pagination/body reads.
+  Exhaustion/abort is UNKNOWN, never partial mutation authority. A valid-config
+  eight-GET test and stalled-body test exercise the real external adapter. The
+  ordinary three-argument path still completes its unchanged multi-page behavior.
+
+No new financial hold, native config/quota change, actual target/window/fault,
+source adoption, provider/host/native/ledger action or publication was selected.
+The same reviewer must assess the corrected exact source; author fixes and these
+regressions are not independent clearance. The correction validation follows.
+
+
+### Correction validation and retained failure
+
+The final changed runtime passed the direct12-file CD scope: **500 tests passed,
+zero skipped**. The command covered post-resume state/controller/store, ordinary
+state/controller/store/adapters/external, worker/native-worker, request and
+repair-diagnostic CLI tests. This is focused dependency coverage, not the full
+repository or native iOS suite. `pnpm typecheck`, `pnpm compile`,
+`pnpm morpheus pm index` and `git diff --check` passed. Index generation reported
+all three indexes unchanged; compilation refreshed only the affected CD outputs.
+
+Final inspection strengthened IR-02 to preserve an actual synthetic pre-existing
+ordinary production receipt, completed group ownership and its cursor/fence
+objects, rather than an empty receipt set. Its first added fixture incorrectly
+used the helper's default build7 for an actually allocated build8 and failed
+`Reserved app/version/build or IPA digest mismatch` (34passed/1failed). The fixture
+now binds the actual allocated number, and the failure log remains retained.
+No production source correction was needed. The final three post-resume files
+then passed **82 tests/zero skipped** on the strengthened fixture; typecheck passed
+again. The broader500-test run remains valid for the unchanged corrected runtime.
+
+Six distinct targeted mutations each failed actual assertions, not setup/errors:
+null yield tombstone; optional shared group cursor; rejected-as-failed; omitted
+native authority guard; omitted current replay readback; unbounded external
+observation. All six runtime files were restored to their recorded hashes. IR-02
+was also requalified after the receipt-fixture strengthening and was again killed
+by the cursor-isolation assertion. Filtered mutant runs deliberately skip other
+tests; these are mutation probes, not qualified full test inventories.
+
+Exact commands, logs, restoration hashes, failure history and the correction
+source/commit manifest are retained in ignored `local/post-resume-validation-ir/`.
+The packet names each IR regression and preserves the initial blocked review.
+This author did not push, perform CI, open/change a PR, start a reviewer or mutate
+any provider/host/native/ledger/credential/service. Root owns the same reviewer's
+remaining ordinary follow-up and the protected publication lifecycle.

@@ -487,11 +487,14 @@ The ordinary controller processes internal ordinary work first, then at most one
 optional intent, then bounded external/late observation. Optional Apple reads
 have a total30second deadline and at most eight API requests per sweep. Optional
 Actions run/job/artifact sweeps have the same finite GET budget; artifact evidence
-admits at most four downloads within a shared30second abort deadline. A limited,
-truncated or aborted census is UNKNOWN, never empty success or retry permission. A yielded optional
+admits at most four downloads within a shared30second abort deadline. The same shared optional Apple budget covers delivered external follow-up,
+including build/review/group pagination and response bodies. A limited, truncated
+or aborted census is UNKNOWN, never empty success or mutation/retry permission.
+Ordinary external observation keeps its established default behavior. A yielded optional
 plan is permitted only before any dispatch claim/run/test/upload authority exists;
-its build stays burned. Yield and execution-release records are closed and
-append-only. Direct stale callers and late before-upload hooks cannot revive them. Optional
+its build stays burned. A disappeared ordinary-demand proposal aborts without a stable yield transition;
+later real demand can still yield the same zero-effect plan. Yield and
+execution-release records are closed and append-only. Direct stale callers and late before-upload hooks cannot revive them. Optional
 duplicate/live-overdue executions require exact owned-quiescence qualification;
 they do not select an automatic cancel or replacement operation.
 A successful effect claim is the linearization boundary: a lost reply/empty run
@@ -505,7 +508,9 @@ upload remains the same active attempt/source/build/IPA/claim through later abse
 polls, timeout diagnosis and repair paths. It cannot be retired, retargeted,
 automatically retried or repaired into a new optional purpose. Exact existing
 upload receipts, matching test proof and Apple readback can still recover its
-actual receipt. Definitive rejection is recorded without an automatic new attempt.
+actual receipt. Definitive rejection is recorded without an automatic new attempt and does not
+prove executor quiescence: the optional execution remains counted until exact
+release (while normal accepted-upload fast release remains intact).
 Old retired-uncertain uploads remain observation-only; ordinary recovery is unchanged.
 
 Optional internal group membership uses a separate stable purpose/group/build/
@@ -515,7 +520,9 @@ escaped, UNKNOWN plus a negative membership readback remains read-only; no retry
 is selected. Positive exact membership readback can recover without another POST.
 The retained additive/multiple-build Apple contract supports this narrow source
 policy; no provider linearizability/SLA or new concurrency experiment is claimed.
-Ordinary `groupOperations`, membership and cursors remain unchanged. A newer
+Optional receipt creation records only its own receipt and separate membership
+observation. Ordinary `groupOperations`, membership, channel/group cursors, fences
+and existing receipts remain unchanged. A newer
 ordinary cursor prevents an old optional receipt; it does not trigger rollback,
 removal, reupload or a fabricated acceptance result.
 

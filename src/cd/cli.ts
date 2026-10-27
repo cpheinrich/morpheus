@@ -8,7 +8,7 @@ import { GhApi, GitHubStore } from "./store.js";
 import { ActionsAdapter, uploadEvidence } from "./actions.js";
 import { AppleAdapter, AppleHttp } from "./apple.js";
 import { Controller, status } from "./controller.js";
-import { checkIdentity, claimUpload, createIntent, invariant, recordTests, recordUpload, repairWork, sourceAt, budgetStatus, setBudgetSpendingPolicy, reservePaid, settlePaid } from "./state.js";
+import { assertPostResumeNewEffect, checkIdentity, claimUpload, createIntent, invariant, recordTests, recordUpload, repairWork, sourceAt, budgetStatus, setBudgetSpendingPolicy, reservePaid, settlePaid } from "./state.js";
 import { verifyConfiguration, verifySource, verifyValidator } from "./source.js";
 import { runWorker, scheduleHosted, QuotaReader } from "./worker.js";
 import { githubToken, probeGitHubToken } from "./github-token.js";
@@ -51,16 +51,33 @@ export function environmentIdentity(environment: NodeJS.ProcessEnv): Identity {
   const value = (name: string) => required(environment[name], name);
   return { schemaVersion: 1, intentId: value("MORPHEUS_CD_INTENT_ID"), attemptId: value("MORPHEUS_CD_ATTEMPT_ID"), dispatchEffectId: value("MORPHEUS_CD_DISPATCH_EFFECT_ID"), sourceSha: value("MORPHEUS_CD_SOURCE_SHA"), controlSha: value("MORPHEUS_CD_CONTROL_SHA"), runId: value("GITHUB_RUN_ID"), runAttempt: value("GITHUB_RUN_ATTEMPT") };
 }
-export async function verifyExecution(config: CdConfig, store: GitHubStore, actions: ActionsAdapter, sourceDir: string, identity: Identity, environment: NodeJS.ProcessEnv): Promise<unknown> {
-  const snapshot = await store.read(), { intent, attempt } = checkIdentity(snapshot.state, identity);
+async function verifyExecutionFacts(config: CdConfig, store: GitHubStore, actions: ActionsAdapter, sourceDir: string, identity: Identity, environment: NodeJS.ProcessEnv, supplied?: Awaited<ReturnType<GitHubStore["read"]>>) {
+  const snapshot = supplied ?? await store.read(), { intent, attempt } = checkIdentity(snapshot.state, identity);
   verifyConfiguration(config, attempt.configurationDigest); verifySource(sourceDir, config, attempt.sourceSha, attempt.appInputDigest);
   invariant(!environment.MORPHEUS_CD_APP_INPUT_DIGEST || environment.MORPHEUS_CD_APP_INPUT_DIGEST === attempt.appInputDigest, "Dispatch input digest mismatch");
   invariant(!environment.MORPHEUS_CD_CONFIGURATION_DIGEST || environment.MORPHEUS_CD_CONFIGURATION_DIGEST === attempt.configurationDigest, "Dispatch configuration digest mismatch");
   const run = await actions.run(identity.runId); actions.verifyRun(run, attempt);
   invariant(String(run.run_attempt) === identity.runAttempt, "Execution run attempt differs from GitHub");
   invariant(!snapshot.state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope)), "Delivery is paused");
-  await store.transact(`verify-${attempt.id}-${identity.runId}-${identity.runAttempt}`, "verify-execution", new Date().toISOString(), state => { checkIdentity(state, identity); return { runId: identity.runId }; });
+  return { snapshot, intent, attempt };
+}
+function executionAuthority(config: CdConfig, state: Parameters<typeof checkIdentity>[0], identity: Identity): void {
+  const { intent, attempt } = checkIdentity(state, identity);
+  assertPostResumeNewEffect(state, config, intent, attempt, new Date().toISOString());
+}
+/** New native/archive authority, including exact replay, always checks current ownership. */
+export async function verifyExecution(config: CdConfig, store: GitHubStore, actions: ActionsAdapter, sourceDir: string, identity: Identity, environment: NodeJS.ProcessEnv): Promise<unknown> {
+  const snapshot = await store.read(); executionAuthority(config, snapshot.state, identity);
+  const { intent, attempt } = await verifyExecutionFacts(config, store, actions, sourceDir, identity, environment, snapshot);
+  await store.transact(`verify-${attempt.id}-${identity.runId}-${identity.runAttempt}`, "verify-execution", new Date().toISOString(), state => { executionAuthority(config, state, identity); return { runId: identity.runId }; });
+  // Store replay skips its callback. A release can also win during source/provider reads.
+  if (intent.postResumeKey) executionAuthority(config, (await store.read()).state, identity);
   return { authorized: true, intentId: intent.id, attemptId: attempt.id, channel: intent.channel, sourceSha: attempt.sourceSha, controlSha: attempt.controlSha, appInputDigest: attempt.appInputDigest, configurationDigest: attempt.configurationDigest, buildNumber: attempt.buildNumber, app: config.channels[intent.channel] };
+}
+/** Identity/provenance observation only; never grants native execution or writes a verify claim. */
+export async function verifyExecutionProvenance(config: CdConfig, store: GitHubStore, actions: ActionsAdapter, sourceDir: string, identity: Identity, environment: NodeJS.ProcessEnv): Promise<{ verified: true; intentId: string; attemptId: string }> {
+  const { intent, attempt } = await verifyExecutionFacts(config, store, actions, sourceDir, identity, environment);
+  return { verified: true, intentId: intent.id, attemptId: attempt.id };
 }
 async function uploadGroupPreflight(config: CdConfig, store: GitHubStore, identity: Identity, environment: NodeJS.ProcessEnv): Promise<void> {
   const { intent, attempt } = checkIdentity((await store.read()).state, identity);
@@ -167,7 +184,9 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
       if (values.kind === "tests") {
         invariant(path !== "-", "Full-test evidence needs a file and its actual sibling payloads");
         const tests = evidence as unknown as TestEvidence; await validatePayloadFiles(tests, path); verifyValidator(sourceDir, tests);
-        await verifyExecution(config, store, actions, sourceDir, tests, environment);
+        const target = (await store.read()).state.intents[tests.intentId];
+        if (target?.postResumeKey) await verifyExecutionProvenance(config, store, actions, sourceDir, tests, environment);
+        else await verifyExecution(config, store, actions, sourceDir, tests, environment);
         result = await store.transact(`tests-${tests.attemptId}-${hash(tests).slice(0, 24)}`, "record-full-tests", now, state => { recordTests(state, config, tests); return { attemptId: tests.attemptId, testEvidenceHash: hash(tests) }; });
       } else if (values.kind === "failure") {
         result = await store.transact(`failure-evidence-${evidence.attemptId}-${hash(evidence).slice(0, 16)}`, "record-failure", now, state => { const { intent } = checkIdentity(state, evidence); return { workId: repairWork(state, intent.id, [JSON.stringify(evidence)], now) }; });

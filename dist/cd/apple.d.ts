@@ -48,7 +48,7 @@ export declare class AppleAdapter {
         observation?: InternalObservation;
     }>;
     assign(buildId: string, groupId: string): Promise<void>;
-    external(receipt: Receipt, groupIds: string[], now: string): Promise<ExternalObservation>;
+    external(receipt: Receipt, groupIds: string[], now: string, limits?: AppleReadLimit): Promise<ExternalObservation>;
     notifyExternal(detailId: string): Promise<void>;
     submitReview(buildId: string): Promise<string>;
 }

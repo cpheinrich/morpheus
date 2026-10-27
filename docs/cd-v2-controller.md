@@ -116,6 +116,23 @@ The CLI reads identity from `MORPHEUS_CD_INTENT_ID`, `ATTEMPT_ID`,
 `GITHUB_RUN_ID`/`GITHUB_RUN_ATTEMPT`. Optional dispatched digest environment
 variables use `MORPHEUS_CD_APP_INPUT_DIGEST` and `CONFIGURATION_DIGEST`.
 
+`verify-execution` (and the exported `verifyExecution`) grants **new native/archive
+authority**, not merely identity readback. For a post-resume origin, yield or
+execution release refuses both fresh and replayed verification. Admission is
+checked before source/provider validation, inside each new verification CAS, and
+again against current state after an optional replay/readback. A saved verification
+transition cannot restore released execution authority.
+
+Identity/provenance for existing evidence is a separate operation:
+`verifyExecutionProvenance` returns `verified: true`, never `authorized: true`, and
+writes no execution-verification claim. The optional full-test recorder uses it
+before the normal immutable `recordTests` transaction, allowing an identical
+previously verified proof after execution release. Ordinary full-test recording
+retains its existing execution verification path. Existing `record-upload` and
+upload-hook `resource`/`after` receipts retain their exact claim/identity checks;
+they do not invoke a new native/archive gate. Upload claims and the before hook
+still require native authorization and the separate current upload-effect claim.
+
 GitHub's dispatch API rejects a raw commit SHA as its `ref`. The adapter creates
 or reads `morpheus-cd-control-<controlSha>` as a lightweight tag, verifies its exact
 commit target, and dispatches that tag. It never overwrites an existing tag or

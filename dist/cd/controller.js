@@ -155,7 +155,7 @@ export class Controller {
                                 return null;
                             const claim = state.externalReviews?.[externalReviewKey(identity.appId, identity.buildId)]?.attempts.at(-1);
                             const transient = error instanceof CdWait && error.code !== "apple-review-limit";
-                            current.external = { ...current.external, status: claim?.outcome === "claimed" ? "uncertain" : transient ? "pending" : "blocked", nextAction: "observe-exact-external-build", nextCheckAt: after(now, claim?.outcome === "claimed" ? 60 : transient ? this.config.deadlines.pollMinutes : 1440), blocker: message };
+                            current.external = { ...current.external, status: claim?.outcome === "claimed" || current.postResumeKey && error instanceof CdWait ? "uncertain" : transient ? "pending" : "blocked", nextAction: "observe-exact-external-build", nextCheckAt: after(now, claim?.outcome === "claimed" ? 60 : transient ? this.config.deadlines.pollMinutes : 1440), blocker: message };
                             return { intentId: intent.id, message };
                         });
                     }
@@ -204,7 +204,7 @@ export class Controller {
         invariant(receipt && intent.state === "delivered" && receipt.configurationDigest === configurationDigest(this.config) && !intent.isolatedValidation && groups, "External follow-up requires a delivery qualified under the opted-in configuration");
         if (snapshot.state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope)))
             return;
-        const observation = await this.apple.external(receipt, groups, now), key = externalReviewKey(observation.appId, observation.buildId);
+        const observation = intent.postResumeKey ? await this.apple.external(receipt, groups, now, { maximumRequests: 8, timeoutMs: 30_000 }) : await this.apple.external(receipt, groups, now), key = externalReviewKey(observation.appId, observation.buildId);
         invariant(observation.appId === receipt.observation.appId && observation.version === receipt.observation.version && observation.buildNumber === receipt.observation.buildNumber && observation.buildId === receipt.observation.buildId, "External provider observation substituted another receipt identity");
         invariant(observation.groups.length === groups.length && new Set(observation.groups.map(group => group.id)).size === groups.length && observation.groups.every(group => groups.includes(group.id) && group.appId === observation.appId && !group.internal && !group.automaticDistribution && Array.isArray(group.testerIds) && group.testerIds.every(id => typeof id === "string" && id.trim().length > 0)), "Configured external group must belong to the exact app, provide valid tester identities, and disable automatic all-build distribution");
         const record = async (status, nextAction, blocker, terminal = false) => {
@@ -313,7 +313,7 @@ export class Controller {
             await this.store.transact(`post-resume-yield-${attempt.id}`, "yield-post-resume-before-dispatch", now, state => {
                 const freshNow = this.clock();
                 if (!ordinaryDemand(state, this.config, freshNow))
-                    return null;
+                    throw new CdWait("Ordinary demand changed before yield; re-evaluate without committing a yield", "post-resume-priority");
                 yieldPostResumeAttempt(state, current.id, attempt.id, freshNow);
                 return { attemptId: attempt.id };
             });
@@ -483,7 +483,8 @@ export class Controller {
         if (["FAILED", "INVALID"].includes(provider.uploadState ?? "") || observation && ["FAILED", "INVALID"].includes(observation.processingState)) {
             await this.store.transact(`provider-rejected-${attempt.id}`, "provider-rejection", now, next => { const current = attemptAt(next, intentId, attempt.id); current.attempt.upload.diagnostics = provider.diagnostics; if (current.attempt.status !== "active" || current.intent.attempts.at(-1)?.id !== attempt.id || current.intent.state === "delivered")
                 return { late: true }; if (!current.attempt.upload.acceptedAt)
-                current.attempt.upload.outcome = "rejected"; current.attempt.status = "failed"; if (current.intent.postResumeKey) {
+                current.attempt.upload.outcome = "rejected"; if (!current.intent.postResumeKey)
+                current.attempt.status = "failed"; if (current.intent.postResumeKey) {
                 current.intent.state = "waiting";
                 current.intent.nextAction = "observe-rejected-acceptance";
                 return { rejected: true };

@@ -188,7 +188,7 @@ export function recordUpload(state: CdState, evidence: UploadEvidence, now: stri
   else operation.outcome = evidence.outcome;
   operation.providerUploadId ??= evidence.providerUploadId; operation.acceptedAt ??= evidence.outcome === "accepted" ? evidence.acceptedAt ?? now : undefined; operation.diagnostics = evidence.diagnostics;
   if (retired) return; // A late resource is retained for observation, never promotion/credit.
-  if (operation.outcome === "rejected") { attempt.status = "failed"; if (intent.postResumeKey) { intent.state = "waiting"; intent.nextAction = "observe-rejected-acceptance"; return; } repairWork(state, intent.id, [`Apple rejected ${attempt.appId}/${attempt.version}/${attempt.buildNumber}`, evidence.diagnostics ?? "No provider diagnostics"], now); }
+  if (operation.outcome === "rejected") { if (!intent.postResumeKey) attempt.status = "failed"; if (intent.postResumeKey) { intent.state = "waiting"; intent.nextAction = "observe-rejected-acceptance"; return; } repairWork(state, intent.id, [`Apple rejected ${attempt.appId}/${attempt.version}/${attempt.buildNumber}`, evidence.diagnostics ?? "No provider diagnostics"], now); }
   else { intent.state = operation.outcome === "accepted" ? "processing" : "waiting"; intent.nextAction = "observe-exact-apple-build"; }
   intent.nextCheckAt = now;
 }
@@ -213,12 +213,12 @@ export function deliver(state: CdState, intentId: string, attemptId: string, obs
   if (optional) { const key = postResumeGroupKey(optional, attemptId, intent.groupId, observation.buildId); if (optional.groups[key]) optional.groups[key]!.observedAt ??= now; }
   intent.receipt = receipt; intent.state = "delivered"; intent.nextAction = "complete"; intent.nextCheckAt = now; attempt.status = "delivered"; attempt.observation = observation;
   if (!intent.validation) state.cursors[intent.channel] = { sourceSha: source.sha, order: source.order, receiptId: intent.id };
-  state.groupCursors ??= {}; state.groupCursors[intent.groupId] = { sourceSha: source.sha, order: source.order, receiptId: intent.id };
+  if (!optional) { state.groupCursors ??= {}; state.groupCursors[intent.groupId] = { sourceSha: source.sha, order: source.order, receiptId: intent.id }; }
   if (!intent.validation) for (const slot of state.slots.filter(item => item.channel === intent.channel && item.decision === "missed" && !item.intentId)) {
     const selectedAtSlot = state.sources.filter(item => Date.parse(item.mainEnteredAt) <= Date.parse(slot.slot)).at(-1);
     if (selectedAtSlot && selectedAtSlot.order <= source.order) { slot.intentId = intent.id; if (!intent.coveredSlots.includes(slot.slot)) intent.coveredSlots.push(slot.slot); }
   }
-  if (state.groupOperations[intent.groupId]?.attemptId === attempt.id) state.groupOperations[intent.groupId]!.completedAt = now;
+  if (!optional && state.groupOperations[intent.groupId]?.attemptId === attempt.id) state.groupOperations[intent.groupId]!.completedAt = now;
   for (const work of Object.values(state.agents)) if (work.intentId === intentId) work.state = "complete";
   return receipt;
 }
@@ -378,7 +378,7 @@ export function assertPostResumeNewEffect(state: CdState, config: CdConfig, inte
 }
 export function occupiesNative(state: CdState, intent: DeliveryIntent, attempt: Attempt): boolean {
   const record = postResumeAcceptance(state, intent);
-  return attempt.status === "active" && !attempt.upload?.acceptedAt && !record?.releases[attempt.id] && record?.yielded?.attemptId !== attempt.id;
+  return (attempt.status === "active" || Boolean(record && attempt.upload?.outcome === "rejected")) && !attempt.upload?.acceptedAt && !record?.releases[attempt.id] && record?.yielded?.attemptId !== attempt.id;
 }
 export function protectedPostResumeUpload(state: CdState, intent: DeliveryIntent, attempt: Attempt): boolean {
   return Boolean(postResumeAcceptance(state, intent) && attempt.status === "active" && attempt.upload && !attempt.upload.acceptedAt && attempt.upload.outcome !== "rejected");

@@ -134,8 +134,8 @@ describe("yield, permanent execution release and unmodified provider recovery", 
   });
   it("records definitive rejection honestly without creating a replacement optional purpose/attempt", () => {
     const f = optionalFixture(true); recordUpload(f.state, { ...f.upload, outcome: "rejected", diagnostics: "synthetic exact rejection" }, now);
-    expect(f.attempt.status).toBe("failed"); expect(f.state.agents).toEqual({}); expect(f.state.intents[f.intentId]!.attempts).toHaveLength(1);
-    expect(() => planAttempt(f.state, f.cfg, f.intentId, "c".repeat(40), "8", now)).toThrow("cannot retry");
+    expect(f.attempt.status).toBe("active"); expect(f.state.agents).toEqual({}); expect(f.state.intents[f.intentId]!.attempts).toHaveLength(1);
+    expect(() => planAttempt(f.state, f.cfg, f.intentId, "c".repeat(40), "8", now)).toThrow("active or delivered");
   });
   it("rejects unknown origin fields instead of treating ordinary false or an approval flag as authority", () => {
     const f = optionalFixture(), before = structuredClone(f.before);

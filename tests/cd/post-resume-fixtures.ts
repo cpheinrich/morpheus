@@ -2,8 +2,8 @@ import { hash, type PostResumeOrigin, type PostResumeQualification, type TestEvi
 import { after, createPostResumeAcceptance, newState, planAttempt, postResumeFingerprint, recordTests, claimUpload } from "../../src/cd/state.js";
 import { config, now, source } from "./fixtures.js";
 
-export function optionalFixture(upload = false) {
-  const cfg = config(), state = newState(cfg, "epoch", now);
+export function optionalFixture(upload = false, cfg = config()) {
+  const state = newState(cfg, "epoch", now);
   state.sources = [source(), source("b", 1)]; state.lastMain = source("b", 1).sha;
   state.evaluatedSlots = { staging: now, production: now };
   state.cursors.staging = { sourceSha: source().sha, order: 0, receiptId: "previous" };
