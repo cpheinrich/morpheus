@@ -45,4 +45,49 @@ changed and new files were read directly and covered by TypeScript, focused test
 
 ## Independent review
 
-Pending.
+Independent normal-risk review found one substantive concurrency race and conditionally cleared an
+atomic no-clobber publication fix; the focused regression, typecheck, compile and compiled
+concurrent smoke probe all passed, with no other findings.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "f094873b404ec9377173ed8bb80a71a850da3f65",
+  "reviewed": "de02a963a15b28c5e1ee6563320aaaa144b2982b",
+  "covered": "3a24fcf4569b5c7b8530e827dcb084df9d0189df",
+  "authorSession": "01a17efa-127f-7470-a66d-b636e2c4db32",
+  "reviewerSession": "/root/morpheus_skill_catalog/morpheus_skill_registry_review",
+  "risk": "normal",
+  "elapsedMinutes": 2.5441333333333334,
+  "timing": {
+    "source": "clock",
+    "durationMs": 152648,
+    "evidence": "Author clock immediately before spawn: 2026-10-27T20:21:59.060Z (1793132519061 ms); immediately after reviewer completion: 2026-10-27T20:24:31.709Z (1793132671709 ms)."
+  },
+  "outcome": "complete",
+  "summary": "Independent normal-risk review found one substantive concurrency race and conditionally cleared an atomic no-clobber publication fix; the focused regression, typecheck, compile and compiled concurrent smoke probe all passed, with no other findings.",
+  "findings": [
+    {
+      "id": "PSR-001",
+      "severity": "substantive",
+      "description": "Concurrent syncs could let the EEXIST loser read the winner's final path while writeFile was still filling it, falsely reporting missing frontmatter.",
+      "paths": [
+        "src/project-skills.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Sync now writes and closes a unique same-directory inode, then publishes it through an atomic hard link that fails rather than replacing an existing path. The losing sync reads only an already-complete published inode.",
+      "condition": {
+        "paths": [
+          "src/project-skills.ts",
+          "tests/project-skills.test.ts",
+          "dist/project-skills.js",
+          "dist/project-skills.js.map",
+          "dist/project-skills.d.ts"
+        ],
+        "evidence": "Add a two-sync regression requiring zero issues and full created-or-present accounting for both invocations; run the focused project-skills test, typecheck, compile, and a post-build concurrent smoke probe with zero issues for both results."
+      },
+      "conditionMet": "Commit 3a24fcf4 changes only the reviewer-authorized source, test and generated paths. project-skills passed 11/11; typecheck and compile passed. The compiled dist smoke ran two internal-project syncs concurrently and both returned issues: [] while each accounted for all nine expected paths as created or present."
+    }
+  ]
+}
+```
