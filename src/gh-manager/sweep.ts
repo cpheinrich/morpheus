@@ -131,6 +131,26 @@ export const SAFE_REF = /^[A-Za-z0-9._/-]+$/;
 export const RESCUED_TRUNK_PREFIX = "wip/trunk-";
 
 /**
+ * Days a rescued trunk draft may go without a push before the sweep closes it, keeping the branch.
+ *
+ * Rescue drafts used to be escalated to a human after `draftQuietHours`. Of about nineteen opened
+ * in their first three weeks, none was adopted, and each one sat in the `manager:needs-human`
+ * queue beside decisions that did need a person — the queue went from 4 to 16. Unadopted edits
+ * are almost always incidental, and the branch keeps them recoverable, so the default became
+ * closing them. A week is long enough for whoever left the edits to notice the draft in the
+ * session that made it, and short enough that the drafts stop accumulating. The rescue PR body
+ * names this number; a test holds the two equal.
+ */
+export const RESCUE_MAX_AGE_DAYS = 7;
+/** The route reason for that close, which the apply step re-checks against live state. */
+export const RESCUE_AGED_OUT = "rescued-trunk-aged-out";
+
+/** A rescued trunk draft nobody has taken up: still a draft, nothing queued, no review on it. */
+export function isRescuedTrunkDraft(pr: Pick<PullRequestFacts, "isDraft" | "autoMerge" | "labels" | "headRefName">): boolean {
+  return pr.isDraft && !pr.autoMerge && !pr.labels.includes("agent-reviewed") && !pr.labels.includes(MANAGER_REVIEWED_LABEL) && pr.headRefName.startsWith(RESCUED_TRUNK_PREFIX);
+}
+
+/**
  * An explicit WIP signal. The manager never merges or repairs such a pull request; once it has
  * been quiet for `draftQuietHours` it is only triaged, read-only (see `routeWorkInProgress`).
  */
@@ -201,13 +221,7 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
   }
   // The branch name is the one piece of author-controlled text the brief has to carry.
   if (!SAFE_REF.test(pr.headRefName)) return routed("skip", "unsafe-branch-name", "the branch name has characters the manager will not put in a brief");
-  if (pr.isDraft && !pr.autoMerge && !pr.labels.includes("agent-reviewed") && !pr.labels.includes(MANAGER_REVIEWED_LABEL) && pr.headRefName.startsWith(RESCUED_TRUNK_PREFIX)) {
-    const rescuedAge = now.getTime() - Math.max(Date.parse(pr.headCommittedAt), Date.parse(pr.createdAt));
-    if (Number.isFinite(rescuedAge) && rescuedAge >= policy.draftQuietHours * HOUR) {
-      if (pr.labels.includes(NEEDS_HUMAN_LABEL) && marker?.head === pr.headSha) return routed("skip", "escalated", "waiting on a human since the last run; a new push reopens it");
-      return routed("escalate", "rescued-trunk-edits", "uncommitted edits rescued from a dirty trunk checkout; adopt them onto a roadmap item's branch or close this");
-    }
-  }
+  if (isRescuedTrunkDraft(pr)) return routeRescuedTrunk(pr, policy, now, routed);
   if (isWorkInProgress(pr)) return pr.autoMerge
     ? routed("hold", "wip-auto-merge", "work in progress; cancelling queued auto-merge")
     : routeWorkInProgress(pr, policy, now);
@@ -283,6 +297,23 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
 }
 
 /**
+ * A rescued trunk draft is uncommitted edits, not a proposal: it is never triaged, reviewed or
+ * escalated. It ages out instead — closed, branch kept, once it has gone `RESCUE_MAX_AGE_DAYS`
+ * without a push. A person who reopens it has answered; the manager does not close the same head
+ * twice.
+ */
+function routeRescuedTrunk(pr: PullRequestFacts, policy: GhManagerPolicy, now: Date, routed: (route: Route, reason: string, detail: string) => Routed): Routed {
+  if (pr.marker?.verdict === "close" && pr.marker.head === pr.headSha) {
+    return routed("skip", "rescued-trunk-reopened", "reopened after the manager closed it; left with whoever reopened it until a new push");
+  }
+  const age = now.getTime() - Math.max(Date.parse(pr.headCommittedAt), Date.parse(pr.createdAt));
+  const pending = `uncommitted edits rescued from a dirty trunk checkout; closed after ${RESCUE_MAX_AGE_DAYS} days without a push unless someone adopts them`;
+  if (!Number.isFinite(age) || age < RESCUE_MAX_AGE_DAYS * DAY) return routed("skip", "rescued-trunk-edits", pending);
+  if (!policy.actions.close) return routed("skip", "close-disabled", `rescued trunk edits untouched for ${RESCUE_MAX_AGE_DAYS} days, but closing is disabled by policy`);
+  return routed("close", RESCUE_AGED_OUT, `rescued trunk edits untouched for ${RESCUE_MAX_AGE_DAYS} days and never adopted`);
+}
+
+/**
  * A draft or WIP pull request with nothing queued. It is never merged or repaired here. Once quiet
  * for `draftQuietHours` it gets one read-only triage session, which classifies it as ready,
  * incomplete (a handoff another agent can pick up) or dormant. The verdict is kept against the
@@ -297,7 +328,8 @@ function routeWorkInProgress(pr: PullRequestFacts, policy: GhManagerPolicy, now:
   const attempts = marker && sameHead && marker.triage ? marker.attempts : 0;
   const routed = (route: Route, reason: string, detail: string): Routed => ({ number: pr.number, title: pr.title, headSha: pr.headSha, route, reason, detail, attempts });
   const waiting = "draft, WIP branch or WIP title; awaiting a human to mark it ready";
-  // A rescued trunk draft is uncommitted edits, not a proposal. It has its own escalation above.
+  // A rescued trunk branch someone has taken out of draft, queued or reviewed is theirs now. It is
+  // not triaged and does not age out; see `routeRescuedTrunk` for the untouched draft.
   if (pr.headRefName.startsWith(RESCUED_TRUNK_PREFIX)) return routed("skip", "work-in-progress", waiting);
   if (!policy.actions.triage) return routed("skip", "work-in-progress", waiting);
   // Each skip needs the label and the marker's verdict for this head to agree: a label left over

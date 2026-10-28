@@ -45,6 +45,13 @@ checks remain mandatory. This gate covers all other authors, not just particular
 The reusable PR conventions job and its callers do not use concurrency groups. GitHub treats a
 cancelled required check as failing branch protection even if another conventions run on the same
 head succeeds. Every `CI` and `Review metadata` run must finish, including bursts of metadata edits.
+Superseded runs pass without checking anything, but never under the required name. A first `head`
+job compares the event's head with the live PR. When the PR has provably moved since the event (its
+copy is strictly newer), the required job is renamed `pr / superseded` and passes with
+`::notice::superseded by <sha>; this run's result is moot`. Checks attach to the SHA the event named,
+so a renamed pass cannot satisfy protection anywhere, not even if the PR is force-pushed back to that
+SHA. A lagging or malformed read, a failed or cancelled `head`, or a move after `head` decided all
+fail `pr / conventions` with their reason.
 The legacy `review-waived:` line does not waive independent review; `check pr` reports it as
 waiving legacy delivery only and says so in the same line.
 

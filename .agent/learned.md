@@ -652,6 +652,19 @@ would not have recovered them — only two October sessions were in it. A reader
 state should match every encoding the tool writes, and an unexpected zero is a reason to look at
 the directory before trusting the number.
 
+## A diff keyed on blob ids stops matching once trunk touches the file
+
+2026-10-28, trunk rescue cleanup (MO-26-10-28-14.08.53). The 2026-10-15 rescue dedupe compared
+exact diffs, including old/new blob ids. Evo's `project.pbxproj` changes on trunk almost daily, so
+Xcode's identical re-sort produced a new old-blob id each day and evo#654 and evo#675 opened a day
+apart with the same four hunks. When "the same change" matters, compare what applying it produces
+(replay the patch onto the current base in a private index and compare trees), not the patch
+text: the patch carries its base with it.
+
+An unadopted automatic PR is a cost, not a safety net. None of about nineteen rescue drafts was
+ever adopted, and each one in `manager:needs-human` hid a real decision from Chris. Automation
+that opens PRs needs an exit — classify before publishing, and age out what nobody claimed.
+
 ## Claude Code's hook payload holds more Bash output than the model saw
 
 2026-10-28 (MO-26-10-28-14.08.05). When a Bash result passes roughly 30,000 characters, Claude Code

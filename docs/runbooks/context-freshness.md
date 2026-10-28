@@ -31,9 +31,25 @@ Xcode-rewritten `project.pbxproj`. So when HEAD is the trunk branch and tracked 
    PR URL.
 
 It refuses, and reports instead, when a file's staged content differs from both HEAD and the
-working tree (committing the tree would drop the staged version), and when anything under
-`hq/team/` is edited — those are inbox replies, which belong to the session starting there to read
-them, on an `inbox-<date>` branch.
+working tree (committing the tree would drop the staged version), when a file removed from the
+index is still on disk (`git rm --cached`: no commit would hold that file, and the reset would
+overwrite it), and when anything under `hq/team/` is edited — those are inbox replies, which belong
+to the session starting there to read them, on an `inbox-<date>` branch.
+
+**IDE churn is reset, not rescued.** When every tracked edit is churn — per-user IDE state
+(`xcuserdata/`, `.DS_Store`, JetBrains' `workspace.xml` and other per-user files), a `.pbxproj`
+changed only in whitespace, comments or dictionary key order, an `.xcscheme` or
+`.xcworkspacedata` re-serialised with the same elements and attributes, or content trunk already
+has — `brief` resets it after the same content proof, opens nothing, and prints one line naming
+the commit that held the edits (`git checkout <sha> -- <path>` recovers one until Git prunes it).
+One real edit among them and the whole set is rescued as above. The rule is deliberately narrow —
+`.vscode/`, added files and any value change trunk lacks are rescued; see
+`src/session/trunk-churn.ts`.
+
+**A repeat is not rescued twice.** When an open rescue PR's change, replayed onto the current HEAD,
+gives exactly these edits, the checkout is reset without another PR and the brief names the
+earlier one. A failed lookup, a closed PR or a branch missing from the remote falls back to an
+ordinary rescue.
 
 **Untracked files are never committed or deleted** — that is where secrets and build junk live.
 They are listed in the PR, and untracked build output whose source no longer exists
@@ -43,9 +59,11 @@ the merge would overwrite one, and `brief` says so. Nothing happens mid-merge, -
 edits stay on the local branch and the reset still happens; if `gh` fails, the branch is pushed and
 the command to open the PR is printed.
 
-The draft is not a finished change: `check pr` conventions wait on drafts, and the GitHub Manager
-escalates an unadopted `wip/trunk-*` draft to a human once it passes the 48-hour draft quiet period
-— it never reviews, repairs or merges one. Adopt it onto a roadmap item's branch, or close it.
+The draft is not a finished change: `check pr` conventions wait on drafts. The GitHub Manager never
+reviews, repairs, merges, triages or escalates one; in a repository opted in to it, once the draft
+has gone 7 days without a push (`RESCUE_MAX_AGE_DAYS`) the manager closes it with a comment on
+recovering it, and the branch is kept. The PR body says so only where that policy exists. Adopt it
+onto a roadmap item's branch before then, or close it yourself.
 
 A checkout still behind after startup prints `!!! STALE CHECKOUT` past 20 commits or once the oldest
 missing commit is more than 3 days old (`STALE_BEHIND_*` in `src/session/trunk-rescue.ts`).
