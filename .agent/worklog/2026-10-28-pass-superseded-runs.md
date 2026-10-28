@@ -118,3 +118,9 @@ SHA" case. Same-reviewer follow-up: see the review record below.
 - `shellcheck -s bash` on every `run:` script in `pr-check.yml`: clean.
 - `pnpm typecheck` passed. `pnpm compile` left `dist/` unchanged, since no source changed.
   `pnpm morpheus pm index` and `pm validate` passed.
+
+## Live verification on #544
+
+This PR's own CI calls the changed workflow locally (`uses: ./.github/workflows/pr-check.yml`). To
+supersede a run on purpose, the PR body was edited, which starts a `Review metadata` run, and this
+commit was pushed immediately afterwards. The results are recorded below.
