@@ -75,6 +75,159 @@ if (args[0] === '-p') console.log(JSON.stringify({ type: 'result', structured_ou
   return { cfg, api, store, directory, callsPath, calls, workId: seeded.result, nativeQuotaPath: callsPath + ".native-quota" };
 }
 
+async function queuedFixture() {
+  const f = await nativeFixture(), at = new Date().toISOString();
+  const second = await f.store.transact("second-repair", "fixture", at, state => {
+    const first = state.agents[f.workId]!, intent = structuredClone(state.intents[first.intentId]!);
+    intent.id = "second-ordinary-intent";
+    intent.channel = intent.channel === "staging" ? "production" : "staging";
+    state.intents[intent.id] = intent;
+    first.createdAt = after(at, -30); first.nextCheckAt = after(at, -10);
+    return repairWork(state, intent.id, ["Independent second repair"], after(at, -20));
+  });
+  return { ...f, secondId: second.result, at };
+}
+
+describe("default ordinary repair selection", () => {
+  it.each(["paused", "post-resume"])("passes a first %s repair to invoke a due ordinary second repair", async blocked => {
+    const f = await queuedFixture();
+    if (blocked === "paused") await f.store.transact("block-first", "fixture", f.at, state => {
+      state.pauses.push({ scope: state.agents[f.workId]!.intentId, actor: "operator", reason: "Synthetic pause", resumeCondition: "Synthetic evidence", human: true, createdAt: f.at }); return null;
+    });
+    const before = await f.store.read();
+    if (blocked === "post-resume") {
+      // Project only the initial selection read. Normal CAS must never retrofit
+      // a typed origin onto this ordinary fixture's immutable intent.
+      const selected = structuredClone(before);
+      selected.state.intents[selected.state.agents[f.workId]!.intentId]!.postResumeKey = "synthetic-post-resume";
+      vi.spyOn(f.store, "read").mockResolvedValueOnce(selected);
+    }
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", hostId: "mac-a" })).toMatchObject({ workId: f.secondId, outcome: "checkpoint" });
+    const selectedAfter = (await f.store.read()).state;
+    expect(selectedAfter.agents[f.workId]).toEqual(before.state.agents[f.workId]);
+    expect(selectedAfter.agents[f.secondId]!.invocations).toHaveLength(1);
+    expect(await f.calls()).toHaveLength(1);
+  });
+
+  it.each([-1, -25])("uses the last actual invocation at offset %s, not creation, renewed due time or count", async lastStart => {
+    const f = await queuedFixture();
+    await f.store.transact("repeat-first", "fixture", f.at, state => {
+      const first = state.agents[f.workId]!, second = state.agents[f.secondId]!;
+      first.invocations = [-29, -28, lastStart].map((offset, index) => ({ ...prior("mac-a"), id: `past-${index}`, startedAt: after(f.at, offset), endedAt: after(f.at, offset + 0.1) }));
+      first.nextCheckAt = after(f.at, lastStart === -1 ? -20 : -1);
+      second.nextCheckAt = after(f.at, lastStart === -1 ? -1 : -10);
+      return null;
+    });
+    const before = (await f.store.read()).state;
+    const selected = lastStart === -1 ? f.secondId : f.workId, untouched = lastStart === -1 ? f.workId : f.secondId;
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", hostId: "mac-a" })).toMatchObject({ workId: selected, outcome: "checkpoint" });
+    const selectedAfter = (await f.store.read()).state;
+    expect(selectedAfter.agents[untouched]).toEqual(before.agents[untouched]);
+    expect(selectedAfter.agents[selected]!.invocations).toHaveLength(before.agents[selected]!.invocations.length + 1);
+    expect(await f.calls()).toHaveLength(1);
+  });
+
+  it.each(["future", "leased"])("excludes a first %s repair before considering fairness", async excluded => {
+    const f = await queuedFixture();
+    await f.store.transact("exclude-first", "fixture", f.at, state => {
+      const first = state.agents[f.workId]!;
+      if (excluded === "future") first.nextCheckAt = after(f.at, 10);
+      else {
+        first.lease = { owner: "other-executor", fence: 1, expiresAt: after(f.at, 10) }; first.state = "running";
+        first.invocations = [{ id: "other-executor", executor: "hosted", startedAt: after(f.at, -1) }]; state.fences[first.id] = 1;
+      }
+      return null;
+    });
+    const before = (await f.store.read()).state;
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ workId: f.secondId, outcome: "checkpoint" });
+    expect((await f.store.read()).state.agents[f.workId]).toEqual(before.agents[f.workId]);
+    expect(await f.calls()).toHaveLength(1);
+  });
+
+  it("admits exact due-time and expired-lease equality without changing their bounds", async () => {
+    const f = await queuedFixture();
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(f.at));
+    await f.store.transact("exact-boundaries", "fixture", f.at, state => {
+      const first = state.agents[f.workId]!;
+      first.nextCheckAt = f.at;
+      first.lease = { owner: "expired-invocation", fence: 1, expiresAt: f.at };
+      first.invocations = [{ id: "expired-invocation", executor: "hosted", startedAt: after(f.at, -25), endedAt: after(f.at, -24) }];
+      state.fences[first.id] = 1; state.agents[f.secondId]!.nextCheckAt = after(f.at, 10);
+      return null;
+    });
+    const before = (await f.store.read()).state;
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ workId: f.workId, outcome: "checkpoint" });
+    const selectedAfter = (await f.store.read()).state;
+    expect(selectedAfter.agents[f.workId]!.invocations).toHaveLength(2);
+    expect(selectedAfter.fences[f.workId]).toBe(2);
+    expect(selectedAfter.agents[f.secondId]).toEqual(before.agents[f.secondId]);
+    expect(await f.calls()).toHaveLength(1);
+  });
+
+  it.each([false, true])("breaks equal-priority ties by ID regardless of insertion order (reversed: %s)", async reversed => {
+    const f = await queuedFixture();
+    await f.store.transact("equal-priority", "fixture", f.at, state => {
+      state.agents[f.workId]!.createdAt = state.agents[f.secondId]!.createdAt;
+      if (reversed) state.agents = Object.fromEntries(Object.entries(state.agents).reverse());
+      return null;
+    });
+    const before = (await f.store.read()).state;
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ workId: f.secondId, outcome: "checkpoint" });
+    const selectedAfter = (await f.store.read()).state;
+    expect(Object.keys(selectedAfter.agents)).toEqual(Object.keys(before.agents));
+    expect(selectedAfter.agents[f.workId]).toEqual(before.agents[f.workId]);
+    expect(await f.calls()).toHaveLength(1);
+  });
+
+  it("retains explicit target selection even when it is not due or the default winner", async () => {
+    const f = await queuedFixture();
+    await f.store.transact("explicit-future", "fixture", f.at, state => { state.agents[f.secondId]!.nextCheckAt = after(f.at, 10); return null; });
+    const before = (await f.store.read()).state;
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.secondId, taskDigest: before.agents[f.secondId]!.taskDigest })).toMatchObject({ workId: f.secondId, outcome: "checkpoint" });
+    expect((await f.store.read()).state.agents[f.workId]).toEqual(before.agents[f.workId]);
+    expect(await f.calls()).toHaveLength(1);
+  });
+
+  it("retains explicit missing-target and immutable-task validation before quota", async () => {
+    const f = await queuedFixture(), before = await f.store.read(), quota = vi.spyOn(QuotaReader.prototype, "read");
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: "missing-work" })).toEqual({ state: "idle" });
+    await expect(runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.secondId, taskDigest: "different-task-digest" })).rejects.toThrow("differs from immutable repair task");
+    expect(quota).not.toHaveBeenCalled(); expect((await f.store.read()).head).toBe(before.head);
+    await expect(readFile(f.callsPath)).rejects.toHaveProperty("code", "ENOENT");
+  });
+
+  it.each(["paused", "post-resume"])("retains explicit %s refusal before quota or a replacement selection", async blocked => {
+    const f = await queuedFixture();
+    if (blocked === "paused") await f.store.transact("pause-explicit", "fixture", f.at, state => {
+      state.pauses.push({ scope: state.agents[f.workId]!.intentId, actor: "operator", reason: "Synthetic pause", resumeCondition: "Synthetic proof", human: true, createdAt: f.at }); return null;
+    });
+    const before = await f.store.read();
+    if (blocked === "post-resume") {
+      const selected = structuredClone(before); selected.state.intents[selected.state.agents[f.workId]!.intentId]!.postResumeKey = "synthetic-post-resume";
+      vi.spyOn(f.store, "read").mockResolvedValueOnce(selected);
+    }
+    const quota = vi.spyOn(QuotaReader.prototype, "read");
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).toEqual({ state: blocked === "paused" ? "paused" : "observe-post-resume", workId: f.workId });
+    expect(quota).not.toHaveBeenCalled(); expect((await f.store.read()).head).toBe(before.head);
+    await expect(readFile(f.callsPath)).rejects.toHaveProperty("code", "ENOENT");
+  });
+
+  it.each(["paused", "post-resume", "future", "leased", "complete"])("retains a %s/idle diagnostic when no ordinary work can run", async blocked => {
+    const f = await nativeFixture(), before = await f.store.read(), selected = structuredClone(before);
+    const work = selected.state.agents[f.workId]!;
+    if (blocked === "paused") selected.state.pauses.push({ scope: "all", actor: "operator", reason: "Synthetic pause", resumeCondition: "Synthetic proof", human: true, createdAt: work.createdAt });
+    else if (blocked === "post-resume") selected.state.intents[work.intentId]!.postResumeKey = "synthetic-post-resume";
+    else if (blocked === "future") work.nextCheckAt = after(new Date().toISOString(), 10);
+    else if (blocked === "complete") work.state = "complete";
+    else work.lease = { owner: "still-owned", fence: 1, expiresAt: after(new Date().toISOString(), 10) };
+    vi.spyOn(f.store, "read").mockResolvedValueOnce(selected);
+    const quota = vi.spyOn(QuotaReader.prototype, "read");
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toEqual(["future", "leased", "complete"].includes(blocked) ? { state: "idle" } : { state: blocked === "paused" ? "paused" : "observe-post-resume", workId: f.workId });
+    expect(quota).not.toHaveBeenCalled(); expect((await f.store.read()).head).toBe(before.head);
+    await expect(readFile(f.callsPath)).rejects.toHaveProperty("code", "ENOENT");
+  });
+});
+
 describe("optional hosted repair", () => {
   it("preserves configured hosted normalization bytes and digest from merged 431", () => {
     const cfg = configSchema.parse({ ...config(), agents: { local: {}, hosted: { workflow: "repair.yml", model: "opus" } } });

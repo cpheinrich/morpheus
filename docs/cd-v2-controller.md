@@ -348,6 +348,20 @@ repairs may complete from direct evidence without inventing a code PR; pre-uploa
 retry still requires executor quiescence. Accepted/uncertain binaries continue
 provider reconciliation under their original identity.
 
+Without an explicit `--work-id`, selection considers only non-complete work whose
+next check is due and whose lease is absent or expired. Paused and post-resume
+work cannot hide another runnable ordinary repair. Among runnable candidates,
+the work whose latest recorded invocation `startedAt` is earliest wins;
+never-invoked work uses its `createdAt`, and equal timestamps use code-unit
+work-ID order on both hosts.
+Renewing `nextCheckAt` or accumulating checkpoints does not renew priority. The
+selector sorts only a derived array; it adds no persisted cursor or scheduling
+service. If no ordinary candidate can run, the same ordering retains an existing
+paused/post-resume diagnostic, or returns idle when none is due with no live lease.
+Explicit targets retain their existing behavior and validation. Every selected
+candidate still passes fresh quota admission, pause/post-resume checks and the
+normal fenced CAS/global-executor reservation before an invocation.
+
 The repair check gate reads the exact head's paginated `filter=all` inventory.
 Failures, pending/unknown results and non-Actions cancellations still block. The
 only cancellation exception is a completed GitHub Actions job with explicit empty
