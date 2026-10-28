@@ -156,6 +156,12 @@ that. No follow-up turn was needed.
     "evidence": "Agent tool result for reviewer subagent a3ace64aaa978f7c6: duration_ms=634309 (author clock 21:51:21Z to 22:03:36Z)."
   },
   "outcome": "complete",
+  "trunkIntegrations": [
+    {
+      "commit": "4e5436c8b28f6d3303e032b0b85158ae3f83a849",
+      "reason": "Merged origin/main (430fa10e, c8166dd7) after coverage. The only hand resolution was .agent/decisions.md, where both sides appended an entry at the end: trunk's blocked-CD-analysis entry kept first, this PR's context-refresh entry after it, both verbatim. No source conflict; pnpm compile left dist unchanged."
+    }
+  ],
   "summary": "A fresh reviewer found one substantive and two minor defects. F1: Claude Code counts a trailing newline as an extra empty line, so every Read reaching end-of-file failed the content check and earned nothing while the session stayed in enforcement mode; cleared under a condition the author met in f4d3bb34 by comparing in the tool's numbering, fixing the fixture shape and adding whole-file, tail, exactness and refresh tests. F2: AGENTS.md is injected without a tool call, so an enforced session is refused once for CLAUDE.md; the instructions now name it, and crediting the injected copy is an open question for Chris. F3: the refusal now names the shell-output credit limit and the MORPHEUS_READ_EVIDENCE=off escape. No follow-up turn was needed.",
   "findings": [
     {
