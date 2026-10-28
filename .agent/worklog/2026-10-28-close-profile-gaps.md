@@ -87,3 +87,39 @@ reverting either filter fails its test.
   both files pass in isolation, 71 of 71. CI is the signal for those, not this laptop.
 - Real data: `pnpm morpheus profile report --since 2026-10-09 --repo evo` against this machine's
   transcripts, numbers above; it also named the one live rollout with five unparseable lines.
+
+## Independent review
+
+Fresh independent review (high risk: the review gate, the GitHub Manager's recovery check and the CD repair gate) completed on f4e5c6d3 with one minor finding and nothing substantive. The reviewer traced every caller of checkLocalReview, confirmed an opt-out is still refused and a floor-waived record still accepted by both consumers, checked the 20/40 boundary tests, matched dist against a scratch compile, and ran the profiler over every transcript on this machine (1454 files, 1063 compressed, none unreadable). The finding, R1, was a named zstd import in the profile tests that would fail the whole file on Node 22.0 to 22.14; it is fixed at ab854f60 by a namespace import and skipping only the test that needs zstd.
+
+The reviewer measured its own turn by clock (21:32:18Z to 21:38:56Z, 398 s); the record uses the runner's `duration_ms` for the whole invocation, which is the larger figure. Dedupe is exercised only by fixtures: no session id is currently in both Codex directories on this machine.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "e4fd7b585633f3eaf163121fffe4c8a8ce133978",
+  "reviewed": "f4e5c6d38b92e33bcb90fd9818c88bd6cba662a9",
+  "covered": "ab854f600d107871ca9a6c941928bc6e8d2e3838",
+  "authorSession": "claude-code-subagent/a646f585f5507c3cc",
+  "reviewerSession": "claude-code-subagent/af5a1517268ed1f80",
+  "risk": "high",
+  "elapsedMinutes": 7.054383333333333,
+  "timing": {
+    "source": "runner",
+    "durationMs": 423263,
+    "evidence": "Agent tool result for reviewer af5a1517268ed1f80: duration_ms 423263, dispatched after author clock 2026-10-28T21:32:00.126Z; the reviewer's own clock readings were 21:32:18Z to 21:38:56Z (398000 ms)."
+  },
+  "outcome": "complete",
+  "summary": "Fresh independent review (high risk: the review gate, the GitHub Manager's recovery check and the CD repair gate) completed on f4e5c6d3 with one minor finding and nothing substantive. The reviewer traced every caller of checkLocalReview, confirmed an opt-out is still refused and a floor-waived record still accepted by both consumers, checked the 20/40 boundary tests, matched dist against a scratch compile, and ran the profiler over every transcript on this machine (1454 files, 1063 compressed, none unreadable). The finding, R1, was a named zstd import in the profile tests that would fail the whole file on Node 22.0 to 22.14; it is fixed at ab854f60 by a namespace import and skipping only the test that needs zstd.",
+  "findings": [
+    {
+      "id": "R1",
+      "severity": "minor",
+      "description": "tests/profile/extract-report.test.ts imported zstdCompressSync by name from node:zlib; package.json allows Node >=22 but zstd exists only from 22.15, so on 22.0-22.14 the import fails at link time and every extract and report test in the file is lost, not just the zstd one.",
+      "paths": ["tests/profile/extract-report.test.ts"],
+      "disposition": "fixed",
+      "response": "Imported zlib as a namespace, as the source does, and wrapped only the compression-equivalence test in it.skipIf(!zstdCompressSync). The corrupt-file test still runs on an older Node, where the extractor reports the file as unreadable for lack of zstd. 124 profile tests pass at ab854f60."
+    }
+  ]
+}
+```
