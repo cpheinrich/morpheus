@@ -1727,6 +1727,8 @@ destinations, timezone and notification authority.
 
 Historical imports are notes only: never create or replay actions or send completion notices from
 them. A factual note gets its own pull request; interpretation and action promotion stay separate.
+An authorized current-note completion notice may be sent once the note and required projection are
+verified; record \`not-promoted\` when separate action promotion has not happened yet.
 
 If \`morpheus meeting-intake\` is unknown, run \`morpheus self update\`.
 `;

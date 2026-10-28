@@ -157,10 +157,13 @@ export function completionNotice(record, config) {
             }),
             z.object({ status: z.literal("not-applicable") }),
         ]),
-        actions: z.object({
-            status: z.literal("recorded"),
-            count: z.number().int().nonnegative(),
-        }),
+        actions: z.discriminatedUnion("status", [
+            z.object({
+                status: z.literal("recorded"),
+                count: z.number().int().nonnegative(),
+            }),
+            z.object({ status: z.literal("not-promoted") }),
+        ]),
     })
         .parse(record.delivery);
     const note = z
@@ -214,17 +217,25 @@ export function completionNotice(record, config) {
         dateStyle: "long",
         timeZone: config.timeZone,
     }).format(new Date(note.occurred));
+    const actionsRecorded = delivery.actions.status === "recorded";
+    const recordedActionCount = delivery.actions.status === "recorded" ? delivery.actions.count : 0;
+    const actionStatus = actionsRecorded
+        ? recordedActionCount
+            ? "The action items were also recorded."
+            : "No new action items were filed."
+        : "Key action items remain in the meeting note; separate task promotion is pending.";
     if (!includeSummary) {
-        return (`Meeting notes for ${date} have been summarized and recorded` +
-            (delivery.actions.count
-                ? ", along with the action items"
-                : "; no new action items were filed") +
-            `. ${note.hqUrl}`);
+        if (actionsRecorded) {
+            return (`Meeting notes for ${date} have been summarized and recorded` +
+                (recordedActionCount
+                    ? ", along with the action items"
+                    : "; no new action items were filed") +
+                `. ${note.hqUrl}`);
+        }
+        return (`Meeting notes for ${date} have been summarized and recorded. ${actionStatus} ` + note.hqUrl);
     }
     return (`Meeting notes for ${date} have been summarized and recorded. ${summary} ` +
-        (delivery.actions.count
-            ? "The action items were also recorded."
-            : "No new action items were filed.") +
+        actionStatus +
         ` ${note.hqUrl}`);
 }
 //# sourceMappingURL=core.js.map

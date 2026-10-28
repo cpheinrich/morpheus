@@ -708,6 +708,13 @@ projects Darwin-owned notes. Source interpretation, redaction, participant resol
 writing remain agent judgment under the shared guide. Historical imports are notes only and cannot
 promote actions or pass the notice gate.
 
+The public package and its tests use synthetic organizations, identities, domains and notification
+targets. Real collaborator addresses, repository topology, group aliases, scheduled watcher prompts
+and delivery journals stay in project-owned profiles or ignored local state. For a current note, an
+authorized completion notice waits for the factual record and required projection, not for the
+separate action-promotion change; the journal and notice say whether actions were recorded or remain
+unpromoted.
+
 **New Gemini records are priority-first.** Discovery version 2 declares
 `note_format: priority-first-v1` and leads with an executive summary, key decisions and key action
 items, in that order, before supporting detail. The bounded metadata summary still feeds catalogs

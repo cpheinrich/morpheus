@@ -1822,3 +1822,14 @@ CI validates the declared structure, and immutable projection refuses malformed 
 and unversioned notes remain valid history. Considered `mdast-util-from-markdown` 2.1.0 (published
 2026-10-03) and `marked` 18.1.2 (published 2026-10-26); kept a small domain-specific fenced-heading
 scanner instead because this boundary needs only three level-two headings and no Markdown AST.
+
+## Public meeting-intake code uses synthetic topology — 2026-10-28
+
+MO-26-10-28-13.40.15. Morpheus keeps reusable schemas, validation, immutable reads, formatting and
+skills public, but its fixtures and examples use synthetic organizations, identities, addresses,
+domains and notification targets. Real collaborators, source accounts, repository topology, group
+aliases, watcher prompts and delivery journals belong in private project profiles or ignored local
+state. A current-note completion notice waits for the verified factual record and any required
+projection, not for separate action promotion; it states whether actions were recorded or remain
+unpromoted. Historical notes still cannot notify. This removes project data from current fixtures
+without rewriting already-public Git history, which needs a separate owner decision if desired.
