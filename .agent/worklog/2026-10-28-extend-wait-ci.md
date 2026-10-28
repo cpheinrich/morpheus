@@ -78,7 +78,9 @@ all outside this change: `workflow-expressions` needs a local `actionlint` binar
 
 ## Independent review
 
-A fresh reviewer subagent (high risk: a blocking hook wired into every project is a shared control) cleared the change on one condition and three minor findings, in 7.67 minutes. S1 (substantive, conditional): the guard could write an untracked `local/sessions/` file into any repository the agent had `cd`'d into, including one that does not ignore `local/`; the guard now records state only where `git check-ignore` confirms the path is ignored, and allows the call without state otherwise, with a real-git test proving a foreign repository stays clean. M1: `gh run view $RUN_ID` and heredoc bodies were counted, and the refusal could suggest a `wait-ci --run '$RUN_ID'` that usage rejects; non-numeric ids and heredoc bodies are no longer counted. M2: `--sha` with a short SHA matched nothing and looked like CI never started; it is now a usage error naming `git rev-parse`. M3: `--workflow` could return the previous run's exit code straight after `gh workflow run`; an already-finished latest run without `--sha` is now held for 20 seconds and a newly listed run is followed, with docs updated. I1 (incidental): Codex will not run the new PreToolUse entry until `/hooks` trusts it in each project; trust is keyed per hook (`<file>:pre_tool_use:0:0` in `~/.codex/config.toml`), so the existing SessionStart trust is unaffected, and the step is named in the PR's open questions. No follow-up turn was needed.
+A fresh reviewer subagent (high risk: a blocking hook wired into every project is a shared control) cleared the change on one condition and three minor findings, in 7.67 minutes. S1 (substantive, conditional): the guard could write an untracked `local/sessions/` file into any repository the agent had `cd`'d into, including one that does not ignore `local/`; the guard now records state only where `git check-ignore` confirms the path is ignored, and allows the call without state otherwise, with a real-git test proving a foreign repository stays clean. M1: `gh run view $RUN_ID` and heredoc bodies were counted, and the refusal could suggest a `wait-ci --run '$RUN_ID'` that usage rejects; non-numeric ids and heredoc bodies are no longer counted. M2: `--sha` with a short SHA matched nothing and looked like CI never started; it is now a usage error naming `git rev-parse`. M3: `--workflow` could return the previous run's exit code straight after `gh workflow run`; an already-finished latest run without `--sha` is now held for 20 seconds and a newly listed run is followed, with docs updated. I1 (incidental): Codex will not run the new PreToolUse entry until `/hooks` trusts it in each project; trust is keyed per hook (`<file>:pre_tool_use:0:0` in `~/.codex/config.toml`), so the existing SessionStart trust is unaffected, and the step is named in the PR's open questions. No follow-up turn was needed for the findings.
+
+Follow-up turn by the same reviewer, spent on the hand-resolved merge of trunk 3fd8e28e (#547, which rewrote src/session/install.ts to add PostToolUse read hooks): cleared with no findings in 2.02 minutes. It confirmed #547 read-hook behaviour is unchanged inside the shared per-marker loop, malformed events still block before any write, an unowned guard script skips only the guard, the Codex event set adds only the documented PreToolUse, Morpheus own hook files equal the merged templates (context install --check exits 0), committed dist matches source, the four changed test expectations keep trunk assertions, and the merged build refuses the third poll end to end.
 
 The fixes were verified against GitHub as well: `--workflow Schedule --branch main` held for 29 s and then reported with the warning, a short `--sha` exited 3, and a full `--sha` exited 0.
 
@@ -87,7 +89,7 @@ The fixes were verified against GitHub as well: `--workflow Schedule --branch ma
   "version": 2,
   "base": "e4fd7b585633f3eaf163121fffe4c8a8ce133978",
   "reviewed": "9432c23f68af0918fe6eb8321a3e58929c6d33d5",
-  "covered": "301fb0b09dfebf928f7c2457a99961c564a02148",
+  "covered": "e37d7f6032697fa318c94a3e08c6ed66428392e7",
   "authorSession": "0d17f3e2-e23e-440f-949e-057495fe4e55",
   "reviewerSession": "a814cd10bc96528bf",
   "risk": "high",
@@ -110,7 +112,10 @@ The fixes were verified against GitHub as well: `--workflow Schedule --branch ma
       "id": "S1-untracked-state",
       "severity": "substantive",
       "description": "guardRoot/guardDeps.write created local/sessions/poll-guard-<session>.json in any git repository the payload cwd pointed at, including repositories that do not ignore local/, leaving an untracked file one git add -A from being committed.",
-      "paths": ["src/cli/wait-ci.ts", "src/wait-ci/poll-guard.ts"],
+      "paths": [
+        "src/cli/wait-ci.ts",
+        "src/wait-ci/poll-guard.ts"
+      ],
       "disposition": "fixed",
       "response": "guardRoot now returns the primary checkout only when `git check-ignore -q -- local/sessions/poll-guard.json` succeeds there; otherwise null, so no state is read or written and the call is allowed (fail open). Location unchanged, so no doc paths were needed.",
       "condition": {
@@ -133,7 +138,13 @@ The fixes were verified against GitHub as well: `--workflow Schedule --branch ma
       "id": "M1-unknown-run-ids",
       "severity": "minor",
       "description": "A non-literal run id ($RUN_ID, $(gh run list ...)) was counted under one key and refused with a wait-ci --run suggestion that usage rejects; heredoc body lines were counted as polls.",
-      "paths": ["src/wait-ci/poll-guard.ts", "tests/wait-ci/poll-guard.test.ts", "dist/wait-ci/poll-guard.js", "dist/wait-ci/poll-guard.js.map", "dist/wait-ci/poll-guard.d.ts"],
+      "paths": [
+        "src/wait-ci/poll-guard.ts",
+        "tests/wait-ci/poll-guard.test.ts",
+        "dist/wait-ci/poll-guard.js",
+        "dist/wait-ci/poll-guard.js.map",
+        "dist/wait-ci/poll-guard.d.ts"
+      ],
       "disposition": "fixed",
       "response": "A run positional that is not all digits after URL extraction is now unknown (not counted), like the interactive picker; withoutHeredocBodies drops heredoc bodies (<<, <<-, quoted delimiters) before splitting. Tests cover both, and counting resumes after the delimiter."
     },
@@ -141,7 +152,13 @@ The fixes were verified against GitHub as well: `--workflow Schedule --branch ma
       "id": "M2-short-sha",
       "severity": "minor",
       "description": "--sha with a short SHA matches nothing in gh run list --commit, so the wait ran out the 3-minute grace and reported that no run was found.",
-      "paths": ["src/cli/wait-ci.ts", "tests/wait-ci/wait-run.test.ts", "dist/cli/wait-ci.js", "dist/cli/wait-ci.js.map", "dist/cli/wait-ci.d.ts"],
+      "paths": [
+        "src/cli/wait-ci.ts",
+        "tests/wait-ci/wait-run.test.ts",
+        "dist/cli/wait-ci.js",
+        "dist/cli/wait-ci.js.map",
+        "dist/cli/wait-ci.d.ts"
+      ],
       "disposition": "fixed",
       "response": "usageError now requires 40 hex characters and suggests git rev-parse; tests pin a 7- and a 41-character refusal and an upper-case full SHA acceptance. Verified live: a short SHA exits 3, the full SHA exits 0."
     },
@@ -149,7 +166,19 @@ The fixes were verified against GitHub as well: `--workflow Schedule --branch ma
       "id": "M3-dispatch-race",
       "severity": "minor",
       "description": "Right after gh workflow run, --workflow --branch returned the previous run's verdict and exit code immediately because the new run was not listed yet.",
-      "paths": ["src/wait-ci/wait-run.ts", "src/wait-ci/digest.ts", "tests/wait-ci/wait-run.test.ts", "architecture.md", "docs/runbooks/pm-workflow.md", "dist/wait-ci/wait-run.js", "dist/wait-ci/wait-run.js.map", "dist/wait-ci/wait-run.d.ts", "dist/wait-ci/digest.js", "dist/wait-ci/digest.js.map", "dist/wait-ci/digest.d.ts"],
+      "paths": [
+        "src/wait-ci/wait-run.ts",
+        "src/wait-ci/digest.ts",
+        "tests/wait-ci/wait-run.test.ts",
+        "architecture.md",
+        "docs/runbooks/pm-workflow.md",
+        "dist/wait-ci/wait-run.js",
+        "dist/wait-ci/wait-run.js.map",
+        "dist/wait-ci/wait-run.d.ts",
+        "dist/wait-ci/digest.js",
+        "dist/wait-ci/digest.js.map",
+        "dist/wait-ci/digest.d.ts"
+      ],
       "disposition": "fixed",
       "response": "Without --sha, a latest run that had already finished is held for ALREADY_COMPLETE_SETTLE_MS (20 s); a newer run listed in that window is followed and named, otherwise the old run is reported with a warning naming --run and --sha. Tests cover the hold (sleeps 10 s + 15 s), the immediate --sha report and the dispatched-run follow; architecture.md and pm-workflow.md say to prefer --run after gh workflow run."
     },
@@ -157,9 +186,27 @@ The fixes were verified against GitHub as well: `--workflow Schedule --branch ma
       "id": "I1-codex-trust",
       "severity": "incidental",
       "description": "Editing .codex/hooks.json means Codex will not run the new PreToolUse entry until /hooks trusts it in each project; if trust covered the whole file the SessionStart brief would also stop silently.",
-      "paths": [".codex/hooks.json"],
+      "paths": [
+        ".codex/hooks.json"
+      ],
       "disposition": "fixed",
       "response": "Checked ~/.codex/config.toml: trust is recorded per hook as <file>:<event>:<group>:<hook> with its own trusted_hash, so the existing SessionStart trust survives and only the new pre_tool_use entry needs trusting. Named under Open questions in each PR and in the report to Chris; context install already prints the /hooks instruction."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "a814cd10bc96528bf",
+      "commit": "e37d7f6032697fa318c94a3e08c6ed66428392e7",
+      "base": "3fd8e28ee23be967fc5e15af895d2fffab007226",
+      "scopeReason": "Trunk integration after clearance: merging 3fd8e28e (#547) conflicted in src/session/install.ts, the hook files, decisions and dist, and the resolution combined #547 read-hook wiring with the poll guard in one merge loop and changed four test expectations, so the reviewer inspected the combination rather than relying on trunkIntegrations alone.",
+      "outcome": "cleared",
+      "elapsedMinutes": 2.0215666666666667,
+      "timing": {
+        "source": "runner",
+        "durationMs": 121294,
+        "evidence": "Claude Code Agent tool result for the resumed reviewer subagent a814cd10bc96528bf (SendMessage follow-up started 2026-10-28T22:24:52Z): duration_ms=121294."
+      },
+      "summary": "Follow-up turn by the same reviewer, spent on the hand-resolved merge of trunk 3fd8e28e (#547, which rewrote src/session/install.ts to add PostToolUse read hooks): cleared with no findings in 2.02 minutes. It confirmed #547 read-hook behaviour is unchanged inside the shared per-marker loop, malformed events still block before any write, an unowned guard script skips only the guard, the Codex event set adds only the documented PreToolUse, Morpheus own hook files equal the merged templates (context install --check exits 0), committed dist matches source, the four changed test expectations keep trunk assertions, and the merged build refuses the third poll end to end."
     }
   ]
 }
