@@ -638,3 +638,16 @@ leaving a repair with zero invocations despite no measured exhaustion. Preserve
 sanitized causes and distinct categories while refusing model launch against
 unknown usage. A healthy timer and an unchanged private checkpoint cannot prove
 that recovery or delivery progressed.
+
+## Claude Code's hook payload holds more Bash output than the model saw
+
+2026-10-28 (MO-26-10-28-14.08.05). When a Bash result passes roughly 30,000 characters, Claude Code
+shows the model a ~2 KB `<persisted-output>` preview but keeps ~30,000 characters in the tool's
+result object — what transcripts record as `toolUseResult` and what a `PostToolUse` hook receives
+as `tool_response`. Measured in local transcripts: `stdout` of 29,620–29,984 characters beside
+model-visible previews of 1,326–2,396. Anything that treats `tool_response.stdout` as "what the
+model read" must cap it well below that. Two related facts read from the 2.1.283 binary rather than
+observed live (a nested headless session could not authenticate): `tool_response` is the tool's own
+output object, and a failed call — which is how a non-zero Bash exit is shown — goes to
+`PostToolUseFailure` with the text in `error`, so a `PostToolUse` hook alone never sees what a
+refusing command printed.

@@ -67,22 +67,31 @@ async function localData(path) {
     const generatedLeaseOnly = await onlyGeneratedLease(path);
     return status.split("\0").filter(Boolean).filter(entry => !/^!! (?:.*\/)?node_modules\/?$/.test(entry) && !(entry === "!! local/" && generatedLeaseOnly));
 }
-/** The one ignored local file Morpheus itself creates during context refresh. */
+/**
+ * The ignored local files Morpheus itself creates for context freshness: the
+ * lease `refresh` writes, the record snapshot beside it, and the read log the
+ * read hook appends. Nothing else under `local/` qualifies.
+ */
 async function onlyGeneratedLease(root) {
     const local = join(root, "local");
     const sessions = join(local, "sessions");
-    const name = `${sessionId(root)}.json`;
+    const lease = `${sessionId(root)}.json`;
+    const generated = new Set([lease, `${sessionId(root)}.records.json`, "reads.jsonl"]);
     try {
         if (!(await lstat(local)).isDirectory() || !(await lstat(sessions)).isDirectory())
             return false;
         if ((await readdir(local)).join("\0") !== "sessions")
             return false;
-        if ((await readdir(sessions)).join("\0") !== name)
+        const names = await readdir(sessions);
+        if (!names.length || names.some((name) => !generated.has(name)))
             return false;
-        if (!(await lstat(join(sessions, name))).isFile())
-            return false;
-        const { lease, issue } = await readLease(root, sessionId(root));
-        return !issue && lease?.receipt.worktree === root;
+        for (const name of names)
+            if (!(await lstat(join(sessions, name))).isFile())
+                return false;
+        if (!names.includes(lease))
+            return true;
+        const { lease: read, issue } = await readLease(root, sessionId(root));
+        return !issue && read?.receipt.worktree === root;
     }
     catch {
         return false;

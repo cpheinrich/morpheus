@@ -1833,3 +1833,22 @@ state. A current-note completion notice waits for the verified factual record an
 projection, not for separate action promotion; it states whether actions were recorded or remain
 unpromoted. Historical notes still cannot notify. This removes project data from current fixtures
 without rewriting already-public Git history, which needs a separate owner decision if desired.
+
+## Context refresh is idempotent and certifies from a read log — 2026-10-28
+
+MO-26-10-28-14.08.05. Chris asked for the context protocol's intent to be enforced in code after the
+2026-10-07 instruction change did not change behaviour and agents were measured taking receipts
+with `cat … >/dev/null && morpheus context refresh`. Refresh extends an unchanged receipt and asks
+for nothing. Otherwise, where a provider `PostToolUse` hook is live, each required record is
+certified only where this session's `local/sessions/reads.jsonl` covers it at its current
+fingerprint: the whole record without a recorded baseline, else the hunks changed since the
+snapshot taken with the last receipt. Credit is by content — record lines verbatim in what the tool
+returned — rather than by parsing shell commands, and shell output above 20 KB (8 KB for Codex)
+earns nothing because Claude keeps ~30 KB in the hook payload while showing the model a 2 KB
+preview. Evidence is content-addressed and read across every worktree of the repository. The hook
+enforces only after it has run and understood a result in this provider session; a human terminal,
+unwired project, untrusted Codex hook or unknown payload shape stays on the assertion with a
+warning, and `MORPHEUS_READ_EVIDENCE=off` is the declared escape for a hook that cannot see a read.
+Receipts stay local and startup still never certifies. Considered `diff` (jsdiff, zero runtime
+dependencies) for the hunks; used Git's `diff --no-index`, already required by every session
+command. No new dependency.
