@@ -163,7 +163,8 @@ with both appended entries kept, and the test was repeated.
 ## Independent review
 
 One fresh reviewer session, `ae671b109cbdc0980` (Claude Code subagent), took three turns at high
-risk. The risk is high because `pr / conventions` gates merges in every consuming repository.
+risk. The risk is high because `pr / conventions` gates merges in every consuming repository. In the
+JSON record below, each finding id carries the turn that raised it: `T1-F1` is F1, `T2-N1` is N1.
 
 **Turn 1 (`11c65d90`): complete, blocked on F1.**
 - **F1, substantive.** The in-step pass would attach to the old SHA as `pr / conventions`. A
@@ -223,7 +224,7 @@ prose restates behaviour it had already reviewed.
   ],
   "findings": [
     {
-      "id": "F1",
+      "id": "T1-F1",
       "severity": "substantive",
       "description": "An in-step pass attached to the superseded SHA as the required pr / conventions. After a force-push back to that SHA it was a green required check with nothing checked, until a new run reported or indefinitely if none was triggered, and wait-ci reported green; before the change that state was red.",
       "paths": [".github/workflows/pr-check.yml", ".agent/decisions.md", "docs/runbooks/independent-review.md", ".agent/worklog/2026-10-28-pass-superseded-runs.md"],
@@ -231,7 +232,7 @@ prose restates behaviour it had already reviewed.
       "response": "Fixed by redesign in 824de7b5. A head job decides supersession first; the required job, which needs it and runs under always(), is named superseded only on proof of a move. So a superseded pass is pr / superseded and never pr / conventions. A failed or cancelled head, a lagging read, or a late move fails pr / conventions. Live runs on #544 confirmed the naming. Turn 2 cleared it."
     },
     {
-      "id": "F2",
+      "id": "T1-F2",
       "severity": "minor",
       "description": "No test exercised the non-SHA event-head rejection, so removing the EXPECTED_HEAD =~ $sha clause would have passed every test.",
       "paths": ["tests/workflows.test.ts"],
@@ -239,7 +240,7 @@ prose restates behaviour it had already reviewed.
       "response": "Added the 'event head not a SHA' case to the head-decision tests in 824de7b5; the mutant that drops the clause is killed. Turn 2 confirmed it."
     },
     {
-      "id": "N1",
+      "id": "T2-N1",
       "severity": "minor",
       "description": "Because conventions now needs head, the required check run is created only after head finishes: about 6 s normally, longer under a runner backlog. This lengthens the existing window in which an older genuine pass stands after approval is withdrawn on an unchanged head.",
       "paths": [".agent/decisions.md"],
@@ -247,7 +248,7 @@ prose restates behaviour it had already reviewed.
       "response": "Documented in the decision entry (55d831a3) as an accepted cost: the measured timing and the lengthened pre-existing window. The finalization turn attested that the prose restates the reviewed behaviour."
     },
     {
-      "id": "I1",
+      "id": "T2-I1",
       "severity": "incidental",
       "description": "wait-ci reports green when a required check has never reported, for example a draft whose conventions job was skipped, or a head returned to a superseded SHA, while GitHub still blocks the merge.",
       "paths": ["src/wait-ci/checks.ts"],
