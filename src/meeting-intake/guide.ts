@@ -12,7 +12,9 @@ Keep \`.morpheus/meeting-intake.json\` in the project repository. It names the p
 canonical repository/directory/web URL, optional projection, Gmail account and senders, known
 collaborator emails, topic vocabulary, timezone and any explicitly authorized notification target.
 The canonical repository may be this project. A projection is optional; do not invent a second
-copy merely because an earlier project needed one.
+copy merely because an earlier project needed one. A notification profile may set
+\`includeSummary: true\`; the notice gate then requires and includes the note's bounded, one-line
+summary from the delivery journal.
 
 ## Read and distill
 
@@ -62,7 +64,8 @@ another note, action or notice.
 \`morpheus meeting-intake notification --state <journal> --meeting <id>\` only formats text. It
 requires an explicitly authorized profile, a current (not historical) note, verified factual PR,
 the required verified projection or an honest not-applicable result, recorded action count, matching
-digest and canonical URL. \`sending\`, \`sent\` and \`uncertain\` refuse retries. Persist
+digest and canonical URL. Summary-enabled profiles also require the verified note summary.
+\`sending\`, \`sent\` and \`uncertain\` refuse retries. Persist
 \`sending\` before the external send, then \`sent\` only after observed success; reconcile an
 uncertain outcome before retrying.
 `;

@@ -78,6 +78,7 @@ export declare const MeetingIntakeConfig: z.ZodObject<{
         adapter: z.ZodLiteral<"zoe-text">;
         recipient: z.ZodString;
         authorized: z.ZodLiteral<true>;
+        includeSummary: z.ZodDefault<z.ZodBoolean>;
     }, z.core.$strip>>;
 }, z.core.$strip>;
 export type MeetingIntakeConfig = z.infer<typeof MeetingIntakeConfig>;

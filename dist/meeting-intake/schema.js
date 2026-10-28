@@ -94,6 +94,7 @@ export const MeetingIntakeConfig = z
         adapter: z.literal("zoe-text"),
         recipient: oneLine,
         authorized: z.literal(true),
+        includeSummary: z.boolean().default(false),
     })
         .optional(),
 })
