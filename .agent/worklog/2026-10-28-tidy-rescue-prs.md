@@ -145,6 +145,12 @@ High-risk review of churn reset, replay dedupe and the manager age-out, cleared 
     "evidence": "Claude Code Agent tool result for reviewer agentId ade90a114a0af6d93 (initial turn): usage duration_ms=536659."
   },
   "outcome": "complete",
+  "trunkIntegrations": [
+    {
+      "commit": "4cac975b2b8bba6996781b17df4165689180ee12",
+      "reason": "Merged origin/main at 0887908f (#543). The only conflict was .agent/learned.md, where both sides appended a new section at the end of the file; resolved by keeping trunk's Codex-rollout section followed by this branch's rescue-dedupe section, with no text changed in either."
+    }
+  ],
   "summary": "High-risk review of churn reset, replay dedupe and the manager age-out, cleared on one condition. F1 (substantive, conditional): a git rm --cached file was reset over as churn; fixed by refusing any index removal still on disk before commit or reset, which also fixes the older F2 loss in the rescue path. Minor F3 (on-trunk only when the checkout fast-forwards), F4 (age-out promise only where the manager policy closes) and F5 (close before the marker comment) were fixed by the author.",
   "findings": [
     {
