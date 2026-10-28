@@ -49,10 +49,10 @@ the focused and full suites exercise their material boundaries.
 
 ## Independent review
 
-Independent normal-risk review found one substantive content-validation gap: empty Markdown
-scaffolding could satisfy a required section. The reviewer conditionally cleared a bounded fix;
-empty fenced blocks, multiline comments and empty list items are now rejected in both project and
-canonical-ingestion regressions, and the required focused evidence passed.
+Independent normal-risk review found one substantive content-validation gap. The reviewer conditionally cleared the bounded fix, and empty Markdown scaffolding is now rejected with focused project and canonical-ingestion evidence.
+
+The regressions cover empty fenced blocks, multiline comments and empty list items, and all
+required focused evidence passed.
 
 ```morpheus-review
 {
