@@ -96,3 +96,113 @@ kairos#71 differ in bytes and are structurally equal, so all three would now be 
 equal. Every `.pbxproj` and `.xcscheme` on Evo, Kairos and Lakina `main` parses (no silent
 fall-through to "real"); a 47 KB pbxproj parses in about 1 ms. Not run: a live Xcode session
 rewriting a trunk checkout end to end — the fixture-repo tests drive the same Git path.
+
+## Review
+
+One fresh reviewer subagent (runner id `ade90a114a0af6d93`, no inherited history) reviewed
+`e4fd7b58..d4144002` at high risk (a `git reset --hard` on a person's checkout, and an App closing
+pull requests across repositories) in 8.94 minutes by runner metadata. It cleared the change on
+one condition. It confirmed the merge of trunk is exact, that compiled `dist/` matches source for
+every touched module, and ran the three focused suites (149 passed).
+
+- **F1 (substantive, conditionally cleared):** a `git rm --cached` file was classified as churn (or
+  as "already on trunk" once trunk untracked it too), and the reset overwrote the newer file on
+  disk while the report claimed it was recoverable. Fixed within the condition: the rescue now
+  refuses any path removed from the index that still exists on disk (`stagedRemovalsOnDisk`,
+  lstat), before anything is committed or reset, with a runbook line for the new refusal.
+- **F2 (incidental, pre-existing since #362):** the same loss in the ordinary rescue and duplicate
+  paths. The same refusal fixes it, inside F1's condition paths.
+- **F3 (minor):** "already on trunk" assumed a fast-forward that a checkout with local trunk
+  commits never gets. Now offered only when HEAD is an ancestor of trunk; `classifyChanges` takes
+  `null` for "unknown", so a deletion is not misread as absent from trunk.
+- **F4 (minor):** the PR body promised the age-out in projects with no GitHub Manager. It now says
+  so only when trunk's `.github/morpheus-gh-manager.json` leaves closing enabled.
+- **F5 (minor):** posting the `close` marker before a close that then failed would read as a
+  person reopening it, leaving the draft open for good. The rescue close now closes first.
+
+Condition evidence, run on `7446038d`: a fixture test reproducing the probe (untrack
+`xcuserdata` with `git rm -r --cached`, keep a newer file, then untrack it on trunk too) asserts
+`skipped`, the on-disk content intact, no PR and no branch; with the refusal disabled it fails
+with `outcome: 'churn'`. `pnpm exec vitest run tests/trunk-churn.test.ts tests/trunk-rescue.test.ts
+tests/gh-manager.test.ts` 152 passed; the seven focused files 221 passed; `pnpm typecheck`,
+`pnpm lint` and `pnpm compile` passed.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "e4fd7b585633f3eaf163121fffe4c8a8ce133978",
+  "reviewed": "d4144002be499409ee2039dd765500a1a050cd9a",
+  "covered": "7446038df1188940426a58b04dc2d76bf6dacd85",
+  "authorSession": "0d17f3e2-e23e-440f-949e-057495fe4e55",
+  "reviewerSession": "ade90a114a0af6d93",
+  "risk": "high",
+  "elapsedMinutes": 8.944316666666667,
+  "timing": {
+    "source": "runner",
+    "durationMs": 536659,
+    "evidence": "Claude Code Agent tool result for reviewer agentId ade90a114a0af6d93 (initial turn): usage duration_ms=536659."
+  },
+  "outcome": "complete",
+  "summary": "High-risk review of churn reset, replay dedupe and the manager age-out, cleared on one condition. F1 (substantive, conditional): a git rm --cached file was reset over as churn; fixed by refusing any index removal still on disk before commit or reset, which also fixes the older F2 loss in the rescue path. Minor F3 (on-trunk only when the checkout fast-forwards), F4 (age-out promise only where the manager policy closes) and F5 (close before the marker comment) were fixed by the author.",
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "substantive",
+      "description": "A path removed from the index with git rm --cached but kept on disk was classified as user-state (or on-trunk once trunk untracked it), and reset --hard overwrote the newer file while the report claimed it was recoverable from the commit.",
+      "paths": ["src/session/trunk-churn.ts", "src/session/trunk-rescue.ts"],
+      "disposition": "fixed",
+      "response": "rescueDirtyTrunk now refuses, before any commit or reset, every path removed from the index (staged deletion, rename source, or unstaged deletion) that still exists on disk by lstat; the churn classifier only ever sees deletions with nothing on disk.",
+      "condition": {
+        "paths": [
+          "src/session/trunk-churn.ts",
+          "src/session/trunk-rescue.ts",
+          "tests/trunk-churn.test.ts",
+          "tests/trunk-rescue.test.ts",
+          "dist/session/trunk-churn.js",
+          "dist/session/trunk-churn.d.ts",
+          "dist/session/trunk-churn.js.map",
+          "dist/session/trunk-rescue.js",
+          "dist/session/trunk-rescue.d.ts",
+          "dist/session/trunk-rescue.js.map",
+          ".agent/worklog/2026-10-28-tidy-rescue-prs.md",
+          "docs/runbooks/context-freshness.md"
+        ],
+        "evidence": "A fixture test reproducing the git rm --cached probe asserts the outcome is not churn and the on-disk content survives; then pnpm exec vitest run tests/trunk-churn.test.ts tests/trunk-rescue.test.ts, pnpm typecheck and pnpm compile."
+      },
+      "conditionMet": "tests/trunk-rescue.test.ts 'refuses a file removed from the index but kept on disk, rather than resetting over it' untracks xcuserdata, keeps a newer file, then untracks it on trunk too; both runs are skipped with the content intact and no PR or branch. With the refusal disabled it fails with outcome churn. vitest on trunk-churn, trunk-rescue and gh-manager: 152 passed; pnpm typecheck and pnpm compile passed at 7446038d."
+    },
+    {
+      "id": "F2",
+      "severity": "incidental",
+      "description": "Pre-existing since #362: in the ordinary rescue and duplicate paths a staged deletion whose file is still on disk is recorded only as a deletion, invisible to the content proof, and reset --hard overwrites the file.",
+      "paths": ["src/session/trunk-rescue.ts"],
+      "disposition": "fixed",
+      "response": "The F1 refusal runs before the rescue commit is built, so it covers the rescue and duplicate paths too; the refusal is documented in the context-freshness runbook."
+    },
+    {
+      "id": "F3",
+      "severity": "minor",
+      "description": "on-trunk assumed the fast-forward after the reset, which never runs for a checkout with local trunk commits, so such an edit was reset to HEAD's version.",
+      "paths": ["src/session/trunk-churn.ts", "src/session/trunk-rescue.ts", "tests/trunk-churn.test.ts", "tests/trunk-rescue.test.ts"],
+      "disposition": "fixed",
+      "response": "classifyChurn passes trunk entries only when HEAD is an ancestor of the fetched trunk, else null; classifyChanges treats null as unknown so nothing, including a deletion, is called on-trunk. Unit and fixture tests cover the ahead checkout."
+    },
+    {
+      "id": "F4",
+      "severity": "minor",
+      "description": "The rescue PR body promised the GitHub Manager would close the draft in every project, though most have no manager policy and the draft would stay open while telling readers to ignore it.",
+      "paths": ["src/session/trunk-rescue.ts", "tests/trunk-rescue.test.ts", "docs/runbooks/context-freshness.md"],
+      "disposition": "fixed",
+      "response": "The sentence is included only when the fetched trunk's .github/morpheus-gh-manager.json leaves the manager enabled and closing on; tests cover present, absent and close-disabled policies."
+    },
+    {
+      "id": "F5",
+      "severity": "minor",
+      "description": "The close marker comment was posted before gh pr close; if the close failed, the next sweep read the marker as a person reopening it and left the draft open with no label.",
+      "paths": ["src/gh-manager/decision.ts", "dist/gh-manager/decision.js", "dist/gh-manager/decision.js.map", "tests/gh-manager.test.ts"],
+      "disposition": "fixed",
+      "response": "closeRescuedTrunk now orders close, then the marker comment, then label removal; a failed close posts nothing and the next run retries. The test pins the order."
+    }
+  ]
+}
+```
