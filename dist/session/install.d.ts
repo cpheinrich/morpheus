@@ -12,14 +12,25 @@
  * separate bootstrap command.
  */
 export declare const SESSION_START_COMMAND = "sh .morpheus/session-start.sh";
+/** What identifies the read hook in a hooks file, however a project wraps it. */
+export declare const READ_HOOK_MARKER = "context record-read";
 /**
- * The two files, byte-identical when neither exists yet.
+ * The read hook (`src/session/read-hook.ts`), inline rather than a checked-in
+ * script: a PostToolUse hook runs in whatever directory the session is in, so
+ * a relative script path would fail — loudly, after every tool call — the
+ * moment an agent's shell left the project root. It recovers the same tool
+ * paths as the session-start shim and is silent and successful whatever
+ * happens — `morpheus` absent, or an installed CLI older than this command:
+ * a hook error after every tool call would be noise in every session, and
+ * missing evidence already fails safe, to the assertion with a warning.
+ */
+export declare const READ_HOOK_COMMAND: string;
+/**
+ * The two files. They differ only in the read hook's events.
  *
- * That is a coincidence of both tools converging on Claude Code's schema, not
- * a reason to write one file and symlink it: `.claude/settings.json` is a
- * whole settings document that also carries permissions, plugins and a theme,
- * while `.codex/hooks.json` holds hooks and nothing else. They diverge the
- * moment either project sets anything else.
+ * Not one file symlinked: `.claude/settings.json` is a whole settings document
+ * that also carries permissions, plugins and a theme, while
+ * `.codex/hooks.json` holds hooks and nothing else.
  */
 export declare const claudeSettingsFile: () => string;
 export declare const codexHooksFile: () => string;

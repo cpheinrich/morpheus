@@ -6,6 +6,7 @@ import {
   CLAUDE_SETTINGS,
   CODEX_HOOKS,
   MANIFEST,
+  READ_HOOK_COMMAND,
   installContext,
   type Repair,
 } from "../src/session/install.js";
@@ -105,8 +106,55 @@ describe("morpheus context install", () => {
       hooks: { PostToolUse: unknown[]; SessionStart: unknown[] };
     };
     expect(doc.permissions).toEqual({ defaultMode: "auto" });
-    expect(doc.hooks.PostToolUse).toHaveLength(1);
+    // Theirs kept, the read hook appended beside it.
+    expect(doc.hooks.PostToolUse).toEqual([
+      { matcher: "Bash", hooks: [] },
+      { matcher: "Read|Bash", hooks: [{ type: "command", command: READ_HOOK_COMMAND }] },
+    ]);
     expect(doc.hooks.SessionStart).toHaveLength(1);
+  });
+
+  it("wires the read hook for each provider's own events", async () => {
+    await run();
+    const claude = (await json(CLAUDE_SETTINGS)) as { hooks: Record<string, unknown> };
+    expect(claude.hooks["PostToolUse"]).toEqual([{ matcher: "Read|Bash", hooks: [{ type: "command", command: READ_HOOK_COMMAND }] }]);
+    // Claude reports a non-zero Bash exit — how `refresh` prints a refusal — as a failure event.
+    expect(claude.hooks["PostToolUseFailure"]).toEqual([{ matcher: "Bash", hooks: [{ type: "command", command: READ_HOOK_COMMAND }] }]);
+    const codex = (await json(CODEX_HOOKS)) as { hooks: Record<string, unknown> };
+    expect(codex.hooks["PostToolUse"]).toEqual([{ hooks: [{ type: "command", command: READ_HOOK_COMMAND }] }]);
+    // An event Codex does not define could invalidate the file and the session hook with it.
+    expect(Object.keys(codex.hooks).sort()).toEqual(["PostToolUse", "SessionStart"]);
+  });
+
+  it("adds only the read hook to a project wired before it existed", async () => {
+    const legacy = { hooks: { SessionStart: [{ hooks: [{ type: "command", command: "sh .morpheus/session-start.sh" }] }] } };
+    await mkdir(join(dir, ".codex"), { recursive: true });
+    await writeFile(join(dir, CODEX_HOOKS), JSON.stringify(legacy));
+    await run();
+    const second = at(await run(), CODEX_HOOKS);
+    expect(second.outcome).toBe("present");
+
+    await writeFile(join(dir, CODEX_HOOKS), JSON.stringify(legacy));
+    const repair = at(await run(), CODEX_HOOKS);
+    expect(repair.outcome).toBe("updated");
+    expect(repair.detail).toBe("Added the read hook (PostToolUse) beside any hooks already there.");
+    const doc = (await json(CODEX_HOOKS)) as { hooks: { SessionStart: unknown[] } };
+    expect(doc.hooks.SessionStart).toEqual(legacy.hooks.SessionStart);
+  });
+
+  it("refuses, leaving the file as it was, when a read-hook event is not an array", async () => {
+    await mkdir(join(dir, ".claude"), { recursive: true });
+    const before = JSON.stringify({ hooks: { PostToolUseFailure: { matcher: "Bash" } } });
+    await writeFile(join(dir, CLAUDE_SETTINGS), before);
+    const repair = at(await run(), CLAUDE_SETTINGS);
+    expect(repair.outcome).toBe("blocked");
+    expect(repair.detail).toContain('"hooks.PostToolUseFailure" is not an array');
+    expect(await read(CLAUDE_SETTINGS)).toBe(before);
+  });
+
+  it("runs the hook through a shell that cannot fail the tool call", () => {
+    expect(READ_HOOK_COMMAND).toContain("morpheus context record-read >/dev/null 2>&1; exit 0");
+    expect(READ_HOOK_COMMAND).toContain("command -v morpheus");
   });
 
   it("appends beside a SessionStart hook that is already there", async () => {

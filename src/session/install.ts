@@ -36,20 +36,57 @@ const sessionStartBlock = () => ({
   SessionStart: [{ hooks: [{ type: "command", command: SESSION_START_COMMAND }] }],
 });
 
+/** What identifies the read hook in a hooks file, however a project wraps it. */
+export const READ_HOOK_MARKER = "context record-read";
+
 /**
- * The two files, byte-identical when neither exists yet.
+ * The read hook (`src/session/read-hook.ts`), inline rather than a checked-in
+ * script: a PostToolUse hook runs in whatever directory the session is in, so
+ * a relative script path would fail — loudly, after every tool call — the
+ * moment an agent's shell left the project root. It recovers the same tool
+ * paths as the session-start shim and is silent and successful whatever
+ * happens — `morpheus` absent, or an installed CLI older than this command:
+ * a hook error after every tool call would be noise in every session, and
+ * missing evidence already fails safe, to the assertion with a warning.
+ */
+export const READ_HOOK_COMMAND =
+  "sh -c 'PATH=\"${PATH:-/usr/bin:/bin}:${HOME:-/nonexistent}/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; " +
+  "command -v morpheus >/dev/null 2>&1 && morpheus context record-read >/dev/null 2>&1; exit 0'";
+
+const readHook = () => ({ type: "command", command: READ_HOOK_COMMAND });
+
+/**
+ * Claude Code: after Read and Bash, and after a Bash that exited non-zero —
+ * Claude reports that as a failed tool call carrying the output in `error`,
+ * and `context refresh` exits 1 exactly when it prints lines to be read.
+ */
+const claudeReadBlocks = (): Json => ({
+  PostToolUse: [{ matcher: "Read|Bash", hooks: [readHook()] }],
+  PostToolUseFailure: [{ matcher: "Bash", hooks: [readHook()] }],
+});
+
+/**
+ * Codex: no `matcher`, because its shell tool's name in hook payloads is not
+ * documented and every tool's output is cheap to scan. No failure event: it
+ * has none, and an unknown event key could invalidate the whole file —
+ * taking the session-start hook down with it.
+ */
+const codexReadBlocks = (): Json => ({
+  PostToolUse: [{ hooks: [readHook()] }],
+});
+
+/**
+ * The two files. They differ only in the read hook's events.
  *
- * That is a coincidence of both tools converging on Claude Code's schema, not
- * a reason to write one file and symlink it: `.claude/settings.json` is a
- * whole settings document that also carries permissions, plugins and a theme,
- * while `.codex/hooks.json` holds hooks and nothing else. They diverge the
- * moment either project sets anything else.
+ * Not one file symlinked: `.claude/settings.json` is a whole settings document
+ * that also carries permissions, plugins and a theme, while
+ * `.codex/hooks.json` holds hooks and nothing else.
  */
 export const claudeSettingsFile = (): string =>
-  JSON.stringify({ hooks: sessionStartBlock() }, null, 2) + "\n";
+  JSON.stringify({ hooks: { ...sessionStartBlock(), ...claudeReadBlocks() } }, null, 2) + "\n";
 
 export const codexHooksFile = (): string =>
-  JSON.stringify({ hooks: sessionStartBlock() }, null, 2) + "\n";
+  JSON.stringify({ hooks: { ...sessionStartBlock(), ...codexReadBlocks() } }, null, 2) + "\n";
 
 export const CLAUDE_SETTINGS = ".claude/settings.json";
 export const CODEX_HOOKS = ".codex/hooks.json";
@@ -129,14 +166,14 @@ const isObject = (v: unknown): v is Json =>
  * twice every session, which reads as a bug in the protocol rather than in
  * this command.
  */
-function alreadyWired(entries: unknown[]): boolean {
+function alreadyWired(entries: unknown[], marker: string = MORPHEUS_SESSION_START): boolean {
   return entries.some((entry) => {
     if (!isObject(entry) || !Array.isArray(entry["hooks"])) return false;
     return (entry["hooks"] as unknown[]).some(
       (h) =>
         isObject(h) &&
         typeof h["command"] === "string" &&
-        h["command"].includes(MORPHEUS_SESSION_START),
+        h["command"].includes(marker),
     );
   });
 }
@@ -174,6 +211,7 @@ async function ensureHook(
   root: string,
   rel: string,
   template: () => string,
+  readBlocks: () => Json,
   write: boolean,
 ): Promise<Repair> {
   const path = join(root, rel);
@@ -214,23 +252,43 @@ async function ensureHook(
     };
   }
   const entries: unknown[] = Array.isArray(sessionStart) ? sessionStart : [];
-  if (alreadyWired(entries)) {
-    return { target: rel, outcome: "present", detail: "Already runs the Morpheus session shim." };
-  }
-
-  const legacy = withoutLegacyBrief(entries);
-  block["SessionStart"] = [...legacy.entries, sessionStartBlock().SessionStart[0]];
-  if (write) await writeJson(path, { ...doc, hooks: block });
-  return {
-    target: rel,
-    outcome: "updated",
-    detail:
+  const done: string[] = [];
+  if (!alreadyWired(entries)) {
+    const legacy = withoutLegacyBrief(entries);
+    block["SessionStart"] = [...legacy.entries, sessionStartBlock().SessionStart[0]];
+    done.push(
       legacy.removed
         ? "Replaced the legacy direct brief with the version-independent session shim."
         : entries.length > 0
           ? "Added the Morpheus session shim alongside the SessionStart hooks already there."
           : "Added the session-start hook, keeping the rest of the file.",
-  };
+    );
+  }
+
+  // Every event checked before anything is written, so a malformed one leaves
+  // the file exactly as it was rather than half-repaired.
+  const missing: string[] = [];
+  for (const [event, wanted] of Object.entries(readBlocks())) {
+    const current = block[event];
+    if (current !== undefined && !Array.isArray(current)) {
+      return {
+        target: rel,
+        outcome: "blocked",
+        detail: `Left untouched — its "hooks.${event}" is not an array.`,
+      };
+    }
+    const list: unknown[] = Array.isArray(current) ? current : [];
+    if (alreadyWired(list, READ_HOOK_MARKER)) continue;
+    block[event] = [...list, ...(wanted as unknown[])];
+    missing.push(event);
+  }
+  if (missing.length) done.push(`Added the read hook (${missing.join(", ")}) beside any hooks already there.`);
+
+  if (!done.length) {
+    return { target: rel, outcome: "present", detail: "Already runs the Morpheus session shim and read hook." };
+  }
+  if (write) await writeJson(path, { ...doc, hooks: block });
+  return { target: rel, outcome: "updated", detail: done.join(" ") };
 }
 
 async function ensureManagedFile(
@@ -416,10 +474,10 @@ export async function installContext(root: string, opts: InstallOptions): Promis
     sessionStart,
     readme,
     scriptsReady
-      ? await ensureHook(root, CLAUDE_SETTINGS, claudeSettingsFile, opts.write)
+      ? await ensureHook(root, CLAUDE_SETTINGS, claudeSettingsFile, claudeReadBlocks, opts.write)
       : blockedHook(CLAUDE_SETTINGS),
     scriptsReady
-      ? await ensureHook(root, CODEX_HOOKS, codexHooksFile, opts.write)
+      ? await ensureHook(root, CODEX_HOOKS, codexHooksFile, codexReadBlocks, opts.write)
       : blockedHook(CODEX_HOOKS),
     await ensureHandle(root, opts),
   ];

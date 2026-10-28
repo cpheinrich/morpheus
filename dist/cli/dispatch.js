@@ -381,6 +381,10 @@ async function dispatchContext({ flags, command }) {
     const off = offlineDeclared(flags.offline);
     if (command === "refresh")
         return contextRefresh(process.cwd(), off);
+    // The PostToolUse read hook. `index.ts` routes it before loading the CLI;
+    // this is the same entry for anything that calls `run` directly.
+    if (command === "record-read")
+        return (await import("../session/read-hook.js")).runReadHook();
     if (command === "check")
         return contextCheck(process.cwd(), off);
     if (command === "brief" || command === "start") {

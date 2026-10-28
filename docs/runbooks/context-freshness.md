@@ -101,6 +101,66 @@ pipe `refresh` output through `head` or `tail`: the delta it prints is what you 
 over August–October 2026, agents refreshed 738 times (median four per session), about half within
 five minutes of the previous refresh, while only 25 of 828 gated commands were ever refused.
 
+**Refresh is idempotent.** When the trunk and every required record are exactly as this
+worktree's receipt saw them, `refresh` extends that receipt and prints one line — *Context
+unchanged since …; nothing to re-read*. The October instruction to refresh less did not change
+behaviour (refreshes per session rose), so a redundant refresh is now simply free instead of
+being a reason to re-read 139 KB of decisions or pretend to.
+
+### Read evidence
+
+`refresh` used to be a bare assertion, and transcripts showed agents taking it without reading:
+`cat .agent/decisions.md … >/dev/null && morpheus context refresh`. Now a **read hook** records
+what each tool call actually showed the model, and where it is live, `refresh` certifies a record
+only where that log covers it **at the record's current content**.
+
+- **What counts.** A Read tool result, by its line range, after checking the returned text is what
+  is on disk. Shell output, by content: the record's lines that appear verbatim and in order in
+  what the command returned, in runs of at least 16 non-space characters. `>/dev/null`, `| wc` and
+  numbered output (`cat -n`, `grep -n`) leave nothing to match; `| head` earns only the lines it
+  let through. Shell output over 20,000 bytes (8,000 for Codex) earns nothing, because Claude Code
+  keeps ~30,000 characters in the hook payload while showing the model a 2 KB preview. Ranges from
+  several reads add up, so a large record can be read in pieces.
+- **What is required.** With no usable receipt (every new session — `brief` discards the last
+  one), every line of every required record. With a receipt that was itself recorded, only the
+  hunks that changed since it, from Git's own diff against the content snapshot taken with it.
+  An asserted receipt, or one taken before evidence existed, is never the baseline a recorded
+  one extends.
+- **What a refusal does.** It writes nothing, names each record and its unread line ranges, and
+  prints the changed lines raw (with enough context to count). Where the hook can see that
+  output it *is* the reading, so the next `refresh` certifies; otherwise read the ranges with the
+  Read tool (offset/limit) or `sed -n 'A,Bp' <path>` with nothing piped or redirected.
+- **Content-addressed, so checkouts share it.** Evidence is keyed by record and content
+  fingerprint, and `refresh` reads the logs of every worktree of the repository. Records read in
+  the primary checkout count in the task worktree `pm claim` prepares at the same trunk.
+- **Your own writes are not deltas.** `pm block` and other recorded writes move the receipt and
+  its snapshot together, so the next refresh does not ask you to read what you wrote.
+
+The log is `local/sessions/reads.jsonl` in each checkout (ignored, pruned past 256 KB to the last
+two days); entries carry a hash of the provider session id, never the raw id, and never content.
+The snapshot is `local/sessions/<lease>.records.json`. `pm cleanup` treats both, like the lease, as
+generated.
+
+**Where no hook is watching, refresh falls back to the assertion and says so** — `! Certified by
+assertion: …`. That is a human terminal, a tool without hooks, a project not yet wired, a Codex
+hook not yet trusted, or a Claude session that started before the hook was added (Claude snapshots
+hooks at session start). The hook only enforces after it has run in this session and understood a
+tool result, so an unrecognized payload shape degrades to the warning, never to a lockout.
+`MORPHEUS_READ_EVIDENCE=off` forces the assertion for a hook that runs but demonstrably cannot see
+a read; the receipt records `asserted` and `context status` shows it. It is not a way to skip
+reading.
+
+The hooks, both scaffolded by `init` and merged in by `context install`:
+
+| File | Events | Matcher |
+|---|---|---|
+| `.claude/settings.json` | `PostToolUse`, and `PostToolUseFailure` (a Bash that exits non-zero, which is how `refresh` prints a refusal) | `Read\|Bash`, `Bash` |
+| `.codex/hooks.json` | `PostToolUse` | none — Codex's shell tool name is undocumented, so every result is scanned |
+
+Each runs `morpheus context record-read` inline, silently, exiting 0 whatever happens — a hook
+error after every tool call would be noise, and missing evidence already fails safe. Codex needs
+the new hook trusted with `/hooks`, like the session-start one.
+
 ```sh
 morpheus context status    # what the current lease says, and how old it is
 morpheus context check     # exit non-zero unless fresh — for hooks and scripts
@@ -129,8 +189,9 @@ looks exactly like working.
 
 **When something has moved**, `context refresh` prints what landed on the trunk and which records
 changed. Re-read those and refresh again — the delta is the point, not the ceremony. **Do not
-refresh without reading.** The receipt is your assertion, and a receipt taken to clear a gate is
-the one failure mode the whole protocol cannot detect.
+refresh without reading.** Where the read hook is live it refuses to; elsewhere the receipt is
+still your assertion, and a receipt taken to clear a gate is the failure the assertion cannot
+detect.
 
 **Offline**, set `MORPHEUS_OFFLINE=1` — or pass `--offline`. Local work proceeds; anything that leaves the machine —
 pushing a claim, granting access — stays refused, because an unverified trunk is exactly when you

@@ -91,15 +91,17 @@ run and for anything the shim reports.
 Run `morpheus context brief` at session start if the hook did not; follow its `WORK IN` path.
 On a dirty trunk it moves tracked edits to a `wip/trunk-*` draft PR, then fast-forwards; `doctor --all` lists stuck trunks.
 
-**Read `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md` once at session
-start, then run `morpheus context refresh` once.** After that, just run the gated command
+**Read `AGENTS.md`, `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md` once
+at session start — `AGENTS.md` too, because an injected copy leaves no read evidence — then run
+`morpheus context refresh` once.** After that, just run the gated command
 (`pm claim`, `pm new`, `pm link-issue`, `pm block`, `access sync`, `firebase auth setup`,
-`web init` provisioning). Past the five-minute term the gate re-checks trunk and the records itself and
-re-certifies when nothing moved; read-only and mechanical commands are never gated.
-**Refresh again only when a gated command refuses**, and then
-re-read only what the refusal or the refresh names. Never pipe `refresh` output through
-`head`/`tail` — the delta it prints is the point. **Do not refresh without reading**: the receipt
-is your assertion, and one taken to clear a gate is the failure the protocol cannot detect.
+`web init` provisioning); past the five-minute term the gate re-certifies when nothing moved.
+**Refresh again only when a gated command refuses.** Refresh is idempotent: unchanged state
+extends the receipt, otherwise it prints only what moved. **A read hook records what you read**
+(Read ranges, shell output that reached you): refresh certifies only what it covers, so a
+discarded `cat` counts for nothing. Read what a refusal names, then refresh.
+Never pipe `refresh` output through `head`/`tail`. Without the hook, the receipt is your
+assertion — never refresh without reading.
 
 Offline: `MORPHEUS_OFFLINE=1`. Forks, hooks, receipts and Codex hook trust: **read
 [`context-freshness.md`](docs/runbooks/context-freshness.md)**; why: [`architecture.md` §7.10](./architecture.md).

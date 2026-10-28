@@ -1,6 +1,7 @@
 import { assertCurrentSource, containsSource } from "./start.js";
-import { ABSENT, CANONICAL_INPUTS, leaseAt, observeLease, } from "./lease.js";
-import { fingerprint, readInputs } from "./inputs.js";
+import { ABSENT, CANONICAL_INPUTS, UNREADABLE, leaseAt, observeLease, } from "./lease.js";
+import { fingerprint, readInputs, readRecords } from "./inputs.js";
+import { evidenceMode, readSnapshot, requirements, writeSnapshot, } from "./certify.js";
 import { currentBranch, resolveTrunk, trunkSha, worktreeRoot } from "./git.js";
 import { projectPolicy, sessionId } from "./policy.js";
 import { isAbsolute, relative } from "node:path";
@@ -12,18 +13,38 @@ async function session(root) {
 function required(policy) {
     return policy.requiredInputs ?? CANONICAL_INPUTS;
 }
+/** Equal inputs, excluding sentinels: *could not read it* never matches itself. */
+function sameInputs(a, b) {
+    if (a.length !== b.length)
+        return false;
+    const was = new Map(a.map((i) => [i.id, i.fingerprint]));
+    return b.every((i) => i.fingerprint !== ABSENT && i.fingerprint !== UNREADABLE && was.get(i.id) === i.fingerprint);
+}
 /**
- * Take a new receipt: *the agent asserting it has loaded current state.*
+ * Take a new receipt: *the agent asserting it has loaded current state* — and,
+ * where a read hook is watching, the log showing that it did.
  *
  * This is the only thing that mints a receipt, and it is deliberately a
  * command a person or agent runs rather than something a guard does on their
  * behalf. A guard that took a receipt automatically would be certifying that
  * the records were read by the act of not reading them.
+ *
+ * **Idempotent.** When the trunk and every required record are exactly as the
+ * stored receipt saw them, the receipt is extended and nothing is asked: a
+ * second refresh used to cost a second full read of 139 KB of decisions, or a
+ * pretend one, and transcripts showed both.
+ *
+ * **Evidence, where it can exist.** With a live read hook, a record is
+ * certified only where the session's read log covers it at its current
+ * content: the changed hunks against the last receipt, or the whole record
+ * when there is no usable baseline. Otherwise nothing is written and the
+ * result names what is unread.
  */
-export async function refresh(root, now = new Date()) {
+export async function refresh(root, now = new Date(), opts = {}) {
     const { worktree, id } = await session(root);
     const policy = await projectPolicy(worktree);
-    const inputs = await readInputs(worktree, required(policy));
+    const records = await readRecords(worktree, required(policy));
+    const inputs = records.map(({ id: record, fingerprint: print }) => ({ id: record, fingerprint: print }));
     const trunk = await resolveTrunk(worktree, policy.trunk);
     // **Never skipped, whatever is declared.** The read-only commands may take
     // the declaration's word for it because they re-observe the *stored*
@@ -37,6 +58,11 @@ export async function refresh(root, now = new Date()) {
     // where that was last fixed.
     const observation = await trunkSha(worktree, trunk);
     const sha = observation.sha;
+    const mode = await evidenceMode(worktree, opts.env ?? process.env);
+    const { lease: stored } = await readLease(worktree, id);
+    // An asserted receipt — or one taken before evidence existed — is never the
+    // baseline a recorded one extends: that would launder the assertion.
+    const previous = stored && (mode.kind !== "recorded" || stored.receipt.evidence === "recorded") ? stored.receipt : null;
     if (sha) {
         try {
             const verified = await assertCurrentSource(worktree);
@@ -46,32 +72,57 @@ export async function refresh(root, now = new Date()) {
         catch (error) {
             // Invalidate the old certification as well as refusing this one.
             await clearLease(worktree, id);
-            return { lease: null, observed: true, written: false,
+            return { lease: null, observed: true, written: false, previous, extended: false,
+                evidence: { mode, requirements: [] },
                 issue: error instanceof Error ? error.message : String(error) };
         }
     }
-    const receipt = {
-        version: 1,
-        id: `ctx-${now.toISOString()}`,
-        createdAt: now.toISOString(),
-        // A receipt with no verifiable trunk still records what was read. The
-        // lease it produces is `unknown`, which fails closed — but the inputs are
-        // real, so the next online check has something to compare against rather
-        // than starting over.
-        remoteSha: sha ?? "",
-        // `""` when the lookup failed — not a name, and `sameBranch` below never
-        // matches it, so an unanchorable receipt re-observes rather than
-        // short-circuiting.
-        branch: (await currentBranch(worktree)) ?? "",
-        worktree,
-        inputs,
-    };
+    const needs = mode.kind === "recorded"
+        ? await requirements(previous, previous ? await readSnapshot(worktree, id) : new Map(), records, mode.reads)
+        : [];
+    if (needs.some((r) => r.missing.length)) {
+        // Nothing is written: the stored receipt is still the true record of what
+        // was read, and the result says what is not.
+        return { lease: null, observed: true, written: false, previous, extended: false,
+            evidence: { mode, requirements: needs },
+            issue: "Read evidence does not cover the records yet." };
+    }
+    const branch = (await currentBranch(worktree)) ?? "";
+    // Unchanged only against a verified trunk: an unreachable one is unknown,
+    // never "the same as last time".
+    const extended = previous !== null && sha !== null && previous.remoteSha === sha && sameInputs(previous.inputs, inputs);
+    const receipt = extended
+        ? { ...previous, branch, worktree }
+        : {
+            version: 1,
+            id: `ctx-${now.toISOString()}`,
+            createdAt: now.toISOString(),
+            // A receipt with no verifiable trunk still records what was read. The
+            // lease it produces is `unknown`, which fails closed — but the inputs are
+            // real, so the next online check has something to compare against rather
+            // than starting over.
+            remoteSha: sha ?? "",
+            // `""` when the lookup failed — not a name, and `sameBranch` below never
+            // matches it, so an unanchorable receipt re-observes rather than
+            // short-circuiting.
+            branch,
+            worktree,
+            inputs,
+            evidence: mode.kind === "recorded" ? "recorded" : "asserted",
+        };
     const lease = observeLease(receipt, { checkedAt: now.toISOString(), remoteSha: sha, inputs }, policy);
     const write = await writeLease(worktree, id, lease);
+    // The baseline the next refresh diffs against. A failure here costs that
+    // refresh a whole-record read, never a false certification.
+    if (write.written)
+        await writeSnapshot(worktree, id, records).catch(() => undefined);
     return {
         lease,
         observed: true,
         written: write.written,
+        previous,
+        extended,
+        evidence: { mode, requirements: needs },
         ...(write.issue ? { issue: write.issue } : {}),
         ...(observation.reason === "missing" ? { trunkMissing: trunk } : {}),
     };
@@ -119,14 +170,32 @@ export async function noteWrite(root, writes) {
         isAbsolute(w.path) ? relative(worktree, w.path) : w.path,
         w.before === null ? ABSENT : fingerprint(w.before),
     ]));
-    const fresh = new Map((await readInputs(worktree, [...seen.keys()])).map((i) => [i.id, i.fingerprint]));
+    const written = await readRecords(worktree, [...seen.keys()]);
+    const fresh = new Map(written.map((i) => [i.id, i.fingerprint]));
     // Only records the receipt already covered — a record this session never
     // read does not become read by being written over — and only where what the
     // caller read before writing still matches what the receipt asserts.
-    const inputs = lease.receipt.inputs.map((input) => seen.get(input.id) === input.fingerprint && fresh.has(input.id)
-        ? { ...input, fingerprint: fresh.get(input.id) }
-        : input);
-    await writeLease(worktree, id, { ...lease, receipt: { ...lease.receipt, inputs } });
+    const absorbed = new Set();
+    const inputs = lease.receipt.inputs.map((input) => {
+        if (seen.get(input.id) !== input.fingerprint || !fresh.has(input.id))
+            return input;
+        absorbed.add(input.id);
+        return { ...input, fingerprint: fresh.get(input.id) };
+    });
+    const write = await writeLease(worktree, id, { ...lease, receipt: { ...lease.receipt, inputs } });
+    // The delta baseline follows the receipt: the next refresh diffs against what
+    // this session wrote, not against what it read before writing. Without this,
+    // its own write would come back as a changed hunk to read.
+    if (write.written && absorbed.size) {
+        const snapshot = await readSnapshot(worktree, id);
+        const records = [...snapshot].map(([record, s]) => ({ id: record, ...s }));
+        const next = new Map(records.map((r) => [r.id, r]));
+        for (const record of written) {
+            if (absorbed.has(record.id) && record.content !== null)
+                next.set(record.id, { id: record.id, fingerprint: record.fingerprint, content: record.content });
+        }
+        await writeSnapshot(worktree, id, [...next.values()]).catch(() => undefined);
+    }
 }
 /**
  * Read the current verdict, going to the network only when the term has run
