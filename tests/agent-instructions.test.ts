@@ -67,6 +67,10 @@ describe("Morpheus's own AGENTS.md", () => {
     const text = await read();
     expect(text).toContain("Refresh again only when a gated command refuses");
     expect(text).toContain("Never pipe `refresh` output through");
+    expect(text).toContain("Refresh is idempotent");
+    expect(text).toContain("A read hook records what you read");
+    // The provider injects AGENTS.md without a tool call, so the hook cannot see it.
+    expect(text).toContain("an injected copy leaves no read evidence");
     expect(text).toContain("at most once per PR");
     expect(text).toContain("Never re-run an unchanged suite");
     expect(text).toContain("If the same command fails the same way twice");
@@ -94,6 +98,9 @@ describe("the scaffolded AGENTS.md", () => {
     expect(section).toContain("once at session start");
     expect(section).toContain("Refresh again only when a gated command refuses");
     expect(section).toContain("Never pipe `refresh` output");
+    expect(section).toContain("Refresh is idempotent");
+    expect(section).toContain("A read hook records\nwhat you read");
+    expect(section).toContain("an injected copy leaves no read evidence");
     // Trimming must not drop how a session binds to its task.
     expect(section).toContain("--session-id");
     expect(section).toContain("CODEX_THREAD_ID");

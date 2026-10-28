@@ -9,6 +9,7 @@ import { gitSubprocessEnv } from "../git-env.js";
 import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { projectPolicy } from "../session/policy.js";
 import { ABSENT, CANONICAL_INPUTS, UNREADABLE } from "../session/lease.js";
+import { READ_HOOK_MARKER } from "../session/install.js";
 import { BOOTSTRAP_MARKER, MORPHEUS_BOOTSTRAP, MORPHEUS_SESSION_START, SESSION_START_MARKER, } from "../session/bootstrap.js";
 import { POLL_GUARD_MARKER, POLL_GUARD_SCRIPT } from "../wait-ci/hook.js";
 import { missingInstructions } from "./instructions.js";
@@ -380,6 +381,12 @@ export async function doctor(opts) {
         else if (!hook.includes(MORPHEUS_SESSION_START)) {
             add("warning", "context", `${rel} has no Morpheus session shim — the file is present but a ${provider} session ` +
                 "cannot bootstrap an absent or pre-self CLI. Run `morpheus context install`.");
+        }
+        else if (!hook.includes(READ_HOOK_MARKER)) {
+            // Wired before read evidence existed: `refresh` there certifies by bare
+            // assertion, which is what agents were measured faking.
+            add("warning", "context", `${rel} has no read hook — \`context refresh\` in a ${provider} session certifies reading ` +
+                "by assertion instead of from a read log. Run `morpheus context install`.");
         }
         if (hook !== null && !hook.includes(POLL_GUARD_SCRIPT)) {
             add("warning", "instructions", `${rel} has no CI poll guard — a ${provider} session can poll \`gh run view\` or ` +

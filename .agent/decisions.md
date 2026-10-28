@@ -1929,6 +1929,25 @@ accepting a validated record that relied on the floor waiver.
 
 MO-26-10-28-13.49.13. After two repair strategies, unchanged completed blocks with a concrete missing capability may wait at most six hours. Genuine task evidence, delivery identity/source/status, workflow completion or executor-quiescence facts wake them immediately; timer clocks and self-generated checkpoints do not. The existing opaque invocation-start receipt stores the frozen prompt context digest, so no schema field or mutable parking cursor is needed and older whole-state writers retain it. Unknown legacy receipts cannot justify suppression. This small domain policy uses the existing hash/store and adds no generic scheduler or dependency. It never grants a missing review authorization or waives admission, ownership or uncertain-upload safety.
 
+## Context refresh is idempotent and certifies from a read log — 2026-10-28
+
+MO-26-10-28-14.08.05. Chris asked for the context protocol's intent to be enforced in code after the
+2026-10-07 instruction change did not change behaviour and agents were measured taking receipts
+with `cat … >/dev/null && morpheus context refresh`. Refresh extends an unchanged receipt and asks
+for nothing. Otherwise, where a provider `PostToolUse` hook is live, each required record is
+certified only where this session's `local/sessions/reads.jsonl` covers it at its current
+fingerprint: the whole record without a recorded baseline, else the hunks changed since the
+snapshot taken with the last receipt. Credit is by content — record lines verbatim in what the tool
+returned — rather than by parsing shell commands, and shell output above 20 KB (8 KB for Codex)
+earns nothing because Claude keeps ~30 KB in the hook payload while showing the model a 2 KB
+preview. Evidence is content-addressed and read across every worktree of the repository. The hook
+enforces only after it has run and understood a result in this provider session; a human terminal,
+unwired project, untrusted Codex hook or unknown payload shape stays on the assertion with a
+warning, and `MORPHEUS_READ_EVIDENCE=off` is the declared escape for a hook that cannot see a read.
+Receipts stay local and startup still never certifies. Considered `diff` (jsdiff, zero runtime
+dependencies) for the hunks; used Git's `diff --no-index`, already required by every session
+command. No new dependency.
+
 ## CI waits cover any run, and a hook refuses the third poll — 2026-10-28
 
 MO-26-10-28-14.09.01. Transcripts showed polling rose after `wait-ci` shipped and the most

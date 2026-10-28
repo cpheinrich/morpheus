@@ -1645,13 +1645,15 @@ reuses a task's existing worktree. Pass \`--session-id\` to claim/resume when st
 (Codex defaults to \`CODEX_THREAD_ID\`). Never infer that an unrelated request belongs to the
 checked-out task, and do not run concurrent authors in one worktree.
 
-**Read \`.agent/decisions.md\`, \`.agent/learned.md\` and your inbox once at session start, then run
-\`morpheus context refresh\` once.** After that, just run the gated command — \`pm claim\`,
-\`pm new\`, \`pm link-issue\`, \`pm block\`, \`access sync\`, \`firebase auth setup\`, \`web init\` (provisioning;
-\`--no-provision\` is not gated). Read-only and mechanical commands are not gated. Past the five-minute term the gate re-checks trunk and the records itself and re-certifies when
-nothing moved. **Refresh again only when a gated command refuses**, and then re-read only what the
-refusal or the refresh names. Never pipe \`refresh\` output through \`head\`/\`tail\` — the delta it
-prints is the point. Do not refresh without reading: the receipt is your assertion.
+**Read \`AGENTS.md\` (an injected copy leaves no read evidence), \`.agent/decisions.md\`,
+\`.agent/learned.md\` and your inbox once at session start, then run \`morpheus context refresh\` once.**
+Then just run the gated command — \`pm claim\`, \`pm new\`, \`pm link-issue\`, \`pm block\`,
+\`access sync\`, \`firebase auth setup\`, \`web init\` (provisioning); past five minutes the gate
+re-checks by itself. **Refresh again only when a gated command refuses.**
+Refresh is idempotent. **A read hook records
+what you read** (Read ranges, shell output you saw); refresh certifies only that, so a discarded
+\`cat\` counts for nothing. Read what a refusal names, then refresh.
+Never pipe \`refresh\` output through \`head\`/\`tail\`. No hook? Never refresh without reading.
 
 Offline, set \`MORPHEUS_OFFLINE=1\`; local work and \`pm block\` proceed, anything that leaves the
 machine is refused. Forks, hooks (\`morpheus context install\`, Codex \`/hooks\` trust) and receipts:

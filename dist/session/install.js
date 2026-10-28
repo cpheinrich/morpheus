@@ -24,19 +24,56 @@ export const SESSION_START_COMMAND = `sh ${MORPHEUS_SESSION_START}`;
 const sessionStartBlock = () => ({
     SessionStart: [{ hooks: [{ type: "command", command: SESSION_START_COMMAND }] }],
 });
-/** The CI poll guard; see `src/wait-ci/hook.ts`. */
-const hooksBlock = () => ({ ...sessionStartBlock(), PreToolUse: [pollGuardHookEntry()] });
+/** What identifies the read hook in a hooks file, however a project wraps it. */
+export const READ_HOOK_MARKER = "context record-read";
 /**
- * The two files, byte-identical when neither exists yet.
- *
- * That is a coincidence of both tools converging on Claude Code's schema, not
- * a reason to write one file and symlink it: `.claude/settings.json` is a
- * whole settings document that also carries permissions, plugins and a theme,
- * while `.codex/hooks.json` holds hooks and nothing else. They diverge the
- * moment either project sets anything else.
+ * The read hook (`src/session/read-hook.ts`), inline rather than a checked-in
+ * script: a PostToolUse hook runs in whatever directory the session is in, so
+ * a relative script path would fail — loudly, after every tool call — the
+ * moment an agent's shell left the project root. It recovers the same tool
+ * paths as the session-start shim and is silent and successful whatever
+ * happens — `morpheus` absent, or an installed CLI older than this command:
+ * a hook error after every tool call would be noise in every session, and
+ * missing evidence already fails safe, to the assertion with a warning.
  */
-export const claudeSettingsFile = () => JSON.stringify({ hooks: hooksBlock() }, null, 2) + "\n";
-export const codexHooksFile = () => JSON.stringify({ hooks: hooksBlock() }, null, 2) + "\n";
+export const READ_HOOK_COMMAND = "sh -c 'PATH=\"${PATH:-/usr/bin:/bin}:${HOME:-/nonexistent}/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; " +
+    "command -v morpheus >/dev/null 2>&1 && morpheus context record-read >/dev/null 2>&1; exit 0'";
+const readHook = () => ({ type: "command", command: READ_HOOK_COMMAND });
+/**
+ * Claude Code: after Read and Bash, and after a Bash that exited non-zero —
+ * Claude reports that as a failed tool call carrying the output in `error`,
+ * and `context refresh` exits 1 exactly when it prints lines to be read.
+ */
+const claudeReadBlocks = () => ({
+    PostToolUse: [{ matcher: "Read|Bash", hooks: [readHook()] }],
+    PostToolUseFailure: [{ matcher: "Bash", hooks: [readHook()] }],
+});
+/**
+ * Codex: no `matcher`, because its shell tool's name in hook payloads is not
+ * documented and every tool's output is cheap to scan. No failure event: it
+ * has none, and an unknown event key could invalidate the whole file —
+ * taking the session-start hook down with it.
+ */
+const codexReadBlocks = () => ({
+    PostToolUse: [{ hooks: [readHook()] }],
+});
+/**
+ * The CI poll guard (`src/wait-ci/hook.ts`), identical for both providers:
+ * Codex documents its shell tool as `Bash` for PreToolUse matching, and both
+ * block on exit 2.
+ */
+const pollGuardBlocks = () => ({ PreToolUse: [pollGuardHookEntry()] });
+const READ_HOOK = { marker: READ_HOOK_MARKER, label: "the read hook" };
+const POLL_GUARD = { blocks: pollGuardBlocks, marker: POLL_GUARD_SCRIPT, label: "the CI poll guard" };
+/**
+ * The two files. They differ only in the read hook's events.
+ *
+ * Not one file symlinked: `.claude/settings.json` is a whole settings document
+ * that also carries permissions, plugins and a theme, while
+ * `.codex/hooks.json` holds hooks and nothing else.
+ */
+export const claudeSettingsFile = (pollGuard = true) => JSON.stringify({ hooks: { ...sessionStartBlock(), ...claudeReadBlocks(), ...(pollGuard ? pollGuardBlocks() : {}) } }, null, 2) + "\n";
+export const codexHooksFile = (pollGuard = true) => JSON.stringify({ hooks: { ...sessionStartBlock(), ...codexReadBlocks(), ...(pollGuard ? pollGuardBlocks() : {}) } }, null, 2) + "\n";
 export const CLAUDE_SETTINGS = ".claude/settings.json";
 export const CODEX_HOOKS = ".codex/hooks.json";
 export const MANIFEST = "morpheus.json";
@@ -85,13 +122,13 @@ const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v)
  * twice every session, which reads as a bug in the protocol rather than in
  * this command.
  */
-function alreadyWired(entries, script = MORPHEUS_SESSION_START) {
+function alreadyWired(entries, marker = MORPHEUS_SESSION_START) {
     return entries.some((entry) => {
         if (!isObject(entry) || !Array.isArray(entry["hooks"]))
             return false;
         return entry["hooks"].some((h) => isObject(h) &&
             typeof h["command"] === "string" &&
-            h["command"].includes(script));
+            h["command"].includes(marker));
     });
 }
 function withoutLegacyBrief(entries) {
@@ -122,7 +159,7 @@ async function writeJson(path, value) {
  * file that exists — correct for a scaffold, and the reason a repo that added
  * `.claude/settings.json` for permissions would never receive the hook at all.
  */
-async function ensureHook(root, rel, template, write, pollGuard = true) {
+async function ensureHook(root, rel, template, readBlocks, write, pollGuard = true) {
     const path = join(root, rel);
     const found = await readJson(path);
     if (found.kind === "unusable") {
@@ -135,7 +172,7 @@ async function ensureHook(root, rel, template, write, pollGuard = true) {
     if (found.kind === "absent") {
         if (write) {
             await mkdir(dirname(path), { recursive: true });
-            await writeFile(path, pollGuard ? template() : JSON.stringify({ hooks: sessionStartBlock() }, null, 2) + "\n", "utf8");
+            await writeFile(path, template(pollGuard), "utf8");
         }
         return {
             target: rel,
@@ -162,45 +199,53 @@ async function ensureHook(root, rel, template, write, pollGuard = true) {
         };
     }
     const entries = Array.isArray(sessionStart) ? sessionStart : [];
-    const preToolUse = block["PreToolUse"];
-    if (pollGuard && preToolUse !== undefined && !Array.isArray(preToolUse)) {
-        return {
-            target: rel,
-            outcome: "blocked",
-            detail: 'Left untouched — its "hooks.PreToolUse" is not an array.',
-        };
-    }
-    const preEntries = Array.isArray(preToolUse) ? preToolUse : [];
-    const sessionWired = alreadyWired(entries);
-    const guardWired = !pollGuard || alreadyWired(preEntries, POLL_GUARD_SCRIPT);
-    if (sessionWired && guardWired) {
-        return {
-            target: rel,
-            outcome: "present",
-            detail: pollGuard
-                ? "Already runs the Morpheus session shim and CI poll guard."
-                : "Already runs the Morpheus session shim.",
-        };
-    }
-    const notes = [];
-    if (!sessionWired) {
+    const done = [];
+    if (!alreadyWired(entries)) {
         const legacy = withoutLegacyBrief(entries);
         block["SessionStart"] = [...legacy.entries, sessionStartBlock().SessionStart[0]];
-        notes.push(legacy.removed
+        done.push(legacy.removed
             ? "Replaced the legacy direct brief with the version-independent session shim."
             : entries.length > 0
                 ? "Added the Morpheus session shim alongside the SessionStart hooks already there."
                 : "Added the session-start hook, keeping the rest of the file.");
     }
-    if (!guardWired) {
-        // Appended, never merged into another entry: a project's own Bash hooks
-        // keep running exactly as before, and this one stays removable alone.
-        block["PreToolUse"] = [...preEntries, pollGuardHookEntry()];
-        notes.push("Added the CI poll guard (PreToolUse on Bash).");
+    // Every event checked before anything is written, so a malformed one leaves
+    // the file exactly as it was rather than half-repaired. Each kind of hook is
+    // found by its own marker, so one already wired is never added twice, and
+    // entries are appended — a project's own hooks on the same event keep running.
+    const wantedAll = [{ blocks: readBlocks, ...READ_HOOK }, ...(pollGuard ? [POLL_GUARD] : [])];
+    for (const wanted of wantedAll) {
+        const missing = [];
+        for (const [event, entriesToAdd] of Object.entries(wanted.blocks())) {
+            const current = block[event];
+            if (current !== undefined && !Array.isArray(current)) {
+                return {
+                    target: rel,
+                    outcome: "blocked",
+                    detail: `Left untouched — its "hooks.${event}" is not an array.`,
+                };
+            }
+            const list = Array.isArray(current) ? current : [];
+            if (alreadyWired(list, wanted.marker))
+                continue;
+            block[event] = [...list, ...entriesToAdd];
+            missing.push(event);
+        }
+        if (missing.length)
+            done.push(`Added ${wanted.label} (${missing.join(", ")}) beside any hooks already there.`);
+    }
+    if (!done.length) {
+        return {
+            target: rel,
+            outcome: "present",
+            detail: pollGuard
+                ? "Already runs the Morpheus session shim, read hook and CI poll guard."
+                : "Already runs the Morpheus session shim and read hook.",
+        };
     }
     if (write)
         await writeJson(path, { ...doc, hooks: block });
-    return { target: rel, outcome: "updated", detail: notes.join(" ") };
+    return { target: rel, outcome: "updated", detail: done.join(" ") };
 }
 async function ensureManagedFile(root, rel, expected, marker, write) {
     const path = join(root, rel);
@@ -346,7 +391,7 @@ export async function installContext(root, opts) {
     const pollGuard = await ensureManagedFile(root, POLL_GUARD_SCRIPT, pollGuardScript(), POLL_GUARD_MARKER, opts.write);
     const scriptsReady = bootstrap.outcome !== "blocked" && sessionStart.outcome !== "blocked";
     // A poll-guard path holding someone else's script is reported, and the hook
-    // that would run it is not wired; the session-start wiring is unaffected.
+    // that would run it is not wired; the other wiring is unaffected.
     const guardReady = pollGuard.outcome !== "blocked";
     const blockedHook = (target) => ({
         target,
@@ -358,10 +403,10 @@ export async function installContext(root, opts) {
         sessionStart,
         readme,
         scriptsReady
-            ? await ensureHook(root, CLAUDE_SETTINGS, claudeSettingsFile, opts.write, guardReady)
+            ? await ensureHook(root, CLAUDE_SETTINGS, claudeSettingsFile, claudeReadBlocks, opts.write, guardReady)
             : blockedHook(CLAUDE_SETTINGS),
         scriptsReady
-            ? await ensureHook(root, CODEX_HOOKS, codexHooksFile, opts.write, guardReady)
+            ? await ensureHook(root, CODEX_HOOKS, codexHooksFile, codexReadBlocks, opts.write, guardReady)
             : blockedHook(CODEX_HOOKS),
         await ensureHandle(root, opts),
         pollGuard,
