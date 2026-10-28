@@ -128,3 +128,15 @@ worklog-only commit was pushed immediately afterwards. The results are recorded 
 The first attempt produced no runs at all. The PR conflicted with trunk in `.agent/decisions.md`,
 and GitHub creates no `pull_request` runs without a merge ref. Trunk was merged in (`3949688b`)
 with both appended entries kept, and the test was repeated.
+
+- **A move after `head` decided fails the required name, and says why.** This happened in CI run
+  40775473903 on `3949688b`:
+  - `pr / head` read the PR at about 21:52:20Z and found `3949688b` current, finishing at 21:52:22.
+  - `71041735` was pushed at 21:52:26.
+  - `pr / conventions` started at 21:52:25. Its `Read the live pull request` step failed at 21:52:27
+    with `Pull request #544 moved to '71041735…' after this run's head check found 3949688b… current.
+    This job already reports as the required conventions check, so it cannot pass unchecked…`.
+  - Every later step was skipped, so nothing was checked and nothing passed.
+
+  The same run shows the normal-path names, `pr / head` and `pr / conventions`. So the dynamic job
+  name evaluates to the required name when `superseded-by` is empty.
