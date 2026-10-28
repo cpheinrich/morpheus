@@ -140,3 +140,21 @@ with both appended entries kept, and the test was repeated.
 
   The same run shows the normal-path names, `pr / head` and `pr / conventions`. So the dynamic job
   name evaluates to the required name when `superseded-by` is empty.
+- **A superseded run reports `pr / superseded`, with the notice, and nothing under the required
+  name.** This happened in Review metadata run 40775626807. The body edit's event (head `71041735`,
+  payload `updated_at` 2026-10-28T21:53:21Z) produced a run only after `c5e27f66` was pushed.
+  - `pr / head` logged `#544 moved from 71041735… to c5e27f66… (updated 2026-10-28T21:53:25Z, after
+    this event's 2026-10-28T21:53:21Z)`.
+  - The required job was created as **`pr / superseded`**, already under that name while queued. It
+    passed with `##[notice]superseded by c5e27f663c3431673e19829865ec544f5dad5db2; this run's result
+    is moot`.
+  - The check runs on `71041735` that start with `pr /` are:
+    - `pr / superseded` success (123124107230) and `pr / head` success, from this run;
+    - `pr / conventions` failure (123123709047) and `pr / head` success, from that commit's own CI
+      run.
+
+  The failure is genuine: `✗ [agent-review] agent-reviewed label is not applied`, as expected before
+  review. So the superseded pass sits beside the required name and does not replace it.
+- **The payload's `updated_at` has the format the guard requires.** The live value
+  `2026-10-28T21:53:21Z` matched `^[0-9]{4}-…T…Z$`, so supersession is decided in practice, not only
+  in fixtures.
