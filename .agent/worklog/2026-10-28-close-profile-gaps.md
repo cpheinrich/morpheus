@@ -113,7 +113,7 @@ The reviewer measured its own turn by clock (21:32:18Z to 21:38:56Z, 398 s); the
   "summary": "Fresh independent review (high risk: the review gate, the GitHub Manager's recovery check and the CD repair gate) completed on f4e5c6d3 with one minor finding and nothing substantive. The reviewer traced every caller of checkLocalReview, confirmed an opt-out is still refused and a floor-waived record still accepted by both consumers, checked the 20/40 boundary tests, matched dist against a scratch compile, and ran the profiler over every transcript on this machine (1454 files, 1063 compressed, none unreadable). The finding, R1, was a named zstd import in the profile tests that would fail the whole file on Node 22.0 to 22.14; it is fixed at ab854f60 by a namespace import and skipping only the test that needs zstd.",
   "findings": [
     {
-      "id": "R1",
+      "id": "R1-zstd-import",
       "severity": "minor",
       "description": "tests/profile/extract-report.test.ts imported zstdCompressSync by name from node:zlib; package.json allows Node >=22 but zstd exists only from 22.15, so on 22.0-22.14 the import fails at link time and every extract and report test in the file is lost, not just the zstd one.",
       "paths": ["tests/profile/extract-report.test.ts"],
