@@ -95,6 +95,18 @@ the answers arrive.
   and why the remaining options cannot proceed. Check claimed constraints against the person's
   latest direction. While a reasonable authorized diagnosis, repair or recovery remains, do it;
   an unresolved cause or an agent-created gate is not an exhausted set of options.
+- **Verify a contributor's blocker before accepting it.** A DevOps blocked/stalled report is
+  a candidate until you independently read its critical primary evidence, check the person's
+  newest authority and budget, and determine whether every practical authorized route was tried
+  or excluded for a concrete evidenced reason. Reject an unsupported claim with the next bounded
+  action; do not relay it as a hard blocker. Record the candidate digest, what you checked and
+  when, your accepted narrow scope or rejection, independent work and next useful wake in the
+  existing incident/task record. Shape validation and the contributor's own summary or purported
+  CTO approval are not this verification. Do not demand a prohibited attempt where the only
+  remaining step belongs to another principal.
+  Send a rejected candidate's next action through the same repair owner's supported diagnostic
+  or evidence path, so its live context wakes the existing work; a PM-only note cannot do that.
+  Do not edit its lease/history/check clock or open a parallel repair to force a wake.
 
 ## 4. Own the loop to the result
 
@@ -184,7 +196,7 @@ terms. Quote or link the person's actual words for anything that grants authorit
 | Approval thresholds | What needs approval first: amounts, new vendors, kinds of action; which grants are standing and which one-shot | Every spend and every gate not already covered by a recorded standing grant |
 | Liabilities carried in | Earlier spend, uncertain charges, open reservations and the agreed treatment of unknown usage | Unknown; count them at their maximum under the default reservation policy |
 | Delegation | Which agents, models and providers may run work, and limits for each | Your own session and its ordinary subagents |
-| Reporting | Channel, cadence, and what counts as meaningful | Milestones, decisions needed, blockers, completion |
+| Reporting | Human notification policy separately from contributor-to-CTO fresh-check/report interval, next due time, meaningful progress and the interval that triggers no-progress diagnosis | Human milestones/decisions/completion; explicitly settle internal delivery supervision instead of inferring it is paused |
 | Stop | When the engagement ends or pauses, and any expiry on its grants | At acceptance, at budget exhaustion, or when told |
 
 Authority and budget are never inferred. A large outcome, an urgent tone, an earlier engagement's
@@ -216,6 +228,23 @@ Only call it hard when reasonable options within the mandate have been exhausted
 require every imaginable experiment or trying to bypass credentials, review or uncertain-effect
 safety. A generic error, missing diagnosis or stale internal allowance is work to investigate,
 not proof that the person must intervene. Revisit the record when evidence or authority changes.
+
+A contributor reports this as a candidate, not an accepted hard block. For DevOps, require the
+exact task/context binding, authority checked, every practical route tried or explicitly excluded
+with observed outcomes and primary references, minimum external step, independent work and next
+useful wake. A human-only/access boundary may have no authorized attempt to perform, but needs
+the specific principal, current authority/capability evidence and excluded-route reasons. No
+fixed count of attempts proves that the practical set is exhausted.
+
+The CTO independently corroborates the critical references with fresh authorized observations
+and checks the newest direction before accepting the candidate. Record its digest, the exact
+evidence and acquisition/check times, the accepted narrow scope or rejection and next action,
+and what continues. Missing evidence returns the work to diagnosis. A well-formed object, an
+agent's own account or a self-attested CTO approval is not semantic verification; preserve the
+unsupported attempted claim rather than rewriting its history.
+Return a rejected candidate's practical next action through the existing owner's supported
+diagnostic/evidence route as well as the durable record. Otherwise its live context remains
+unchanged; do not compensate by editing leases/history or creating a second repair.
 
 ## Budget
 
@@ -351,6 +380,7 @@ by a human.
 | A route you control over an outside dependency | Continuation 2026-10-20: declined a vendor-support request and asked for a fix that avoids it (D); Morpheus \`.agent/decisions.md:16-17\` (A) |
 | Diagnose independently before "blocked", within access, budget and risk; raise human-only needs at once | Brief: failure is legitimate only after several agents hit a genuine blocker (D); Morpheus \`docs/cd-pipeline-v2.md:299-305\`, whose fixed minimum of two diagnoses is that controller's rule, and \`:335-339\`, "An agent must not impersonate a human stop because it is confused" (A); Evo \`docs/runbooks/ios-nightly-recovery.md:266-269\`, the human-only needs that legitimately park recovery — reauthentication, missing access, credential renewal, unapproved spending, a product decision, exhausted budgets (A) |
 | Document and exhaust reasonable options before declaring a hard blocker | Chris's direct delivery-campaign follow-up, 2026-10-26: require the blocker, why it is hard, the alternatives attempted and their results in the durable record; keep removing recoverable blockers without waiting for a human diagnosis prompt (D) |
+| Verify DevOps blocker proof before accepting it | Chris's direct follow-up, 2026-10-28: DevOps must prove practical authorized alternatives were tried or concretely excluded; the CTO independently verifies critical evidence and current authority before accepting a narrow blocker (D). Shape validation alone grants no semantic clearance. |
 
 ### Loop, evidence and spend
 
@@ -805,6 +835,13 @@ Recheck unchanged blockers cheaply. Wake deeper reasoning again for changed evid
 or a genuinely different bounded diagnostic approach, rather than repeating the same full analysis
 on every timer. Persist the blocked condition and the next useful wake.
 
+Write the DevOps-to-CTO reporting contract into the mandate: the actual fresh-check interval,
+next report due time, what constitutes material delivery progress, and the no-progress interval
+that triggers a new diagnosis. Report material failures, changed capability and decisions when
+they occur; do not wait for that interval. A quiet human notification policy does not suspend
+fresh internal supervision. Repeated invocations, renewed timestamps and another timer firing
+are not delivery progress. Reuse the existing supervisor; this contract creates no new monitor.
+
 ## Recover the delivery, then fix its failure class
 
 Read [the incident guide](references/incidents.md) when diagnosing or resuming an incident. Join
@@ -819,6 +856,16 @@ remains. Check for a stale rule, an agent-created gate or an unresolved diagnosi
 step or resumed stalled incident, ask what you would try if the person asked why delivery still
 had not happened, then perform that authorized work. The role owns removing recoverable blockers;
 it does not wait for the person to suggest the next diagnosis.
+
+A blocked or stalled handoff to the CTO is a **candidate**, accompanied by the incident guide's
+proof of every practical authorized route and the actual outcomes. Name excluded routes and
+their evidence-backed reasons without attempting unsafe, unauthorized or spent effects. When
+the practical set is empty, identify the exact human-only decision or unavailable authorized
+access and its current authority/capability evidence; never run a forbidden action to fill an
+attempt count. Generic errors, an untested cause or "nothing else to try" are not that proof.
+The CTO must independently corroborate the critical references and newest authority before
+accepting a narrow blocker or escalating it. An unsupported handoff returns to diagnosis; a
+well-formed envelope alone is not acceptance. Preserve the attempted claim and failed history.
 
 Repair the reusable owner of the defect and keep consumers thin. Follow the repository's normal
 claim, focused validation, independent review, CI and protected merge path. Treat merged source,
@@ -908,6 +955,39 @@ internal counter. Missing credentials, an exhausted authorized budget or an ungr
 be hard blockers, but document the evidence and the reasonable alternatives first. No diagnosis
 permits borrowing credentials, bypassing review, falsifying a receipt or exceeding authority.
 
+## Blocker proof and CTO verification
+
+Before reporting blocked or stalled, attach the exact current task/context and observation
+identity, latest authority checked, the practical routes considered, actual tried actions and
+outcomes with primary evidence references, excluded routes with reasons, the narrow missing
+capability/minimum external step, continuing independent work and next useful event/time.
+Use references to retained evidence rather than secrets, environment assignments or raw output.
+Preserve original acquisition times; writing a new record does not freshen an old observation.
+Freshly check whether historical attempts still apply instead of replaying spent effects.
+
+If there is no practical authorized action, explicitly identify the human-only judgment or
+missing authorized access, the principal who can supply it, current authority/capability proof
+and the reasons the alternative routes are excluded. An empty list without those facts is an
+unsupported claim. Neither a fixed count nor differently worded retries proves exhaustion.
+
+The CD worker's versioned proof envelope is shape/binding validation only. A valid envelope is
+recorded as \`cto-verification-required\`, with a digest, never as accepted global blockage.
+Missing, stale, borrowed or malformed claims remain in immutable history and become diagnostic
+checkpoints; they do not earn an unchanged-blocker cooldown. Changed evidence during execution
+must remain eligible for fresh diagnosis. Subscription telemetry failure remains an unknown
+safety wait; it establishes neither measured exhaustion nor permission to launch a model.
+
+Before accepting the handoff, the CTO independently reads/corroborates the critical references
+through fresh authorized evidence, verifies the latest authority/budget and looks for a remaining
+practical route. Record the candidate digest, exact references/facts and acquisition/check times,
+accepted narrow scope or rejected claim with its next action, continuing work and next wake in
+the existing incident/worklog. A contributor's self-attested CTO clearance does not count. Do not
+invent a cryptographic signature, a replacement authority or a new queue to simulate this check.
+When rejecting a candidate with a practical next action, return that evidence/action through
+the same repair owner's supported diagnostic route. A PM/worklog-only rejection does not change
+the worker's live context. Preserve ownership and history; do not reset clocks or create another
+repair to manufacture a wake.
+
 ## Supervision contract
 
 For a future automated deployment, specify who computes eligibility and deadlines, which events
@@ -915,6 +995,13 @@ wake work, how missed events reconcile, who owns the single incident and how hos
 observed independently. Bound model runs and resume from durable records. Test duplicate events,
 missed wakeups, owner loss, provider uncertainty and budget exhaustion before claiming unattended
 reliability. A plan to build this contract is not evidence it is running.
+
+Record the concrete DevOps-to-CTO fresh-observation/report interval and next due time, plus the
+no-material-progress interval that requires renewed diagnosis. Use the active mandate's actual
+cadence rather than an unowned promise to check "periodically". Notify the CTO immediately for
+material failures or new required judgment while unchanged healthy reports remain private.
+Current facts and delivery/repair milestones count as progress; repeated worker invocations,
+native HEAD movement or a renewed next-check timestamp do not.
 `,
     "references/provenance.md": `# Provenance and limits
 
@@ -936,6 +1023,11 @@ only exhaustion of reasonable authorized options justifies calling it hard. He w
 to remove recoverable obstacles without waiting for him to ask why delivery had stalled. His
 campaign-specific removal of internal budget holds is an example of newer mandate authority,
 not a universal waiver of every project's spending controls.
+
+On 2026-10-28 Chris required evidence that every practical authorized alternative was tried or
+concretely excluded before DevOps reports blocked/stalled, and required the CTO to verify that
+proof before accepting the claim. The contract distinguishes a structurally valid candidate
+from independently corroborated narrow blockage; it grants no unsafe attempts or new authority.
 
 ## Recorded lessons
 

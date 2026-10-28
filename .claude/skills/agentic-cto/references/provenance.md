@@ -63,6 +63,7 @@ by a human.
 | A route you control over an outside dependency | Continuation 2026-10-20: declined a vendor-support request and asked for a fix that avoids it (D); Morpheus `.agent/decisions.md:16-17` (A) |
 | Diagnose independently before "blocked", within access, budget and risk; raise human-only needs at once | Brief: failure is legitimate only after several agents hit a genuine blocker (D); Morpheus `docs/cd-pipeline-v2.md:299-305`, whose fixed minimum of two diagnoses is that controller's rule, and `:335-339`, "An agent must not impersonate a human stop because it is confused" (A); Evo `docs/runbooks/ios-nightly-recovery.md:266-269`, the human-only needs that legitimately park recovery — reauthentication, missing access, credential renewal, unapproved spending, a product decision, exhausted budgets (A) |
 | Document and exhaust reasonable options before declaring a hard blocker | Chris's direct delivery-campaign follow-up, 2026-10-26: require the blocker, why it is hard, the alternatives attempted and their results in the durable record; keep removing recoverable blockers without waiting for a human diagnosis prompt (D) |
+| Verify DevOps blocker proof before accepting it | Chris's direct follow-up, 2026-10-28: DevOps must prove practical authorized alternatives were tried or concretely excluded; the CTO independently verifies critical evidence and current authority before accepting a narrow blocker (D). Shape validation alone grants no semantic clearance. |
 
 ### Loop, evidence and spend
 

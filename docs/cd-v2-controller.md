@@ -365,7 +365,8 @@ candidate still passes fresh quota admission, pause/post-resume checks and the
 normal fenced CAS/global-executor reservation before an invocation.
 
 After two independent strategies, a completed `blocked` invocation with a
-nonblank `missingCapability` waits for changed input or six hours after its
+nonblank `missingCapability` and a validated, recorded CTO-pending blocker
+candidate waits for changed input or six hours after its
 completion. At exactly six hours it becomes eligible for another normal
 admission. Unchanged input returns `capability-wait` before quota, login or model
 execution; the hosted scheduler also skips its Actions lookup. Another runnable
@@ -385,11 +386,59 @@ task and evidence plus delivery context actually frozen into the prompt before
 quota admission. CAS reloads preserve that original digest, so evidence arriving
 during admission remains new for the next invocation. Retry clocks, native
 HEADs, usage and self-generated checkpoints are not capability changes. Old or
-malformed receipts cannot suppress admission: one normal invocation establishes
-a baseline. An unstarted hosted dispatch placeholder cannot replace the prior
+malformed receipts or unsupported historical blocked claims cannot suppress
+admission: one normal invocation can establish a validated candidate baseline.
+The saved proof is revalidated against its exact claim/fence/context and completion
+digest before it qualifies for cooldown; a status label alone cannot qualify.
+An unstarted hosted dispatch placeholder cannot replace the prior
 actual blocked invocation's baseline. This adds no ledger schema or mutable
 parking cursor; existing pause, lease, task-integrity and ownership guards still
 apply to both explicit and default execution paths.
+
+### Blocker candidates and CTO verification
+
+A repair's `blocked` result is a candidate, never accepted global blockage. It needs exactly
+one `evidence` entry beginning `morpheus-blocker-proof-v1:` followed by a JSON proof (at most
+32,768 UTF-8 bytes). The worker supplies the exact task/invocation/fence/frozen-context binding and
+actual accepted claim/deadline times in the prompt; a hosted dispatch placeholder's start is
+not the claimant clock. `deadlineAt` is the exact accepted lease expiry, an ownership bound;
+it never extends the stricter model timeout, launch headroom or quota requirements. The versioned
+strict schema requires:
+
+- Exact symptom/attempt identity, primary references and actual observation time.
+- Latest authority reference, its meaning and a check within this invocation.
+- Distinct practical routes tried: action, actual outcome, original observation, fresh check
+  and retained evidence references. Historical spent effects are checked, never replayed.
+- Explicit excluded routes with unavailable/unsafe/outside-authority/disproportionate reasons
+  and evidence. No fixed route count proves exhaustion.
+- Exhaustion rationale, narrow missing capability/minimum external step, continuing independent
+  work, and the next useful event/time.
+
+An empty practical set additionally needs `noPracticalAction`: a concrete human-only judgment
+or missing authorized access, named principal, matching current authority and capability refs,
+plus excluded-route reasons. It does not force an unsafe or unauthorized attempt. References
+are HTTPS URLs, absolute evidence paths, or `artifact:`, `record:`, `git:` or `sha256:` references;
+they are data to inspect through authorized paths, never commands or new permissions.
+
+Missing, malformed, borrowed or stale proof becomes a diagnostic checkpoint/continued diagnosis,
+with the original attempted claim retained in the immutable completion receipt. It does not earn
+the unchanged-blocker cooldown. Context that changes during admission/execution remains eligible
+immediately. A structurally valid candidate records its digest and `cto-verification-required`;
+the machine validates shape/binding, not truth, practical completeness or CTO acceptance.
+
+Before accepting/escalating the candidate, the CTO independently corroborates critical primary
+references with fresh observations, checks newest authority/budget and any remaining practical
+route, then records the digest, facts/acquisition times, accepted narrow scope or rejection/next
+action, continuing work and wake in the existing incident/worklog. A self-attested CTO approval
+cannot satisfy that check. Telemetry/authentication safety waits remain distinct from blocker
+proof and never grant a model launch. The operating mandate records actual internal reporting
+cadence and stall threshold separately from quiet user notifications; no new scheduler is added.
+The CTO returns a rejected candidate's practical next action to the same work through
+its supported evidence route: `repair-diagnostic` for the current failed attempt, or
+`record --kind failure` with the exact current, already-bound execution identity while
+the attempt remains active. Both append through the existing repair owner; a PM/worklog-only
+rejection does not change its live context. Do not alter attempt state, lease, history or
+clocks merely to make a route accept it.
 
 The repair check gate reads the exact head's paginated `filter=all` inventory.
 Failures, pending/unknown results and non-Actions cancellations still block. The

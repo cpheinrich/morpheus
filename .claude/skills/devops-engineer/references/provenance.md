@@ -19,6 +19,11 @@ to remove recoverable obstacles without waiting for him to ask why delivery had 
 campaign-specific removal of internal budget holds is an example of newer mandate authority,
 not a universal waiver of every project's spending controls.
 
+On 2026-10-28 Chris required evidence that every practical authorized alternative was tried or
+concretely excluded before DevOps reports blocked/stalled, and required the CTO to verify that
+proof before accepting the claim. The contract distinguishes a structurally valid candidate
+from independently corroborated narrow blockage; it grants no unsafe attempts or new authority.
+
 ## Recorded lessons
 
 Morpheus's `.agent/decisions.md` records deterministic heartbeat assessment, GitHub Manager as PR

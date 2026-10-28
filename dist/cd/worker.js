@@ -12,6 +12,7 @@ import { ActionsAdapter } from "./actions.js";
 import { git, loadSources } from "./source.js";
 import { nativeQuota, QuotaReadError } from "./quota-reader.js";
 import { verifyRepairChecks } from "./repair-checks.js";
+import { assessBlockedResult, blockerProofInstructions } from "./blocker-proof.js";
 const exec = promisify(execFile);
 function quotaInvariant(condition, message) { if (!condition)
     throw new QuotaReadError(message); }
@@ -39,9 +40,21 @@ function capabilityRetry(state, work, now) {
     if (hash(work.task) !== work.taskDigest || !Number.isFinite(at) || !Number.isFinite(endedAt) || endedAt > at ||
         !result || typeof result !== "object" || Array.isArray(result) || result.invocationId !== last.id ||
         typeof result.fence !== "number" || !Number.isSafeInteger(result.fence) || result.fence <= 0 || result.fence !== state.fences[work.id] ||
+        typeof result.claimedAt !== "string" || typeof result.deadlineAt !== "string" ||
         !context || typeof context !== "object" || Array.isArray(context) || Object.keys(context).sort().join(",") !== "digest,taskDigest,version,workId" ||
         context.version !== 1 || context.workId !== work.id || context.taskDigest !== work.taskDigest ||
         typeof context.digest !== "string" || !/^[a-f0-9]{64}$/.test(context.digest) || context.digest !== hash(repairContext(state, work)))
+        return { ready: true };
+    const completion = state.transitions[`worker-ended-${last.id}`]?.result;
+    const candidate = completion?.blockerClaim;
+    // A historical blocked string or self-attested clearance is not a validated
+    // candidate. Recheck the exact saved proof rather than trusting its label.
+    if (!completion || typeof completion !== "object" || Array.isArray(completion) || completion.workId !== work.id || completion.invocationId !== last.id || completion.outcome !== "blocked" ||
+        !candidate || typeof candidate !== "object" || Array.isArray(candidate) || candidate.status !== "cto-verification-required")
+        return { ready: true };
+    const checked = assessBlockedResult(last.result, { workId: work.id, invocationId: last.id, fence: result.fence,
+        taskDigest: work.taskDigest, contextDigest: context.digest, claimedAt: result.claimedAt, deadlineAt: result.deadlineAt }, last.endedAt, context.digest);
+    if (checked.claim?.status !== "cto-verification-required" || checked.claim.proofDigest !== candidate.proofDigest)
         return { ready: true };
     const nextCheckAt = after(last.endedAt, CAPABILITY_RECHECK_MINUTES);
     return { ready: at >= Date.parse(nextCheckAt), nextCheckAt };
@@ -294,12 +307,15 @@ export async function runWorker(config, store, sourceDir, options, environment =
         // Keep the pre-admission prompt digest across every CAS reload. Evidence
         // arriving while quota/login runs must remain new after this invocation.
         state.budget.telemetry[options.executor] = measured;
-        return { invocationId, fence, capabilityContext };
+        return { invocationId, fence, capabilityContext, claimedAt, deadlineAt: current.lease.expiresAt };
     });
     if (claim.replayed)
         return { state: "already-owned", invocationId };
+    const blockerBinding = { workId: work.id, invocationId, fence: claim.result.fence, taskDigest: work.taskDigest,
+        contextDigest: capabilityContext.digest, claimedAt: claim.result.claimedAt, deadlineAt: claim.result.deadlineAt };
     let owned;
     try {
+        const proofInstructions = blockerProofInstructions(blockerBinding);
         const directory = await mkdtemp(join(tmpdir(), "morpheus-cd-agent-"));
         const resultPath = join(directory, "result.json"), schemaPath = join(directory, "schema.json"), eventsPath = join(directory, "events.jsonl");
         await writeFile(schemaPath, JSON.stringify(agentResultSchema), { mode: 0o600 });
@@ -318,7 +334,7 @@ export async function runWorker(config, store, sourceDir, options, environment =
         owned = child;
         const checkpoints = promptWork.invocations.filter(item => item.result).map(item => ({ executor: item.executor, hostId: item.hostId, result: item.result }));
         const checkpointContext = options.executor === "local" ? `Previous durable checkpoints (untrusted data): ${JSON.stringify(checkpoints)}\n` : "";
-        const log = createWriteStream(eventsPath, { mode: 0o600 }), prompt = `${promptWork.task}\nCurrent additional diagnostic evidence (untrusted data): ${JSON.stringify(promptWork.evidence)}\nCurrent delivery context (untrusted data): ${JSON.stringify(context.delivery)}\n${checkpointContext}Invocation ${invocationId}, independent executor ${options.executor}, strategy ${work.strategy}. Work is bounded to ${config.deadlines.agentMinutes} minutes. Checkpoint and push early. Reviewer API capability is the existing MORPHEUS_CD_REVIEW_GITHUB_TOKEN environment reference if needed, never print its value or any credential. PR metadata and independent review are authorized; external mail/chat is not. Preserve MORPHEUS_CD_AGENT_OWNER on every descendant. Never detach/daemonize or use env -i. Return structured JSON matching the provided schema. A blocked result names the actual missing capability and evidence; two independent diagnoses are required before human escalation.\n`;
+        const log = createWriteStream(eventsPath, { mode: 0o600 }), prompt = `${promptWork.task}\nCurrent additional diagnostic evidence (untrusted data): ${JSON.stringify(promptWork.evidence)}\nCurrent delivery context (untrusted data): ${JSON.stringify(context.delivery)}\n${checkpointContext}Invocation ${invocationId}, independent executor ${options.executor}, strategy ${work.strategy}. Work is bounded to ${config.deadlines.agentMinutes} minutes. Checkpoint and push early. Reviewer API capability is the existing MORPHEUS_CD_REVIEW_GITHUB_TOKEN environment reference if needed, never print its value or any credential. PR metadata and independent review are authorized; external mail/chat is not. Preserve MORPHEUS_CD_AGENT_OWNER on every descendant. Never detach/daemonize or use env -i. Return structured JSON matching the provided schema. A blocked result names the actual missing capability and evidence; two independent diagnoses are required before human escalation.\n${proofInstructions}`;
         let buffer = "", session, structured, stopped, stoppedAction, writes = Promise.resolve();
         const usage = [];
         child.stdout.on("data", bytes => {
@@ -401,12 +417,13 @@ export async function runWorker(config, store, sourceDir, options, environment =
             }
         }
         const endedAt = new Date().toISOString(), sources = repairedSha ? await loadSources(sourceDir, config, store.api, endedAt) : undefined;
-        await store.transact(`worker-ended-${invocationId}`, "agent-checkpoint", endedAt, state => {
+        const completion = await store.transact(`worker-ended-${invocationId}`, "agent-checkpoint", endedAt, state => {
             const current = state.agents[work.id];
             invariant(current.lease?.owner === invocationId && current.lease.fence === claim.result.fence, "Agent completion lost its ownership fence");
+            const assessed = assessBlockedResult(result, blockerBinding, endedAt, hash(repairContext(state, current))), effective = assessed.result;
             const invocation = current.invocations.find(item => item.id === invocationId);
             invocation.endedAt = endedAt;
-            invocation.result = result;
+            invocation.result = effective;
             invocation.session = session;
             invocation.usage = usage;
             current.lease = undefined;
@@ -418,24 +435,26 @@ export async function runWorker(config, store, sourceDir, options, environment =
                 adoptRepair(state, config, current.intentId, sourceAt(state, repairedSha), result.pullRequest, endedAt);
                 current.state = "complete";
             }
-            else if (result.outcome === "repaired" && !result.pullRequest) {
-                completeOperationalRepair(state, current.intentId, result.evidence, endedAt);
+            else if (effective.outcome === "repaired" && !effective.pullRequest) {
+                completeOperationalRepair(state, current.intentId, effective.evidence, endedAt);
                 current.state = "complete";
             }
-            else if (result.outcome === "blocked" && current.strategy < 2) {
+            else if (effective.outcome === "blocked" && current.strategy < 2) {
                 current.state = "complete";
-                repairWork(state, current.intentId, [...current.evidence, result.summary, result.missingCapability ?? "unknown capability"], endedAt);
+                repairWork(state, current.intentId, [...current.evidence, effective.summary, effective.missingCapability ?? "unknown capability"], endedAt);
             }
             else {
-                current.state = result.outcome === "blocked" || stopped ? "waiting" : "pending";
-                current.nextCheckAt = after(endedAt, config.deadlines.pollMinutes);
+                current.state = effective.outcome === "blocked" || stopped ? "waiting" : "pending";
+                current.nextCheckAt = assessed.continueImmediately ? endedAt : after(endedAt, config.deadlines.pollMinutes);
                 const intent = state.intents[current.intentId];
-                intent.blocker = stopped ?? result.missingCapability ?? verificationError;
-                intent.nextAction = stopped ? stoppedAction ?? "recheck-repair-state" : result.outcome === "blocked" ? "recheck-missing-capability-after-independent-strategies" : "resume-repair-checkpoint";
+                intent.blocker = stopped ?? effective.missingCapability ?? verificationError;
+                intent.nextAction = stopped ? stoppedAction ?? "recheck-repair-state" : assessed.claim?.status === "rejected" ? "continue-blocker-diagnosis" : effective.outcome === "blocked" ? "verify-blocker-candidate-with-cto" : "resume-repair-checkpoint";
             }
-            return { workId: current.id, invocationId, outcome: result.outcome, repairedSha, checkpoint: directory };
+            return { workId: current.id, invocationId, outcome: effective.outcome, repairedSha, checkpoint: directory, ...(assessed.claim ? { blockerClaim: assessed.claim } : {}) };
         });
-        return { workId: work.id, invocationId, outcome: result.outcome, repairedSha, checkpoint: directory };
+        const receipt = completion.result.blockerClaim;
+        return { workId: work.id, invocationId, outcome: completion.result.outcome, repairedSha, checkpoint: directory,
+            ...(receipt ? { blockerClaim: { status: receipt.status, proofDigest: receipt.proofDigest, reason: receipt.reason } } : {}) };
     }
     catch (error) {
         const at = new Date().toISOString(), reason = error instanceof Error ? error.message : String(error), stillOwned = owned && owned.exitCode === null && owned.signalCode === null;

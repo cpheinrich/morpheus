@@ -40,6 +40,13 @@ Recheck unchanged blockers cheaply. Wake deeper reasoning again for changed evid
 or a genuinely different bounded diagnostic approach, rather than repeating the same full analysis
 on every timer. Persist the blocked condition and the next useful wake.
 
+Write the DevOps-to-CTO reporting contract into the mandate: the actual fresh-check interval,
+next report due time, what constitutes material delivery progress, and the no-progress interval
+that triggers a new diagnosis. Report material failures, changed capability and decisions when
+they occur; do not wait for that interval. A quiet human notification policy does not suspend
+fresh internal supervision. Repeated invocations, renewed timestamps and another timer firing
+are not delivery progress. Reuse the existing supervisor; this contract creates no new monitor.
+
 ## Recover the delivery, then fix its failure class
 
 Read [the incident guide](references/incidents.md) when diagnosing or resuming an incident. Join
@@ -54,6 +61,16 @@ remains. Check for a stale rule, an agent-created gate or an unresolved diagnosi
 step or resumed stalled incident, ask what you would try if the person asked why delivery still
 had not happened, then perform that authorized work. The role owns removing recoverable blockers;
 it does not wait for the person to suggest the next diagnosis.
+
+A blocked or stalled handoff to the CTO is a **candidate**, accompanied by the incident guide's
+proof of every practical authorized route and the actual outcomes. Name excluded routes and
+their evidence-backed reasons without attempting unsafe, unauthorized or spent effects. When
+the practical set is empty, identify the exact human-only decision or unavailable authorized
+access and its current authority/capability evidence; never run a forbidden action to fill an
+attempt count. Generic errors, an untested cause or "nothing else to try" are not that proof.
+The CTO must independently corroborate the critical references and newest authority before
+accepting a narrow blocker or escalating it. An unsupported handoff returns to diagnosis; a
+well-formed envelope alone is not acceptance. Preserve the attempted claim and failed history.
 
 Repair the reusable owner of the defect and keep consumers thin. Follow the repository's normal
 claim, focused validation, independent review, CI and protected merge path. Treat merged source,
