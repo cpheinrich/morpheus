@@ -211,6 +211,18 @@ only when the next step depends on the result: it prints nothing while it waits,
 green or the failing step's log when not, and exits 0 green, 1 failed, 2 timeout, 3 error. Never
 poll `gh run view` or `gh pr checks` in a loop — each poll re-reads the whole session context.
 
+For a run no pull request owns — TestFlight, a release, a nightly — wait on the run itself:
+
+```sh
+morpheus wait-ci --run <id> [--repo owner/name] [--timeout 90m]
+morpheus wait-ci --workflow testflight.yml --branch main     # its latest run, following a newer one
+morpheus wait-ci --workflow ci.yml --sha <commit>            # exactly that push's run
+```
+
+The poll guard that `morpheus context install` wires refuses the third `gh run view`,
+`gh run watch` or `gh pr checks` of one target in a session and prints the matching command.
+Reading a log (`--log`, `--log-failed`) is never counted. A human can set `MORPHEUS_POLL_GUARD=off`.
+
 **Finish the author-managed independent review before enabling auto-merge.** Opening a PR,
 pushing commits, or changing labels never starts a reviewer session. Follow the
 [review contract](independent-review.md), return to the original reviewer for the

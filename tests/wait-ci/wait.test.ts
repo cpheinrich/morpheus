@@ -192,6 +192,64 @@ describe("waitCi", () => {
     expect(result.output).not.toContain("Actions workflow runs pending or not yet verified");
   });
 
+  /**
+   * MO-26-10-25-02.22.28 / PR #499: at one head, push-event run 40179926816
+   * succeeded while ready-event run 40179927140 of the same workflow had a
+   * failed Node check and a pending browser check, and `wait-ci` said green.
+   * The fixes in #459 (current-head run census) and #524 (workflow identity)
+   * cover it; these cases pin each ordering so it cannot regress.
+   */
+  describe("same-head duplicate runs of one workflow (#499)", () => {
+    const PUSH = { workflow: "CI", workflowId: "W-CI", suite: "suite-40179926816" };
+    const READY = { workflow: "CI", workflowId: "W-CI", suite: "suite-40179927140" };
+    const pushGreen = [
+      run("node / check", "COMPLETED", "SUCCESS", { ...PUSH, job: "11", startedAt: "2026-10-25T09:00:10Z" }),
+      run("qa-browser", "COMPLETED", "SUCCESS", { ...PUSH, job: "12", startedAt: "2026-10-25T09:00:10Z" }),
+    ];
+    /** A queued job has no start time, which is what lets it supersede a finished attempt. */
+    const queued = (name: string, job: string) => ({ ...run(name, "QUEUED", null, { ...READY, job }), startedAt: null });
+    const census = (ready: { status: string; conclusion: string | null }) =>
+      ok([
+        { headSha: SHA_A, status: "completed", conclusion: "success", databaseId: 40179926816 },
+        { headSha: SHA_A, databaseId: 40179927140, ...ready },
+      ]);
+
+    it("keeps waiting while the second run is unregistered, then reports its failure", async () => {
+      const onlyPush = ok(rollup(SHA_A, pushGreen));
+      const both = ok(rollup(SHA_A, [
+        ...pushGreen,
+        run("node / check", "COMPLETED", "FAILURE", { ...READY, job: "21", startedAt: "2026-10-25T09:00:40Z" }),
+        queued("qa-browser", "22"),
+      ]));
+      const { deps } = fakeGh([onlyPush, onlyPush, both], { "21": fail("log expired") }, PR, [census({ status: "in_progress", conclusion: null })]);
+      const result = await waitCi(deps, opts);
+      expect(result.exitCode).toBe(1);
+      expect(result.output.split("\n")[0]).toMatch(/^✗ CI failed — cpheinrich\/morpheus#354 @ 59cb7d5 \(2 checks: 1 failed, 1 running\)/);
+      expect(result.output).not.toContain("CI green");
+    });
+
+    it("never lets an earlier-started failure hide behind a later success", async () => {
+      // Reversed start order: the rollup's latest attempt is the success, so
+      // only the run census can see the failed duplicate. It must refuse green.
+      const reversed = ok(rollup(SHA_A, [
+        run("node / check", "COMPLETED", "FAILURE", { ...READY, job: "21", startedAt: "2026-10-25T09:00:05Z" }),
+        ...pushGreen,
+      ]));
+      const result = await waitCi(fakeGh([reversed], {}, PR, [census({ status: "completed", conclusion: "failure" })]).deps, opts);
+      expect(result).toEqual({
+        exitCode: 3,
+        output: "wait-ci: could not verify current-head workflow runs on cpheinrich/morpheus#354: workflow run 40179927140 ended failure without a matching failed check receipt",
+      });
+    });
+
+    it("lets a queued rerun of the same job supersede its earlier success", async () => {
+      const rerunQueued = ok(rollup(SHA_A, [...pushGreen, queued("qa-browser", "22")]));
+      const result = await waitCi(fakeGh([rerunQueued], {}, PR, [census({ status: "queued", conclusion: null })]).deps, { ...opts, timeoutMs: 20_000 });
+      expect(result.exitCode).toBe(2);
+      expect(result.output).toContain("… qa-browser (CI)");
+    });
+  });
+
   it("passes --repo through to the PR lookup", async () => {
     const { deps, calls } = fakeGh([green()]);
     await waitCi(deps, { ...opts, target: "feature-branch", repo: "cpheinrich/morpheus" });

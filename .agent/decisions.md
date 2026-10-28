@@ -1833,3 +1833,18 @@ state. A current-note completion notice waits for the verified factual record an
 projection, not for separate action promotion; it states whether actions were recorded or remain
 unpromoted. Historical notes still cannot notify. This removes project data from current fixtures
 without rewriting already-public Git history, which needs a separate owner decision if desired.
+
+## CI waits cover any run, and a hook refuses the third poll — 2026-10-28
+
+MO-26-10-28-14.09.01. Transcripts showed polling rose after `wait-ci` shipped and the most
+repeated polls watched release runs by id, which `wait-ci` could not take. `wait-ci --run <id>`
+and `--workflow <name|file>` reuse the PR-mode loop, digest and exit codes; the run's own
+conclusion decides. Instructions alone had not moved behaviour, so `context install` and `init`
+wire a PreToolUse guard on `Bash` (Claude Code and Codex share the schema and the tool name) that
+allows two polls of one target per session and refuses the third with the exact `wait-ci`
+command. It fails open on every error, and its state lives in the **primary** checkout's ignored
+`local/sessions/`, because `pm cleanup` refuses a task worktree holding any other ignored file.
+`doctor` names template rules missing from a consumer `AGENTS.md`, since the scaffold is written
+once. Considered `shell-quote` 1.12.0 (modified 2026-10-02, no dependencies) for finding `gh` in a
+command line; built a ~60-line splitter instead, because the guard also needs `$(`, backtick and
+comment boundaries and a runtime dependency in every install is not worth a hook prefilter.

@@ -1,0 +1,433 @@
+pr / conventions	UNKNOWN STEP	﻿2026-10-28T19:41:04.2806370Z Current runner version: '2.338.0'
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2828991Z ##[group]Runner Image Provisioner
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2829929Z Hosted Compute Agent
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2830617Z Version: 20261021.618
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2831140Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2831800Z Build Date: 2026-10-21T00:45:21Z
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2832388Z Worker ID: {e7ac19f5-091b-4e0b-a101-330c74f3b0f3}
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2832970Z Region: westus3
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2833466Z Cloud: Azure
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2833921Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2835136Z ##[group]Operating System
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2835727Z Ubuntu
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2836177Z 26.04.1
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2836687Z LTS
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2837125Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2837619Z ##[group]Runner Image
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2838181Z Image: ubuntu-26.04
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2838654Z Version: 20261025.179.1
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2839900Z Included Software: https://github.com/actions/runner-images/blob/ubuntu26/20261025.179/images/ubuntu/Ubuntu2604-Readme.md
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2841186Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu26%2F20261025.179
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2842059Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2843063Z ##[group]GITHUB_TOKEN Permissions
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2844908Z Contents: read
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2845439Z Metadata: read
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2845970Z PullRequests: read
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2846464Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2848185Z Secret source: Actions
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2849027Z Cache mode: write
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.2849640Z Prepare workflow directory
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.3338754Z Prepare all required actions
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.3376278Z Getting action download info
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.6456177Z Download action repository 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:04.7376375Z Download action repository 'pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1' (SHA:b906affcce14559ad1aafd4ab0e942779e9f58b1)
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.4806294Z Download action repository 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.6852889Z Uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@refs/pull/536/merge (798ba372de73581eac0cfe08300fdc0c0b4ae804)
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.6856926Z ##[group] Inputs
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.6857406Z   product-dir: hq/product
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.6857922Z   morpheus-ref: 798ba372de73581eac0cfe08300fdc0c0b4ae804
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.6858462Z   node-version: 22
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.6858851Z   pnpm-version: 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.6859586Z   security-import-verified: false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.6860218Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.6860609Z Complete job name: pr / conventions
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7563727Z ##[group]Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7564706Z with:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7565218Z   fetch-depth: 0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7565754Z   repository: cpheinrich/morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7569330Z   token: ***
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7570163Z   ssh-strict: true
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7570653Z   ssh-user: git
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7571160Z   persist-credentials: true
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7571710Z   clean: true
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7572188Z   sparse-checkout-cone-mode: true
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7572769Z   fetch-tags: false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7573245Z   show-progress: true
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7573774Z   lfs: false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7574264Z   submodules: false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7574747Z   set-safe-directory: true
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7575301Z   allow-unsafe-pr-checkout: false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:05.7576130Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3022204Z Syncing repository: cpheinrich/morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3024898Z ##[group]Getting Git version info
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3026072Z Working directory is '/home/runner/work/morpheus/morpheus'
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3027924Z [command]/usr/bin/git version
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3028877Z git version 2.56.0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3039418Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3049860Z Temporarily overriding HOME='/home/runner/work/_temp/f30415d4-988e-4c63-97d0-0a21cf6154c0' before making global git config changes
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3052706Z Adding repository directory to the temporary git global config as a safe directory
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3055441Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/morpheus/morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3106169Z Deleting the contents of '/home/runner/work/morpheus/morpheus'
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3108648Z ##[group]Initializing the repository
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3111982Z [command]/usr/bin/git init /home/runner/work/morpheus/morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3228353Z hint: Using 'master' as the name for the initial branch. This default branch name
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3231042Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3233313Z hint: to use in all of your new repositories, which will suppress this warning,
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3235260Z hint: call:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3236437Z hint:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3237802Z hint: 	git config --global init.defaultBranch <name>
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3239416Z hint:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3241108Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3243413Z hint: 'development'. The just-created branch can be renamed via this command:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3245521Z hint:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3246915Z hint: 	git branch -m <name>
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3248431Z hint:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3250555Z hint: Disable this message with "git config set advice.defaultBranchName false"
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3253284Z Initialized empty Git repository in /home/runner/work/morpheus/morpheus/.git/
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3257258Z [command]/usr/bin/git remote add origin https://github.com/cpheinrich/morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3301128Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3303351Z ##[group]Disabling automatic garbage collection
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3304996Z [command]/usr/bin/git config --local gc.auto 0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3335121Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3336906Z ##[group]Setting up auth
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3341034Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3373677Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3766871Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.3795074Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.4080345Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.4084418Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.4273185Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.4305984Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.4307329Z ##[group]Fetching the repository
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:06.4317587Z [command]/usr/bin/git -c protocol.version=2 fetch --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/* +798ba372de73581eac0cfe08300fdc0c0b4ae804:refs/remotes/pull/536/merge
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2481946Z From https://github.com/cpheinrich/morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2484048Z  * [new branch]      dependabot/npm_and_yarn/plugins/codex-claude/modelcontextprotocol/sdk-1.32.0 -> origin/dependabot/npm_and_yarn/plugins/codex-claude/modelcontextprotocol/sdk-1.32.0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2485231Z  * [new branch]      dependabot/npm_and_yarn/scripts/paperclip-hq/zod-4.6.6 -> origin/dependabot/npm_and_yarn/scripts/paperclip-hq/zod-4.6.6
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2486221Z  * [new branch]      dependabot/npm_and_yarn/vite-7.3.7       -> origin/dependabot/npm_and_yarn/vite-7.3.7
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2487340Z  * [new branch]      dependabot/npm_and_yarn/zod-4.6.6        -> origin/dependabot/npm_and_yarn/zod-4.6.6
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2487944Z  * [new branch]      inbox-2026-10-24                         -> origin/inbox-2026-10-24
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2488574Z  * [new branch]      main                                     -> origin/main
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2489403Z  * [new branch]      mo-055-a-new-contributor-gets-an-inbox-in-one-c -> origin/mo-055-a-new-contributor-gets-an-inbox-in-one-c
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2490436Z  * [new branch]      mo-26-09-24-03.27.53-benchmark-project-document -> origin/mo-26-09-24-03.27.53-benchmark-project-document
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2491147Z  * [new branch]      mo-26-10-06-22.53.44-simulator-watchdog-shut-down -> origin/mo-26-10-06-22.53.44-simulator-watchdog-shut-down
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2491812Z  * [new branch]      mo-26-10-12-14.58.56-prevent-safari-selecting -> origin/mo-26-10-12-14.58.56-prevent-safari-selecting
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2492458Z  * [new branch]      mo-26-10-15-17.06.55-allow-attributable-human -> origin/mo-26-10-15-17.06.55-allow-attributable-human
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2493140Z  * [new branch]      mo-26-10-19-21.10.52-prove-live-hosted-provider -> origin/mo-26-10-19-21.10.52-prove-live-hosted-provider
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2493970Z  * [new branch]      mo-26-10-19-23.42.46-prove-native-two-host -> origin/mo-26-10-19-23.42.46-prove-native-two-host
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2494848Z  * [new branch]      mo-26-10-23-17.05.58-allow-manager-merge -> origin/mo-26-10-23-17.05.58-allow-manager-merge
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2495573Z  * [new branch]      mo-26-10-23-17.32.25-clarify-protected-path-author -> origin/mo-26-10-23-17.32.25-clarify-protected-path-author
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2496289Z  * [new branch]      mo-26-10-23-19.20.15-enable-morpheus-security-import -> origin/mo-26-10-23-19.20.15-enable-morpheus-security-import
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2496976Z  * [new branch]      mo-26-10-26-09.29.44-remediate-codex-claude-zod -> origin/mo-26-10-26-09.29.44-remediate-codex-claude-zod
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2497655Z  * [new branch]      mo-26-10-26-16.37.59-allow-evidence-terminal-active -> origin/mo-26-10-26-16.37.59-allow-evidence-terminal-active
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2498335Z  * [new branch]      mo-26-10-28-12.13.24-diagnose-recover-cd-quota -> origin/mo-26-10-28-12.13.24-diagnose-recover-cd-quota
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2499006Z  * [new branch]      mo-26-10-28-12.35.17-prioritize-gemini-meeting-note -> origin/mo-26-10-28-12.35.17-prioritize-gemini-meeting-note
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2500432Z  * [new branch]      morpheus-security/npm-modelcontextprotocol-sdk-ghsa-22jm-h49p-29qw-d7e00338 -> origin/morpheus-security/npm-modelcontextprotocol-sdk-ghsa-22jm-h49p-29qw-d7e00338
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2501496Z  * [new branch]      wip/trunk-2026-10-08-christophers-macbook-pro -> origin/wip/trunk-2026-10-08-christophers-macbook-pro
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2502170Z  * [new branch]      wip/trunk-2026-10-22-christophers-macbook-pro -> origin/wip/trunk-2026-10-22-christophers-macbook-pro
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2502815Z  * [new branch]      wip/trunk-2026-10-25-christohersair2     -> origin/wip/trunk-2026-10-25-christohersair2
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2503310Z  * [new ref]         798ba372de73581eac0cfe08300fdc0c0b4ae804 -> pull/536/merge
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2504655Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2505073Z ##[group]Determining the checkout info
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2505464Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2505745Z [command]/usr/bin/git sparse-checkout disable
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2544750Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2571668Z ##[group]Checking out the ref
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.2572244Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/536/merge
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3704043Z Note: switching to 'refs/remotes/pull/536/merge'.
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3704363Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3704569Z You are in 'detached HEAD' state. You can look around, make experimental
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3705227Z changes and commit them, and you can discard any commits you make in this
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3705661Z state without impacting any branches by switching back to a branch.
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3705900Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3706076Z If you want to create a new branch to retain commits you create, you may
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3706473Z do so (now or later) by using -c with the switch command. Example:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3706698Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3706826Z   git switch -c <new-branch-name>
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3706983Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3707099Z Or undo this operation with:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3707254Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3707348Z   git switch -
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3707476Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3707679Z Turn off this advice by setting config variable advice.detachedHead to false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3707951Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3708251Z HEAD is now at 798ba37 Merge d9ca0a1ffa7abdae5c7e46e30302c267181400e9 into d7e003382761d185535feafc46a8e5f23ad1f18a
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3719255Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3759197Z [command]/usr/bin/git log -1 --format=%H
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.3780057Z 798ba372de73581eac0cfe08300fdc0c0b4ae804
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4032110Z ##[group]Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4032469Z with:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4032694Z   repository: cpheinrich/morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4032973Z   ref: 798ba372de73581eac0cfe08300fdc0c0b4ae804
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4033246Z   path: .morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4035390Z   token: ***
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4035606Z   ssh-strict: true
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4035829Z   ssh-user: git
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4036051Z   persist-credentials: true
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4036292Z   clean: true
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4036520Z   sparse-checkout-cone-mode: true
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4036773Z   fetch-depth: 1
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4036982Z   fetch-tags: false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4037199Z   show-progress: true
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4037415Z   lfs: false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4037620Z   submodules: false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4037837Z   set-safe-directory: true
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4038102Z   allow-unsafe-pr-checkout: false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4038352Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4705595Z Syncing repository: cpheinrich/morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4706477Z ##[group]Getting Git version info
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4707142Z Working directory is '/home/runner/work/morpheus/morpheus/.morpheus'
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4732914Z [command]/usr/bin/git version
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4764724Z git version 2.56.0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4779993Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4790795Z Temporarily overriding HOME='/home/runner/work/_temp/cdaa38a1-5374-4bc7-b4b8-68b98158e08c' before making global git config changes
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4791983Z Adding repository directory to the temporary git global config as a safe directory
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4795227Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/morpheus/morpheus/.morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4823289Z Deleting the contents of '/home/runner/work/morpheus/morpheus/.morpheus'
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4832749Z ##[group]Initializing the repository
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4835978Z [command]/usr/bin/git init /home/runner/work/morpheus/morpheus/.morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4869068Z hint: Using 'master' as the name for the initial branch. This default branch name
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4870272Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4871036Z hint: to use in all of your new repositories, which will suppress this warning,
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4871607Z hint: call:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4871840Z hint:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4872139Z hint: 	git config --global init.defaultBranch <name>
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4872451Z hint:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4872775Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4873254Z hint: 'development'. The just-created branch can be renamed via this command:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4873609Z hint:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4873843Z hint: 	git branch -m <name>
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4874103Z hint:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4874633Z hint: Disable this message with "git config set advice.defaultBranchName false"
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4875344Z Initialized empty Git repository in /home/runner/work/morpheus/morpheus/.morpheus/.git/
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4878508Z [command]/usr/bin/git remote add origin https://github.com/cpheinrich/morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4937320Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4937753Z ##[group]Disabling automatic garbage collection
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4940003Z [command]/usr/bin/git config --local gc.auto 0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4966075Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4966655Z ##[group]Setting up auth
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4971261Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.4997802Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.5225424Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.5252294Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.5479363Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.5506987Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.5733136Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.5765646Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.5766184Z ##[group]Fetching the repository
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:08.5772269Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin 798ba372de73581eac0cfe08300fdc0c0b4ae804
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.8785891Z From https://github.com/cpheinrich/morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.8786488Z  * branch            798ba372de73581eac0cfe08300fdc0c0b4ae804 -> FETCH_HEAD
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.8791291Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.8791720Z ##[group]Determining the checkout info
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.8792441Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.8798162Z [command]/usr/bin/git sparse-checkout disable
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.8834404Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.8865932Z ##[group]Checking out the ref
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.8869116Z [command]/usr/bin/git checkout --progress --force 798ba372de73581eac0cfe08300fdc0c0b4ae804
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9942175Z Note: switching to '798ba372de73581eac0cfe08300fdc0c0b4ae804'.
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9942536Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9942769Z You are in 'detached HEAD' state. You can look around, make experimental
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9943381Z changes and commit them, and you can discard any commits you make in this
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9943948Z state without impacting any branches by switching back to a branch.
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9944323Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9944568Z If you want to create a new branch to retain commits you create, you may
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9945103Z do so (now or later) by using -c with the switch command. Example:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9945380Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9945502Z   git switch -c <new-branch-name>
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9945708Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9945837Z Or undo this operation with:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9946037Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9946139Z   git switch -
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9946317Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9946586Z Turn off this advice by setting config variable advice.detachedHead to false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9946940Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9947336Z HEAD is now at 798ba37 Merge d9ca0a1ffa7abdae5c7e46e30302c267181400e9 into d7e003382761d185535feafc46a8e5f23ad1f18a
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9950793Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:09.9985899Z [command]/usr/bin/git log -1 --format=%H
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:10.0005784Z 798ba372de73581eac0cfe08300fdc0c0b4ae804
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:10.0138076Z ##[group]Run pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:10.0138403Z with:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:10.0138590Z   package_json_file: .morpheus/package.json
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:10.0138819Z   dest: ~/setup-pnpm
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:10.0138998Z   run_install: null
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:10.0139166Z   cache: false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:10.0139350Z   cache_dependency_path: pnpm-lock.yaml
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:10.0139564Z   standalone: false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:10.0140087Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:10.2974493Z ##[group]Running self-installer...
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:10.9319324Z (node:2300) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:10.9320539Z (Use `node --trace-deprecation ...` to show where the warning was created)
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.2336355Z Progress: resolved 1, reused 0, downloaded 0, added 0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.2398930Z Packages: +1
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.2399213Z +
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.6713365Z Progress: resolved 1, reused 0, downloaded 1, added 1, done
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8509336Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8509984Z dependencies:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8510328Z + pnpm 11.9.0 (12.16.1 is available)
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8510578Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8622781Z Done in 1.4s
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8820618Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8820955Z Installation Completed!
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8974893Z ##[group]Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8975231Z with:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8975453Z   node-version: 22
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8975674Z   always-auth: false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8975851Z   check-latest: false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8977993Z   token: ***
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8978166Z env:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8978393Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:11.8978657Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:12.0256979Z Found in cache @ /opt/hostedtoolcache/node/22.23.4/x64
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:12.0260204Z (node:2314) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:12.0260879Z (Use `node --trace-deprecation ...` to show where the warning was created)
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:12.0262243Z ##[group]Environment details
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:13.1609087Z node: v22.23.4
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:13.1609403Z npm: 10.9.9
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:13.1609639Z yarn: 1.22.22
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:13.1610827Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:13.1730575Z ##[group]Run pnpm install --frozen-lockfile
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:13.1730908Z ^[[36;1mpnpm install --frozen-lockfile^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:13.1767270Z shell: /usr/bin/bash -e {0}
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:13.1767481Z env:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:13.1767691Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:13.1767944Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:13.9231922Z ? Verifying lockfile against supply-chain policies (353 entries)...
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:13.9284589Z Lockfile is up to date, resolution step is skipped
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:14.0012137Z Progress: resolved 1, reused 0, downloaded 0, added 0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:14.0356901Z Packages: +294
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:14.0357747Z ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:15.0031414Z Progress: resolved 294, reused 0, downloaded 109, added 18
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:16.0021682Z Progress: resolved 294, reused 0, downloaded 256, added 49
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:16.9131058Z Progress: resolved 294, reused 0, downloaded 294, added 294, done
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.3810791Z ✓ Lockfile passes supply-chain policies (353 entries in 4.4s)
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.3854291Z .../esbuild@0.28.1/node_modules/esbuild postinstall$ node install.js
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.4500118Z .../esbuild@0.28.1/node_modules/esbuild postinstall: Done
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6228107Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6228633Z dependencies:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6228911Z + @11ty/gray-matter 3.0.0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6229131Z + jose 6.2.5
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6229464Z + minimatch 10.2.6
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6230092Z + minisearch 7.2.0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6230341Z + modern-screenshot 4.7.0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6230612Z + serve-sim 0.1.47
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6230849Z + zod 4.4.3
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6230969Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6231086Z devDependencies:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6231477Z + @firebase/rules-unit-testing 5.0.1
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6231789Z + @playwright/test 1.63.0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6232116Z + @testing-library/react 16.3.3
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6232463Z + @testing-library/user-event 14.6.6
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6232772Z + @types/js-yaml 4.0.9
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6233023Z + @types/node 22.20.1
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6233278Z + @types/react 19.2.18
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6233543Z + @types/react-dom 19.2.5
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6233795Z + eslint 10.9.1
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6234036Z + firebase 12.17.0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6234251Z + js-yaml 5.4.1
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6234460Z + jsdom 26.1.0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6234699Z + pdf-parse 2.4.5
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6234939Z + react 19.2.8
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6235237Z + react-dom 19.2.8
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6235512Z + tsx 4.23.1
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6235767Z + typescript 5.9.3
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6236055Z + typescript-eslint 8.68.0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6236332Z + vite 7.3.6
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6236577Z + vitest 4.1.11
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6236726Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.6592430Z Done in 5.4s using pnpm v11.9.0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7956019Z ##[group]Run set -euo pipefail
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7956327Z ^[[36;1mset -euo pipefail^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7956630Z ^[[36;1m# Reruns must read current labels/body, not the original event snapshot.^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7957061Z ^[[36;1mgh api "repos/$REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/live-pr.json"^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7957521Z ^[[36;1mjq -e --arg sha "$EXPECTED_HEAD" '.head.sha == $sha' "$RUNNER_TEMP/live-pr.json" > /dev/null^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7957877Z ^[[36;1m# >>> pr-head^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7958152Z ^[[36;1m# Every check below must read the PR head: the review gate reads^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7958532Z ^[[36;1m# morpheus.json and the record there, the rest diff and read its tree.^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7958927Z ^[[36;1m# Normally the checkout is refs/pull/N/merge, whose second parent is^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7959296Z ^[[36;1m# the head. Some runs get a checkout of the base branch instead, or a^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7959690Z ^[[36;1m# merge ref GitHub has not recomputed for the newest push, and then^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7960241Z ^[[36;1m# the head may be absent — which `git show <sha>:morpheus.json`^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7960603Z ^[[36;1m# reports as "exists on disk, but not in <sha>". Fetch it by its pull^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7960967Z ^[[36;1m# ref (that also covers a fork, whose branch is not among origin's^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7961310Z ^[[36;1m# heads) and check it out, rather than judge some other tree.^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7961649Z ^[[36;1m# A failed fetch is not fatal here: `check pr` then names the missing^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7961990Z ^[[36;1m# commit, which says more than a raw fetch error would.^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7962336Z ^[[36;1mif ! git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null; then^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7962752Z ^[[36;1m  git fetch --no-tags origin "+refs/pull/$PR_NUMBER/head:refs/remotes/pull/$PR_NUMBER/head" \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7963173Z ^[[36;1m    || echo "::warning::Could not fetch refs/pull/$PR_NUMBER/head."^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7963449Z ^[[36;1mfi^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7963685Z ^[[36;1mif git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7964007Z ^[[36;1m  && [ "$(git rev-parse HEAD)" != "$EXPECTED_HEAD" ] \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7964377Z ^[[36;1m  && [ "$(git rev-parse --verify --quiet 'HEAD^2' || true)" != "$EXPECTED_HEAD" ]; then^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7964859Z ^[[36;1m  echo "::notice::The checkout is not this pull request's merge commit; checking the PR head out directly."^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7965359Z ^[[36;1m  git checkout --quiet --detach "$EXPECTED_HEAD"^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7965602Z ^[[36;1mfi^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7965760Z ^[[36;1m# <<< pr-head^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7966171Z ^[[36;1m# Who applied the GitHub Manager's label is not in the pull request^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7966549Z ^[[36;1m# payload. The newest `labeled` event for it is; an author applying the^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7966935Z ^[[36;1m# label to their own record is refused on that evidence. A failed read^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7967272Z ^[[36;1m# leaves the actor empty, which the check also refuses.^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7967697Z ^[[36;1mMANAGER_LABEL_ACTOR="$(gh api --paginate "repos/$REPOSITORY/issues/$PR_NUMBER/events?per_page=100" \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7968242Z ^[[36;1m  --jq '.[] | select(.event == "labeled" and .label.name == "manager-reviewed") | .actor.login' | tail -n 1 || true)"^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7968696Z ^[[36;1m# The label says who; the App's own comment says which commit. Its^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7969046Z ^[[36;1m# newest comment carrying a cleared head is the only clearance the^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7969386Z ^[[36;1m# check accepts, so a push after it cannot ride on the label.^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7969986Z ^[[36;1mgh api --paginate --slurp "repos/$REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7970534Z ^[[36;1m  > "$RUNNER_TEMP/comments.json" 2> /dev/null || echo '[]' > "$RUNNER_TEMP/comments.json"^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7971214Z ^[[36;1mjq -r '[.[][] | select(.user.login == "morpheus-gh-manager[bot]") | .body // ""^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7971630Z ^[[36;1m        | select(test("<!-- morpheus-gh-manager \\{[^\n]*\"cleared\""))] | last // ""' \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7972025Z ^[[36;1m  "$RUNNER_TEMP/comments.json" > "$RUNNER_TEMP/manager-clearance.md"^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7972459Z ^[[36;1mjq --arg actor "$MANAGER_LABEL_ACTOR" --rawfile clearance "$RUNNER_TEMP/manager-clearance.md" \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7972825Z ^[[36;1m  '{pull_request: (. + {^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7973109Z ^[[36;1m     manager_label_actor: (if $actor == "" then null else $actor end),^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7973514Z ^[[36;1m     manager_clearance: (if ($clearance | length) == 0 then null else $clearance end)})}' \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7973923Z ^[[36;1m  "$RUNNER_TEMP/live-pr.json" > "$RUNNER_TEMP/review-event.json"^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7974355Z ^[[36;1mGITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json" node .morpheus/dist/cli/index.js check pr \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.7974752Z ^[[36;1m  --dir "$PRODUCT_DIR" --base "origin/$BASE_REF"^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.8002035Z shell: /usr/bin/bash -e {0}
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.8002249Z env:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.8002456Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.8004772Z   GH_TOKEN: ***
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.8004953Z   PR_NUMBER: 536
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.8005132Z   REPOSITORY: cpheinrich/morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.8005389Z   EXPECTED_HEAD: d9ca0a1ffa7abdae5c7e46e30302c267181400e9
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.8005654Z   PRODUCT_DIR: hq/product
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.8005835Z   BASE_REF: main
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.8006019Z   MORPHEUS_SECURITY_IMPORT_VERIFIED: false
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:18.8006234Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.0621300Z ✗ [test-plan] PR body needs a non-empty "## Test plan" section. For a local check, pass the GitHub body with MORPHEUS_PR_BODY.
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.0622173Z 
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.0622309Z 1 blocking issue(s).
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.0726798Z ##[error]Process completed with exit code 1.
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.0804606Z Post job cleanup.
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.1983492Z Pruning is unnecessary.
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.2105383Z Post job cleanup.
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.2771129Z [command]/usr/bin/git version
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.2803249Z git version 2.56.0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.2830206Z Temporarily overriding HOME='/home/runner/work/_temp/72ccb108-8199-4a8e-a695-726ce6193f53' before making global git config changes
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.2830902Z Adding repository directory to the temporary git global config as a safe directory
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.2834230Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/morpheus/morpheus/.morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.2864490Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.2892555Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.3162953Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.3183518Z http.https://github.com/.extraheader
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.3193080Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.3221522Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.3449892Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.3476118Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.3874980Z Post job cleanup.
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.4589979Z [command]/usr/bin/git version
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.4622310Z git version 2.56.0
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.4649596Z Temporarily overriding HOME='/home/runner/work/_temp/939dacfc-bf52-44a4-832b-512c8a5f6c0c' before making global git config changes
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.4651022Z Adding repository directory to the temporary git global config as a safe directory
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.4654002Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/morpheus/morpheus
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.4686565Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.4740873Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.4974229Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.4994145Z http.https://github.com/.extraheader
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.5002320Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.5029215Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.5257651Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.5284845Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.5640664Z Cleaning up orphan processes
+pr / conventions	UNKNOWN STEP	2026-10-28T19:41:21.5941923Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@11d5960a326750d5838078e36cf38b85af677262, actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020, pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

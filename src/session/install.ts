@@ -13,6 +13,7 @@ import {
   bootstrapScript,
   sessionStartScript,
 } from "./bootstrap.js";
+import { POLL_GUARD_MARKER, POLL_GUARD_SCRIPT, pollGuardHookEntry, pollGuardScript } from "../wait-ci/hook.js";
 
 const exec = promisify(execFile);
 
@@ -36,6 +37,9 @@ const sessionStartBlock = () => ({
   SessionStart: [{ hooks: [{ type: "command", command: SESSION_START_COMMAND }] }],
 });
 
+/** The CI poll guard; see `src/wait-ci/hook.ts`. */
+const hooksBlock = () => ({ ...sessionStartBlock(), PreToolUse: [pollGuardHookEntry()] });
+
 /**
  * The two files, byte-identical when neither exists yet.
  *
@@ -46,10 +50,10 @@ const sessionStartBlock = () => ({
  * moment either project sets anything else.
  */
 export const claudeSettingsFile = (): string =>
-  JSON.stringify({ hooks: sessionStartBlock() }, null, 2) + "\n";
+  JSON.stringify({ hooks: hooksBlock() }, null, 2) + "\n";
 
 export const codexHooksFile = (): string =>
-  JSON.stringify({ hooks: sessionStartBlock() }, null, 2) + "\n";
+  JSON.stringify({ hooks: hooksBlock() }, null, 2) + "\n";
 
 export const CLAUDE_SETTINGS = ".claude/settings.json";
 export const CODEX_HOOKS = ".codex/hooks.json";
@@ -129,14 +133,14 @@ const isObject = (v: unknown): v is Json =>
  * twice every session, which reads as a bug in the protocol rather than in
  * this command.
  */
-function alreadyWired(entries: unknown[]): boolean {
+function alreadyWired(entries: unknown[], script = MORPHEUS_SESSION_START): boolean {
   return entries.some((entry) => {
     if (!isObject(entry) || !Array.isArray(entry["hooks"])) return false;
     return (entry["hooks"] as unknown[]).some(
       (h) =>
         isObject(h) &&
         typeof h["command"] === "string" &&
-        h["command"].includes(MORPHEUS_SESSION_START),
+        h["command"].includes(script),
     );
   });
 }
@@ -175,6 +179,7 @@ async function ensureHook(
   rel: string,
   template: () => string,
   write: boolean,
+  pollGuard = true,
 ): Promise<Repair> {
   const path = join(root, rel);
   const found = await readJson(path);
@@ -190,9 +195,17 @@ async function ensureHook(
   if (found.kind === "absent") {
     if (write) {
       await mkdir(dirname(path), { recursive: true });
-      await writeFile(path, template(), "utf8");
+      await writeFile(
+        path,
+        pollGuard ? template() : JSON.stringify({ hooks: sessionStartBlock() }, null, 2) + "\n",
+        "utf8",
+      );
     }
-    return { target: rel, outcome: "created", detail: "Wrote the session-start hook." };
+    return {
+      target: rel,
+      outcome: "created",
+      detail: pollGuard ? "Wrote the session-start hook and the CI poll guard." : "Wrote the session-start hook.",
+    };
   }
 
   const doc = found.value;
@@ -214,23 +227,47 @@ async function ensureHook(
     };
   }
   const entries: unknown[] = Array.isArray(sessionStart) ? sessionStart : [];
-  if (alreadyWired(entries)) {
-    return { target: rel, outcome: "present", detail: "Already runs the Morpheus session shim." };
+  const preToolUse = block["PreToolUse"];
+  if (pollGuard && preToolUse !== undefined && !Array.isArray(preToolUse)) {
+    return {
+      target: rel,
+      outcome: "blocked",
+      detail: 'Left untouched — its "hooks.PreToolUse" is not an array.',
+    };
+  }
+  const preEntries: unknown[] = Array.isArray(preToolUse) ? preToolUse : [];
+  const sessionWired = alreadyWired(entries);
+  const guardWired = !pollGuard || alreadyWired(preEntries, POLL_GUARD_SCRIPT);
+  if (sessionWired && guardWired) {
+    return {
+      target: rel,
+      outcome: "present",
+      detail: pollGuard
+        ? "Already runs the Morpheus session shim and CI poll guard."
+        : "Already runs the Morpheus session shim.",
+    };
   }
 
-  const legacy = withoutLegacyBrief(entries);
-  block["SessionStart"] = [...legacy.entries, sessionStartBlock().SessionStart[0]];
-  if (write) await writeJson(path, { ...doc, hooks: block });
-  return {
-    target: rel,
-    outcome: "updated",
-    detail:
+  const notes: string[] = [];
+  if (!sessionWired) {
+    const legacy = withoutLegacyBrief(entries);
+    block["SessionStart"] = [...legacy.entries, sessionStartBlock().SessionStart[0]];
+    notes.push(
       legacy.removed
         ? "Replaced the legacy direct brief with the version-independent session shim."
         : entries.length > 0
           ? "Added the Morpheus session shim alongside the SessionStart hooks already there."
           : "Added the session-start hook, keeping the rest of the file.",
-  };
+    );
+  }
+  if (!guardWired) {
+    // Appended, never merged into another entry: a project's own Bash hooks
+    // keep running exactly as before, and this one stays removable alone.
+    block["PreToolUse"] = [...preEntries, pollGuardHookEntry()];
+    notes.push("Added the CI poll guard (PreToolUse on Bash).");
+  }
+  if (write) await writeJson(path, { ...doc, hooks: block });
+  return { target: rel, outcome: "updated", detail: notes.join(" ") };
 }
 
 async function ensureManagedFile(
@@ -405,7 +442,17 @@ export async function installContext(root: string, opts: InstallOptions): Promis
     "# Morpheus device bootstrap",
     opts.write,
   );
+  const pollGuard = await ensureManagedFile(
+    root,
+    POLL_GUARD_SCRIPT,
+    pollGuardScript(),
+    POLL_GUARD_MARKER,
+    opts.write,
+  );
   const scriptsReady = bootstrap.outcome !== "blocked" && sessionStart.outcome !== "blocked";
+  // A poll-guard path holding someone else's script is reported, and the hook
+  // that would run it is not wired; the session-start wiring is unaffected.
+  const guardReady = pollGuard.outcome !== "blocked";
   const blockedHook = (target: string): Repair => ({
     target,
     outcome: "blocked",
@@ -416,11 +463,12 @@ export async function installContext(root: string, opts: InstallOptions): Promis
     sessionStart,
     readme,
     scriptsReady
-      ? await ensureHook(root, CLAUDE_SETTINGS, claudeSettingsFile, opts.write)
+      ? await ensureHook(root, CLAUDE_SETTINGS, claudeSettingsFile, opts.write, guardReady)
       : blockedHook(CLAUDE_SETTINGS),
     scriptsReady
-      ? await ensureHook(root, CODEX_HOOKS, codexHooksFile, opts.write)
+      ? await ensureHook(root, CODEX_HOOKS, codexHooksFile, opts.write, guardReady)
       : blockedHook(CODEX_HOOKS),
     await ensureHandle(root, opts),
+    pollGuard,
   ];
 }
