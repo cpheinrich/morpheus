@@ -1,0 +1,112 @@
+---
+id: MO-26-10-28-14.08.05
+title: "Enforce the context protocol in code"
+date: 2026-10-28
+roadmap: MO-26-10-28-14.08.05
+tags: [engineering]
+---
+
+# Enforce the context protocol in code
+
+## Why
+
+The 2026-10-07 instruction change ("read once, refresh once, refresh again only on refusal") did
+not change behaviour: refreshes per Claude session rose from 2.3 to 3.1–3.2, Codex ran 2.4–5.1, and
+some agents took receipts with `cat … >/dev/null && morpheus context refresh`. With a 139 KB
+`decisions.md`, every redundant refresh cost ~35k tokens or a pretend read.
+
+## What changed
+
+- **Idempotent refresh** (`src/session/context.ts`). Unchanged trunk and records extend the stored
+  receipt (same id and `createdAt`, new `checkedAt`) and the CLI prints one line. Sentinels are
+  excluded from "unchanged", so a record missing both times is not called unchanged.
+- **Read evidence** (`src/session/evidence.ts`, `read-hook.ts`, `certify.ts`). A `PostToolUse` hook,
+  `morpheus context record-read`, appends to `local/sessions/reads.jsonl` what a Read or shell call
+  showed the model of the required records. A Read is credited by range once its returned text
+  matches the disk; shell output is credited by content — runs of record lines verbatim in the
+  output, at least 16 non-space characters — so `>/dev/null`, `| wc`, `cat -n` earn nothing and
+  `| head` earns only what it let through. Refresh certifies a record only where this session's
+  evidence covers it at its current fingerprint: the whole record without a recorded baseline,
+  otherwise the hunks Git's `diff --no-index` finds against the snapshot taken with the last
+  receipt (`local/sessions/<lease>.records.json`). A shortfall writes nothing and prints the
+  unread ranges and the changed lines raw, with enough context to count — that output is itself
+  creditable reading on the next refresh. `noteWrite` moves the snapshot with the receipt, so a
+  session is not asked to read back its own `pm block` write.
+- **Never a lockout.** Enforcement starts only once the hook has run and understood a result in the
+  current provider session (`CLAUDE_CODE_SESSION_ID` / `CODEX_THREAD_ID`, hashed). Otherwise refresh
+  certifies by assertion with a warning and the receipt records `evidence: "asserted"`; an asserted
+  receipt is never the baseline a recorded one extends. `MORPHEUS_READ_EVIDENCE=off` is the declared
+  escape for a hook that runs and cannot see a read.
+- **Wiring.** `context install` (and so `init`) merges the hook into `.claude/settings.json`
+  (`PostToolUse` matcher `Read|Bash`, plus `PostToolUseFailure` for `Bash`) and `.codex/hooks.json`
+  (`PostToolUse`, no matcher, no failure event). The command is inline `sh -c`, silent, exit 0
+  whatever happens. `doctor` warns on a hooks file with the shim but no read hook. `pm cleanup`
+  accepts the read log and snapshot as generated. `src/cli/index.ts` routes `context record-read`
+  before loading the CLI: ~93 ms against ~365 ms for a full load (median of five, loaded machine).
+- Docs: `AGENTS.md` (19,683 bytes, under the 20 KB test), the scaffold template (under its 16 KB
+  test), the context-freshness runbook and `architecture.md` §7.10; decision and learned entries.
+  This repository's own hook files are rewired by running the built `context install`.
+
+## What was learned, including dead ends
+
+- **The hook payload is not what the model saw.** Transcripts show Claude Code keeping ~30,000
+  characters of a large Bash result in `toolUseResult.stdout` (29,620–29,984) while the model saw a
+  1,326–2,396 character persisted preview. Hence the 20 KB credit cap (8 KB and 200 lines for
+  Codex, which truncates on its own smaller terms). Recorded in `learned.md`.
+- **Read payload shape** came from transcripts (`{type:"text", file:{filePath, content, startLine,
+  numLines, totalLines}}`, content identical to the disk slice for both a full `AGENTS.md` read and a
+  700-line partial `decisions.md` read) and from the 2.1.283 binary, where `PostToolUse` sets
+  `tool_response` to the tool's output object and the Bash shell env sets
+  `CLAUDE_CODE_SESSION_ID` to the session id hooks receive. A non-zero Bash exit is a failed tool
+  call (`PostToolUseFailure`, text in `error`), which is why the failure event is wired:
+  `context refresh` exits 1 exactly when it prints lines to read.
+- **Codex** supports `PostToolUse` with `tool_input`/`tool_response` (schema in the 0.163.0
+  binary) but its shell payload shape and tool names are undocumented; the hook accepts a string or
+  `stdout`/`output`/`aggregated_output`/`formatted_output`, and anything else is "not understood",
+  which keeps the session on the assertion rather than refusing reads it could not see.
+- **Dead end: live verification.** A nested headless `claude -p` in a probe project with a
+  payload-dumping hook failed with "OAuth session expired and could not be refreshed", with and
+  without the desktop host's auth environment; logging in is not something an agent does. Codex
+  would need its hook trusted in the user's Codex config, which this task did not touch. So the
+  hook was verified by piping realistic payloads through the exact command string written into
+  `.claude/settings.json` with the built CLI on `PATH` (Read 1–50 credited, `>/dev/null` not,
+  `sed -n '60,90p'` credited 60–90), not by a live provider session.
+- First attempt at `creditRuns` skipped a run whenever the previous output and record lines were
+  equal, which silently dropped every run preceded by a matching blank line; replaced with a
+  per-diagonal coverage map before any test ran against it.
+- The claim flow: `pm claim` prepared a temp worktree this isolated agent could not use, so the
+  prepared worktree was removed, the intake file moved back, and this worktree detached at trunk to
+  claim directly — the path the runbook names for an isolated detached worktree.
+
+## Test plan
+
+- `pnpm exec vitest run tests/session-evidence.test.ts` — 34 tests: ranges at boundaries, content
+  credit (`cat`, `>/dev/null`, `| head -1`, `| tail -1`, `cat -n`, the 16-character boundary both
+  sides, tiny records, leading blank lines), log damage counted, hook payloads (Read, symlinked
+  `CLAUDE.md`, content mismatch, the 20,000-byte cap at exactly the cap and one byte over, the
+  failure event, Codex cap, unknown shapes, a repo not ignoring `local/`), evidence modes, and
+  refresh against a real bare remote (unchanged → extended; changed → refused until the new hunks
+  are read; partial ranges add up with the gap named; asserted never extended; fallback; own writes;
+  evidence across worktrees; CLI output → failure-event credit → certify → extend).
+- Mutation check: seven guards broken one at a time (asserted-baseline guard, sentinel exclusion,
+  Read content check, liveness gate, run threshold, cap boundary, fingerprint match); all seven
+  killed by the suite.
+- `pnpm exec vitest run tests/session-install.test.ts tests/worktree-cleanup.test.ts
+  tests/agent-instructions.test.ts tests/session.test.ts tests/session-gate.test.ts
+  tests/session-start.test.ts tests/init.test.ts tests/doctor.test.ts tests/cli-dispatch.test.ts`
+  — direct dependents.
+- `pnpm test` once (this touches `src/session/` and `src/init/templates.ts`): 3,516 passed; the six
+  failures are all `tests/workflow-expressions.test.ts`, which needs a local `actionlint` binary
+  (CI installs it).
+- `pnpm typecheck`, `pnpm compile`, `pnpm morpheus pm index` (unchanged), `pm validate`.
+- On this repository: the built `context refresh` printed the assertion warning (no hook in this
+  session) and a second run printed `Context unchanged since … Receipt extended; nothing to
+  re-read.`
+
+## Open questions
+
+- The first live Claude session after this merges is the real verification of the payload shapes
+  and the failure event. If refresh there reports "no read hook has recorded a tool result" after
+  reads, the hook is not firing or not understood.
+- Codex enforcement depends on its undocumented shell payload; until a trusted Codex session shows
+  credited reads, Codex sessions stay on the assertion with a warning.
