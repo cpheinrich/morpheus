@@ -3303,6 +3303,31 @@ metadata workflow cannot replace another workflow's failed required job. Only re
 inside the same workflow supersede each other; missing suite identity refuses the receipt.
 Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
 
+`morpheus wait-ci --run <id>` and `--workflow <name|file> [--branch <b>] [--sha <s>]` wait the
+same way on one Actions run that no pull request owns — TestFlight, release, nightly — because the
+most repeated polls in the transcripts were `gh run view <id> --json status,conclusion,jobs`. The
+run's own conclusion decides the verdict (a `continue-on-error` job can fail inside a green run,
+and a run can fail before any job starts); the jobs supply the digest. By workflow, every poll
+re-selects the newest matching run, following and naming a newer one; with no match the
+no-checks grace applies. A latest run that had already finished when the wait began is held for
+20 seconds unless `--sha` pinned it, because a run just dispatched or pushed lists within
+seconds and the previous run's exit code would otherwise answer for it; if none appears, the
+digest flags it. `--sha` must be a full SHA, the only form `gh run list --commit` matches.
+
+Instructions alone did not stop the polling — sessions polled more after `wait-ci` existed — so
+`morpheus context install` (and `init`) also wires a **poll guard**: a PreToolUse hook on `Bash`
+in `.claude/settings.json` and `.codex/hooks.json`, running the checked-in
+`.morpheus/poll-guard.sh`. A shell prefilter keeps non-poll commands free of a Node start; a
+candidate goes to `morpheus poll-guard`, which counts `gh run view|run watch|pr checks` per
+target (run id or PR, with `--repo`) per session and exits 2 — both providers' "block" — on the
+third, printing the exact `wait-ci` command. `--log`/`--log-failed`/`--web` are diagnosis and never
+counted; a refused call is not recorded. State is `local/sessions/poll-guard-<session>.json` in the
+**primary** checkout, because `pm cleanup` refuses a task worktree holding any ignored file but its
+lease. Every failure path — no CLI, an older CLI, no repository, unreadable state — allows the call.
+`MORPHEUS_POLL_GUARD=off` disables it. `doctor` reports a project without the guard, and an
+`AGENTS.md` missing the template's key rules (`src/doctor/instructions.ts`), since the scaffold
+is written once and guidance added later reaches a project only by hand.
+
 ### 18.2 Reusable GitHub workflows
 
 General project-management workflows with an `on: workflow_call` trigger live in Morpheus; each

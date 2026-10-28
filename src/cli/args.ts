@@ -76,6 +76,14 @@ export interface Flags {
   timeout?: string;
   /** `wait-ci`: only checks branch protection requires. */
   requiredOnly: boolean;
+  /** `wait-ci --run`: one Actions run's database id. */
+  run?: string;
+  /** `wait-ci --workflow`: a workflow name or file whose latest matching run is awaited. */
+  workflow?: string;
+  /** `wait-ci --workflow`: only runs on this branch. */
+  branch?: string;
+  /** `wait-ci --workflow`: only runs for this commit. */
+  sha?: string;
   full: boolean;
   json: boolean;
   dispatch: boolean;
@@ -128,6 +136,10 @@ const stringOptions: Record<string, (flags: Flags, value: string | undefined) =>
   "--since": (flags, value) => { flags.since = value; },
   "--repo": (flags, value) => { flags.repo = value; },
   "--timeout": (flags, value) => { flags.timeout = value; },
+  "--run": (flags, value) => { flags.run = value; },
+  "--workflow": (flags, value) => { flags.workflow = value; },
+  "--branch": (flags, value) => { flags.branch = value; },
+  "--sha": (flags, value) => { flags.sha = value; },
 };
 
 const booleanOptions: Record<string, (flags: Flags) => void> = {

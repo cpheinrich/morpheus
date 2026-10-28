@@ -1947,3 +1947,18 @@ warning, and `MORPHEUS_READ_EVIDENCE=off` is the declared escape for a hook that
 Receipts stay local and startup still never certifies. Considered `diff` (jsdiff, zero runtime
 dependencies) for the hunks; used Git's `diff --no-index`, already required by every session
 command. No new dependency.
+
+## CI waits cover any run, and a hook refuses the third poll — 2026-10-28
+
+MO-26-10-28-14.09.01. Transcripts showed polling rose after `wait-ci` shipped and the most
+repeated polls watched release runs by id, which `wait-ci` could not take. `wait-ci --run <id>`
+and `--workflow <name|file>` reuse the PR-mode loop, digest and exit codes; the run's own
+conclusion decides. Instructions alone had not moved behaviour, so `context install` and `init`
+wire a PreToolUse guard on `Bash` (Claude Code and Codex share the schema and the tool name) that
+allows two polls of one target per session and refuses the third with the exact `wait-ci`
+command. It fails open on every error, and its state lives in the **primary** checkout's ignored
+`local/sessions/`, because `pm cleanup` refuses a task worktree holding any other ignored file.
+`doctor` names template rules missing from a consumer `AGENTS.md`, since the scaffold is written
+once. Considered `shell-quote` 1.12.0 (modified 2026-10-02, no dependencies) for finding `gh` in a
+command line; built a ~60-line splitter instead, because the guard also needs `$(`, backtick and
+comment boundaries and a runtime dependency in every install is not worth a hook prefilter.

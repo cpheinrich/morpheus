@@ -865,10 +865,9 @@ so the choice is not relitigated next session.
 would unblock you>"\`. Escalating is cheap; shipping half-baked is expensive.
 
 **Break loops.** If the same command fails the same way twice, or you have polled the same thing
-three times, stop: change approach, or \`pm block\` with what you learned. Never idle-loop
-(\`sleep\`/\`true\`/\`echo\` loops, repeated status checks). To wait on CI prefer \`gh pr merge --auto\`;
-when the next step depends on the result, run \`morpheus wait-ci <n>\` once — never poll
-\`gh run view\` or \`gh pr checks\` in a loop.
+three times, stop: change approach, or \`pm block\` with what you learned. Never idle-loop or poll
+\`gh\`: prefer \`gh pr merge --auto\`, and when the next step needs the CI result run
+\`morpheus wait-ci <n>\` once, or \`wait-ci --run <id>\` for one Actions run (TestFlight, release).
 
 **The authoring agent owns the entire review loop.** Finish the relevant focused tests and inspect
 results before the reviewer's first turn; send the full packet and available UI evidence. If a test

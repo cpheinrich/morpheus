@@ -18,7 +18,7 @@ export function nextDelay(previous, remainingMs) {
     const base = previous === null ? FIRST_DELAY_MS : Math.min(MAX_DELAY_MS, Math.round(previous * BACKOFF));
     return Math.max(0, Math.min(base, remainingMs));
 }
-function firstLine(text) {
+export function firstLine(text) {
     return text.trim().split("\n")[0] ?? "";
 }
 async function resolvePr(deps, opts) {
@@ -76,12 +76,13 @@ async function currentHeadRuns(deps, repo, headSha, hasActionsCheck) {
         return { error: "workflow run census returned output that is not JSON" };
     }
 }
-async function failureDetails(deps, repo, checks) {
+/** Failing-step logs for up to {@link MAX_LOGS} failed jobs; `repo` absent means gh's current repository. */
+export async function failureDetails(deps, repo, checks) {
     const details = new Map();
     const withLogs = checks.filter((c) => c.outcome === "fail" && c.jobId).slice(0, MAX_LOGS);
     const perJob = Math.max(15, Math.min(60, Math.floor(LOG_BUDGET / Math.max(1, withLogs.length))));
     for (const check of withLogs) {
-        const res = await deps.gh(["run", "view", "--repo", repo, "--job", check.jobId, "--log-failed"]);
+        const res = await deps.gh(["run", "view", ...(repo ? ["--repo", repo] : []), "--job", check.jobId, "--log-failed"]);
         if (res.code !== 0) {
             details.set(checkKey(check), { logError: firstLine(res.stderr) || `gh exited ${res.code}` });
             continue;

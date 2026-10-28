@@ -13,6 +13,7 @@ import {
   bootstrapScript,
   sessionStartScript,
 } from "./bootstrap.js";
+import { POLL_GUARD_MARKER, POLL_GUARD_SCRIPT, pollGuardHookEntry, pollGuardScript } from "../wait-ci/hook.js";
 
 const exec = promisify(execFile);
 
@@ -76,17 +77,34 @@ const codexReadBlocks = (): Json => ({
 });
 
 /**
+ * The CI poll guard (`src/wait-ci/hook.ts`), identical for both providers:
+ * Codex documents its shell tool as `Bash` for PreToolUse matching, and both
+ * block on exit 2.
+ */
+const pollGuardBlocks = (): Json => ({ PreToolUse: [pollGuardHookEntry()] });
+
+/** One event's entries to add, and the text that shows they are already there. */
+interface WantedBlocks {
+  blocks: () => Json;
+  marker: string;
+  label: string;
+}
+
+const READ_HOOK = { marker: READ_HOOK_MARKER, label: "the read hook" };
+const POLL_GUARD = { blocks: pollGuardBlocks, marker: POLL_GUARD_SCRIPT, label: "the CI poll guard" };
+
+/**
  * The two files. They differ only in the read hook's events.
  *
  * Not one file symlinked: `.claude/settings.json` is a whole settings document
  * that also carries permissions, plugins and a theme, while
  * `.codex/hooks.json` holds hooks and nothing else.
  */
-export const claudeSettingsFile = (): string =>
-  JSON.stringify({ hooks: { ...sessionStartBlock(), ...claudeReadBlocks() } }, null, 2) + "\n";
+export const claudeSettingsFile = (pollGuard = true): string =>
+  JSON.stringify({ hooks: { ...sessionStartBlock(), ...claudeReadBlocks(), ...(pollGuard ? pollGuardBlocks() : {}) } }, null, 2) + "\n";
 
-export const codexHooksFile = (): string =>
-  JSON.stringify({ hooks: { ...sessionStartBlock(), ...codexReadBlocks() } }, null, 2) + "\n";
+export const codexHooksFile = (pollGuard = true): string =>
+  JSON.stringify({ hooks: { ...sessionStartBlock(), ...codexReadBlocks(), ...(pollGuard ? pollGuardBlocks() : {}) } }, null, 2) + "\n";
 
 export const CLAUDE_SETTINGS = ".claude/settings.json";
 export const CODEX_HOOKS = ".codex/hooks.json";
@@ -210,9 +228,10 @@ async function writeJson(path: string, value: Json): Promise<void> {
 async function ensureHook(
   root: string,
   rel: string,
-  template: () => string,
+  template: (pollGuard?: boolean) => string,
   readBlocks: () => Json,
   write: boolean,
+  pollGuard = true,
 ): Promise<Repair> {
   const path = join(root, rel);
   const found = await readJson(path);
@@ -228,9 +247,13 @@ async function ensureHook(
   if (found.kind === "absent") {
     if (write) {
       await mkdir(dirname(path), { recursive: true });
-      await writeFile(path, template(), "utf8");
+      await writeFile(path, template(pollGuard), "utf8");
     }
-    return { target: rel, outcome: "created", detail: "Wrote the session-start hook." };
+    return {
+      target: rel,
+      outcome: "created",
+      detail: pollGuard ? "Wrote the session-start hook and the CI poll guard." : "Wrote the session-start hook.",
+    };
   }
 
   const doc = found.value;
@@ -266,26 +289,37 @@ async function ensureHook(
   }
 
   // Every event checked before anything is written, so a malformed one leaves
-  // the file exactly as it was rather than half-repaired.
-  const missing: string[] = [];
-  for (const [event, wanted] of Object.entries(readBlocks())) {
-    const current = block[event];
-    if (current !== undefined && !Array.isArray(current)) {
-      return {
-        target: rel,
-        outcome: "blocked",
-        detail: `Left untouched — its "hooks.${event}" is not an array.`,
-      };
+  // the file exactly as it was rather than half-repaired. Each kind of hook is
+  // found by its own marker, so one already wired is never added twice, and
+  // entries are appended — a project's own hooks on the same event keep running.
+  const wantedAll: WantedBlocks[] = [{ blocks: readBlocks, ...READ_HOOK }, ...(pollGuard ? [POLL_GUARD] : [])];
+  for (const wanted of wantedAll) {
+    const missing: string[] = [];
+    for (const [event, entriesToAdd] of Object.entries(wanted.blocks())) {
+      const current = block[event];
+      if (current !== undefined && !Array.isArray(current)) {
+        return {
+          target: rel,
+          outcome: "blocked",
+          detail: `Left untouched — its "hooks.${event}" is not an array.`,
+        };
+      }
+      const list: unknown[] = Array.isArray(current) ? current : [];
+      if (alreadyWired(list, wanted.marker)) continue;
+      block[event] = [...list, ...(entriesToAdd as unknown[])];
+      missing.push(event);
     }
-    const list: unknown[] = Array.isArray(current) ? current : [];
-    if (alreadyWired(list, READ_HOOK_MARKER)) continue;
-    block[event] = [...list, ...(wanted as unknown[])];
-    missing.push(event);
+    if (missing.length) done.push(`Added ${wanted.label} (${missing.join(", ")}) beside any hooks already there.`);
   }
-  if (missing.length) done.push(`Added the read hook (${missing.join(", ")}) beside any hooks already there.`);
 
   if (!done.length) {
-    return { target: rel, outcome: "present", detail: "Already runs the Morpheus session shim and read hook." };
+    return {
+      target: rel,
+      outcome: "present",
+      detail: pollGuard
+        ? "Already runs the Morpheus session shim, read hook and CI poll guard."
+        : "Already runs the Morpheus session shim and read hook.",
+    };
   }
   if (write) await writeJson(path, { ...doc, hooks: block });
   return { target: rel, outcome: "updated", detail: done.join(" ") };
@@ -463,7 +497,17 @@ export async function installContext(root: string, opts: InstallOptions): Promis
     "# Morpheus device bootstrap",
     opts.write,
   );
+  const pollGuard = await ensureManagedFile(
+    root,
+    POLL_GUARD_SCRIPT,
+    pollGuardScript(),
+    POLL_GUARD_MARKER,
+    opts.write,
+  );
   const scriptsReady = bootstrap.outcome !== "blocked" && sessionStart.outcome !== "blocked";
+  // A poll-guard path holding someone else's script is reported, and the hook
+  // that would run it is not wired; the other wiring is unaffected.
+  const guardReady = pollGuard.outcome !== "blocked";
   const blockedHook = (target: string): Repair => ({
     target,
     outcome: "blocked",
@@ -474,11 +518,12 @@ export async function installContext(root: string, opts: InstallOptions): Promis
     sessionStart,
     readme,
     scriptsReady
-      ? await ensureHook(root, CLAUDE_SETTINGS, claudeSettingsFile, claudeReadBlocks, opts.write)
+      ? await ensureHook(root, CLAUDE_SETTINGS, claudeSettingsFile, claudeReadBlocks, opts.write, guardReady)
       : blockedHook(CLAUDE_SETTINGS),
     scriptsReady
-      ? await ensureHook(root, CODEX_HOOKS, codexHooksFile, codexReadBlocks, opts.write)
+      ? await ensureHook(root, CODEX_HOOKS, codexHooksFile, codexReadBlocks, opts.write, guardReady)
       : blockedHook(CODEX_HOOKS),
     await ensureHandle(root, opts),
+    pollGuard,
   ];
 }

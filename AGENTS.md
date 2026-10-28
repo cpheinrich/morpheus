@@ -148,7 +148,8 @@ unblock you>"`. Escalating is cheap; shipping half-baked is expensive. "Blocked 
 three times, stop: change approach, or `pm block` with what you learned. Never idle-loop
 (`sleep`/`true`/`echo` loops, repeated status checks). To wait on CI prefer `gh pr merge --auto`;
 when the next step depends on the result, run `morpheus wait-ci <n>` once — never poll
-`gh run view` or `gh pr checks` in a loop.
+`gh run view` or `gh pr checks` in a loop; for one Actions run, `morpheus wait-ci --run <id>` (or
+`--workflow <file> --branch <b>`). A hook refuses the third poll of a target.
 
 **Browser-reachable work is not blocked.** If the *single, entire* obstacle is that something has
 to happen in a browser — a console, a dashboard, a setting — do it yourself rather than describe

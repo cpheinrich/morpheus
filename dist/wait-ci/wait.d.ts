@@ -1,3 +1,5 @@
+import { type Check } from "./checks.js";
+import { type FailureDetail } from "./digest.js";
 /**
  * The impure half of `morpheus wait-ci`: one `gh` runner, one clock and one
  * sleep, all injected, so the loop's timing, SHA tracking and error handling
@@ -38,6 +40,9 @@ export declare const MAX_LOGS = 5;
 export declare const LOG_BUDGET = 150;
 /** The next sleep: geometric backoff, never past the cap or the deadline. */
 export declare function nextDelay(previous: number | null, remainingMs: number): number;
+export declare function firstLine(text: string): string;
+/** Failing-step logs for up to {@link MAX_LOGS} failed jobs; `repo` absent means gh's current repository. */
+export declare function failureDetails(deps: WaitDeps, repo: string | undefined, checks: Check[]): Promise<Map<string, FailureDetail>>;
 /**
  * Wait for every check on a PR's head to finish, then digest the result.
  *
