@@ -4,5 +4,5 @@ export { activeTime, deriveItem, deriveRepo, IDLE_THRESHOLD_MS, percentile } fro
 export { ClaudeTranscript, parseClaudeTranscript } from "./claude.js";
 export { CodexTranscript, parseCodexTranscript } from "./codex.js";
 export { extract, sinceMs, toJsonl } from "./extract.js";
-export { buildReport, renderReport } from "./report.js";
+export { buildReport, renderReport, summarizeIssues } from "./report.js";
 //# sourceMappingURL=index.js.map

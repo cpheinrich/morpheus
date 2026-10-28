@@ -249,6 +249,7 @@ export class CodexTranscript {
             byModel: [...this.byModel.values()],
             costUSD: null,
             file,
+            source: this.options.source ?? "codex-sessions",
         };
         return { session, spans, issues: this.issues };
     }

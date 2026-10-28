@@ -639,6 +639,19 @@ sanitized causes and distinct categories while refusing model launch against
 unknown usage. A healthy timer and an unchanged private checkpoint cannot prove
 that recovery or delivery progressed.
 
+## Codex compresses old rollouts in place, then archives some
+
+2026-10-28 (MO-26-10-28-14.11.57). Codex rewrites an older rollout under
+`~/.codex/sessions/YYYY/MM/DD/` from `.jsonl` to `.jsonl.zst` and moves some sessions to a flat
+`~/.codex/archived_sessions/`, also `.jsonl.zst`; the content is the same rollout format. On this
+machine at the time: 32 plain and 746 compressed files under `sessions/` (everything older than
+about a week compressed) and 317 archived, mostly July to September. A profiler that globbed
+`*.jsonl` found zero Evo Codex main sessions for 10-09 to 10-21 where a run a week earlier had found
+fourteen, and reported no error: the files had been compressed, not deleted. The archive alone
+would not have recovered them — only two October sessions were in it. A reader of a tool's local
+state should match every encoding the tool writes, and an unexpected zero is a reason to look at
+the directory before trusting the number.
+
 ## A diff keyed on blob ids stops matching once trunk touches the file
 
 2026-10-28, trunk rescue cleanup (MO-26-10-28-14.08.53). The 2026-10-15 rescue dedupe compared

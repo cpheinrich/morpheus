@@ -5,7 +5,7 @@ import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkLocalReview } from "../review/local.js";
+import { checkLocalReview, REVIEW_FLOOR_RULE } from "../review/local.js";
 import { hash } from "./schema.js";
 import { after, adoptRepair, completeOperationalRepair, invariant, quotaUsed, repairWork, sourceAt } from "./state.js";
 import { ActionsAdapter } from "./actions.js";
@@ -165,7 +165,9 @@ export async function verifyRepair(config, store, sourceDir, result) {
     const directory = await mkdtemp(join(tmpdir(), "morpheus-cd-review-"));
     try {
         git(sourceDir, ["worktree", "add", "--detach", directory, pull.head.sha]);
-        const findings = checkLocalReview({ root: directory, body: pull.body, labels: pull.labels.map(label => label.name), head: pull.head.sha, base: pull.base.sha });
+        // A review-floor waiver reports a validated record; every other finding, an opt-out included, refuses.
+        const findings = checkLocalReview({ root: directory, body: pull.body, labels: pull.labels.map(label => label.name), head: pull.head.sha, base: pull.base.sha })
+            .filter(finding => !(finding.level === "waived" && finding.rule === REVIEW_FLOOR_RULE));
         invariant(findings.length === 0, `Repair lacks valid independent review: ${findings.map(finding => finding.message).join("; ")}`);
     }
     finally {
