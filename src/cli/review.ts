@@ -289,10 +289,11 @@ export function validateReview(root: string, base: string, worklog?: string, prB
       }
       path = found[0]!;
     }
-    verifyReviewRecord({ root, path, head, base });
+    const { waivers } = verifyReviewRecord({ root, path, head, base });
     // CI reads the committed file. Uncommitted edits are neither validated nor seen there.
     const dirty = git(root, ["status", "--porcelain", "--", path]);
     console.log(`✓ ${path} validates at ${head.slice(0, 12)} against ${base}.`);
+    for (const waiver of waivers) console.log(`~ ${waiver}`);
     if (dirty) console.log(`! ${path} has uncommitted changes; they were not validated and CI will not see them until committed.`);
     console.log(`  The PR also needs the visible line "review-record: ${path}" and the agent-reviewed label (gh pr create --label agent-reviewed).`);
     return 0;

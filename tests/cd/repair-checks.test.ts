@@ -8,7 +8,7 @@ import { checkLocalReview } from "../../src/review/local.js";
 import { config } from "./fixtures.js";
 
 vi.mock("../../src/cd/source.js", () => ({ git: vi.fn(), loadSources: vi.fn() }));
-vi.mock("../../src/review/local.js", () => ({ checkLocalReview: vi.fn(() => []) }));
+vi.mock("../../src/review/local.js", () => ({ checkLocalReview: vi.fn(() => []), REVIEW_FLOOR_RULE: "review-floor" }));
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(checkLocalReview).mockReturnValue([]); });
 
 const retained = JSON.parse(readFileSync(new URL("./repair-checks-provider.json", import.meta.url), "utf8"));
@@ -203,6 +203,13 @@ describe("exact repair provenance remains mandatory", () => {
   it("does not turn green SourceCI into independent review", async () => {
     const f = repair(); vi.mocked(checkLocalReview).mockReturnValue([{ message: "missing review", severity: "error" } as never]);
     await expect(f.verify()).rejects.toThrow("lacks valid independent review"); expect(f.result.evidence).toEqual([]);
+  });
+  it("accepts a validated record whose only finding is the review-floor waiver, but never an opt-out", async () => {
+    const floor = { level: "waived", rule: "review-floor", message: "waived: review floor (trivial diff: 3 non-test, 0 test lines)" } as const;
+    const f = repair(); vi.mocked(checkLocalReview).mockReturnValue([floor]);
+    expect(await f.verify()).toBe("d".repeat(40));
+    const optOut = repair(); vi.mocked(checkLocalReview).mockReturnValue([floor, { level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }]);
+    await expect(optOut.verify()).rejects.toThrow("lacks valid independent review: independent review disabled");
   });
   it("does not substitute the reviewed branch SHA for the actual merge", async () => {
     const f = repair(); f.result.sourceSha = f.result.reviewHead;
