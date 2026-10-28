@@ -1,4 +1,5 @@
-import { type SessionLease } from "./lease.js";
+import { type ContextReceipt, type SessionLease } from "./lease.js";
+import { type EvidenceMode, type Requirement } from "./certify.js";
 import { type TrunkRef } from "./git.js";
 export interface ContextResult {
     /**
@@ -27,15 +28,42 @@ export interface ContextResult {
      */
     written: boolean;
 }
+export interface RefreshOptions {
+    /** The environment that identifies the provider session; tests inject it. */
+    env?: NodeJS.ProcessEnv;
+}
+export interface RefreshResult extends ContextResult {
+    /** The receipt this refresh compared against — this worktree's stored one, if usable as a baseline. */
+    previous: ContextReceipt | null;
+    /** Nothing moved since `previous`, so it was extended rather than replaced. */
+    extended: boolean;
+    /** How reading was established, and what each record still needed. */
+    evidence: {
+        mode: EvidenceMode;
+        requirements: Requirement[];
+    };
+}
 /**
- * Take a new receipt: *the agent asserting it has loaded current state.*
+ * Take a new receipt: *the agent asserting it has loaded current state* — and,
+ * where a read hook is watching, the log showing that it did.
  *
  * This is the only thing that mints a receipt, and it is deliberately a
  * command a person or agent runs rather than something a guard does on their
  * behalf. A guard that took a receipt automatically would be certifying that
  * the records were read by the act of not reading them.
+ *
+ * **Idempotent.** When the trunk and every required record are exactly as the
+ * stored receipt saw them, the receipt is extended and nothing is asked: a
+ * second refresh used to cost a second full read of 139 KB of decisions, or a
+ * pretend one, and transcripts showed both.
+ *
+ * **Evidence, where it can exist.** With a live read hook, a record is
+ * certified only where the session's read log covers it at its current
+ * content: the changed hunks against the last receipt, or the whole record
+ * when there is no usable baseline. Otherwise nothing is written and the
+ * result names what is unread.
  */
-export declare function refresh(root: string, now?: Date): Promise<ContextResult>;
+export declare function refresh(root: string, now?: Date, opts?: RefreshOptions): Promise<RefreshResult>;
 /**
  * Discard the stored receipt, and return what it was.
  *

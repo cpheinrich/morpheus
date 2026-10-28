@@ -956,7 +956,7 @@ effort, which is why they are the last layer rather than the first.
 |---|---|---|
 | The CLI gate | every project, agent and human | none — bump the dependency |
 | `check pr`'s `context-drift` | every PR | already centralised |
-| `.claude/settings.json` | Claude Code sessions | one scaffolded file, informational |
+| `.claude/settings.json` | Claude Code sessions | one scaffolded file: the session brief, and the read hook that turns `refresh` from assertion into evidence |
 | `.codex/hooks.json` | Codex sessions | the same, in Codex's own file |
 | `AGENTS.md` | anything that reads instructions | scaffolded |
 
@@ -1006,6 +1006,37 @@ of the previous one, re-reading roughly 1.8M tokens of records before them — w
 gated commands were ever refused, and 305 refreshes were piped through `head` or `tail`, discarding
 the delta that is the reason to run it. The instructions, not the lease, were producing the
 ritual.
+
+Changing the instructions on 2026-10-07 to "refresh once, then only on refusal" did not change the
+behaviour: refreshes per Claude session rose from 2.3 to 3.1–3.2 (up to 21 in one session), Codex
+ran 2.4–5.1, and some agents took receipts with `cat … >/dev/null && morpheus context refresh` —
+exactly the failure this section says the protocol cannot detect. So the protocol's intent moved
+into code:
+
+- **Refresh is idempotent.** When the trunk and every required record are exactly as this
+  worktree's receipt saw them, `refresh` extends the receipt and asks for nothing. A redundant
+  refresh is free rather than a reason to re-read 139 KB of decisions or pretend to.
+- **Reading is recorded, not asserted, where a hook can see it.** A provider `PostToolUse` hook
+  (`morpheus context record-read`) appends to `local/sessions/reads.jsonl` what each Read or
+  shell call actually showed the model: a Read by its line range once the returned text matches
+  the file, shell output by the record lines that appear verbatim in it. Credit is by content,
+  not by parsing commands, so a discarded or truncated read earns nothing without a rule for
+  `>/dev/null` or `| head`. Refresh certifies a record only where the session's evidence covers
+  it at its current fingerprint — the whole record without a recorded baseline, otherwise only
+  the hunks Git's diff finds against the snapshot taken with the last receipt — and on a shortfall
+  writes nothing and prints the unread ranges and changed lines.
+- **Evidence is keyed by content, not by checkout,** so records read in the primary checkout
+  count in the task worktree `pm claim` prepares at the same trunk; refresh reads every worktree's
+  log. An asserted receipt is never the baseline a recorded one extends.
+- **It degrades, it never locks out.** Enforcement starts only once the hook has run in this
+  provider session and understood a tool result. A human terminal, a tool without hooks, an
+  unwired project, an untrusted Codex hook or an unrecognized payload stays on the assertion with
+  a visible warning, and the receipt records `asserted`. `MORPHEUS_READ_EVIDENCE=off` is the
+  declared escape for a hook that runs and cannot see a read.
+
+What the hook still cannot prove is that the model *attended* to text it was shown, and a
+subagent's reads share its parent's session id. It closes the gap that was measured — receipts
+taken with nothing shown — not the one that cannot be.
 
 **Startup prepares source; explicit refresh certifies reading.** The existing standard shim
 continues to invoke `morpheus context brief`, now also available as `context start`. The shared CLI
@@ -1073,7 +1104,7 @@ branches: `pm claim` checks out the branch it stakes, and resuming blocked work 
 checkout`. Fixing either call site would leave the other.
 
 **Taking a receipt is a command, never a side effect.** `morpheus context refresh` is the agent
-asserting it has loaded current state. A hook that took one at session start would certify the
+asserting it has loaded current state — checked against its read log where a hook keeps one. A hook that took one at session start would certify the
 records were read by the act of not reading them, so the Claude hook prints `context brief` and
 takes nothing. The reporting helper takes no receipt; the startup command exits nonzero when source preparation
 fails and names the failure explicitly.

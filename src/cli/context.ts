@@ -5,7 +5,9 @@ import {
   type ContextReceipt,
   type SessionLease,
 } from "../session/lease.js";
-import { readInputs } from "../session/inputs.js";
+import { readInputs, readRecords } from "../session/inputs.js";
+import type { EvidenceMode, Requirement } from "../session/certify.js";
+import { MIN_RUN_CHARS, contentLines, formatRanges, mergeRanges, type Range } from "../session/evidence.js";
 import type { RescueDeps } from "../session/trunk-rescue.js";
 import { check as checkContext, endTerm, refresh as takeReceipt } from "../session/context.js";
 import { resolveTrunk, trunkLog, worktreeRoot } from "../session/git.js";
@@ -26,6 +28,94 @@ function ago(checkedAt: string, now: Date): string {
   if (!Number.isFinite(seconds)) return "at an unreadable time";
   if (seconds < 90) return `${seconds}s ago`;
   return `${Math.round(seconds / 60)}m ago`;
+}
+
+/** Bytes of changed lines a refusal prints, kept well under what the read hook credits. */
+const PRINT_BUDGET = { claude: 12_000, other: 6_000 } as const;
+
+/**
+ * The lines to print for one unread range: the range, two lines of context,
+ * and enough beyond that to carry `MIN_RUN_CHARS` — a one-line `~` printed
+ * alone could never be credited, and refresh would ask for it forever.
+ */
+function printable(lines: readonly string[], range: Range): Range {
+  let from = Math.max(1, range.from - 2);
+  let to = Math.min(lines.length, range.to + 2);
+  const chars = () => lines.slice(from - 1, to).join("").replace(/\s/g, "").length;
+  while (chars() < MIN_RUN_CHARS && (from > 1 || to < lines.length)) {
+    from = Math.max(1, from - 1);
+    to = Math.min(lines.length, to + 1);
+  }
+  return { from, to };
+}
+
+/**
+ * A refusal that names what is unread, and prints the changed lines raw so
+ * that this output is itself the reading. Whole records are named, not
+ * printed: 139 KB of decisions belongs in the Read tool, in ranges.
+ */
+async function printUnread(root: string, unread: readonly Requirement[], mode: EvidenceMode): Promise<void> {
+  console.log(`${NO} Not certified — this session's read log does not cover:`);
+  for (const r of unread) {
+    const why = r.reason === "changed" ? "changed since your last receipt" : "no receipt to diff against, so the whole record";
+    console.log(`  ${r.id} — ${why}; unread lines ${formatRanges(r.missing)} of ${r.lines}`);
+  }
+  if (mode.kind === "recorded" && mode.malformed) {
+    console.log(`  ! ${mode.malformed} damaged line(s) in local/sessions/reads.jsonl were ignored.`);
+  }
+
+  const changed = unread.filter((r) => r.reason === "changed");
+  if (changed.length) {
+    const budget = mode.kind === "recorded" && mode.provider === "claude" ? PRINT_BUDGET.claude : PRINT_BUDGET.other;
+    const contents = new Map((await readRecords(root, changed.map((r) => r.id))).map((r) => [r.id, r.content]));
+    let spent = 0;
+    let truncated = false;
+    console.log("");
+    console.log("The changed lines follow. Where the read hook can see this output, it counts as reading them:");
+    for (const r of changed) {
+      const lines = contentLines(contents.get(r.id) ?? "");
+      for (const block of mergeRanges(r.missing.map((m) => printable(lines, m)))) {
+        const text = lines.slice(block.from - 1, block.to);
+        const size = Buffer.byteLength(text.join("\n"), "utf8");
+        if (spent + size > budget) { truncated = true; continue; }
+        spent += size;
+        console.log(`── ${r.id} · lines ${formatRanges([block])} ──`);
+        for (const line of text) console.log(line);
+      }
+      for (const hunk of r.hunks ?? []) {
+        if (!hunk.removed.length) continue;
+        const size = Buffer.byteLength(hunk.removed.join("\n"), "utf8");
+        if (spent + size > budget) { truncated = true; continue; }
+        spent += size;
+        console.log(`── ${r.id} · removed before line ${hunk.from} ──`);
+        for (const line of hunk.removed) console.log(`- ${line}`);
+      }
+    }
+    if (truncated) console.log("── (more changed lines than fit here — read the ranges above) ──");
+  }
+
+  console.log("");
+  console.log("Read what is unread with the Read tool (offset/limit ranges add up), or `sed -n 'A,Bp' <path>`");
+  console.log("with nothing piped or redirected — shell output over 20 KB (8 KB in Codex) is not credited, so");
+  console.log("read large records in ranges — then run `morpheus context refresh` again.");
+  console.log("Only if reads you demonstrably made are still not counted is the hook failing: then");
+  console.log("`MORPHEUS_READ_EVIDENCE=off morpheus context refresh` certifies by assertion, and the receipt says so.");
+}
+
+/** One or two lines saying how this receipt established reading. */
+function evidenceSummary(mode: EvidenceMode, requirements: readonly Requirement[]): string[] {
+  if (mode.kind === "override") {
+    return ["! MORPHEUS_READ_EVIDENCE=off — certified by assertion, and the receipt records that."];
+  }
+  if (mode.kind === "unhooked") {
+    return [
+      `! Certified by assertion: ${mode.reason}.`,
+      "  `morpheus context install` wires the read hook; Codex also needs it trusted with /hooks.",
+    ];
+  }
+  if (!requirements.length) return [];
+  const named = requirements.map((r) => (r.reason === "changed" ? `${r.id} (changed lines)` : r.id));
+  return [`Read evidence covers: ${named.join(", ")}.`];
 }
 
 /**
@@ -50,7 +140,15 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
   const trunk = await resolveTrunk(wt, policy.trunk);
   const trunkRef = `${trunk.remote}/${trunk.branch}`;
 
-  const { lease, issue, written, trunkMissing } = await takeReceipt(root);
+  const result = await takeReceipt(root);
+  const { lease, issue, written, trunkMissing, evidence } = result;
+  const unread = evidence.requirements.filter((r) => r.missing.length);
+  if (unread.length) {
+    // stdout, not stderr: the read hook credits what the model was shown, and
+    // these are the lines it is being asked to read.
+    await printUnread(wt, unread, evidence.mode);
+    return 1;
+  }
   if (!lease) {
     console.error(issue ?? "Could not take a context receipt.");
     return 1;
@@ -63,6 +161,18 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
     console.error(`${NO} Receipt computed but not persisted — ${issue ?? "the lease did not reach disk"}.`);
     console.error(`  Every governed command will keep refusing until \`local/sessions/\` is writable.`);
     return 1;
+  }
+
+  // One line and nothing to read: the trunk and every record are exactly as
+  // the receipt saw them. This is the refresh agents ran three times a
+  // session, re-reading — or pretending to — each time.
+  if (result.extended && lease.status === "fresh") {
+    if (issue) console.log(`! ${issue}`);
+    console.log(
+      `${OK} Context unchanged since ${lease.receipt.createdAt} — trunk ${lease.receipt.remoteSha.slice(0, 7)}, ` +
+        `${lease.receipt.inputs.length} records. Receipt extended; nothing to re-read.`,
+    );
+    return 0;
   }
 
   // The previous receipt was taken without a verified trunk, so there is no
@@ -140,13 +250,18 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
     const added = lease.receipt.inputs.filter((i) => !was.has(i.id)).map((i) => i.id);
 
     if (moved.length || added.length) {
-      console.log("Records that moved since your last receipt — re-read what you rely on:");
+      console.log(
+        evidence.mode.kind === "recorded"
+          ? "Records that moved since your last receipt — the read log covers what changed:"
+          : "Records that moved since your last receipt — re-read what you rely on:",
+      );
       for (const id of [...moved, ...added].sort()) console.log(`  ${id}`);
       console.log("");
     }
   }
 
   if (issue) console.log(`! ${issue}`);
+  for (const line of evidenceSummary(evidence.mode, evidence.requirements)) console.log(line);
 
   if (lease.status === "fresh") {
     console.log(`${OK} Context receipt taken — ${lease.receipt.inputs.length} records, trunk ${lease.receipt.remoteSha.slice(0, 7)}.`);
@@ -200,7 +315,10 @@ export async function status(root: string, offline = offlineDeclared()): Promise
 
   const mark = lease.status === "fresh" ? OK : NO;
   console.log(`${mark} Context is ${lease.status} — checked ${ago(lease.checkedAt, now)}${observed ? "" : ", within term"}.`);
-  console.log(`  Receipt covers ${lease.receipt.inputs.length} records against trunk ${lease.receipt.remoteSha.slice(0, 7) || "(unverified)"}.`);
+  console.log(
+    `  Receipt covers ${lease.receipt.inputs.length} records against trunk ${lease.receipt.remoteSha.slice(0, 7) || "(unverified)"}` +
+      ` — reading ${lease.receipt.evidence === "recorded" ? "recorded by the read hook" : "asserted"}.`,
+  );
   if (lease.reason) console.log(`  ${lease.reason}`);
   if (issue) console.log(`  ! ${issue}`);
   if (!written) console.log(`  ! This verdict was not persisted — the lease on disk is older than it.`);
@@ -367,7 +485,9 @@ export async function brief(root: string, opts: BriefOptions = {}): Promise<numb
   console.log("");
   if (readable.length || !stuck.length) {
     console.log("Then run `morpheus context refresh`. Claiming work, filing items, blocking and");
-    console.log("granting access are refused until you do.");
+    console.log("granting access are refused until you do. Where the read hook is wired, refresh");
+    console.log("certifies only what this session's reads cover; refresh again whenever you like —");
+    console.log("unchanged state just extends the receipt.");
   } else {
     console.log("Claiming work, filing items, blocking and granting access stay refused until");
     console.log("those records are readable.");

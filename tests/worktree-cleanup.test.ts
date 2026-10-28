@@ -144,6 +144,22 @@ describe("completed task worktree cleanup", () => {
     await expect(readFile(join(target, "local/sessions", `${sessionId(target)}.json`))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("removes the read log and record snapshot that context freshness generates", async () => {
+    await generatedReceipt();
+    await writeFile(join(target, "local/sessions", "reads.jsonl"), "{}\n");
+    await writeFile(join(target, "local/sessions", `${sessionId(target)}.records.json`), "{}\n");
+    await cleanupTask(root, join(root, "hq/product"), id);
+    await expect(readFile(join(target, "local/sessions", "reads.jsonl"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("retains an unrecognized file beside the generated session files", async () => {
+    await generatedReceipt();
+    await writeFile(join(target, "local/sessions", "reads.jsonl"), "{}\n");
+    await writeFile(join(target, "local/sessions", "notes.json"), "{}\n");
+    await expect(cleanupTask(root, join(root, "hq/product"), id)).rejects.toThrow("Dirty worktree");
+    expect(await readFile(join(target, "local/sessions", "notes.json"), "utf8")).toBe("{}\n");
+  });
+
   it("retains unrelated local data beside a valid receipt", async () => {
     await generatedReceipt();
     await writeFile(join(target, "local", "notes.txt"), "preserve me\n");

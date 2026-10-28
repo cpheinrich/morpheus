@@ -92,10 +92,13 @@ Usage
                             format, but never send, a fully verified current-intake notice
   morpheus tokens build     [--source hq/brand/tokens.json] [--css <path>] [--ts <path>]
                             [--prefix brand] [--check]
-  morpheus context refresh  take a receipt — run it after reading the canonical records
+  morpheus context refresh  take a receipt — after reading the records; idempotent, and where
+                            the read hook is wired it certifies only what the read log covers
   morpheus context check    exit non-zero unless context is fresh; for hooks and scripts
   morpheus context status   what the current lease says, and how old it is
   morpheus context brief    session start: fetches trunk, updates clean trunk, identifies task
+  morpheus context record-read
+                            the read hook: logs a tool result's record lines (stdin JSON)
   morpheus context install  [--check] [--handle <github-handle>]
                             wire .claude/settings.json, .codex/hooks.json and context.handle
                             — the repair path for a project scaffolded before they existed
