@@ -349,7 +349,8 @@ retry still requires executor quiescence. Accepted/uncertain binaries continue
 provider reconciliation under their original identity.
 
 Without an explicit `--work-id`, selection considers only non-complete work whose
-next check is due and whose lease is absent or expired. Paused and post-resume
+next check is due (or whose capability context warrants a recheck below) and whose
+lease is absent or expired. Paused and post-resume
 work cannot hide another runnable ordinary repair. Among runnable candidates,
 the work whose latest recorded invocation `startedAt` is earliest wins;
 never-invoked work uses its `createdAt`, and equal timestamps use code-unit
@@ -357,10 +358,38 @@ work-ID order on both hosts.
 Renewing `nextCheckAt` or accumulating checkpoints does not renew priority. The
 selector sorts only a derived array; it adds no persisted cursor or scheduling
 service. If no ordinary candidate can run, the same ordering retains an existing
-paused/post-resume diagnostic, or returns idle when none is due with no live lease.
-Explicit targets retain their existing behavior and validation. Every selected
+paused/post-resume/capability-wait diagnostic, or returns idle when none is due
+with no live lease. Explicit targets retain their existing validation and honor
+the same capability wait. Every runnable
 candidate still passes fresh quota admission, pause/post-resume checks and the
 normal fenced CAS/global-executor reservation before an invocation.
+
+After two independent strategies, a completed `blocked` invocation with a
+nonblank `missingCapability` waits for changed input or six hours after its
+completion. At exactly six hours it becomes eligible for another normal
+admission. Unchanged input returns `capability-wait` before quota, login or model
+execution; the hosted scheduler also skips its Actions lookup. Another runnable
+ordinary repair remains eligible. A genuine change to diagnostic evidence,
+the intent's source, or the latest delivery attempt's identity, source/control,
+run, status, terminal workflow timestamp or exact executor quiescence proof
+(`kind`, `ref`, `observedAt`) wakes the work immediately, even when `nextCheckAt`
+is later. Quiescence can therefore wake a pre-upload repair while its attempt
+still reports active.
+Provider or human changes that have not reached that context still receive the
+bounded eventual recheck. New evidence is analysis input; it grants no missing
+permission or review clearance.
+
+The immutable `worker-start` transition result records a versioned context
+digest associated with its exact work, task, invocation and fence. It covers the
+task and evidence plus delivery context actually frozen into the prompt before
+quota admission. CAS reloads preserve that original digest, so evidence arriving
+during admission remains new for the next invocation. Retry clocks, native
+HEADs, usage and self-generated checkpoints are not capability changes. Old or
+malformed receipts cannot suppress admission: one normal invocation establishes
+a baseline. An unstarted hosted dispatch placeholder cannot replace the prior
+actual blocked invocation's baseline. This adds no ledger schema or mutable
+parking cursor; existing pause, lease, task-integrity and ownership guards still
+apply to both explicit and default execution paths.
 
 ### Blocker candidates and CTO verification
 

@@ -35,8 +35,8 @@ async function nativeFixture(history: AgentWork["invocations"] = [], executor: "
   await writeFile(script, `import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 const [calls, ...args] = process.argv.slice(2);
-if (args[0] === 'login') { console.log('Logged in using ChatGPT'); process.exit(0); }
-if (args[0] === 'auth') { console.log(JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty' })); process.exit(0); }
+if (args[0] === 'login') { await appendFile(calls + '.admission', 'login\\n'); console.log('Logged in using ChatGPT'); process.exit(0); }
+if (args[0] === 'auth') { await appendFile(calls + '.admission', 'auth\\n'); console.log(JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty' })); process.exit(0); }
 if (args[0] === 'app-server') {
   for await (const line of createInterface({ input: process.stdin })) {
     const message = JSON.parse(line);
@@ -53,7 +53,7 @@ if (args[0] === 'app-server') {
 let prompt = ''; for await (const chunk of process.stdin) prompt += chunk;
 await appendFile(calls, JSON.stringify({ args, prompt }) + '\\n');
 if (await readFile(calls + '.hold', 'utf8').catch(() => '') === 'hold') await new Promise(resolve => setTimeout(resolve, 60_000));
-const result = { outcome: 'checkpoint', summary: 'Synthetic current checkpoint', evidence: ['synthetic evidence'], pullRequest: '', sourceSha: '', reviewHead: '', missingCapability: '' };
+const result = JSON.parse(await readFile(calls + '.result', 'utf8').catch(() => JSON.stringify({ outcome: 'checkpoint', summary: 'Synthetic current checkpoint', evidence: ['synthetic evidence'], pullRequest: '', sourceSha: '', reviewHead: '', missingCapability: '' })));
 if (args.includes('--output-last-message')) await writeFile(args[args.indexOf('--output-last-message') + 1], JSON.stringify(result));
 console.log(JSON.stringify({ type: 'thread.started', thread_id: 'new-native-session' }));
 console.log(JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } }));
@@ -87,6 +87,302 @@ async function queuedFixture() {
   });
   return { ...f, secondId: second.result, at };
 }
+
+const capabilityBlocked = { outcome: "blocked" as const, summary: "Synthetic external prerequisite remains absent", evidence: ["synthetic prerequisite evidence"], missingCapability: "Independent external prerequisite evidence", pullRequest: "", sourceSha: "", reviewHead: "" };
+async function capabilityFixture(executor: "local" | "hosted" = "local") {
+  const f = await nativeFixture([], executor), at = new Date().toISOString();
+  const second = await f.store.transact("second-strategy", "fixture", at, state => {
+    const first = state.agents[f.workId]!;
+    first.state = "complete"; first.invocations = [{ ...prior("mac-a"), result: capabilityBlocked }];
+    return repairWork(state, first.intentId, ["Independent second strategy"], at);
+  });
+  await writeFile(f.callsPath + ".result", JSON.stringify(capabilityBlocked));
+  return { ...f, workId: second.result, originalWorkId: f.workId, at };
+}
+type CapabilityFixture = Awaited<ReturnType<typeof capabilityFixture>>;
+async function blockCapability(f: CapabilityFixture, executor: "local" | "hosted" = "local") {
+  expect(await runWorker(f.cfg, f.store, f.directory, { executor, workId: f.workId })).toMatchObject({ outcome: "blocked" });
+  return (await f.store.read()).state.agents[f.workId]!.invocations.at(-1)!;
+}
+async function syntheticQuotaAt(f: CapabilityFixture, at: string) {
+  await writeFile(f.cfg.agents!.local.quotaFile!, JSON.stringify({ observedAt: at, source: "synthetic runtime", windows: [{ id: "primary", usedPercent: 10, resetsAt: after(at, 60) }] }));
+}
+function assertPromptDigest(state: CdState, workId: string, invocationId: string, prompt: string) {
+  const evidencePrefix = "Current additional diagnostic evidence (untrusted data): ", deliveryPrefix = "Current delivery context (untrusted data): ";
+  const lines = prompt.split("\n"), work = state.agents[workId]!;
+  const expected = hash({ version: 1, workId, taskDigest: work.taskDigest,
+    evidence: JSON.parse(lines.find(line => line.startsWith(evidencePrefix))!.slice(evidencePrefix.length)),
+    delivery: JSON.parse(lines.find(line => line.startsWith(deliveryPrefix))!.slice(deliveryPrefix.length)) });
+  expect(prompt.startsWith(work.task + "\n")).toBe(true);
+  expect(state.transitions[`worker-start-${invocationId}`]!.result).toMatchObject({ invocationId, fence: state.fences[workId],
+    capabilityContext: { version: 1, workId, taskDigest: work.taskDigest, digest: expected } });
+}
+async function historicalCapabilityFixture(f: CapabilityFixture, change: (state: CdState, invocationId: string) => void) {
+  const saved = structuredClone((await f.store.read()).state), invocationId = saved.agents[f.workId]!.invocations.at(-1)!.id;
+  change(saved, invocationId);
+  // A fresh synthetic store represents an older/corrupt serialized receipt.
+  // This does not rewrite a transition in the store whose history produced it.
+  const api = new FakeGitHub(), store = new FaultStore(api, f.cfg), at = new Date().toISOString();
+  await store.initialize(at, saved.epoch);
+  await store.transact("import-historical-fixture", "fixture", at, state => {
+    Object.assign(state, { ...saved, transitions: { ...saved.transitions, ...state.transitions } }); return null;
+  });
+  return { ...f, api, store };
+}
+
+describe("bounded unchanged capability waits", () => {
+  it.each([false, true])("does not repeat quota, login or a model for an unchanged completed second-strategy block (explicit: %s)", async explicit => {
+    const f = await capabilityFixture();
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).toMatchObject({ outcome: "blocked" });
+    const before = await f.store.read(), work = before.state.agents[f.workId]!, last = work.invocations.at(-1)!;
+    const admission = await readFile(f.callsPath + ".admission", "utf8"), quota = vi.spyOn(QuotaReader.prototype, "read");
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", ...(explicit ? { workId: f.workId } : {}) })).toEqual({ state: "capability-wait", workId: f.workId, nextCheckAt: after(last.endedAt!, 360) });
+    expect(quota).not.toHaveBeenCalled(); expect(await f.calls()).toHaveLength(1);
+    expect(await readFile(f.callsPath + ".admission", "utf8")).toBe(admission);
+    expect((await f.store.read()).head).toBe(before.head);
+    assertPromptDigest(before.state, f.workId, last.id, (await f.calls())[0]!.prompt);
+  });
+
+  it("selects another ordinary repair while the earlier second-strategy work is capability-waiting", async () => {
+    const f = await capabilityFixture(); await blockCapability(f);
+    const secondId = (await f.store.transact("another-channel", "fixture", new Date().toISOString(), state => {
+      const intent = structuredClone(state.intents[state.agents[f.workId]!.intentId]!);
+      intent.id = "other-capability-channel"; intent.channel = "production";
+      state.intents[intent.id] = intent;
+      return repairWork(state, intent.id, ["Another ordinary repair"], new Date().toISOString());
+    })).result;
+    const before = (await f.store.read()).state;
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ workId: secondId, outcome: "blocked" });
+    expect((await f.store.read()).state.agents[f.workId]).toEqual(before.agents[f.workId]);
+    expect(await f.calls()).toHaveLength(2);
+  });
+
+  it.each(["evidence", "attempt", "source"])("wakes genuine changed %s despite a deferred next check", async changed => {
+    const f = await capabilityFixture(); await blockCapability(f);
+    await f.store.transact("new-context", "fixture", new Date().toISOString(), state => {
+      const work = state.agents[f.workId]!, intent = state.intents[work.intentId]!;
+      work.nextCheckAt = after(new Date().toISOString(), 12 * 60);
+      if (changed === "evidence") work.evidence.push("NEW-EXTERNAL-EVIDENCE");
+      else if (changed === "attempt") intent.attempts.at(-1)!.status = "failed";
+      else { const source = { ...state.sources.at(-1)!, sha: "f".repeat(40), order: state.sources.at(-1)!.order + 1 }; state.sources.push(source); intent.source = source.sha; }
+      return null;
+    });
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ workId: f.workId, outcome: "blocked" });
+    const state = (await f.store.read()).state, last = state.agents[f.workId]!.invocations.at(-1)!;
+    expect(await f.calls()).toHaveLength(2);
+    assertPromptDigest(state, f.workId, last.id, (await f.calls())[1]!.prompt);
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ state: "capability-wait" });
+  });
+
+  it.each(["quiescence", "workflow-terminal"])("wakes newly recorded %s evidence while the exact attempt stays active", async changed => {
+    const f = await capabilityFixture(), beforeAt = new Date().toISOString();
+    const originalQuiescence = { kind: "host-terminated" as const, ref: "synthetic exact executor termination proof", observedAt: beforeAt };
+    await f.store.transact("initial-executor-context", "fixture", beforeAt, state => {
+      const attempt = state.intents[state.agents[f.workId]!.intentId]!.attempts.at(-1)!;
+      expect(attempt.status).toBe("active");
+      if (changed === "quiescence") attempt.workflowTerminalAt = beforeAt;
+      else attempt.quiescence = originalQuiescence;
+      return null;
+    });
+    await writeFile(f.callsPath + ".result", JSON.stringify({ ...capabilityBlocked, missingCapability: "Exact executor quiescence and terminal workflow evidence" }));
+    const last = await blockCapability(f), at = after(last.endedAt!, 1);
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(at)); await syntheticQuotaAt(f, at);
+    await f.store.transact("heartbeat-without-new-executor-proof", "fixture", at, state => {
+      const work = state.agents[f.workId]!, intent = state.intents[work.intentId]!;
+      work.nextCheckAt = after(at, 12 * 60); intent.nextCheckAt = after(at, 5); state.lastMain = "e".repeat(40); return null;
+    });
+    const before = await f.store.read(), quota = vi.spyOn(QuotaReader.prototype, "read");
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toEqual({ state: "capability-wait", workId: f.workId, nextCheckAt: after(last.endedAt!, 360) });
+    expect(quota).not.toHaveBeenCalled(); expect(await f.calls()).toHaveLength(1);
+    expect((await f.store.read()).head).toBe(before.head);
+    await f.store.transact("new-executor-proof", changed === "quiescence" ? "record-executor-quiescence" : "observe-native-run", at, state => {
+      const attempt = state.intents[state.agents[f.workId]!.intentId]!.attempts.at(-1)!;
+      if (changed === "quiescence") attempt.quiescence = { ...originalQuiescence, observedAt: at };
+      else attempt.workflowTerminalAt = at;
+      return null;
+    });
+    const recorded = (await f.store.read()).state, intentId = recorded.agents[f.workId]!.intentId;
+    expect(recorded.intents[intentId]!.attempts.at(-1)!.status).toBe("active");
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ workId: f.workId, outcome: "blocked" });
+    expect(quota).toHaveBeenCalledTimes(1); expect(await f.calls()).toHaveLength(2);
+    const saved = (await f.store.read()).state, current = saved.agents[f.workId]!.invocations.at(-1)!;
+    const prompt = (await f.calls())[1]!.prompt;
+    const delivery = JSON.parse(prompt.split("\n").find(line => line.startsWith("Current delivery context (untrusted data): "))!.slice("Current delivery context (untrusted data): ".length));
+    expect(delivery.attempt).toMatchObject({ status: "active", quiescence: changed === "quiescence" ? { ...originalQuiescence, observedAt: at } : originalQuiescence, workflowTerminalAt: changed === "quiescence" ? beforeAt : at });
+    assertPromptDigest(saved, f.workId, current.id, prompt);
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ state: "capability-wait" });
+    expect(quota).toHaveBeenCalledTimes(1); expect(await f.calls()).toHaveLength(2);
+  });
+
+  it("does not turn normal retry clocks, accounting observations or checkpoints into a capability change", async () => {
+    const f = await capabilityFixture(), last = await blockCapability(f);
+    const receipt = (await f.store.read()).state.transitions[`worker-start-${last.id}`];
+    await f.store.transact("ordinary-observation", "fixture", new Date().toISOString(), state => {
+      const work = state.agents[f.workId]!;
+      work.nextCheckAt = after(new Date().toISOString(), 10 * 60); work.invocations.at(-1)!.usage = [{ output_tokens: 17 }];
+      state.lastMain = "e".repeat(40); return null;
+    });
+    const before = await f.store.read(), quota = vi.spyOn(QuotaReader.prototype, "read");
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).toMatchObject({ state: "capability-wait" });
+    expect(quota).not.toHaveBeenCalled(); expect(await f.calls()).toHaveLength(1);
+    const afterRead = await f.store.read(); expect(afterRead.head).toBe(before.head);
+    expect(afterRead.state.transitions[`worker-start-${last.id}`]).toEqual(receipt);
+  });
+
+  it.each([-1, 0, 1])("allows bounded eventual recheck at the exact six-hour offset %sms", async offset => {
+    const f = await capabilityFixture(), last = await blockCapability(f);
+    await f.store.transact("defer-clock", "fixture", new Date().toISOString(), state => { state.agents[f.workId]!.nextCheckAt = after(last.endedAt!, 12 * 60); return null; });
+    const at = new Date(Date.parse(last.endedAt!) + 6 * 60 * 60_000 + offset).toISOString();
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(at)); await syntheticQuotaAt(f, at);
+    const quota = vi.spyOn(QuotaReader.prototype, "read");
+    const result = await runWorker(f.cfg, f.store, f.directory, { executor: "local" });
+    if (offset < 0) { expect(result).toEqual({ state: "capability-wait", workId: f.workId, nextCheckAt: after(last.endedAt!, 360) }); expect(quota).not.toHaveBeenCalled(); }
+    else { expect(result).toMatchObject({ workId: f.workId, outcome: "blocked" }); expect(quota).toHaveBeenCalledTimes(1); }
+    expect(await f.calls()).toHaveLength(offset < 0 ? 1 : 2);
+  });
+
+  it.each(["quota", "cas-conflict"])("does not swallow evidence arriving during %s after prompt context was frozen", async phase => {
+    const f = await capabilityFixture(); await blockCapability(f);
+    await f.store.transact("wake-first", "fixture", new Date().toISOString(), state => { state.agents[f.workId]!.evidence.push("FIRST-WAKE-EVIDENCE"); return null; });
+    let changed = false;
+    const appendLate = async () => { changed = true; await f.store.transact("late-context", "fixture", new Date().toISOString(), state => { state.agents[f.workId]!.evidence.push("LATE-ADMISSION-EVIDENCE"); return null; }); };
+    if (phase === "quota") {
+      const read = QuotaReader.prototype.read;
+      vi.spyOn(QuotaReader.prototype, "read").mockImplementationOnce(async function (this: QuotaReader, at?: string) { await appendLate(); return read.call(this, at); });
+    } else {
+      const request = f.api.request.bind(f.api);
+      f.api.request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+        if (!changed && method === "PATCH" && path.endsWith(`/git/refs/heads/${f.cfg.stateBranch}`)) await appendLate();
+        return request<T>(method, path, body);
+      };
+    }
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).toMatchObject({ outcome: "blocked" });
+    expect(changed).toBe(true);
+    const saved = (await f.store.read()).state, last = saved.agents[f.workId]!.invocations.at(-1)!;
+    const racingPrompt = (await f.calls())[1]!.prompt;
+    expect(racingPrompt).toContain("FIRST-WAKE-EVIDENCE"); expect(racingPrompt).not.toContain("LATE-ADMISSION-EVIDENCE");
+    expect(saved.agents[f.workId]!.evidence).toContain("LATE-ADMISSION-EVIDENCE");
+    assertPromptDigest(saved, f.workId, last.id, racingPrompt);
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ workId: f.workId, outcome: "blocked" });
+    expect(await f.calls()).toHaveLength(3);
+    expect((await f.calls())[2]!.prompt).toContain("LATE-ADMISSION-EVIDENCE");
+  });
+
+  it.each(["absent", "version", "digest", "extra-field", "work", "task", "invocation", "fence"])("does not suppress admission using an %s historical context receipt", async invalid => {
+    const original = await capabilityFixture(); await blockCapability(original);
+    const f = await historicalCapabilityFixture(original, (state, invocationId) => {
+      const receipt = state.transitions[`worker-start-${invocationId}`]!.result as { invocationId: string; fence: number; capabilityContext?: { version: number; workId: string; taskDigest: string; digest: string; extra?: boolean } };
+      if (invalid === "absent") delete receipt.capabilityContext;
+      else if (invalid === "version") receipt.capabilityContext!.version = 2;
+      else if (invalid === "digest") receipt.capabilityContext!.digest = "not-a-digest";
+      else if (invalid === "extra-field") receipt.capabilityContext!.extra = true;
+      else if (invalid === "work") receipt.capabilityContext!.workId = "borrowed-work";
+      else if (invalid === "task") receipt.capabilityContext!.taskDigest = "f".repeat(64);
+      else if (invalid === "invocation") receipt.invocationId = "borrowed-invocation";
+      else receipt.fence += 1;
+      state.agents[original.workId]!.nextCheckAt = after(new Date().toISOString(), 12 * 60);
+    });
+    const previous = (await f.store.read()).state;
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ workId: f.workId, outcome: "blocked" });
+    const saved = (await f.store.read()).state;
+    expect(saved.agents[f.workId]!.invocations).toHaveLength(2);
+    expect(saved.agents[f.workId]!.invocations[0]).toEqual(previous.agents[f.workId]!.invocations[0]);
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ state: "capability-wait" });
+    expect(await f.calls()).toHaveLength(2);
+  });
+
+  it.each([false, true])("never hides mutated task bytes behind capability cooldown (explicit: %s)", async explicit => {
+    const f = await capabilityFixture(); await blockCapability(f);
+    const before = await f.store.read(), selected = structuredClone(before);
+    selected.state.agents[f.workId]!.task += " forbidden task mutation";
+    vi.spyOn(f.store, "read").mockResolvedValueOnce(selected);
+    const quota = vi.spyOn(QuotaReader.prototype, "read");
+    await expect(runWorker(f.cfg, f.store, f.directory, { executor: "local", ...(explicit ? { workId: f.workId } : {}) })).rejects.toThrow("Durable task was altered");
+    expect(quota).not.toHaveBeenCalled(); expect(await f.calls()).toHaveLength(1);
+    expect((await f.store.read()).head).toBe(before.head);
+  });
+
+  it("revalidates immutable task bytes on the fresh claim after quota admission", async () => {
+    const f = await capabilityFixture(); await blockCapability(f);
+    await f.store.transact("wake-task-test", "fixture", new Date().toISOString(), state => { state.agents[f.workId]!.evidence.push("new capability input"); return null; });
+    const before = await f.store.read(), read = f.store.read.bind(f.store);
+    f.store.beforeTransition = async kind => {
+      if (kind !== "claim-agent-invocation") return;
+      f.store.beforeTransition = undefined;
+      vi.spyOn(f.store, "read").mockImplementationOnce(async () => { const selected = await read(); selected.state.agents[f.workId]!.task += " changed during admission"; return selected; });
+    };
+    await expect(runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).rejects.toThrow("Durable task was altered during admission");
+    expect((await f.store.read()).head).toBe(before.head); expect(await f.calls()).toHaveLength(1);
+  });
+
+  it.each(["", " \n\t", 7])("requires an actual nonblank missing capability before suppressing %j", async missingCapability => {
+    const f = await capabilityFixture();
+    await writeFile(f.callsPath + ".result", JSON.stringify({ ...capabilityBlocked, missingCapability }));
+    await blockCapability(f);
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).toMatchObject({ outcome: "blocked" });
+    expect(await f.calls()).toHaveLength(2);
+  });
+
+  it("keeps the first independent blocked strategy on its existing successor path", async () => {
+    const f = await nativeFixture(); await writeFile(f.callsPath + ".result", JSON.stringify(capabilityBlocked));
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).toMatchObject({ outcome: "blocked" });
+    const state = (await f.store.read()).state, next = Object.values(state.agents).find(work => work.id !== f.workId)!;
+    expect(state.agents[f.workId]!.state).toBe("complete"); expect(next.strategy).toBe(2); expect(next.invocations).toEqual([]);
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ workId: next.id, outcome: "blocked" });
+    expect(await f.calls()).toHaveLength(2);
+  });
+
+  it("honors a real hosted dispatch -> explicit worker baseline and skips unchanged Actions lookup", async () => {
+    const f = await capabilityFixture("hosted"), request = f.api.request.bind(f.api);
+    const actions: { method: string; path: string; body?: unknown }[] = [];
+    f.api.request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+      if (path.includes("/actions/")) {
+        actions.push({ method, path, body });
+        if (method === "GET" && path.includes("actions/workflows/repair.yml/runs")) return { workflow_runs: [] } as T;
+        if (method === "POST" && path.endsWith("repair.yml/dispatches")) return undefined as T;
+      }
+      return request<T>(method, path, body);
+    };
+    let at = after(f.at, f.cfg.deadlines.admissionMinutes + 1);
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(at)); await syntheticQuotaAt(f, at);
+    await scheduleHosted(f.cfg, f.store, at);
+    const dispatched = (await f.store.read()).state, placeholder = dispatched.agents[f.workId]!.invocations.at(-1)!;
+    expect(placeholder).toMatchObject({ executor: "hosted", dispatchState: "uncertain", dispatchCount: 1 });
+    expect(dispatched.transitions[`worker-start-${placeholder.id}`]).toBeUndefined();
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "hosted", workId: f.workId, invocationId: placeholder.id, taskDigest: dispatched.agents[f.workId]!.taskDigest })).toMatchObject({ outcome: "blocked" });
+    const blocked = await f.store.read(), last = blocked.state.agents[f.workId]!.invocations.at(-1)!, actionCount = actions.length;
+    const admission = await readFile(f.callsPath + ".admission", "utf8"), quota = vi.spyOn(QuotaReader.prototype, "read");
+    await scheduleHosted(f.cfg, f.store, at);
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "hosted", workId: f.workId, invocationId: "not-a-bypass" })).toEqual({ state: "capability-wait", workId: f.workId, nextCheckAt: after(last.endedAt!, 360) });
+    expect(actions).toHaveLength(actionCount); expect(quota).not.toHaveBeenCalled(); expect(await f.calls()).toHaveLength(1);
+    expect(await readFile(f.callsPath + ".admission", "utf8")).toBe(admission); expect((await f.store.read()).head).toBe(blocked.head);
+    await f.store.transact("hosted-new-evidence", "fixture", at, state => { state.agents[f.workId]!.evidence.push("NEW-HOSTED-CAPABILITY-EVIDENCE"); state.agents[f.workId]!.nextCheckAt = after(at, 12 * 60); return null; });
+    at = after(at, 1); vi.setSystemTime(new Date(at)); await syntheticQuotaAt(f, at);
+    await scheduleHosted(f.cfg, f.store, at);
+    const fresh = (await f.store.read()).state, next = fresh.agents[f.workId]!.invocations.at(-1)!;
+    expect(next.id).not.toBe(last.id); expect(next.dispatchCount).toBe(1);
+    expect(actions.filter(call => call.method === "POST")).toHaveLength(2);
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "hosted", workId: f.workId, invocationId: next.id, taskDigest: fresh.agents[f.workId]!.taskDigest })).toMatchObject({ outcome: "blocked" });
+    expect(quota).toHaveBeenCalledTimes(1); expect(await f.calls()).toHaveLength(2);
+    expect((await f.calls())[1]!.prompt).toContain("NEW-HOSTED-CAPABILITY-EVIDENCE");
+  });
+
+  it("does not let an unstarted hosted placeholder bypass the prior blocked context", async () => {
+    const f = await capabilityFixture("hosted"); await blockCapability(f, "hosted");
+    await f.store.transact("legacy-hosted-placeholder", "fixture", new Date().toISOString(), state => {
+      const work = state.agents[f.workId]!;
+      work.invocations.push({ id: "legacy-dispatch-only", executor: "hosted", startedAt: new Date().toISOString(), dispatchState: "uncertain", dispatchCount: 1 });
+      work.nextCheckAt = new Date().toISOString(); return null;
+    });
+    const before = await f.store.read(), quota = vi.spyOn(QuotaReader.prototype, "read");
+    const request = vi.spyOn(f.api, "request");
+    await scheduleHosted(f.cfg, f.store, new Date().toISOString());
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "hosted", workId: f.workId, invocationId: "legacy-dispatch-only" })).toMatchObject({ state: "capability-wait" });
+    expect(request.mock.calls.filter(call => call[1].includes("/actions/"))).toEqual([]);
+    expect(quota).not.toHaveBeenCalled(); expect(await f.calls()).toHaveLength(1);
+    expect((await f.store.read()).head).toBe(before.head);
+  });
+});
 
 describe("default ordinary repair selection", () => {
   it.each(["paused", "post-resume"])("passes a first %s repair to invoke a due ordinary second repair", async blocked => {
