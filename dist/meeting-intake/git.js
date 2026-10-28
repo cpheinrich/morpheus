@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { parseDir } from "../pm/parse.js";
+import { validateMeetingNoteBody } from "../team/note-structure.js";
 import { DiscoveryNote } from "./schema.js";
 function normalizedRemote(remote) {
     const trimmed = remote.trim().replace(/\.git$/, "");
@@ -51,8 +52,14 @@ export async function readCanonicalRecords(source, ref, config) {
             await writeFile(join(directory, filename), raw);
         }
         const parsed = await parseDir(directory, DiscoveryNote);
-        if (parsed.issues.length > 0)
-            throw new Error(JSON.stringify(parsed.issues));
+        const issues = [...parsed.issues];
+        for (const item of parsed.items) {
+            for (const message of validateMeetingNoteBody(item.data, item.body)) {
+                issues.push({ path: item.path, message });
+            }
+        }
+        if (issues.length > 0)
+            throw new Error(JSON.stringify(issues));
         if (parsed.items.length === 0) {
             throw new Error("No canonical meeting records found; refusing empty overwrite");
         }

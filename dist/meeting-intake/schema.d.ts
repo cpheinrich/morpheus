@@ -14,12 +14,15 @@ export declare const DiscoveryNote: z.ZodObject<{
         readonly otter: "otter";
         readonly zoom: "zoom";
     }>;
+    note_format: z.ZodOptional<z.ZodEnum<{
+        "priority-first-v1": "priority-first-v1";
+    }>>;
     source_ref: z.ZodOptional<z.ZodString>;
     duration_minutes: z.ZodOptional<z.ZodNumber>;
     roadmap: z.ZodDefault<z.ZodArray<z.ZodString>>;
     redacted: z.ZodDefault<z.ZodBoolean>;
     created: z.ZodPreprocess<z.ZodISODate>;
-    discovery_version: z.ZodLiteral<1>;
+    discovery_version: z.ZodUnion<readonly [z.ZodLiteral<1>, z.ZodLiteral<2>]>;
     projects: z.ZodArray<z.ZodString>;
     topics: z.ZodArray<z.ZodString>;
     summary: z.ZodString;

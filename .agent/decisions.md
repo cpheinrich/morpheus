@@ -1800,3 +1800,13 @@ The shared guide retains source interpretation, redaction and participant resolu
 judgment, and factual notes remain separate from later interpretation. Considered `simple-git`
 4.0.2 (published 2026-09-26, five direct dependencies); retained Node's argument-safe Git process
 call because the adapter is small and the pilot already proved that boundary.
+
+## New Gemini notes put decisions and work before detail — 2026-10-28
+
+MO-26-10-28-12.35.17. Discovery version 2 notes declare `note_format: priority-first-v1` and lead
+with an executive summary, key decisions and key action items before detailed context, discussion
+and open questions. Each headline section contains useful prose or an explicit `None recorded.`;
+CI validates the declared structure, and immutable projection refuses malformed bodies. Version 1
+and unversioned notes remain valid history. Considered `mdast-util-from-markdown` 2.1.0 (published
+2026-10-03) and `marked` 18.1.2 (published 2026-10-26); kept a small domain-specific fenced-heading
+scanner instead because this boundary needs only three level-two headings and no Markdown AST.
