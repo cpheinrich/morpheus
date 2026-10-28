@@ -55,7 +55,7 @@ export function nextDelay(previous: number | null, remainingMs: number): number 
   return Math.max(0, Math.min(base, remainingMs));
 }
 
-function firstLine(text: string): string {
+export function firstLine(text: string): string {
   return text.trim().split("\n")[0] ?? "";
 }
 
@@ -109,12 +109,13 @@ async function currentHeadRuns(deps: WaitDeps, repo: string, headSha: string, ha
   }
 }
 
-async function failureDetails(deps: WaitDeps, repo: string, checks: Check[]): Promise<Map<string, FailureDetail>> {
+/** Failing-step logs for up to {@link MAX_LOGS} failed jobs; `repo` absent means gh's current repository. */
+export async function failureDetails(deps: WaitDeps, repo: string | undefined, checks: Check[]): Promise<Map<string, FailureDetail>> {
   const details = new Map<string, FailureDetail>();
   const withLogs = checks.filter((c) => c.outcome === "fail" && c.jobId).slice(0, MAX_LOGS);
   const perJob = Math.max(15, Math.min(60, Math.floor(LOG_BUDGET / Math.max(1, withLogs.length))));
   for (const check of withLogs) {
-    const res = await deps.gh(["run", "view", "--repo", repo, "--job", check.jobId!, "--log-failed"]);
+    const res = await deps.gh(["run", "view", ...(repo ? ["--repo", repo] : []), "--job", check.jobId!, "--log-failed"]);
     if (res.code !== 0) {
       details.set(checkKey(check), { logError: firstLine(res.stderr) || `gh exited ${res.code}` });
       continue;

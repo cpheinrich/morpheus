@@ -32,8 +32,8 @@ export declare const READ_HOOK_COMMAND: string;
  * that also carries permissions, plugins and a theme, while
  * `.codex/hooks.json` holds hooks and nothing else.
  */
-export declare const claudeSettingsFile: () => string;
-export declare const codexHooksFile: () => string;
+export declare const claudeSettingsFile: (pollGuard?: boolean) => string;
+export declare const codexHooksFile: (pollGuard?: boolean) => string;
 export declare const CLAUDE_SETTINGS = ".claude/settings.json";
 export declare const CODEX_HOOKS = ".codex/hooks.json";
 export declare const MANIFEST = "morpheus.json";

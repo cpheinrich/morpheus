@@ -31,6 +31,18 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/.morpheus/poll-guard.sh\"; [ -f \"$f\" ] || f=\"$(git rev-parse --show-toplevel 2>/dev/null)/.morpheus/poll-guard.sh\"; [ -f \"$f\" ] || exit 0; exec sh \"$f\"'",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

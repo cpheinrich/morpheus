@@ -16,6 +16,7 @@ import {
   MORPHEUS_SESSION_START,
 } from "../src/session/bootstrap.js";
 import { projectPolicy } from "../src/session/policy.js";
+import { POLL_GUARD_COMMAND, POLL_GUARD_SCRIPT, pollGuardScript } from "../src/wait-ci/hook.js";
 
 const HANDLE = "cpheinrich";
 
@@ -48,16 +49,21 @@ describe("morpheus context install", () => {
       "created",
       "created",
       "updated",
+      "created",
     ]);
 
     expect(await read(MORPHEUS_BOOTSTRAP)).toContain("morpheus:bootstrap:v1");
     expect(await read(MORPHEUS_SESSION_START)).toContain("morpheus:session-start:v1");
     expect(await read(MORPHEUS_BOOTSTRAP_README)).toContain("explicit yes");
+    expect(await read(POLL_GUARD_SCRIPT)).toBe(pollGuardScript());
 
     for (const rel of [CLAUDE_SETTINGS, CODEX_HOOKS]) {
-      const doc = (await json(rel)) as { hooks: { SessionStart: unknown[] } };
+      const doc = (await json(rel)) as { hooks: { SessionStart: unknown[]; PreToolUse: unknown[] } };
       expect(doc.hooks.SessionStart).toEqual([
         { hooks: [{ type: "command", command: "sh .morpheus/session-start.sh" }] },
+      ]);
+      expect(doc.hooks.PreToolUse).toEqual([
+        { matcher: "Bash", hooks: [{ type: "command", command: POLL_GUARD_COMMAND, timeout: 10 }] },
       ]);
     }
 
@@ -73,6 +79,7 @@ describe("morpheus context install", () => {
 
     const repairs = await run();
     expect(repairs.map((r) => r.outcome)).toEqual([
+      "present",
       "present",
       "present",
       "present",
@@ -123,10 +130,11 @@ describe("morpheus context install", () => {
     const codex = (await json(CODEX_HOOKS)) as { hooks: Record<string, unknown> };
     expect(codex.hooks["PostToolUse"]).toEqual([{ hooks: [{ type: "command", command: READ_HOOK_COMMAND }] }]);
     // An event Codex does not define could invalidate the file and the session hook with it.
-    expect(Object.keys(codex.hooks).sort()).toEqual(["PostToolUse", "SessionStart"]);
+    // PreToolUse is one Codex documents (the poll guard, matching its shell tool as `Bash`).
+    expect(Object.keys(codex.hooks).sort()).toEqual(["PostToolUse", "PreToolUse", "SessionStart"]);
   });
 
-  it("adds only the read hook to a project wired before it existed", async () => {
+  it("adds only the missing hooks to a project wired before they existed", async () => {
     const legacy = { hooks: { SessionStart: [{ hooks: [{ type: "command", command: "sh .morpheus/session-start.sh" }] }] } };
     await mkdir(join(dir, ".codex"), { recursive: true });
     await writeFile(join(dir, CODEX_HOOKS), JSON.stringify(legacy));
@@ -137,7 +145,10 @@ describe("morpheus context install", () => {
     await writeFile(join(dir, CODEX_HOOKS), JSON.stringify(legacy));
     const repair = at(await run(), CODEX_HOOKS);
     expect(repair.outcome).toBe("updated");
-    expect(repair.detail).toBe("Added the read hook (PostToolUse) beside any hooks already there.");
+    expect(repair.detail).toBe(
+      "Added the read hook (PostToolUse) beside any hooks already there. " +
+        "Added the CI poll guard (PreToolUse) beside any hooks already there.",
+    );
     const doc = (await json(CODEX_HOOKS)) as { hooks: { SessionStart: unknown[] } };
     expect(doc.hooks.SessionStart).toEqual(legacy.hooks.SessionStart);
   });
@@ -213,6 +224,61 @@ describe("morpheus context install", () => {
     expect(await read(CODEX_HOOKS)).toBe('{"hooks":{"SessionStart":"yes"}}');
   });
 
+  it("adds the poll guard to a project wired before it existed, keeping its own Bash hooks", async () => {
+    // Every consumer was wired with SessionStart only; this is the repair path
+    // that reaches them, and a project's own PreToolUse hook must survive it.
+    const theirs = { matcher: "Bash", hooks: [{ type: "command", command: "./scripts/lint-bash.sh" }] };
+    await mkdir(join(dir, ".claude"), { recursive: true });
+    await writeFile(
+      join(dir, CLAUDE_SETTINGS),
+      JSON.stringify({
+        hooks: {
+          SessionStart: [{ hooks: [{ type: "command", command: "sh .morpheus/session-start.sh" }] }],
+          PreToolUse: [theirs],
+        },
+      }),
+    );
+
+    const repair = at(await run(), CLAUDE_SETTINGS);
+    expect(repair).toEqual({
+      target: CLAUDE_SETTINGS,
+      outcome: "updated",
+      detail:
+        "Added the read hook (PostToolUse, PostToolUseFailure) beside any hooks already there. " +
+        "Added the CI poll guard (PreToolUse) beside any hooks already there.",
+    });
+    const doc = (await json(CLAUDE_SETTINGS)) as { hooks: { SessionStart: unknown[]; PreToolUse: unknown[] } };
+    expect(doc.hooks.SessionStart).toHaveLength(1);
+    expect(doc.hooks.PreToolUse).toEqual([
+      theirs,
+      { matcher: "Bash", hooks: [{ type: "command", command: POLL_GUARD_COMMAND, timeout: 10 }] },
+    ]);
+    expect(at(await run(), CLAUDE_SETTINGS).outcome).toBe("present");
+  });
+
+  it("refuses when hooks.PreToolUse is not an array", async () => {
+    await mkdir(join(dir, ".codex"), { recursive: true });
+    const original = JSON.stringify({ hooks: { PreToolUse: { Bash: "x" } } });
+    await writeFile(join(dir, CODEX_HOOKS), original);
+
+    const repair = at(await run(), CODEX_HOOKS);
+    expect(repair.outcome).toBe("blocked");
+    expect(repair.detail).toContain('"hooks.PreToolUse" is not an array');
+    expect(await read(CODEX_HOOKS)).toBe(original);
+  });
+
+  it("does not wire the poll guard to a script it does not own, and still wires session start", async () => {
+    await mkdir(join(dir, ".morpheus"), { recursive: true });
+    await writeFile(join(dir, POLL_GUARD_SCRIPT), "#!/bin/sh\necho mine\n");
+
+    const repairs = await run();
+    expect(at(repairs, POLL_GUARD_SCRIPT).outcome).toBe("blocked");
+    expect(at(repairs, CLAUDE_SETTINGS).outcome).toBe("created");
+    const doc = (await json(CLAUDE_SETTINGS)) as { hooks: Record<string, unknown> };
+    expect(Object.keys(doc.hooks)).toEqual(["SessionStart", "PostToolUse", "PostToolUseFailure"]);
+    expect(await read(POLL_GUARD_SCRIPT)).toBe("#!/bin/sh\necho mine\n");
+  });
+
   it("will not declare a handle whose inbox does not exist", async () => {
     // The one way this protocol locks a project out of itself: a declared
     // record that is absent is unresolvable, so every governed command is
@@ -257,8 +323,10 @@ describe("morpheus context install", () => {
       "created",
       "created",
       "updated",
+      "created",
     ]);
 
+    await expect(read(POLL_GUARD_SCRIPT)).rejects.toThrow();
     await expect(read(MORPHEUS_BOOTSTRAP)).rejects.toThrow();
     await expect(read(MORPHEUS_SESSION_START)).rejects.toThrow();
     await expect(read(CLAUDE_SETTINGS)).rejects.toThrow();

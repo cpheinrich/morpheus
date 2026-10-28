@@ -30,7 +30,7 @@ import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
 import { autoUpdate as selfAutoUpdate, check as selfCheck, ensure as selfEnsure, install as selfInstall, update as selfUpdate, } from "./self.js";
 import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
 import { profileExtract, profileReport } from "./profile.js";
-import { waitCiCommand } from "./wait-ci.js";
+import { pollGuardCommand, waitCiCommand } from "./wait-ci.js";
 import { ctoGuide } from "../cto/guide.js";
 import { listProjectSkills, syncProjectSkillEntrypoints } from "./skills.js";
 import { HELP } from "./help.js";
@@ -528,7 +528,24 @@ async function dispatchProfile({ flags, command }) {
     return 1;
 }
 async function dispatchWaitCi({ flags, command, rest }) {
-    return waitCiCommand({ target: command, extra: rest, repo: flags.repo, timeout: flags.timeout, requiredOnly: flags.requiredOnly });
+    return waitCiCommand({
+        target: command,
+        extra: rest,
+        repo: flags.repo,
+        timeout: flags.timeout,
+        requiredOnly: flags.requiredOnly,
+        run: flags.run,
+        workflow: flags.workflow,
+        branch: flags.branch,
+        sha: flags.sha,
+    });
+}
+async function dispatchPollGuard({ command }) {
+    if (command !== undefined) {
+        console.error(`poll-guard takes no arguments; it reads a PreToolUse hook payload on stdin.`);
+        return 0;
+    }
+    return pollGuardCommand();
 }
 const groups = {
     "self": dispatchSelf,
@@ -557,6 +574,7 @@ const groups = {
     "skills": dispatchSkills,
     "profile": dispatchProfile,
     "wait-ci": dispatchWaitCi,
+    "poll-guard": dispatchPollGuard,
     pm: dispatchPm,
 };
 export async function dispatch(flags) {

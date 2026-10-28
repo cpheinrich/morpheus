@@ -1925,6 +1925,10 @@ the two consumers that read `checkLocalReview` as a validity oracle — the GitH
 author-record recovery and CD repair verification — refusing an `agent-review` opt-out while
 accepting a validated record that relied on the floor waiver.
 
+## Blocked repair reports are evidence-bound candidates requiring CTO corroboration — 2026-10-28
+
+MO-26-10-28-14.29.09. Chris requires proof of every practical authorized route before a DevOps agent may hand a hard blocker to its CTO. The existing worker completion owner validates a bounded versioned proof in result evidence, bound to the exact task, invocation, fence, frozen context, accepted claim and lease expiry. Unsupported or stale claims remain retained attempted reports and continue diagnosis; valid shape is only a digest-bearing CTO-verification-required candidate. The CTO corroborates critical primary evidence and newest authority, records its narrow acceptance or rejection, and sends practical next actions through the same supported repair diagnostic path. No prohibited attempt is required to fill a count, no self-attested clearance counts, and no schema/new scheduler/dependency is added. This extends the existing domain owner; a generic proof registry would not establish semantic exhaustion.
+
 ## Blocked CD analysis wakes on meaningful input, with a bounded recheck — 2026-10-28
 
 MO-26-10-28-13.49.13. After two repair strategies, unchanged completed blocks with a concrete missing capability may wait at most six hours. Genuine task evidence, delivery identity/source/status, workflow completion or executor-quiescence facts wake them immediately; timer clocks and self-generated checkpoints do not. The existing opaque invocation-start receipt stores the frozen prompt context digest, so no schema field or mutable parking cursor is needed and older whole-state writers retain it. Unknown legacy receipts cannot justify suppression. This small domain policy uses the existing hash/store and adds no generic scheduler or dependency. It never grants a missing review authorization or waives admission, ownership or uncertain-upload safety.
@@ -1948,7 +1952,17 @@ Receipts stay local and startup still never certifies. Considered `diff` (jsdiff
 dependencies) for the hunks; used Git's `diff --no-index`, already required by every session
 command. No new dependency.
 
+## CI waits cover any run, and a hook refuses the third poll — 2026-10-28
 
-## Blocked repair reports are evidence-bound candidates requiring CTO corroboration — 2026-10-28
-
-MO-26-10-28-14.29.09. Chris requires proof of every practical authorized route before a DevOps agent may hand a hard blocker to its CTO. The existing worker completion owner validates a bounded versioned proof in result evidence, bound to the exact task, invocation, fence, frozen context, accepted claim and lease expiry. Unsupported or stale claims remain retained attempted reports and continue diagnosis; valid shape is only a digest-bearing CTO-verification-required candidate. The CTO corroborates critical primary evidence and newest authority, records its narrow acceptance or rejection, and sends practical next actions through the same supported repair diagnostic path. No prohibited attempt is required to fill a count, no self-attested clearance counts, and no schema/new scheduler/dependency is added. This extends the existing domain owner; a generic proof registry would not establish semantic exhaustion.
+MO-26-10-28-14.09.01. Transcripts showed polling rose after `wait-ci` shipped and the most
+repeated polls watched release runs by id, which `wait-ci` could not take. `wait-ci --run <id>`
+and `--workflow <name|file>` reuse the PR-mode loop, digest and exit codes; the run's own
+conclusion decides. Instructions alone had not moved behaviour, so `context install` and `init`
+wire a PreToolUse guard on `Bash` (Claude Code and Codex share the schema and the tool name) that
+allows two polls of one target per session and refuses the third with the exact `wait-ci`
+command. It fails open on every error, and its state lives in the **primary** checkout's ignored
+`local/sessions/`, because `pm cleanup` refuses a task worktree holding any other ignored file.
+`doctor` names template rules missing from a consumer `AGENTS.md`, since the scaffold is written
+once. Considered `shell-quote` 1.12.0 (modified 2026-10-02, no dependencies) for finding `gh` in a
+command line; built a ~60-line splitter instead, because the guard also needs `$(`, backtick and
+comment boundaries and a runtime dependency in every install is not worth a hook prefilter.
