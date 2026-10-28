@@ -532,6 +532,10 @@ needed.
   resumes existing repair ownership and keeps memory in durable incident records. It uses the
   same provider mirrors, guide (`morpheus cto guide devops-engineer`) and scaffold pointers.
   The skill defines responsibility; it does not activate a second controller or a live supervisor.
+  DevOps-to-CTO blocker handoffs require proof of the practical authorized routes, and a concrete
+  internal reporting cadence. A versioned CD proof envelope validates only shape/current binding;
+  the CTO independently corroborates critical evidence before accepting narrow blockage. Missing
+  or stale proof remains diagnosis, with the attempted claim retained, rather than global blockage.
 
 ### 7.2 Conventions and how they are enforced
 

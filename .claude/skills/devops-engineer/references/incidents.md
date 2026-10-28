@@ -53,6 +53,35 @@ internal counter. Missing credentials, an exhausted authorized budget or an ungr
 be hard blockers, but document the evidence and the reasonable alternatives first. No diagnosis
 permits borrowing credentials, bypassing review, falsifying a receipt or exceeding authority.
 
+## Blocker proof and CTO verification
+
+Before reporting blocked or stalled, attach the exact current task/context and observation
+identity, latest authority checked, the practical routes considered, actual tried actions and
+outcomes with primary evidence references, excluded routes with reasons, the narrow missing
+capability/minimum external step, continuing independent work and next useful event/time.
+Use references to retained evidence rather than secrets, environment assignments or raw output.
+Preserve original acquisition times; writing a new record does not freshen an old observation.
+Freshly check whether historical attempts still apply instead of replaying spent effects.
+
+If there is no practical authorized action, explicitly identify the human-only judgment or
+missing authorized access, the principal who can supply it, current authority/capability proof
+and the reasons the alternative routes are excluded. An empty list without those facts is an
+unsupported claim. Neither a fixed count nor differently worded retries proves exhaustion.
+
+The CD worker's versioned proof envelope is shape/binding validation only. A valid envelope is
+recorded as `cto-verification-required`, with a digest, never as accepted global blockage.
+Missing, stale, borrowed or malformed claims remain in immutable history and become diagnostic
+checkpoints; they do not earn an unchanged-blocker cooldown. Changed evidence during execution
+must remain eligible for fresh diagnosis. Subscription telemetry failure remains an unknown
+safety wait; it establishes neither measured exhaustion nor permission to launch a model.
+
+Before accepting the handoff, the CTO independently reads/corroborates the critical references
+through fresh authorized evidence, verifies the latest authority/budget and looks for a remaining
+practical route. Record the candidate digest, exact references/facts and acquisition/check times,
+accepted narrow scope or rejected claim with its next action, continuing work and next wake in
+the existing incident/worklog. A contributor's self-attested CTO clearance does not count. Do not
+invent a cryptographic signature, a replacement authority or a new queue to simulate this check.
+
 ## Supervision contract
 
 For a future automated deployment, specify who computes eligibility and deadlines, which events
@@ -60,3 +89,10 @@ wake work, how missed events reconcile, who owns the single incident and how hos
 observed independently. Bound model runs and resume from durable records. Test duplicate events,
 missed wakeups, owner loss, provider uncertainty and budget exhaustion before claiming unattended
 reliability. A plan to build this contract is not evidence it is running.
+
+Record the concrete DevOps-to-CTO fresh-observation/report interval and next due time, plus the
+no-material-progress interval that requires renewed diagnosis. Use the active mandate's actual
+cadence rather than an unowned promise to check "periodically". Notify the CTO immediately for
+material failures or new required judgment while unchanged healthy reports remain private.
+Current facts and delivery/repair milestones count as progress; repeated worker invocations,
+native HEAD movement or a renewed next-check timestamp do not.

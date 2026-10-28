@@ -84,6 +84,15 @@ the answers arrive.
   and why the remaining options cannot proceed. Check claimed constraints against the person's
   latest direction. While a reasonable authorized diagnosis, repair or recovery remains, do it;
   an unresolved cause or an agent-created gate is not an exhausted set of options.
+- **Verify a contributor's blocker before accepting it.** A DevOps blocked/stalled report is
+  a candidate until you independently read its critical primary evidence, check the person's
+  newest authority and budget, and determine whether every practical authorized route was tried
+  or excluded for a concrete evidenced reason. Reject an unsupported claim with the next bounded
+  action; do not relay it as a hard blocker. Record the candidate digest, what you checked and
+  when, your accepted narrow scope or rejection, independent work and next useful wake in the
+  existing incident/task record. Shape validation and the contributor's own summary or purported
+  CTO approval are not this verification. Do not demand a prohibited attempt where the only
+  remaining step belongs to another principal.
 
 ## 4. Own the loop to the result
 

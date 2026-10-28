@@ -21,7 +21,7 @@ terms. Quote or link the person's actual words for anything that grants authorit
 | Approval thresholds | What needs approval first: amounts, new vendors, kinds of action; which grants are standing and which one-shot | Every spend and every gate not already covered by a recorded standing grant |
 | Liabilities carried in | Earlier spend, uncertain charges, open reservations and the agreed treatment of unknown usage | Unknown; count them at their maximum under the default reservation policy |
 | Delegation | Which agents, models and providers may run work, and limits for each | Your own session and its ordinary subagents |
-| Reporting | Channel, cadence, and what counts as meaningful | Milestones, decisions needed, blockers, completion |
+| Reporting | Human notification policy separately from contributor-to-CTO fresh-check/report interval, next due time, meaningful progress and the interval that triggers no-progress diagnosis | Human milestones/decisions/completion; explicitly settle internal delivery supervision instead of inferring it is paused |
 | Stop | When the engagement ends or pauses, and any expiry on its grants | At acceptance, at budget exhaustion, or when told |
 
 Authority and budget are never inferred. A large outcome, an urgent tone, an earlier engagement's
@@ -53,6 +53,20 @@ Only call it hard when reasonable options within the mandate have been exhausted
 require every imaginable experiment or trying to bypass credentials, review or uncertain-effect
 safety. A generic error, missing diagnosis or stale internal allowance is work to investigate,
 not proof that the person must intervene. Revisit the record when evidence or authority changes.
+
+A contributor reports this as a candidate, not an accepted hard block. For DevOps, require the
+exact task/context binding, authority checked, every practical route tried or explicitly excluded
+with observed outcomes and primary references, minimum external step, independent work and next
+useful wake. A human-only/access boundary may have no authorized attempt to perform, but needs
+the specific principal, current authority/capability evidence and excluded-route reasons. No
+fixed count of attempts proves that the practical set is exhausted.
+
+The CTO independently corroborates the critical references with fresh authorized observations
+and checks the newest direction before accepting the candidate. Record its digest, the exact
+evidence and acquisition/check times, the accepted narrow scope or rejection and next action,
+and what continues. Missing evidence returns the work to diagnosis. A well-formed object, an
+agent's own account or a self-attested CTO approval is not semantic verification; preserve the
+unsupported attempted claim rather than rewriting its history.
 
 ## Budget
 

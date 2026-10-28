@@ -163,6 +163,23 @@ describe("the DevOps contributor skill", () => {
     expect(agenticCtoSkillFiles()["SKILL.md"]).toContain(`\`morpheus cto guide ${DEVOPS_ENGINEER_SKILL}\``);
     expect(ctoSkillDescription(DEVOPS_ENGINEER_SKILL)).not.toBe(ctoSkillDescription(AGENTIC_CTO_SKILL));
   });
+
+  it("delivers the practical-route proof and independent CTO verification contract through the installed guide", async () => {
+    const devops = await cli("cto", "guide", DEVOPS_ENGINEER_SKILL);
+    expect(devops.code).toBe(0);
+    expect(devops.out).toContain("A blocked or stalled handoff to the CTO is a **candidate**");
+    expect(devops.out).toContain("never run a forbidden action to fill an");
+    expect(devops.out).toContain("actual fresh-check interval");
+    const incident = await cli("cto", "guide", `${DEVOPS_ENGINEER_SKILL}/incidents`);
+    expect(incident.code).toBe(0);
+    expect(incident.out).toContain("`cto-verification-required`");
+    expect(incident.out).toContain("CTO independently reads/corroborates the critical references");
+    expect(incident.out).toContain("they do not earn an unchanged-blocker cooldown");
+    const cto = await cli("cto", "guide");
+    expect(cto.code).toBe(0);
+    expect(cto.out).toContain("**Verify a contributor's blocker before accepting it.**");
+    expect(cto.out).toContain("purported\n  CTO approval are not this verification");
+  });
 });
 
 describe("morpheus cto guide", () => {

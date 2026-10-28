@@ -362,6 +362,45 @@ Explicit targets retain their existing behavior and validation. Every selected
 candidate still passes fresh quota admission, pause/post-resume checks and the
 normal fenced CAS/global-executor reservation before an invocation.
 
+### Blocker candidates and CTO verification
+
+A repair's `blocked` result is a candidate, never accepted global blockage. It needs exactly
+one `evidence` entry beginning `morpheus-blocker-proof-v1:` followed by a JSON proof (at most
+32,768 UTF-8 bytes). The worker supplies the exact task/invocation/fence/frozen-context binding and
+actual accepted claim/deadline times in the prompt; a hosted dispatch placeholder's start is
+not the claimant clock. `deadlineAt` is the exact accepted lease expiry, an ownership bound;
+it never extends the stricter model timeout, launch headroom or quota requirements. The versioned
+strict schema requires:
+
+- Exact symptom/attempt identity, primary references and actual observation time.
+- Latest authority reference, its meaning and a check within this invocation.
+- Distinct practical routes tried: action, actual outcome, original observation, fresh check
+  and retained evidence references. Historical spent effects are checked, never replayed.
+- Explicit excluded routes with unavailable/unsafe/outside-authority/disproportionate reasons
+  and evidence. No fixed route count proves exhaustion.
+- Exhaustion rationale, narrow missing capability/minimum external step, continuing independent
+  work, and the next useful event/time.
+
+An empty practical set additionally needs `noPracticalAction`: a concrete human-only judgment
+or missing authorized access, named principal, matching current authority and capability refs,
+plus excluded-route reasons. It does not force an unsafe or unauthorized attempt. References
+are HTTPS URLs, absolute evidence paths, or `artifact:`, `record:`, `git:` or `sha256:` references;
+they are data to inspect through authorized paths, never commands or new permissions.
+
+Missing, malformed, borrowed or stale proof becomes a diagnostic checkpoint/continued diagnosis,
+with the original attempted claim retained in the immutable completion receipt. It does not earn
+the unchanged-blocker cooldown. Context that changes during admission/execution remains eligible
+immediately. A structurally valid candidate records its digest and `cto-verification-required`;
+the machine validates shape/binding, not truth, practical completeness or CTO acceptance.
+
+Before accepting/escalating the candidate, the CTO independently corroborates critical primary
+references with fresh observations, checks newest authority/budget and any remaining practical
+route, then records the digest, facts/acquisition times, accepted narrow scope or rejection/next
+action, continuing work and wake in the existing incident/worklog. A self-attested CTO approval
+cannot satisfy that check. Telemetry/authentication safety waits remain distinct from blocker
+proof and never grant a model launch. The operating mandate records actual internal reporting
+cadence and stall threshold separately from quiet user notifications; no new scheduler is added.
+
 The repair check gate reads the exact head's paginated `filter=all` inventory.
 Failures, pending/unknown results and non-Actions cancellations still block. The
 only cancellation exception is a completed GitHub Actions job with explicit empty
