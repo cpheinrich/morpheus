@@ -179,6 +179,8 @@ describe("the DevOps contributor skill", () => {
     expect(cto.code).toBe(0);
     expect(cto.out).toContain("**Verify a contributor's blocker before accepting it.**");
     expect(cto.out).toContain("purported\n  CTO approval are not this verification");
+    expect(cto.out).toContain("same repair owner's supported diagnostic");
+    expect(cto.out).toContain("a PM-only note cannot do that");
   });
 });
 

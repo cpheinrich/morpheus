@@ -93,6 +93,9 @@ the answers arrive.
   existing incident/task record. Shape validation and the contributor's own summary or purported
   CTO approval are not this verification. Do not demand a prohibited attempt where the only
   remaining step belongs to another principal.
+  Send a rejected candidate's next action through the same repair owner's supported diagnostic
+  or evidence path, so its live context wakes the existing work; a PM-only note cannot do that.
+  Do not edit its lease/history/check clock or open a parallel repair to force a wake.
 
 ## 4. Own the loop to the result
 

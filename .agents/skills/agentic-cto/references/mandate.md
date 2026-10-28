@@ -67,6 +67,9 @@ evidence and acquisition/check times, the accepted narrow scope or rejection and
 and what continues. Missing evidence returns the work to diagnosis. A well-formed object, an
 agent's own account or a self-attested CTO approval is not semantic verification; preserve the
 unsupported attempted claim rather than rewriting its history.
+Return a rejected candidate's practical next action through the existing owner's supported
+diagnostic/evidence route as well as the durable record. Otherwise its live context remains
+unchanged; do not compensate by editing leases/history or creating a second repair.
 
 ## Budget
 

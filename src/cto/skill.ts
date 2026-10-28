@@ -105,6 +105,9 @@ the answers arrive.
   existing incident/task record. Shape validation and the contributor's own summary or purported
   CTO approval are not this verification. Do not demand a prohibited attempt where the only
   remaining step belongs to another principal.
+  Send a rejected candidate's next action through the same repair owner's supported diagnostic
+  or evidence path, so its live context wakes the existing work; a PM-only note cannot do that.
+  Do not edit its lease/history/check clock or open a parallel repair to force a wake.
 
 ## 4. Own the loop to the result
 
@@ -240,6 +243,9 @@ evidence and acquisition/check times, the accepted narrow scope or rejection and
 and what continues. Missing evidence returns the work to diagnosis. A well-formed object, an
 agent's own account or a self-attested CTO approval is not semantic verification; preserve the
 unsupported attempted claim rather than rewriting its history.
+Return a rejected candidate's practical next action through the existing owner's supported
+diagnostic/evidence route as well as the durable record. Otherwise its live context remains
+unchanged; do not compensate by editing leases/history or creating a second repair.
 
 ## Budget
 
@@ -982,6 +988,10 @@ practical route. Record the candidate digest, exact references/facts and acquisi
 accepted narrow scope or rejected claim with its next action, continuing work and next wake in
 the existing incident/worklog. A contributor's self-attested CTO clearance does not count. Do not
 invent a cryptographic signature, a replacement authority or a new queue to simulate this check.
+When rejecting a candidate with a practical next action, return that evidence/action through
+the same repair owner's supported diagnostic route. A PM/worklog-only rejection does not change
+the worker's live context. Preserve ownership and history; do not reset clocks or create another
+repair to manufacture a wake.
 
 ## Supervision contract
 

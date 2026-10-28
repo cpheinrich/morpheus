@@ -365,7 +365,8 @@ candidate still passes fresh quota admission, pause/post-resume checks and the
 normal fenced CAS/global-executor reservation before an invocation.
 
 After two independent strategies, a completed `blocked` invocation with a
-nonblank `missingCapability` waits for changed input or six hours after its
+nonblank `missingCapability` and a validated, recorded CTO-pending blocker
+candidate waits for changed input or six hours after its
 completion. At exactly six hours it becomes eligible for another normal
 admission. Unchanged input returns `capability-wait` before quota, login or model
 execution; the hosted scheduler also skips its Actions lookup. Another runnable
@@ -385,8 +386,11 @@ task and evidence plus delivery context actually frozen into the prompt before
 quota admission. CAS reloads preserve that original digest, so evidence arriving
 during admission remains new for the next invocation. Retry clocks, native
 HEADs, usage and self-generated checkpoints are not capability changes. Old or
-malformed receipts cannot suppress admission: one normal invocation establishes
-a baseline. An unstarted hosted dispatch placeholder cannot replace the prior
+malformed receipts or unsupported historical blocked claims cannot suppress
+admission: one normal invocation can establish a validated candidate baseline.
+The saved proof is revalidated against its exact claim/fence/context and completion
+digest before it qualifies for cooldown; a status label alone cannot qualify.
+An unstarted hosted dispatch placeholder cannot replace the prior
 actual blocked invocation's baseline. This adds no ledger schema or mutable
 parking cursor; existing pause, lease, task-integrity and ownership guards still
 apply to both explicit and default execution paths.
@@ -429,6 +433,9 @@ action, continuing work and wake in the existing incident/worklog. A self-attest
 cannot satisfy that check. Telemetry/authentication safety waits remain distinct from blocker
 proof and never grant a model launch. The operating mandate records actual internal reporting
 cadence and stall threshold separately from quiet user notifications; no new scheduler is added.
+The CTO returns a rejected candidate's practical next action through the existing
+`repair-diagnostic` evidence path to the same work. That changes its context and wakes it;
+a PM/worklog-only rejection does not. No manual clock, lease or history edit substitutes for it.
 
 The repair check gate reads the exact head's paginated `filter=all` inventory.
 Failures, pending/unknown results and non-Actions cancellations still block. The

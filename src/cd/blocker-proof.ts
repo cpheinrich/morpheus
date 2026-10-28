@@ -46,7 +46,8 @@ export function assessBlockedResult(result: AgentResult, binding: BlockerBinding
     claim: { status: "rejected", reason, ...(proofDigest ? { proofDigest } : {}), attemptedResult },
     continueImmediately: stale,
   });
-  const entries = result.evidence.filter(item => typeof item === "string" && item.startsWith(BLOCKER_PROOF_PREFIX));
+  if (!Array.isArray(result.evidence) || result.evidence.some(item => typeof item !== "string")) return reject("blocker evidence must be an array of references");
+  const entries = result.evidence.filter(item => item.startsWith(BLOCKER_PROOF_PREFIX));
   if (entries.length !== 1) return reject("exactly one versioned blocker proof is required");
   const encoded = entries[0]!.slice(BLOCKER_PROOF_PREFIX.length);
   if (Buffer.byteLength(encoded, "utf8") > BLOCKER_PROOF_MAX_BYTES) return reject("blocker proof exceeds its byte bound");

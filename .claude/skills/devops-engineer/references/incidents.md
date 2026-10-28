@@ -81,6 +81,10 @@ practical route. Record the candidate digest, exact references/facts and acquisi
 accepted narrow scope or rejected claim with its next action, continuing work and next wake in
 the existing incident/worklog. A contributor's self-attested CTO clearance does not count. Do not
 invent a cryptographic signature, a replacement authority or a new queue to simulate this check.
+When rejecting a candidate with a practical next action, return that evidence/action through
+the same repair owner's supported diagnostic route. A PM/worklog-only rejection does not change
+the worker's live context. Preserve ownership and history; do not reset clocks or create another
+repair to manufacture a wake.
 
 ## Supervision contract
 

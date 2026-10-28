@@ -54,6 +54,13 @@ describe("blocker candidates require bounded current evidence", () => {
     expect(checked.claim!.reason).toBe("missing capability differs from the claimed result");
   });
 
+  it.each([null, [7]])("retains and rejects malformed historical evidence %j without throwing", evidence => {
+    const value = result(); Object.assign(value, { evidence });
+    const checked = assess(value);
+    expect(checked.result.outcome).toBe("checkpoint"); expect(checked.claim!.attemptedResult).toEqual(value);
+    expect(checked.claim!.reason).toBe("blocker evidence must be an array of references");
+  });
+
   it.each(["missing", "duplicate", "json", "version", "self-approval", "missing-action", "raw-command-reference", "duplicate-route", "missing-capability", "empty-practical-set"])("retains and normalizes an unsupported %s claim to continued diagnosis", invalid => {
     const value = result(), document = proof();
     if (invalid === "missing") value.evidence = [];

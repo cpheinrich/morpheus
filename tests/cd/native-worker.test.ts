@@ -8,6 +8,7 @@ import { GhApi, GitHubStore, type Transaction } from "../../src/cd/store.js";
 import { cd } from "../../src/cd/cli.js";
 import { after, repairWork } from "../../src/cd/state.js";
 import { codexQuota, QuotaReader, runWorker, scheduleHosted } from "../../src/cd/worker.js";
+import { BLOCKER_PROOF_PREFIX, type BlockerClaimReceipt } from "../../src/cd/blocker-proof.js";
 import { FakeGitHub } from "./fake-github.js";
 import { config, now, prepared } from "./fixtures.js";
 
@@ -54,6 +55,28 @@ let prompt = ''; for await (const chunk of process.stdin) prompt += chunk;
 await appendFile(calls, JSON.stringify({ args, prompt }) + '\\n');
 if (await readFile(calls + '.hold', 'utf8').catch(() => '') === 'hold') await new Promise(resolve => setTimeout(resolve, 60_000));
 const result = JSON.parse(await readFile(calls + '.result', 'utf8').catch(() => JSON.stringify({ outcome: 'checkpoint', summary: 'Synthetic current checkpoint', evidence: ['synthetic evidence'], pullRequest: '', sourceSha: '', reviewHead: '', missingCapability: '' })));
+const proofMode = await readFile(calls + '.proof-mode', 'utf8').catch(() => 'valid');
+if (result.outcome === 'blocked' && proofMode !== 'missing') {
+  const prefix = 'Blocker proof binding (copy exactly): ';
+  const line = prompt.split(String.fromCharCode(10)).find(line => line.startsWith(prefix));
+  if (line) {
+    const binding = JSON.parse(line.slice(prefix.length)), at = binding.claimedAt;
+    const proof = { version: 1, binding, reportedAt: at,
+      symptom: { summary: 'Synthetic capability remains absent', identityRef: 'record:synthetic-exact-attempt', observedAt: at, evidenceRefs: ['artifact:synthetic-current-observation'] },
+      authority: { ref: 'record:synthetic-current-mandate', summary: 'The fixture permits ordinary diagnosis without account widening', checkedAt: at },
+      tried: [{ route: 'Inspect retained operation', action: 'Checked the exact saved operation without replaying its effect', outcome: 'The exact external capability is absent', observedAt: at, checkedAt: at, evidenceRefs: ['artifact:synthetic-retained-operation'] }],
+      excluded: [{ route: 'Use unrelated account', disposition: 'outside-authority', reason: 'The fixture has no grant for another account', checkedAt: at, evidenceRefs: ['record:synthetic-current-mandate'] }],
+      exhaustionReason: 'The retained operation needs the named capability; the alternative account is outside authority', missingCapability: result.missingCapability,
+      minimumExternalStep: 'The named fixture owner supplies the exact missing capability', independentWork: ['Continue the independent channel diagnosis'],
+      nextWake: { event: 'Fresh capability evidence or bounded recheck', at: new Date(Date.parse(binding.deadlineAt) + 60000).toISOString() } };
+    if (proofMode === 'borrowed') proof.binding.invocationId = 'another-invocation';
+    if (proofMode === 'stale-time') proof.authority.checkedAt = new Date(Date.parse(at) - 1).toISOString();
+    if (proofMode === 'self-approved') proof.ctoAccepted = true;
+    if (proofMode === 'human-only') { proof.tried = []; proof.noPracticalAction = { boundary: 'human-only-judgment', requiredPrincipal: 'Synthetic named owner', authorityRef: proof.authority.ref, explanation: 'The named owner must decide this exact external action', evidenceRefs: ['artifact:synthetic-capability-readback'] }; }
+    result.evidence.push('${BLOCKER_PROOF_PREFIX}' + (proofMode === 'malformed' ? '{' : JSON.stringify(proof)));
+  }
+}
+await writeFile(calls + '.emitted', JSON.stringify(result));
 if (args.includes('--output-last-message')) await writeFile(args[args.indexOf('--output-last-message') + 1], JSON.stringify(result));
 console.log(JSON.stringify({ type: 'thread.started', thread_id: 'new-native-session' }));
 console.log(JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } }));
@@ -129,6 +152,72 @@ async function historicalCapabilityFixture(f: CapabilityFixture, change: (state:
   });
   return { ...f, api, store };
 }
+
+describe("blocked-result proof owner", () => {
+  it.each(["missing", "malformed", "borrowed", "stale-time", "self-approved"])("retains a raw %s claim but returns a diagnostic checkpoint with no six-hour cooldown", async mode => {
+    const f = await capabilityFixture(); await writeFile(f.callsPath + ".proof-mode", mode);
+    const output = await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId });
+    expect(output).toMatchObject({ outcome: "checkpoint", blockerClaim: { status: "rejected" } });
+    expect((output as { blockerClaim: object }).blockerClaim).not.toHaveProperty("attemptedResult");
+    const saved = (await f.store.read()).state, work = saved.agents[f.workId]!, last = work.invocations.at(-1)!;
+    const receipt = saved.transitions[`worker-ended-${last.id}`]!.result as { blockerClaim: BlockerClaimReceipt };
+    const emitted = JSON.parse(await readFile(f.callsPath + ".emitted", "utf8"));
+    expect(receipt.blockerClaim.attemptedResult).toEqual(emitted); expect(receipt.blockerClaim.attemptedResult.outcome).toBe("blocked");
+    expect(last.result!.outcome).toBe("checkpoint"); expect(last.result!.missingCapability).toBe("");
+    expect(work.state).toBe("pending"); expect(saved.intents[work.intentId]!.nextAction).toBe("continue-blocker-diagnosis");
+    expect(work.nextCheckAt).toBe(after(last.endedAt!, f.cfg.deadlines.pollMinutes));
+    await writeFile(f.callsPath + ".proof-mode", "valid");
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(work.nextCheckAt)); await syntheticQuotaAt(f, work.nextCheckAt);
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ outcome: "blocked", blockerClaim: { status: "cto-verification-required" } });
+    expect(await f.calls()).toHaveLength(2);
+    expect((await f.store.read()).state.transitions[`worker-ended-${last.id}`]!.result).toEqual(saved.transitions[`worker-ended-${last.id}`]!.result);
+  });
+
+  it.each(["valid", "human-only"])("records a %s proof as a candidate with actual claim/fence/ownership time, without accepting global blockage", async mode => {
+    const f = await capabilityFixture(); await writeFile(f.callsPath + ".proof-mode", mode);
+    let lease: AgentWork["lease"];
+    f.store.beforeTransition = async kind => { if (kind === "agent-checkpoint") lease = (await f.store.read()).state.agents[f.workId]!.lease; };
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).toMatchObject({ outcome: "blocked", blockerClaim: { status: "cto-verification-required" } });
+    const saved = (await f.store.read()).state, work = saved.agents[f.workId]!, last = work.invocations.at(-1)!;
+    const start = saved.transitions[`worker-start-${last.id}`]!.result as { claimedAt: string; deadlineAt: string; fence: number };
+    const receipt = saved.transitions[`worker-ended-${last.id}`]!.result as { blockerClaim: BlockerClaimReceipt };
+    const encoded = last.result!.evidence.find(value => value.startsWith(BLOCKER_PROOF_PREFIX))!.slice(BLOCKER_PROOF_PREFIX.length), document = JSON.parse(encoded);
+    expect(start.claimedAt).toBe(last.startedAt); expect(start.deadlineAt).toBe(lease!.expiresAt); expect(start.fence).toBe(lease!.fence);
+    expect(document.binding).toMatchObject({ workId: f.workId, invocationId: last.id, fence: lease!.fence, claimedAt: start.claimedAt, deadlineAt: lease!.expiresAt });
+    expect(receipt.blockerClaim.proofDigest).toBe(hash(document)); expect(receipt.blockerClaim.status).toBe("cto-verification-required");
+    expect(saved.intents[work.intentId]!.nextAction).toBe("verify-blocker-candidate-with-cto");
+    expect(last.result!.summary).toContain("requires independent CTO verification");
+    expect(saved.intents[work.intentId]!.attempts).toHaveLength(1);
+    expect(document.tried).toHaveLength(mode === "human-only" ? 0 : 1);
+    expect(await f.calls()).toHaveLength(1);
+  });
+
+  it.each(["missing-receipt", "missing-proof", "malformed-evidence", "borrowed-proof", "self-approved", "wrong-digest", "missing-claim-clock"])("does not park an unsupported %s historical blocked result", async invalid => {
+    const original = await capabilityFixture(); await blockCapability(original);
+    const f = await historicalCapabilityFixture(original, (state, invocationId) => {
+      const work = state.agents[original.workId]!, result = work.invocations.at(-1)!.result!;
+      const completion = state.transitions[`worker-ended-${invocationId}`]!.result as { blockerClaim?: BlockerClaimReceipt };
+      if (invalid === "missing-receipt") delete completion.blockerClaim;
+      if (invalid === "missing-proof") result.evidence = result.evidence.filter(value => !value.startsWith(BLOCKER_PROOF_PREFIX));
+      if (invalid === "malformed-evidence") Object.assign(result, { evidence: null });
+      if (invalid === "borrowed-proof") {
+        const index = result.evidence.findIndex(value => value.startsWith(BLOCKER_PROOF_PREFIX)), document = JSON.parse(result.evidence[index]!.slice(BLOCKER_PROOF_PREFIX.length));
+        document.binding.workId = "another-work"; result.evidence[index] = BLOCKER_PROOF_PREFIX + JSON.stringify(document); completion.blockerClaim!.proofDigest = hash(document);
+      }
+      if (invalid === "self-approved") Object.assign(completion.blockerClaim!, { status: "accepted" });
+      if (invalid === "wrong-digest") completion.blockerClaim!.proofDigest = hash("another proof");
+      if (invalid === "missing-claim-clock") delete (state.transitions[`worker-start-${invocationId}`]!.result as { claimedAt?: string }).claimedAt;
+      work.nextCheckAt = after(new Date().toISOString(), 12 * 60);
+    });
+    const before = (await f.store.read()).state;
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ outcome: "blocked", blockerClaim: { status: "cto-verification-required" } });
+    const saved = (await f.store.read()).state;
+    expect(saved.agents[f.workId]!.invocations).toHaveLength(2);
+    expect(saved.agents[f.workId]!.invocations[0]).toEqual(before.agents[f.workId]!.invocations[0]);
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ state: "capability-wait" });
+    expect(await f.calls()).toHaveLength(2);
+  });
+});
 
 describe("bounded unchanged capability waits", () => {
   it.each([false, true])("does not repeat quota, login or a model for an unchanged completed second-strategy block (explicit: %s)", async explicit => {
@@ -241,7 +330,7 @@ describe("bounded unchanged capability waits", () => {
     expect(await f.calls()).toHaveLength(offset < 0 ? 1 : 2);
   });
 
-  it.each(["quota", "cas-conflict"])("does not swallow evidence arriving during %s after prompt context was frozen", async phase => {
+  it.each(["quota", "cas-conflict", "completion-cas-conflict"])("does not swallow evidence arriving during %s after prompt context was frozen", async phase => {
     const f = await capabilityFixture(); await blockCapability(f);
     await f.store.transact("wake-first", "fixture", new Date().toISOString(), state => { state.agents[f.workId]!.evidence.push("FIRST-WAKE-EVIDENCE"); return null; });
     let changed = false;
@@ -250,18 +339,22 @@ describe("bounded unchanged capability waits", () => {
       const read = QuotaReader.prototype.read;
       vi.spyOn(QuotaReader.prototype, "read").mockImplementationOnce(async function (this: QuotaReader, at?: string) { await appendLate(); return read.call(this, at); });
     } else {
+      let completing = phase !== "completion-cas-conflict";
+      if (!completing) f.store.beforeTransition = async kind => { if (kind === "agent-checkpoint") completing = true; };
       const request = f.api.request.bind(f.api);
       f.api.request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
-        if (!changed && method === "PATCH" && path.endsWith(`/git/refs/heads/${f.cfg.stateBranch}`)) await appendLate();
+        if (completing && !changed && method === "PATCH" && path.endsWith(`/git/refs/heads/${f.cfg.stateBranch}`)) await appendLate();
         return request<T>(method, path, body);
       };
     }
-    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).toMatchObject({ outcome: "blocked" });
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).toMatchObject({ outcome: "checkpoint", blockerClaim: { status: "rejected" } });
     expect(changed).toBe(true);
     const saved = (await f.store.read()).state, last = saved.agents[f.workId]!.invocations.at(-1)!;
     const racingPrompt = (await f.calls())[1]!.prompt;
     expect(racingPrompt).toContain("FIRST-WAKE-EVIDENCE"); expect(racingPrompt).not.toContain("LATE-ADMISSION-EVIDENCE");
     expect(saved.agents[f.workId]!.evidence).toContain("LATE-ADMISSION-EVIDENCE");
+    expect(saved.agents[f.workId]!.nextCheckAt).toBe(last.endedAt);
+    expect((saved.transitions[`worker-ended-${last.id}`]!.result as { blockerClaim: BlockerClaimReceipt }).blockerClaim.attemptedResult.outcome).toBe("blocked");
     assertPromptDigest(saved, f.workId, last.id, racingPrompt);
     expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toMatchObject({ workId: f.workId, outcome: "blocked" });
     expect(await f.calls()).toHaveLength(3);
@@ -318,8 +411,8 @@ describe("bounded unchanged capability waits", () => {
   it.each(["", " \n\t", 7])("requires an actual nonblank missing capability before suppressing %j", async missingCapability => {
     const f = await capabilityFixture();
     await writeFile(f.callsPath + ".result", JSON.stringify({ ...capabilityBlocked, missingCapability }));
-    await blockCapability(f);
-    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).toMatchObject({ outcome: "blocked" });
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).toMatchObject({ outcome: "checkpoint", blockerClaim: { status: "rejected" } });
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).toMatchObject({ outcome: "checkpoint", blockerClaim: { status: "rejected" } });
     expect(await f.calls()).toHaveLength(2);
   });
 
@@ -349,8 +442,11 @@ describe("bounded unchanged capability waits", () => {
     const dispatched = (await f.store.read()).state, placeholder = dispatched.agents[f.workId]!.invocations.at(-1)!;
     expect(placeholder).toMatchObject({ executor: "hosted", dispatchState: "uncertain", dispatchCount: 1 });
     expect(dispatched.transitions[`worker-start-${placeholder.id}`]).toBeUndefined();
+    at = after(at, 1); vi.setSystemTime(new Date(at)); await syntheticQuotaAt(f, at);
     expect(await runWorker(f.cfg, f.store, f.directory, { executor: "hosted", workId: f.workId, invocationId: placeholder.id, taskDigest: dispatched.agents[f.workId]!.taskDigest })).toMatchObject({ outcome: "blocked" });
     const blocked = await f.store.read(), last = blocked.state.agents[f.workId]!.invocations.at(-1)!, actionCount = actions.length;
+    expect((blocked.state.transitions[`worker-start-${last.id}`]!.result as { claimedAt: string; deadlineAt: string }).claimedAt).toBe(at);
+    expect(at).not.toBe(placeholder.startedAt);
     const admission = await readFile(f.callsPath + ".admission", "utf8"), quota = vi.spyOn(QuotaReader.prototype, "read");
     await scheduleHosted(f.cfg, f.store, at);
     expect(await runWorker(f.cfg, f.store, f.directory, { executor: "hosted", workId: f.workId, invocationId: "not-a-bypass" })).toEqual({ state: "capability-wait", workId: f.workId, nextCheckAt: after(last.endedAt!, 360) });
