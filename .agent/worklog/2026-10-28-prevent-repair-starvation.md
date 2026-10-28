@@ -80,3 +80,30 @@ closed R verifier pins M HEAD, full manifest and constants, so common-path edits
 alone cannot deploy this source. The independent Root operator and existing typed
 controller roles stay unchanged. Source tests do not prove actual fair dispatch,
 quota availability, TestFlight delivery or any optional empirical acceptance.
+
+## Independent review
+
+Fresh independent HIGH review completed and clearedf3ff90bb with no findings or conditions. The reviewer independently passed110focused tests with zero skips and verified exact generated JavaScript/map output. Ordinary CLI dispatch reaches the default selector without the separate opt-in held-aware wrapper. Source clearance establishes no runtime fairness or delivery.
+
+The reviewer used current primary graph generation2026-10-28T19:59:20Z with coverage, then exact task source and compiled-output fallback. Primary graph is not this task tree; native-worker partialline16 was read directly. The separate opt-in held-aware wrapper remains insertion-first but is outside this ordinary CLI path, so no fairness through it is claimed. An initial transpileModule comparison lacked NodeNext project context; the reviewer used the actual createProgram emitter in memory and confirmed both outputs. That earlier probe limitation is preserved. No full-suite/provider/model/live-host probe or source edit was performed.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "cb502558ede6e5ad05b3aa5402352757dfcb2f7d",
+  "reviewed": "f3ff90bbe63eafc1bb70dd1f4ad0740024e71a45",
+  "covered": "f3ff90bbe63eafc1bb70dd1f4ad0740024e71a45",
+  "authorSession": "01a1572f-2ae1-77f2-be54-4265b3baca43",
+  "reviewerSession": "/root/repair_fair_selection_independent_review_2024",
+  "risk": "high",
+  "elapsedMinutes": 3.716666666666667,
+  "timing": {
+    "source": "clock",
+    "durationMs": 223000,
+    "evidence": "Root actual UTC clock2026-10-28T20:24:50Z immediately before this fresh reviewer dispatch, and SAME reviewer final actual clock2026-10-28T20:28:33Z after report writing. Private INITIAL-INDEPENDENT-REVIEW.json records the20:28:32Z pre-return boundary separately; final reply carries20:28:33Z. No workload/idle-gap estimate or floor padding."
+  },
+  "outcome": "complete",
+  "summary": "Fresh independent HIGH review completed and clearedf3ff90bb with no findings or conditions. The reviewer independently passed110focused tests with zero skips and verified exact generated JavaScript/map output. Ordinary CLI dispatch reaches the default selector without the separate opt-in held-aware wrapper. Source clearance establishes no runtime fairness or delivery.",
+  "findings": []
+}
+```
