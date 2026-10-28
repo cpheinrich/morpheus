@@ -4,8 +4,8 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checkLocalReview, committedConfig, git, MISSING_LABEL, parseReviewRecord, reviewRequired, trivialDiff, type LocalReviewRecord } from "../src/review/local.js";
-import { checkPr } from "../src/check/pr.js";
+import { checkLocalReview, committedConfig, git, MISSING_LABEL, parseReviewRecord, REVIEW_FLOOR_RULE, reviewRequired, trivialDiff, type LocalReviewRecord } from "../src/review/local.js";
+import { checkPr, formatFindings } from "../src/check/pr.js";
 import { prepareReview, validateReview } from "../src/cli/review.js";
 import { authorRecordProblem } from "../src/gh-manager/verify.js";
 
@@ -1145,11 +1145,12 @@ describe("the floor is waived for a trivially small change, measured from Git", 
     reviewed = commit();
   }
   const quick = (over: Partial<LocalReviewRecord> = {}): LocalReviewRecord => ({ ...record(), elapsedMinutes: 22000 / 60000, ...over });
+  const waived = (nonTest: number, test: number) => [{ level: "waived", rule: REVIEW_FLOOR_RULE, message: `waived: review floor (trivial diff: ${nonTest} non-test, ${test} test lines)` }];
 
   it("waives at exactly the line limit and refuses one line over it", () => {
     change({ ".github/workflows/ci.yml": lines(20) });
-    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: true, reason: "20 changed non-test lines (max 20), 0 test lines (max 40)" });
-    expect(check(save(quick()))).toEqual([]);
+    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: true, reason: "20 changed non-test lines (max 20), 0 test lines (max 40)", nonTestLines: 20, testLines: 0 });
+    expect(check(save(quick()))).toEqual(waived(20, 0));
     change({ ".github/workflows/ci.yml": lines(21) });
     expect(trivialDiff(root, base, reviewed).trivial).toBe(false);
     expect(check(save(quick()))[0]?.message).toBe("an initial review under 30 seconds at normal or high risk is not a review; record it as initialOutcome incomplete, or record what was actually done (not a trivial change: 21 changed non-test lines (max 20), 0 test lines (max 40))");
@@ -1164,16 +1165,16 @@ describe("the floor is waived for a trivially small change, measured from Git", 
   });
   it("counts tests against their own limit of 40 lines", () => {
     change({ ".github/workflows/ci.yml": lines(5), "qa/ci.test.mjs": lines(40) });
-    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: true, reason: "5 changed non-test lines (max 20), 40 test lines (max 40)" });
-    expect(check(save(quick()))).toEqual([]);
+    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: true, reason: "5 changed non-test lines (max 20), 40 test lines (max 40)", nonTestLines: 5, testLines: 40 });
+    expect(check(save(quick()))).toEqual(waived(5, 40));
     change({ ".github/workflows/ci.yml": lines(5), "tests/ci.test.ts": lines(41) });
-    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: false, reason: "5 changed non-test lines (max 20), 41 test lines (max 40)" });
+    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: false, reason: "5 changed non-test lines (max 20), 41 test lines (max 40)", nonTestLines: 5, testLines: 41 });
     expect(check(save(quick()))[0]?.message).toContain("41 test lines (max 40)");
   });
   it("does not count the task's worklogs and roadmap records, but counts other records and generated output", () => {
     change({ ".github/workflows/ci.yml": lines(5), ".agent/worklog/other.md": lines(200), "hq/product/roadmap/MO-1.md": lines(200), "hq/product/roadmap/README.md": lines(50) });
     expect(trivialDiff(root, base, reviewed).reason).toBe("5 changed non-test lines (max 20), 0 test lines (max 40)");
-    expect(check(save(quick()))).toEqual([]);
+    expect(check(save(quick()))).toEqual(waived(5, 0));
     change({ ".github/workflows/ci.yml": lines(5), ".agent/decisions.md": lines(16) });
     expect(trivialDiff(root, base, reviewed).reason).toMatch(/^21 changed non-test lines/);
     change({ "dist/config.json": lines(21) });
@@ -1181,7 +1182,7 @@ describe("the floor is waived for a trivially small change, measured from Git", 
   });
   it("keeps the floor for any source logic, however few lines change", () => {
     change({ "src/a.ts": "export const a = 1;\n" });
-    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: false, reason: "1 changed non-test lines (max 20), 0 test lines (max 40), source outside configuration and docs: src/a.ts" });
+    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: false, reason: "1 changed non-test lines (max 20), 0 test lines (max 40), source outside configuration and docs: src/a.ts", nonTestLines: 1, testLines: 0 });
     expect(check(save(quick()))[0]?.message).toContain("source outside configuration and docs: src/a.ts");
     change({ "scripts/release": "#!/bin/sh\n" });
     expect(trivialDiff(root, base, reviewed).trivial).toBe(false);
@@ -1192,19 +1193,19 @@ describe("the floor is waived for a trivially small change, measured from Git", 
       expect(trivialDiff(root, base, reviewed).reason).toBe("0 changed non-test lines (max 20), 3 test lines (max 40)");
     }
     change({ ".github/workflows/ci.yml": "uses: ./tests/ci/deploy\n", "tests/ci/deploy/action.yml": lines(3), "tests/helpers.ts": lines(3) });
-    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: false, reason: "7 changed non-test lines (max 20), 0 test lines (max 40), source outside configuration and docs: tests/helpers.ts" });
+    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: false, reason: "7 changed non-test lines (max 20), 0 test lines (max 40), source outside configuration and docs: tests/helpers.ts", nonTestLines: 7, testLines: 0 });
   });
   it("never waives a turn with no measurement: zero is the template's placeholder", () => {
     change({ ".github/workflows/ci.yml": lines(5) });
     expect(check(save(quick({ elapsedMinutes: 0 })))[0]?.message).toBe("an initial review under 30 seconds at normal or high risk is not a review; record it as initialOutcome incomplete, or record what was actually done");
-    expect(check(save(quick({ elapsedMinutes: 1 / 60000 })))).toEqual([]);
+    expect(check(save(quick({ elapsedMinutes: 1 / 60000 })))).toEqual(waived(5, 0));
     const turn = { reviewerSession: record().reviewerSession, commit: reviewed, outcome: "cleared" as const, scopeReason: "Late correction for a CI failure.", summary: "Cleared the late correction." };
     expect(check(save(quick({ followUps: [{ ...turn, elapsedMinutes: 0 }] })))[0]?.message).toContain("under 30 seconds");
-    expect(check(save(quick({ followUps: [{ ...turn, elapsedMinutes: 1 / 60000 }] })))).toEqual([]);
+    expect(check(save(quick({ followUps: [{ ...turn, elapsedMinutes: 1 / 60000 }] })))).toEqual(waived(5, 0));
   });
   it("never treats a binary change as trivial", () => {
     change({ "assets/icon.png": Buffer.from([0, 1, 2, 0, 255]) });
-    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: false, reason: "assets/icon.png is binary and cannot be measured" });
+    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: false, reason: "assets/icon.png is binary and cannot be measured", nonTestLines: 0, testLines: 0 });
   });
   it("measures the whole range to covered, not only what the initial turn saw", () => {
     change({ ".github/workflows/ci.yml": lines(5) });
@@ -1230,13 +1231,38 @@ describe("the floor is waived for a trivially small change, measured from Git", 
       followUps: [{ reviewerSession: record().reviewerSession, commit: reviewed, outcome: "cleared", elapsedMinutes: 24492 / 60000, timing: timing(24492), humanAuthorization: { approvedBy: "cpheinrich", approvedAt: "2026-10-08T11:06:12Z", reason: "Authorized one extra same-reviewer turn after the clean initial review." }, summary: "Re-read the workflow change and its test; cleared." }],
     });
     change({ ".github/workflows/pr-check.yml": lines(5), "docs/runbook.md": lines(2), "qa/ci-scoping.test.mjs": lines(19) });
-    expect(check(save(shaped()))).toEqual([]);
+    expect(check(save(shaped()))).toEqual(waived(7, 19));
     change({ ".github/workflows/pr-check.yml": lines(5), "src/gate.ts": lines(2) });
     expect(check(save(shaped()))[0]?.message).toContain("needs an authorized same-reviewer turn of at least 30 seconds that clears (not a trivial change");
     // The waiver relaxes only the floor: authorization is still required to resume an incomplete turn.
     change({ ".github/workflows/pr-check.yml": lines(5) });
     const unauthorized = shaped(); delete unauthorized.followUps![0]!.humanAuthorization;
     expect(check(save(unauthorized))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+  });
+  it("prints the waiver in check pr at exactly 20 non-test and 40 test lines, and not one line over either", () => {
+    const line = "~ [review-floor] waived: review floor (trivial diff: 20 non-test, 40 test lines)";
+    change({ ".github/workflows/ci.yml": lines(20), "qa/ci.test.mjs": lines(40) });
+    const atLimit = check(save(quick()));
+    expect(formatFindings(atLimit)).toBe(`✓ PR conventions satisfied — 1 waived.\n${line}`);
+    change({ ".github/workflows/ci.yml": lines(21), "qa/ci.test.mjs": lines(40) });
+    const overLines = check(save(quick()));
+    expect(overLines.map(f => f.level)).toEqual(["error"]);
+    expect(formatFindings(overLines)).not.toContain("waived: review floor");
+    change({ ".github/workflows/ci.yml": lines(20), "qa/ci.test.mjs": lines(41) });
+    const overTests = check(save(quick()));
+    expect(overTests.map(f => f.level)).toEqual(["error"]);
+    expect(formatFindings(overTests)).not.toContain("waived: review floor");
+  });
+  it("prints nothing when the floor was met, and nothing at small risk, which has no floor", () => {
+    change({ ".github/workflows/ci.yml": lines(5) });
+    expect(check(save(quick({ elapsedMinutes: 30000 / 60000 })))).toEqual([]);
+    expect(check(save(quick({ risk: "small" })))).toEqual([]);
+  });
+  it("keeps a validated waiver distinct from a project opt-out for the GitHub Manager's recovery check", () => {
+    change({ ".github/workflows/ci.yml": lines(5) });
+    const head = save(quick());
+    expect(check(head)).toEqual(waived(5, 0));
+    expect(authorRecordProblem(root, `review-record: ${path}`, head, base)).toBeUndefined();
   });
 });
 
@@ -1327,6 +1353,22 @@ describe("review validate runs CI's record check before a push", () => {
   it("does not require the label it exists to justify applying", () => {
     save(record());
     expect(validateReview(root, base, path)).toBe(0);
+    expect(errors).toEqual([]);
+  });
+  it("prints the review-floor waiver when a trivial change relied on it, and only then", () => {
+    const configBase = reviewed;
+    writeFileSync(join(root, "ci.yml"), "on: push\n"); reviewed = commit();
+    const head = save({ ...record(), base: configBase, elapsedMinutes: 22000 / 60000 });
+    expect(validateReview(root, configBase, path)).toBe(0);
+    expect(log.slice(0, 2)).toEqual([
+      `✓ ${path} validates at ${head.slice(0, 12)} against ${configBase}.`,
+      "~ waived: review floor (trivial diff: 1 non-test, 0 test lines)",
+    ]);
+    log.length = 0;
+    // The same change reviewed for three minutes met the floor, so nothing was waived.
+    save({ ...record(), base: configBase });
+    expect(validateReview(root, configBase, path)).toBe(0);
+    expect(log.some(l => l.includes("waived"))).toBe(false);
     expect(errors).toEqual([]);
   });
 });

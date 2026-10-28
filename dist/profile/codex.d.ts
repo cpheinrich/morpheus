@@ -1,9 +1,11 @@
 import type { ParsedSession } from "./claude.js";
-import { type TokenTotals } from "./types.js";
+import { type SessionSource, type TokenTotals } from "./types.js";
 export interface CodexParseOptions {
     file: string;
     roots?: string[];
     home?: string;
+    /** Which Codex directory the rollout came from; defaults to the live `sessions/`. */
+    source?: Extract<SessionSource, `codex-${string}`>;
 }
 /**
  * OpenAI reports `input_tokens` inclusive of the cached part; Claude reports

@@ -215,7 +215,7 @@ export function trivialDiff(root, older, newer) {
         if (!file || TRIVIAL_DIFF_RECORDS.test(file))
             continue;
         if (!/^\d+$/.test(added ?? "") || !/^\d+$/.test(removed ?? ""))
-            return { trivial: false, reason: `${file} is binary and cannot be measured` };
+            return { trivial: false, reason: `${file} is binary and cannot be measured`, nonTestLines: lines, testLines: tests };
         const count = Number(added) + Number(removed);
         if (TRIVIAL_DIFF_TESTS.test(file)) {
             tests += count;
@@ -226,7 +226,24 @@ export function trivialDiff(root, older, newer) {
             logic.push(file);
     }
     const reason = `${lines} changed non-test lines (max ${TRIVIAL_DIFF_MAX_LINES}), ${tests} test lines (max ${TRIVIAL_DIFF_MAX_TEST_LINES})${logic.length ? `, source outside configuration and docs: ${logic.slice(0, 3).join(", ")}` : ""}`;
-    return { trivial: lines <= TRIVIAL_DIFF_MAX_LINES && tests <= TRIVIAL_DIFF_MAX_TEST_LINES && !logic.length, reason };
+    return { trivial: lines <= TRIVIAL_DIFF_MAX_LINES && tests <= TRIVIAL_DIFF_MAX_TEST_LINES && !logic.length, reason, nonTestLines: lines, testLines: tests };
+}
+/**
+ * The rule a floor waiver is reported under. It is distinct from `agent-review`, whose `waived`
+ * level means the project opted out and no record was read; this one means a record was read and
+ * validated, with only the 30-second floor relaxed. Consumers that refuse an opt-out must not
+ * refuse this.
+ */
+export const REVIEW_FLOOR_RULE = "review-floor";
+/**
+ * The line `check pr` and `review validate` print when the floor is waived. The waiver used to be
+ * applied silently, so how often it fired could not be measured; `waived: review floor` is the
+ * stable text to search CI logs for. Nothing is added to the record: the size is computed from
+ * Git and never declared by the author, and the record and history it is computed from are
+ * committed, so it can be recomputed for any merged pull request.
+ */
+export function floorWaiver(size) {
+    return `waived: review floor (trivial diff: ${size.nonTestLines} non-test, ${size.testLines} test lines)`;
 }
 export function reviewRequired(config) {
     const parsed = z.object({ review: z.object({ required: z.boolean().optional() }).passthrough().optional() }).passthrough().parse(config);
@@ -257,9 +274,12 @@ export function parseReviewRecord(markdown) {
 }
 /**
  * `trivialChange` is consulted only when a turn is under the floor, and only `verifyReviewRecord`
- * supplies it, from Git; without it the floor applies.
+ * supplies it, from Git; without it the floor applies. Returns the waivers applied — today only
+ * the floor's — so a valid record that relied on one is never indistinguishable from one that did
+ * not.
  */
 export function validateReviewRecord(record, opts = {}) {
+    const waivers = [];
     if (bareSession(record.authorSession) === bareSession(record.reviewerSession))
         throw new Error("reviewer must be a fresh independent session");
     if (record.outcome !== "complete")
@@ -320,6 +340,7 @@ export function validateReviewRecord(record, opts = {}) {
                 throw new Error(`an initial review under 30 seconds at normal or high risk is not a review; record it as initialOutcome incomplete, or record what was actually done${why}`);
             throw new Error(`an initial review under 30 seconds at normal or high risk needs an authorized same-reviewer turn of at least 30 seconds that clears${why}`);
         }
+        waivers.push(floorWaiver(size));
     }
     // A turn after a clearance is a late correction, such as a fix full CI asked for after the
     // reviewer cleared the code. It spends one of the remaining turns and must name the scope
@@ -401,6 +422,7 @@ export function validateReviewRecord(record, opts = {}) {
             throw new Error("a third turn is allowed only after the second turn returned blocked, after a cleared turn as a late correction with an explicit scope reason, or after an incomplete turn with explicit humanAuthorization");
         }
     });
+    return waivers;
 }
 export function changedPaths(root, older, newer) {
     return git(root, ["diff", "--name-only", "-z", "--no-renames", older, newer, "--"]).split("\0").filter(Boolean);
@@ -582,8 +604,8 @@ export function checkLocalReview(opts) {
             return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
         if (!opts.labels.includes("agent-reviewed"))
             throw new Error(MISSING_LABEL);
-        verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
-        return [];
+        const { waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
+        return waivers.map(message => ({ level: "waived", rule: REVIEW_FLOOR_RULE, message }));
     }
     catch (error) {
         return [{ level: "error", rule: "agent-review", message: error instanceof Error ? error.message : String(error) }];
@@ -599,7 +621,7 @@ export function reviewRecordLine(body) {
 /**
  * Everything the gate checks once it knows which worklog holds the record: the same function
  * `check pr` runs in CI and `review validate` runs before a push, so the two cannot disagree.
- * Throws the first problem found.
+ * Throws the first problem found; returns the record and any waiver its validation applied.
  */
 export function verifyReviewRecord(opts) {
     const path = opts.path;
@@ -611,12 +633,12 @@ export function verifyReviewRecord(opts) {
     const record = parseReviewRecord(git(opts.root, ["show", `${opts.head}:${path}`]));
     // The whole reviewed change, base to covered. A trunk merge inside it only adds lines, which errs
     // toward keeping the floor; a range that cannot be measured keeps it too.
-    validateReviewRecord(record, { trivialChange: () => {
+    const waivers = validateReviewRecord(record, { trivialChange: () => {
             try {
                 return trivialDiff(opts.root, record.base, record.covered);
             }
             catch {
-                return { trivial: false, reason: "the reviewed range could not be measured" };
+                return { trivial: false, reason: "the reviewed range could not be measured", nonTestLines: 0, testLines: 0 };
             }
         } });
     checkFreshReviewer(opts.root, record, path, opts.head);
@@ -675,7 +697,7 @@ export function verifyReviewRecord(opts) {
     const stray = (record.trunkIntegrations ?? []).find(entry => !merges.has(entry.commit));
     if (stray)
         throw new Error("trunkIntegrations names a commit that is not a trunk merge on this branch after review");
-    return record;
+    return { record, waivers };
 }
 /**
  * A reviewer session reviews one task. The same id in another worklog means the reviewer was

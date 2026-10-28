@@ -1834,6 +1834,27 @@ projection, not for separate action promotion; it states whether actions were re
 unpromoted. Historical notes still cannot notify. This removes project data from current fixtures
 without rewriting already-public Git history, which needs a separate owner decision if desired.
 
+## Profiling reads every Codex rollout; the floor waiver is printed, not recorded — 2026-10-28
+
+MO-26-10-28-14.11.57. `morpheus profile` reads Codex's live `sessions/` and flat
+`archived_sessions/`, plain `.jsonl` and in-place-compressed `.jsonl.zst` alike, and counts a
+session found in two files once, keeping the copy written last. Every session row carries its
+`source`, and the report opens with per-source counts so a before/after comparison shows what it
+read. Decompression uses Node's built-in `zlib` zstd (Node 22.15+). Considered `fzstd` 0.1.1
+(pure JS, last published 2024-03) and `@mongodb-js/zstd` 7.0.0 (native bindings, 2026-07); adopted
+neither because the runtime already ships it. An older Node reports each compressed file as
+unreadable rather than failing the run.
+
+The trivial-diff review-floor waiver is reported as a `waived` finding under its own rule,
+`review-floor`, and `review validate` prints the same `waived: review floor (trivial diff: N
+non-test, M test lines)` line. Printing is enough: CI logs carry it at the time, and the size is a
+pure function of the committed record and Git range, so it can be recomputed for any merged pull
+request. A record field would be redundant with that computation and, being written by the author,
+would contradict the decision that the author never declares the size. The distinct rule keeps
+the two consumers that read `checkLocalReview` as a validity oracle — the GitHub Manager's
+author-record recovery and CD repair verification — refusing an `agent-review` opt-out while
+accepting a validated record that relied on the floor waiver.
+
 ## Context refresh is idempotent and certifies from a read log — 2026-10-28
 
 MO-26-10-28-14.08.05. Chris asked for the context protocol's intent to be enforced in code after the
