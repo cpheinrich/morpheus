@@ -1,3 +1,4 @@
+import { type ChurnEntry } from "./trunk-churn.js";
 /**
  * Over this many missing trunk commits, or this many days since the oldest of
  * them landed, a behind checkout stops being "a session that has not pulled
@@ -83,6 +84,14 @@ export type RescueResult = {
     reason: string;
     dirt: TrunkDirt;
     orphans: string[];
+}
+/** Every edit was IDE churn: reset, nothing published. `commit` holds them, unreferenced, until Git prunes it. */
+ | {
+    outcome: "churn";
+    dirt: TrunkDirt;
+    orphans: string[];
+    churn: ChurnEntry[];
+    commit: string;
 } | {
     outcome: "duplicate";
     dirt: TrunkDirt;
@@ -115,6 +124,8 @@ export declare function rescuePrBody(input: {
     untracked: string[];
     orphans: string[];
     now: Date;
+    /** The repository's GitHub Manager policy will close this draft; only then is that promised. */
+    agesOut?: boolean;
 }): string;
 /**
  * Paths whose staged content differs from both HEAD and the working tree
@@ -122,6 +133,15 @@ export declare function rescuePrBody(input: {
  * staged version, so these are refused rather than silently flattened.
  */
 export declare function divergentStaged(raw: string): string[];
+/**
+ * Paths removed from the index whose file is still on disk — `git rm --cached`,
+ * or the source side of a staged rename that was copied rather than moved.
+ * The rescue commit records only the removal, the content proof cannot see an
+ * untracked file, and `reset --hard` then writes HEAD's version over it. So
+ * these are refused before anything is committed or reset: the file on disk
+ * is the one thing no branch would hold.
+ */
+export declare function stagedRemovalsOnDisk(root: string, raw: string): Promise<string[]>;
 /**
  * The one file a human edits by hand to reply to agents. A reply typed on a
  * trunk checkout must reach the session that starts there to read it, so its

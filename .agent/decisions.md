@@ -1441,6 +1441,44 @@ clone and have nothing to rescue, so only `self install`'s refusal was improved.
 escalates an unadopted rescue draft to a human rather than giving it a session. Native Git plumbing
 (a private index, `commit-tree`, a create-only `update-ref`) and `gh`; no dependency.
 
+**Trunk rescue resets IDE churn, and unadopted rescue drafts age out instead of escalating** —
+2026-10-28 (MO-26-10-28-14.08.53). About nineteen `wip/trunk-*` drafts opened in three weeks and
+none was adopted; Evo opened ten in two days alternating between two Xcode diffs, and the
+unadopted ones took `manager:needs-human` from 4 to 16. Chris approved making them useful or
+retiring them. Three changes, each supersedes part of the entries above:
+
+- *Churn is reset, not published.* Before rescuing, `context brief` classifies the rescue commit's
+  paths (`src/session/trunk-churn.ts`). Only provably empty edits count: per-user state by path
+  (`xcuserdata/`, `.DS_Store`, JetBrains' `workspace.xml`, `usage.statistics.xml`, `tasks.xml`,
+  `shelf/`, `dictionaries/`), a `.pbxproj` whose OpenStep structure is unchanged apart from
+  whitespace, comments and dictionary key order (arrays keep order — build phases run in it), an
+  `.xcscheme`/`.xcworkspacedata` whose elements and attributes are unchanged, and any file whose
+  content already equals trunk's (bytes and mode, or the same Xcode structure). When every edit is
+  churn the checkout is reset after the same content proof and reported in one line naming the
+  unreferenced commit that held them; one real edit and the whole set is rescued as before.
+  `.vscode/` is deliberately excluded — VS Code keeps only shared configuration there — and so are
+  added files, value changes such as a `DEVELOPMENT_TEAM` Xcode wrote that trunk does not have,
+  and anything unparseable, which all still rescue. A false positive loses an edit; a false
+  negative opens a draft that now ages out, so the rule errs towards rescuing.
+- *Duplicates are judged by replay.* An open rescue holds the same edits when its change, applied to
+  the current HEAD in a private index, yields exactly the rescue commit's tree. The exact-diff
+  comparison from 2026-10-15 missed every repeat once trunk touched the same file (evo#654 and
+  evo#675 are the same re-sort); `patch-id` stays rejected because it ignores whitespace. Only the
+  twenty most recent local rescue branches are compared.
+- *Rescue drafts age out.* The GitHub Manager's sweep closes an untouched rescue draft once it has
+  gone `RESCUE_MAX_AGE_DAYS` (7) without a push, commenting how to recover the kept branch, and
+  never escalates, triages or reviews one. A reopened rescue is not closed again on the same head.
+  This replaces the 48-hour human escalation stated above and in the 2026-10-12 and 2026-10-20
+  manager entries ("the 48-hour draft wait remains only for a rescued trunk draft's human
+  escalation", "Rescued trunk drafts keep their escalation"); `draftQuietHours` now governs triage
+  only. A rescue someone takes out of draft, queues or reviews is theirs and is left alone.
+
+No dependency. Considered `xcode` (Cordova's pbxproj parser, maintained, one dependency),
+`@bacons/xcode` (still alpha, three) and `fast-xml-parser` (six). Each would still need the
+canonical comparison written on top, and a forgiving parser is the wrong property here: these
+readers must refuse anything unusual and keep quoting exact, because a misread becomes a discarded
+edit. Built instead, about 150 lines together.
+
 **The review floor is waived for a trivially small change** — 2026-10-08 (MO-26-10-08-06.45.12).
 Chris's option A after six independent reviews of the same five-line workflow `if:` (evo#412,
 lakinacapital#509, kairos#70) took 21–30 s, all clean: on a change that small the 30-second floor
@@ -1833,6 +1871,38 @@ state. A current-note completion notice waits for the verified factual record an
 projection, not for separate action promotion; it states whether actions were recorded or remain
 unpromoted. Historical notes still cannot notify. This removes project data from current fixtures
 without rewriting already-public Git history, which needs a separate owner decision if desired.
+
+## Superseded conventions runs pass under a name nothing requires — 2026-10-28
+
+MO-26-10-28-14.08.43. A conventions run whose event head is no longer the PR head used to fail
+silently. Now it passes with `superseded by <sha>` and runs no checks, but it reports as
+`pr / superseded` and never as the required `pr / conventions`.
+
+An in-step pass was not enough. It would attach to the old SHA, which becomes the head again if
+the PR is force-pushed back to it. The pass would then read as a required green until a new run
+reports, and indefinitely if none is triggered.
+
+A job's name is fixed before its steps run, so a small `head` job decides first, and it needs proof
+that the PR moved after the event: a live copy strictly newer than the payload. All of the
+following fail `pr / conventions` with their reason:
+
+- a lagging, equal-time or malformed read;
+- a failed or cancelled `head` (the required job uses `always()`, because a skip would satisfy
+  protection);
+- a move after `head` decided.
+
+`cancel-in-progress` stays out, because a cancelled required check blocks merges. The costs:
+
+- one small extra job per conventions run;
+- a new `pr / head` check that is not required;
+- a later `pr / conventions` check run. GitHub creates it only once `head` finishes: about 6 s
+  normally (21:52:32 against 21:52:38 on #544), and minutes under a runner backlog.
+
+The third cost lengthens a window that already existed. When approval is withdrawn on an unchanged
+head (a review label removed, the `review-record:` line deleted), the head's older pass stands as
+its only conventions result until the new run reports. That pass is a genuine check of the same
+tree. A manual merge or a GitHub Manager sweep in that window could still use it. This was accepted
+as the price of never letting a superseded pass carry the required name.
 
 ## Profiling reads every Codex rollout; the floor waiver is printed, not recorded — 2026-10-28
 

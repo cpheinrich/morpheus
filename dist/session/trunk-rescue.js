@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
-import { access, copyFile, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { access, copyFile, lstat, rm, writeFile } from "node:fs/promises";
 import { hostname as osHostname } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { gitSubprocessEnv } from "../git-env.js";
+import { classifyChanges, describeChurn, parseLsTree, parseRawDiff } from "./trunk-churn.js";
 /**
  * A dirty trunk checkout is a stuck checkout.
  *
@@ -24,6 +25,12 @@ import { gitSubprocessEnv } from "../git-env.js";
  * Untracked files are deliberately **never** committed: they are where
  * secrets and build junk live. They are listed, and untracked build output
  * whose source no longer exists is named as safe to delete — never deleted.
+ *
+ * Not every dirty trunk holds work. When every tracked edit is IDE churn —
+ * per-user state, a re-serialised Xcode file, or exactly what trunk already
+ * has (`trunk-churn.ts`) — the checkout is reset after the same content proof
+ * and reported in one line, with no branch, push or pull request. And when an
+ * open rescue already holds an equivalent change, no second one is opened.
  */
 const exec = promisify(execFile);
 async function git(root, args, env) {
@@ -219,6 +226,11 @@ export function rescuePrBody(input) {
         `**How far behind the checkout was:** ${lagLine}${input.ahead ? ` It also carried ${input.ahead} local trunk commit(s) not on ${input.trunk}; they are included in this branch's history.` : ""}`,
         "",
         "**This is not a finished change.** `check pr` conventions, review and the roadmap do not apply until someone adopts it: claim or link a roadmap item and move the work onto that item's branch, or close this if the edits were incidental (an IDE rewriting a generated file is the usual cause).",
+        // The number is the GitHub Manager's RESCUE_MAX_AGE_DAYS, held equal by a test rather than an
+        // import, so session start does not load the manager's policy code.
+        ...(input.agesOut
+            ? ["", "Nobody needs to triage it: once it has gone 7 days without a push, the GitHub Manager closes it with a note on recovering it. The branch is never deleted."]
+            : []),
         "",
         "## Moved files",
         "",
@@ -256,10 +268,87 @@ async function takenBranches(root, remote, base) {
     }
     return taken;
 }
-/** Exact patch bytes include old/new blob ids, modes and paths; Git's patch-id drops whitespace. */
-async function rescueDiffDigest(root, parent, commit) {
-    const diff = await git(root, ["diff", "--binary", "--full-index", "--no-ext-diff", "--no-textconv", "--no-renames", "--no-color", parent, commit, "--"]);
-    return createHash("sha256").update(diff).digest("hex");
+/** Raw bytes: a patch decoded as UTF-8 and written back would corrupt any non-UTF-8 content. */
+async function gitBytes(root, args) {
+    const { stdout } = await exec("git", args, { cwd: root, timeout: 60_000, maxBuffer: 20 * 1024 * 1024, encoding: "buffer", env: gitSubprocessEnv() });
+    return stdout;
+}
+/**
+ * Whether an earlier rescue's change, replayed onto `base`, produces exactly
+ * `tree`. That is what "an open rescue already holds these edits" has to
+ * mean for the reset to be safe: adopting that pull request gives these files.
+ *
+ * Comparing the diffs themselves was too strict. Their old blob ids change
+ * whenever trunk touches the same file anywhere else, and Evo's project file
+ * is touched constantly, so the same Xcode re-sort opened a fresh draft on
+ * consecutive days (evo#654, evo#675). Git's `patch-id` is too loose: it
+ * ignores whitespace, so a distinct edit could pass for a repeat. Replaying
+ * compares outcomes, which is the property the reset depends on.
+ */
+async function replaysTo(root, base, parent, tip, tree) {
+    const indexRel = (await git(root, ["rev-parse", "--git-path", "index"])).trim();
+    const stem = `${isAbsolute(indexRel) ? indexRel : join(root, indexRel)}.morpheus-replay-${randomUUID()}`;
+    const index = `${stem}.index`;
+    const patchFile = `${stem}.patch`;
+    try {
+        const patch = await gitBytes(root, ["diff", "--binary", "--full-index", "--no-ext-diff", "--no-textconv", "--no-renames", "--no-color", parent, tip, "--"]);
+        if (!patch.length)
+            return false;
+        await writeFile(patchFile, patch);
+        await git(root, ["read-tree", base], { GIT_INDEX_FILE: index });
+        // Explicit, so a user's `apply.whitespace=fix` cannot rewrite the replay into a match.
+        await git(root, ["apply", "--cached", "--binary", "--whitespace=nowarn", patchFile], { GIT_INDEX_FILE: index });
+        return (await git(root, ["write-tree"], { GIT_INDEX_FILE: index })).trim() === tree;
+    }
+    catch {
+        return false;
+    }
+    finally {
+        await rm(index, { force: true });
+        await rm(patchFile, { force: true });
+    }
+}
+/**
+ * Whether trunk's GitHub Manager policy will age this draft out. The manager acts only where
+ * `.github/morpheus-gh-manager.json` on the default branch opts in, and most projects have none;
+ * there the draft stays open, and its body must not say otherwise. Read from the fetched trunk,
+ * as the manager reads it, and loosely: the policy schema lives with the manager.
+ */
+async function managerClosesRescues(root, trunkSha) {
+    try {
+        const policy = JSON.parse(await git(root, ["show", `${trunkSha}:.github/morpheus-gh-manager.json`]));
+        return policy.enabled !== false && policy.actions?.close !== false;
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Only the most recent local rescue branches are compared. A rescue draft is
+ * closed once it has gone `RESCUE_MAX_AGE_DAYS` untouched (the GitHub
+ * Manager's sweep), so an older branch rarely still has the open pull request
+ * a duplicate needs, and each comparison costs several Git calls at startup.
+ */
+const DUPLICATE_CANDIDATES = 20;
+/** More changed paths than this are not inspected for churn: a change that wide is not an IDE's. */
+const MAX_CLASSIFIED_PATHS = 500;
+/**
+ * Classify the rescue commit's change against HEAD and the fetched trunk.
+ * Null when it cannot be read, which the caller treats as real work.
+ */
+async function classifyChurn(root, head, commit, trunkSha) {
+    const changes = parseRawDiff(await git(root, ["diff", "--raw", "-z", "--no-renames", "--no-abbrev", head, commit]));
+    if (!changes.length || changes.length > MAX_CLASSIFIED_PATHS)
+        return null;
+    // "Already on trunk" is safe only because the fast-forward after the reset brings trunk's
+    // version back. A checkout with local trunk commits never fast-forwards, so there it is not
+    // offered at all and such an edit is rescued. (A fast-forward Git refuses over an untracked
+    // file is reported by the brief; the content is on trunk and in the commit either way.)
+    const fastForwards = await gitOk(root, ["merge-base", "--is-ancestor", head, trunkSha]);
+    const trunk = fastForwards
+        ? parseLsTree(await git(root, ["--literal-pathspecs", "ls-tree", "-r", "-z", trunkSha, "--", ...changes.map((c) => c.path)]))
+        : null;
+    return classifyChanges(changes, trunk, (blob) => git(root, ["cat-file", "blob", blob]).catch(() => null));
 }
 async function pullRequestTarget(root, target, remote, branch) {
     const trunkRemote = target.trunk.endsWith(`/${target.branch}`) ? target.trunk.slice(0, -target.branch.length - 1) : remote;
@@ -274,8 +363,8 @@ async function pullRequestTarget(root, target, remote, branch) {
 }
 /** A live pushed branch and an existing PR must both stand behind a duplicate. */
 async function duplicateRescueBranch(root, target, remote, head, commit, runner) {
-    const digest = await rescueDiffDigest(root, head, commit);
-    const refs = (await git(root, ["for-each-ref", "--format=%(refname:short)", "refs/heads/wip/trunk-*"])).split("\n").filter(Boolean);
+    const tree = (await git(root, ["rev-parse", `${commit}^{tree}`])).trim();
+    const refs = (await git(root, ["for-each-ref", "--sort=-committerdate", `--count=${DUPLICATE_CANDIDATES}`, "--format=%(refname:short)", "refs/heads/wip/trunk-*"])).split("\n").filter(Boolean);
     if (!refs.length)
         return null;
     // This network lookup precedes the content proof/reset window. Cached
@@ -293,7 +382,7 @@ async function duplicateRescueBranch(root, target, remote, head, commit, runner)
         if (!localSha || live.get(branch) !== localSha)
             continue;
         const parent = (await git(root, ["rev-parse", "-q", "--verify", `${local}^`]).catch(() => "")).trim();
-        if (!parent || await rescueDiffDigest(root, parent, localSha).catch(() => "") !== digest)
+        if (!parent || !(await replaysTo(root, head, parent, localSha, tree)))
             continue;
         const { repoArgs, headOwner } = await pullRequestTarget(root, target, remote, branch);
         // Unlike `pr create`, `pr list --head` rejects owner:branch. Filter
@@ -327,6 +416,42 @@ export function divergentStaged(raw) {
             out.push(entry.slice(3));
     }
     return out;
+}
+/**
+ * Paths removed from the index whose file is still on disk — `git rm --cached`,
+ * or the source side of a staged rename that was copied rather than moved.
+ * The rescue commit records only the removal, the content proof cannot see an
+ * untracked file, and `reset --hard` then writes HEAD's version over it. So
+ * these are refused before anything is committed or reset: the file on disk
+ * is the one thing no branch would hold.
+ */
+export async function stagedRemovalsOnDisk(root, raw) {
+    const removed = [];
+    const entries = raw.split("\0");
+    for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        if (entry.length < 4)
+            continue;
+        const [x, y] = [entry[0], entry[1]];
+        // An unstaged deletion normally has nothing on disk; something there (a directory where the
+        // file was) would equally be in the reset's way, so it is checked the same way.
+        if (x === "D" || y === "D")
+            removed.push(entry.slice(3));
+        if (x === "R") {
+            const source = entries[i + 1];
+            if (source)
+                removed.push(source);
+            i++;
+        }
+        else if (x === "C")
+            i++;
+    }
+    const present = [];
+    // lstat, not stat: a symlink left in place is still something a reset would replace.
+    for (const path of removed)
+        if (await lstat(join(root, path)).then(() => true, () => false))
+            present.push(path);
+    return present;
 }
 /**
  * The one file a human edits by hand to reply to agents. A reply typed on a
@@ -368,6 +493,9 @@ export async function rescueDirtyTrunk(root, target, deps = {}) {
     const divergent = divergentStaged(raw);
     if (divergent.length)
         return skip(`${divergent.join(", ")} has staged content that differs from the working tree; commit or unstage it`);
+    const kept = await stagedRemovalsOnDisk(root, raw);
+    if (kept.length)
+        return skip(`${kept.slice(0, 5).join(", ")}${kept.length > 5 ? ` and ${kept.length - 5} more` : ""} removed from the index but still on disk (git rm --cached), which a reset would overwrite; commit the removal on a branch, or undo it with git restore --staged`);
     const now = deps.now ?? new Date();
     const host = shortHost(deps.hostname ?? osHostname());
     const date = pacificDate(now);
@@ -402,6 +530,16 @@ export async function rescueDirtyTrunk(root, target, deps = {}) {
     }
     finally {
         await rm(tempIndex, { force: true });
+    }
+    // Churn is decided on the commit, not the live files, so what is classified
+    // is exactly what the proof below compares and the reset then discards.
+    const classified = await classifyChurn(root, head, commit, target.sha).catch(() => null);
+    if (classified && classified.churn.length && !classified.real.length) {
+        if (!(await gitOk(root, ["diff", "--quiet", commit, "--"]))) {
+            return skip("the working tree changed while it was being classified; left untouched");
+        }
+        await git(root, ["reset", "--hard", "--quiet", "HEAD"]);
+        return { outcome: "churn", dirt, orphans, churn: classified.churn, commit };
     }
     // Lookup runs before the proof/reset window; it never places a network call
     // between a successful proof and the destructive reset.
@@ -447,7 +585,8 @@ export async function rescueDirtyTrunk(root, target, deps = {}) {
     let prUrl;
     let prError;
     if (pushed) {
-        const body = rescuePrBody({ root, host, date, trunk: target.trunk, lag, ahead, diffstat, tracked: dirt.tracked, untracked: dirt.untracked, orphans, now });
+        const agesOut = await managerClosesRescues(root, target.sha);
+        const body = rescuePrBody({ root, host, date, trunk: target.trunk, lag, ahead, diffstat, tracked: dirt.tracked, untracked: dirt.untracked, orphans, now, agesOut });
         const repoName = root.split(/[\\/]/).filter(Boolean).pop() ?? "repository";
         // On a fork the trunk remote (upstream) is not the push remote (origin):
         // name the base repository and qualify the head with the fork's owner, or
@@ -485,6 +624,9 @@ export function formatRescue(result, trunk) {
             lines.push(`  ! Push failed (${result.pushError ?? "unknown"}). The edits are safe on local branch ${result.wipBranch}; push it with: git push ${result.remote} ${result.wipBranch}`);
         else if (!result.prUrl)
             lines.push(`  ! Pushed ${result.wipBranch}, but the draft PR was not opened (${result.prError ?? "unknown"}). Open it with: gh pr create --draft --head ${result.wipBranch}`);
+    }
+    else if (result.outcome === "churn") {
+        lines.push(`Reset ${result.churn.length} tracked file(s) of IDE churn on trunk instead of opening a rescue PR (${describeChurn(result.churn)}); recoverable with git checkout ${result.commit.slice(0, 12)} -- <path> until Git prunes it.`);
     }
     else if (result.outcome === "duplicate") {
         lines.push(`Same tracked edits were already rescued in open PR ${result.prUrl} (${result.existingBranch}); trunk reset without another PR.`);
