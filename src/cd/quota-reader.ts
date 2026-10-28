@@ -7,15 +7,18 @@ import { quotaUsed } from "./state.js";
 const READ_MS = 60_000, RPC_MS = 10_000, CLEANUP_FUSE_MS = 3_000;
 interface Bucket { primary?: { usedPercent?: number; resetsAt?: number }; secondary?: { usedPercent?: number; resetsAt?: number } }
 
+/** Only fixed protocol diagnostics, never provider output or configuration. */
+export class QuotaReadError extends Error {}
+
 /** Real per-call telemetry; stop only its private foreground reader group. */
 export async function nativeQuota(command: string[], cwd: string, observedAt: string): Promise<QuotaSnapshot> {
   return new Promise((resolve, reject) => {
     const started = Date.now(), deadline = started + READ_MS;
-    let phase = "initialize", buffer = "", control = "", cleanup = false, settled = false, stopping = false, value: QuotaSnapshot | undefined;
+    let phase = "initialize", buffer = "", control = "", controlBytes = 0, cleanup = false, cleanupSeen = false, settled = false, stopping = false, value: QuotaSnapshot | undefined;
     let rpcDeadline = Infinity, rpcTimer: ReturnType<typeof setTimeout> | undefined, fuse: ReturnType<typeof setTimeout> | undefined;
     const helper = fileURLToPath(new URL("./quota-reader.py", import.meta.url));
     const child = spawn("/usr/bin/python3", [helper, String(READ_MS), command[0]!, ...command.slice(1), "app-server"], { cwd, stdio: ["pipe", "pipe", "pipe", "pipe"] });
-    const diagnostic = (reason: string) => new Error(`Codex account quota ${reason} (phase=${phase} elapsedMs=${Math.max(0, Date.now() - started)})`);
+    const diagnostic = (reason: string) => new QuotaReadError(`Codex account quota ${reason} (phase=${phase} elapsedMs=${Math.max(0, Date.now() - started)})`);
     const stop = () => {
       if (stopping) return;
       stopping = true; child.stdin.end(); child.kill("SIGTERM");
@@ -33,12 +36,27 @@ export async function nativeQuota(command: string[], cwd: string, observedAt: st
     child.stdin.on("error", () => fail("transport unavailable"));
     child.stderr.on("data", () => {}); // Drain without retaining provider text.
     (child.stdio[3] as Readable).on("data", (bytes: Buffer) => {
+      controlBytes += bytes.byteLength;
+      if (controlBytes > 256) { fail("cleanup unknown"); return; }
       control += String(bytes);
-      if (control.length > 256) { fail("cleanup unknown"); return; }
-      try {
-        const status = JSON.parse(control);
-        cleanup = status !== null && Object.keys(status).length === 1 && status.cleanup === "terminated";
-      } catch { cleanup = false; }
+      while (control.includes("\n")) {
+        const end = control.indexOf("\n"), line = control.slice(0, end); control = control.slice(end + 1);
+        let status: { cleanup?: unknown; reader?: unknown; errno?: unknown; code?: unknown };
+        try { status = JSON.parse(line); } catch { fail("cleanup unknown"); return; }
+        if (status === null || typeof status !== "object" || Array.isArray(status)) { fail("cleanup unknown"); return; }
+        const keys = Object.keys(status);
+        if (keys.length === 1 && ["terminated", "unknown"].includes(status.cleanup as string)) {
+          if (cleanupSeen) { fail("cleanup unknown"); return; }
+          cleanupSeen = true;
+          cleanup = status.cleanup === "terminated";
+        } else if (keys.length === 2 && status.reader === "spawn-failed" && Number.isInteger(status.errno) && Number(status.errno) >= 0 && Number(status.errno) <= 4095) {
+          if (!stopping && !settled) fail(`configured reader could not start (errno=${status.errno})`);
+        } else if (keys.length === 2 && status.reader === "exited" && Number.isInteger(status.code) && Number(status.code) >= -255 && Number(status.code) <= 255) {
+          if (!stopping && !settled) fail(`configured reader exited (code=${status.code})`);
+        } else if (keys.length === 1 && status.reader === "status-unavailable") {
+          if (!stopping && !settled) fail("configured reader status unavailable");
+        } else { fail("cleanup unknown"); return; }
+      }
     });
     child.stdout.on("data", (bytes: Buffer) => {
       if (stopping || settled) return;
@@ -68,7 +86,7 @@ export async function nativeQuota(command: string[], cwd: string, observedAt: st
     });
     child.on("close", code => {
       clearTimeout(fuse);
-      if (!cleanup || code !== 0) {
+      if (!cleanup || control.length !== 0 || code !== 0) {
         if (!settled) fail("cleanup unknown");
         else console.error(diagnostic("cleanup unknown").message);
         clearTimeout(fuse); return;

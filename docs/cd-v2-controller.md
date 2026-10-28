@@ -402,12 +402,21 @@ an arbitrary command-execution surface.
 The native account reader gives the configured shim up to 60 seconds total,
 including initialization and its config checks; the final rate-limit RPC gets
 at most 10 seconds within that remaining total. Stderr is drained without
-retaining provider text. Failures report only a fixed phase and elapsed time.
+retaining provider text. Failures report a fixed phase and elapsed time. A
+configured reader that cannot spawn or exits early also reports only its numeric
+OS error or exit code, rather than waiting for the initialization deadline.
 Every call still reads fresh telemetry and requires explicit ordinary allowance;
 there is no retry, cached-value or file fallback. Snapshot age and window expiry
 are checked at actual completion, after cleanup, against the existing five-minute
 freshness limit. The 30-second worker meter skips overlapping reads; missing
 telemetry checkpoints the owned invocation immediately at the read bound.
+Admission and metering distinguish `wait-subscription-telemetry` from actual
+`wait-measured-subscription-capacity`; an initialization timeout establishes no
+measured exhaustion. Failed admission login verification instead records
+`wait-subscription-authentication`, without copying the command's output. All
+three refuse invocation while their prerequisite is unavailable. The guarded
+`agent-budget-wait` journal kind remains compatible, with a separate failure
+class in each new admission event's identity and result.
 
 Only the no-model reader uses `quota-reader.py`. It creates a private foreground
 session with a live group leader retained unreaped through the final group
@@ -419,6 +428,10 @@ cleanup timeout or missing confirmation never grants quota. No process-name
 census or model-guardian change is involved. The trusted configured command and
 its children must stay in this foreground session; detached children are outside
 this bounded contract and require diagnosis, not broad signalling.
+The live leader sends fixed failure status through a private pipe to its
+supervisor; the configured reader cannot inherit that pipe or FD3. Only the
+supervisor writes the bounded status and final cleanup frames on FD3. Reporting
+an exited reader never releases the leader before the existing final signal.
 When its supervisor disappears, the still-live private leader kills its own
 group; it cannot leave an immortal reader group after the parent fuse fires.
 Post-reap Darwin permission responses are observed until the same cleanup bound.
