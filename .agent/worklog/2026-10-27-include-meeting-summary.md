@@ -37,9 +37,7 @@ owns the full suite.
 
 ## Independent review
 
-Independent normal-risk review found one substantive opt-in compatibility issue; the exact
-conditional correction now ignores malformed summary data for profiles that did not request
-summaries, and all focused evidence passed.
+Independent normal-risk review found one substantive opt-in compatibility issue; the exact conditional correction now ignores malformed summary data for profiles that did not request summaries, and all focused evidence passed.
 
 ```morpheus-review
 {
