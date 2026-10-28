@@ -1800,3 +1800,15 @@ The shared guide retains source interpretation, redaction and participant resolu
 judgment, and factual notes remain separate from later interpretation. Considered `simple-git`
 4.0.2 (published 2026-09-26, five direct dependencies); retained Node's argument-safe Git process
 call because the adapter is small and the pilot already proved that boundary.
+
+
+## Evo CD supervision reads fresh state and retains operating authority — 2026-10-28
+
+Chris explicitly requested fresh live state on each heartbeat and authority to
+read and write supported recovery within the existing campaign mandate. A cached
+private checkpoint is orientation, never a substitute for current controller and
+provider facts. Failed acquisition is unknown; quiet notifications do not suspend
+diagnosis or ordinary repair. Repeating invocations, checkpoints or next-check
+clocks does not renew delivery progress. This changes supervision, not source
+review, CI, credential scope, ownership fences or uncertain-upload safety. Actual
+runtime adoption and installable TestFlight receipts remain separate evidence.

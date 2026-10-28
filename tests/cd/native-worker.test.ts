@@ -193,6 +193,72 @@ const ordinaryQuota = (at: string, ordinaryUsageAllowed: unknown = true) => ({
 });
 
 describe("native ordinary subscription eligibility", () => {
+  it("records a missing configured reader as telemetry failure without a repair invocation", async () => {
+    const f = await nativeFixture(); delete f.cfg.agents!.local.quotaFile;
+    f.cfg.agents!.local.command = [join(f.directory, "absent-reader")];
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", hostId: "mac-a" })).toMatchObject({
+      state: "budget-wait", failureKind: "telemetry", reason: expect.stringContaining("configured reader could not start (errno=2)"),
+    });
+    const state = (await f.store.read()).state, work = state.agents[f.workId]!;
+    expect(work.invocations).toEqual([]); expect(work.lease).toBeUndefined();
+    expect(state.intents[work.intentId]!.nextAction).toBe("wait-subscription-telemetry");
+    expect(state.intents[work.intentId]!.blocker).toContain("phase=initialize");
+    await expect(readFile(f.callsPath)).rejects.toHaveProperty("code", "ENOENT");
+  });
+
+  it("reserves measured capacity wording for the exact admission threshold", async () => {
+    const f = await nativeFixture(), path = f.cfg.agents!.local.quotaFile!;
+    const quota = JSON.parse(await readFile(path, "utf8"));
+    quota.windows[0].usedPercent = f.cfg.budget.subscriptionAdmitBelowPercent;
+    await writeFile(path, JSON.stringify(quota));
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toEqual({
+      state: "budget-wait", failureKind: "capacity", reason: "Subscription admission threshold reached",
+    });
+    const state = (await f.store.read()).state, work = state.agents[f.workId]!;
+    expect(work.invocations).toEqual([]); expect(work.lease).toBeUndefined();
+    expect(state.intents[work.intentId]!.nextAction).toBe("wait-measured-subscription-capacity");
+    await expect(readFile(f.callsPath)).rejects.toHaveProperty("code", "ENOENT");
+  });
+
+  it("records failed subscription authentication without retaining command stderr", async () => {
+    const f = await nativeFixture(), script = f.cfg.agents!.local.command[1]!;
+    await writeFile(script, (await readFile(script, "utf8")).replace("console.log('Logged in using ChatGPT'); process.exit(0);", "console.error('SECRET AUTH PROVIDER TEXT'); process.exit(7);"));
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toEqual({
+      state: "budget-wait", failureKind: "authentication", reason: "Subscription authentication verification failed",
+    });
+    const state = (await f.store.read()).state, work = state.agents[f.workId]!;
+    expect(work.invocations).toEqual([]); expect(work.lease).toBeUndefined();
+    expect(state.intents[work.intentId]!.nextAction).toBe("wait-subscription-authentication");
+    expect(JSON.stringify(state)).not.toContain("SECRET AUTH PROVIDER TEXT");
+  });
+
+  it("does not copy untrusted telemetry parse errors into admission evidence", async () => {
+    const f = await nativeFixture();
+    vi.spyOn(QuotaReader.prototype, "read").mockRejectedValueOnce(new Error("SECRET TELEMETRY CONFIG TEXT"));
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toEqual({
+      state: "budget-wait", failureKind: "telemetry", reason: "Subscription telemetry acquisition failed; unavailable, stale or invalid",
+    });
+    const state = (await f.store.read()).state, work = state.agents[f.workId]!;
+    expect(work.invocations).toEqual([]); expect(work.lease).toBeUndefined();
+    expect(state.intents[work.intentId]!.nextAction).toBe("wait-subscription-telemetry");
+    expect(JSON.stringify(state)).not.toContain("SECRET TELEMETRY CONFIG TEXT");
+  });
+
+  it("retains the sanitized provider HTTP and missing-scope diagnostic as telemetry failure", async () => {
+    const f = await nativeFixture([], "hosted"); delete f.cfg.agents!.hosted!.quotaFile;
+    const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      error: { type: "permission_error", message: "scope requirement user:profile SECRET PROVIDER TEXT" },
+    }), { status: 403 }));
+    const reason = "Claude usage readback HTTP 403; permission_error; required OAuth scope user:profile; retain budget wait";
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "hosted" }, { CLAUDE_CODE_OAUTH_TOKEN: "synthetic-fixture-auth" })).toEqual({ state: "budget-wait", failureKind: "telemetry", reason });
+    const state = (await f.store.read()).state, work = state.agents[f.workId]!;
+    expect(work.invocations).toEqual([]); expect(work.lease).toBeUndefined();
+    expect(state.intents[work.intentId]!.nextAction).toBe("wait-subscription-telemetry");
+    expect(state.intents[work.intentId]!.blocker).toBe(reason);
+    expect(JSON.stringify(state)).not.toContain("SECRET PROVIDER TEXT");
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("does not overlap slow meter reads and still checkpoints on fresh unknown eligibility", async () => {
     const f = await nativeFixture(); delete f.cfg.agents!.local.quotaFile;
     await writeFile(f.nativeQuotaPath, JSON.stringify(ordinaryQuota(new Date().toISOString())));
@@ -256,7 +322,7 @@ describe("native ordinary subscription eligibility", () => {
     const state = (await f.store.read()).state, work = state.agents[f.workId]!;
     expect(work.invocations).toHaveLength(1); expect(work.lease).toBeUndefined();
     expect(work.invocations[0]!.result!.summary).toContain("ordinary subscription usage is unavailable or unknown");
-    expect(state.intents[work.intentId]!.nextAction).toBe("wait-measured-subscription-capacity");
+    expect(state.intents[work.intentId]!.nextAction).toBe("wait-subscription-telemetry");
   });
 });
 

@@ -41,6 +41,53 @@ function fakeReader(autoClose = true, cleaned = true) {
 }
 
 describe("native quota read bounds and protocol", () => {
+  it("reports a configured reader spawn failure before the initialization timeout", async () => {
+    const f = fakeReader(), rejected = rejection(nativeQuota(["fixture"], "/fixture", f.at));
+    let failure: Error | undefined;
+    void rejected.then(error => { failure = error; });
+    f.control.write('{"reader":"spawn-failed","errno":2}\n');
+    await vi.advanceTimersByTimeAsync(0);
+    try {
+      expect(failure?.message).toBe("Codex account quota configured reader could not start (errno=2) (phase=initialize elapsedMs=0)");
+      expect(f.signals).toEqual(["SIGTERM"]);
+    } finally {
+      if (!failure) f.child.emit("close", 3);
+      await rejected;
+    }
+  });
+
+  it("joins fragmented and coalesced private status frames without retaining reader text", async () => {
+    const f = fakeReader(false), rejected = rejection(nativeQuota(["fixture"], "/fixture", f.at));
+    f.control.write('{"reader":"ex');
+    f.control.write('ited","code":2}\n{"cleanup":"terminated"}\n');
+    f.child.emit("close", 0);
+    expect((await rejected).message).toBe("Codex account quota configured reader exited (code=2) (phase=initialize elapsedMs=0)");
+    expect(f.signals).toEqual(["SIGTERM"]);
+  });
+
+  it("rejects a lost private reader status channel immediately", async () => {
+    const f = fakeReader(), rejected = rejection(nativeQuota(["fixture"], "/fixture", f.at));
+    f.control.write('{"reader":"status-unavailable"}\n');
+    expect((await rejected).message).toBe("Codex account quota configured reader status unavailable (phase=initialize elapsedMs=0)");
+    expect(f.signals).toEqual(["SIGTERM"]);
+  });
+
+  it.each(['not-json\n', 'null\n', '[]\n', '{"reader":"exited","code":"SECRET"}\n',
+    '{"reader":"exited","code":2,"cleanup":"terminated"}\n', '{"cleanup":"terminated","extra":"SECRET"}\n',
+    '{"reader":"spawn-failed","errno":true}\n', 'X'.repeat(257)])("refuses malformed or oversized control %s", async frame => {
+    const f = fakeReader(), rejected = rejection(nativeQuota(["fixture"], "/fixture", f.at));
+    f.control.write(frame);
+    expect((await rejected).message).toBe("Codex account quota cleanup unknown (phase=initialize elapsedMs=0)");
+    expect(f.signals).toEqual(["SIGTERM"]);
+  });
+
+  it("does not accept a second cleanup attestation", async () => {
+    const f = fakeReader(false), rejected = rejection(nativeQuota(["fixture"], "/fixture", f.at));
+    f.initialize(); f.response(f.limits(true));
+    f.control.write('{"cleanup":"unknown"}\n{"cleanup":"terminated"}\n'); f.child.emit("close", 0);
+    expect((await rejected).message).toContain("cleanup unknown");
+  });
+
   it("allows shim initialization past ten seconds, then reads exact fresh limits once", async () => {
     const f = fakeReader(), reading = nativeQuota(["fixture"], "/fixture", f.at);
     await vi.advanceTimersByTimeAsync(11_000); f.initialize(); f.response(f.limits(true));
@@ -101,7 +148,7 @@ describe("native quota read bounds and protocol", () => {
   it("also refuses windows expiring during cleanup and invalid observation timestamps", async () => {
     const f = fakeReader(false), rejected = rejection(nativeQuota(["fixture"], "/fixture", f.at));
     f.initialize(); f.response(f.limits(true, 1)); vi.setSystemTime(new Date(Date.parse(f.at) + 1_000));
-    f.control.write('{"cleanup":"terminated"}'); f.child.emit("close", 0);
+    f.control.write('{"cleanup":"terminated"}\n'); f.child.emit("close", 0);
     expect((await rejected).message).toContain("returned unknown/expired quota telemetry");
     const invalid = fakeReader(), failure = rejection(nativeQuota(["fixture"], "/fixture", "invalid"));
     invalid.initialize(); invalid.response(invalid.limits(true));
@@ -136,6 +183,7 @@ const settings=JSON.parse(await readFile(process.argv[2],"utf8"));
 if(settings.orphan){await writeFile(process.argv[3],JSON.stringify({pid:process.pid,pgid:process.ppid}));setInterval(()=>{},1000);await new Promise(()=>{});}
 if(settings.descendant){const child=spawn(process.execPath,["-e","setInterval(()=>{},1000)"],{stdio:"ignore"});await writeFile(process.argv[3],JSON.stringify({pid:child.pid,modelOwner:process.env.MORPHEUS_CD_AGENT_OWNER??null,quotaOwner:process.env.MORPHEUS_CD_QUOTA_READER_OWNER}));}
 if(settings.stderr){for(let i=0;i<32;i++)if(!process.stderr.write("X".repeat(65536)))await once(process.stderr,"drain");}
+if(settings.exitCode!==undefined){process.stderr.write("SECRET PROVIDER TEXT");process.exit(settings.exitCode);}
 await new Promise(r=>setTimeout(r,settings.startup??0));
 for await(const line of createInterface({input:process.stdin})){const m=JSON.parse(line);
 if(m.method==="initialize")console.log(JSON.stringify({id:1,result:{}}));
@@ -145,6 +193,48 @@ if(m.method==="account/rateLimits/read"){console.log(JSON.stringify({id:2,result
 }
 
 describe("real offline quota reader processes", () => {
+  it("reports a missing executable and confirms private reader cleanup", async () => {
+    const f = await fixture({});
+    const reading = nativeQuota([join(f.directory, "absent-reader")], f.directory, new Date().toISOString());
+    const supervisor = vi.mocked(spawn).mock.results.at(-1)!.value as ChildProcess;
+    const control: string[] = []; (supervisor.stdio[3] as PassThrough).on("data", bytes => control.push(String(bytes)));
+    const closed = new Promise<number | null>(resolve => supervisor.once("close", resolve));
+    await expect(reading).rejects.toThrow("configured reader could not start (errno=2)");
+    expect(await closed).toBe(0);
+    expect(control.join("").trim().split("\n").map(line => JSON.parse(line))).toEqual([
+      { reader: "spawn-failed", errno: 2 }, { cleanup: "terminated" },
+    ]);
+  });
+
+  it("reports early failure and removes its foreground descendant without copying stderr", async () => {
+    const f = await fixture({ descendant: true, exitCode: 7 });
+    const reading = nativeQuota(f.command, f.directory, new Date().toISOString());
+    const supervisor = vi.mocked(spawn).mock.results.at(-1)!.value as ChildProcess;
+    const closed = new Promise<number | null>(resolve => supervisor.once("close", resolve));
+    await expect(reading).rejects.toThrow("configured reader exited (code=7)");
+    expect(await closed).toBe(0);
+    const descendant = JSON.parse(await readFile(f.pidFile, "utf8"));
+    expect(() => process.kill(descendant.pid, 0)).toThrow();
+  });
+
+  it("does not expose the supervisor control descriptor to the configured reader", async () => {
+    const f = await fixture({}), proof = join(f.directory, "fd-proof.json");
+    const script = `import errno,json,os,sys,time
+try:
+ os.write(3,b'{"cleanup":"terminated"}\\n')
+ blocked=False
+except OSError as error:
+ blocked=error.errno==errno.EBADF
+with open(sys.argv[1],'w') as stream:json.dump({'controlDescriptorClosed':blocked},stream)
+for line in sys.stdin:
+ message=json.loads(line)
+ if message['method']=='initialize':print(json.dumps({'id':1,'result':{}}),flush=True)
+ elif message['method']=='account/rateLimits/read':print(json.dumps({'id':2,'result':{'ordinaryUsageAllowed':True,'rateLimitsByLimitId':{'codex':{'primary':{'usedPercent':23,'resetsAt':time.time()+3600}}}}}),flush=True)
+`;
+    expect((await nativeQuota(["/usr/bin/python3", "-I", "-B", "-c", script, proof], f.directory, new Date().toISOString())).windows[0]!.usedPercent).toBe(23);
+    expect(JSON.parse(await readFile(proof, "utf8"))).toEqual({ controlDescriptorClosed: true });
+  });
+
   it("removes its private group within one second if the supervisor is killed", async () => {
     const f = await fixture({ orphan: true });
     const helper = fileURLToPath(new URL("../../src/cd/quota-reader.py", import.meta.url));

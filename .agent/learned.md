@@ -626,3 +626,15 @@ calls; the full native transcript recorded spawn, interrupt and verified interru
 Configuration, inventory, recorded events and effective capability are different evidence.
 Qualify the real invocation path and child accounting before claiming containment. Keep a
 failed qualification visible in the result rather than repeating work for a favorable score.
+
+
+## A quota initialization timeout is failed measurement, not exhausted capacity
+
+2026-10-28, Evo CD recovery (MO-26-10-28-12.13.24). The configured policy shim
+can fail before the rate-limit RPC; a supervisor that hides reader startup/exit
+status makes that look like a60-second initialization hang. Catching telemetry,
+threshold and login errors together then labels all three as a capacity wait,
+leaving a repair with zero invocations despite no measured exhaustion. Preserve
+sanitized causes and distinct categories while refusing model launch against
+unknown usage. A healthy timer and an unchanged private checkpoint cannot prove
+that recovery or delivery progressed.
