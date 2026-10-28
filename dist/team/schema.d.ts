@@ -48,6 +48,9 @@ export declare const NoteSource: z.ZodEnum<{
     readonly otter: "otter";
     readonly zoom: "zoom";
 }>;
+export declare const MeetingNoteFormat: z.ZodEnum<{
+    "priority-first-v1": "priority-first-v1";
+}>;
 /**
  * A meeting note — a **summary**, never a transcript.
  *
@@ -69,6 +72,9 @@ export declare const MeetingNote: z.ZodObject<{
         readonly otter: "otter";
         readonly zoom: "zoom";
     }>;
+    note_format: z.ZodOptional<z.ZodEnum<{
+        "priority-first-v1": "priority-first-v1";
+    }>>;
     source_ref: z.ZodOptional<z.ZodString>;
     duration_minutes: z.ZodOptional<z.ZodNumber>;
     roadmap: z.ZodDefault<z.ZodArray<z.ZodString>>;

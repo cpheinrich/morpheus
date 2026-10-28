@@ -708,6 +708,13 @@ projects Darwin-owned notes. Source interpretation, redaction, participant resol
 writing remain agent judgment under the shared guide. Historical imports are notes only and cannot
 promote actions or pass the notice gate.
 
+**New Gemini records are priority-first.** Discovery version 2 declares
+`note_format: priority-first-v1` and leads with an executive summary, key decisions and key action
+items, in that order, before supporting detail. The bounded metadata summary still feeds catalogs
+and authorized notices; the body summary carries the fuller headline context. `team validate` and
+immutable canonical reads enforce the declared body shape. Version 1 and unversioned meeting notes
+remain readable history rather than being rewritten.
+
 Git rather than cloud storage because these are small, textual, appear in PR diffs, and are
 greppable with no authentication. Indexing markdown later is easy; migrating off a bespoke store is
 not.

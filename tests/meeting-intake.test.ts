@@ -17,6 +17,21 @@ import {
 } from "../src/meeting-intake/index.js";
 
 const revision = "a".repeat(40);
+const priorityBody = `## Executive summary
+
+The product review selected the next delivery boundary.
+
+## Key decisions
+
+- Keep the first release small enough to verify with current fixtures.
+
+## Key action items
+
+- @cpheinrich will document the migration.
+
+## Detailed notes
+
+Supporting evidence belongs after the outcomes.`;
 
 const evo = parseMeetingIntakeConfig({
   schemaVersion: 1,
@@ -139,12 +154,13 @@ function ready(config: MeetingIntakeConfig) {
 }
 
 function serialize(note: DiscoveryRecord): string {
+  const body = note.data.note_format === "priority-first-v1" ? priorityBody : "Synthetic committed body.";
   return (
     `---\n` +
     Object.entries(note.data)
       .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
       .join("\n") +
-    `\n---\n\nSynthetic committed body.\n`
+    `\n---\n\n${body}\n`
   );
 }
 
@@ -169,6 +185,19 @@ describe("meeting-intake profiles and projection", () => {
         }),
       ).toThrow(/repository-relative/);
     }
+  });
+
+  it("requires new discovery records to declare the priority-first format", () => {
+    expect(() => record(lakina, "26", { discovery_version: 2 })).toThrow(
+      /requires priority-first-v1/,
+    );
+    expect(
+      record(lakina, "26", {
+        discovery_version: 2,
+        note_format: "priority-first-v1",
+      }).data.discovery_version,
+    ).toBe(2);
+    expect(record(lakina).data.discovery_version).toBe(1);
   });
 
   it("projects Evo records, selects a scoped mixed summary and never copies the body", () => {
@@ -371,7 +400,10 @@ describe("committed Git source adapter and CLI guide", () => {
       git("-c", "core.hooksPath=/dev/null", "commit", "--allow-empty", "-m", "Empty source");
       await expect(readCanonicalRecords(directory, "HEAD", lakina)).rejects.toThrow(/No canonical/);
 
-      const note = record(lakina);
+      const note = record(lakina, "26", {
+        discovery_version: 2,
+        note_format: "priority-first-v1",
+      });
       const path = join(directory, note.path);
       await mkdir(join(directory, lakina.canonical.directory), { recursive: true });
       const raw = serialize(note);
@@ -401,6 +433,19 @@ describe("committed Git source adapter and CLI guide", () => {
       await expect(readCanonicalRecords(directory, "HEAD", lakina)).rejects.toThrow(/repository/);
 
       git("remote", "set-url", "origin", "https://github.com/cpheinrich/lakinacapital.git");
+      await writeFile(
+        path,
+        raw.replace(
+          "The product review selected the next delivery boundary.",
+          "```text\n```",
+        ),
+      );
+      git("add", ".");
+      git("-c", "core.hooksPath=/dev/null", "commit", "-m", "Invalid note structure");
+      await expect(readCanonicalRecords(directory, "HEAD", lakina)).rejects.toThrow(
+        /Executive summary.*must contain/,
+      );
+
       await writeFile(path, "---\nid: invalid\n---\n");
       git("add", ".");
       git("-c", "core.hooksPath=/dev/null", "commit", "-m", "Invalid metadata");
@@ -463,6 +508,8 @@ describe("committed Git source adapter and CLI guide", () => {
     try {
       expect(await runMeetingIntake(["guide"], "/does/not/need/to/exist")).toBe(0);
       expect(output.mock.calls.flat().join("\n")).toContain("Historical imports are notes only");
+      expect(output.mock.calls.flat().join("\n")).toContain("discovery_version: 2");
+      expect(output.mock.calls.flat().join("\n")).toContain("## Executive summary");
     } finally {
       output.mockRestore();
     }

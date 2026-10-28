@@ -31,14 +31,19 @@ summary from the delivery journal.
    an assignment-needed question when attribution remains uncertain.
 5. Use the meeting start. If only the scheduled or notes-session start is known, say so in prose
    and set \`occurred_basis\`; never imply exact join times.
-6. Distill discussion, reasoning, decisions, open questions and commitments. Remove personal
-   catch-up, jokes, credentials, health/private details and unrelated projects. Never commit a raw
-   transcript. Generated notes are not verbatim speech.
+6. Distill the record in priority order. Start with \`## Executive summary\`, then
+   \`## Key decisions\`, then \`## Key action items\`. Put context, detailed discussion, reasoning,
+   open questions and source notes afterward. Each of the first three sections must contain useful
+   prose or bullets; write \`None recorded.\` instead of leaving one empty. Remove personal catch-up,
+   jokes, credentials, health/private details and unrelated projects. Never commit a raw transcript.
+   Generated notes are not verbatim speech.
 
-Every note carries \`discovery_version: 1\`, projects, configured topics, a bounded summary,
-project-specific summaries for mixed meetings, intake policy, source kind/coverage, source IDs and
-related repo-qualified record IDs. Historical imports are notes only: \`historical-notes-only\`
-never replays old tasks, actions or notices.
+New notes carry \`discovery_version: 2\` and \`note_format: priority-first-v1\`, plus projects,
+configured topics, a bounded metadata summary, project-specific summaries for mixed meetings,
+intake policy, source kind/coverage, source IDs and related repo-qualified record IDs. The metadata
+summary remains the bounded catalog/text summary; the body executive summary may carry the fuller
+headline context. Version 1 records remain valid history. Historical imports are notes only:
+\`historical-notes-only\` never replays old tasks, actions or notices.
 
 ## Deliver in separate stages
 
