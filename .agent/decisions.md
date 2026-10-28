@@ -1834,14 +1834,24 @@ projection, not for separate action promotion; it states whether actions were re
 unpromoted. Historical notes still cannot notify. This removes project data from current fixtures
 without rewriting already-public Git history, which needs a separate owner decision if desired.
 
-## Superseded conventions runs pass only on proof the PR moved — 2026-10-28
+## Superseded conventions runs pass under a name nothing requires — 2026-10-28
 
-MO-26-10-28-14.08.43. A conventions run whose event head is no longer the PR head prints
-`superseded by <sha>` and passes without checking, instead of failing silently. The pass attaches
-to the event's head SHA, never to the newer head. It is granted only when the live PR copy is
-strictly newer than the event payload. A lagging, equal-time or malformed read fails closed with its
-reason, because the event's head may still be current. `cancel-in-progress` stays out: a
-cancelled required check still blocks merges. Accepted residual: a later force-push back to
-exactly the superseded SHA shows that pass until the `synchronize` run's check is created. Closing
-that needs a renamed, non-required check for superseded runs and a change to every consumer's
-check topology, so it was not done here.
+MO-26-10-28-14.08.43. A conventions run whose event head is no longer the PR head used to fail
+silently. Now it passes with `superseded by <sha>` and runs no checks, but it reports as
+`pr / superseded` and never as the required `pr / conventions`.
+
+An in-step pass was not enough. It would attach to the old SHA, which becomes the head again if
+the PR is force-pushed back to it. The pass would then read as a required green until a new run
+reports, and indefinitely if none is triggered.
+
+A job's name is fixed before its steps run, so a small `head` job decides first, and it needs proof
+that the PR moved after the event: a live copy strictly newer than the payload. All of the
+following fail `pr / conventions` with their reason:
+
+- a lagging, equal-time or malformed read;
+- a failed or cancelled `head` (the required job uses `always()`, because a skip would satisfy
+  protection);
+- a move after `head` decided.
+
+`cancel-in-progress` stays out, because a cancelled required check blocks merges. The cost is one
+small extra job per conventions run and a new `pr / head` check that is not required.

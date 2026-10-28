@@ -2736,7 +2736,7 @@ describe("local review metadata", () => {
     }
     // Inside, a skip would report `pr / conventions` as skipped, which satisfies protection.
     const inner = await read("pr-check.yml") as { jobs: { conventions: { if?: string } } };
-    expect(inner.jobs.conventions.if).toBe("github.event_name == 'pull_request'");
+    expect(inner.jobs.conventions.if).toBe("${{ always() && github.event_name == 'pull_request' }}");
   });
   it("skips only an unlabelled draft", () => {
     // Evaluate the expression itself, translated mechanically, against the payloads that matter.
@@ -2846,32 +2846,78 @@ describe("local review metadata", () => {
       await rm(tmp, { recursive: true, force: true });
     }
   });
-  type ConventionsStep = { name?: string; run?: string; env?: Record<string, string> };
-  const conventionsStep = async () => {
-    const wf = await read("pr-check.yml") as { jobs: { conventions: { steps: ConventionsStep[] } } };
-    const step = wf.jobs.conventions.steps.find(s => s.name === "Check PR conventions");
-    expect(step?.run).toBeDefined();
+  type PrCheckStep = { name?: string; id?: string; if?: string; uses?: string; run?: string; env?: Record<string, string> };
+  type PrCheckJob = {
+    name?: string; needs?: string; if?: string; concurrency?: unknown; "timeout-minutes"?: number;
+    outputs?: Record<string, string>; steps: PrCheckStep[];
+  };
+  const prCheckJobs = async () => (await read("pr-check.yml") as unknown as { jobs: { head: PrCheckJob; conventions: PrCheckJob } }).jobs;
+  const stepNamed = (job: PrCheckJob, name: string) => {
+    const step = job.steps.find(s => s.name === name);
+    expect(step?.run, name).toBeDefined();
     return step!;
   };
-  it("checks live PR metadata against the event's own head and update time", async () => {
-    const step = await conventionsStep();
-    // The guard is only as good as these two mappings: the SHA the run reports on, and when its event saw the PR.
-    expect(step.env?.EXPECTED_HEAD).toBe("${{ github.event.pull_request.head.sha }}");
-    expect(step.env?.EVENT_UPDATED_AT).toBe("${{ github.event.pull_request.updated_at }}");
-    expect(step.run).toContain('gh api "repos/$REPOSITORY/pulls/$PR_NUMBER"');
-    expect(step.run).toContain('GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json"');
-    expect(step.run).toContain('--base "origin/$BASE_REF"');
+  const NOT_SUPERSEDED = "needs.head.outputs.superseded-by == ''";
+
+  it("names the required job from the head decision, so a superseded pass is never `pr / conventions`", async () => {
+    const { head, conventions } = await prCheckJobs();
+    expect(conventions.needs).toBe("head");
+    expect(head.outputs?.["superseded-by"]).toBe("${{ steps.compare.outputs.superseded-by }}");
+    expect(head.steps.find(s => s.id === "compare")?.name).toBe("Compare the event's head with the live pull request");
+    // Evaluate the name expression itself, translated mechanically, for both decisions.
+    const expr = /^\$\{\{ (.*) \}\}$/.exec(conventions.name ?? "")?.[1] ?? "";
+    const js = expr.replace(/needs\.head\.outputs\.superseded-by/g, "supersededBy").replace(/!=/g, "!==");
+    expect(js).not.toMatch(/needs\./);
+    const name = new Function("supersededBy", `return ${js};`) as (s: string) => string;
+    expect(name("")).toBe("conventions");
+    expect(name("b".repeat(40))).toBe("superseded");
+    // A skip would report the required name as skipped, which satisfies protection, so the job
+    // runs whatever `head` did and refuses unless `head` succeeded.
+    expect(conventions.if).toBe("${{ always() && github.event_name == 'pull_request' }}");
+    expect(head.if).toBe("github.event_name == 'pull_request'");
+    const [require, report, ...rest] = conventions.steps;
+    expect(require?.name).toBe("Require the head check");
+    expect(require?.if).toBe("needs.head.result != 'success'");
+    expect(report?.name).toBe("Report the run as superseded");
+    expect(report?.if).toBe("needs.head.outputs.superseded-by != ''");
+    // Everything else, the checks above all, runs only for a run that is not superseded.
+    expect(rest.length).toBeGreaterThan(0);
+    for (const step of rest) expect(step.if, step.name ?? step.uses).toBe(NOT_SUPERSEDED);
+    expect(rest.at(-1)?.name).toBe("Check PR conventions");
+    // Cancelling `head` would turn the required job red, exactly as 790ae1ff found for cancelled runs.
+    expect(head.concurrency).toBeUndefined();
+    expect(head["timeout-minutes"]).toBeGreaterThan(0);
+  });
+
+  it("reads live PR metadata against the event's own head and update time", async () => {
+    const { head, conventions } = await prCheckJobs();
+    const compare = stepNamed(head, "Compare the event's head with the live pull request");
+    // The guard is only as good as these mappings: the SHA the run reports on, and when its event saw the PR.
+    expect(compare.env?.EXPECTED_HEAD).toBe("${{ github.event.pull_request.head.sha }}");
+    expect(compare.env?.EVENT_UPDATED_AT).toBe("${{ github.event.pull_request.updated_at }}");
+    const live = stepNamed(conventions, "Read the live pull request");
+    expect(live.env?.EXPECTED_HEAD).toBe("${{ github.event.pull_request.head.sha }}");
+    expect(live.run).toContain('gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/live-pr.json"');
+    // Read before checkout and install, so the head can move unseen only in the gap between the jobs.
+    expect(conventions.steps.indexOf(live)).toBeLessThan(conventions.steps.findIndex(s => s.uses?.startsWith("actions/checkout@")));
+    const check = stepNamed(conventions, "Check PR conventions");
+    expect(check.run).not.toContain("gh api \"repos/$REPOSITORY/pulls/$PR_NUMBER\"");
+    expect(check.run).toContain('GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json"');
+    expect(check.run).toContain('--base "origin/$BASE_REF"');
   });
 
   /**
-   * Runs the step's whole script, not a copy of its guard. `gh` answers the
-   * live pull request read with `live` (and empty events and comments), and
-   * `node` records its arguments, so "the checks ran" means `check pr` was
-   * invoked. The repository's only commit is the event head, so the pr-head
-   * block has nothing to fetch.
+   * Runs workflow steps' own scripts in order, in one job's RUNNER_TEMP, not
+   * copies of them. `gh` answers the live pull request read with `live` (and
+   * empty events and comments), and `node` records its arguments, so "the
+   * checks ran" means `check pr` was invoked. The repository's only commit is
+   * the event head, so the pr-head block has nothing to fetch.
    */
-  async function runConventions(live: { head?: string | null; updatedAt?: string | null }, event: { head?: string; updatedAt: string }) {
-    const step = await conventionsStep();
+  async function runSteps(
+    steps: PrCheckStep[],
+    live: { head?: string | null; updatedAt?: string | null },
+    event: { head?: string; updatedAt?: string; headResult?: string; supersededBy?: string } = {},
+  ) {
     const tmp = await mkdtemp(join(tmpdir(), "pr-superseded-"));
     try {
       const repo = join(tmp, "repo");
@@ -2901,6 +2947,7 @@ describe("local review metadata", () => {
       await chmod(join(bin, "gh"), 0o755);
       await chmod(join(bin, "node"), 0o755);
       const summary = join(tmp, "summary.md");
+      const output = join(tmp, "output.txt");
       const nodeLog = join(tmp, "node.log");
       const env = {
         ...process.env,
@@ -2909,71 +2956,113 @@ describe("local review metadata", () => {
         FAKE_NODE_LOG: nodeLog,
         RUNNER_TEMP: runnerTemp,
         GITHUB_STEP_SUMMARY: summary,
+        GITHUB_OUTPUT: output,
         GH_TOKEN: "unused",
         PR_NUMBER: "7",
         REPOSITORY: "example/repo",
         EXPECTED_HEAD: head,
-        EVENT_UPDATED_AT: event.updatedAt,
+        EVENT_UPDATED_AT: event.updatedAt ?? "",
+        HEAD_RESULT: event.headResult ?? "",
+        SUPERSEDED_BY: event.supersededBy ?? "",
         PRODUCT_DIR: "hq/product",
         BASE_REF: "main",
         MORPHEUS_SECURITY_IMPORT_VERIFIED: "false",
       };
-      // GitHub runs an unconfigured `run:` as `bash -e {0}`.
-      const result = await execFileAsync("bash", ["-e", "-c", step.run!], { cwd: repo, env }).then(
-        r => ({ code: 0, stdout: r.stdout, stderr: r.stderr }),
-        (e: { code?: number; stdout?: string; stderr?: string }) => ({ code: e.code ?? -1, stdout: e.stdout ?? "", stderr: e.stderr ?? "" }),
-      );
+      let result = { code: 0, stdout: "", stderr: "" };
+      for (const step of steps) {
+        // GitHub runs an unconfigured `run:` as `bash -e {0}`, and a failed step skips the rest.
+        result = await execFileAsync("bash", ["-e", "-c", step.run!], { cwd: repo, env }).then(
+          r => ({ code: 0, stdout: result.stdout + r.stdout, stderr: result.stderr + r.stderr }),
+          (e: { code?: number; stdout?: string; stderr?: string }) =>
+            ({ code: e.code ?? -1, stdout: result.stdout + (e.stdout ?? ""), stderr: result.stderr + (e.stderr ?? "") }),
+        );
+        if (result.code !== 0) break;
+      }
       const readOrEmpty = (path: string) => readFile(path, "utf8").catch(() => "");
-      return { ...result, head, checkPr: await readOrEmpty(nodeLog), summary: await readOrEmpty(summary) };
+      return { ...result, head, checkPr: await readOrEmpty(nodeLog), summary: await readOrEmpty(summary), output: await readOrEmpty(output) };
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }
   }
   const NEWER = "b".repeat(40);
+  const decide = async (live: { head?: string | null; updatedAt?: string | null }, event: { head?: string; updatedAt?: string }) => {
+    const { head } = await prCheckJobs();
+    return runSteps([stepNamed(head, "Compare the event's head with the live pull request")], live, event);
+  };
 
-  it("passes a superseded run with a notice and runs none of the checks", async () => {
+  it("decides a run is superseded only on proof the pull request moved after its event", async () => {
     // Across midnight, so the comparison has to be of whole timestamps and not of the clock alone.
-    const out = await runConventions({ head: NEWER, updatedAt: "2026-10-26T00:00:00Z" }, { updatedAt: "2026-10-25T23:59:59Z" });
+    const out = await decide({ head: NEWER, updatedAt: "2026-10-26T00:00:00Z" }, { updatedAt: "2026-10-25T23:59:59Z" });
     expect(out.code).toBe(0);
-    expect(out.stdout).toContain(`::notice::superseded by ${NEWER}; this run's result is moot`);
-    expect(out.summary).toContain(`moved from ${out.head} to ${NEWER}`);
-    expect(out.checkPr).toBe("");
+    expect(out.output).toBe(`superseded-by=${NEWER}\n`);
   });
 
-  it("runs the checks normally while the event's head is still the pull request's head", async () => {
-    const out = await runConventions({ updatedAt: "2026-10-25T12:00:00Z" }, { updatedAt: "2026-10-25T12:00:00Z" });
+  it("decides nothing while the event's head is still the pull request's head", async () => {
+    const out = await decide({ updatedAt: "2026-10-25T12:00:00Z" }, { updatedAt: "2026-10-25T12:00:00Z" });
     expect(out.code).toBe(0);
-    expect(out.stdout).not.toContain("superseded");
-    expect(out.checkPr).toBe(".morpheus/dist/cli/index.js check pr --dir hq/product --base origin/main\n");
+    expect(out.output).toBe("");
+    expect(out.stdout).toContain("is the head of #7");
   });
 
   it("fails closed when the live copy is no newer than the event, so a lagging read cannot pass the head", async () => {
     // Equal is the boundary: the head may have moved within the same second, or the read may lag.
     for (const updatedAt of ["2026-10-25T12:00:00Z", "2026-10-25T11:59:59Z"]) {
-      const out = await runConventions({ head: NEWER, updatedAt }, { updatedAt: "2026-10-25T12:00:00Z" });
+      const out = await decide({ head: NEWER, updatedAt }, { updatedAt: "2026-10-25T12:00:00Z" });
       expect(out.code, updatedAt).toBe(1);
       expect(out.stdout, updatedAt).toContain(`::error::Pull request #7 reads head '${NEWER}' (updated '${updatedAt}')`);
       expect(out.stdout, updatedAt).toContain("refusing to pass it unchecked");
-      expect(out.checkPr, updatedAt).toBe("");
+      expect(out.output, updatedAt).toBe("");
     }
   });
 
-  it("fails closed, and never passes, when a head or timestamp is missing or malformed", async () => {
+  it("fails closed, and never decides superseded, when a head or timestamp is missing or malformed", async () => {
     // An absent value must not compare as older than anything.
-    const cases: Array<[string, { head?: string | null; updatedAt?: string | null }, { head?: string; updatedAt: string }]> = [
+    const cases: Array<[string, { head?: string | null; updatedAt?: string | null }, { head?: string; updatedAt?: string }]> = [
       ["no event time", { head: NEWER, updatedAt: "2026-10-25T12:00:01Z" }, { updatedAt: "" }],
       ["no live time", { head: NEWER, updatedAt: null }, { updatedAt: "2026-10-25T12:00:00Z" }],
       ["live time not in GitHub's format", { head: NEWER, updatedAt: "2026-10-25 12:00:01" }, { updatedAt: "2026-10-25T12:00:00Z" }],
       ["no live head", { head: null, updatedAt: "2026-10-25T12:00:01Z" }, { updatedAt: "2026-10-25T12:00:00Z" }],
       ["live head not a SHA", { head: "main", updatedAt: "2026-10-25T12:00:01Z" }, { updatedAt: "2026-10-25T12:00:00Z" }],
+      ["event head not a SHA", { head: NEWER, updatedAt: "2026-10-25T12:00:01Z" }, { head: "feature", updatedAt: "2026-10-25T12:00:00Z" }],
     ];
     for (const [name, live, event] of cases) {
-      const out = await runConventions(live, event);
+      const out = await decide(live, event);
       expect(out.code, name).toBe(1);
       expect(out.stdout, name).toContain("::error::");
-      expect(out.stdout, name).not.toContain("superseded by");
-      expect(out.checkPr, name).toBe("");
+      expect(out.output, name).toBe("");
     }
+  });
+
+  it("reports a superseded run with the notice, and runs none of the checks", async () => {
+    const { conventions } = await prCheckJobs();
+    const out = await runSteps([stepNamed(conventions, "Report the run as superseded")], {}, { supersededBy: NEWER });
+    expect(out.code).toBe(0);
+    expect(out.stdout).toBe(`::notice::superseded by ${NEWER}; this run's result is moot\n`);
+    expect(out.summary).toContain(`moved from ${out.head} to ${NEWER}`);
+    expect(out.checkPr).toBe("");
+  });
+
+  it("fails the required job when the head check did not succeed", async () => {
+    const { conventions } = await prCheckJobs();
+    for (const headResult of ["failure", "cancelled"]) {
+      const out = await runSteps([stepNamed(conventions, "Require the head check")], {}, { headResult });
+      expect(out.code, headResult).toBe(1);
+      expect(out.stdout, headResult).toContain(`::error::The head check ended '${headResult}'`);
+    }
+  });
+
+  it("runs the checks while the head holds, and fails rather than passes once it has moved", async () => {
+    const { conventions } = await prCheckJobs();
+    const steps = [stepNamed(conventions, "Read the live pull request"), stepNamed(conventions, "Check PR conventions")];
+    const current = await runSteps(steps, {});
+    expect(current.code).toBe(0);
+    expect(current.checkPr).toBe(".morpheus/dist/cli/index.js check pr --dir hq/product --base origin/main\n");
+    // This job already carries the required name, so a move after `head` decided cannot pass it.
+    const moved = await runSteps(steps, { head: NEWER, updatedAt: "2026-10-26T00:00:00Z" });
+    expect(moved.code).toBe(1);
+    expect(moved.stdout).toContain(`::error::Pull request #7 moved to '${NEWER}' after this run's head check`);
+    expect(moved.stdout).not.toContain("superseded by");
+    expect(moved.checkPr).toBe("");
   });
 });
 
