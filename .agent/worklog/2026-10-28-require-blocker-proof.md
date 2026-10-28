@@ -66,7 +66,13 @@ The reviewer independently passed257 provider-free tests with zero skips and mat
     {
       "commit": "cd08833e45d137d6d9bb930bef11afea0c682a7a",
       "reason": "Normally integrate protectedmain3fd8e28e after review. Conflict only at appended decisions; retained the exact shared base and both complete appended decisions. Other incoming context-read enforcement files mechanically merged. Integrated typecheck/compile/diff passed. Initial CI wait97885 exit2/no-checks is retained; actualPRmetadata showed a real merge conflict and exact Actions inventory had0runs, so no green result was invented."
+    },
+    {
+      "commit": "2f4065f44c1ffb47cebea73ffc162e74e69578df",
+      "reason": "Normally integrate newly protectedmain1abc8737 wait-ci improvement after the second no-checks wait. Exact source inventory again showed no runs while GitHub reported a real conflict. The only conflict was end-of-file decision appends: retained the shared base and both complete decisions, relocating our unchanged blocker paragraph immediately before the existing capability-wait entry so future unrelated EOF appends do not recreate the collision. Incoming provider-log fixture whitespace is retained byte-for-byte; all other staged paths pass diff check. No blocker code changed."
     }
   ]
 }
 ```
+
+A second protected trunk advance caused the same append-only decision conflict before CI could start. Root changed the integration approach: the second named merge retained both exact decision texts and placed the unchanged blocker paragraph before an existing section, keeping the mainstream EOF available for unrelated appends. The incoming protected wait-ci fixture intentionally retains provider-log trailing whitespace; it was not rewritten to hide that data. No blocker implementation changed and no review history was reset.
