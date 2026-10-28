@@ -56,6 +56,7 @@ export type Members = z.infer<typeof Members>;
 // Object keys preserve declaration order; tuple-to-union mapped keys depend on
 // which string literals TypeScript encountered first elsewhere in the program.
 export const NoteSource = z.enum({ session: "session", granola: "granola", manual: "manual", otter: "otter", zoom: "zoom" });
+export const MeetingNoteFormat = z.enum(["priority-first-v1"]);
 
 /**
  * A meeting note — a **summary**, never a transcript.
@@ -86,6 +87,8 @@ export const MeetingNote = z
     /** Who wrote the summary — an agent name or a handle. */
     recorded_by: z.string().min(2),
     source: NoteSource,
+    /** New notes opt into an enforceable layout without invalidating historical records. */
+    note_format: MeetingNoteFormat.optional(),
     /** Lets the original be re-fetched; never itself the note. */
     source_ref: z.string().optional(),
     duration_minutes: z.number().int().positive().optional(),

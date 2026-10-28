@@ -1139,6 +1139,11 @@ record.** Roadmap changes, strategy refinement, implementation work, decision pr
 other follow-up interpretation belong in separate pull requests. When a follow-up pull request
 files roadmap items, it backfills their ids into the note's \`roadmap:\` field as bookkeeping.
 
+New notes declare \`note_format: priority-first-v1\` and put \`## Executive summary\`,
+\`## Key decisions\`, and \`## Key action items\` first, in that order. Supporting context and
+detailed discussion follow those headline sections. \`morpheus team validate\` enforces the
+declared layout while leaving historical notes readable.
+
 **\`redacted: true\` is a claim you are making**, and \`morpheus team validate\` refuses a note without
 it. It means you have stripped everything not about this project, and checked that the note is
 something you would be relaxed about being read back — by the team, by the person it is about, or

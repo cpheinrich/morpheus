@@ -47,7 +47,7 @@ const sourceIdentifiers = z
 
 /** The canonical note extension shared by every Gemini meeting-intake profile. */
 export const DiscoveryNote = MeetingNote.safeExtend({
-  discovery_version: z.literal(1),
+  discovery_version: z.union([z.literal(1), z.literal(2)]),
   projects: z.array(meetingSlug).min(1).refine(unique, "projects must be unique"),
   topics: z.array(meetingSlug).min(1).refine(unique, "topics must be unique"),
   summary: shortText,
@@ -68,10 +68,22 @@ export const DiscoveryNote = MeetingNote.safeExtend({
     .array(z.string().regex(/^[\w.-]+\/[\w.-]+:[A-Z]{2,4}-[\d.-]+$/))
     .default([])
     .refine(unique, "related records must be unique"),
-}).refine(
-  (note) => Object.keys(note.project_summaries).every((project) => note.projects.includes(project)),
-  { path: ["project_summaries"], error: "project summaries must name a project on the meeting" },
-);
+}).superRefine((note, context) => {
+  if (!Object.keys(note.project_summaries).every((project) => note.projects.includes(project))) {
+    context.addIssue({
+      code: "custom",
+      path: ["project_summaries"],
+      message: "project summaries must name a project on the meeting",
+    });
+  }
+  if (note.discovery_version === 2 && note.note_format !== "priority-first-v1") {
+    context.addIssue({
+      code: "custom",
+      path: ["note_format"],
+      message: "discovery version 2 requires priority-first-v1",
+    });
+  }
+});
 
 export type DiscoveryNote = z.infer<typeof DiscoveryNote>;
 

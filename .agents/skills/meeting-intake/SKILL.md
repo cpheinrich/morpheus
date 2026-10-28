@@ -12,5 +12,7 @@ destinations, timezone and notification authority.
 
 Historical imports are notes only: never create or replay actions or send completion notices from
 them. A factual note gets its own pull request; interpretation and action promotion stay separate.
+New factual notes use the guide's versioned priority-first structure: executive summary, key
+decisions and key action items before detailed discussion.
 
 If `morpheus meeting-intake` is unknown, run `morpheus self update`.

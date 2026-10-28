@@ -40,44 +40,52 @@ occurred: "2026-08-03T09:30:00-07:00"
 attendees: [cpheinrich]
 recorded_by: claude
 source: session
+note_format: priority-first-v1
 duration_minutes: 45
 roadmap: []
 redacted: true
 created: 2026-08-03
 ---
 
-## Context
+## Executive summary
 
-Why this meeting happened and what a reader needs to know to follow the rest. Two or three
-sentences. Assume the reader was not there and does not know the backstory.
+The most important outcome in two or three sentences. Lead with what changed, why it matters, and
+any immediate consequence. Assume the reader was not there.
 
-## Agenda
-
-Optional. Include it when there was one; do not invent one afterwards.
-
-## Discussion
-
-What was actually talked through, and — more importantly — **why**. Reasoning that could have gone
-the other way is the part worth keeping; a conclusion with no reasoning cannot be revisited, only
-obeyed.
-
-Not a play-by-play. Nobody needs "Chris said X, then Alex said Y".
-
-## Decisions
+## Key decisions
 
 Settled choices, one per bullet, each with its reason. These are candidates for
-`.agent/decisions.md` — write them so they could be promoted verbatim.
+`.agent/decisions.md` — write them so they could be promoted verbatim. Write `None recorded.` when
+the meeting made no decision; do not make a reader infer that from an empty section.
 
-## Action items
+## Key action items
 
-Who does what. Name a person by GitHub handle. An item nobody owns is not an action item; it is a
-wish, and it belongs under Discussion.
+Who does what, with the most consequential work first. Name a person by GitHub handle. An item
+nobody owns is not an action item; it is an open question. Write `None recorded.` when there are no
+actions.
+
+## Detailed notes
+
+### Context and discussion
+
+Why the meeting happened, what was talked through, and — more importantly — **why**. Reasoning that
+could have gone the other way is the part worth keeping; a conclusion with no reasoning cannot be
+revisited, only obeyed. This is supporting detail, not a play-by-play.
+
+### Open questions
+
+Unresolved choices or assignment gaps. Omit this subsection when there are none.
 
 ## Roadmap items
 
 Work that should be filed on the board, with enough detail for `morpheus pm new roadmap` to be run
 against it. Once filed, put the ids in the `roadmap:` frontmatter field.
 ```
+
+The first three level-two sections are a contract for notes that declare
+`note_format: priority-first-v1`. `morpheus team validate` checks their order and requires content
+in each; headings inside fenced examples do not count. Historical notes without a format
+declaration remain valid.
 
 ## Before you commit: the redaction pass
 
