@@ -1014,12 +1014,16 @@ exchange `FETCH_HEAD`. A local trunk behind that exact commit fast-forwards; fea
 divergent trunks remain intact and report missing commits. Tracked edits on the trunk branch are
 first committed to a pushed `wip/trunk-*` draft PR and the trunk reset only once that commit is
 proven to hold them — a dirty trunk otherwise never advances, and one did not for three weeks.
-When an exact old/new blob, path and mode diff has a live pushed `wip/trunk-*`
-branch and an open PR, the checkout resets after the same content proof without
-creating another draft PR. Live remote and PR checks run before the proof/reset window;
+Edits that are all IDE churn — per-user IDE state, a `.pbxproj` or Xcode XML file whose structure
+is unchanged, or content trunk already has — are reset after the same proof with a one-line report
+and no PR; one real edit and everything is rescued (`src/session/trunk-churn.ts`).
+When a live pushed `wip/trunk-*` branch with an open PR holds a change that, replayed onto the
+current HEAD, yields exactly the rescue commit's tree, the checkout resets after the same content
+proof without creating another draft PR. Live remote and PR checks run before the proof/reset window;
 cached tracking refs alone do not count. The brief names the earlier PR and likely generator
 loop. A failed comparison or lookup falls back to the ordinary rescue, so a branch with a
-failed push, failed PR creation or closed PR never suppresses a new attempt.
+failed push, failed PR creation or closed PR never suppresses a new attempt. The GitHub Manager
+closes a rescue draft after seven days without a push, keeping its branch, and never escalates one.
 Untracked files are never committed; `doctor --all` reports stuck trunk checkouts fleet-wide. Offline or fetch
 failure is explicitly unverified, never a successful current-source report. A receipt is refused
 when the checkout does not contain the observed trunk. Checks repeat local source containment
@@ -3227,8 +3231,11 @@ separate best-effort discovery from content reads that propagate non-absence err
 #### Session profiling
 
 `morpheus profile extract|report` measures the workflow from transcripts both agent runtimes
-already write — `~/.claude/projects/**` (with subagent transcripts attributed to their parent) and
-`~/.codex/sessions/**`. Nothing is self-reported by an agent and nothing leaves the machine:
+already write — `~/.claude/projects/**` (with subagent transcripts attributed to their parent),
+`~/.codex/sessions/**` and `~/.codex/archived_sessions/`. Codex compresses older rollouts in place to
+`.jsonl.zst` and moves some to the archive, so both directories and both encodings are read, a session
+found in two files is counted once (the copy written last), and the report opens with how many
+sessions came from each source. Nothing is self-reported by an agent and nothing leaves the machine:
 self-reporting costs every session tokens and measures what an agent believes it did, and the
 transcripts already hold timestamps, model, effort, token usage and every tool call. `extract`
 emits one JSONL `session` row per transcript and one `span` row per tool call; `report` sums them
@@ -3240,7 +3247,8 @@ tool result arriving more than four hours late is reported as an outlier rather 
 work. Time blocked on a person — an `AskUserQuestion` or `ExitPlanMode` call, or a permission
 prompt the person refused (`toolDenialKind: "user-rejected"`) — is phase `human-wait` and never
 active time, however short. An *approved* permission prompt leaves no marker in the transcript, so
-its wait stays inside that tool call's duration. `--since` must be a real calendar date. Rows never carry prompt text, file contents read or written by a tool, or tool output. A command
+its wait stays inside that tool call's duration. `--since` must be a real calendar date. Skipped lines are reported by file and line number, never as
+a bare count. Rows never carry prompt text, file contents read or written by a tool, or tool output. A command
 is kept to its first 120 characters with credential-shaped values masked and any heredoc body cut;
 arguments typed on the command line itself can still appear within that prefix.
 

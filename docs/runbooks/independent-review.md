@@ -45,6 +45,13 @@ checks remain mandatory. This gate covers all other authors, not just particular
 The reusable PR conventions job and its callers do not use concurrency groups. GitHub treats a
 cancelled required check as failing branch protection even if another conventions run on the same
 head succeeds. Every `CI` and `Review metadata` run must finish, including bursts of metadata edits.
+Superseded runs pass without checking anything, but never under the required name. A first `head`
+job compares the event's head with the live PR. When the PR has provably moved since the event (its
+copy is strictly newer), the required job is renamed `pr / superseded` and passes with
+`::notice::superseded by <sha>; this run's result is moot`. Checks attach to the SHA the event named,
+so a renamed pass cannot satisfy protection anywhere, not even if the PR is force-pushed back to that
+SHA. A lagging or malformed read, a failed or cancelled `head`, or a move after `head` decided all
+fail `pr / conventions` with their reason.
 The legacy `review-waived:` line does not waive independent review; `check pr` reports it as
 waiving legacy delivery only and says so in the same line.
 
@@ -73,7 +80,10 @@ change: at most 20 changed non-test lines and 40 lines in test-named files (`*.t
 `test_*.py`, `*_test.py|go`, `*Test(s).swift|kt|java`), every other file configuration, workflow or
 prose (`.md .mdx .txt .yml .yaml .json .jsonc .toml`), worklogs and `hq/product/` not counted,
 nothing binary, and every turn measured above zero — below that size the floor measures the diff,
-not the reviewer. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
+not the reviewer. When the waiver applies, `check pr` prints `~ [review-floor] waived: review floor
+(trivial diff: N non-test, M test lines)` and `review validate` prints the same text, so CI logs show
+how often it fires; nothing is added to the record, whose committed range it is recomputed from.
+The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
 validates reported durations; it cannot interrupt a provider's session or measure its billing.
 No reviewer subagents, full-suite reruns by default, or automatic repeated sessions. On timeout,
 budget exhaustion or missing evidence, record incomplete and keep the PR open.

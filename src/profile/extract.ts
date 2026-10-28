@@ -3,9 +3,13 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { pipeline, type Readable } from "node:stream";
+// A namespace import, not a named one: zstd arrived in Node 22.15, and a named import of an export
+// an older runtime lacks fails the whole module at link time instead of one file at read time.
+import * as zlib from "node:zlib";
 import { ClaudeTranscript, type ParsedSession, type SubagentMeta } from "./claude.js";
 import { CodexTranscript } from "./codex.js";
-import type { ProfileIssue, ProfileRow, SessionRow, SpanRow } from "./types.js";
+import type { ProfileIssue, ProfileRow, SessionRow, SessionSource, SpanRow } from "./types.js";
 
 export interface ExtractOptions {
   /** `YYYY-MM-DD`; sessions that started before local midnight of this day are skipped. */
@@ -18,7 +22,10 @@ export interface ExtractOptions {
    */
   repo?: string;
   claudeDir?: string;
+  /** Live Codex rollouts, `~/.codex/sessions/YYYY/MM/DD/`. */
   codexDir?: string;
+  /** Archived Codex rollouts, `~/.codex/archived_sessions/`, a flat directory. */
+  codexArchivedDir?: string;
   roots?: string[];
   home?: string;
 }
@@ -28,6 +35,8 @@ export interface Extraction {
   spans: SpanRow[];
   issues: ProfileIssue[];
   files: number;
+  /** Extra copies of a kept Codex session found in a second file, each counted once. */
+  duplicates: number;
 }
 
 /** Parse `--since`. Returns null for a malformed date so the caller can refuse it. */
@@ -51,7 +60,14 @@ async function list(dir: string): Promise<string[]> {
   }
 }
 
-async function walkJsonl(dir: string, out: string[]): Promise<void> {
+/**
+ * Codex compresses older rollouts in place to `.jsonl.zst`, under `sessions/` and in
+ * `archived_sessions/` alike. Reading only `.jsonl` found zero Codex sessions for a fortnight that
+ * an earlier run had found fourteen in: nothing was missing, it had only been compressed.
+ */
+const ROLLOUT = /\.jsonl(?:\.zst)?$/;
+
+async function walkRollouts(dir: string, out: string[]): Promise<void> {
   let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });
@@ -60,8 +76,8 @@ async function walkJsonl(dir: string, out: string[]): Promise<void> {
   }
   for (const e of entries) {
     const p = join(dir, e.name);
-    if (e.isDirectory()) await walkJsonl(p, out);
-    else if (e.isFile() && e.name.endsWith(".jsonl")) out.push(p);
+    if (e.isDirectory()) await walkRollouts(p, out);
+    else if (e.isFile() && ROLLOUT.test(e.name)) out.push(p);
   }
 }
 
@@ -113,8 +129,19 @@ export async function discoverClaude(root: string): Promise<{ files: ClaudeFile[
   return { files, issues };
 }
 
+function openText(path: string): Readable {
+  if (!path.endsWith(".zst")) return createReadStream(path, { encoding: "utf8" });
+  const decompress = (zlib as Partial<typeof zlib>).createZstdDecompress;
+  if (!decompress) throw new Error(`zstd-compressed, and this Node (${process.version}) has no zstd; use Node 22.15 or later`);
+  const text = decompress();
+  // `pipeline`, not `pipe`: a read error on the file must reach the stream readline consumes, and
+  // a corrupt frame must close the file. The error itself surfaces through readline.
+  pipeline(createReadStream(path), text, () => {});
+  return text.setEncoding("utf8");
+}
+
 async function streamLines(path: string, push: (line: string) => void): Promise<void> {
-  const rl = createInterface({ input: createReadStream(path, { encoding: "utf8" }), crlfDelay: Infinity });
+  const rl = createInterface({ input: openText(path), crlfDelay: Infinity });
   for await (const line of rl) push(line);
 }
 
@@ -138,6 +165,17 @@ function keep(session: SessionRow, from: number | undefined, repo: string | unde
 }
 
 /**
+ * Which of two copies of one Codex session to keep: the one written last, then the one holding
+ * more. A tie keeps the copy seen first, and live rollouts are read before archived ones.
+ */
+function fuller(candidate: SessionRow, incumbent: SessionRow): boolean {
+  const end = (s: SessionRow) => (s.end === null ? -Infinity : Date.parse(s.end));
+  if (end(candidate) !== end(incumbent)) return end(candidate) > end(incumbent);
+  if (candidate.requests !== incumbent.requests) return candidate.requests > incumbent.requests;
+  return candidate.toolCalls > incumbent.toolCalls;
+}
+
+/**
  * Read every transcript under the two providers' directories and return
  * session and span rows. A file not modified since `since` cannot hold a
  * session that started after it, so it is skipped unread.
@@ -146,7 +184,7 @@ export async function extract(options: ExtractOptions = {}): Promise<Extraction>
   const home = options.home ?? homedir();
   const from = sinceMs(options.since) ?? undefined;
   const roots = options.roots ?? [];
-  const result: Extraction = { sessions: [], spans: [], issues: [], files: 0 };
+  const result: Extraction = { sessions: [], spans: [], issues: [], files: 0, duplicates: 0 };
 
   const accept = (parsed: ParsedSession) => {
     result.issues.push(...parsed.issues);
@@ -171,19 +209,41 @@ export async function extract(options: ExtractOptions = {}): Promise<Extraction>
     accept(t.finish());
   }
 
-  const codexFiles: string[] = [];
-  await walkJsonl(options.codexDir ?? join(home, ".codex", "sessions"), codexFiles);
-  for (const path of codexFiles.sort()) {
-    if (!(await modifiedSince(path, from))) continue;
-    result.files++;
-    const t = new CodexTranscript({ file: path, roots, home });
-    try {
-      await streamLines(path, (l) => t.push(l));
-    } catch (error) {
-      result.issues.push({ file: path, line: null, message: `unreadable: ${(error as Error).message}` });
-      continue;
+  // A session can exist in both places — archived, then resumed — so copies are collected by id
+  // before any is accepted, and each session is counted once.
+  const codex = new Map<string, { parsed: ParsedSession; copies: number }>();
+  const locations: Array<[string, Extract<SessionSource, `codex-${string}`>]> = [
+    [options.codexDir ?? join(home, ".codex", "sessions"), "codex-sessions"],
+    [options.codexArchivedDir ?? join(home, ".codex", "archived_sessions"), "codex-archived"],
+  ];
+  for (const [dir, source] of locations) {
+    const files: string[] = [];
+    await walkRollouts(dir, files);
+    for (const path of files.sort()) {
+      if (!(await modifiedSince(path, from))) continue;
+      result.files++;
+      const t = new CodexTranscript({ file: path, roots, home, source });
+      try {
+        await streamLines(path, (l) => t.push(l));
+      } catch (error) {
+        result.issues.push({ file: path, line: null, message: `unreadable: ${(error as Error).message}` });
+        continue;
+      }
+      const parsed = t.finish();
+      result.issues.push(...parsed.issues);
+      if (!parsed.session) continue;
+      const seen = codex.get(parsed.session.sessionId);
+      if (!seen) codex.set(parsed.session.sessionId, { parsed, copies: 1 });
+      else {
+        seen.copies++;
+        if (fuller(parsed.session, seen.parsed.session!)) seen.parsed = parsed;
+      }
     }
-    accept(t.finish());
+  }
+  for (const { parsed, copies } of codex.values()) {
+    const kept = result.sessions.length;
+    accept({ ...parsed, issues: [] });
+    if (result.sessions.length > kept) result.duplicates += copies - 1;
   }
 
   return result;
