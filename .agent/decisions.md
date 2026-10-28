@@ -1892,3 +1892,7 @@ would contradict the decision that the author never declares the size. The disti
 the two consumers that read `checkLocalReview` as a validity oracle — the GitHub Manager's
 author-record recovery and CD repair verification — refusing an `agent-review` opt-out while
 accepting a validated record that relied on the floor waiver.
+
+## Blocked CD analysis wakes on meaningful input, with a bounded recheck — 2026-10-28
+
+MO-26-10-28-13.49.13. After two repair strategies, unchanged completed blocks with a concrete missing capability may wait at most six hours. Genuine task evidence, delivery identity/source/status, workflow completion or executor-quiescence facts wake them immediately; timer clocks and self-generated checkpoints do not. The existing opaque invocation-start receipt stores the frozen prompt context digest, so no schema field or mutable parking cursor is needed and older whole-state writers retain it. Unknown legacy receipts cannot justify suppression. This small domain policy uses the existing hash/store and adds no generic scheduler or dependency. It never grants a missing review authorization or waives admission, ownership or uncertain-upload safety.
