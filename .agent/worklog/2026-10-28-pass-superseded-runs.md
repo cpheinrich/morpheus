@@ -122,5 +122,9 @@ SHA" case. Same-reviewer follow-up: see the review record below.
 ## Live verification on #544
 
 This PR's own CI calls the changed workflow locally (`uses: ./.github/workflows/pr-check.yml`). To
-supersede a run on purpose, the PR body was edited, which starts a `Review metadata` run, and this
-commit was pushed immediately afterwards. The results are recorded below.
+supersede a run on purpose, the PR body was edited, which starts a `Review metadata` run, and a
+worklog-only commit was pushed immediately afterwards. The results are recorded below.
+
+The first attempt produced no runs at all. The PR conflicted with trunk in `.agent/decisions.md`,
+and GitHub creates no `pull_request` runs without a merge ref. Trunk was merged in (`3949688b`)
+with both appended entries kept, and the test was repeated.
