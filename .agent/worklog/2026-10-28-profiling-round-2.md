@@ -112,3 +112,65 @@ Chris asked for every follow-up not in the tranche to be stored as roadmap work.
 - **Delivery shape.** This PR changes only `hq/product/` and `.agent/`, on an `inbox-` branch that
   stakes no id. `check pr` then requires no claimed item and no independent review
   (`hasNoSubstantiveChange`), and its `records-only:` waiver applies only to claimed branches.
+
+## Correction — complete Codex data (2026-10-28)
+
+Appended later the same day. The sections above are left as written. Where they disagree with
+this one, this one is correct, and that includes the summary line in the frontmatter.
+
+**"Agent behaviour barely moved" was partly a measurement artifact.** `morpheus profile` did not
+read compressed Codex sessions (`.jsonl.zst`; fixed in #543). Codex compresses older rollouts in
+place, so the before window contained no Codex sessions at all. Its rows were Claude only, and the
+Codex "~0" there had no baseline behind it.
+
+Recomputed per main session in the managed repositories (morpheus, evo, lakina, kairos, darwin,
+cpheinrich.com). The middle window ends 10-21, not 10-22 as above.
+
+| | 09-24→10-07 | 10-09→10-21 | 10-22→10-28 |
+|---|---|---|---|
+| Codex sessions | 19 | 26 | 5 |
+| Codex CI polls/session | 18.6 | 11.7 | 4.4 |
+| Codex wait-ci/session | 0 | 0.8 | 5.4 |
+| Codex context refresh/session | 3.7 | 3.6 | 2.4 |
+| Claude sessions | 41 | 9 | 6 |
+| Claude CI polls/session | 4.0 | 7.8 | 3.8 |
+| Claude wait-ci/session | 0 | 0.1 | 0 |
+| Claude context refresh/session | 2.3 | 3.1 | 2.7 |
+
+**What the corrected numbers say.**
+
+- **Codex did change after the 10-07 instruction changes.** CI polling per session fell 37% in the
+  after window and 76% in the latest week. `wait-ci` became routine.
+- **Claude did not change.** CI polls per session went 4.0, 7.8, 3.8 and refreshes 2.3, 3.1, 2.7,
+  so neither has a lasting drop, and it almost never ran `wait-ci`. The samples are small, with 9
+  and 6 sessions in the two later windows.
+- **The shift from Claude to Codex was real, but smaller than the round-2 analysis implied.** That
+  analysis had no Codex sessions before 10-07. The Claude:Codex split went from 41:19 before to
+  9:26 after.
+- **The case for enforcing in code still stands, but mostly for Claude.** The tranche's
+  code-enforcement items matter most there: read evidence (#547) and the poll guard (#545). For
+  Codex, prose alone moved behaviour.
+- **The re-run (MO-26-10-28-14.11.08) should report per provider**, with the per-source counts
+  #543 added. A blended figure would hide the opposite trends in this table.
+
+**What the tranche shipped.**
+
+- **#547.** The context protocol is enforced in code: refresh is idempotent, and receipts are
+  certified from a read-evidence log. MO-26-10-28-14.08.05.
+- **#545 with darwin-health/evo#685, cpheinrich/lakinacapital#585 and cpheinrich/kairos#74.**
+  `wait-ci --run` and `--workflow`, the third-poll guard, and `doctor`'s `AGENTS.md` drift check,
+  adopted in each project. MO-26-10-28-14.09.01.
+- **#544.** Superseded conventions runs pass as `pr / superseded` and never as the required name.
+  MO-26-10-28-14.08.43. No Evo PR was needed. The round-2 analysis expected an Evo change for iOS
+  merge-head failures, but that claim was stale. Morpheus #321 fixed the iOS CI scope step on
+  10-05, and none of the 19 failed Evo iOS runs since 10-08 failed in that step.
+- **#542.** Rescue PR hygiene: the IDE churn reset, replay dedupe and the seven-day age-out.
+  MO-26-10-28-14.08.53. Six stale rescue drafts were closed. Morpheus #452 was left open for Chris
+  because it is public. See the item below.
+- **#543.** Fixed the profiler gaps: it now reads archived and compressed Codex rollouts, prints
+  per-source counts, and prints the review-floor waiver. MO-26-10-28-14.11.57.
+
+**Filed alongside this correction.** MO-26-10-28-15.37.55, "Keep trunk rescues local on public
+repositories" (P1, backlog). #452 showed that the rescue publishes tracked edits, and with them a
+local path and hostname, on a public repository. The item needs Chris to confirm the rule and to
+decide what happens to #452's content, which is already public.
