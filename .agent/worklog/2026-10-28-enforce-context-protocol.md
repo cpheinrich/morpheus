@@ -160,6 +160,10 @@ that. No follow-up turn was needed.
     {
       "commit": "4e5436c8b28f6d3303e032b0b85158ae3f83a849",
       "reason": "Merged origin/main (430fa10e, c8166dd7) after coverage. The only hand resolution was .agent/decisions.md, where both sides appended an entry at the end: trunk's blocked-CD-analysis entry kept first, this PR's context-refresh entry after it, both verbatim. No source conflict; pnpm compile left dist unchanged."
+    },
+    {
+      "commit": "69daaec61c3f15d9da24390a97417aa575ca3cfe",
+      "reason": "Merged origin/main (fda2d34b, 2ad160e9) after CI went green, because the PR had become unmergeable. The only hand resolution was .agent/learned.md, where both sides appended an entry at the end: trunk's blob-id diff entry kept first, this PR's hook-payload entry after it, both verbatim. Trunk's runbook and architecture edits merged without conflict in other sections; pnpm compile left dist unchanged and the 52 focused evidence and instruction tests pass."
     }
   ],
   "summary": "A fresh reviewer found one substantive and two minor defects. F1: Claude Code counts a trailing newline as an extra empty line, so every Read reaching end-of-file failed the content check and earned nothing while the session stayed in enforcement mode; cleared under a condition the author met in f4d3bb34 by comparing in the tool's numbering, fixing the fixture shape and adding whole-file, tail, exactness and refresh tests. F2: AGENTS.md is injected without a tool call, so an enforced session is refused once for CLAUDE.md; the instructions now name it, and crediting the injected copy is an open question for Chris. F3: the refusal now names the shell-output credit limit and the MORPHEUS_READ_EVIDENCE=off escape. No follow-up turn was needed.",
