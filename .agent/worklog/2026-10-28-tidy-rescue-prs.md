@@ -127,6 +127,8 @@ with `outcome: 'churn'`. `pnpm exec vitest run tests/trunk-churn.test.ts tests/t
 tests/gh-manager.test.ts` 152 passed; the seven focused files 221 passed; `pnpm typecheck`,
 `pnpm lint` and `pnpm compile` passed.
 
+High-risk review of churn reset, replay dedupe and the manager age-out, cleared on one condition. F1 (substantive, conditional): a git rm --cached file was reset over as churn; fixed by refusing any index removal still on disk before commit or reset, which also fixes the older F2 loss in the rescue path. Minor F3 (on-trunk only when the checkout fast-forwards), F4 (age-out promise only where the manager policy closes) and F5 (close before the marker comment) were fixed by the author.
+
 ```morpheus-review
 {
   "version": 2,
