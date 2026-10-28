@@ -1441,6 +1441,44 @@ clone and have nothing to rescue, so only `self install`'s refusal was improved.
 escalates an unadopted rescue draft to a human rather than giving it a session. Native Git plumbing
 (a private index, `commit-tree`, a create-only `update-ref`) and `gh`; no dependency.
 
+**Trunk rescue resets IDE churn, and unadopted rescue drafts age out instead of escalating** —
+2026-10-28 (MO-26-10-28-14.08.53). About nineteen `wip/trunk-*` drafts opened in three weeks and
+none was adopted; Evo opened ten in two days alternating between two Xcode diffs, and the
+unadopted ones took `manager:needs-human` from 4 to 16. Chris approved making them useful or
+retiring them. Three changes, each supersedes part of the entries above:
+
+- *Churn is reset, not published.* Before rescuing, `context brief` classifies the rescue commit's
+  paths (`src/session/trunk-churn.ts`). Only provably empty edits count: per-user state by path
+  (`xcuserdata/`, `.DS_Store`, JetBrains' `workspace.xml`, `usage.statistics.xml`, `tasks.xml`,
+  `shelf/`, `dictionaries/`), a `.pbxproj` whose OpenStep structure is unchanged apart from
+  whitespace, comments and dictionary key order (arrays keep order — build phases run in it), an
+  `.xcscheme`/`.xcworkspacedata` whose elements and attributes are unchanged, and any file whose
+  content already equals trunk's (bytes and mode, or the same Xcode structure). When every edit is
+  churn the checkout is reset after the same content proof and reported in one line naming the
+  unreferenced commit that held them; one real edit and the whole set is rescued as before.
+  `.vscode/` is deliberately excluded — VS Code keeps only shared configuration there — and so are
+  added files, value changes such as a `DEVELOPMENT_TEAM` Xcode wrote that trunk does not have,
+  and anything unparseable, which all still rescue. A false positive loses an edit; a false
+  negative opens a draft that now ages out, so the rule errs towards rescuing.
+- *Duplicates are judged by replay.* An open rescue holds the same edits when its change, applied to
+  the current HEAD in a private index, yields exactly the rescue commit's tree. The exact-diff
+  comparison from 2026-10-15 missed every repeat once trunk touched the same file (evo#654 and
+  evo#675 are the same re-sort); `patch-id` stays rejected because it ignores whitespace. Only the
+  twenty most recent local rescue branches are compared.
+- *Rescue drafts age out.* The GitHub Manager's sweep closes an untouched rescue draft once it has
+  gone `RESCUE_MAX_AGE_DAYS` (7) without a push, commenting how to recover the kept branch, and
+  never escalates, triages or reviews one. A reopened rescue is not closed again on the same head.
+  This replaces the 48-hour human escalation stated above and in the 2026-10-12 and 2026-10-20
+  manager entries ("the 48-hour draft wait remains only for a rescued trunk draft's human
+  escalation", "Rescued trunk drafts keep their escalation"); `draftQuietHours` now governs triage
+  only. A rescue someone takes out of draft, queues or reviews is theirs and is left alone.
+
+No dependency. Considered `xcode` (Cordova's pbxproj parser, maintained, one dependency),
+`@bacons/xcode` (still alpha, three) and `fast-xml-parser` (six). Each would still need the
+canonical comparison written on top, and a forgiving parser is the wrong property here: these
+readers must refuse anything unusual and keep quoting exact, because a misread becomes a discarded
+edit. Built instead, about 150 lines together.
+
 **The review floor is waived for a trivially small change** — 2026-10-08 (MO-26-10-08-06.45.12).
 Chris's option A after six independent reviews of the same five-line workflow `if:` (evo#412,
 lakinacapital#509, kairos#70) took 21–30 s, all clean: on a change that small the 30-second floor

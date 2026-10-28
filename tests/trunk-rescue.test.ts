@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -10,6 +11,7 @@ import {
   buildSourceCandidates,
   divergentStaged,
   formatLag,
+  formatRescue,
   githubRepo,
   lagSeverity,
   orphanBuildOutputs,
@@ -24,10 +26,11 @@ import { inspectTrunkCheckout, trunkCheckoutFindings, type TrunkCheckoutReport }
 import { prepareRepository } from "../src/session/start.js";
 import { startSession } from "../src/cli/session-start.js";
 import { describeLocalChanges } from "../src/self.js";
-import { RESCUED_TRUNK_PREFIX } from "../src/gh-manager/sweep.js";
+import { RESCUE_MAX_AGE_DAYS, RESCUED_TRUNK_PREFIX } from "../src/gh-manager/sweep.js";
 import type { MorpheusInstallStatus } from "../src/self.js";
 
 const exec = promisify(execFile);
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures/trunk-churn");
 const git = async (cwd: string, ...args: string[]) => (await exec("git", args, { cwd })).stdout.trim();
 const NOW = new Date("2026-10-08T18:00:00Z"); // 11:00 Pacific, 2026-10-08
 const DAY = 86_400_000;
@@ -188,6 +191,10 @@ describe("rescuing a dirty trunk checkout", () => {
 
   it("moves tracked edits to a pushed draft PR, leaves untracked files, then fast-forwards", async () => {
     await dirty();
+    // Opted in to the GitHub Manager on trunk, so the body may promise the age-out.
+    await mkdir(join(source, ".github"), { recursive: true });
+    await writeFile(join(source, ".github/morpheus-gh-manager.json"), '{"version":1}\n');
+    await git(source, "add", ".github");
     const latest = await advance(2);
     const result = await prepareRepository(local, false, deps());
 
@@ -230,7 +237,24 @@ describe("rescuing a dirty trunk checkout", () => {
     expect(body).toContain("- `secret.env`");
     expect(body).toContain("safe to delete:\n\n- `dist/gone.js`");
     expect(body).toContain("`check pr` conventions");
+    // The PR body states the manager's age-out without importing it; this holds the two equal.
+    expect(body).toContain(`once it has gone ${RESCUE_MAX_AGE_DAYS} days without a push, the GitHub Manager closes it`);
     expect(body).not.toContain("never-commit");
+  });
+
+  it("promises the age-out only where trunk's GitHub Manager policy will close the draft", async () => {
+    const body = () => { const args = gh.mock.calls.filter((c) => c[1][1] === "create").at(-1)![1]; return args[args.indexOf("--body") + 1]!; };
+    await writeFile(join(local, "project.pbxproj"), "first\n");
+    await prepareRepository(local, false, deps());
+    expect(body()).not.toContain("GitHub Manager closes it");
+
+    await mkdir(join(source, ".github"), { recursive: true });
+    await writeFile(join(source, ".github/morpheus-gh-manager.json"), '{"version":1,"actions":{"close":false}}\n');
+    await git(source, "add", ".github"); await git(source, "commit", "-m", "manager, closing off"); await git(source, "push", "origin", "main");
+    await writeFile(join(local, "project.pbxproj"), "second\n");
+    await prepareRepository(local, false, deps());
+    expect(body()).not.toContain("GitHub Manager closes it");
+    expect(gh.mock.calls.filter((c) => c[1][1] === "create")).toHaveLength(2);
   });
 
   it("keeps a write that lands while the branch is pushed and the PR opened", async () => {
@@ -388,6 +412,153 @@ describe("rescuing a dirty trunk checkout", () => {
     const second = (await prepareRepository(local, false, deps())).rescue!;
     expect(second.outcome === "rescued" && second.wipBranch).toBe(`${branchBase}-2`);
     expect(await git(remote, "show", `refs/heads/${branchBase}-2:project.pbxproj`)).toBe("setting  = one space");
+  });
+
+  it("dedupes the same edit after trunk changed that file elsewhere, and still rescues a different one", async () => {
+    const lines = Array.from({ length: 12 }, (_, i) => `line ${i + 1}`);
+    const notes = (edit: (l: string[]) => void) => { const copy = [...lines]; edit(copy); return `${copy.join("\n")}\n`; };
+    await writeFile(join(source, "notes.md"), notes(() => {}));
+    await git(source, "add", "notes.md"); await git(source, "commit", "-m", "notes"); await git(source, "push", "origin", "main");
+    await git(local, "pull", "--quiet", "--ff-only");
+
+    await writeFile(join(local, "notes.md"), notes((l) => { l[1] = "line 2, edited"; }));
+    expect((await prepareRepository(local, false, deps())).rescue?.outcome).toBe("rescued");
+    // Trunk then edits the same file far from the rescued hunk, so every blob id the old rescue
+    // recorded is now stale: the exact-diff comparison this replaced missed exactly this.
+    lines[10] = "line 11, from trunk";
+    await writeFile(join(source, "notes.md"), notes(() => {}));
+    await git(source, "commit", "-am", "trunk edits notes"); await git(source, "push", "origin", "main");
+    expect((await prepareRepository(local, false, deps())).advanced).toBe(true);
+
+    await writeFile(join(local, "notes.md"), notes((l) => { l[1] = "line 2, edited"; }));
+    const repeated = await prepareRepository(local, false, deps());
+    expect(repeated.rescue).toMatchObject({ outcome: "duplicate", existingBranch: branchBase, prUrl: "https://github.com/o/r/pull/42" });
+    expect(await readFile(join(local, "notes.md"), "utf8")).toBe(notes(() => {}));
+
+    await writeFile(join(local, "notes.md"), notes((l) => { l[1] = "line 2, edited differently"; }));
+    const distinct = (await prepareRepository(local, false, deps())).rescue!;
+    expect(distinct.outcome === "rescued" && distinct.wipBranch).toBe(`${branchBase}-2`);
+    expect(gh.mock.calls.map((call) => call[1].slice(0, 2))).toEqual([["pr", "create"], ["pr", "list"], ["pr", "create"]]);
+  });
+
+  describe("IDE churn", () => {
+    const PROJECT = "App.xcodeproj/project.pbxproj";
+    const SCHEME = "App.xcodeproj/xcshareddata/xcschemes/App.xcscheme";
+    const USER_STATE = "App.xcodeproj/project.xcworkspace/xcuserdata/c.xcuserdatad/UserInterfaceState.xcuserstate";
+    const pbxproj = () => readFile(join(FIXTURES, "project.pbxproj"), "utf8");
+    // What Xcode does to Evo's project on every open: re-sorts one build-settings dictionary.
+    const resorted = async () => (await pbxproj()).replaceAll(
+      "\t\t\t\tEVO_TELEMETRY_DISTRIBUTION = NO;\n\t\t\t\tEVO_DISPLAY_NAME = Evo;\n",
+      "\t\t\t\tEVO_DISPLAY_NAME = Evo;\n\t\t\t\tEVO_TELEMETRY_DISTRIBUTION = NO;\n",
+    );
+
+    beforeEach(async () => {
+      await mkdir(join(source, dirname(SCHEME)), { recursive: true });
+      await mkdir(join(source, dirname(USER_STATE)), { recursive: true });
+      await writeFile(join(source, PROJECT), await pbxproj());
+      await writeFile(join(source, SCHEME), await readFile(join(FIXTURES, "compact.xcscheme"), "utf8"));
+      await writeFile(join(source, USER_STATE), "window layout v1\n");
+      await git(source, "add", "."); await git(source, "commit", "-m", "xcode project"); await git(source, "push", "origin", "main");
+      await git(local, "pull", "--quiet", "--ff-only");
+    });
+
+    it("resets edits that are only churn, publishes nothing, fast-forwards and says so in one line", async () => {
+      await writeFile(join(local, PROJECT), await resorted());
+      await writeFile(join(local, SCHEME), await readFile(join(FIXTURES, "xcode.xcscheme"), "utf8"));
+      await writeFile(join(local, USER_STATE), "window layout v2\n");
+      await writeFile(join(local, "secret.env"), "TOKEN=never-commit\n");
+      const latest = await advance(1);
+
+      const result = await prepareRepository(local, false, deps());
+      const rescue = result.rescue!;
+      expect(rescue.outcome).toBe("churn");
+      if (rescue.outcome !== "churn") return;
+      expect(rescue.churn).toEqual([
+        { path: PROJECT, kind: "format-only" },
+        { path: USER_STATE, kind: "user-state" },
+        { path: SCHEME, kind: "format-only" },
+      ]);
+      expect(gh).not.toHaveBeenCalled();
+      expect(await git(local, "for-each-ref", "refs/heads/wip")).toBe("");
+      expect(await git(remote, "for-each-ref", "refs/heads/wip")).toBe("");
+      expect(result.advanced).toBe(true);
+      expect(await git(local, "rev-parse", "HEAD")).toBe(latest);
+      expect(await readFile(join(local, PROJECT), "utf8")).toBe(await pbxproj());
+      expect(await git(local, "status", "--porcelain", "--untracked-files=no")).toBe("");
+      // Untracked files are still never touched.
+      expect(await readFile(join(local, "secret.env"), "utf8")).toBe("TOKEN=never-commit\n");
+      // The reset edits stay reachable by the commit the report names.
+      expect(await git(local, "show", `${rescue.commit}:${USER_STATE}`)).toBe("window layout v2");
+
+      const lines = formatRescue(rescue, "origin/main");
+      expect(lines[0]).toBe(`Reset 3 tracked file(s) of IDE churn on trunk instead of opening a rescue PR (2 formatting only, 1 IDE user state: ${PROJECT}, ${USER_STATE}, ${SCHEME}); recoverable with git checkout ${rescue.commit.slice(0, 12)} -- <path> until Git prunes it.`);
+    });
+
+    it("still rescues a real pbxproj edit, with the churn beside it, as before", async () => {
+      await writeFile(join(local, PROJECT), (await resorted()).replace("EVO_APP_ENVIRONMENT = development;", "EVO_APP_ENVIRONMENT = staging;"));
+      await writeFile(join(local, USER_STATE), "window layout v2\n");
+      const rescue = (await prepareRepository(local, false, deps())).rescue!;
+      expect(rescue.outcome).toBe("rescued");
+      expect(rescue.dirt.tracked.sort()).toEqual([PROJECT, USER_STATE]);
+      expect(await git(remote, "show", `refs/heads/${branchBase}:${PROJECT}`)).toContain("EVO_APP_ENVIRONMENT = staging;");
+      expect(await git(remote, "show", `refs/heads/${branchBase}:${USER_STATE}`)).toBe("window layout v2");
+      expect(gh.mock.calls[0]![1].slice(0, 3)).toEqual(["pr", "create", "--draft"]);
+    });
+
+    it("still rescues a reordered build-phase array, which is behaviour rather than formatting", async () => {
+      await writeFile(join(local, PROJECT), (await pbxproj()).replace(
+        "\t\t\t\tB2000021 /* Sources */,\n\t\t\t\tB2000022 /* Run Script */,\n",
+        "\t\t\t\tB2000022 /* Run Script */,\n\t\t\t\tB2000021 /* Sources */,\n",
+      ));
+      expect((await prepareRepository(local, false, deps())).rescue?.outcome).toBe("rescued");
+    });
+
+    it("refuses a file removed from the index but kept on disk, rather than resetting over it", async () => {
+      // Untracking per-user state is the right thing to do, and the newer local file is the point.
+      await git(local, "rm", "-r", "--cached", "--quiet", "App.xcodeproj/project.xcworkspace/xcuserdata");
+      await writeFile(join(local, USER_STATE), "breakpoints I set today\n");
+      const first = await prepareRepository(local, false, deps());
+      expect(first.rescue).toMatchObject({ outcome: "skipped" });
+      expect(first.rescue?.outcome === "skipped" && first.rescue.reason).toContain(`${USER_STATE} removed from the index but still on disk`);
+      expect(await readFile(join(local, USER_STATE), "utf8")).toBe("breakpoints I set today\n");
+
+      // Trunk stops tracking it too: the removal is now "on trunk", and still nothing is reset.
+      await git(source, "rm", "-r", "--cached", "--quiet", "App.xcodeproj/project.xcworkspace/xcuserdata");
+      await git(source, "commit", "-m", "untrack user state"); await git(source, "push", "origin", "main");
+      const second = await prepareRepository(local, false, deps());
+      expect(second.rescue?.outcome).toBe("skipped");
+      expect(await readFile(join(local, USER_STATE), "utf8")).toBe("breakpoints I set today\n");
+      expect(gh).not.toHaveBeenCalled();
+      expect(await git(local, "for-each-ref", "refs/heads/wip")).toBe("");
+    });
+
+    it("does not call an edit 'on trunk' when local trunk commits stop the fast-forward", async () => {
+      await writeFile(join(local, "CLAUDE.md"), "local trunk commit\n");
+      await git(local, "commit", "-qam", "unpushed");
+      await writeFile(join(source, "project.pbxproj"), "generated v2\n");
+      await git(source, "commit", "-am", "trunk edit"); await git(source, "push", "origin", "main");
+      await writeFile(join(local, "project.pbxproj"), "generated v2\n");
+      const result = await prepareRepository(local, false, deps());
+      expect(result.rescue?.outcome).toBe("rescued");
+      expect(result.advanced).toBe(false);
+      expect(await git(remote, "show", `refs/heads/${branchBase}:project.pbxproj`)).toBe("generated v2");
+    });
+
+    it("resets an edit trunk has since landed, and the fast-forward brings it back", async () => {
+      await writeFile(join(source, PROJECT), await resorted());
+      await git(source, "commit", "-am", "commit Xcode's ordering"); await git(source, "push", "origin", "main");
+      await writeFile(join(local, "project.pbxproj"), "generated v2\n");
+      await writeFile(join(source, "project.pbxproj"), "generated v2\n");
+      await git(source, "commit", "-am", "same edit on trunk"); await git(source, "push", "origin", "main");
+      await writeFile(join(local, PROJECT), await resorted());
+
+      const result = await prepareRepository(local, false, deps());
+      expect(result.rescue).toMatchObject({ outcome: "churn", churn: [{ path: PROJECT, kind: "on-trunk" }, { path: "project.pbxproj", kind: "on-trunk" }] });
+      expect(result.advanced).toBe(true);
+      expect(await readFile(join(local, "project.pbxproj"), "utf8")).toBe("generated v2\n");
+      expect(await readFile(join(local, PROJECT), "utf8")).toBe(await resorted());
+      expect(gh).not.toHaveBeenCalled();
+    });
   });
 
   it("keeps the edits on a local branch when the push fails, still resetting and fast-forwarding", async () => {

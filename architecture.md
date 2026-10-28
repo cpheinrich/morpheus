@@ -1014,12 +1014,16 @@ exchange `FETCH_HEAD`. A local trunk behind that exact commit fast-forwards; fea
 divergent trunks remain intact and report missing commits. Tracked edits on the trunk branch are
 first committed to a pushed `wip/trunk-*` draft PR and the trunk reset only once that commit is
 proven to hold them — a dirty trunk otherwise never advances, and one did not for three weeks.
-When an exact old/new blob, path and mode diff has a live pushed `wip/trunk-*`
-branch and an open PR, the checkout resets after the same content proof without
-creating another draft PR. Live remote and PR checks run before the proof/reset window;
+Edits that are all IDE churn — per-user IDE state, a `.pbxproj` or Xcode XML file whose structure
+is unchanged, or content trunk already has — are reset after the same proof with a one-line report
+and no PR; one real edit and everything is rescued (`src/session/trunk-churn.ts`).
+When a live pushed `wip/trunk-*` branch with an open PR holds a change that, replayed onto the
+current HEAD, yields exactly the rescue commit's tree, the checkout resets after the same content
+proof without creating another draft PR. Live remote and PR checks run before the proof/reset window;
 cached tracking refs alone do not count. The brief names the earlier PR and likely generator
 loop. A failed comparison or lookup falls back to the ordinary rescue, so a branch with a
-failed push, failed PR creation or closed PR never suppresses a new attempt.
+failed push, failed PR creation or closed PR never suppresses a new attempt. The GitHub Manager
+closes a rescue draft after seven days without a push, keeping its branch, and never escalates one.
 Untracked files are never committed; `doctor --all` reports stuck trunk checkouts fleet-wide. Offline or fetch
 failure is explicitly unverified, never a successful current-source report. A receipt is refused
 when the checkout does not contain the observed trunk. Checks repeat local source containment
