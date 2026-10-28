@@ -1833,3 +1833,15 @@ state. A current-note completion notice waits for the verified factual record an
 projection, not for separate action promotion; it states whether actions were recorded or remain
 unpromoted. Historical notes still cannot notify. This removes project data from current fixtures
 without rewriting already-public Git history, which needs a separate owner decision if desired.
+
+## Superseded conventions runs pass only on proof the PR moved — 2026-10-28
+
+MO-26-10-28-14.08.43. A conventions run whose event head is no longer the PR head prints
+`superseded by <sha>` and passes without checking, instead of failing silently. The pass attaches
+to the event's head SHA, never to the newer head. It is granted only when the live PR copy is
+strictly newer than the event payload. A lagging, equal-time or malformed read fails closed with its
+reason, because the event's head may still be current. `cancel-in-progress` stays out: a
+cancelled required check still blocks merges. Accepted residual: a later force-push back to
+exactly the superseded SHA shows that pass until the `synchronize` run's check is created. Closing
+that needs a renamed, non-required check for superseded runs and a change to every consumer's
+check topology, so it was not done here.

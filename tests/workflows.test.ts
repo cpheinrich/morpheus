@@ -2846,13 +2846,134 @@ describe("local review metadata", () => {
       await rm(tmp, { recursive: true, force: true });
     }
   });
-  it("checks live PR metadata and rejects a superseded head", async () => {
-    const wf = await read("pr-check.yml") as { jobs: { conventions: { steps: Array<{ name?: string; run?: string }> } } };
-    const run = wf.jobs.conventions.steps.find(s => s.name === "Check PR conventions")?.run ?? "";
-    expect(run).toContain('gh api "repos/$REPOSITORY/pulls/$PR_NUMBER"');
-    expect(run).toContain('.head.sha == $sha');
-    expect(run).toContain('GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json"');
-    expect(run).toContain('--base "origin/$BASE_REF"');
+  type ConventionsStep = { name?: string; run?: string; env?: Record<string, string> };
+  const conventionsStep = async () => {
+    const wf = await read("pr-check.yml") as { jobs: { conventions: { steps: ConventionsStep[] } } };
+    const step = wf.jobs.conventions.steps.find(s => s.name === "Check PR conventions");
+    expect(step?.run).toBeDefined();
+    return step!;
+  };
+  it("checks live PR metadata against the event's own head and update time", async () => {
+    const step = await conventionsStep();
+    // The guard is only as good as these two mappings: the SHA the run reports on, and when its event saw the PR.
+    expect(step.env?.EXPECTED_HEAD).toBe("${{ github.event.pull_request.head.sha }}");
+    expect(step.env?.EVENT_UPDATED_AT).toBe("${{ github.event.pull_request.updated_at }}");
+    expect(step.run).toContain('gh api "repos/$REPOSITORY/pulls/$PR_NUMBER"');
+    expect(step.run).toContain('GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json"');
+    expect(step.run).toContain('--base "origin/$BASE_REF"');
+  });
+
+  /**
+   * Runs the step's whole script, not a copy of its guard. `gh` answers the
+   * live pull request read with `live` (and empty events and comments), and
+   * `node` records its arguments, so "the checks ran" means `check pr` was
+   * invoked. The repository's only commit is the event head, so the pr-head
+   * block has nothing to fetch.
+   */
+  async function runConventions(live: { head?: string | null; updatedAt?: string | null }, event: { head?: string; updatedAt: string }) {
+    const step = await conventionsStep();
+    const tmp = await mkdtemp(join(tmpdir(), "pr-superseded-"));
+    try {
+      const repo = join(tmp, "repo");
+      const bin = join(tmp, "bin");
+      const runnerTemp = join(tmp, "runner");
+      await Promise.all([mkdir(repo), mkdir(bin), mkdir(runnerTemp)]);
+      const git = (...args: string[]) => execFileAsync("git", args, { cwd: repo }).then(r => r.stdout.trim());
+      await git("init", "-q", "-b", "main");
+      await git("config", "user.email", "t@example.com");
+      await git("config", "user.name", "T");
+      await writeFile(join(repo, "morpheus.json"), "{}");
+      await git("add", ".");
+      await git("commit", "-qm", "head");
+      const head = event.head ?? await git("rev-parse", "HEAD");
+      const pr: Record<string, unknown> = { number: 7, head: { sha: live.head === undefined ? head : live.head }, labels: [], body: "" };
+      if (live.updatedAt !== undefined) pr.updated_at = live.updatedAt;
+      await writeFile(join(tmp, "live-pr.json"), JSON.stringify(pr));
+      await writeFile(join(bin, "gh"), [
+        "#!/usr/bin/env bash",
+        'case "$*" in',
+        '  *"/pulls/"*) cat "$FAKE_LIVE_PR" ;;',
+        '  *"/comments"*) echo "[]" ;;',
+        "esac",
+        "",
+      ].join("\n"));
+      await writeFile(join(bin, "node"), '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$FAKE_NODE_LOG"\n');
+      await chmod(join(bin, "gh"), 0o755);
+      await chmod(join(bin, "node"), 0o755);
+      const summary = join(tmp, "summary.md");
+      const nodeLog = join(tmp, "node.log");
+      const env = {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        FAKE_LIVE_PR: join(tmp, "live-pr.json"),
+        FAKE_NODE_LOG: nodeLog,
+        RUNNER_TEMP: runnerTemp,
+        GITHUB_STEP_SUMMARY: summary,
+        GH_TOKEN: "unused",
+        PR_NUMBER: "7",
+        REPOSITORY: "example/repo",
+        EXPECTED_HEAD: head,
+        EVENT_UPDATED_AT: event.updatedAt,
+        PRODUCT_DIR: "hq/product",
+        BASE_REF: "main",
+        MORPHEUS_SECURITY_IMPORT_VERIFIED: "false",
+      };
+      // GitHub runs an unconfigured `run:` as `bash -e {0}`.
+      const result = await execFileAsync("bash", ["-e", "-c", step.run!], { cwd: repo, env }).then(
+        r => ({ code: 0, stdout: r.stdout, stderr: r.stderr }),
+        (e: { code?: number; stdout?: string; stderr?: string }) => ({ code: e.code ?? -1, stdout: e.stdout ?? "", stderr: e.stderr ?? "" }),
+      );
+      const readOrEmpty = (path: string) => readFile(path, "utf8").catch(() => "");
+      return { ...result, head, checkPr: await readOrEmpty(nodeLog), summary: await readOrEmpty(summary) };
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  }
+  const NEWER = "b".repeat(40);
+
+  it("passes a superseded run with a notice and runs none of the checks", async () => {
+    // Across midnight, so the comparison has to be of whole timestamps and not of the clock alone.
+    const out = await runConventions({ head: NEWER, updatedAt: "2026-10-26T00:00:00Z" }, { updatedAt: "2026-10-25T23:59:59Z" });
+    expect(out.code).toBe(0);
+    expect(out.stdout).toContain(`::notice::superseded by ${NEWER}; this run's result is moot`);
+    expect(out.summary).toContain(`moved from ${out.head} to ${NEWER}`);
+    expect(out.checkPr).toBe("");
+  });
+
+  it("runs the checks normally while the event's head is still the pull request's head", async () => {
+    const out = await runConventions({ updatedAt: "2026-10-25T12:00:00Z" }, { updatedAt: "2026-10-25T12:00:00Z" });
+    expect(out.code).toBe(0);
+    expect(out.stdout).not.toContain("superseded");
+    expect(out.checkPr).toBe(".morpheus/dist/cli/index.js check pr --dir hq/product --base origin/main\n");
+  });
+
+  it("fails closed when the live copy is no newer than the event, so a lagging read cannot pass the head", async () => {
+    // Equal is the boundary: the head may have moved within the same second, or the read may lag.
+    for (const updatedAt of ["2026-10-25T12:00:00Z", "2026-10-25T11:59:59Z"]) {
+      const out = await runConventions({ head: NEWER, updatedAt }, { updatedAt: "2026-10-25T12:00:00Z" });
+      expect(out.code, updatedAt).toBe(1);
+      expect(out.stdout, updatedAt).toContain(`::error::Pull request #7 reads head '${NEWER}' (updated '${updatedAt}')`);
+      expect(out.stdout, updatedAt).toContain("refusing to pass it unchecked");
+      expect(out.checkPr, updatedAt).toBe("");
+    }
+  });
+
+  it("fails closed, and never passes, when a head or timestamp is missing or malformed", async () => {
+    // An absent value must not compare as older than anything.
+    const cases: Array<[string, { head?: string | null; updatedAt?: string | null }, { head?: string; updatedAt: string }]> = [
+      ["no event time", { head: NEWER, updatedAt: "2026-10-25T12:00:01Z" }, { updatedAt: "" }],
+      ["no live time", { head: NEWER, updatedAt: null }, { updatedAt: "2026-10-25T12:00:00Z" }],
+      ["live time not in GitHub's format", { head: NEWER, updatedAt: "2026-10-25 12:00:01" }, { updatedAt: "2026-10-25T12:00:00Z" }],
+      ["no live head", { head: null, updatedAt: "2026-10-25T12:00:01Z" }, { updatedAt: "2026-10-25T12:00:00Z" }],
+      ["live head not a SHA", { head: "main", updatedAt: "2026-10-25T12:00:01Z" }, { updatedAt: "2026-10-25T12:00:00Z" }],
+    ];
+    for (const [name, live, event] of cases) {
+      const out = await runConventions(live, event);
+      expect(out.code, name).toBe(1);
+      expect(out.stdout, name).toContain("::error::");
+      expect(out.stdout, name).not.toContain("superseded by");
+      expect(out.checkPr, name).toBe("");
+    }
   });
 });
 

@@ -109,6 +109,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EVENT_UPDATED_AT: ${{ github.event.pull_request.updated_at }}
           PRODUCT_DIR: ${{ inputs.product-dir }}
           BASE_REF: ${{ github.base_ref }}
           MORPHEUS_SECURITY_IMPORT_VERIFIED: ${{ inputs.security-import-verified }}
@@ -116,7 +117,37 @@ jobs:
           set -euo pipefail
           # Reruns must read current labels/body, not the original event snapshot.
           gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/live-pr.json"
-          jq -e --arg sha "$EXPECTED_HEAD" '.head.sha == $sha' "$RUNNER_TEMP/live-pr.json" > /dev/null
+          # >>> superseded
+          # The checks below judge EXPECTED_HEAD's tree by the live labels and
+          # body, so they mean something only while EXPECTED_HEAD is the head.
+          # Once the PR has moved on, this run's result is moot. It used to
+          # fail here with no message, and people chased those red runs.
+          #
+          # Passing cannot satisfy branch protection for the newer head: GitHub
+          # attaches a pull_request run's checks to the SHA its event named,
+          # EXPECTED_HEAD, and protection reads the current head's own checks.
+          # That holds only if the PR really moved after this event. A read
+          # that lags the event can show the previous head while EXPECTED_HEAD
+          # is still current, and a pass there would be a pass on the head
+          # nothing checked. So pass only when GitHub's copy is strictly newer
+          # than the event's; an older or equal copy, or a value that is not a
+          # SHA or a timestamp, fails with the reason instead.
+          LIVE_HEAD="$(jq -r '.head.sha // ""' "$RUNNER_TEMP/live-pr.json")"
+          if [ "$LIVE_HEAD" != "$EXPECTED_HEAD" ]; then
+            LIVE_UPDATED_AT="$(jq -r '.updated_at // ""' "$RUNNER_TEMP/live-pr.json")"
+            sha='^[0-9a-f]{40}$'
+            stamp='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
+            if [[ "$LIVE_HEAD" =~ $sha && "$EXPECTED_HEAD" =~ $sha \
+              && "$LIVE_UPDATED_AT" =~ $stamp && "$EVENT_UPDATED_AT" =~ $stamp ]] \
+              && (( 10#${LIVE_UPDATED_AT//[^0-9]/} > 10#${EVENT_UPDATED_AT//[^0-9]/} )); then
+              echo "::notice::superseded by $LIVE_HEAD; this run's result is moot"
+              echo "Superseded: #$PR_NUMBER moved from $EXPECTED_HEAD to $LIVE_HEAD after this run's event. Nothing was checked; the run on $LIVE_HEAD is the one that counts." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::error::Pull request #$PR_NUMBER reads head '$LIVE_HEAD' (updated '$LIVE_UPDATED_AT'), but this run is for $EXPECTED_HEAD (event updated '$EVENT_UPDATED_AT'). That copy is not newer than the event, so $EXPECTED_HEAD may still be the head; refusing to pass it unchecked. Re-run this job."
+            exit 1
+          fi
+          # <<< superseded
           # >>> pr-head
           # Every check below must read the PR head: the review gate reads
           # morpheus.json and the record there, the rest diff and read its tree.
