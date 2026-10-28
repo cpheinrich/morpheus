@@ -127,6 +127,29 @@ Graph access was unavailable to this reviewer; exact source fallback was used. N
   },
   "outcome": "complete",
   "summary": "Fresh independent HIGH review completed and cleared107a04e1 with no findings or conditions. The reviewer independently passed129focused tests with zero skips and seven additional packaged-reader protocol checks. This clears source only; CI, protected merge and live runtime acceptance remain separate.",
-  "findings": []
+  "findings": [],
+  "trunkIntegrations": [
+    {
+      "commit": "353d8f95e71dc74886c23de970542c8288ca5568",
+      "reason": "Integrated protected main57725944/PR537. The only hand-resolved file was .agent/decisions.md, where both branches appended independent complete decisions to the same base. Preserved the full base and both appendices without changing either decision or quota source. Read the new Gemini priority-first decision. No implementation conflict resolution or review waiver."
+    }
+  ]
 }
 ```
+
+## CI metadata correction and trunk integration
+
+Initial source107a CI completed0 with6passed/3draft skips. On reviewed-record
+headd9ca, source checks passed but both conventions workflows rejected my PR
+body's `## Validation` heading because the contract requires `## Test plan`.
+I corrected the actual PR body, preserving the failures. The metadata successor
+passed; the original CI convention failure remained, so no green verdict was
+inferred from the metadata check alone. The same code is republished with this
+worklog update after integrating protected main57725944, which also arrived
+while the PR was open. New CI must validate the final integrated head.
+
+Merge353d8f95 preserves both complete EOF additions in `.agent/decisions.md`:
+this task's fresh-supervision mandate and PR537's Gemini note-order decision.
+No quota source was hand-resolved. The merge is explicitly recorded above under
+the existing trunk-integration contract; original review scope, timing and
+outcome remain unchanged. All source review, CI and runtime limits remain.
