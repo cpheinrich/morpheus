@@ -15,6 +15,14 @@ export interface RunWaitOptions {
     repo?: string;
     timeoutMs: number;
 }
+/**
+ * How long a latest run that had already finished — found by workflow and
+ * branch, not pinned by `--sha` — is held before it is reported. A run just
+ * dispatched or pushed is listed within seconds; returning the previous run's
+ * verdict at once hands an agent chaining on the exit code someone else's
+ * result. Inside the window a newer run is followed like any other move.
+ */
+export declare const ALREADY_COMPLETE_SETTLE_MS = 20000;
 /** `ci.yml on main @ abc1234` — what was asked for, for the messages that have no run to name. */
 export declare function describeWanted(opts: RunWaitOptions): string;
 /**

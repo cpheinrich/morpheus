@@ -41,6 +41,11 @@ export function usageError(flags: WaitCiFlags): string | null {
   if ((flags.branch !== undefined || flags.sha !== undefined) && flags.workflow === undefined) {
     return "--branch and --sha select among a workflow's runs; use them with --workflow <name|file>.";
   }
+  // `gh run list --commit` matches only a full SHA; a short one would wait out
+  // the no-run grace and report that CI never started.
+  if (flags.sha !== undefined && !/^[0-9a-f]{40}$/i.test(flags.sha)) {
+    return `--sha takes a full 40-character commit SHA (gh matches no other form), got "${flags.sha}"; try \`git rev-parse ${flags.sha}\`.`;
+  }
   if (flags.requiredOnly && (flags.run !== undefined || flags.workflow !== undefined)) {
     return "--required-only applies to a pull request's checks; a run's own conclusion decides --run and --workflow.";
   }
@@ -81,12 +86,20 @@ const git = (cwd: string, args: string[]): Promise<string | null> =>
  * holding any ignored file other than its own lease, so state written there
  * would turn every finished task into a manual cleanup — and a session that
  * moves between worktrees of one repository is still one session.
+ *
+ * Only where Git ignores it. The agent may have `cd`'d into a repository that
+ * is not a Morpheus project — a third-party clone, a fork — and an untracked
+ * `local/` there is one `git add -A` from being committed into someone else's
+ * history. Such a repository gets no state, and so no refusal: the guard fails
+ * open, as it does everywhere else.
  */
 export async function guardRoot(cwd: string): Promise<string | null> {
   const lines = (await git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir", "--show-toplevel"]))?.split("\n");
   if (!lines || lines.length < 2) return null;
   const [common, toplevel] = lines as [string, string];
-  return basename(common) === ".git" ? dirname(common) : toplevel;
+  const root = basename(common) === ".git" ? dirname(common) : toplevel;
+  const ignored = await git(root, ["check-ignore", "-q", "--", "local/sessions/poll-guard.json"]);
+  return ignored === null ? null : root;
 }
 
 export const guardDeps: GuardDeps = {

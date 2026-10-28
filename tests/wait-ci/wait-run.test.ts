@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { usageError, waitCiCommand, type WaitCiFlags } from "../../src/cli/wait-ci.js";
 import { jobCheck, latestRun, parseRun, parseRunList, repoFromRunUrl, RUN_FIELDS, RUN_VIEW_FIELDS, type RunSnapshot, runVerdict } from "../../src/wait-ci/runs.js";
 import { FIRST_DELAY_MS, type GhResult, NO_CHECKS_GRACE_MS, type WaitDeps } from "../../src/wait-ci/wait.js";
-import { waitRun } from "../../src/wait-ci/wait-run.js";
+import { ALREADY_COMPLETE_SETTLE_MS, waitRun } from "../../src/wait-ci/wait-run.js";
 
 const fixture = (name: string) => readFileSync(join(import.meta.dirname, "fixtures", name), "utf8");
 const ok = (stdout: unknown): GhResult => ({ code: 0, stdout: typeof stdout === "string" ? stdout : JSON.stringify(stdout), stderr: "" });
@@ -251,14 +251,41 @@ describe("waitRun --workflow", () => {
     expect(result.output.split("\n")[1]).toBe("! a newer matching run started during the wait: 7 → 8; results are for run 8 only");
   });
 
-  it("says so when the latest run had already finished and no --sha pinned it", async () => {
+  it("holds an already-finished latest run for the settle window, then flags it; --sha reports at once", async () => {
     const lists = [ok([row(6, "completed", "success", "2026-10-28T09:00:00Z")])];
     const view = [ok(succeeded({ databaseId: 6, url: "https://github.com/acme/app/actions/runs/6" }))];
-    const byBranch = await waitRun(fakeGh(view, lists).deps, { ...opts, workflow: "testflight.yml", branch: "main", repo: "acme/app" });
-    expect(byBranch.output.split("\n")[1]).toBe("! run 6 had already finished when the wait began; if a newer push or dispatch is expected, pass --sha <commit> to wait for that one");
-    const bySha = await waitRun(fakeGh(view, lists).deps, { ...opts, workflow: "testflight.yml", sha: SHA, repo: "acme/app" });
-    expect(bySha.output).not.toContain("already finished");
-    expect(bySha.output.split("\n")).toHaveLength(1);
+    const branch = fakeGh(view, lists);
+    const byBranch = await waitRun(branch.deps, { ...opts, workflow: "testflight.yml", branch: "main", repo: "acme/app" });
+    // Held at least ALREADY_COMPLETE_SETTLE_MS: 10 s is inside it, 25 s is past it.
+    expect(ALREADY_COMPLETE_SETTLE_MS).toBe(20_000);
+    expect(branch.sleeps).toEqual([10_000, 15_000]);
+    expect(byBranch.output.split("\n")).toEqual([
+      "✓ Run green — acme/app TestFlight run 6 @ d9ca0a1 on main (3 jobs: 2 passed, 1 skipped) after 25s",
+      "! run 6 had already finished when the wait began and no newer run started; to wait for a specific one, pass --run <id> or --sha <commit>",
+    ]);
+    const sha = fakeGh(view, lists);
+    const bySha = await waitRun(sha.deps, { ...opts, workflow: "testflight.yml", sha: SHA, repo: "acme/app" });
+    expect(sha.sleeps).toEqual([]);
+    expect(bySha.output.split("\n")).toEqual(["✓ Run green — acme/app TestFlight run 6 @ d9ca0a1 on main (3 jobs: 2 passed, 1 skipped) after 0s"]);
+  });
+
+  it("follows a run dispatched just before the wait instead of answering with the previous run", async () => {
+    // `gh workflow run testflight.yml` then `wait-ci --workflow testflight.yml --branch main`:
+    // the new run is not listed on the first look, and the last one failed.
+    const { deps } = fakeGh(
+      [ok(succeeded({ databaseId: 7, url: "https://github.com/acme/app/actions/runs/7", workflowName: "TestFlight", headBranch: "main" }))],
+      [
+        ok([row(6, "completed", "failure", "2026-10-28T09:00:00Z")]),
+        ok([row(7, "queued", "", "2026-10-28T12:00:00Z"), row(6, "completed", "failure", "2026-10-28T09:00:00Z")]),
+        ok([row(7, "completed", "success", "2026-10-28T12:00:00Z")]),
+      ],
+    );
+    const result = await waitRun(deps, { ...opts, workflow: "testflight.yml", branch: "main", repo: "acme/app" });
+    expect(result.exitCode).toBe(0);
+    expect(result.output.split("\n")).toEqual([
+      "✓ Run green — acme/app TestFlight run 7 @ d9ca0a1 on main (3 jobs: 2 passed, 1 skipped) after 20s",
+      "! a newer matching run started during the wait: 6 → 7; results are for run 7 only",
+    ]);
   });
 
   it("passes --commit for --sha", async () => {
@@ -312,11 +339,14 @@ describe("wait-ci usage", () => {
     [{ branch: "main" }, "--branch and --sha select among a workflow's runs; use them with --workflow <name|file>."],
     [{ target: "12", sha: "abc" }, "--branch and --sha select among a workflow's runs; use them with --workflow <name|file>."],
     [{ run: "3", requiredOnly: true }, "--required-only applies to a pull request's checks; a run's own conclusion decides --run and --workflow."],
+    // gh's --commit matches only a full SHA: a short one would wait out the grace and say CI never started.
+    [{ workflow: "ci.yml", sha: "322d674" }, '--sha takes a full 40-character commit SHA (gh matches no other form), got "322d674"; try `git rev-parse 322d674`.'],
+    [{ workflow: "ci.yml", sha: `${SHA}0` }, `--sha takes a full 40-character commit SHA (gh matches no other form), got "${SHA}0"; try \`git rev-parse ${SHA}0\`.`],
   ])("refuses %j", (flags, message) => {
     expect(usageError({ ...base, ...flags })).toBe(message);
   });
 
-  it.each<Partial<WaitCiFlags>>([{}, { target: "12" }, { run: "3" }, { workflow: "ci.yml", branch: "main", sha: "abc" }])("accepts %j", (flags) => {
+  it.each<Partial<WaitCiFlags>>([{}, { target: "12" }, { run: "3" }, { workflow: "ci.yml", branch: "main", sha: SHA }, { workflow: "ci.yml", sha: SHA.toUpperCase() }])("accepts %j", (flags) => {
     expect(usageError({ ...base, ...flags })).toBeNull();
   });
 

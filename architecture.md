@@ -3270,8 +3270,10 @@ most repeated polls in the transcripts were `gh run view <id> --json status,conc
 run's own conclusion decides the verdict (a `continue-on-error` job can fail inside a green run,
 and a run can fail before any job starts); the jobs supply the digest. By workflow, every poll
 re-selects the newest matching run, following and naming a newer one; with no match the
-no-checks grace applies, and a run that had already finished when the wait began is flagged
-unless `--sha` pinned it, since by branch alone it may be the previous push's.
+no-checks grace applies. A latest run that had already finished when the wait began is held for
+20 seconds unless `--sha` pinned it, because a run just dispatched or pushed lists within
+seconds and the previous run's exit code would otherwise answer for it; if none appears, the
+digest flags it. `--sha` must be a full SHA, the only form `gh run list --commit` matches.
 
 Instructions alone did not stop the polling — sessions polled more after `wait-ci` existed — so
 `morpheus context install` (and `init`) also wires a **poll guard**: a PreToolUse hook on `Bash`

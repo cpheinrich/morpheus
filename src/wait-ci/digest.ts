@@ -147,7 +147,7 @@ export interface RunDigestInput {
   details: Map<string, FailureDetail>;
   /** Earlier matching runs replaced by a newer one during the wait, oldest first. */
   movedFrom: number[];
-  /** `--workflow` without `--sha` found a run that had already finished: it may not be the one expected. */
+  /** `--workflow` without `--sha` found only a run that had already finished: it may not be the one expected. */
   alreadyComplete: boolean;
   /** Why the job list is missing, when the final read failed. */
   jobsError?: string;
@@ -195,7 +195,7 @@ export function renderRunDigest(input: RunDigestInput): string {
     out.push(`! a newer matching run started during the wait: ${[...input.movedFrom, run.id].join(" → ")}; results are for run ${run.id} only`);
   }
   if (input.alreadyComplete) {
-    out.push(`! run ${run.id} had already finished when the wait began; if a newer push or dispatch is expected, pass --sha <commit> to wait for that one`);
+    out.push(`! run ${run.id} had already finished when the wait began and no newer run started; to wait for a specific one, pass --run <id> or --sha <commit>`);
   }
   if (input.jobsError) out.push(`  (job list unavailable: ${input.jobsError})`);
   if (input.verdict === "failed") out.push(...failureLines(input.jobs.filter(failed), input.details));

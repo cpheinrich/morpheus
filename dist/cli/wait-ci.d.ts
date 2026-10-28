@@ -27,6 +27,12 @@ export declare function waitCiCommand(flags: WaitCiFlags, gh?: GhRunner): Promis
  * holding any ignored file other than its own lease, so state written there
  * would turn every finished task into a manual cleanup — and a session that
  * moves between worktrees of one repository is still one session.
+ *
+ * Only where Git ignores it. The agent may have `cd`'d into a repository that
+ * is not a Morpheus project — a third-party clone, a fork — and an untracked
+ * `local/` there is one `git add -A` from being committed into someone else's
+ * history. Such a repository gets no state, and so no refusal: the guard fails
+ * open, as it does everywhere else.
  */
 export declare function guardRoot(cwd: string): Promise<string | null>;
 export declare const guardDeps: GuardDeps;

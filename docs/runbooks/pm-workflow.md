@@ -216,8 +216,12 @@ For a run no pull request owns — TestFlight, a release, a nightly — wait on 
 ```sh
 morpheus wait-ci --run <id> [--repo owner/name] [--timeout 90m]
 morpheus wait-ci --workflow testflight.yml --branch main     # its latest run, following a newer one
-morpheus wait-ci --workflow ci.yml --sha <commit>            # exactly that push's run
+morpheus wait-ci --workflow ci.yml --sha <full-sha>          # exactly that push's run
 ```
+
+After `gh workflow run`, prefer `--run <id>` once the run is listed. `--workflow` holds a latest run
+that had already finished for 20 seconds in case a newer one is about to appear, then reports it
+with a warning that it may be the previous run.
 
 The poll guard that `morpheus context install` wires refuses the third `gh run view`,
 `gh run watch` or `gh pr checks` of one target in a session and prints the matching command.

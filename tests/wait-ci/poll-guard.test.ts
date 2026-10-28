@@ -86,8 +86,18 @@ describe("pollTargets", () => {
     'echo "gh run view 1"',
     "git log --oneline | grep 'gh pr checks'",
     "morpheus wait-ci --run 1",
+    // An id not visible in the line names a different run each call, and `wait-ci --run` would refuse it.
+    "gh run view $RUN_ID --json status",
+    "gh run view \"$(gh run list -L 1 --json databaseId -q '.[0].databaseId')\" --json status",
+    // A heredoc body is data being written, not a command being run.
+    "cat > notes.md <<'EOF'\ngh run view 999 --json status\nEOF",
+    "cat <<-EOF > x.sh\n\tgh pr checks 5\n\tEOF",
   ])("does not count %s", (command) => {
     expect(pollTargets(command, "/repo")).toEqual([]);
+  });
+
+  it("resumes counting after a heredoc ends", () => {
+    expect(pollTargets("cat > n.md <<EOF\ngh run view 1\nEOF\ngh run view 2 --json status", "/repo").map((t) => t.key)).toEqual(["run||2"]);
   });
 
   it("counts each poll in one line", () => {
@@ -205,7 +215,10 @@ describe("against real git, sh and the filesystem", () => {
     dir = await realpath(await mkdtemp(join(tmpdir(), "poll-guard-")));
     await mkdir(join(dir, "repo"));
     git(join(dir, "repo"), "init", "-q", "-b", "main");
-    git(join(dir, "repo"), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init");
+    // Every Morpheus scaffold ignores `local/`; the guard relies on it.
+    await writeFile(join(dir, "repo", ".gitignore"), "local/\n");
+    git(join(dir, "repo"), "add", ".gitignore");
+    git(join(dir, "repo"), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init");
     git(join(dir, "repo"), "worktree", "add", "-q", "--detach", join(dir, "task"));
   });
   afterEach(async () => {
@@ -216,6 +229,17 @@ describe("against real git, sh and the filesystem", () => {
     expect(await guardRoot(join(dir, "task"))).toBe(join(dir, "repo"));
     expect(await guardRoot(join(dir, "repo"))).toBe(join(dir, "repo"));
     expect(await guardRoot(dir)).toBeNull();
+  });
+
+  it("leaves a repository that does not ignore local/ untouched, and allows every poll there", async () => {
+    // An agent that `cd`s into a third-party clone must not plant an untracked
+    // file one `git add -A` away from someone else's history.
+    await mkdir(join(dir, "other"));
+    git(join(dir, "other"), "init", "-q", "-b", "main");
+    expect(await guardRoot(join(dir, "other"))).toBeNull();
+    const input = payload("gh pr checks 5", "foreign", { cwd: join(dir, "other") });
+    for (let i = 0; i < 4; i++) expect(await pollGuardCommand(async () => input, guardDeps)).toBe(0);
+    expect(git(join(dir, "other"), "status", "--porcelain", "--untracked-files=all")).toBe("");
   });
 
   it("refuses the third poll through the CLI entry point with real files", async () => {

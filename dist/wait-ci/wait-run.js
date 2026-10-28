@@ -2,6 +2,14 @@ import { EXIT, exitCode, failed } from "./checks.js";
 import { renderRunDigest } from "./digest.js";
 import { latestRun, parseRun, parseRunList, repoFromRunUrl, RUN_FIELDS, RUN_LIST_LIMIT, RUN_VIEW_FIELDS, runVerdict, } from "./runs.js";
 import { failureDetails, firstLine, MAX_POLL_ERRORS, NO_CHECKS_GRACE_MS, nextDelay } from "./wait.js";
+/**
+ * How long a latest run that had already finished — found by workflow and
+ * branch, not pinned by `--sha` — is held before it is reported. A run just
+ * dispatched or pushed is listed within seconds; returning the previous run's
+ * verdict at once hands an agent chaining on the exit code someone else's
+ * result. Inside the window a newer run is followed like any other move.
+ */
+export const ALREADY_COMPLETE_SETTLE_MS = 20_000;
 const repoArgs = (repo) => (repo ? ["--repo", repo] : []);
 async function viewRun(deps, id, repo) {
     const res = await deps.gh(["run", "view", String(id), ...repoArgs(repo), "--json", RUN_VIEW_FIELDS]);
@@ -95,9 +103,9 @@ export async function waitRun(deps, opts) {
             if (run)
                 selected = run;
         }
-        if (selected?.status === "completed")
-            break;
         const now = deps.now();
+        if (selected?.status === "completed" && !(alreadyComplete && now - start < ALREADY_COMPLETE_SETTLE_MS))
+            break;
         if (!selected && now - start >= NO_CHECKS_GRACE_MS)
             break;
         if (now >= deadline) {

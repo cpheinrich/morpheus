@@ -134,7 +134,7 @@ export function renderRunDigest(input) {
         out.push(`! a newer matching run started during the wait: ${[...input.movedFrom, run.id].join(" → ")}; results are for run ${run.id} only`);
     }
     if (input.alreadyComplete) {
-        out.push(`! run ${run.id} had already finished when the wait began; if a newer push or dispatch is expected, pass --sha <commit> to wait for that one`);
+        out.push(`! run ${run.id} had already finished when the wait began and no newer run started; to wait for a specific one, pass --run <id> or --sha <commit>`);
     }
     if (input.jobsError)
         out.push(`  (job list unavailable: ${input.jobsError})`);

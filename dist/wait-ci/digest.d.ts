@@ -46,7 +46,7 @@ export interface RunDigestInput {
     details: Map<string, FailureDetail>;
     /** Earlier matching runs replaced by a newer one during the wait, oldest first. */
     movedFrom: number[];
-    /** `--workflow` without `--sha` found a run that had already finished: it may not be the one expected. */
+    /** `--workflow` without `--sha` found only a run that had already finished: it may not be the one expected. */
     alreadyComplete: boolean;
     /** Why the job list is missing, when the final read failed. */
     jobsError?: string;

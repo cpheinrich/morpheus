@@ -179,6 +179,11 @@ function target(sub, args, cwd) {
         repo = url[1];
         run = url[2];
     }
+    // `$RUN_ID` or `$(gh run list …)` names a different run on each call, and
+    // `wait-ci --run` would refuse the suggestion; an id not visible here is
+    // unknown, like the interactive picker.
+    if (!/^\d+$/.test(run))
+        return null;
     return {
         kind: "run",
         key: `run|${repo ?? ""}|${run}`,
@@ -186,10 +191,30 @@ function target(sub, args, cwd) {
         waitCommand: `morpheus wait-ci --run ${shellWord(run)}${repoFlag(repo)}`,
     };
 }
+/**
+ * A heredoc's body is data — a note or a script being written — not commands
+ * this call runs, so a `gh run view` line inside one is not a poll.
+ */
+export function withoutHeredocBodies(command) {
+    const out = [];
+    let delimiter = null;
+    for (const line of command.split("\n")) {
+        if (delimiter) {
+            if ((delimiter.tabs ? line.replace(/^\t+/, "") : line) === delimiter.word)
+                delimiter = null;
+            continue;
+        }
+        out.push(line);
+        const start = /<<(-?)\s*(['"]?)([\w.-]+)\2/.exec(line);
+        if (start)
+            delimiter = { word: start[3], tabs: start[1] === "-" };
+    }
+    return out.join("\n");
+}
 /** Every CI poll in one command line, in order; a target polled twice in one line appears twice. */
 export function pollTargets(command, cwd = "") {
     const found = [];
-    for (const words of simpleCommands(command)) {
+    for (const words of simpleCommands(withoutHeredocBodies(command))) {
         const at = commandStart(words);
         if (at >= words.length || basename(words[at]) !== "gh")
             continue;

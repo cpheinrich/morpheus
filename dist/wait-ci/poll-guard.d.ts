@@ -34,6 +34,11 @@ export interface PollTarget {
 export declare function simpleCommands(command: string): string[][];
 /** A value pasted into the suggested command, quoted only when the shell would otherwise split or expand it. */
 export declare function shellWord(value: string): string;
+/**
+ * A heredoc's body is data — a note or a script being written — not commands
+ * this call runs, so a `gh run view` line inside one is not a poll.
+ */
+export declare function withoutHeredocBodies(command: string): string;
 /** Every CI poll in one command line, in order; a target polled twice in one line appears twice. */
 export declare function pollTargets(command: string, cwd?: string): PollTarget[];
 export interface GuardState {
