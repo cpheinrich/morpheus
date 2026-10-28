@@ -157,7 +157,7 @@ that. No follow-up turn was needed.
   "summary": "A fresh reviewer found one substantive and two minor defects. F1: Claude Code counts a trailing newline as an extra empty line, so every Read reaching end-of-file failed the content check and earned nothing while the session stayed in enforcement mode; cleared under a condition the author met in f4d3bb34 by comparing in the tool's numbering, fixing the fixture shape and adding whole-file, tail, exactness and refresh tests. F2: AGENTS.md is injected without a tool call, so an enforced session is refused once for CLAUDE.md; the instructions now name it, and crediting the injected copy is an open question for Chris. F3: the refusal now names the shell-output credit limit and the MORPHEUS_READ_EVIDENCE=off escape. No follow-up turn was needed.",
   "findings": [
     {
-      "id": "F1",
+      "id": "RV-F1",
       "severity": "substantive",
       "description": "src/session/read-hook.ts compared editor-numbered lines with the Read result, but Claude Code numbers a trailing newline as one more empty line, so a Read reaching end-of-file returns the text with its final newline and every such Read was discarded while the session stayed in enforcement mode.",
       "paths": ["src/session/read-hook.ts", "tests/session-evidence.test.ts"],
@@ -177,7 +177,7 @@ that. No follow-up turn was needed.
       "conditionMet": "In f4d3bb34: readPayload sends content with the trailing newline and totalLines one above the editor count; added whole-file, tail, exactly-one-newline and whole-file-refresh tests; pnpm exec vitest run tests/session-evidence.test.ts passed 38/38; pnpm typecheck passed; pnpm compile regenerated dist/session/read-hook.js and its map, committed with the source. Re-applying the old comparison fails the new tests."
     },
     {
-      "id": "F2",
+      "id": "RV-F2",
       "severity": "minor",
       "description": "Providers inject AGENTS.md/CLAUDE.md without a tool call, so an agent following AGENTS.md (read decisions, learned, inbox, refresh) is always refused once for CLAUDE.md in enforcement mode.",
       "paths": ["AGENTS.md", "src/init/templates.ts", "dist/init/templates.js", "dist/init/templates.js.map", "tests/agent-instructions.test.ts"],
@@ -185,7 +185,7 @@ that. No follow-up turn was needed.
       "response": "AGENTS.md and the scaffold template now list AGENTS.md in the first read and say why; tests assert the wording in both. Crediting the injected copy instead would be an exception to the settled startup-never-certifies decision, so it is raised as an open question rather than taken."
     },
     {
-      "id": "F3",
+      "id": "RV-F3",
       "severity": "minor",
       "description": "The refusal suggested sed without the 20 KB credit limit and pointed at context install --check, which cannot detect a wired hook that misreads results; the documented escape appeared only in the runbook.",
       "paths": ["src/cli/context.ts", "dist/cli/context.js", "dist/cli/context.js.map", "tests/session-evidence.test.ts"],
