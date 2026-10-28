@@ -49,4 +49,52 @@ the focused and full suites exercise their material boundaries.
 
 ## Independent review
 
-Pending.
+Independent normal-risk review found one substantive content-validation gap: empty Markdown
+scaffolding could satisfy a required section. The reviewer conditionally cleared a bounded fix;
+empty fenced blocks, multiline comments and empty list items are now rejected in both project and
+canonical-ingestion regressions, and the required focused evidence passed.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "d7e003382761d185535feafc46a8e5f23ad1f18a",
+  "reviewed": "f44af28c07d13ac840691b616c0f84274766f712",
+  "covered": "9b5c113c57ce84980543b6bb5bd8eafbd3fc5085",
+  "authorSession": "01a17f15-284b-7731-888a-14a5ef62d00f",
+  "reviewerSession": "/root/priority_notes_review",
+  "risk": "normal",
+  "elapsedMinutes": 1.9174333333333333,
+  "timing": {
+    "source": "clock",
+    "durationMs": 115046,
+    "evidence": "Author clock around /root/priority_notes_review initial invocation: 1793216514401 to 1793216629447 ms since epoch."
+  },
+  "outcome": "complete",
+  "summary": "Independent normal-risk review found one substantive content-validation gap. The reviewer conditionally cleared the bounded fix, and empty Markdown scaffolding is now rejected with focused project and canonical-ingestion evidence.",
+  "findings": [
+    {
+      "id": "PNF-1",
+      "severity": "substantive",
+      "description": "Markdown syntax alone could satisfy required priority sections, so an empty fenced block, multiline HTML comment or empty list marker passed as meaningful content.",
+      "paths": [
+        "src/team/note-structure.ts",
+        "src/meeting-intake/git.ts"
+      ],
+      "disposition": "fixed",
+      "response": "The content scan now ignores fenced blocks, strips multiline HTML comments and removes empty blockquote, list and task markers before deciding whether rendered content remains. Regressions cover each empty shape and canonical Git ingestion.",
+      "condition": {
+        "paths": [
+          "src/team/note-structure.ts",
+          "tests/team.test.ts",
+          "tests/meeting-intake.test.ts",
+          "dist/team/note-structure.js",
+          "dist/team/note-structure.js.map",
+          "dist/team/note-structure.d.ts"
+        ],
+        "evidence": "Add regressions rejecting empty fenced blocks, multiline comments and empty list items, including one canonical Git-ingestion case; run the focused team and meeting-intake suites, typecheck, compile and git diff --check."
+      },
+      "conditionMet": "Commit 9b5c113c changes only allowed condition paths. The team and meeting-intake suites passed 52 tests; typecheck, compile and git diff --check passed."
+    }
+  ]
+}
+```
