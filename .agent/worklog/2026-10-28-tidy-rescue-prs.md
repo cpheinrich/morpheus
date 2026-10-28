@@ -146,7 +146,7 @@ tests/gh-manager.test.ts` 152 passed; the seven focused files 221 passed; `pnpm 
   "summary": "High-risk review of churn reset, replay dedupe and the manager age-out, cleared on one condition. F1 (substantive, conditional): a git rm --cached file was reset over as churn; fixed by refusing any index removal still on disk before commit or reset, which also fixes the older F2 loss in the rescue path. Minor F3 (on-trunk only when the checkout fast-forwards), F4 (age-out promise only where the manager policy closes) and F5 (close before the marker comment) were fixed by the author.",
   "findings": [
     {
-      "id": "F1",
+      "id": "F-1",
       "severity": "substantive",
       "description": "A path removed from the index with git rm --cached but kept on disk was classified as user-state (or on-trunk once trunk untracked it), and reset --hard overwrote the newer file while the report claimed it was recoverable from the commit.",
       "paths": ["src/session/trunk-churn.ts", "src/session/trunk-rescue.ts"],
@@ -172,7 +172,7 @@ tests/gh-manager.test.ts` 152 passed; the seven focused files 221 passed; `pnpm 
       "conditionMet": "tests/trunk-rescue.test.ts 'refuses a file removed from the index but kept on disk, rather than resetting over it' untracks xcuserdata, keeps a newer file, then untracks it on trunk too; both runs are skipped with the content intact and no PR or branch. With the refusal disabled it fails with outcome churn. vitest on trunk-churn, trunk-rescue and gh-manager: 152 passed; pnpm typecheck and pnpm compile passed at 7446038d."
     },
     {
-      "id": "F2",
+      "id": "F-2",
       "severity": "incidental",
       "description": "Pre-existing since #362: in the ordinary rescue and duplicate paths a staged deletion whose file is still on disk is recorded only as a deletion, invisible to the content proof, and reset --hard overwrites the file.",
       "paths": ["src/session/trunk-rescue.ts"],
@@ -180,7 +180,7 @@ tests/gh-manager.test.ts` 152 passed; the seven focused files 221 passed; `pnpm 
       "response": "The F1 refusal runs before the rescue commit is built, so it covers the rescue and duplicate paths too; the refusal is documented in the context-freshness runbook."
     },
     {
-      "id": "F3",
+      "id": "F-3",
       "severity": "minor",
       "description": "on-trunk assumed the fast-forward after the reset, which never runs for a checkout with local trunk commits, so such an edit was reset to HEAD's version.",
       "paths": ["src/session/trunk-churn.ts", "src/session/trunk-rescue.ts", "tests/trunk-churn.test.ts", "tests/trunk-rescue.test.ts"],
@@ -188,7 +188,7 @@ tests/gh-manager.test.ts` 152 passed; the seven focused files 221 passed; `pnpm 
       "response": "classifyChurn passes trunk entries only when HEAD is an ancestor of the fetched trunk, else null; classifyChanges treats null as unknown so nothing, including a deletion, is called on-trunk. Unit and fixture tests cover the ahead checkout."
     },
     {
-      "id": "F4",
+      "id": "F-4",
       "severity": "minor",
       "description": "The rescue PR body promised the GitHub Manager would close the draft in every project, though most have no manager policy and the draft would stay open while telling readers to ignore it.",
       "paths": ["src/session/trunk-rescue.ts", "tests/trunk-rescue.test.ts", "docs/runbooks/context-freshness.md"],
@@ -196,7 +196,7 @@ tests/gh-manager.test.ts` 152 passed; the seven focused files 221 passed; `pnpm 
       "response": "The sentence is included only when the fetched trunk's .github/morpheus-gh-manager.json leaves the manager enabled and closing on; tests cover present, absent and close-disabled policies."
     },
     {
-      "id": "F5",
+      "id": "F-5",
       "severity": "minor",
       "description": "The close marker comment was posted before gh pr close; if the close failed, the next sweep read the marker as a person reopening it and left the draft open with no label.",
       "paths": ["src/gh-manager/decision.ts", "dist/gh-manager/decision.js", "dist/gh-manager/decision.js.map", "tests/gh-manager.test.ts"],
