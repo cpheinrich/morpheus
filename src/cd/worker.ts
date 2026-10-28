@@ -6,7 +6,7 @@ import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkLocalReview } from "../review/local.js";
-import { type AgentResult, type CdConfig, type CdState, type QuotaSnapshot, hash } from "./schema.js";
+import { type AgentResult, type AgentWork, type CdConfig, type CdState, type QuotaSnapshot, hash } from "./schema.js";
 import { after, adoptRepair, completeOperationalRepair, invariant, quotaUsed, repairWork, sourceAt } from "./state.js";
 import { GitHubStore } from "./store.js";
 import { ActionsAdapter } from "./actions.js";
@@ -17,6 +17,14 @@ import { verifyRepairChecks } from "./repair-checks.js";
 const exec = promisify(execFile);
 function quotaInvariant(condition: unknown, message: string): asserts condition { if (!condition) throw new QuotaReadError(message); }
 function paused(state: CdState, intentId: string): boolean { return state.pauses.some(pause => ["all", intentId, state.intents[intentId]!.channel].includes(pause.scope)); }
+function selectDefaultRepair(state: CdState, now: string): AgentWork | undefined {
+  const at = Date.parse(now), lastStart = (work: AgentWork) => Date.parse(work.invocations.at(-1)?.startedAt ?? work.createdAt);
+  const due = Object.values(state.agents).filter(work => work.state !== "complete" && Date.parse(work.nextCheckAt) <= at && (!work.lease || Date.parse(work.lease.expiresAt) <= at));
+  // Sort a derived array, never the ledger. Retry scheduling/checkpoint counts
+  // cannot renew priority; ties use code-unit IDs consistently across hosts.
+  due.sort((left, right) => lastStart(left) - lastStart(right) || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+  return due.find(work => !state.intents[work.intentId]?.postResumeKey && !paused(state, work.intentId)) ?? due[0];
+}
 export const agentResultSchema = { type: "object", additionalProperties: false, properties: { outcome: { type: "string", enum: ["repaired", "checkpoint", "blocked"] }, summary: { type: "string" }, pullRequest: { type: "string" }, sourceSha: { type: "string" }, reviewHead: { type: "string" }, evidence: { type: "array", items: { type: "string" } }, missingCapability: { type: "string" } }, required: ["outcome", "summary", "pullRequest", "sourceSha", "reviewHead", "evidence", "missingCapability"] };
 function claudeModelWindows(model: string): string[] {
   const family = model.toLowerCase().match(/^(?:claude-)?(opus|fable|sonnet|haiku)(?:$|[-\[])/)?.[1];
@@ -130,7 +138,7 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
   invariant(options.executor === "local" || options.hostId === undefined, "Host identity is only supported for local workers");
   const hostId = options.executor === "local" ? options.hostId ?? hostname() : undefined;
   invariant(hostId === undefined || /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,254}$/.test(hostId), "Local host identity must be a stable nonempty identifier");
-  const snapshot = await store.read(), work = options.workId ? snapshot.state.agents[options.workId] : Object.values(snapshot.state.agents).find(item => item.state !== "complete" && Date.parse(item.nextCheckAt) <= Date.parse(now) && (!item.lease || Date.parse(item.lease.expiresAt) <= Date.parse(now)));
+  const snapshot = await store.read(), work = options.workId ? snapshot.state.agents[options.workId] : selectDefaultRepair(snapshot.state, now);
   if (!work || work.state === "complete") return { state: "idle" };
   if (snapshot.state.intents[work.intentId]?.postResumeKey) return { state: "observe-post-resume", workId: work.id };
   if (paused(snapshot.state, work.intentId)) return { state: "paused", workId: work.id };
