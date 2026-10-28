@@ -158,3 +158,135 @@ with both appended entries kept, and the test was repeated.
 - **The payload's `updated_at` has the format the guard requires.** The live value
   `2026-10-28T21:53:21Z` matched `^[0-9]{4}-…T…Z$`, so supersession is decided in practice, not only
   in fixtures.
+
+
+## Independent review
+
+One fresh reviewer session, `ae671b109cbdc0980` (Claude Code subagent), took three turns at high
+risk. The risk is high because `pr / conventions` gates merges in every consuming repository.
+
+**Turn 1 (`11c65d90`): complete, blocked on F1.**
+- **F1, substantive.** The in-step pass would attach to the old SHA as `pr / conventions`. A
+  force-push back to that SHA would then show a green required check with nothing checked, and
+  indefinitely if no new run is triggered, while `wait-ci` reported green.
+- The reviewer cleared F1 only on condition that the records be corrected and Chris explicitly
+  accept the residual.
+- **F2, minor.** No test covered a non-SHA event head.
+
+**Response.** I did not ask for that acceptance. I removed the residual with the `head` job and a
+required job named from its decision (`824de7b5`), and added the event-head case for F2. Trunk was
+merged at `3949688b`, with a hand-resolved conflict that kept both appended `.agent/decisions.md`
+entries, and the result was verified live on #544.
+
+**Turn 2 (`009a13c4`): cleared.**
+- F1 and F2 resolved, confirmed against live runs 40775626807, 40775510146 and 40775473903.
+- **N1, minor.** Creating the required check only after `head` finishes lengthens the existing
+  window in which an older genuine pass stands after approval is withdrawn on an unchanged head.
+  Document it as a cost.
+- **I1, incidental, pre-existing.** `wait-ci` reports green when a required check has never
+  reported.
+
+**Response.** N1 is documented in the decision entry (`55d831a3`). I1 is filed as backlog
+MO-26-10-28-15.00.57 in records PR #546. It went in a separate PR because only this worklog may
+change after the covered commit; trunk brings it here.
+
+**Turn 3 (`55d831a3`): finalization-only, cleared.** The reviewer attested that the N1 decision
+prose restates behaviour it had already reviewed.
+
+**Timing.**
+- Turns 1 and 2 use the runner's `duration_ms` for each invocation.
+- The finalization turn uses author clock readings. Its runner figure, 351347 ms, exceeded the 46.6
+  seconds of wall-clock time the turn actually took, so it cannot be a per-turn measurement.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "322d6746e1817f5de0837ad7494479f7ad215656",
+  "reviewed": "11c65d90bb4df8f407838c8ae1f6d0199ccd0142",
+  "covered": "55d831a36c2e183cb153458710b7fa91fac6f7e8",
+  "authorSession": "a30537dd92e4505ce",
+  "reviewerSession": "ae671b109cbdc0980",
+  "risk": "high",
+  "elapsedMinutes": 8.486366666666667,
+  "timing": {
+    "source": "runner",
+    "durationMs": 509182,
+    "evidence": "Agent tool result for the initial invocation of reviewer agent ae671b109cbdc0980 reported duration_ms 509182; author clock immediately before the invocation read 2026-10-28T21:32:51.215Z (1793223171215)."
+  },
+  "outcome": "complete",
+  "summary": "Turn 1 (high risk) reviewed the in-step superseded pass. The shell was correct under bash -e, shellcheck was clean, and the tests ran the step's real script and caught a weakened comparison or malformed values. F1 (substantive): a force-push back to a superseded SHA would show a green pr / conventions with nothing checked, possibly indefinitely, and wait-ci would report green; this was cleared only on condition that the records be corrected and Chris explicitly accept it. F2 (minor): no test covered a non-SHA event head. The author removed the residual by redesign instead, and the same reviewer confirmed in turn 2 that F1 and F2 are resolved.",
+  "trunkIntegrations": [
+    {
+      "commit": "3949688b038b0f3c04fc3abe25b356b1b8b4eea3",
+      "reason": "Hand-resolved conflict in .agent/decisions.md: this branch's decision entry and trunk's profiling entry were both appended at the end; both were kept intact. The reviewer inspected the resolution in turn 2."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "substantive",
+      "description": "An in-step pass attached to the superseded SHA as the required pr / conventions. After a force-push back to that SHA it was a green required check with nothing checked, until a new run reported or indefinitely if none was triggered, and wait-ci reported green; before the change that state was red.",
+      "paths": [".github/workflows/pr-check.yml", ".agent/decisions.md", "docs/runbooks/independent-review.md", ".agent/worklog/2026-10-28-pass-superseded-runs.md"],
+      "disposition": "fixed",
+      "response": "Fixed by redesign in 824de7b5. A head job decides supersession first; the required job, which needs it and runs under always(), is named superseded only on proof of a move. So a superseded pass is pr / superseded and never pr / conventions. A failed or cancelled head, a lagging read, or a late move fails pr / conventions. Live runs on #544 confirmed the naming. Turn 2 cleared it."
+    },
+    {
+      "id": "F2",
+      "severity": "minor",
+      "description": "No test exercised the non-SHA event-head rejection, so removing the EXPECTED_HEAD =~ $sha clause would have passed every test.",
+      "paths": ["tests/workflows.test.ts"],
+      "disposition": "fixed",
+      "response": "Added the 'event head not a SHA' case to the head-decision tests in 824de7b5; the mutant that drops the clause is killed. Turn 2 confirmed it."
+    },
+    {
+      "id": "N1",
+      "severity": "minor",
+      "description": "Because conventions now needs head, the required check run is created only after head finishes: about 6 s normally, longer under a runner backlog. This lengthens the existing window in which an older genuine pass stands after approval is withdrawn on an unchanged head.",
+      "paths": [".agent/decisions.md"],
+      "disposition": "fixed",
+      "response": "Documented in the decision entry (55d831a3) as an accepted cost: the measured timing and the lengthened pre-existing window. The finalization turn attested that the prose restates the reviewed behaviour."
+    },
+    {
+      "id": "I1",
+      "severity": "incidental",
+      "description": "wait-ci reports green when a required check has never reported, for example a draft whose conventions job was skipped, or a head returned to a superseded SHA, while GitHub still blocks the merge.",
+      "paths": ["src/wait-ci/checks.ts"],
+      "disposition": "deferred",
+      "response": "Pre-existing, and outside this PR; another agent owns src/wait-ci/. Filed as backlog MO-26-10-28-15.00.57 in records PR #546, which says to coordinate with the wait-ci extension MO-26-10-28-14.09.01.",
+      "roadmap": "MO-26-10-28-15.00.57"
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "ae671b109cbdc0980",
+      "commit": "009a13c4398d3fb70b4a7a390d661dd8c1ad0f1b",
+      "outcome": "cleared",
+      "elapsedMinutes": 4.288783333333333,
+      "timing": {
+        "source": "runner",
+        "durationMs": 257327,
+        "evidence": "Runner result for the first SendMessage resume of reviewer agent ae671b109cbdc0980 reported duration_ms 257327 (relayed by the parent session); author clock at send read 2026-10-28T21:54:07.179Z (1793224447179)."
+      },
+      "summary": "The author fixed F1 by redesign rather than through the records-only condition. A head job compares the event's head with the live PR and decides superseded only on proof of a move. The required job runs under always(), needs head, fails unless head succeeded, and is named superseded only on that decision. A superseded pass therefore never carries the required name, even after a force-push back to the old SHA, and every other path fails closed. Live runs 40775626807, 40775510146 and 40775473903 on #544 confirm the naming, that no leftover required check is created, and the late-move failure. F2 is fixed, and the 17 focused tests pass. F1 and F2 are resolved. N1 (minor): creating the required check later lengthens an existing stale-pass window and should be documented. I1 (incidental): wait-ci reports green when a required check never reported. Cleared."
+    },
+    {
+      "reviewerSession": "ae671b109cbdc0980",
+      "commit": "55d831a36c2e183cb153458710b7fa91fac6f7e8",
+      "scopeReason": "Finalizes the N1 decision prose, which documents the later creation of the required check and the lengthened stale-pass window caused by the head job topology.",
+      "finalization": {
+        "paths": [".agent/decisions.md"],
+        "evidence": "git show 55d831a3: it touches only .agent/decisions.md. The added text matches the turn-2 measurement: pr / conventions is created once pr / head finishes (21:52:32 against 21:52:38 in CI run 40775510146 on #544), and this lengthens the existing window in which an older genuine pass stands after approval is withdrawn on an unchanged head.",
+        "attestation": "The change only restates behaviour already reviewed and cleared in turn 2, recording it as an accepted cost in the decision entry; it adds no implementation, test or policy change."
+      },
+      "outcome": "cleared",
+      "elapsedMinutes": 0.7761166666666667,
+      "timing": {
+        "source": "clock",
+        "durationMs": 46567,
+        "evidence": "Author clock read 2026-10-28T21:59:53.417Z (1793224793417) immediately before the second SendMessage resume of reviewer agent ae671b109cbdc0980, and 2026-10-28T22:00:39.984Z (1793224839984) at the first reading after its completion notice. The runner's duration_ms of 351347 exceeds that wall-clock interval, so it is not a per-turn measurement and was not used."
+      },
+      "summary": "The decision entry now records N1, the later creation of pr / conventions and the stale-pass window it lengthens, as an accepted cost, and this matches the reviewed behaviour. The review is cleared with N1 addressed."
+    }
+  ]
+}
+```
