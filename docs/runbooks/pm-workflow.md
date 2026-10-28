@@ -79,7 +79,14 @@ another session, confirm that session has ended before using `--release-stale-se
 the command still checks for open processes and preserves all other safety proofs.
 `morpheus pm worktrees` inventories legacy sibling worktrees;
 `morpheus pm worktrees prune` clears only Git registrations whose directories are
-already missing. Do not delete directories directly: Git registration and branches
+already missing and unlocked, preserving their branches. Pruning reads Git registrations
+from the caller checkout; it does not require a full inventory of other checkouts. Existing
+directories (including those missing their `.git` file), locked registrations, and all branch
+refs remain untouched. Removal touches only the matching Git administrative registration,
+never the checkout directory, so a concurrently restored checkout keeps its files (its
+registration may need repair). `--dry-run` lists eligible registrations without removing them.
+Branch-only cleanup after a worktree registration is gone still requires manual resolution.
+Do not delete directories directly: Git registration and branches
 must be reconciled together.
 
 ## Blocking
@@ -226,7 +233,10 @@ and a board that lags reality stops being read — thirteen items had drifted be
 Running it after a merge instead leaves the status change in a dirty working tree on protected
 `main` with nowhere to go, which is how a housekeeping step gets quietly dropped. `morpheus pm ship`
 still exists for running it deliberately, and `morpheus pm ship <ID>` for work that shipped without
-a PR it can see.
+a PR it can see. `morpheus pm ship --check` reports merged-PR reconciliation without
+writing roadmap files. It cannot be combined with
+explicit item IDs: that combination exits 1 before changing any item. It does not
+check whether manually selected work is ready to ship.
 
 It confirms against a merged PR rather than inferring from a missing branch, and writes nothing when
 `gh` is unavailable. It also reports merged branches that were never deleted — those read as live

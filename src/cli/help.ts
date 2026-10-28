@@ -23,7 +23,8 @@ Usage
   morpheus pm block <MO-051> --needs "<what would unblock this>" [--owner <handle>]
                             [--context "<where it stopped>"]
   morpheus pm unblock <MO-051>
-  morpheus pm ship [<MO-020> ...]  [--check]
+  morpheus pm ship [--check]  — reconcile merged PRs; --check reports without writing
+  morpheus pm ship <MO-020> ...  — mark explicit items shipped; cannot use --check
   morpheus pm migrate-ids   [--check] — integer roadmap ids to the dated scheme (MO-057)
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus review prepare   independent local review handoff and worklog template [--base <ref>]
@@ -78,6 +79,17 @@ Usage
   morpheus init             [--name <Acme>] [--prefix XX] [--kind company|personal|internal]
   morpheus init status      [--offline]
   morpheus init done | doing | todo <task-id>
+  morpheus skills list      [--json] — discover reusable Morpheus project skills
+  morpheus skills sync      [--check] — add missing loader-native skill entrypoints;
+                            existing project-owned skill files are never overwritten
+  morpheus meeting-intake guide
+                            shared Gemini note-intake procedure and delivery boundaries
+  morpheus meeting-intake index --source <absolute-repo> --revision <ref> [--check]
+                            project an exact canonical Git revision when the profile declares one
+  morpheus meeting-intake search [--query <text>] [--topic <slug>] [--limit 1-20]
+                            bounded metadata search; same-repo profiles need no projection
+  morpheus meeting-intake notification --state <journal> --meeting <source-id>
+                            format, but never send, a fully verified current-intake notice
   morpheus tokens build     [--source hq/brand/tokens.json] [--css <path>] [--ts <path>]
                             [--prefix brand] [--check]
   morpheus context refresh  take a receipt — run it after reading the canonical records
@@ -173,6 +185,7 @@ Options
   --no-hq        Skip /hq and Google sign-in
   --no-browser   Do not open browser-backed login or Firebase-console recovery
   --check        Verify indexes are current without writing; exits non-zero if stale
+  --json         Print machine-readable output where the command supports it
   --offline      Declare the context-freshness offline exception (same as
                  MORPHEUS_OFFLINE=1), and skip the network checks in "init status",
                  "doctor" and "context refresh|check|status" that it would answer

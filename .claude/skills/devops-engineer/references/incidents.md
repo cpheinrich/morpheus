@@ -28,6 +28,31 @@ failure, change the diagnostic route rather than polling unchanged data. Turn an
 into a regression at its real boundary, including a representative retained provider shape when
 possible. Keep source/synthetic evidence distinct from live delivery proof.
 
+## Before declaring a hard blocker
+
+Write a compact record in the existing incident or worklog, rather than creating another queue:
+
+| Field | Required evidence |
+|---|---|
+| What failed | Exact symptom, source/run identity and observation time; what is known versus suspected. |
+| Why it prevents progress | The external limit, missing capability or human-only decision; the source of any policy constraint and whether the current mandate still requires it. |
+| Attempts and results | Reasonable authorized diagnoses, fixes and alternative routes actually tried, with their observed outcomes. |
+| Options exhausted | What else could work and why each reasonable option is unavailable, unsafe, outside authority or disproportionate. An available option is the next action. |
+| Required action and continuation | The smallest action only another principal can take, what work continues independently, and the next useful evidence/event. |
+
+A hard blocker requires exhaustion of reasonable options, not a fixed attempt count. Keep an
+unresolved technical failure in diagnosis or repair while another reasonable route remains.
+For example, an upload wrapper's generic catch does not establish an Apple rejection: inspect the
+failing boundary and restore safe diagnostics. If the original upload remains uncertain, preserve
+its identity and use the controller's supported fresh-build recovery after its required checks.
+Never replay the uncertain upload to obtain a better error.
+
+Likewise, distinguish an actual spending limit from internal allocations. Apply the current
+mandate's spending policy; do not ask for a top-up merely because stale reservations occupy an
+internal counter. Missing credentials, an exhausted authorized budget or an ungranted action may
+be hard blockers, but document the evidence and the reasonable alternatives first. No diagnosis
+permits borrowing credentials, bypassing review, falsifying a receipt or exceeding authority.
+
 ## Supervision contract
 
 For a future automated deployment, specify who computes eligibility and deadlines, which events

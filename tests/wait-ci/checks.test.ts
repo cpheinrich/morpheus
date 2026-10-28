@@ -70,11 +70,27 @@ describe("parseRollup", () => {
       headSha: "59cb7d56ee05e3784d640a0497b7a8e03a5c4219",
       truncated: false,
       checks: [
-        { name: "node / check", workflow: "CI", outcome: "pass", url: "https://github.com/cpheinrich/morpheus/actions/runs/37724037716/job/113138012168", required: true, startedAt: "2026-10-08T03:43:05Z", jobId: "113138012168" },
-        { name: "agent-review / review", workflow: "CI", outcome: "skipped", url: "https://github.com/cpheinrich/morpheus/actions/runs/37724037716/job/113138012168", required: false, startedAt: "2026-10-08T03:43:05Z", jobId: "113138012168" },
+        { name: "node / check", workflow: "CI", suiteId: "suite-CI", workflowId: "workflow-CI", outcome: "pass", url: "https://github.com/cpheinrich/morpheus/actions/runs/37724037716/job/113138012168", required: true, startedAt: "2026-10-08T03:43:05Z", jobId: "113138012168" },
+        { name: "agent-review / review", workflow: "CI", suiteId: "suite-CI", workflowId: "workflow-CI", outcome: "skipped", url: "https://github.com/cpheinrich/morpheus/actions/runs/37724037716/job/113138012168", required: false, startedAt: "2026-10-08T03:43:05Z", jobId: "113138012168" },
         { name: "Vercel", outcome: "pending", url: "https://vercel.com/x", required: false, startedAt: "2026-10-08T03:43:00Z" },
       ],
     });
+  });
+
+  it("refuses a check whose suite identity is missing", () => {
+    const row = { ...run("required", "COMPLETED", "SUCCESS"), checkSuite: null };
+    expect(parseRollup(rollup("abc", [row]))).toEqual({ error: "check required has no check suite identity" });
+  });
+
+  it("keeps a required commit status separate from the same-named Actions job", () => {
+    const result = parseRollup(rollup("abc", [
+      run("test", "COMPLETED", "SUCCESS", { required: true }),
+      { __typename: "StatusContext", context: "test", state: "FAILURE", isRequired: true },
+    ]));
+    expect(result).not.toHaveProperty("error");
+    if ("error" in result) throw new Error(result.error);
+    expect(result.checks.map((c) => c.outcome)).toEqual(["pass", "fail"]);
+    expect(verdict(result.checks)).toBe("failed");
   });
 
   it("flags a second page of contexts rather than silently dropping it", () => {
@@ -95,16 +111,17 @@ describe("parseRollup", () => {
 });
 
 describe("dedupe", () => {
-  it("keeps the most recently started check of a name, across workflows, as branch protection does", () => {
-    const raced = { name: "pr / conventions", workflow: "CI", outcome: "fail" as const, required: true, startedAt: "2026-10-08T04:19:14Z" };
-    const relabelled = { name: "pr / conventions", workflow: "Review metadata", outcome: "pass" as const, required: true, startedAt: "2026-10-08T04:19:19Z" };
-    expect(dedupe([raced, relabelled])).toEqual([relabelled]);
-    expect(dedupe([relabelled, raced])).toEqual([relabelled]);
+  it("preserves required checks from distinct workflow runs in either order", () => {
+    const raced = { name: "pr / conventions", workflow: "CI", suiteId: "suite-CI", workflowId: "workflow-CI", outcome: "fail" as const, required: true, startedAt: "2026-10-08T04:19:14Z" };
+    const relabelled = { name: "pr / conventions", workflow: "Review metadata", suiteId: "suite-metadata", workflowId: "workflow-metadata", outcome: "pass" as const, required: true, startedAt: "2026-10-08T04:19:19Z" };
+    expect(dedupe([raced, relabelled])).toEqual([raced, relabelled]);
+    expect(verdict(dedupe([raced, relabelled]))).toBe("failed");
+    expect(dedupe([relabelled, raced])).toEqual([relabelled, raced]);
   });
 
   it("a queued replacement (no startedAt) supersedes an earlier failure, in either order", () => {
-    const failedRun = { name: "pr / conventions", workflow: "CI", outcome: "fail" as const, required: true, startedAt: "2026-10-08T04:19:14Z" };
-    const queued = { name: "pr / conventions", workflow: "Review metadata", outcome: "pending" as const, required: true };
+    const failedRun = { name: "pr / conventions", workflow: "CI", suiteId: "suite-CI", workflowId: "workflow-CI", outcome: "fail" as const, required: true, startedAt: "2026-10-08T04:19:14Z" };
+    const queued = { name: "pr / conventions", workflow: "CI", suiteId: "suite-CI", workflowId: "workflow-CI", outcome: "pending" as const, required: true };
     expect(dedupe([failedRun, queued])).toEqual([queued]);
     expect(dedupe([queued, failedRun])).toEqual([queued]);
     expect(settled(dedupe([failedRun, queued, { name: "node / check", outcome: "pass", required: true, startedAt: "2026-10-08T04:19:00Z" }]))).toBe(false);
@@ -116,7 +133,17 @@ describe("dedupe", () => {
     expect(dedupe([a, b])).toEqual([a, b]);
     expect(verdict(dedupe([a, b]))).toBe("failed");
     expect(checkKey(a)).not.toBe(checkKey(b));
-    expect(checkKey({ ...a, required: true })).toBe(checkKey({ ...b, required: true }));
+    expect(checkKey({ ...a, required: true })).not.toBe(checkKey({ ...b, required: true }));
+  });
+
+  it("only supersedes attempts of the same workflow identity, not display name", () => {
+    const failedRun: Check = { name: "pr / conventions", workflow: "CI", suiteId: "suite-1", workflowId: "workflow-1", outcome: "fail", required: true, startedAt: "2026-10-25T05:37:16Z" };
+    const otherRun: Check = { ...failedRun, suiteId: "suite-2", workflowId: "workflow-2", outcome: "pass", startedAt: "2026-10-25T05:40:48Z" };
+    const rerun: Check = { ...failedRun, suiteId: "suite-3", outcome: "pass", startedAt: "2026-10-25T05:42:17Z" };
+    expect(dedupe([failedRun, otherRun])).toEqual([failedRun, otherRun]);
+    expect(dedupe([failedRun, otherRun, rerun])).toEqual([rerun, otherRun]);
+    expect(dedupe([rerun, otherRun, failedRun])).toEqual([rerun, otherRun]);
+    expect(checkKey(failedRun)).not.toBe(checkKey({ ...failedRun, workflowId: undefined }));
   });
 
   it("lets the later row win a tie, and keeps distinct names", () => {

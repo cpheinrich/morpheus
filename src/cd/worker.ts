@@ -74,7 +74,7 @@ export async function scheduleHosted(config: CdConfig, store: GitHubStore, now: 
   if (!hosted) return;
   const snapshot = await store.read(), actions = new ActionsAdapter(store.api, config);
   for (const work of Object.values(snapshot.state.agents)) {
-    if (work.state === "complete" || paused(snapshot.state, work.intentId) || Date.parse(work.nextCheckAt) > Date.parse(now)) continue;
+    if (snapshot.state.intents[work.intentId]?.postResumeKey || work.state === "complete" || paused(snapshot.state, work.intentId) || Date.parse(work.nextCheckAt) > Date.parse(now)) continue;
     const running = work.invocations.at(-1);
     if (running && !running.endedAt && work.lease && Date.parse(work.lease.expiresAt) > Date.parse(now)) continue;
     if (!running && Date.parse(now) - Date.parse(work.createdAt) < config.deadlines.admissionMinutes * 60_000) continue;
@@ -94,6 +94,7 @@ export async function scheduleHosted(config: CdConfig, store: GitHubStore, now: 
     const claim = await store.transact(`hosted-dispatch-${invocationId}-${ordinal}`, "claim-hosted-agent-dispatch", now, state => {
       const current = state.agents[work.id]!;
       invariant(current.state !== "complete", "Repair task already completed");
+      invariant(!state.intents[current.intentId]?.postResumeKey, "Post-resume acceptance cannot launch a repair model");
       invariant(!paused(state, current.intentId), "Repair is explicitly paused");
       invariant(!current.lease || Date.parse(current.lease.expiresAt) <= Date.parse(now), "Repair agent lease is still live");
       if (!current.invocations.some(item => item.id === invocationId)) current.invocations.push({ id: invocationId, executor: "hosted", startedAt: now, dispatchState: "uncertain", runIds: [] });
@@ -130,6 +131,7 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
   invariant(hostId === undefined || /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,254}$/.test(hostId), "Local host identity must be a stable nonempty identifier");
   const snapshot = await store.read(), work = options.workId ? snapshot.state.agents[options.workId] : Object.values(snapshot.state.agents).find(item => item.state !== "complete" && Date.parse(item.nextCheckAt) <= Date.parse(now) && (!item.lease || Date.parse(item.lease.expiresAt) <= Date.parse(now)));
   if (!work || work.state === "complete") return { state: "idle" };
+  if (snapshot.state.intents[work.intentId]?.postResumeKey) return { state: "observe-post-resume", workId: work.id };
   if (paused(snapshot.state, work.intentId)) return { state: "paused", workId: work.id };
   invariant(!options.taskDigest || options.taskDigest === work.taskDigest, "Hosted task digest differs from immutable repair task");
   invariant(hash(work.task) === work.taskDigest, "Durable task was altered");
@@ -154,7 +156,8 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
     const claimedAt = new Date().toISOString(), used = quotaUsed(measured, claimedAt);
     invariant(used !== undefined && used < config.budget.subscriptionAdmitBelowPercent, "Subscription admission telemetry expired or threshold reached before claim");
     const current = state.agents[work.id]!; invariant(current.state !== "complete" && (!current.lease || Date.parse(current.lease.expiresAt) <= Date.parse(claimedAt)), "Agent work already owned");
-    invariant(!paused(state, current.intentId), "Repair is explicitly paused");
+    invariant(!state.intents[current.intentId]?.postResumeKey, "Post-resume acceptance cannot launch a repair model");
+      invariant(!paused(state, current.intentId), "Repair is explicitly paused");
     invariant(!Object.values(state.agents).some(other => other.id !== current.id && other.lease && Date.parse(other.lease.expiresAt) > Date.parse(claimedAt) && other.invocations.at(-1)?.executor === options.executor), "This subscription executor already has an in-flight reservation");
     const fence = (state.fences[current.id] ?? 0) + 1; state.fences[current.id] = fence;
     current.lease = { owner: invocationId, expiresAt: after(claimedAt, config.deadlines.agentMinutes + 2), fence }; current.state = "running";

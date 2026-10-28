@@ -46,6 +46,38 @@ export const configSchema = z.object({
     if (groups && (new Set(groups).size !== groups.length || groups.includes(app.internalGroupId) || groups.includes(app.validationGroupId ?? ""))) context.addIssue({ code: "custom", path: ["channels", name, "externalGroupIds"], message: "external groups must be unique and separate from internal/validation groups" });
   }
 });
+export const budgetSpendingPolicySchema = z.object({
+  mode: z.literal("spend-as-needed"), campaignId: z.string().regex(/^[A-Za-z0-9_.:-]{1,160}$/),
+  capMicros: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  authorizationRef: z.string().trim().min(10).max(2048), adoptedAt: timestamp,
+}).strict();
+export type BudgetSpendingPolicy = z.infer<typeof budgetSpendingPolicySchema>;
+const postResumeId = z.string().regex(/^[A-Za-z0-9_.:-]{1,160}$/);
+export const postResumeOriginSchema = z.object({
+  kind: z.literal("post-resume-acceptance-v1"), campaignId: postResumeId,
+  purpose: z.literal("replyloss-and-wake-v1"), historyDigest: digest, resumeDigest: digest,
+  sourceSha: sha, iosTreeSha: sha, previousIosTreeSha: sha, receiptIosTreeSha: sha,
+  sourceReviewRef: z.string().min(10).max(2048), createdAt: timestamp,
+}).strict();
+export const postResumeQualificationSchema = z.object({
+  fingerprint: digest, qualifiedAt: timestamp, expiresAt: timestamp,
+  executionDeadlineAt: timestamp, evidenceRef: z.string().min(10).max(2048),
+}).strict();
+export type PostResumeOrigin = z.infer<typeof postResumeOriginSchema>;
+export type PostResumeQualification = z.infer<typeof postResumeQualificationSchema>;
+export const postResumeExecutionProofSchema = z.object({
+  quiescenceDigest: digest, authorityClosureDigest: digest, evidenceRef: z.string().min(10).max(2048),
+  fingerprint: digest, qualifiedAt: timestamp, expiresAt: timestamp,
+}).strict();
+export const postResumeAcceptanceSchema = z.object({
+  origin: postResumeOriginSchema, intentId: postResumeId,
+  qualifications: z.array(postResumeQualificationSchema).min(1),
+  yielded: z.object({ attemptId: postResumeId, at: timestamp }).strict().optional(),
+  releases: z.record(digest.or(postResumeId), postResumeExecutionProofSchema.extend({ identityDigest: digest, leaseOwner: z.string().min(1), fence: z.number().int().positive(), at: timestamp }).strict()),
+  groups: z.record(digest, z.object({ attemptId: postResumeId, groupId: z.string().min(1), buildId: z.string().min(1), claimedAt: timestamp, observedAt: timestamp.optional() }).strict()),
+}).strict();
+export type PostResumeAcceptance = z.infer<typeof postResumeAcceptanceSchema>;
+
 export type CdConfig = z.infer<typeof configSchema>;
 export type Channel = "staging" | "production";
 export interface SourceRevision { sha: string; inputDigest: string; mainEnteredAt: string; evidence: { kind: "merged-pr" | "observed"; ref: string }; order: number }
@@ -85,7 +117,7 @@ export interface DeliveryIntent {
   id: string; channel: Channel; slot: string; originalSource: string; source: string; selectedMainEnteredAt: string; oldestDebtAt: string;
   lineage: { source: string; inputDigest: string; mainEnteredAt: string; reason: string; evidence: string }[];
   coveredSources: string[]; coveredSlots: string[]; validation: boolean; isolatedValidation: boolean; groupId: string; createdAt: string; deadlineAt: string;
-  sourceAgeWaiver?: SourceAgeWaiver;
+  sourceAgeWaiver?: SourceAgeWaiver; postResumeKey?: string;
   state: "pending" | "testing" | "uploading" | "processing" | "delivered" | "repairing" | "waiting" | "paused";
   nextAction: string; nextCheckAt: string; blocker?: string; attempts: Attempt[]; receipt?: Receipt; eligibleAt?: string; external?: ExternalStatus;
 }
@@ -96,6 +128,7 @@ export interface AgentWork {
 export interface AgentResult { outcome: "repaired" | "checkpoint" | "blocked"; summary: string; pullRequest?: string; sourceSha?: string; reviewHead?: string; evidence: string[]; missingCapability?: string }
 export interface CdState {
   schemaVersion: 1; epoch: string; repository: string; configurationDigest: string; initializedAt: string;
+  postResumeAcceptances?: Record<string, PostResumeAcceptance>;
   transitions: Record<string, { at: string; result: unknown; owner?: string }>; sources: SourceRevision[]; lastMain?: string;
   evaluatedSlots: Partial<Record<Channel, string>>; cursors: Partial<Record<Channel, { sourceSha: string; order: number; receiptId: string }>>;
   slots: { channel: Channel; slot: string; decision: "intent" | "no-change" | "covered" | "missed"; intentId?: string }[];
@@ -105,7 +138,7 @@ export interface CdState {
   groupCursors: Record<string, { sourceSha: string; order: number; receiptId: string }>;
   externalReviews?: Record<string, ExternalReview>;
   pauses: { scope: string; actor: string; reason: string; resumeCondition: string; createdAt: string; human: boolean }[];
-  budget: { spentMicros: number; reservations: Record<string, { digest: string; maximumMicros: number; status: "reserved" | "settled"; actualMicros?: number }>; telemetry: Record<string, QuotaSnapshot> };
+  budget: { spendingPolicy?: BudgetSpendingPolicy; spentMicros: number; reservations: Record<string, { digest: string; maximumMicros: number; status: "reserved" | "settled"; actualMicros?: number }>; telemetry: Record<string, QuotaSnapshot> };
 }
 export interface QuotaSnapshot { observedAt: string; windows: { id: string; usedPercent: number; resetsAt: string }[]; source: string; model?: string }
 export interface CdEvent { id: string; at: string; kind: string; data: unknown; owner?: string }
@@ -121,6 +154,8 @@ export function parseState(value: unknown): CdState {
   // State revisions are never silently reset or interpreted as an empty ledger.
   const state = value as CdState;
   if (!state || state.schemaVersion !== 1 || !state.epoch || !state.repository || !state.transitions || !state.intents || !Array.isArray(state.sources) || !state.builds || !state.budget || !state.agents || !state.fences || !Array.isArray(state.slots) || !Array.isArray(state.pauses)) throw new Error("Invalid or unsupported CD state; an explicit lossless migration is required");
+  if (state.postResumeAcceptances !== undefined) z.record(digest, postResumeAcceptanceSchema).parse(state.postResumeAcceptances);
+  if (state.budget.spendingPolicy !== undefined) budgetSpendingPolicySchema.parse(state.budget.spendingPolicy);
   for (const intent of Object.values(state.intents)) {
     if (!Array.isArray(intent.attempts) || !Array.isArray(intent.lineage) || !intent.originalSource || !intent.oldestDebtAt || !intent.deadlineAt) throw new Error("Incomplete durable delivery intent");
     if (intent.state === "delivered" && !intent.receipt) throw new Error("Delivered intent is missing immutable receipt");

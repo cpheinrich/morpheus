@@ -3,12 +3,12 @@ import { constants } from "node:fs";
 import { open, readFile } from "node:fs/promises";
 import { dirname, resolve, basename } from "node:path";
 import { randomUUID } from "node:crypto";
-import { configSchema, configurationDigest, hash } from "./schema.js";
+import { budgetSpendingPolicySchema, configSchema, configurationDigest, hash } from "./schema.js";
 import { GhApi, GitHubStore } from "./store.js";
 import { ActionsAdapter, uploadEvidence } from "./actions.js";
 import { AppleAdapter, AppleHttp } from "./apple.js";
 import { Controller, status } from "./controller.js";
-import { checkIdentity, claimUpload, createIntent, invariant, recordTests, recordUpload, repairWork, sourceAt, reservePaid, settlePaid } from "./state.js";
+import { assertPostResumeNewEffect, checkIdentity, claimUpload, createIntent, invariant, recordTests, recordUpload, repairWork, sourceAt, budgetStatus, setBudgetSpendingPolicy, reservePaid, settlePaid } from "./state.js";
 import { verifyConfiguration, verifySource, verifyValidator } from "./source.js";
 import { runWorker, scheduleHosted, QuotaReader } from "./worker.js";
 import { githubToken, probeGitHubToken } from "./github-token.js";
@@ -24,6 +24,7 @@ const HELP = `morpheus cd config|init|tick|request|status|verify-execution|claim
   record --kind repair-diagnostic --evidence FILE  Bounded data for an existing failed repair
   upload-hook --phase before|resource|after
   worker --executor local|hosted [--host-id ID] [--work-id ID --invocation-id ID --task-digest SHA256]
+  budget --operation spend-as-needed --campaign ID --cap-micros N --authorization-ref REF
   budget --operation reserve|settle --id ID [--request FILE --maximum-micros N|--actual-micros N]
     reserve [--authority FILE --authority-digest SHA256]  Explicit reviewed source CI grant
 All results are JSON. Upload claim exit 3 means skip safely; never retry bytes.
@@ -62,8 +63,8 @@ export function environmentIdentity(environment) {
     const value = (name) => required(environment[name], name);
     return { schemaVersion: 1, intentId: value("MORPHEUS_CD_INTENT_ID"), attemptId: value("MORPHEUS_CD_ATTEMPT_ID"), dispatchEffectId: value("MORPHEUS_CD_DISPATCH_EFFECT_ID"), sourceSha: value("MORPHEUS_CD_SOURCE_SHA"), controlSha: value("MORPHEUS_CD_CONTROL_SHA"), runId: value("GITHUB_RUN_ID"), runAttempt: value("GITHUB_RUN_ATTEMPT") };
 }
-export async function verifyExecution(config, store, actions, sourceDir, identity, environment) {
-    const snapshot = await store.read(), { intent, attempt } = checkIdentity(snapshot.state, identity);
+async function verifyExecutionFacts(config, store, actions, sourceDir, identity, environment, supplied) {
+    const snapshot = supplied ?? await store.read(), { intent, attempt } = checkIdentity(snapshot.state, identity);
     verifyConfiguration(config, attempt.configurationDigest);
     verifySource(sourceDir, config, attempt.sourceSha, attempt.appInputDigest);
     invariant(!environment.MORPHEUS_CD_APP_INPUT_DIGEST || environment.MORPHEUS_CD_APP_INPUT_DIGEST === attempt.appInputDigest, "Dispatch input digest mismatch");
@@ -72,8 +73,27 @@ export async function verifyExecution(config, store, actions, sourceDir, identit
     actions.verifyRun(run, attempt);
     invariant(String(run.run_attempt) === identity.runAttempt, "Execution run attempt differs from GitHub");
     invariant(!snapshot.state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope)), "Delivery is paused");
-    await store.transact(`verify-${attempt.id}-${identity.runId}-${identity.runAttempt}`, "verify-execution", new Date().toISOString(), state => { checkIdentity(state, identity); return { runId: identity.runId }; });
+    return { snapshot, intent, attempt };
+}
+function executionAuthority(config, state, identity) {
+    const { intent, attempt } = checkIdentity(state, identity);
+    assertPostResumeNewEffect(state, config, intent, attempt, new Date().toISOString());
+}
+/** New native/archive authority, including exact replay, always checks current ownership. */
+export async function verifyExecution(config, store, actions, sourceDir, identity, environment) {
+    const snapshot = await store.read();
+    executionAuthority(config, snapshot.state, identity);
+    const { intent, attempt } = await verifyExecutionFacts(config, store, actions, sourceDir, identity, environment, snapshot);
+    await store.transact(`verify-${attempt.id}-${identity.runId}-${identity.runAttempt}`, "verify-execution", new Date().toISOString(), state => { executionAuthority(config, state, identity); return { runId: identity.runId }; });
+    // Store replay skips its callback. A release can also win during source/provider reads.
+    if (intent.postResumeKey)
+        executionAuthority(config, (await store.read()).state, identity);
     return { authorized: true, intentId: intent.id, attemptId: attempt.id, channel: intent.channel, sourceSha: attempt.sourceSha, controlSha: attempt.controlSha, appInputDigest: attempt.appInputDigest, configurationDigest: attempt.configurationDigest, buildNumber: attempt.buildNumber, app: config.channels[intent.channel] };
+}
+/** Identity/provenance observation only; never grants native execution or writes a verify claim. */
+export async function verifyExecutionProvenance(config, store, actions, sourceDir, identity, environment) {
+    const { intent, attempt } = await verifyExecutionFacts(config, store, actions, sourceDir, identity, environment);
+    return { verified: true, intentId: intent.id, attemptId: attempt.id };
 }
 async function uploadGroupPreflight(config, store, identity, environment) {
     const { intent, attempt } = checkIdentity((await store.read()).state, identity);
@@ -88,6 +108,7 @@ export async function cd(argv, environment = process.env) {
             "source-age-waiver": { type: "string" },
             executor: { type: "string" }, "host-id": { type: "string" }, "work-id": { type: "string" }, "invocation-id": { type: "string" }, "task-digest": { type: "string" },
             operation: { type: "string" }, id: { type: "string" }, request: { type: "string" }, "maximum-micros": { type: "string" }, "actual-micros": { type: "string" },
+            campaign: { type: "string" }, "cap-micros": { type: "string" }, "authorization-ref": { type: "string" },
             authority: { type: "string" }, "authority-digest": { type: "string" },
             help: { type: "boolean", short: "h" }, json: { type: "boolean" }, revoke: { type: "boolean" }, probe: { type: "boolean" },
         } });
@@ -98,6 +119,13 @@ export async function cd(argv, environment = process.env) {
         const allowed = new Set(["config", "operation", "id", "request", "maximum-micros", "authority", "authority-digest", "json"]);
         for (const key of Object.keys(values))
             invariant(allowed.has(key), `Reviewed source budget reserve does not accept --${key}`);
+    }
+    const spendingPolicy = values.campaign !== undefined || values["cap-micros"] !== undefined || values["authorization-ref"] !== undefined || values.operation === "spend-as-needed";
+    if (spendingPolicy) {
+        invariant(positionals.length === 1 && positionals[0] === "budget" && values.operation === "spend-as-needed" && !sourceAuthority && !values.help, "Spending policy flags are only valid for explicit budget spend-as-needed");
+        const allowed = new Set(["config", "operation", "campaign", "cap-micros", "authorization-ref", "json"]);
+        for (const key of Object.keys(values))
+            invariant(allowed.has(key), `Spending policy does not accept --${key}`);
     }
     if (values.kind === "repair-diagnostic") {
         invariant(positionals.length === 1 && positionals[0] === "record" && !values.help, "Repair diagnostics require the explicit record command without help");
@@ -131,7 +159,7 @@ export async function cd(argv, environment = process.env) {
             break;
         case "status": {
             const snapshot = await store.read();
-            result = { head: snapshot.head, epoch: snapshot.state.epoch, mode: config.mode, intents: status(snapshot.state, now), slots: snapshot.state.slots, agents: snapshot.state.agents, budget: snapshot.state.budget, pauses: snapshot.state.pauses };
+            result = { head: snapshot.head, epoch: snapshot.state.epoch, mode: config.mode, intents: status(snapshot.state, now), slots: snapshot.state.slots, agents: snapshot.state.agents, budget: snapshot.state.budget, budgetStatus: budgetStatus(snapshot.state, config), pauses: snapshot.state.pauses };
             break;
         }
         case "tick": {
@@ -163,7 +191,7 @@ export async function cd(argv, environment = process.env) {
             await verifyExecution(config, store, actions, sourceDir, evidence, environment);
             await uploadGroupPreflight(config, store, evidence, environment);
             try {
-                const claim = await store.transact(`upload-claim-${evidence.attemptId}`, "claim-upload", now, state => ({ uploadOperationId: claimUpload(state, config, evidence, now) }));
+                const claim = await store.transact(`upload-claim-${evidence.attemptId}`, "claim-upload", now, state => ({ uploadOperationId: claimUpload(state, config, evidence, state.intents[evidence.intentId]?.postResumeKey ? new Date().toISOString() : now) }));
                 console.log(JSON.stringify({ authorized: !claim.replayed, ...claim.result, reason: claim.replayed ? "already-claimed-reconcile-existing-operation" : "new-upload-claim" }));
                 return claim.replayed ? 3 : 0;
             }
@@ -188,7 +216,7 @@ export async function cd(argv, environment = process.env) {
                 try {
                     await verifyExecution(config, store, actions, sourceDir, identity, environment);
                     await uploadGroupPreflight(config, store, identity, environment);
-                    const claim = await store.transact(`upload-claim-${identity.attemptId}`, "claim-upload", now, state => ({ uploadOperationId: claimUpload(state, config, common, now) }));
+                    const claim = await store.transact(`upload-claim-${identity.attemptId}`, "claim-upload", now, state => ({ uploadOperationId: claimUpload(state, config, common, state.intents[identity.intentId]?.postResumeKey ? new Date().toISOString() : now) }));
                     console.log(JSON.stringify({ authorized: !claim.replayed, ...claim.result }));
                     return claim.replayed ? 3 : 0;
                 }
@@ -222,7 +250,11 @@ export async function cd(argv, environment = process.env) {
                 const tests = evidence;
                 await validatePayloadFiles(tests, path);
                 verifyValidator(sourceDir, tests);
-                await verifyExecution(config, store, actions, sourceDir, tests, environment);
+                const target = (await store.read()).state.intents[tests.intentId];
+                if (target?.postResumeKey)
+                    await verifyExecutionProvenance(config, store, actions, sourceDir, tests, environment);
+                else
+                    await verifyExecution(config, store, actions, sourceDir, tests, environment);
                 result = await store.transact(`tests-${tests.attemptId}-${hash(tests).slice(0, 24)}`, "record-full-tests", now, state => { recordTests(state, config, tests); return { attemptId: tests.attemptId, testEvidenceHash: hash(tests) }; });
             }
             else if (values.kind === "failure") {
@@ -247,6 +279,18 @@ export async function cd(argv, environment = process.env) {
             break;
         }
         case "budget": {
+            if (values.operation === "spend-as-needed") {
+                const input = { campaignId: required(values.campaign, "--campaign"), capMicros: Number(required(values["cap-micros"], "--cap-micros")), authorizationRef: required(values["authorization-ref"], "--authorization-ref") };
+                // Validate before reading or writing the ledger; the transaction rechecks its live identity.
+                const policy = budgetSpendingPolicySchema.parse({ mode: "spend-as-needed", ...input, adoptedAt: now });
+                const transaction = await store.transact(`budget-policy-${hash(input)}`, "budget-spend-as-needed", now, state => setBudgetSpendingPolicy(state, config, input, now));
+                result = transaction;
+                const final = (await store.read()).state;
+                invariant(final.configurationDigest === configurationDigest(config), "Budget policy configuration differs from ledger");
+                const current = final.budget.spendingPolicy;
+                invariant(hash(current) === hash(transaction.result) && current?.campaignId === policy.campaignId && current.capMicros === policy.capMicros && current.authorizationRef === policy.authorizationRef, "Spending policy replay differs from current policy");
+                break;
+            }
             const id = required(values.id, "--id");
             if (values.operation === "reserve") {
                 if (sourceAuthority) {

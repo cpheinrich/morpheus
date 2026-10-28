@@ -504,11 +504,20 @@ needed.
   of discoverable procedure. `launch-company` owns the cross-provider greenfield path from an
   optional domain purchase through a verified public site and role-gated `/hq`; provider
   commands remain the deterministic implementation beneath it.
+- **The loaders' local `SKILL.md` frontmatter is the project skill index.** Morpheus does not add a
+  second `morpheus-skills.json` whose names and descriptions could drift. One typed registry in
+  `src/project-skills.ts` classifies each reusable skill's providers, project kinds and distribution
+  mode; it derives descriptions from the rendered frontmatter and drives `morpheus init`,
+  `morpheus skills list [--json]` and the idempotent `morpheus skills sync [--check]`. Sync adds
+  only missing entrypoints and reports malformed existing ones without overwriting project-owned
+  files. A test compares the registry with both canonical skill directories, so adding a canonical
+  skill without declaring it project-facing or Morpheus-only fails CI instead of disappearing from
+  older projects.
 - **`agentic-cto`** is how an agent runs an outcome delegated with authority and a budget: a
   written mandate, design before building, parallel delegation, a reserved spend ledger, evidence
   before claims, and the gates a mandate never opens. Its canonical files live only in Morpheus's
   two skill directories and `morpheus cto guide` prints them; `morpheus init` gives every project
-  kind a one-file pointer to that command, added to an existing project by re-running `init`.
+  kind a one-file pointer to that command, while `morpheus skills sync` adds it to an older project.
   Morpheus's `references/provenance.md` traces each rule to the direction it came from.
 - **`research-engineer`** is the first individual-contributor skill under the CTO: hands-on ML and
   algorithm research that frames the problem, benchmarks before building, iterates in rounds,
@@ -516,6 +525,8 @@ needed.
   and distributed the same way — canonical files beside `agentic-cto`, printed by
   `morpheus cto guide research-engineer` (a reference as `research-engineer/<reference>`), and a
   one-file pointer from `morpheus init` — and the CTO's mandate, budget and gates apply to it.
+  Its record puts the ask, plain-language results and decision in a concise body, with detailed
+  tables, metric formulas and reproducibility evidence in bottom appendices.
 - **`devops-engineer`** owns CI/CD delivery health and incident follow-through under the same
   mandate. It distinguishes eligible deadlines and actual availability from process health,
   resumes existing repair ownership and keeps memory in durable incident records. It uses the
@@ -686,6 +697,16 @@ implementation, decision promotion, and every other follow-up belong in separate
 reviewers can distinguish what happened in the meeting from what an agent later inferred from it.
 A roadmap follow-up backfills filed ids into the note's `roadmap:` field; that link is bookkeeping,
 not interpretation.
+
+**Gemini meeting intake is shared machinery with project-owned topology.** On its second use,
+Morpheus owns the discovery extension, project-policy validation, immutable Git reader,
+deduplication, bounded search, optional catalog projection and completion-notice gate. A project's
+`.morpheus/meeting-intake.json` owns its collaborators, source account, topic vocabulary,
+canonical repository/directory, timezone, optional projection and notification authority. The
+canonical repository may be the project itself; a catalog is never mandatory merely because Evo
+projects Darwin-owned notes. Source interpretation, redaction, participant resolution and factual
+writing remain agent judgment under the shared guide. Historical imports are notes only and cannot
+promote actions or pass the notice gate.
 
 Git rather than cloud storage because these are small, textual, appear in PR diffs, and are
 greppable with no authentication. Indexing markdown later is easy; migrating off a bespoke store is
@@ -3224,7 +3245,10 @@ blocking line is the missing `agent-reviewed` label is labelled as that race, no
 failure. Before the default all-checks wait reports green, it also confirms that current-head
 Actions runs have finished and rereads the check rollup. A run can be queued before its job check
 appears; visible passing checks alone do not prove completion. `--required-only` retains its
-required-check scope. Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
+required-check scope. Check-run identity includes the stable Actions workflow ID and job name, so a
+metadata workflow cannot replace another workflow's failed required job. Only rerun attempts
+inside the same workflow supersede each other; missing suite identity refuses the receipt.
+Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
 
 ### 18.2 Reusable GitHub workflows
 
@@ -3483,6 +3507,17 @@ canonical diagnostic JSON through the same CAS/event store without changing
 execution, ownership, source, policy, clocks or funding. Current-target checks
 guard each new append; a verified immutable note receipt survives later normal
 owner progression without granting applicability or restarting work.
+A separate post-resume acceptance origin can prepare uncounted validation work
+without changing the original campaign journal or enrolling ordinary deliveries.
+The normal Store binds its closed origin, qualifications, zero-effect yield and
+owned execution-release records. Ordinary demand wins every new optional effect
+claim with fresh time on each CAS retry. A quiesced unknown optional upload keeps
+its same active source/build/claim for readback instead of retiring or retargeting.
+Its additive internal membership claim has one stable invocation owner; unknown
+replies stay read-only until positive membership appears. Normal ordinary group
+ownership, cursor monotonicity and old retired observation-only behavior remain.
+This is a source boundary, not consumer adoption or fault/operational authority;
+see [the post-resume contract](docs/cd-pipeline-v2.md#additive-post-resume-recovery-acceptance-source-boundary).
 A **repair-only control** ([runbook](docs/runbooks/cd-repair-control.md)) can hold new repair-agent admission
 for one exact supplemental validation intent: a namespaced `repair:<intent>` pause that existing delivery
 gates ignore, enforced only by a worker-only entry around an injected unchanged `runWorker` and released
@@ -3527,6 +3562,18 @@ Existing configured hosted normalization is unchanged; removing that route is an
 explicit consumer configuration migration, not a silent ledger reset. Source-level
 tests do not establish actual two-Mac readiness or failover acceptance.
 
+An explicitly human-authorized campaign may opt into a durable spend-as-needed budget
+policy through the normal audited `cd budget` transaction. The optional ledger policy
+records campaign/cap/authorization/time without changing configuration or epoch.
+Ordinary admission then checks recorded spend plus only the current bounded operation;
+old request maxima are audit records, not internal holds. Original IDs/digests, unknown
+operations and real settlement tombstones remain intact. Status reports zero internal
+holds and remaining against recorded spend, with unsettled operations/overspend visible;
+it makes no provider-balance/final-invoice or simultaneous-spend guarantee. Real late
+costs remain recordable. Default reservation/config250 and subscription80/90 policy
+remains for ledgers that have not explicitly opted in. See
+[the spending policy](docs/cd-v2-controller.md#human-authorized-spend-as-needed-campaigns).
+
 Administrative source publication funding has one explicit, optional budget-reserve
 path in `src/cd/source-finance.ts`. A strict independently reviewed grant pins the
 exact source request, repository, existing epoch, supplied and stored native
@@ -3535,8 +3582,8 @@ admission window. Values belong to the engagement, never shared campaign constan
 The existing owner-bound GitHub CAS and complete envelope receipt readback remain
 required; checks precede replay and repeat with fresh time/liability in every CAS
 callback. Native schema, ordinary paid reservation admission and controller behavior
-remain unchanged. The configured at-most-$250 guard in `reservePaid` and ordinary
-`cd budget reserve` refuses new paid reservations that would exceed it; exact old
+remain unchanged. Without the explicit spending-policy opt-in, the configured at-most-$250 guard in
+`reservePaid` and ordinary `cd budget reserve` refuses new paid reservations that would exceed it; exact old
 reserved paid identities still replay. Local delivery intent creation, attempt
 planning and dispatch are not gated by this dollar guard and retain their existing
 controls. A source grant itself authorizes no native operation. The

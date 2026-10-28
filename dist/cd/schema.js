@@ -47,6 +47,33 @@ export const configSchema = z.object({
             context.addIssue({ code: "custom", path: ["channels", name, "externalGroupIds"], message: "external groups must be unique and separate from internal/validation groups" });
     }
 });
+export const budgetSpendingPolicySchema = z.object({
+    mode: z.literal("spend-as-needed"), campaignId: z.string().regex(/^[A-Za-z0-9_.:-]{1,160}$/),
+    capMicros: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    authorizationRef: z.string().trim().min(10).max(2048), adoptedAt: timestamp,
+}).strict();
+const postResumeId = z.string().regex(/^[A-Za-z0-9_.:-]{1,160}$/);
+export const postResumeOriginSchema = z.object({
+    kind: z.literal("post-resume-acceptance-v1"), campaignId: postResumeId,
+    purpose: z.literal("replyloss-and-wake-v1"), historyDigest: digest, resumeDigest: digest,
+    sourceSha: sha, iosTreeSha: sha, previousIosTreeSha: sha, receiptIosTreeSha: sha,
+    sourceReviewRef: z.string().min(10).max(2048), createdAt: timestamp,
+}).strict();
+export const postResumeQualificationSchema = z.object({
+    fingerprint: digest, qualifiedAt: timestamp, expiresAt: timestamp,
+    executionDeadlineAt: timestamp, evidenceRef: z.string().min(10).max(2048),
+}).strict();
+export const postResumeExecutionProofSchema = z.object({
+    quiescenceDigest: digest, authorityClosureDigest: digest, evidenceRef: z.string().min(10).max(2048),
+    fingerprint: digest, qualifiedAt: timestamp, expiresAt: timestamp,
+}).strict();
+export const postResumeAcceptanceSchema = z.object({
+    origin: postResumeOriginSchema, intentId: postResumeId,
+    qualifications: z.array(postResumeQualificationSchema).min(1),
+    yielded: z.object({ attemptId: postResumeId, at: timestamp }).strict().optional(),
+    releases: z.record(digest.or(postResumeId), postResumeExecutionProofSchema.extend({ identityDigest: digest, leaseOwner: z.string().min(1), fence: z.number().int().positive(), at: timestamp }).strict()),
+    groups: z.record(digest, z.object({ attemptId: postResumeId, groupId: z.string().min(1), buildId: z.string().min(1), claimedAt: timestamp, observedAt: timestamp.optional() }).strict()),
+}).strict();
 export function canonical(value) {
     if (Array.isArray(value))
         return `[${value.map(canonical).join(",")}]`;
@@ -61,6 +88,10 @@ export function parseState(value) {
     const state = value;
     if (!state || state.schemaVersion !== 1 || !state.epoch || !state.repository || !state.transitions || !state.intents || !Array.isArray(state.sources) || !state.builds || !state.budget || !state.agents || !state.fences || !Array.isArray(state.slots) || !Array.isArray(state.pauses))
         throw new Error("Invalid or unsupported CD state; an explicit lossless migration is required");
+    if (state.postResumeAcceptances !== undefined)
+        z.record(digest, postResumeAcceptanceSchema).parse(state.postResumeAcceptances);
+    if (state.budget.spendingPolicy !== undefined)
+        budgetSpendingPolicySchema.parse(state.budget.spendingPolicy);
     for (const intent of Object.values(state.intents)) {
         if (!Array.isArray(intent.attempts) || !Array.isArray(intent.lineage) || !intent.originalSource || !intent.oldestDebtAt || !intent.deadlineAt)
             throw new Error("Incomplete durable delivery intent");
