@@ -50,6 +50,16 @@ The fresh high-risk independent review cleared the exact integrated implementati
   },
   "outcome": "complete",
   "summary": "The fresh high-risk independent review cleared the exact integrated implementation with no findings or conditions; 141 independent focused tests passed with zero skips.",
-  "findings": []
+  "findings": [],
+  "trunkIntegrations": [
+    {
+      "commit": "9668d45b0e9ca65b4b92483b5099e7967c41a982",
+      "reason": "Integrate protected trunk0887908f after review. Retained common base and both full appended decisions; regenerated the conflicting worker source map from the mechanically combined TypeScript. Incoming worker change prints the review-floor waiver and came through protected543. No capability-wait logic conflict; integrated354 focused worker/control/repair-check/local-review tests, typecheck and compile passed."
+    }
+  ]
 }
 ```
+
+After clearance, protected main advanced to0887908f. The normal merge refused the conflicting branch; Root integrated it under the runbook trunk-integration rule, preserving both decision appends and regenerating the source-map conflict. `pnpm typecheck`, `pnpm compile` and 354 focused tests across native-worker/worker/repair-control/repair-checks/local-review passed, zero skips. The incoming change prints the trivial-review floor waiver; it does not change the new wait predicate. The named merge preserves the original reviewer, timing, coverage and findings history.
+
+GitHub also returned one non-test changes check as in_progress despite success, completed_at and every step completed. That contradictory provider result and the original wait remain preserved privately, not relabeled as completed output. Required exact-head checks were independently green; the protected non-admin merge path remained authoritative and exposed the genuine trunk conflict. No workflow was cancelled or rerun. New integrated-head CI is required before merge.
