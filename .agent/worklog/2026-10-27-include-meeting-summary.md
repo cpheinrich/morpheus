@@ -37,11 +37,9 @@ owns the full suite.
 
 ## Independent review
 
-Independent normal-risk review found one substantive backward-compatibility issue and cleared it
-on an exact condition. Summary validation had applied even to profiles that did not opt in, so an
-extraneous malformed summary could block an Evo-style notice. The bounded correction moves that
-validation inside the opt-in branch and adds an exact-output regression for an opted-out profile.
-All condition evidence passed.
+Independent normal-risk review found one substantive opt-in compatibility issue; the exact
+conditional correction now ignores malformed summary data for profiles that did not request
+summaries, and all focused evidence passed.
 
 ```morpheus-review
 {
