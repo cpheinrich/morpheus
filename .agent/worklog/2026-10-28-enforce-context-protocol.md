@@ -122,7 +122,9 @@ some agents took receipts with `cat … >/dev/null && morpheus context refresh`.
 
 ## Review
 
-A fresh reviewer (Claude Code subagent `a3ace64aaa978f7c6`, high risk, 634,309 ms by the runner)
+A fresh reviewer found one substantive and two minor defects. F1: Claude Code counts a trailing newline as an extra empty line, so every Read reaching end-of-file failed the content check and earned nothing while the session stayed in enforcement mode; cleared under a condition the author met in f4d3bb34 by comparing in the tool's numbering, fixing the fixture shape and adding whole-file, tail, exactness and refresh tests. F2: AGENTS.md is injected without a tool call, so an enforced session is refused once for CLAUDE.md; the instructions now name it, and crediting the injected copy is an open question for Chris. F3: the refusal now names the shell-output credit limit and the MORPHEUS_READ_EVIDENCE=off escape. No follow-up turn was needed.
+
+In more detail (record ids `RV-F1`–`RV-F3`): the reviewer (Claude Code subagent `a3ace64aaa978f7c6`, high risk, 634,309 ms by the runner)
 reviewed `b941a2b4` and returned one substantive and two minor findings, outcome complete. F1:
 Claude Code counts a file's trailing newline as an extra empty line, so every Read reaching
 end-of-file failed the content check and earned nothing, while the session was still in
