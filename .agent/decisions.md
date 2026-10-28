@@ -1853,8 +1853,18 @@ following fail `pr / conventions` with their reason:
   protection);
 - a move after `head` decided.
 
-`cancel-in-progress` stays out, because a cancelled required check blocks merges. The cost is one
-small extra job per conventions run and a new `pr / head` check that is not required.
+`cancel-in-progress` stays out, because a cancelled required check blocks merges. The costs:
+
+- one small extra job per conventions run;
+- a new `pr / head` check that is not required;
+- a later `pr / conventions` check run. GitHub creates it only once `head` finishes: about 6 s
+  normally (21:52:32 against 21:52:38 on #544), and minutes under a runner backlog.
+
+The third cost lengthens a window that already existed. When approval is withdrawn on an unchanged
+head (a review label removed, the `review-record:` line deleted), the head's older pass stands as
+its only conventions result until the new run reports. That pass is a genuine check of the same
+tree. A manual merge or a GitHub Manager sweep in that window could still use it. This was accepted
+as the price of never letting a superseded pass carry the required name.
 
 ## Profiling reads every Codex rollout; the floor waiver is printed, not recorded — 2026-10-28
 
