@@ -8,7 +8,7 @@ import { Decision, inert, type LiveState, planDecision, planNoDecision, planRout
 import { renderDigest } from "../src/gh-manager/digest.js";
 import { GhManagerPolicy, humanGatedPaths, parsePolicy } from "../src/gh-manager/policy.js";
 import { sessionPrompt } from "../src/gh-manager/prompt.js";
-import { parseMarker, renderMarker, routePullRequest, sweep, type PullRequestFacts } from "../src/gh-manager/sweep.js";
+import { parseMarker, renderMarker, RESCUE_AGED_OUT, RESCUE_MAX_AGE_DAYS, routePullRequest, sweep, type PullRequestFacts } from "../src/gh-manager/sweep.js";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NOW = new Date("2026-10-01T12:00:00Z");
@@ -27,7 +27,7 @@ function pr(over: Partial<PullRequestFacts> = {}): PullRequestFacts {
 const route = (over: Partial<PullRequestFacts> = {}, p = policy()) => routePullRequest(pr(over), p, NOW);
 
 describe("policy", () => {
-  it("defaults to a 24 hour cooldown, 48 for rescued draft escalation, and every action on", () => {
+  it("defaults to a 24 hour cooldown, 48 for draft triage, and every action on", () => {
     expect(parsePolicy('{"version":1}')).toEqual({
       version: 1, enabled: true, quietHours: 24, draftQuietHours: 48, maxSessionsPerRun: 4, maxAttemptsPerPullRequest: 2,
       sessionBeforeMerge: false, closeGraceDays: 7, protectedPaths: [], model: "claude-opus-5-5",
@@ -102,17 +102,41 @@ describe("marker", () => {
 });
 
 describe("routing one pull request", () => {
-  it("hands a rescued-trunk draft to a human past the draft quiet period, never a session", () => {
+  describe("a rescued-trunk draft", () => {
     const wip = { isDraft: true, headRefName: "wip/trunk-2026-10-08-box", checks: [{ name: "conventions", state: "failure" as const }] };
-    expect(route({ ...wip, headCommittedAt: hoursAgo(47.9) })).toMatchObject({ route: "skip", reason: "work-in-progress" });
-    expect(route({ ...wip, headCommittedAt: hoursAgo(48) })).toMatchObject({ route: "escalate", reason: "rescued-trunk-edits" });
-    // Once escalated on this head, it waits on the human like any escalation.
-    expect(route({ ...wip, headCommittedAt: hoursAgo(48), labels: ["manager:needs-human"], marker: { head: HEAD, verdict: "escalate", attempts: 0, at: hoursAgo(1) } })).toMatchObject({ route: "skip", reason: "escalated" });
-    // Marking it ready removes the draft hold, but the WIP branch still holds it.
-    expect(route({ ...wip, isDraft: false, headCommittedAt: hoursAgo(48) }).reason).not.toBe("rescued-trunk-edits");
-    expect(route({ ...wip, headCommittedAt: hoursAgo(48), labels: ["agent-reviewed"] }).reason).not.toBe("rescued-trunk-edits");
-    // Any other WIP branch is ordinary unfinished work, which is triaged rather than escalated.
-    expect(route({ ...wip, headRefName: "wip/other", headCommittedAt: hoursAgo(48) })).toMatchObject({ route: "session", reason: "triage" });
+    const days = (d: number, ms = 0) => new Date(NOW.getTime() - d * 86_400_000 + ms).toISOString();
+    it("is closed at exactly the age limit and kept a day, or a millisecond, short of it", () => {
+      expect(RESCUE_MAX_AGE_DAYS).toBe(7);
+      expect(route({ ...wip, headCommittedAt: days(RESCUE_MAX_AGE_DAYS - 1) })).toMatchObject({ route: "skip", reason: "rescued-trunk-edits" });
+      expect(route({ ...wip, headCommittedAt: days(RESCUE_MAX_AGE_DAYS, 1) })).toMatchObject({ route: "skip", reason: "rescued-trunk-edits" });
+      expect(route({ ...wip, headCommittedAt: days(RESCUE_MAX_AGE_DAYS) })).toMatchObject({ route: "close", reason: RESCUE_AGED_OUT });
+      // Age runs from the later of the push and the opening, like every other cooldown.
+      expect(route({ ...wip, headCommittedAt: days(30), createdAt: days(RESCUE_MAX_AGE_DAYS - 1) })).toMatchObject({ route: "skip", reason: "rescued-trunk-edits" });
+      expect(route({ ...wip, headCommittedAt: "not a date" })).toMatchObject({ route: "skip", reason: "rescued-trunk-edits" });
+    });
+    it("is never escalated, triaged or given a session, even past the draft quiet period or after an old escalation", () => {
+      expect(route({ ...wip, headCommittedAt: hoursAgo(48) })).toMatchObject({ route: "skip", reason: "rescued-trunk-edits" });
+      for (const h of [1, 48, 100, 24 * 6.9]) expect(route({ ...wip, headCommittedAt: hoursAgo(h) }).route, `${h}h`).toBe("skip");
+      // A draft escalated under the old rule still ages out, which removes the label.
+      const escalated = { ...wip, labels: ["manager:needs-human"], marker: { head: HEAD, verdict: "escalate" as const, attempts: 0, at: days(5) } };
+      expect(route({ ...escalated, headCommittedAt: days(3) })).toMatchObject({ route: "skip", reason: "rescued-trunk-edits" });
+      expect(route({ ...escalated, headCommittedAt: days(8) })).toMatchObject({ route: "close", reason: RESCUE_AGED_OUT });
+    });
+    it("leaves a reopened rescue alone until it gets a new push", () => {
+      const closed = { head: HEAD, verdict: "close" as const, attempts: 0, at: days(1) };
+      expect(route({ ...wip, headCommittedAt: days(20), marker: closed })).toMatchObject({ route: "skip", reason: "rescued-trunk-reopened" });
+      expect(route({ ...wip, headCommittedAt: days(20), marker: { ...closed, head: OTHER } })).toMatchObject({ route: "close", reason: RESCUE_AGED_OUT });
+    });
+    it("is not closed when the repository disables closing, and is not escalated instead", () => {
+      expect(route({ ...wip, headCommittedAt: days(30) }, policy({ actions: { close: false } }))).toMatchObject({ route: "skip", reason: "close-disabled" });
+    });
+    it("stops being a rescue once someone takes it up", () => {
+      expect(route({ ...wip, isDraft: false, headCommittedAt: days(30) })).toMatchObject({ route: "skip", reason: "work-in-progress" });
+      expect(route({ ...wip, headCommittedAt: days(30), labels: ["agent-reviewed"] })).toMatchObject({ route: "skip", reason: "work-in-progress" });
+      expect(route({ ...wip, headCommittedAt: days(30), autoMerge: true })).toMatchObject({ route: "hold" });
+      // Any other WIP branch is ordinary unfinished work, which is triaged rather than aged out.
+      expect(route({ ...wip, headRefName: "wip/other", headCommittedAt: hoursAgo(48) })).toMatchObject({ route: "session", reason: "triage" });
+    });
   });
   it("leaves bot lanes and untrusted authors alone", () => {
     expect(route({ author: "morpheus-security[bot]" })).toMatchObject({ route: "skip", reason: "bot-lane" });
@@ -488,11 +512,38 @@ describe("applying a route that needed no session", () => {
     expect(kinds(plan)).toEqual(["comment", "disable-auto-merge"]);
     expect(kinds(planRoute(routed({ route: "hold" }), live({ isDraft: true, autoMerge: true }), ctx()))).toEqual(["comment", "disable-auto-merge"]);
     expect(kinds(planRoute(routed({ route: "hold" }), live({ isDraft: true }), ctx()))).toEqual([]);
-    expect(kinds(planRoute(routed({ route: "escalate", reason: "rescued-trunk-edits" }), live({ isDraft: true, headRefName: "wip/trunk-2026-10-08-box" }), ctx()))).toEqual(["comment", "add-label:manager:needs-human"]);
+    // No escalation is ever applied to live WIP, a rescued trunk draft included.
+    expect(kinds(planRoute(routed({ route: "escalate", reason: "attempts-spent" }), live({ isDraft: true, headRefName: "wip/trunk-2026-10-08-box" }), ctx()))).toEqual([]);
   });
   it("closes and escalates", () => {
     expect(kinds(planRoute(routed({ route: "close" }), live({ labels: ["manager:stale"] }), ctx()))).toEqual(["comment", "remove-label:manager:stale", "close"]);
+    expect(kinds(planRoute(routed({ route: "close" }), live({ labels: ["manager:stale", "manager:needs-human"] }), ctx()))).toEqual(["comment", "remove-label:manager:stale", "remove-label:manager:needs-human", "close"]);
     expect(kinds(planRoute(routed({ route: "escalate" }), live(), ctx()))).toEqual(["comment", "add-label:manager:needs-human"]);
+  });
+});
+
+describe("closing an unadopted trunk rescue", () => {
+  const branch = "wip/trunk-2026-10-08-box";
+  const routed = { number: 7, title: "WIP: rescued", headSha: HEAD, route: "close" as const, reason: RESCUE_AGED_OUT, detail: "aged out", attempts: 0 };
+  const rescue = (over: Partial<LiveState> = {}) => live({ isDraft: true, headRefName: branch, labels: ["manager:needs-human"], ...over });
+  it("comments how to recover the branch, clears an old escalation, and closes without touching the branch", () => {
+    const plan = planRoute(routed, rescue(), ctx());
+    expect(plan.verdict).toBe("close");
+    expect(kinds(plan)).toEqual(["comment", "remove-label:manager:needs-human", "close"]);
+    const body = (plan.operations[0] as { body: string }).body;
+    expect(body).toContain(`nobody adopted them in ${RESCUE_MAX_AGE_DAYS} days`);
+    expect(body).toContain(`\`git fetch origin ${branch} && git cherry-pick ${HEAD}\``);
+    expect(body).toContain("Nothing is deleted.");
+    // The marker is what stops a reopened rescue being closed again on the same head.
+    expect(parseMarker(body)).toEqual({ head: HEAD, verdict: "close", attempts: 0, at: NOW.toISOString() });
+  });
+  it("closes nothing when the live pull request was adopted after the sweep", () => {
+    expect(planRoute(routed, rescue({ headSha: OTHER }), ctx()).operations).toEqual([]);
+    expect(planRoute(routed, rescue({ isDraft: false }), ctx()).operations).toEqual([]);
+    expect(planRoute(routed, rescue({ labels: ["agent-reviewed"] }), ctx()).operations).toEqual([]);
+    // Queued on a WIP branch: the ordinary hold cancels it, and nothing is closed.
+    expect(kinds(planRoute(routed, rescue({ autoMerge: true }), ctx()))).toEqual(["comment", "disable-auto-merge"]);
+    expect(planRoute(routed, rescue(), ctx({ actions: { close: false } })).operations).toEqual([]);
   });
 });
 
@@ -525,8 +576,9 @@ describe("triaging a draft or WIP pull request", () => {
     expect(draft({ mergeable: "CONFLICTING", checks: [{ name: "test", state: "failure" }] })).toMatchObject({ route: "session", reason: "triage" });
     expect(draft().detail).toContain("triage only");
   });
-  it("leaves a rescued trunk draft to its own escalation and never triages it", () => {
-    expect(draft({ headRefName: "wip/trunk-2026-10-08-box" })).toMatchObject({ route: "escalate", reason: "rescued-trunk-edits" });
+  it("leaves a rescued trunk draft to its own age-out and never triages it", () => {
+    expect(draft({ headRefName: "wip/trunk-2026-10-08-box" })).toMatchObject({ route: "skip", reason: "rescued-trunk-edits" });
+    expect(draft({ headRefName: "wip/trunk-2026-10-08-box", headCommittedAt: hoursAgo(24 * 8) })).toMatchObject({ route: "close", reason: RESCUE_AGED_OUT });
     expect(draft({ headRefName: "wip/trunk-2026-10-08-box", headCommittedAt: hoursAgo(100), labels: ["agent-reviewed"] })).toMatchObject({ route: "skip", reason: "work-in-progress" });
   });
   it("does not reclassify an unchanged head, and does again after a push or a removed label", () => {

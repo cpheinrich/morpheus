@@ -106,7 +106,7 @@ export function trunkCheckoutFindings(report: TrunkCheckoutReport, now: Date): T
       message:
         `Trunk checkout has ${report.dirt.tracked.length} uncommitted tracked edit(s) (${shown}${more}), ` +
         `so it cannot fast-forward. The next \`morpheus context brief\` here moves them to a ` +
-        `wip/trunk-* draft PR and fast-forwards; nothing is discarded.`,
+        `wip/trunk-* draft PR, or resets them when every one is IDE churn, and fast-forwards.`,
     });
   }
 

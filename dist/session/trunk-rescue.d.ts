@@ -1,3 +1,4 @@
+import { type ChurnEntry } from "./trunk-churn.js";
 /**
  * Over this many missing trunk commits, or this many days since the oldest of
  * them landed, a behind checkout stops being "a session that has not pulled
@@ -83,6 +84,14 @@ export type RescueResult = {
     reason: string;
     dirt: TrunkDirt;
     orphans: string[];
+}
+/** Every edit was IDE churn: reset, nothing published. `commit` holds them, unreferenced, until Git prunes it. */
+ | {
+    outcome: "churn";
+    dirt: TrunkDirt;
+    orphans: string[];
+    churn: ChurnEntry[];
+    commit: string;
 } | {
     outcome: "duplicate";
     dirt: TrunkDirt;

@@ -42,8 +42,12 @@ The manager does not touch a branch its author may still be driving. A ready pul
 alone until `quietHours` (default 24) after the later of its head commit and the time it was opened.
 A draft, a `wip/` branch, or a title beginning `[WIP]` or `WIP:` is never reviewed, repaired or
 merged in place. Once it has been quiet for `draftQuietHours` (default 48), measured the same way,
-it is triaged (next section). A rescued `wip/trunk-*` draft is not triaged: it still escalates to a
-human after `draftQuietHours`, without a review or merge.
+it is triaged (next section). A rescued `wip/trunk-*` draft is not triaged, reviewed or escalated:
+once it has gone `RESCUE_MAX_AGE_DAYS` (7) without a push it is closed, the branch kept, with a
+comment saying how to recover the edits. Nobody adopted any of the first nineteen, and each one in
+the `manager:needs-human` queue crowded out a real decision. The close is re-checked against live
+state, so a rescue pushed to, queued, reviewed or taken out of draft in the meantime is left alone,
+and one a person reopens is not closed again until it gets a new push.
 
 ## Triaging drafts and WIP pull requests
 
@@ -225,8 +229,9 @@ that repository; invalid is an error, not "off".
 ```
 
 Everything but `version` is optional and shown at its default. `draftQuietHours` is when a quiet
-draft is triaged and when a rescued trunk draft is escalated; it never makes a draft eligible for
-merge. `sessionBeforeMerge` is for a
+draft is triaged; it never makes a draft eligible for merge, and it does not apply to a rescued
+trunk draft, which ages out on its own fixed week. `actions.close: false` keeps rescued drafts open
+as well. `sessionBeforeMerge` is for a
 project whose authors deliberately leave finished work open for a human to merge or redirect: a
 reviewed, green pull request then goes through a session, which reads it, instead of having
 auto-merge enabled from the sweep. `protectedPaths` are plain repository-relative prefixes; globs
