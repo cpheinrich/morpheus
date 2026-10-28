@@ -1047,8 +1047,16 @@ continues to invoke `morpheus context brief`, now also available as `context sta
 fetches the configured canonical trunk into an invocation-private ref so simultaneous fetches cannot
 exchange `FETCH_HEAD`. A local trunk behind that exact commit fast-forwards; feature branches and
 divergent trunks remain intact and report missing commits. Tracked edits on the trunk branch are
-first committed to a pushed `wip/trunk-*` draft PR and the trunk reset only once that commit is
-proven to hold them — a dirty trunk otherwise never advances, and one did not for three weeks.
+first committed to a `wip/trunk-*` branch and the trunk reset only once that commit is proven to
+hold them — a dirty trunk otherwise never advances, and one did not for three weeks. The branch is
+pushed and opened as a draft PR only when every repository it would reach reads `PRIVATE` from
+`gh repo view`; public, internal, non-GitHub or unreadable visibility keeps it a local branch,
+because pushing publishes whatever was in the checkout (#452 published an agent's private notes,
+a hostname and local paths, and closing a PR unpublishes nothing). Unknown is public. Answers are
+cached for an hour in the primary checkout's ignored `local/`; failures never are. A local rescue
+is never pushed or deleted automatically; the brief prints how to recover or publish it, and
+`doctor` lists every rescue branch with no remote copy until someone deletes it. Published text names the
+trunk branch and a short host label, never the checkout path or full hostname.
 Edits that are all IDE churn — per-user IDE state, a `.pbxproj` or Xcode XML file whose structure
 is unchanged, or content trunk already has — are reset after the same proof with a one-line report
 and no PR; one real edit and everything is rescued (`src/session/trunk-churn.ts`).
@@ -1057,7 +1065,8 @@ current HEAD, yields exactly the rescue commit's tree, the checkout resets after
 proof without creating another draft PR. Live remote and PR checks run before the proof/reset window;
 cached tracking refs alone do not count. The brief names the earlier PR and likely generator
 loop. A failed comparison or lookup falls back to the ordinary rescue, so a branch with a
-failed push, failed PR creation or closed PR never suppresses a new attempt. The GitHub Manager
+failed push, failed PR creation or closed PR never suppresses a new attempt. Where rescues stay
+local, a recent local branch that replays to the same tree is the duplicate on its own. The GitHub Manager
 closes a rescue draft after seven days without a push, keeping its branch, and never escalates one.
 Untracked files are never committed; `doctor --all` reports stuck trunk checkouts fleet-wide. Offline or fetch
 failure is explicitly unverified, never a successful current-source report. A receipt is refused

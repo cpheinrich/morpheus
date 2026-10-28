@@ -1635,7 +1635,7 @@ export const contextFreshness = () => `## Context freshness
 
 Run \`morpheus context brief\` at session start if the standard hook did not run. It fetches
 canonical trunk and fast-forwards local trunk, first moving tracked trunk edits to a \`wip/trunk-*\`
-draft PR. Follow its absolute \`WORK IN\` path. A stale checkout cannot certify fresh context;
+branch (a draft PR only on a private repo). Follow its absolute \`WORK IN\` path. A stale checkout cannot certify fresh context;
 integrate trunk explicitly and re-read records before refreshing.
 
 Use **one worktree per implementation task**, not per conversation. \`pm claim <ID>\` from a shared
