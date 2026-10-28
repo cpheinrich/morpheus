@@ -1872,6 +1872,38 @@ projection, not for separate action promotion; it states whether actions were re
 unpromoted. Historical notes still cannot notify. This removes project data from current fixtures
 without rewriting already-public Git history, which needs a separate owner decision if desired.
 
+## Superseded conventions runs pass under a name nothing requires — 2026-10-28
+
+MO-26-10-28-14.08.43. A conventions run whose event head is no longer the PR head used to fail
+silently. Now it passes with `superseded by <sha>` and runs no checks, but it reports as
+`pr / superseded` and never as the required `pr / conventions`.
+
+An in-step pass was not enough. It would attach to the old SHA, which becomes the head again if
+the PR is force-pushed back to it. The pass would then read as a required green until a new run
+reports, and indefinitely if none is triggered.
+
+A job's name is fixed before its steps run, so a small `head` job decides first, and it needs proof
+that the PR moved after the event: a live copy strictly newer than the payload. All of the
+following fail `pr / conventions` with their reason:
+
+- a lagging, equal-time or malformed read;
+- a failed or cancelled `head` (the required job uses `always()`, because a skip would satisfy
+  protection);
+- a move after `head` decided.
+
+`cancel-in-progress` stays out, because a cancelled required check blocks merges. The costs:
+
+- one small extra job per conventions run;
+- a new `pr / head` check that is not required;
+- a later `pr / conventions` check run. GitHub creates it only once `head` finishes: about 6 s
+  normally (21:52:32 against 21:52:38 on #544), and minutes under a runner backlog.
+
+The third cost lengthens a window that already existed. When approval is withdrawn on an unchanged
+head (a review label removed, the `review-record:` line deleted), the head's older pass stands as
+its only conventions result until the new run reports. That pass is a genuine check of the same
+tree. A manual merge or a GitHub Manager sweep in that window could still use it. This was accepted
+as the price of never letting a superseded pass carry the required name.
+
 ## Profiling reads every Codex rollout; the floor waiver is printed, not recorded — 2026-10-28
 
 MO-26-10-28-14.11.57. `morpheus profile` reads Codex's live `sessions/` and flat
