@@ -41,15 +41,63 @@ function levelTwoHeadings(body: string): Heading[] {
 }
 
 function hasSectionContent(lines: string[], start: number, end: number): boolean {
-  return lines.slice(start, end).some((line) => {
-    const trimmed = line.trim();
-    return (
-      trimmed.length > 0 &&
-      !/^#{1,6}(?:\s|$)/.test(trimmed) &&
-      !/^<!--.*-->$/.test(trimmed) &&
-      !/^(?:-{3,}|_{3,}|\*{3,})$/.test(trimmed)
-    );
-  });
+  let fence: { character: "`" | "~"; length: number } | undefined;
+  let inComment = false;
+
+  for (const line of lines.slice(start, end)) {
+    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    if (marker) {
+      const character = marker[0] as "`" | "~";
+      if (!fence) {
+        fence = { character, length: marker.length };
+      } else if (
+        character === fence.character &&
+        marker.length >= fence.length &&
+        new RegExp(`^ {0,3}\\${character}{${fence.length},}\\s*$`).test(line)
+      ) {
+        fence = undefined;
+      }
+      continue;
+    }
+    if (fence) continue;
+
+    let visible = line;
+    while (visible.length > 0) {
+      if (inComment) {
+        const endComment = visible.indexOf("-->");
+        if (endComment < 0) {
+          visible = "";
+          break;
+        }
+        visible = visible.slice(endComment + 3);
+        inComment = false;
+      }
+      const startComment = visible.indexOf("<!--");
+      if (startComment < 0) break;
+      const endComment = visible.indexOf("-->", startComment + 4);
+      if (endComment < 0) {
+        visible = visible.slice(0, startComment);
+        inComment = true;
+        break;
+      }
+      visible = visible.slice(0, startComment) + visible.slice(endComment + 3);
+    }
+
+    const rendered = visible
+      .trim()
+      .replace(/^>+\s*/, "")
+      .replace(/^(?:[-+*]|\d+[.)])\s*/, "")
+      .replace(/^\[[ xX]\]\s*/, "")
+      .trim();
+    if (
+      rendered.length > 0 &&
+      !/^#{1,6}(?:\s|$)/.test(rendered) &&
+      !/^(?:-{3,}|_{3,}|\*{3,})$/.test(rendered)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Validate only formats a note explicitly claims; unversioned historical notes stay readable. */

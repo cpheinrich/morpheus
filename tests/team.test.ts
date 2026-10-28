@@ -162,17 +162,19 @@ describe("validateTeam", () => {
   });
 
   it("requires content in every priority section and accepts an explicit none", async () => {
-    await seedNote(
-      NOTE("note_format: priority-first-v1\n"),
-      undefined,
-      PRIORITY_BODY.replace(
-        "- Keep the release small because the dependency is still changing.",
-        "",
-      ),
-    );
-    expect((await validateTeam(root)).issues[0]!.message).toContain(
-      'section "Key decisions" must contain',
-    );
+    for (const empty of ["", "```text\n```", "<!--\nstill only a comment\n-->", "-"]) {
+      await seedNote(
+        NOTE("note_format: priority-first-v1\n"),
+        undefined,
+        PRIORITY_BODY.replace(
+          "- Keep the release small because the dependency is still changing.",
+          empty,
+        ),
+      );
+      expect((await validateTeam(root)).issues[0]!.message).toContain(
+        'section "Key decisions" must contain',
+      );
+    }
 
     await seedNote(
       NOTE("note_format: priority-first-v1\n"),

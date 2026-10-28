@@ -435,12 +435,15 @@ describe("committed Git source adapter and CLI guide", () => {
       git("remote", "set-url", "origin", "https://github.com/cpheinrich/lakinacapital.git");
       await writeFile(
         path,
-        raw.replace("## Executive summary", "## Detailed notes before outcomes"),
+        raw.replace(
+          "The product review selected the next delivery boundary.",
+          "```text\n```",
+        ),
       );
       git("add", ".");
       git("-c", "core.hooksPath=/dev/null", "commit", "-m", "Invalid note structure");
       await expect(readCanonicalRecords(directory, "HEAD", lakina)).rejects.toThrow(
-        /Executive summary/,
+        /Executive summary.*must contain/,
       );
 
       await writeFile(path, "---\nid: invalid\n---\n");
