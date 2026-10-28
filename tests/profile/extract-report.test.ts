@@ -1,7 +1,9 @@
 import { cpSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { zstdCompressSync } from "node:zlib";
+// A namespace import, as in the source: zstd arrived in Node 22.15, and a named import of it would
+// fail this whole file at link time on an older Node rather than skip the one test that needs it.
+import * as zlib from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 import { extract, sinceMs, type Extraction } from "../../src/profile/extract.js";
 import { buildReport, commandKey, renderReport, summarizeIssues } from "../../src/profile/report.js";
@@ -29,9 +31,10 @@ function codexCopy(): { live: string; archived: string } {
   cpSync(ARCHIVED, archived, { recursive: true });
   return { live, archived };
 }
+const zstdCompressSync = (zlib as Partial<typeof zlib>).zstdCompressSync;
 /** Compress a rollout in place, as Codex does: `x.jsonl` becomes `x.jsonl.zst`. */
 function compress(path: string): void {
-  writeFileSync(`${path}.zst`, zstdCompressSync(readFileSync(path)));
+  writeFileSync(`${path}.zst`, zstdCompressSync!(readFileSync(path)));
   unlinkSync(path);
 }
 /** Rows without the path they were read from, so two layouts of the same data compare equal. */
@@ -114,7 +117,9 @@ describe("extract", () => {
     expect(x.spans).toHaveLength(9);
   });
 
-  it("reads zstd-compressed rollouts, live and archived, exactly as their plain text", async () => {
+  // Node before 22.15 has no zstd: there the extractor reports each compressed file as unreadable,
+  // which the corrupt-file test below still covers, and this one cannot build its input.
+  it.skipIf(!zstdCompressSync)("reads zstd-compressed rollouts, live and archived, exactly as their plain text", async () => {
     const plain = await extract({ ...dirs, codexArchivedDir: ARCHIVED });
     const { live, archived } = codexCopy();
     compress(join(live, LIVE_C2));
