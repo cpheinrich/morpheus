@@ -170,8 +170,17 @@ export function completionNotice(record, config) {
         hqUrl: z.url(),
         noteSha256: z.string().regex(/^[a-f0-9]{64}$/),
         intakePolicy: z.literal("current"),
+        summary: z
+            .string()
+            .min(12)
+            .max(500)
+            .refine((value) => !/[\r\n]/.test(value), "must be one line")
+            .optional(),
     })
         .parse(record);
+    if (config.notification.includeSummary && !note.summary) {
+        throw new Error("This profile requires the verified note summary in the journal");
+    }
     if (!note.projects.includes(config.project)) {
         throw new Error(`Meeting is outside the ${config.project} project scope`);
     }
@@ -202,10 +211,17 @@ export function completionNotice(record, config) {
         dateStyle: "long",
         timeZone: config.timeZone,
     }).format(new Date(note.occurred));
-    return (`Meeting notes for ${date} have been summarized and recorded` +
+    if (!config.notification.includeSummary) {
+        return (`Meeting notes for ${date} have been summarized and recorded` +
+            (delivery.actions.count
+                ? ", along with the action items"
+                : "; no new action items were filed") +
+            `. ${note.hqUrl}`);
+    }
+    return (`Meeting notes for ${date} have been summarized and recorded. ${note.summary} ` +
         (delivery.actions.count
-            ? ", along with the action items"
-            : "; no new action items were filed") +
-        `. ${note.hqUrl}`);
+            ? "The action items were also recorded."
+            : "No new action items were filed.") +
+        ` ${note.hqUrl}`);
 }
 //# sourceMappingURL=core.js.map

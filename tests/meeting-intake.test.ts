@@ -68,6 +68,16 @@ const lakina = parseMeetingIntakeConfig({
   topicVocabulary: ["research", "operations", "strategy"],
 });
 
+const lakinaWithSummary = parseMeetingIntakeConfig({
+  ...lakina,
+  notification: {
+    adapter: "zoe-text",
+    recipient: "lakina",
+    authorized: true,
+    includeSummary: true,
+  },
+});
+
 function record(
   config: MeetingIntakeConfig,
   day = "26",
@@ -110,6 +120,7 @@ function ready(config: MeetingIntakeConfig) {
     hqUrl: `${config.canonical.webBase}/LK-26-10-26-11.39.00-synthetic/`,
     noteSha256: "b".repeat(64),
     intakePolicy: "current",
+    summary: "Discussed the project and its source context.",
     delivery: {
       note: {
         status: "verified",
@@ -265,11 +276,37 @@ describe("meeting-intake profiles and projection", () => {
 
 describe("publication completion gate", () => {
   it("formats only a fully verified current Evo delivery", () => {
-    expect(completionNotice(ready(evo), evo)).toContain("October 26, 2026");
-    expect(completionNotice(ready(evo), evo)).toContain("along with the action items");
+    expect(completionNotice(ready(evo), evo)).toBe(
+      "Meeting notes for October 26, 2026 have been summarized and recorded, " +
+        "along with the action items. " +
+        "https://darwin.health/hq/team/meeting-notes/LK-26-10-26-11.39.00-synthetic/",
+    );
     const noActions = ready(evo);
     noActions.delivery.actions.count = 0;
-    expect(completionNotice(noActions, evo)).toContain("no new action items");
+    expect(completionNotice(noActions, evo)).toBe(
+      "Meeting notes for October 26, 2026 have been summarized and recorded; " +
+        "no new action items were filed. " +
+        "https://darwin.health/hq/team/meeting-notes/LK-26-10-26-11.39.00-synthetic/",
+    );
+  });
+
+  it("includes a bounded summary only when the authorized profile requests it", () => {
+    expect(completionNotice(ready(lakinaWithSummary), lakinaWithSummary)).toBe(
+      "Meeting notes for October 26, 2026 have been summarized and recorded. " +
+        "Discussed the project and its source context. " +
+        "The action items were also recorded. " +
+        "https://lakinacapital.com/hq/team/meeting-notes/LK-26-10-26-11.39.00-synthetic/",
+    );
+    const missing = ready(lakinaWithSummary);
+    delete (missing as Partial<typeof missing>).summary;
+    expect(() => completionNotice(missing, lakinaWithSummary)).toThrow(
+      /requires the verified note summary/,
+    );
+    for (const summary of ["Invalid summary\ncontinued", "x".repeat(501)]) {
+      expect(() =>
+        completionNotice({ ...ready(lakinaWithSummary), summary }, lakinaWithSummary),
+      ).toThrow();
+    }
   });
 
   it("blocks historical, stale, partial, repeated, uncertain and unauthorized notices", () => {
