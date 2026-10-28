@@ -199,6 +199,8 @@ prose restates behaviour it had already reviewed.
 - The finalization turn uses author clock readings. Its runner figure, 351347 ms, exceeded the 46.6
   seconds of wall-clock time the turn actually took, so it cannot be a per-turn measurement.
 
+Turn 1 (high risk) reviewed the in-step superseded pass. The shell was correct under bash -e, shellcheck was clean, and the tests ran the step's real script and caught a weakened comparison or malformed values. F1 (substantive): a force-push back to a superseded SHA would show a green pr / conventions with nothing checked, possibly indefinitely, and wait-ci would report green; this was cleared only on condition that the records be corrected and Chris explicitly accept it. F2 (minor): no test covered a non-SHA event head. The author removed the residual by redesign instead, and the same reviewer confirmed in turn 2 that F1 and F2 are resolved.
+
 ```morpheus-review
 {
   "version": 2,
