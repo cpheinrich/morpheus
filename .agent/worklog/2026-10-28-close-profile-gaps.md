@@ -79,6 +79,11 @@ reverting either filter fails its test.
 - Mutation checks, each reverted: matching only `.jsonl` (2 tests fail), always replacing a
   duplicate (2 fail), counting out-of-scope duplicates (1 fails), the unnarrowed gh-manager waiver
   check (1 fails), the unfiltered CD invariant (1 fails).
-- `pnpm typecheck`, `pnpm lint`, `pnpm compile`, `pnpm morpheus pm index`; full `pnpm test` once.
+- `pnpm typecheck`, `pnpm lint`, `pnpm compile`, `pnpm morpheus pm index` pass.
+- Full `pnpm test` once, on a machine running other agents: 3486 passed, 10 failed in three files
+  this change does not touch the logic of. `tests/workflow-expressions.test.ts` (6) needs
+  `actionlint`, which is not installed here. `tests/cd/native-worker.test.ts` (3, a `calls.jsonl`
+  not yet written) and `tests/upload-receipt.test.ts` (1, a 30 s timeout) are timing-sensitive;
+  both files pass in isolation, 71 of 71. CI is the signal for those, not this laptop.
 - Real data: `pnpm morpheus profile report --since 2026-10-09 --repo evo` against this machine's
   transcripts, numbers above; it also named the one live rollout with five unparseable lines.
