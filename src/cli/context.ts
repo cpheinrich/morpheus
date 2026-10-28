@@ -96,8 +96,10 @@ async function printUnread(root: string, unread: readonly Requirement[], mode: E
 
   console.log("");
   console.log("Read what is unread with the Read tool (offset/limit ranges add up), or `sed -n 'A,Bp' <path>`");
-  console.log("with nothing piped or redirected, then run `morpheus context refresh` again. If a read you made");
-  console.log("is not being counted, `morpheus context install --check` reports the hook wiring.");
+  console.log("with nothing piped or redirected — shell output over 20 KB (8 KB in Codex) is not credited, so");
+  console.log("read large records in ranges — then run `morpheus context refresh` again.");
+  console.log("Only if reads you demonstrably made are still not counted is the hook failing: then");
+  console.log("`MORPHEUS_READ_EVIDENCE=off morpheus context refresh` certifies by assertion, and the receipt says so.");
 }
 
 /** One or two lines saying how this receipt established reading. */

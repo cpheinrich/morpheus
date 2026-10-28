@@ -144,12 +144,19 @@ async function fromFileRead(read: FileRead, cwd: string, session: string, at: st
     if ((await realpath(join(root, record.id)).catch(() => null)) !== target) continue;
     const lines = contentLines(record.content);
     const from = read.from;
-    const to = Math.min(lines.length, read.from + read.count - 1);
-    if (to < from) continue;
+    const end = read.from + read.count - 1;
     // What the tool returned must be what is on disk now; otherwise the file
     // changed between the read and this hook, and the hash would vouch for
-    // text the model never saw.
-    if (read.content !== undefined && lines.slice(from - 1, to).join("\n") !== read.content) continue;
+    // text the model never saw. Compared in the tool's own numbering: Claude
+    // Code counts a trailing newline as one more, empty line, so a Read that
+    // reaches end-of-file returns the text *with* its final newline and a
+    // `totalLines` one above an editor's. Comparing editor-numbered lines
+    // discarded every such Read — the whole-file read and, worst, the tail
+    // where new records are appended.
+    if (read.content !== undefined && record.content.split("\n").slice(from - 1, end).join("\n") !== read.content) continue;
+    // Credit in an editor's numbering; the phantom last line is no line.
+    const to = Math.min(lines.length, end);
+    if (to < from) continue;
     entries.push({ v: 1, kind: "read", at, session, record: record.id, fingerprint: fingerprint(record.content), from, to, lines: lines.length, via: "Read" });
   }
   return { root, entries };

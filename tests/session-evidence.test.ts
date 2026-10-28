@@ -162,16 +162,21 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-/** A Claude Code PostToolUse payload for a Read of `rel` lines `from`–`to`. */
+/**
+ * A Claude Code PostToolUse payload for a Read of `rel` lines `from`–`to`, in
+ * the shape Claude Code 2.1.x actually sends: it numbers a trailing newline as
+ * one more, empty line, so a Read reaching end-of-file (`to` omitted) returns
+ * the text with its final newline and `totalLines` one above an editor's count.
+ */
 async function readPayload(root: string, rel: string, from?: number, to?: number, session = SESSION): Promise<string> {
   const path = join(root, rel);
-  const all = contentLines(await readFile(path, "utf8"));
+  const claude = (await readFile(path, "utf8")).split("\n");
   const start = from ?? 1;
-  const end = to ?? all.length;
+  const end = to ?? claude.length;
   return JSON.stringify({
     session_id: session, cwd: root, hook_event_name: "PostToolUse", tool_name: "Read",
     tool_input: { file_path: path, offset: start, limit: end - start + 1 },
-    tool_response: { type: "text", file: { filePath: path, content: all.slice(start - 1, end).join("\n"), numLines: end - start + 1, startLine: start, totalLines: all.length } },
+    tool_response: { type: "text", file: { filePath: path, content: claude.slice(start - 1, end).join("\n"), numLines: end - start + 1, startLine: start, totalLines: claude.length } },
   });
 }
 
@@ -197,6 +202,30 @@ describe("the read hook", () => {
     expect(entries.slice(1)).toEqual([
       expect.objectContaining({ record: ".agent/decisions.md", fingerprint: fingerprint(DECISIONS), from: 1, to: 42, lines: 42, via: "Read" }),
     ]);
+  });
+
+  it("credits a whole-file Read in Claude's end-of-file shape", async () => {
+    const payload = JSON.parse(await readPayload(local, ".agent/decisions.md")) as { tool_response: { file: { content: string; numLines: number; totalLines: number } } };
+    // The real shape: the text with its final newline, and one line more than an editor counts.
+    expect(payload.tool_response.file.content).toBe(DECISIONS);
+    expect(payload.tool_response.file.totalLines).toBe(43);
+    await recordRead(JSON.stringify(payload));
+    expect((await reads(local)).map((r) => [r.from, r.to, r.lines])).toEqual([[1, 42, 42]]);
+  });
+
+  it("credits a tail Read that reaches end-of-file — where new entries are appended", async () => {
+    await recordRead(await readPayload(local, ".agent/decisions.md", 30));
+    expect((await reads(local)).map((r) => [r.from, r.to])).toEqual([[30, 42]]);
+  });
+
+  it("refuses end-of-file content with anything but exactly the one trailing newline", async () => {
+    const payload = JSON.parse(await readPayload(local, ".agent/decisions.md", 30)) as { tool_response: { file: { content: string } } };
+    const exact = payload.tool_response.file.content;
+    for (const content of [exact + "\n", exact.slice(0, -1) + " \n"]) {
+      payload.tool_response.file.content = content;
+      await recordRead(JSON.stringify(payload));
+    }
+    expect(await reads(local)).toEqual([]);
   });
 
   it("credits CLAUDE.md for a Read of AGENTS.md, which it links to", async () => {
@@ -294,6 +323,17 @@ describe("refresh with read evidence", () => {
       [".agent/decisions.md", "full", [{ from: 1, to: 42 }]],
       [".agent/learned.md", "full", [{ from: 1, to: 14 }]],
     ]);
+  });
+
+  it("certifies from whole-file Reads of every required record", async () => {
+    await readAll(local);
+    const result = await refresh(local, T0, { env: ENV });
+    expect(result.evidence.mode.kind).toBe("recorded");
+    expect(result.evidence.requirements.map((r) => [r.id, r.missing])).toEqual([
+      ["CLAUDE.md", []], [".agent/decisions.md", []], [".agent/learned.md", []],
+    ]);
+    expect(result.lease?.status).toBe("fresh");
+    expect(result.lease?.receipt.evidence).toBe("recorded");
   });
 
   it("certifies from accumulated partial Read ranges, and names the exact gap otherwise", async () => {
@@ -421,6 +461,9 @@ describe("context refresh output", () => {
       expect(await cliRefresh(local, false)).toBe(1);
       const printed = log.mock.calls.map((c) => String(c[0])).join("\n");
       expect(printed).toContain(".agent/learned.md — changed since your last receipt; unread lines 9 of 14");
+      // The recovery advice names the shell-output limit and the declared escape.
+      expect(printed).toContain("shell output over 20 KB (8 KB in Codex) is not credited");
+      expect(printed).toContain("`MORPHEUS_READ_EVIDENCE=off morpheus context refresh` certifies by assertion");
       // Context carries the one-character line past the minimum run.
       expect(printed).toContain(["Lesson 5: a line long enough to count", "Lesson 6: a line long enough to count", "~"].join("\n"));
 

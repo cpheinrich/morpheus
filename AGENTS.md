@@ -91,8 +91,9 @@ run and for anything the shim reports.
 Run `morpheus context brief` at session start if the hook did not; follow its `WORK IN` path.
 On a dirty trunk it moves tracked edits to a `wip/trunk-*` draft PR, then fast-forwards; `doctor --all` lists stuck trunks.
 
-**Read `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md` once at session
-start, then run `morpheus context refresh` once.** After that, just run the gated command
+**Read `AGENTS.md`, `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md` once
+at session start — `AGENTS.md` too, because an injected copy leaves no read evidence — then run
+`morpheus context refresh` once.** After that, just run the gated command
 (`pm claim`, `pm new`, `pm link-issue`, `pm block`, `access sync`, `firebase auth setup`,
 `web init` provisioning); past the five-minute term the gate re-certifies when nothing moved.
 **Refresh again only when a gated command refuses.** Refresh is idempotent: unchanged state
