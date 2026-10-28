@@ -185,6 +185,9 @@ describe("classifying a rescue's changes", () => {
     const deleted = change({ status: "D", newMode: "000000", newBlob: Z });
     expect((await classify([deleted])).churn[0]?.kind).toBe("on-trunk");
     expect((await classify([deleted], { "a.txt": { mode: "100644", blob: blob(1) } })).real).toEqual(["a.txt"]);
+    // No trunk map: the checkout will not fast-forward, so nothing is "already on trunk" —
+    // including a deletion, which an empty map would otherwise read as trunk lacking the path.
+    expect(await classifyChanges([deleted, change({ path: "b.txt" })], null, read)).toEqual({ churn: [], real: ["a.txt", "b.txt"] });
     // A submodule's checkout is not moved by a reset, so a matching gitlink is not assumed safe.
     expect((await classify([change({ oldMode: "160000", newMode: "160000" })], { "a.txt": { mode: "160000", blob: blob(2) } })).real).toEqual(["a.txt"]);
   });

@@ -529,8 +529,10 @@ describe("closing an unadopted trunk rescue", () => {
   it("comments how to recover the branch, clears an old escalation, and closes without touching the branch", () => {
     const plan = planRoute(routed, rescue(), ctx());
     expect(plan.verdict).toBe("close");
-    expect(kinds(plan)).toEqual(["comment", "remove-label:manager:needs-human", "close"]);
-    const body = (plan.operations[0] as { body: string }).body;
+    // Close before the marker comment: a marker posted ahead of a close that failed would read as a
+    // person reopening it, and the next sweep would leave the draft open for good.
+    expect(kinds(plan)).toEqual(["close", "comment", "remove-label:manager:needs-human"]);
+    const body = (plan.operations[1] as { body: string }).body;
     expect(body).toContain(`nobody adopted them in ${RESCUE_MAX_AGE_DAYS} days`);
     expect(body).toContain(`\`git fetch origin ${branch} && git cherry-pick ${HEAD}\``);
     expect(body).toContain("Nothing is deleted.");

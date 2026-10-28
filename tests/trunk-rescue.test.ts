@@ -191,6 +191,10 @@ describe("rescuing a dirty trunk checkout", () => {
 
   it("moves tracked edits to a pushed draft PR, leaves untracked files, then fast-forwards", async () => {
     await dirty();
+    // Opted in to the GitHub Manager on trunk, so the body may promise the age-out.
+    await mkdir(join(source, ".github"), { recursive: true });
+    await writeFile(join(source, ".github/morpheus-gh-manager.json"), '{"version":1}\n');
+    await git(source, "add", ".github");
     const latest = await advance(2);
     const result = await prepareRepository(local, false, deps());
 
@@ -236,6 +240,21 @@ describe("rescuing a dirty trunk checkout", () => {
     // The PR body states the manager's age-out without importing it; this holds the two equal.
     expect(body).toContain(`once it has gone ${RESCUE_MAX_AGE_DAYS} days without a push, the GitHub Manager closes it`);
     expect(body).not.toContain("never-commit");
+  });
+
+  it("promises the age-out only where trunk's GitHub Manager policy will close the draft", async () => {
+    const body = () => { const args = gh.mock.calls.filter((c) => c[1][1] === "create").at(-1)![1]; return args[args.indexOf("--body") + 1]!; };
+    await writeFile(join(local, "project.pbxproj"), "first\n");
+    await prepareRepository(local, false, deps());
+    expect(body()).not.toContain("GitHub Manager closes it");
+
+    await mkdir(join(source, ".github"), { recursive: true });
+    await writeFile(join(source, ".github/morpheus-gh-manager.json"), '{"version":1,"actions":{"close":false}}\n');
+    await git(source, "add", ".github"); await git(source, "commit", "-m", "manager, closing off"); await git(source, "push", "origin", "main");
+    await writeFile(join(local, "project.pbxproj"), "second\n");
+    await prepareRepository(local, false, deps());
+    expect(body()).not.toContain("GitHub Manager closes it");
+    expect(gh.mock.calls.filter((c) => c[1][1] === "create")).toHaveLength(2);
   });
 
   it("keeps a write that lands while the branch is pushed and the PR opened", async () => {
@@ -492,6 +511,37 @@ describe("rescuing a dirty trunk checkout", () => {
         "\t\t\t\tB2000022 /* Run Script */,\n\t\t\t\tB2000021 /* Sources */,\n",
       ));
       expect((await prepareRepository(local, false, deps())).rescue?.outcome).toBe("rescued");
+    });
+
+    it("refuses a file removed from the index but kept on disk, rather than resetting over it", async () => {
+      // Untracking per-user state is the right thing to do, and the newer local file is the point.
+      await git(local, "rm", "-r", "--cached", "--quiet", "App.xcodeproj/project.xcworkspace/xcuserdata");
+      await writeFile(join(local, USER_STATE), "breakpoints I set today\n");
+      const first = await prepareRepository(local, false, deps());
+      expect(first.rescue).toMatchObject({ outcome: "skipped" });
+      expect(first.rescue?.outcome === "skipped" && first.rescue.reason).toContain(`${USER_STATE} removed from the index but still on disk`);
+      expect(await readFile(join(local, USER_STATE), "utf8")).toBe("breakpoints I set today\n");
+
+      // Trunk stops tracking it too: the removal is now "on trunk", and still nothing is reset.
+      await git(source, "rm", "-r", "--cached", "--quiet", "App.xcodeproj/project.xcworkspace/xcuserdata");
+      await git(source, "commit", "-m", "untrack user state"); await git(source, "push", "origin", "main");
+      const second = await prepareRepository(local, false, deps());
+      expect(second.rescue?.outcome).toBe("skipped");
+      expect(await readFile(join(local, USER_STATE), "utf8")).toBe("breakpoints I set today\n");
+      expect(gh).not.toHaveBeenCalled();
+      expect(await git(local, "for-each-ref", "refs/heads/wip")).toBe("");
+    });
+
+    it("does not call an edit 'on trunk' when local trunk commits stop the fast-forward", async () => {
+      await writeFile(join(local, "CLAUDE.md"), "local trunk commit\n");
+      await git(local, "commit", "-qam", "unpushed");
+      await writeFile(join(source, "project.pbxproj"), "generated v2\n");
+      await git(source, "commit", "-am", "trunk edit"); await git(source, "push", "origin", "main");
+      await writeFile(join(local, "project.pbxproj"), "generated v2\n");
+      const result = await prepareRepository(local, false, deps());
+      expect(result.rescue?.outcome).toBe("rescued");
+      expect(result.advanced).toBe(false);
+      expect(await git(remote, "show", `refs/heads/${branchBase}:project.pbxproj`)).toBe("generated v2");
     });
 
     it("resets an edit trunk has since landed, and the fast-forward brings it back", async () => {

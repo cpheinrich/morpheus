@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { access, copyFile, rm, writeFile } from "node:fs/promises";
+import { access, copyFile, lstat, rm, writeFile } from "node:fs/promises";
 import { hostname as osHostname } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
@@ -279,6 +279,8 @@ const list = (paths: string[]): string =>
 export function rescuePrBody(input: {
   root: string; host: string; date: string; trunk: string; lag: Lag; ahead: number;
   diffstat: string; tracked: string[]; untracked: string[]; orphans: string[]; now: Date;
+  /** The repository's GitHub Manager policy will close this draft; only then is that promised. */
+  agesOut?: boolean;
 }): string {
   const days = lagDays(input.lag, input.now);
   const lagLine = input.lag.behind
@@ -290,10 +292,11 @@ export function rescuePrBody(input: {
     `**How far behind the checkout was:** ${lagLine}${input.ahead ? ` It also carried ${input.ahead} local trunk commit(s) not on ${input.trunk}; they are included in this branch's history.` : ""}`,
     "",
     "**This is not a finished change.** `check pr` conventions, review and the roadmap do not apply until someone adopts it: claim or link a roadmap item and move the work onto that item's branch, or close this if the edits were incidental (an IDE rewriting a generated file is the usual cause).",
-    "",
     // The number is the GitHub Manager's RESCUE_MAX_AGE_DAYS, held equal by a test rather than an
     // import, so session start does not load the manager's policy code.
-    "Nobody needs to triage it: once it has gone 7 days without a push, the GitHub Manager closes it with a note on recovering it. The branch is never deleted.",
+    ...(input.agesOut
+      ? ["", "Nobody needs to triage it: once it has gone 7 days without a push, the GitHub Manager closes it with a note on recovering it. The branch is never deleted."]
+      : []),
     "",
     "## Moved files",
     "",
@@ -371,6 +374,21 @@ async function replaysTo(root: string, base: string, parent: string, tip: string
 }
 
 /**
+ * Whether trunk's GitHub Manager policy will age this draft out. The manager acts only where
+ * `.github/morpheus-gh-manager.json` on the default branch opts in, and most projects have none;
+ * there the draft stays open, and its body must not say otherwise. Read from the fetched trunk,
+ * as the manager reads it, and loosely: the policy schema lives with the manager.
+ */
+async function managerClosesRescues(root: string, trunkSha: string): Promise<boolean> {
+  try {
+    const policy = JSON.parse(await git(root, ["show", `${trunkSha}:.github/morpheus-gh-manager.json`])) as { enabled?: unknown; actions?: { close?: unknown } };
+    return policy.enabled !== false && policy.actions?.close !== false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Only the most recent local rescue branches are compared. A rescue draft is
  * closed once it has gone `RESCUE_MAX_AGE_DAYS` untouched (the GitHub
  * Manager's sweep), so an older branch rarely still has the open pull request
@@ -388,7 +406,14 @@ const MAX_CLASSIFIED_PATHS = 500;
 async function classifyChurn(root: string, head: string, commit: string, trunkSha: string): Promise<{ churn: ChurnEntry[]; real: string[] } | null> {
   const changes = parseRawDiff(await git(root, ["diff", "--raw", "-z", "--no-renames", "--no-abbrev", head, commit]));
   if (!changes.length || changes.length > MAX_CLASSIFIED_PATHS) return null;
-  const trunk = parseLsTree(await git(root, ["--literal-pathspecs", "ls-tree", "-r", "-z", trunkSha, "--", ...changes.map((c) => c.path)]));
+  // "Already on trunk" is safe only because the fast-forward after the reset brings trunk's
+  // version back. A checkout with local trunk commits never fast-forwards, so there it is not
+  // offered at all and such an edit is rescued. (A fast-forward Git refuses over an untracked
+  // file is reported by the brief; the content is on trunk and in the commit either way.)
+  const fastForwards = await gitOk(root, ["merge-base", "--is-ancestor", head, trunkSha]);
+  const trunk = fastForwards
+    ? parseLsTree(await git(root, ["--literal-pathspecs", "ls-tree", "-r", "-z", trunkSha, "--", ...changes.map((c) => c.path)]))
+    : null;
   return classifyChanges(changes, trunk, (blob) => git(root, ["cat-file", "blob", blob]).catch(() => null));
 }
 
@@ -454,6 +479,33 @@ export function divergentStaged(raw: string): string[] {
 }
 
 /**
+ * Paths removed from the index whose file is still on disk — `git rm --cached`,
+ * or the source side of a staged rename that was copied rather than moved.
+ * The rescue commit records only the removal, the content proof cannot see an
+ * untracked file, and `reset --hard` then writes HEAD's version over it. So
+ * these are refused before anything is committed or reset: the file on disk
+ * is the one thing no branch would hold.
+ */
+export async function stagedRemovalsOnDisk(root: string, raw: string): Promise<string[]> {
+  const removed: string[] = [];
+  const entries = raw.split("\0");
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!;
+    if (entry.length < 4) continue;
+    const [x, y] = [entry[0]!, entry[1]!];
+    // An unstaged deletion normally has nothing on disk; something there (a directory where the
+    // file was) would equally be in the reset's way, so it is checked the same way.
+    if (x === "D" || y === "D") removed.push(entry.slice(3));
+    if (x === "R") { const source = entries[i + 1]; if (source) removed.push(source); i++; }
+    else if (x === "C") i++;
+  }
+  const present: string[] = [];
+  // lstat, not stat: a symlink left in place is still something a reset would replace.
+  for (const path of removed) if (await lstat(join(root, path)).then(() => true, () => false)) present.push(path);
+  return present;
+}
+
+/**
  * The one file a human edits by hand to reply to agents. A reply typed on a
  * trunk checkout must reach the session that starts there to read it, so its
  * presence stops the rescue instead of moving it to a draft PR.
@@ -491,6 +543,8 @@ export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: 
   if (replies.length) return skip(`${replies.join(", ")} has uncommitted edits, likely inbox replies; commit them on an inbox-<date> branch`);
   const divergent = divergentStaged(raw);
   if (divergent.length) return skip(`${divergent.join(", ")} has staged content that differs from the working tree; commit or unstage it`);
+  const kept = await stagedRemovalsOnDisk(root, raw);
+  if (kept.length) return skip(`${kept.slice(0, 5).join(", ")}${kept.length > 5 ? ` and ${kept.length - 5} more` : ""} removed from the index but still on disk (git rm --cached), which a reset would overwrite; commit the removal on a branch, or undo it with git restore --staged`);
 
   const now = deps.now ?? new Date();
   const host = shortHost(deps.hostname ?? osHostname());
@@ -582,7 +636,8 @@ export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: 
   let prUrl: string | undefined;
   let prError: string | undefined;
   if (pushed) {
-    const body = rescuePrBody({ root, host, date, trunk: target.trunk, lag, ahead, diffstat, tracked: dirt.tracked, untracked: dirt.untracked, orphans, now });
+    const agesOut = await managerClosesRescues(root, target.sha);
+    const body = rescuePrBody({ root, host, date, trunk: target.trunk, lag, ahead, diffstat, tracked: dirt.tracked, untracked: dirt.untracked, orphans, now, agesOut });
     const repoName = root.split(/[\\/]/).filter(Boolean).pop() ?? "repository";
     // On a fork the trunk remote (upstream) is not the push remote (origin):
     // name the base repository and qualify the head with the fork's owner, or

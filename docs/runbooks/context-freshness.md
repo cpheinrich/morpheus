@@ -31,9 +31,10 @@ Xcode-rewritten `project.pbxproj`. So when HEAD is the trunk branch and tracked 
    PR URL.
 
 It refuses, and reports instead, when a file's staged content differs from both HEAD and the
-working tree (committing the tree would drop the staged version), and when anything under
-`hq/team/` is edited — those are inbox replies, which belong to the session starting there to read
-them, on an `inbox-<date>` branch.
+working tree (committing the tree would drop the staged version), when a file removed from the
+index is still on disk (`git rm --cached`: no commit would hold that file, and the reset would
+overwrite it), and when anything under `hq/team/` is edited — those are inbox replies, which belong
+to the session starting there to read them, on an `inbox-<date>` branch.
 
 **IDE churn is reset, not rescued.** When every tracked edit is churn — per-user IDE state
 (`xcuserdata/`, `.DS_Store`, JetBrains' `workspace.xml` and other per-user files), a `.pbxproj`
@@ -59,9 +60,10 @@ edits stay on the local branch and the reset still happens; if `gh` fails, the b
 the command to open the PR is printed.
 
 The draft is not a finished change: `check pr` conventions wait on drafts. The GitHub Manager never
-reviews, repairs, merges, triages or escalates one; once it has gone 7 days without a push
-(`RESCUE_MAX_AGE_DAYS`) the manager closes it with a comment on recovering it, and the branch is
-kept. Adopt it onto a roadmap item's branch before then, or close it yourself.
+reviews, repairs, merges, triages or escalates one; in a repository opted in to it, once the draft
+has gone 7 days without a push (`RESCUE_MAX_AGE_DAYS`) the manager closes it with a comment on
+recovering it, and the branch is kept. The PR body says so only where that policy exists. Adopt it
+onto a roadmap item's branch before then, or close it yourself.
 
 A checkout still behind after startup prints `!!! STALE CHECKOUT` past 20 commits or once the oldest
 missing commit is more than 3 days old (`STALE_BEHIND_*` in `src/session/trunk-rescue.ts`).

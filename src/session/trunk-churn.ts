@@ -24,7 +24,12 @@
  *   XML scheme/workspace whose elements and attributes are identical.
  * - **on trunk** — the working tree already holds exactly what trunk now has
  *   for that path (same bytes and mode, or the same structure for the Xcode
- *   formats above), so the fast-forward after the reset restores it.
+ *   formats above), so the fast-forward after the reset restores it. Only
+ *   offered when HEAD is an ancestor of trunk; a checkout with local trunk
+ *   commits never fast-forwards.
+ *
+ * A deletion is only ever classified with nothing at its path on disk: the
+ * rescue refuses a `git rm --cached` file first (`stagedRemovalsOnDisk`).
  *
  * Anything unparseable, oversized, binary-looking, a submodule, or simply not
  * matched is real work and is rescued as before. A checkout whose edits are
@@ -250,31 +255,34 @@ function open(name: string, attrs: Map<string, string>): string {
 
 /**
  * Classify every changed path. `trunk` is the fetched trunk tip's entry for
- * each path, absent when trunk does not have it. Returns the churn and the
- * paths that are real work; the caller resets only when `real` is empty.
+ * each path, absent when trunk does not have it; `null` when the checkout will
+ * not fast-forward to trunk, so nothing may be called "already on trunk".
+ * Returns the churn and the paths that are real work; the caller resets only
+ * when `real` is empty.
  */
 export async function classifyChanges(
   changes: RawChange[],
-  trunk: ReadonlyMap<string, TreeEntry>,
+  trunk: ReadonlyMap<string, TreeEntry> | null,
   read: BlobReader,
 ): Promise<{ churn: ChurnEntry[]; real: string[] }> {
   const churn: ChurnEntry[] = [];
   const real: string[] = [];
   for (const change of changes) {
-    const kind = await classifyOne(change, trunk.get(change.path), read);
+    const kind = await classifyOne(change, trunk, read);
     if (kind) churn.push({ path: change.path, kind });
     else real.push(change.path);
   }
   return { churn, real };
 }
 
-async function classifyOne(change: RawChange, onTrunk: TreeEntry | undefined, read: BlobReader): Promise<ChurnKind | null> {
+async function classifyOne(change: RawChange, trunk: ReadonlyMap<string, TreeEntry> | null, read: BlobReader): Promise<ChurnKind | null> {
   const deleted = ZERO.test(change.newBlob) || change.status === "D";
   const existed = !ZERO.test(change.oldBlob) && change.status !== "A";
+  const onTrunk = trunk?.get(change.path);
 
   // Exactly what trunk has: the fast-forward after the reset puts it back. Regular files and
   // symlinks only — a submodule's checkout is not moved by a reset, so it is never assumed.
-  if (deleted ? !onTrunk : onTrunk && FILE_MODES.has(change.newMode) && onTrunk.mode === change.newMode && onTrunk.blob === change.newBlob) {
+  if (trunk && (deleted ? !onTrunk : onTrunk && FILE_MODES.has(change.newMode) && onTrunk.mode === change.newMode && onTrunk.blob === change.newBlob)) {
     return "on-trunk";
   }
   if (existed && (change.status === "M" || change.status === "D") && userStatePath(change.path)) return "user-state";

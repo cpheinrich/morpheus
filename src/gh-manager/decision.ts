@@ -422,9 +422,12 @@ function closeRescuedTrunk(routed: Routed, live: LiveState, ctx: Context, marker
     run,
     renderMarker({ ...marker, verdict: "close" }),
   ].join("\n\n");
+  // Close first, unlike every other plan. The comment's `close` marker is what tells the next sweep
+  // a person reopened this; posted ahead of a close that then failed, it would read as a reopen
+  // and leave the draft open for good. A close whose comment then fails is merely unexplained.
   return {
     verdict: "close",
-    operations: [{ kind: "comment", body }, ...removeLabels(live, NEEDS_HUMAN_LABEL, STALE_LABEL), { kind: "close" }],
+    operations: [{ kind: "close" }, { kind: "comment", body }, ...removeLabels(live, NEEDS_HUMAN_LABEL, STALE_LABEL)],
   };
 }
 

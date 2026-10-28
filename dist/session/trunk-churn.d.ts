@@ -24,7 +24,12 @@
  *   XML scheme/workspace whose elements and attributes are identical.
  * - **on trunk** — the working tree already holds exactly what trunk now has
  *   for that path (same bytes and mode, or the same structure for the Xcode
- *   formats above), so the fast-forward after the reset restores it.
+ *   formats above), so the fast-forward after the reset restores it. Only
+ *   offered when HEAD is an ancestor of trunk; a checkout with local trunk
+ *   commits never fast-forwards.
+ *
+ * A deletion is only ever classified with nothing at its path on disk: the
+ * rescue refuses a `git rm --cached` file first (`stagedRemovalsOnDisk`).
  *
  * Anything unparseable, oversized, binary-looking, a submodule, or simply not
  * matched is real work and is rescued as before. A checkout whose edits are
@@ -77,10 +82,12 @@ export declare function canonicalPbxproj(text: string): string | null;
 export declare function canonicalXml(text: string): string | null;
 /**
  * Classify every changed path. `trunk` is the fetched trunk tip's entry for
- * each path, absent when trunk does not have it. Returns the churn and the
- * paths that are real work; the caller resets only when `real` is empty.
+ * each path, absent when trunk does not have it; `null` when the checkout will
+ * not fast-forward to trunk, so nothing may be called "already on trunk".
+ * Returns the churn and the paths that are real work; the caller resets only
+ * when `real` is empty.
  */
-export declare function classifyChanges(changes: RawChange[], trunk: ReadonlyMap<string, TreeEntry>, read: BlobReader): Promise<{
+export declare function classifyChanges(changes: RawChange[], trunk: ReadonlyMap<string, TreeEntry> | null, read: BlobReader): Promise<{
     churn: ChurnEntry[];
     real: string[];
 }>;
