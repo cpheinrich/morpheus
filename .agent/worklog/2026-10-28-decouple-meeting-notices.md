@@ -48,10 +48,7 @@ tests.
 
 ## Independent review
 
-Independent normal-risk review found no substantive, minor or incidental defects. The reviewer
-traced the completion gate through its CLI caller, confirmed every existing publication guard runs
-before both action-status formatting branches, inspected the public/private documentation and
-generated artifacts, and passed the 99 focused tests and git diff --check.
+Independent normal-risk review found no substantive, minor or incidental defects. The reviewer traced the completion gate through its CLI caller, confirmed every existing publication guard runs before both action-status formatting branches, inspected the public/private documentation and generated artifacts, and passed the 99 focused tests and git diff --check.
 
 ```morpheus-review
 {
