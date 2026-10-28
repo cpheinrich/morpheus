@@ -4,6 +4,12 @@
  * tool call. Everything here is derived from transcripts already on disk; no
  * field is self-reported by an agent.
  */
+/**
+ * Where a session's transcript was found. Codex moves older rollouts out of `sessions/` into a
+ * flat `archived_sessions/`, so a profile that reads only the first silently loses most Codex
+ * history; the source is kept on every row so a report can show what it read.
+ */
+export const SOURCES = ["claude", "codex-sessions", "codex-archived"];
 export const PHASES = [
     "context",
     "checks",

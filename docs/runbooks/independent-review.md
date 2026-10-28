@@ -80,7 +80,10 @@ change: at most 20 changed non-test lines and 40 lines in test-named files (`*.t
 `test_*.py`, `*_test.py|go`, `*Test(s).swift|kt|java`), every other file configuration, workflow or
 prose (`.md .mdx .txt .yml .yaml .json .jsonc .toml`), worklogs and `hq/product/` not counted,
 nothing binary, and every turn measured above zero — below that size the floor measures the diff,
-not the reviewer. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
+not the reviewer. When the waiver applies, `check pr` prints `~ [review-floor] waived: review floor
+(trivial diff: N non-test, M test lines)` and `review validate` prints the same text, so CI logs show
+how often it fires; nothing is added to the record, whose committed range it is recomputed from.
+The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
 validates reported durations; it cannot interrupt a provider's session or measure its billing.
 No reviewer subagents, full-suite reruns by default, or automatic repeated sessions. On timeout,
 budget exhaustion or missing evidence, record incomplete and keep the PR open.

@@ -1,11 +1,48 @@
+import { cpSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { extract, sinceMs } from "../../src/profile/extract.js";
-import { buildReport, commandKey, renderReport } from "../../src/profile/report.js";
+// A namespace import, as in the source: zstd arrived in Node 22.15, and a named import of it would
+// fail this whole file at link time on an older Node rather than skip the one test that needs it.
+import * as zlib from "node:zlib";
+import { afterEach, describe, expect, it } from "vitest";
+import { extract, sinceMs, type Extraction } from "../../src/profile/extract.js";
+import { buildReport, commandKey, renderReport, summarizeIssues } from "../../src/profile/report.js";
 import { emptyTokens, type SessionRow, type SpanRow } from "../../src/profile/types.js";
 
 const FIXTURES = join(import.meta.dirname, "fixtures");
 const dirs = { claudeDir: join(FIXTURES, "claude"), codexDir: join(FIXTURES, "codex"), home: "/Users/x" };
+const ARCHIVED = join(FIXTURES, "codex-archived");
+const LIVE_C1 = "2026/10/07/rollout-2026-10-07T09-00-00-C1.jsonl";
+const LIVE_C2 = "2026/10/07/rollout-2026-10-07T09-01-00-C2.jsonl";
+const ARCHIVED_C1 = "rollout-2026-10-07T09-00-00-C1.jsonl";
+const ARCHIVED_A1 = "rollout-2026-10-06T08-00-00-A1.jsonl";
+
+let scratch: string | undefined;
+afterEach(() => {
+  if (scratch) rmSync(scratch, { recursive: true, force: true });
+  scratch = undefined;
+});
+/** A scratch copy of the live and archived Codex fixtures, to rearrange per test. */
+function codexCopy(): { live: string; archived: string } {
+  scratch = mkdtempSync(join(tmpdir(), "profile-codex-"));
+  const live = join(scratch, "sessions");
+  const archived = join(scratch, "archived_sessions");
+  cpSync(join(FIXTURES, "codex"), live, { recursive: true });
+  cpSync(ARCHIVED, archived, { recursive: true });
+  return { live, archived };
+}
+const zstdCompressSync = (zlib as Partial<typeof zlib>).zstdCompressSync;
+/** Compress a rollout in place, as Codex does: `x.jsonl` becomes `x.jsonl.zst`. */
+function compress(path: string): void {
+  writeFileSync(`${path}.zst`, zstdCompressSync!(readFileSync(path)));
+  unlinkSync(path);
+}
+/** Rows without the path they were read from, so two layouts of the same data compare equal. */
+function content(x: Extraction) {
+  const sessions = x.sessions.map(({ file: _file, ...rest }) => rest).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+  const spans = [...x.spans].sort((a, b) => a.sessionId.localeCompare(b.sessionId) || a.start.localeCompare(b.start));
+  return { sessions, spans };
+}
 
 describe("extract", () => {
   it("finds main and subagent transcripts for both providers", async () => {
@@ -43,6 +80,68 @@ describe("extract", () => {
     expect(crossRepo.sessions.map((s) => [s.sessionId, s.repo])).toEqual([]);
   });
 
+  it("reads archived Codex rollouts and counts a session found in both places once", async () => {
+    const x = await extract({ ...dirs, codexArchivedDir: ARCHIVED });
+    expect(x.sessions.map((s) => [s.provider, s.sessionId, s.source]).sort()).toEqual([
+      ["claude", "S1", "claude"],
+      ["claude", "S1:abc123", "claude"],
+      ["codex", "A1", "codex-archived"],
+      ["codex", "C1", "codex-sessions"],
+      ["codex", "C2", "codex-sessions"],
+    ]);
+    expect(x.duplicates).toBe(1);
+    // The archived C1 is an older snapshot ending at its first command; the live copy is kept whole.
+    const c1 = x.sessions.find((s) => s.sessionId === "C1")!;
+    expect([c1.file, c1.requests, c1.toolCalls]).toEqual([join(dirs.codexDir, LIVE_C1), 2, 4]);
+    // 8 spans as before, plus A1's one command; the archived C1's command is not counted again.
+    expect(x.spans).toHaveLength(9);
+    expect(x.spans.filter((s) => s.sessionId === "C1")).toHaveLength(4);
+    expect(x.files).toBe(6);
+  });
+
+  it("counts a duplicate only when its session is in scope", async () => {
+    const morpheus = await extract({ ...dirs, codexArchivedDir: ARCHIVED, repo: "morpheus" });
+    expect(morpheus.sessions.map((s) => s.sessionId).sort()).toEqual(["S1", "S1:abc123"]);
+    expect(morpheus.duplicates).toBe(0);
+  });
+
+  it("keeps the fuller copy wherever it is, so archiving cannot shorten a session", async () => {
+    const { live, archived } = codexCopy();
+    // Swap: the live directory now holds the snapshot, the archive the whole session.
+    cpSync(join(ARCHIVED, ARCHIVED_C1), join(live, LIVE_C1));
+    cpSync(join(FIXTURES, "codex", LIVE_C1), join(archived, ARCHIVED_C1));
+    const x = await extract({ ...dirs, codexDir: live, codexArchivedDir: archived });
+    const c1 = x.sessions.filter((s) => s.sessionId === "C1");
+    expect(c1.map((s) => [s.source, s.file, s.toolCalls])).toEqual([["codex-archived", join(archived, ARCHIVED_C1), 4]]);
+    expect(x.duplicates).toBe(1);
+    expect(x.spans).toHaveLength(9);
+  });
+
+  // Node before 22.15 has no zstd: there the extractor reports each compressed file as unreadable,
+  // which the corrupt-file test below still covers, and this one cannot build its input.
+  it.skipIf(!zstdCompressSync)("reads zstd-compressed rollouts, live and archived, exactly as their plain text", async () => {
+    const plain = await extract({ ...dirs, codexArchivedDir: ARCHIVED });
+    const { live, archived } = codexCopy();
+    compress(join(live, LIVE_C2));
+    compress(join(archived, ARCHIVED_A1));
+    compress(join(archived, ARCHIVED_C1));
+    const x = await extract({ ...dirs, codexDir: live, codexArchivedDir: archived });
+    expect(x.sessions.find((s) => s.sessionId === "A1")!.file).toBe(join(archived, `${ARCHIVED_A1}.zst`));
+    expect(x.sessions.find((s) => s.sessionId === "C2")!.file).toBe(join(live, `${LIVE_C2}.zst`));
+    expect(content(x)).toEqual(content(plain));
+    expect(x.duplicates).toBe(1);
+    expect(x.issues.map((i) => i.message).sort()).toEqual(plain.issues.map((i) => i.message).sort());
+  });
+
+  it("reports a corrupt compressed rollout as unreadable rather than aborting the run", async () => {
+    const { live, archived } = codexCopy();
+    const bad = join(archived, "rollout-2026-10-05T00-00-00-BAD.jsonl.zst");
+    writeFileSync(bad, "not zstd");
+    const x = await extract({ ...dirs, codexDir: live, codexArchivedDir: archived });
+    expect(x.sessions.map((s) => s.sessionId).sort()).toEqual(["A1", "C1", "C2", "S1", "S1:abc123"]);
+    expect(x.issues.filter((i) => i.message.startsWith("unreadable:")).map((i) => i.file)).toEqual([bad]);
+  });
+
   it("refuses a malformed --since rather than silently including everything", () => {
     expect(sinceMs("2026-9-1")).toBeNull();
     expect(sinceMs(undefined)).toBeUndefined();
@@ -55,7 +154,7 @@ function session(over: Partial<SessionRow>): SessionRow {
     kind: "session", provider: "claude", sessionId: "s", parentSessionId: null, isSidechain: false, role: "main",
     agentType: null, cwd: null, repo: "r", branch: null, item: null, models: [], efforts: [], start: null, end: null,
     wallMs: 0, activeMs: 0, requests: 0, toolCalls: 0, tokens: emptyTokens(), firstTurnContextTokens: null,
-    byModel: [], costUSD: null, file: "f", ...over,
+    byModel: [], costUSD: null, file: "f", source: "claude", ...over,
   };
 }
 
@@ -100,6 +199,33 @@ describe("report", () => {
     ]);
     // Subagent share: (60 000 + 40 000) / 1 892 000 of active time.
     expect(r.sidechainShare.activeTime).toBeCloseTo(100_000 / 1_892_000, 10);
+  });
+
+  it("reports how many sessions came from each source, and totals by provider", async () => {
+    const x = await extract({ ...dirs, codexArchivedDir: ARCHIVED });
+    const r = buildReport(x.sessions, x.spans, { duplicates: x.duplicates });
+    expect(r.bySource).toEqual([
+      { source: "claude", sessions: 2, mainSessions: 1 },
+      { source: "codex-sessions", sessions: 2, mainSessions: 1 },
+      { source: "codex-archived", sessions: 1, mainSessions: 1 },
+    ]);
+    expect(r.duplicates).toBe(1);
+    // Claude 1 640 000 + 60 000; Codex 152 000 + 40 000 + A1's 10 000 (08:00:00 → 08:00:10).
+    expect(r.byProvider.map((g) => [g.key, g.sessions, g.activeMs])).toEqual([
+      ["claude", 2, 1_700_000],
+      ["codex", 3, 202_000],
+    ]);
+    const text = renderReport(r, "Profile");
+    expect(text).toContain("| codex-archived | 1 | 1 | 0 |");
+    expect(text).toContain("| codex-sessions | 2 | 1 | 1 |");
+    expect(text).toContain("1 further copy of a Codex session found in a second file, counted once.");
+  });
+
+  it("lists every source even when one contributed nothing", () => {
+    const r = buildReport([session({})], []);
+    expect(r.bySource.map((s) => [s.source, s.sessions])).toEqual([["claude", 1], ["codex-sessions", 0], ["codex-archived", 0]]);
+    expect(r.duplicates).toBe(0);
+    expect(renderReport(r, "Profile")).not.toContain("counted once");
   });
 
   it("leaves an incredible span out of every time figure and names it", () => {
@@ -159,9 +285,43 @@ describe("report", () => {
       buildReport([session({ activeMs: 61_000 })], [span({ command: "morpheus pm claims | head", durationMs: 61_000, phase: "context" })]),
       "Profile",
     );
-    for (const heading of ["Time and tokens by phase", "By repository", "By role", "By model × effort", "First-turn context", "Slowest commands", "Most repeated commands"]) {
+    for (const heading of ["Sources", "Time and tokens by phase", "By provider", "By repository", "By role", "By model × effort", "First-turn context", "Slowest commands", "Most repeated commands"]) {
       expect(text).toContain(`### ${heading}`);
     }
     expect(text).toContain("| 1m01s | context | r | `morpheus pm claims \\| head` |");
+  });
+});
+
+describe("skipped lines", () => {
+  it("names the file and line of every unparseable line, so the count can be acted on", async () => {
+    const x = await extract(dirs);
+    const claude = join(dirs.claudeDir, "-Users-x-code-morpheus", "S1.jsonl");
+    const codex = join(dirs.codexDir, LIVE_C1);
+    expect(summarizeIssues(x.issues)).toEqual([
+      "3 unreadable line(s) or file(s) skipped:",
+      "  2 × unparseable JSON",
+      `      ${claude} — line 12`,
+      `      ${codex} — line 12`,
+      "  1 × assistant line without a message",
+      `      ${claude} — line 13`,
+    ]);
+  });
+
+  it("shortens the home directory, groups lines per file and caps what it names", () => {
+    const issues = [
+      ...[1, 2, 3, 4, 5, 6, 7].map((line) => ({ file: "/Users/x/.claude/projects/p/a.jsonl", line, message: "unparseable JSON" })),
+      ...["b", "c", "d"].map((f) => ({ file: `/Users/x/.codex/sessions/${f}.jsonl`, line: 1, message: "unparseable JSON" })),
+      { file: "/elsewhere/e.jsonl.zst", line: null, message: "unreadable: bad frame" },
+    ];
+    expect(summarizeIssues(issues, { home: "/Users/x", maxFiles: 2 })).toEqual([
+      "11 unreadable line(s) or file(s) skipped:",
+      "  10 × unparseable JSON",
+      "      ~/.claude/projects/p/a.jsonl — lines 1, 2, 3, 4, 5, +2 more",
+      "      ~/.codex/sessions/b.jsonl — line 1",
+      "      … and 2 more file(s)",
+      "  1 × unreadable: bad frame",
+      "      /elsewhere/e.jsonl.zst",
+    ]);
+    expect(summarizeIssues([])).toEqual([]);
   });
 });

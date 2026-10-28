@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { readRegistry } from "../registry/index.js";
-import { buildReport, extract, renderReport, sinceMs, toJsonl, type Extraction } from "../profile/index.js";
+import { buildReport, extract, renderReport, sinceMs, summarizeIssues, toJsonl, type Extraction } from "../profile/index.js";
 
 export interface ProfileFlags {
   since?: string;
@@ -27,11 +28,7 @@ async function run(flags: ProfileFlags): Promise<Extraction | null> {
 }
 
 function reportIssues(x: Extraction): void {
-  if (x.issues.length === 0) return;
-  const byMessage = new Map<string, number>();
-  for (const i of x.issues) byMessage.set(i.message, (byMessage.get(i.message) ?? 0) + 1);
-  console.error(`${x.issues.length} unreadable line(s) or file(s) skipped:`);
-  for (const [message, n] of byMessage) console.error(`  ${n} × ${message}`);
+  for (const line of summarizeIssues(x.issues, { home: homedir() })) console.error(line);
 }
 
 /** `morpheus profile extract` — JSONL rows to `--out` or stdout. */
@@ -41,7 +38,8 @@ export async function profileExtract(flags: ProfileFlags): Promise<number> {
   const text = toJsonl([...x.sessions, ...x.spans]);
   if (flags.out) {
     await writeFile(flags.out, text, "utf8");
-    console.error(`Wrote ${x.sessions.length} sessions and ${x.spans.length} spans from ${x.files} files to ${flags.out}.`);
+    const dup = x.duplicates ? ` (${x.duplicates} duplicate Codex cop${x.duplicates === 1 ? "y" : "ies"} counted once)` : "";
+    console.error(`Wrote ${x.sessions.length} sessions and ${x.spans.length} spans from ${x.files} files to ${flags.out}${dup}.`);
   } else {
     process.stdout.write(text);
   }
@@ -53,7 +51,7 @@ export async function profileExtract(flags: ProfileFlags): Promise<number> {
 export async function profileReport(flags: ProfileFlags): Promise<number> {
   const x = await run(flags);
   if (!x) return 1;
-  const report = buildReport(x.sessions, x.spans);
+  const report = buildReport(x.sessions, x.spans, { duplicates: x.duplicates });
   if (flags.json) {
     console.log(JSON.stringify(report, null, 2));
   } else {
