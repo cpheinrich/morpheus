@@ -433,9 +433,12 @@ action, continuing work and wake in the existing incident/worklog. A self-attest
 cannot satisfy that check. Telemetry/authentication safety waits remain distinct from blocker
 proof and never grant a model launch. The operating mandate records actual internal reporting
 cadence and stall threshold separately from quiet user notifications; no new scheduler is added.
-The CTO returns a rejected candidate's practical next action through the existing
-`repair-diagnostic` evidence path to the same work. That changes its context and wakes it;
-a PM/worklog-only rejection does not. No manual clock, lease or history edit substitutes for it.
+The CTO returns a rejected candidate's practical next action to the same work through
+its supported evidence route: `repair-diagnostic` for the current failed attempt, or
+`record --kind failure` with the exact current, already-bound execution identity while
+the attempt remains active. Both append through the existing repair owner; a PM/worklog-only
+rejection does not change its live context. Do not alter attempt state, lease, history or
+clocks merely to make a route accept it.
 
 The repair check gate reads the exact head's paginated `filter=all` inventory.
 Failures, pending/unknown results and non-Actions cancellations still block. The
