@@ -68,8 +68,11 @@ another note, action or notice.
 
 \`morpheus meeting-intake notification --state <journal> --meeting <id>\` only formats text. It
 requires an explicitly authorized profile, a current (not historical) note, verified factual PR,
-the required verified projection or an honest not-applicable result, recorded action count, matching
-digest and canonical URL. Summary-enabled profiles also require the verified note summary.
+the required verified projection or an honest not-applicable result, an explicit action-delivery
+status, matching digest and canonical URL. Use \`recorded\` with the number of newly filed actions,
+or \`not-promoted\` when the factual note is ready but separate action promotion has not happened;
+the notice states that distinction instead of blocking. Summary-enabled profiles also require the
+verified note summary.
 \`sending\`, \`sent\` and \`uncertain\` refuse retries. Persist
 \`sending\` before the external send, then \`sent\` only after observed success; reconcile an
 uncertain outcome before retrying.

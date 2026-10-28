@@ -1823,6 +1823,17 @@ and unversioned notes remain valid history. Considered `mdast-util-from-markdown
 2026-10-03) and `marked` 18.1.2 (published 2026-10-26); kept a small domain-specific fenced-heading
 scanner instead because this boundary needs only three level-two headings and no Markdown AST.
 
+## Public meeting-intake code uses synthetic topology — 2026-10-28
+
+MO-26-10-28-13.40.15. Morpheus keeps reusable schemas, validation, immutable reads, formatting and
+skills public, but its fixtures and examples use synthetic organizations, identities, addresses,
+domains and notification targets. Real collaborators, source accounts, repository topology, group
+aliases, watcher prompts and delivery journals belong in private project profiles or ignored local
+state. A current-note completion notice waits for the verified factual record and any required
+projection, not for separate action promotion; it states whether actions were recorded or remain
+unpromoted. Historical notes still cannot notify. This removes project data from current fixtures
+without rewriting already-public Git history, which needs a separate owner decision if desired.
+
 ## Blocked CD analysis wakes on meaningful input, with a bounded recheck — 2026-10-28
 
 MO-26-10-28-13.49.13. After two repair strategies, unchanged completed blocks with a concrete missing capability may wait at most six hours. Genuine task evidence, delivery identity/source/status, workflow completion or executor-quiescence facts wake them immediately; timer clocks and self-generated checkpoints do not. The existing opaque invocation-start receipt stores the frozen prompt context digest, so no schema field or mutable parking cursor is needed and older whole-state writers retain it. Unknown legacy receipts cannot justify suppression. This small domain policy uses the existing hash/store and adds no generic scheduler or dependency. It never grants a missing review authorization or waives admission, ownership or uncertain-upload safety.
