@@ -125,5 +125,3 @@ export declare const globalsCss: () => string;
 export declare const rootLayout: (name: string, description: string) => string;
 export declare const homePage: (ctx: TemplateContext, name: string, description: string) => string;
 export declare const envExample: (facts?: FirebaseFacts) => string;
-/** The `/hq` and waitlist rows a project's README should carry. */
-export declare const readmeSection: (name: string, hasHq: boolean, hasWaitlist: boolean) => string;
