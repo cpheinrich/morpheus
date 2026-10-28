@@ -288,6 +288,11 @@ describe("publication completion gate", () => {
         "no new action items were filed. " +
         "https://darwin.health/hq/team/meeting-notes/LK-26-10-26-11.39.00-synthetic/",
     );
+    expect(completionNotice({ ...ready(evo), summary: "invalid\nsummary" }, evo)).toBe(
+      "Meeting notes for October 26, 2026 have been summarized and recorded, " +
+        "along with the action items. " +
+        "https://darwin.health/hq/team/meeting-notes/LK-26-10-26-11.39.00-synthetic/",
+    );
   });
 
   it("includes a bounded summary only when the authorized profile requests it", () => {
