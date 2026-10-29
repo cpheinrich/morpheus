@@ -46,7 +46,7 @@ export interface BriefOptions {
     offline?: boolean;
     morpheus?: MorpheusInstallStatus;
     autoUpdatePreference?: AutoUpdatePreference;
-    /** Dependencies for moving dirty trunk edits to a draft PR at session start; tests inject `gh`. */
+    /** Dependencies for moving dirty trunk edits to a rescue branch at session start; tests inject `gh`. */
     rescue?: RescueDeps | false;
 }
 export declare function brief(root: string, opts?: BriefOptions): Promise<number>;

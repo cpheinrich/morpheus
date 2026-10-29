@@ -1430,7 +1430,9 @@ nothing moved), **focused local tests first with at most one full suite per PR**
 breaker** — instruction changes, mirrored into the scaffold template.
 
 **A dirty trunk checkout is rescued to a draft PR at session start** — 2026-10-08
-(MO-26-10-08-04.06.59). Chris's call after Lakina's main checkout sat 188 commits behind for three
+(MO-26-10-08-04.06.59). *Publishing superseded 2026-10-28: only a private repository gets the push
+and draft; elsewhere the rescue stays a local branch — see "Trunk rescues stay local unless the
+repository is private" below.* Chris's call after Lakina's main checkout sat 188 commits behind for three
 weeks behind one Xcode-rewritten tracked file: "if local main is dirty then it should just move the
 uncommitted changes to a branch and push that as a WIP PR." `context brief` commits tracked edits on
 the trunk branch to `wip/trunk-<date>-<host>`, pushes, opens a draft PR, resets and fast-forwards.
@@ -1966,3 +1968,41 @@ command. It fails open on every error, and its state lives in the **primary** ch
 once. Considered `shell-quote` 1.12.0 (modified 2026-10-02, no dependencies) for finding `gh` in a
 command line; built a ~60-line splitter instead, because the guard also needs `$(`, backtick and
 comment boundaries and a runtime dependency in every install is not worth a hook prefilter.
+
+## Trunk rescues stay local unless the repository is private — 2026-10-28
+
+MO-26-10-28-15.37.55. Chris, in chat: *"For public repos, we don't have to automatically push
+rescued changes."* This supersedes the publishing half of **A dirty trunk checkout is rescued to a
+draft PR at session start** (2026-10-08) and of its refinements in **Trunk rescue resets IDE
+churn…** (2026-10-28, #542) for every repository not known to be private. The trigger was
+morpheus #452, a rescue draft that published an agent's private working document, a Tailscale
+hostname and local paths. Closing a PR unpublishes nothing, and the age-out keeps the branch. At
+Chris's request #452 was closed and its branch deleted the same day, with a private copy kept under
+the ignored `local/rescued/`.
+
+- *Publish only when every repository reads `PRIVATE`.* `context brief` asks
+  `gh repo view <owner/repo> --json visibility` for the push remote's push and fetch repositories
+  and, on a fork, the trunk remote's. Public, `INTERNAL`, a remote that is not on GitHub, a missing
+  or failing `gh` and an unparseable answer all keep the rescue local: unknown is public. Remotes
+  are identified from configured URLs and from where a `pushInsteadOf` rewrite actually sends the
+  push. A rewrite to anywhere that is neither GitHub nor this machine is unknown. `gh` is asked for
+  `github.com/<owner>/<repo>`, so `GH_HOST` cannot answer for a same-named repository elsewhere.
+- *Cache for one hour, never a failure.* Answers live in the primary checkout's ignored
+  `local/sessions/repo-visibility.json`, and only where Git ignores it. The item proposed about a
+  day. One hour was chosen because a repository can be made public at any time, and a stale
+  `PRIVATE` is the one cached value that publishes; the cost is one `gh` call per hour of rare
+  rescues.
+- *Local means local.* The same private index, content proofs and reset; then no push, no PR, and
+  the branch is never deleted automatically, because it is the only copy. The brief prints the
+  branch, diffstat, reason, `git switch`/`git cherry-pick` to recover and the two commands to
+  publish deliberately. `doctor` and `doctor --all` list every `wip/trunk-*` branch with no
+  remote-tracking ref on any remote, from any checkout, since no PR or age-out will surface it.
+- *Dedupe matches a local branch alone in local mode* (the same replay), because there is no PR to
+  require. The churn reset, the replay rule and the private-repository age-out are unchanged.
+- *Published text says less everywhere.* On private repositories the commit message and PR body
+  name the trunk branch and the short host label, never the absolute checkout path or the full
+  hostname. This departs from the item's "private repositories are unchanged, PR body included".
+  The task brief that relayed Chris's decision asked for it for every repository, as a cheap
+  privacy improvement.
+
+No dependency: `gh`, native Git and the existing replay.

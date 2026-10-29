@@ -30,8 +30,8 @@ export declare function fetchTrunk(root: string): Promise<{
  * Startup does not allocate a task. Only an exactly named local trunk may
  * fast-forward. Feature branches and detached work stay untouched, with the
  * missing commits reported instead of called current. Tracked edits on the
- * trunk branch are first moved to a pushed WIP branch and draft PR (see
- * `trunk-rescue.ts`); untracked files stay, and Git's own `--ff-only` refuses
+ * trunk branch are first moved to a WIP branch, pushed with a draft PR only on
+ * a private repository (see `trunk-rescue.ts`); untracked files stay, and Git's own `--ff-only` refuses
  * when one would be overwritten. `rescueDeps: false` disables the rescue.
  */
 export declare function prepareRepository(cwd: string, offline?: boolean, rescueDeps?: RescueDeps | false): Promise<SourceState>;

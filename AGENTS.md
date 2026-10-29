@@ -89,7 +89,8 @@ run and for anything the shim reports.
 ## Context freshness
 
 Run `morpheus context brief` at session start if the hook did not; follow its `WORK IN` path.
-On a dirty trunk it moves tracked edits to a `wip/trunk-*` draft PR, then fast-forwards; `doctor --all` lists stuck trunks.
+On a dirty trunk it moves tracked edits to a `wip/trunk-*` branch (a draft PR only if the repo is private), then
+fast-forwards; `doctor --all` lists stuck trunks and unpushed rescues.
 
 **Read `AGENTS.md`, `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md` once
 at session start — `AGENTS.md` too, because an injected copy leaves no read evidence — then run

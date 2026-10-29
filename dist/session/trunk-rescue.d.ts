@@ -1,4 +1,6 @@
+import { type CommandResult, type CommandRunner, type VisibilityCache, githubRepo } from "./repo-visibility.js";
 import { type ChurnEntry } from "./trunk-churn.js";
+export { githubRepo, type CommandResult, type CommandRunner };
 /**
  * Over this many missing trunk commits, or this many days since the oldest of
  * them landed, a behind checkout stops being "a session that has not pulled
@@ -53,12 +55,12 @@ export declare function wipBranchName(date: string, host: string, taken: Readonl
 /** Pacific, like roadmap ids, so two machines name the same day the same way. */
 export declare function pacificDate(now: Date): string;
 export declare function shortHost(raw: string): string;
-export interface CommandResult {
-    code: number;
-    stdout: string;
-    stderr: string;
-}
-export type CommandRunner = (command: string, args: string[], cwd: string) => Promise<CommandResult>;
+/**
+ * Runs `gh` for real. A command that cannot start (`ENOENT`) has an empty
+ * `stderr`, so the error's message stands in for it, or the reason a rescue
+ * stayed local would read only "exit 1".
+ */
+export declare const runCommand: CommandRunner;
 export interface RescueDeps {
     /** Runs `gh`; injectable so tests never reach GitHub. */
     runner?: CommandRunner;
@@ -66,6 +68,11 @@ export interface RescueDeps {
     now?: Date;
     /** The remote the WIP branch is pushed to. Defaults to `origin`. */
     pushRemote?: string;
+    /**
+     * Where repository visibility answers persist. Defaults to the primary
+     * checkout's ignored `local/sessions/`; `false` reads them every time.
+     */
+    visibilityCache?: VisibilityCache | false;
 }
 export interface TrunkTarget {
     /** e.g. `origin/main`, for messages. */
@@ -92,12 +99,14 @@ export type RescueResult = {
     orphans: string[];
     churn: ChurnEntry[];
     commit: string;
-} | {
+}
+/** `prUrl` is absent when the earlier rescue is a local branch, which is all a public repository gets. */
+ | {
     outcome: "duplicate";
     dirt: TrunkDirt;
     orphans: string[];
     existingBranch: string;
-    prUrl: string;
+    prUrl?: string;
 } | {
     outcome: "rescued";
     dirt: TrunkDirt;
@@ -107,13 +116,25 @@ export type RescueResult = {
     /** The remote the branch was (or was to be) pushed to. */
     remote: string;
     pushed: boolean;
+    /**
+     * Why the branch was deliberately never pushed — a public repository, or
+     * one whose visibility could not be read. Absent when a push was attempted.
+     */
+    keptLocal?: string;
+    /** `git diff --stat` of the rescued edits. */
+    diffstat: string;
     pushError?: string;
     prUrl?: string;
     prError?: string;
     lag: Lag;
 };
+/**
+ * The draft's body. It names the trunk branch and a short host label, never
+ * the checkout's absolute path or the full hostname: even on a private
+ * repository those say more about the machine than a reviewer needs.
+ */
 export declare function rescuePrBody(input: {
-    root: string;
+    branch: string;
     host: string;
     date: string;
     trunk: string;
@@ -148,17 +169,17 @@ export declare function stagedRemovalsOnDisk(root: string, raw: string): Promise
  * presence stops the rescue instead of moving it to a draft PR.
  */
 export declare const HUMAN_RECORDS = "hq/team/";
-/** `owner/repo` from a GitHub remote URL, or null. */
-export declare function githubRepo(url: string): string | null;
 /**
- * Move tracked edits on the trunk branch to a WIP branch, reset the checkout
- * to its own HEAD, then push and open a draft pull request. Does not
- * fast-forward; the caller does that once this returns.
+ * Move tracked edits on the trunk branch to a WIP branch and reset the
+ * checkout to its own HEAD; then, only on a private repository, push the
+ * branch and open a draft pull request. Does not fast-forward; the caller
+ * does that once this returns.
  *
  * Everything between proving the commit and resetting is local and fast. The
- * network (push, `gh`) comes after the reset, so a write landing during it —
- * an IDE autosave, Xcode regenerating the project file — lands on the reset
- * tree and survives, instead of being reset away unrecorded.
+ * network (visibility, duplicate lookup) runs before the proof, and the push
+ * and `gh pr create` after the reset, so a write landing during either — an
+ * IDE autosave, Xcode regenerating the project file — is caught by the proof
+ * or lands on the reset tree and survives, instead of being reset away.
  */
 export declare function rescueDirtyTrunk(root: string, target: TrunkTarget, deps?: RescueDeps): Promise<RescueResult>;
 /** The one-line-plus-detail report `context brief` prints after a rescue attempt. */

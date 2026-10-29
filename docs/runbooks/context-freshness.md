@@ -25,10 +25,29 @@ Xcode-rewritten `project.pbxproj`. So when HEAD is the trunk branch and tracked 
    tree — once before creating the branch and again immediately before resetting;
 2. resets trunk to its last commit. Nothing slow runs between the proof and the reset, so an
    editor saving during the push below lands on the reset tree instead of being lost;
-3. pushes the branch to `origin` and opens a **draft** PR titled *WIP: uncommitted changes rescued
-   from <repo> main (<date>)*, listing the files, the diffstat and how far behind trunk was (on a
-   fork, against the trunk remote's repository), then fast-forwards and prints one line with the
-   PR URL.
+3. **only on a private repository**, pushes the branch to `origin` and opens a **draft** PR titled
+   *WIP: uncommitted changes rescued from <repo> main (<date>)*, listing the files, the diffstat
+   and how far behind trunk was (on a fork, against the trunk remote's repository), then
+   fast-forwards and prints one line with the PR URL. The commit message and PR body name the
+   trunk branch and a short host label, never the checkout's absolute path or full hostname.
+
+**On a public repository the rescue stays local.** Pushing would publish whatever was lying in the
+checkout: morpheus #452 put an agent's private working document, a Tailscale hostname and local
+paths on the public web, and closing a PR unpublishes nothing. Before the proof, `brief` asks
+`gh repo view github.com/<owner/repo> --json visibility` for every repository the rescue would
+reach — the push remote's push and fetch URLs, where a `pushInsteadOf` rewrite actually sends the
+push and, on a fork, the trunk remote — and publishes only when every one reads exactly `PRIVATE`. Public, internal, a remote that is not on GitHub, a missing or failing
+`gh` and an answer it cannot parse all keep the branch local: **unknown is public**. Answers are
+cached for one hour in the primary checkout's ignored `local/sessions/repo-visibility.json`; a
+failed read is never cached. A local rescue gets the same commit, proofs and reset, and then
+nothing else — no push, no PR, and the branch is never deleted automatically, because it is the
+only copy. `brief` prints the branch, the diffstat, why it was not pushed, how to recover it
+(`git switch <branch>`, or `git cherry-pick <branch>` onto another branch) and how to publish it
+deliberately (`git push origin <branch>`, then `gh pr create --draft --head <branch>`).
+`morpheus doctor` and `doctor --all` list every `wip/trunk-*` branch with no remote-tracking ref,
+from any checkout of the repository, until someone deletes it with `git branch -D`. A
+`clone --single-branch` gets no tracking ref even for a pushed rescue, so there the list can
+include one that does have a remote copy.
 
 It refuses, and reports instead, when a file's staged content differs from both HEAD and the
 working tree (committing the tree would drop the staged version), when a file removed from the
@@ -49,10 +68,11 @@ One real edit among them and the whole set is rescued as above. The rule is deli
 **A repeat is not rescued twice.** When an open rescue PR's change, replayed onto the current HEAD,
 gives exactly these edits, the checkout is reset without another PR and the brief names the
 earlier one. A failed lookup, a closed PR or a branch missing from the remote falls back to an
-ordinary rescue.
+ordinary rescue. Where rescues stay local there is no PR to require: a recent local `wip/trunk-*`
+branch whose change replays to these edits is the match on its own, and no second branch is made.
 
 **Untracked files are never committed or deleted** — that is where secrets and build junk live.
-They are listed in the PR, and untracked build output whose source no longer exists
+They are listed in the PR (or the brief), and untracked build output whose source no longer exists
 (`dist/foo.js` with no `src/foo.ts`) is named as safe to delete. Git's own `--ff-only` refuses if
 the merge would overwrite one, and `brief` says so. Nothing happens mid-merge, -rebase,
 -cherry-pick, -revert or -bisect; the checkout is reported loudly instead. If the push fails the
@@ -70,7 +90,8 @@ missing commit is more than 3 days old (`STALE_BEHIND_*` in `src/session/trunk-r
 
 **Fleet view.** `brief` only acts in the checkout a session starts in, which is exactly the one
 nobody opens. `morpheus doctor --all` reports every registered project whose trunk checkout is
-dirty or behind past those thresholds, and orphaned build output, without writing anything. It
+dirty or behind past those thresholds, orphaned build output, and never-pushed local rescue
+branches, without writing anything. It
 measures against the remote tip when that commit is already local, otherwise against the cached
 remote-tracking ref, and says when that cache may be stale.
 

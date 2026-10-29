@@ -24,6 +24,11 @@ import type { TrunkRef } from "./git.js";
  * behind past the thresholds, and never writes. It measures against the
  * remote's tip when the brief's private fetch already brought that commit
  * here, and otherwise against the cached remote-tracking ref, saying so.
+ *
+ * It also lists rescue branches that exist only in this clone. On a public
+ * repository a rescue is never pushed, so no pull request and no GitHub
+ * Manager age-out will ever surface it; this report is the only place it
+ * shows up until someone recovers or deletes it.
  */
 
 const exec = promisify(execFile);
@@ -49,6 +54,45 @@ export interface TrunkCheckoutReport {
   cachedAt: string | null;
   /** The remote reported a tip that is not available locally. */
   remoteTipUnfetched: boolean;
+  /** `wip/trunk-*` branches with no remote-tracking counterpart on any remote, newest first. */
+  localRescues: LocalRescue[];
+}
+
+export interface LocalRescue {
+  branch: string;
+  /** Committer date, `YYYY-MM-DD`. */
+  date: string | null;
+  /** Files the rescue commit changed, or null when that could not be read. */
+  files: number | null;
+}
+
+/**
+ * Rescue branches with no remote-tracking ref on any remote. Read from refs
+ * alone, with no network. In an ordinary clone a push writes that ref, so such
+ * a branch was kept local (a public repository), its push failed, or its
+ * remote branch was deleted and pruned, and this clone holds the only copy. A
+ * clone whose fetch refspec maps only some branches (`clone --single-branch`)
+ * gets no tracking ref even for a pushed rescue, so the finding says "likely".
+ */
+export async function localRescueBranches(root: string): Promise<LocalRescue[]> {
+  const local = (await git(root, ["for-each-ref", "--sort=-committerdate", "--format=%(refname:short)%09%(committerdate:short)", "refs/heads/wip/trunk-*"])) ?? "";
+  const remotes = ((await git(root, ["remote"])) ?? "").split("\n").map((r) => r.trim()).filter(Boolean);
+  const tracked = new Set<string>();
+  for (const line of ((await git(root, ["for-each-ref", "--format=%(refname)", "refs/remotes/"])) ?? "").split("\n")) {
+    const ref = line.trim();
+    for (const remote of remotes) {
+      const prefix = `refs/remotes/${remote}/`;
+      if (ref.startsWith(prefix)) tracked.add(ref.slice(prefix.length));
+    }
+  }
+  const out: LocalRescue[] = [];
+  for (const line of local.split("\n")) {
+    const [branch, date] = line.trim().split("\t");
+    if (!branch || tracked.has(branch)) continue;
+    const names = await git(root, ["diff", "--name-only", "--no-renames", `refs/heads/${branch}^`, `refs/heads/${branch}`]);
+    out.push({ branch, date: date || null, files: names === null ? null : names.split("\n").filter(Boolean).length });
+  }
+  return out;
 }
 
 export async function inspectTrunkCheckout(
@@ -80,17 +124,41 @@ export async function inspectTrunkCheckout(
   return {
     branch, trunk: label, onTrunk: branch === trunk.branch, dirt, orphans, lag, measuredAgainst, cachedAt,
     remoteTipUnfetched: remoteSha !== null && !remoteTipLocal,
+    localRescues: await localRescueBranches(root).catch(() => []),
   };
 }
 
 export interface TrunkFinding { severity: "error" | "warning"; message: string }
 
+/** How many local rescue branches one finding names before summarising the rest. */
+const RESCUES_SHOWN = 10;
+
 /**
- * Only the trunk checkout is judged: a registered path sitting on a task
- * branch is somebody's work in progress, and being behind there is normal.
+ * Local rescue branches are reported from any checkout, because branches
+ * belong to the repository. Everything else judges only the trunk checkout: a
+ * registered path sitting on a task branch is somebody's work in progress, and
+ * being behind there is normal.
  */
 export function trunkCheckoutFindings(report: TrunkCheckoutReport, now: Date): TrunkFinding[] {
-  if (!report.onTrunk) return [];
+  const findings = report.onTrunk ? checkoutFindings(report, now) : [];
+  if (report.localRescues.length) findings.push(localRescueFinding(report.localRescues));
+  return findings;
+}
+
+export function localRescueFinding(rescues: LocalRescue[]): TrunkFinding {
+  const shown = rescues.slice(0, RESCUES_SHOWN).map((r) =>
+    `${r.branch} (${r.files === null ? "files unknown" : `${r.files} file(s)`}${r.date ? `, ${r.date}` : ""})`);
+  const more = rescues.length > RESCUES_SHOWN ? ` and ${rescues.length - RESCUES_SHOWN} more` : "";
+  return {
+    severity: "warning",
+    message:
+      `${rescues.length} trunk rescue branch(es) have no remote-tracking ref, so they are likely only in this clone and no pull request will surface them: ` +
+      `${shown.join(", ")}${more}. Inspect with git show --stat <branch>; recover with git switch <branch> or ` +
+      `git cherry-pick <branch>; publish deliberately with git push origin <branch>; once handled, delete with git branch -D <branch>.`,
+  };
+}
+
+function checkoutFindings(report: TrunkCheckoutReport, now: Date): TrunkFinding[] {
   const findings: TrunkFinding[] = [];
   const caveat =
     report.measuredAgainst === "cached-ref"
@@ -106,7 +174,8 @@ export function trunkCheckoutFindings(report: TrunkCheckoutReport, now: Date): T
       message:
         `Trunk checkout has ${report.dirt.tracked.length} uncommitted tracked edit(s) (${shown}${more}), ` +
         `so it cannot fast-forward. The next \`morpheus context brief\` here moves them to a ` +
-        `wip/trunk-* draft PR, or resets them when every one is IDE churn, and fast-forwards.`,
+        `wip/trunk-* branch (pushed as a draft PR only on a private repository), or resets them ` +
+        `when every one is IDE churn, and fast-forwards.`,
     });
   }
 

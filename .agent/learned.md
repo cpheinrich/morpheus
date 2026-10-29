@@ -677,3 +677,14 @@ observed live (a nested headless session could not authenticate): `tool_response
 output object, and a failed call — which is how a non-zero Bash exit is shown — goes to
 `PostToolUseFailure` with the text in `error`, so a `PostToolUse` hook alone never sees what a
 refusing command printed.
+
+## Automation that pushes publishes, and closing the PR does not take it back
+
+2026-10-28 (MO-26-10-28-15.37.55). The trunk rescue pushed whatever tracked edits it found. On
+public morpheus that made #452 a public copy of an agent's private working document, with a
+Tailscale hostname and local paths. Untracked files had been excluded "because that is where
+secrets live", but a tracked file can be overwritten with anything. A closed PR's diff and commits
+stay readable through the pull request's own refs until GitHub Support purges them, and the branch
+stays until deleted. The rescue's own commit message and PR body also carried the absolute checkout
+path. **Before automation pushes content it did not author, ask whether the destination is public,
+and treat "could not tell" as yes.**

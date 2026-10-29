@@ -5,7 +5,18 @@ import { hostname as osHostname } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { gitSubprocessEnv } from "../git-env.js";
+import {
+  type CommandResult,
+  type CommandRunner,
+  type VisibilityCache,
+  defaultVisibilityCache,
+  githubRepo,
+  publishVerdict,
+  rescueRepositories,
+} from "./repo-visibility.js";
 import { type ChurnEntry, classifyChanges, describeChurn, parseLsTree, parseRawDiff } from "./trunk-churn.js";
+
+export { githubRepo, type CommandResult, type CommandRunner };
 
 /**
  * A dirty trunk checkout is a stuck checkout.
@@ -18,10 +29,13 @@ import { type ChurnEntry, classifyChanges, describeChurn, parseLsTree, parseRawD
  * the sessions that did open the main checkout read stale instructions.
  *
  * So the brief now *acts*: tracked edits on the trunk branch are committed to
- * a `wip/trunk-<date>-<host>` branch, pushed, and opened as a draft pull
- * request, after which trunk is reset and fast-forwarded. Nothing is
- * discarded — the trunk is reset only after the rescue commit is proven to
- * hold exactly the working tree's tracked content, on a local ref.
+ * a `wip/trunk-<date>-<host>` branch, after which trunk is reset and
+ * fast-forwarded. Nothing is discarded — the trunk is reset only after the
+ * rescue commit is proven to hold exactly the working tree's tracked content,
+ * on a local ref. Only on a repository that reads as private is the branch
+ * then pushed and opened as a draft pull request; on a public one, or where
+ * visibility cannot be read, it stays local (`repo-visibility.ts`), because
+ * whatever was lying in the checkout would otherwise be published.
  *
  * Untracked files are deliberately **never** committed: they are where
  * secrets and build junk live. They are listed, and untracked build output
@@ -219,16 +233,18 @@ export function shortHost(raw: string): string {
   return raw.split(".")[0]!.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "host";
 }
 
-export interface CommandResult { code: number; stdout: string; stderr: string }
-export type CommandRunner = (command: string, args: string[], cwd: string) => Promise<CommandResult>;
-
-const runCommand: CommandRunner = async (command, args, cwd) => {
+/**
+ * Runs `gh` for real. A command that cannot start (`ENOENT`) has an empty
+ * `stderr`, so the error's message stands in for it, or the reason a rescue
+ * stayed local would read only "exit 1".
+ */
+export const runCommand: CommandRunner = async (command, args, cwd) => {
   try {
     const { stdout, stderr } = await exec(command, args, { cwd, timeout: 60_000, env: gitSubprocessEnv() });
     return { code: 0, stdout, stderr };
   } catch (error) {
     const failed = error as Error & { code?: number | string; stdout?: string; stderr?: string };
-    return { code: typeof failed.code === "number" ? failed.code : 1, stdout: failed.stdout ?? "", stderr: failed.stderr ?? failed.message };
+    return { code: typeof failed.code === "number" ? failed.code : 1, stdout: failed.stdout ?? "", stderr: failed.stderr || failed.message };
   }
 };
 
@@ -239,6 +255,11 @@ export interface RescueDeps {
   now?: Date;
   /** The remote the WIP branch is pushed to. Defaults to `origin`. */
   pushRemote?: string;
+  /**
+   * Where repository visibility answers persist. Defaults to the primary
+   * checkout's ignored `local/sessions/`; `false` reads them every time.
+   */
+  visibilityCache?: VisibilityCache | false;
 }
 
 export interface TrunkTarget {
@@ -255,7 +276,8 @@ export type RescueResult =
   | { outcome: "skipped"; reason: string; dirt: TrunkDirt; orphans: string[] }
   /** Every edit was IDE churn: reset, nothing published. `commit` holds them, unreferenced, until Git prunes it. */
   | { outcome: "churn"; dirt: TrunkDirt; orphans: string[]; churn: ChurnEntry[]; commit: string }
-  | { outcome: "duplicate"; dirt: TrunkDirt; orphans: string[]; existingBranch: string; prUrl: string }
+  /** `prUrl` is absent when the earlier rescue is a local branch, which is all a public repository gets. */
+  | { outcome: "duplicate"; dirt: TrunkDirt; orphans: string[]; existingBranch: string; prUrl?: string }
   | {
       outcome: "rescued";
       dirt: TrunkDirt;
@@ -265,6 +287,13 @@ export type RescueResult =
       /** The remote the branch was (or was to be) pushed to. */
       remote: string;
       pushed: boolean;
+      /**
+       * Why the branch was deliberately never pushed — a public repository, or
+       * one whose visibility could not be read. Absent when a push was attempted.
+       */
+      keptLocal?: string;
+      /** `git diff --stat` of the rescued edits. */
+      diffstat: string;
       pushError?: string;
       prUrl?: string;
       prError?: string;
@@ -276,8 +305,13 @@ const list = (paths: string[]): string =>
   paths.slice(0, LIST_CAP).map((p) => `- \`${p.replace(/`/g, "'")}\``).join("\n") +
   (paths.length > LIST_CAP ? `\n- … and ${paths.length - LIST_CAP} more` : "");
 
+/**
+ * The draft's body. It names the trunk branch and a short host label, never
+ * the checkout's absolute path or the full hostname: even on a private
+ * repository those say more about the machine than a reviewer needs.
+ */
 export function rescuePrBody(input: {
-  root: string; host: string; date: string; trunk: string; lag: Lag; ahead: number;
+  branch: string; host: string; date: string; trunk: string; lag: Lag; ahead: number;
   diffstat: string; tracked: string[]; untracked: string[]; orphans: string[]; now: Date;
   /** The repository's GitHub Manager policy will close this draft; only then is that promised. */
   agesOut?: boolean;
@@ -287,7 +321,7 @@ export function rescuePrBody(input: {
     ? `${input.lag.behind} commit(s) behind ${input.trunk}${days !== null ? `, missing trunk work since ${input.lag.oldest?.slice(0, 10)} (${days} day(s))` : ""}.`
     : `Up to date with ${input.trunk}.`;
   return [
-    `Uncommitted tracked edits were found on the trunk checkout \`${input.root}\` on \`${input.host}\` by \`morpheus context brief\` on ${input.date}. A dirty trunk cannot fast-forward, so they were moved here and the checkout was reset to trunk. Nothing was discarded.`,
+    `Uncommitted tracked edits were found on a \`${input.branch}\` checkout on host \`${input.host}\` by \`morpheus context brief\` on ${input.date}. A dirty trunk cannot fast-forward, so they were moved here and the checkout was reset to trunk. Nothing was discarded.`,
     "",
     `**How far behind the checkout was:** ${lagLine}${input.ahead ? ` It also carried ${input.ahead} local trunk commit(s) not on ${input.trunk}; they are included in this branch's history.` : ""}`,
     "",
@@ -389,10 +423,12 @@ async function managerClosesRescues(root: string, trunkSha: string): Promise<boo
 }
 
 /**
- * Only the most recent local rescue branches are compared. A rescue draft is
- * closed once it has gone `RESCUE_MAX_AGE_DAYS` untouched (the GitHub
- * Manager's sweep), so an older branch rarely still has the open pull request
- * a duplicate needs, and each comparison costs several Git calls at startup.
+ * Only the most recent local rescue branches are compared, because each
+ * comparison costs several Git calls at startup. Where rescues are published,
+ * a draft is closed once it has gone `RESCUE_MAX_AGE_DAYS` untouched (the
+ * GitHub Manager's sweep), so an older branch rarely still has the open pull
+ * request a duplicate needs there. Where they stay local, a repeat is almost
+ * always of a recent rescue: generator churn recurs daily.
  */
 const DUPLICATE_CANDIDATES = 20;
 
@@ -417,8 +453,12 @@ async function classifyChurn(root: string, head: string, commit: string, trunkSh
   return classifyChanges(changes, trunk, (blob) => git(root, ["cat-file", "blob", blob]).catch(() => null));
 }
 
+/** The remote trunk is fetched from: `upstream` on a fork, else the push remote. */
+const trunkRemoteName = (target: TrunkTarget, remote: string): string =>
+  target.trunk.endsWith(`/${target.branch}`) ? target.trunk.slice(0, -target.branch.length - 1) : remote;
+
 async function pullRequestTarget(root: string, target: TrunkTarget, remote: string, branch: string): Promise<{ repoArgs: string[]; prHead: string; headOwner?: string }> {
-  const trunkRemote = target.trunk.endsWith(`/${target.branch}`) ? target.trunk.slice(0, -target.branch.length - 1) : remote;
+  const trunkRemote = trunkRemoteName(target, remote);
   const fork = await git(root, ["remote", "get-url", remote]).then(githubRepo, () => null);
   const headOwner = fork?.split("/")[0];
   if (trunkRemote === remote) return { repoArgs: [], prHead: branch, ...(headOwner ? { headOwner } : {}) };
@@ -428,26 +468,35 @@ async function pullRequestTarget(root: string, target: TrunkTarget, remote: stri
     : { repoArgs: [], prHead: branch, ...(headOwner ? { headOwner } : {}) };
 }
 
-/** A live pushed branch and an existing PR must both stand behind a duplicate. */
-async function duplicateRescueBranch(root: string, target: TrunkTarget, remote: string, head: string, commit: string, runner: CommandRunner): Promise<{ branch: string; prUrl: string } | null> {
+/**
+ * An earlier rescue branch that already holds these edits. Where rescues are
+ * published (`publish`), a live pushed branch and an open PR must both stand
+ * behind a duplicate. Where they stay local, the local branch is the only copy
+ * there will ever be, so it stands on its own.
+ */
+async function duplicateRescueBranch(root: string, target: TrunkTarget, remote: string, head: string, commit: string, runner: CommandRunner, publish: boolean): Promise<{ branch: string; prUrl?: string } | null> {
   const tree = (await git(root, ["rev-parse", `${commit}^{tree}`])).trim();
   const refs = (await git(root, ["for-each-ref", "--sort=-committerdate", `--count=${DUPLICATE_CANDIDATES}`, "--format=%(refname:short)", "refs/heads/wip/trunk-*"])).split("\n").filter(Boolean);
   if (!refs.length) return null;
   // This network lookup precedes the content proof/reset window. Cached
   // remote-tracking refs survive remote branch deletion and cannot authorize
   // discarding another rescue attempt.
-  const pushUrl = (await git(root, ["remote", "get-url", "--push", remote])).trim();
-  const live = new Map((await git(root, ["ls-remote", "--heads", pushUrl, "refs/heads/wip/trunk-*"]))
-    .split("\n").filter(Boolean).map((line) => {
-      const [sha, ref] = line.split("\t");
-      return [ref?.slice("refs/heads/".length), sha] as const;
-    }));
+  let live: Map<string | undefined, string | undefined> | null = null;
+  if (publish) {
+    const pushUrl = (await git(root, ["remote", "get-url", "--push", remote])).trim();
+    live = new Map((await git(root, ["ls-remote", "--heads", pushUrl, "refs/heads/wip/trunk-*"]))
+      .split("\n").filter(Boolean).map((line) => {
+        const [sha, ref] = line.split("\t");
+        return [ref?.slice("refs/heads/".length), sha] as const;
+      }));
+  }
   for (const branch of refs) {
     const local = `refs/heads/${branch}`;
     const localSha = (await git(root, ["rev-parse", local]).catch(() => "")).trim();
-    if (!localSha || live.get(branch) !== localSha) continue;
+    if (!localSha || (live && live.get(branch) !== localSha)) continue;
     const parent = (await git(root, ["rev-parse", "-q", "--verify", `${local}^`]).catch(() => "")).trim();
     if (!parent || !(await replaysTo(root, head, parent, localSha, tree))) continue;
+    if (!publish) return { branch };
     const { repoArgs, headOwner } = await pullRequestTarget(root, target, remote, branch);
     // Unlike `pr create`, `pr list --head` rejects owner:branch. Filter
     // the owner from the returned JSON after selecting the plain branch.
@@ -512,21 +561,17 @@ export async function stagedRemovalsOnDisk(root: string, raw: string): Promise<s
  */
 export const HUMAN_RECORDS = "hq/team/";
 
-/** `owner/repo` from a GitHub remote URL, or null. */
-export function githubRepo(url: string): string | null {
-  const m = url.trim().match(/github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);
-  return m ? `${m[1]}/${m[2]}` : null;
-}
-
 /**
- * Move tracked edits on the trunk branch to a WIP branch, reset the checkout
- * to its own HEAD, then push and open a draft pull request. Does not
- * fast-forward; the caller does that once this returns.
+ * Move tracked edits on the trunk branch to a WIP branch and reset the
+ * checkout to its own HEAD; then, only on a private repository, push the
+ * branch and open a draft pull request. Does not fast-forward; the caller
+ * does that once this returns.
  *
  * Everything between proving the commit and resetting is local and fast. The
- * network (push, `gh`) comes after the reset, so a write landing during it —
- * an IDE autosave, Xcode regenerating the project file — lands on the reset
- * tree and survives, instead of being reset away unrecorded.
+ * network (visibility, duplicate lookup) runs before the proof, and the push
+ * and `gh pr create` after the reset, so a write landing during either — an
+ * IDE autosave, Xcode regenerating the project file — is caught by the proof
+ * or lands on the reset tree and survives, instead of being reset away.
  */
 export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: RescueDeps = {}): Promise<RescueResult> {
   const raw = await git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
@@ -567,11 +612,13 @@ export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: 
     await copyFile(realIndex, tempIndex).catch(async () => { await git(root, ["read-tree", "HEAD"], { GIT_INDEX_FILE: tempIndex }); });
     await git(root, ["add", "-u"], { GIT_INDEX_FILE: tempIndex });
     const tree = (await git(root, ["write-tree"], { GIT_INDEX_FILE: tempIndex })).trim();
+    // A short host label and the branch, never the absolute checkout path:
+    // this message travels wherever the branch is pushed.
     const message = [
       `WIP: uncommitted changes rescued from dirty ${target.branch}`,
       "",
-      `Auto-moved by morpheus context brief on ${date} from the trunk checkout`,
-      `${root} on ${host}. The edits blocked fast-forwarding ${target.trunk};`,
+      `Auto-moved by morpheus context brief on ${date} from a ${target.branch}`,
+      `checkout on ${host}. The edits blocked fast-forwarding ${target.trunk};`,
       "the checkout was reset to trunk only after this commit held them.",
     ].join("\n");
     commit = (await git(root, ["commit-tree", tree, "-p", head, "-m", message])).trim();
@@ -592,9 +639,16 @@ export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: 
     return { outcome: "churn", dirt, orphans, churn: classified.churn, commit };
   }
 
+  // Whether this rescue may leave the machine. Decided before the proof/reset
+  // window like every other network call; any failure keeps it local.
+  const trunkRemote = trunkRemoteName(target, remote);
+  const cache = deps.visibilityCache === false ? null : deps.visibilityCache ?? await defaultVisibilityCache(root).catch(() => null);
+  const verdict = await publishVerdict(root, await rescueRepositories(root, remote, trunkRemote), runner, now, cache)
+    .catch(() => ({ publish: false, repos: [] as string[], reason: "the repository's visibility could not be read" }));
+
   // Lookup runs before the proof/reset window; it never places a network call
   // between a successful proof and the destructive reset.
-  const duplicate = await duplicateRescueBranch(root, target, remote, head, commit, runner).catch(() => null);
+  const duplicate = await duplicateRescueBranch(root, target, remote, head, commit, runner, verdict.publish).catch(() => null);
   // The proof that makes the reset safe: every tracked path's working-tree
   // content equals the rescue commit. Anything else — a filter, a submodule,
   // a write racing this — stops here with nothing changed.
@@ -608,7 +662,7 @@ export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: 
       return skip("the working tree changed while checking a prior rescue; nothing was reset");
     }
     await git(root, ["reset", "--hard", "--quiet", "HEAD"]);
-    return { outcome: "duplicate", dirt, orphans, existingBranch: duplicate.branch, prUrl: duplicate.prUrl };
+    return { outcome: "duplicate", dirt, orphans, existingBranch: duplicate.branch, ...(duplicate.prUrl ? { prUrl: duplicate.prUrl } : {}) };
   }
   try {
     // Empty old-value: create only, never move an existing branch.
@@ -624,6 +678,10 @@ export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: 
   await git(root, ["reset", "--hard", "--quiet", "HEAD"]);
 
   const diffstat = await git(root, ["diff", "--stat", head, commit]).catch(() => "");
+  if (!verdict.publish) {
+    // Never pushed and never deleted here: this branch is the only copy.
+    return { outcome: "rescued", dirt, orphans, wipBranch, commit, pushed: false, lag, remote, diffstat, keptLocal: verdict.reason ?? "the repository is not known to be private" };
+  }
   let pushed = false;
   let pushError: string | undefined;
   try {
@@ -637,7 +695,7 @@ export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: 
   let prError: string | undefined;
   if (pushed) {
     const agesOut = await managerClosesRescues(root, target.sha);
-    const body = rescuePrBody({ root, host, date, trunk: target.trunk, lag, ahead, diffstat, tracked: dirt.tracked, untracked: dirt.untracked, orphans, now, agesOut });
+    const body = rescuePrBody({ branch: target.branch, host, date, trunk: target.trunk, lag, ahead, diffstat, tracked: dirt.tracked, untracked: dirt.untracked, orphans, now, agesOut });
     const repoName = root.split(/[\\/]/).filter(Boolean).pop() ?? "repository";
     // On a fork the trunk remote (upstream) is not the push remote (origin):
     // name the base repository and qualify the head with the fork's owner, or
@@ -653,7 +711,7 @@ export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: 
   }
 
   return {
-    outcome: "rescued", dirt, orphans, wipBranch, commit, pushed, lag, remote,
+    outcome: "rescued", dirt, orphans, wipBranch, commit, pushed, lag, remote, diffstat,
     ...(pushError ? { pushError } : {}),
     ...(prUrl ? { prUrl } : {}),
     ...(prError ? { prError } : {}),
@@ -668,7 +726,14 @@ function firstLine(error: unknown): string {
 /** The one-line-plus-detail report `context brief` prints after a rescue attempt. */
 export function formatRescue(result: RescueResult, trunk: string): string[] {
   const lines: string[] = [];
-  if (result.outcome === "rescued") {
+  if (result.outcome === "rescued" && result.keptLocal !== undefined) {
+    const branch = shellQuote(result.wipBranch);
+    lines.push(`Moved ${result.dirt.tracked.length} uncommitted tracked file(s) from dirty trunk to local branch ${result.wipBranch}; trunk reset to its last commit.`);
+    lines.push(`  Not pushed, and no PR opened: ${result.keptLocal}. The edits exist only in this clone.`);
+    lines.push(...diffstatLines(result.diffstat).map((l) => `    ${l}`));
+    lines.push(`  Recover them with git switch ${branch}, or git cherry-pick ${branch} onto another branch.`);
+    lines.push(`  To publish deliberately: git push ${shellQuote(result.remote)} ${branch}, then gh pr create --draft --head ${branch}.`);
+  } else if (result.outcome === "rescued") {
     const n = result.dirt.tracked.length;
     const where = result.prUrl ? `draft PR ${result.prUrl}` : `branch ${result.wipBranch}`;
     lines.push(`Moved ${n} uncommitted tracked file(s) from dirty trunk to ${where}; trunk reset to its last commit.`);
@@ -677,14 +742,16 @@ export function formatRescue(result: RescueResult, trunk: string): string[] {
   } else if (result.outcome === "churn") {
     lines.push(`Reset ${result.churn.length} tracked file(s) of IDE churn on trunk instead of opening a rescue PR (${describeChurn(result.churn)}); recoverable with git checkout ${result.commit.slice(0, 12)} -- <path> until Git prunes it.`);
   } else if (result.outcome === "duplicate") {
-    lines.push(`Same tracked edits were already rescued in open PR ${result.prUrl} (${result.existingBranch}); trunk reset without another PR.`);
+    lines.push(result.prUrl
+      ? `Same tracked edits were already rescued in open PR ${result.prUrl} (${result.existingBranch}); trunk reset without another PR.`
+      : `Same tracked edits are already on local branch ${result.existingBranch}; trunk reset without another branch.`);
     lines.push("  ! Repeated generator edits: commit the form the tool writes, or stop opening this trunk checkout in that tool.");
   } else if (result.outcome === "skipped") {
     lines.push(`!!! TRUNK CHECKOUT IS DIRTY AND WAS NOT RESCUED: ${result.reason}.`);
     lines.push(`    ${result.dirt.tracked.length} tracked edit(s) block fast-forwarding ${trunk}:`);
     for (const p of result.dirt.tracked.slice(0, 10)) lines.push(`      ${p}`);
     if (result.dirt.tracked.length > 10) lines.push(`      … and ${result.dirt.tracked.length - 10} more`);
-    lines.push("    Resolve it, then rerun morpheus context brief; it moves tracked trunk edits to a wip/trunk-* draft PR. Never discard them.");
+    lines.push("    Resolve it, then rerun morpheus context brief; it moves tracked trunk edits to a wip/trunk-* branch. Never discard them.");
   }
   if (result.dirt.untracked.length) {
     lines.push(`Untracked files left in place (never committed automatically): ${result.dirt.untracked.length}.`);
@@ -695,6 +762,13 @@ export function formatRescue(result: RescueResult, trunk: string): string[] {
     }
   }
   return lines;
+}
+
+/** A `git diff --stat`, capped: the first ten file lines and the summary. */
+function diffstatLines(diffstat: string): string[] {
+  const all = diffstat.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (all.length <= 11) return all;
+  return [...all.slice(0, 10), `… and ${all.length - 11} more file(s)`, all.at(-1)!];
 }
 
 /** Prominent lag warning for a checkout still behind after startup. */

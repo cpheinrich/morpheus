@@ -327,7 +327,7 @@ export async function describeLocalChanges(
   // source checkout" alone left nobody able to tell which tree was dirty.
   const lines = [`The source checkout ${source} has local changes; install from clean main.`];
   if (dirt.tracked.length) {
-    lines.push(`  Tracked edits (${dirt.tracked.length}) — on trunk, \`morpheus context brief\` there moves them to a wip/trunk-* draft PR:`, ...cap(dirt.tracked));
+    lines.push(`  Tracked edits (${dirt.tracked.length}) — on trunk, \`morpheus context brief\` there moves them to a wip/trunk-* branch:`, ...cap(dirt.tracked));
   }
   if (orphans.length) {
     lines.push(`  Untracked build output whose source no longer exists (${orphans.length}) — safe to delete:`, ...cap(orphans.map((p) => `rm ${shellQuote(p)}`)));
