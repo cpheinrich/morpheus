@@ -69,12 +69,16 @@ and no scheduling or remote-trigger tools. Results go through the existing worke
 - **Admission waits do not starve the other executor.** A Codex admission failure moves the shared
   work's `nextCheckAt` five minutes out, and the selector skips work that is not due, so a Claude
   worker waking just after a failing Codex worker would never see the work. For the Claude executor
-  only: (a) work whose intent is in a subscription admission wait (`wait-subscription-telemetry`,
-  `wait-measured-subscription-capacity`, `wait-subscription-authentication`) counts as due, because
-  no invocation was attempted and Claude's own admission reads its own subscription fresh; and (b)
-  Claude's own admission failure records the blocker and next action under an executor-scoped
-  transition id and does not move `nextCheckAt` or the work state, so it never hides work from a
-  Codex worker either. The 5-minute launchd wake bounds retries. Codex keys and behaviour are
+  only, in both the plain worker and the held-aware worker entry: (a) work counts as due when a
+  subscription admission wait is its latest event, meaning the intent's next action is one of
+  `wait-subscription-telemetry`, `wait-measured-subscription-capacity` or
+  `wait-subscription-authentication`, an `admission-wait-…` transition for that work exists, no
+  invocation started or ended after the latest one, and no run or hosted dispatch is still open.
+  In-run stops reuse those next-action strings but write no admission-wait transition, so a stopped
+  Claude run (attestation, overage, meter) keeps its ordinary poll schedule. (b) Claude's own
+  admission failure records the blocker and next action under an executor-scoped transition id,
+  does not move `nextCheckAt` or the work state, and leaves the intent's status alone while another
+  owner holds a live lease. The 5-minute launchd wake bounds retries. Codex keys and behaviour are
   unchanged.
 - **Session resume** takes the latest `local` or `claude` invocation and resumes it only if it has the
   same executor and host ID. A newer checkpoint from the other native executor is foreign, so neither

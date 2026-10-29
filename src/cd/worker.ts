@@ -13,6 +13,7 @@ import { ActionsAdapter } from "./actions.js";
 import { git, loadSources } from "./source.js";
 import { nativeQuota, QuotaReadError } from "./quota-reader.js";
 import { claudeEnvironment, claudeQuota, claudeSessionProblem, CLAUDE_ISOLATION_ARGS, verifyClaudeLogin } from "./claude-quota.js";
+import { awaitingSubscriptionAdmission } from "./admission-wait.js";
 import { verifyRepairChecks } from "./repair-checks.js";
 import { assessBlockedResult, blockerProofInstructions, type BlockerClaimReceipt } from "./blocker-proof.js";
 
@@ -21,8 +22,6 @@ function quotaInvariant(condition: unknown, message: string): asserts condition 
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 function paused(state: CdState, intentId: string): boolean { return state.pauses.some(pause => ["all", intentId, state.intents[intentId]!.channel].includes(pause.scope)); }
 const CAPABILITY_RECHECK_MINUTES = 6 * 60;
-/** Subscription admission waits: no invocation was attempted, so another subscription may still admit the work. */
-const ADMISSION_WAITS = new Set(["wait-subscription-telemetry", "wait-measured-subscription-capacity", "wait-subscription-authentication"]);
 /** Built-in tools that could outlive or escape a bounded repair invocation. */
 export const CLAUDE_DISALLOWED_TOOLS: readonly string[] = Object.freeze(["RemoteTrigger", "CronCreate", "ScheduleWakeup", "PushNotification"]);
 const CLAUDE_INIT_ID = "morpheus-cd-run-init", CLAUDE_BINDING_MS = 60_000;
@@ -65,8 +64,8 @@ function capabilityRetry(state: CdState, work: AgentWork, now: string): { ready:
 }
 function selectDefaultRepair(state: CdState, now: string, admissionWaitsDue = false): AgentWork | undefined {
   const at = Date.parse(now), lastStart = (work: AgentWork) => Date.parse(work.invocations.at(-1)?.startedAt ?? work.createdAt);
-  // Only the Claude executor treats another subscription's admission wait as due; its own admission reads fresh.
-  const admissionWait = (work: AgentWork) => admissionWaitsDue && ADMISSION_WAITS.has(state.intents[work.intentId]?.nextAction ?? "");
+  // Only the Claude executor treats a latest-event subscription admission wait as due; its own admission reads fresh.
+  const admissionWait = (work: AgentWork) => admissionWaitsDue && awaitingSubscriptionAdmission(state, work);
   const due = Object.values(state.agents).filter(work => work.state !== "complete" && (!work.lease || Date.parse(work.lease.expiresAt) <= at))
     .map(work => ({ work, retry: capabilityRetry(state, work, now) })).filter(({ work, retry }) => retry || Date.parse(work.nextCheckAt) <= at || admissionWait(work));
   // Sort a derived array, never the ledger. Retry scheduling/checkpoint counts
@@ -234,9 +233,16 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
     const nextAction = admissionFailure === "capacity" ? "wait-measured-subscription-capacity" : admissionFailure === "authentication" ? "wait-subscription-authentication" : "wait-subscription-telemetry";
     // Keep the guarded journal kind, but do not collapse a failed measurement
     // into measured exhaustion or replay another failure class in this bucket.
-    // A Claude wait is scoped to its executor and never moves shared work out of another subscription's reach.
+    // A Claude wait is scoped to its executor and never moves shared work out of another subscription's reach,
+    // nor overwrites the status of a run another owner holds.
     const claudeWait = options.executor === "claude";
-    await store.transact(`admission-wait-${claudeWait ? "claude-" : ""}${admissionFailure}-${work.id}-${Math.floor(Date.parse(now) / 300_000)}`, "agent-budget-wait", now, state => { const current = state.agents[work.id]!; if (!claudeWait) { current.state = "waiting"; current.nextCheckAt = after(now, 5); } const intent = state.intents[current.intentId]!; intent.blocker = reason; intent.nextAction = nextAction; return { reason, failureKind: admissionFailure, ...(claudeWait ? { executor: "claude" } : {}) }; }); return { state: "budget-wait", reason, failureKind: admissionFailure };
+    await store.transact(`admission-wait-${claudeWait ? "claude-" : ""}${admissionFailure}-${work.id}-${Math.floor(Date.parse(now) / 300_000)}`, "agent-budget-wait", now, state => {
+      const current = state.agents[work.id]!;
+      if (claudeWait) {
+        if (current.lease && Date.parse(current.lease.expiresAt) > Date.parse(now)) return { reason, failureKind: admissionFailure, executor: "claude", statusRetained: "live-lease" };
+      } else { current.state = "waiting"; current.nextCheckAt = after(now, 5); }
+      const intent = state.intents[current.intentId]!; intent.blocker = reason; intent.nextAction = nextAction; return { reason, failureKind: admissionFailure, ...(claudeWait ? { executor: "claude" } : {}) };
+    }); return { state: "budget-wait", reason, failureKind: admissionFailure };
   }
   const invocationId = options.invocationId ?? `agent-${work.id}-i${work.invocations.length + 1}`, timeout = config.deadlines.agentMinutes * 60_000;
   const claim = await store.transact(`worker-start-${invocationId}`, "claim-agent-invocation", new Date().toISOString(), state => {

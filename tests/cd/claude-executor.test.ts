@@ -5,12 +5,21 @@ import { cd } from "../../src/cd/cli.js";
 import { configSchema, configurationDigest, type AgentWork } from "../../src/cd/schema.js";
 import { after } from "../../src/cd/state.js";
 import { CLAUDE_DISALLOWED_TOOLS, runWorker } from "../../src/cd/worker.js";
+import { runHeldAwareWorker } from "../../src/cd/worker-only-entry.js";
 import { claudeFixture } from "./claude-fixture.js";
 import { config, now } from "./fixtures.js";
 
 const directories: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(directories.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
 const claudeAgent = { model: "fable", account: { email: "operator@example.com", subscription: "max" } };
+/** A real Codex admission-wait record: the shared work is pushed five minutes out with an admission next action. */
+async function codexAdmissionWait(f: Awaited<ReturnType<typeof claudeFixture>>, at = new Date().toISOString()) {
+  await f.store.transact(`admission-wait-telemetry-${f.workId}-${Math.floor(Date.parse(at) / 300_000)}`, "agent-budget-wait", at, state => {
+    const work = state.agents[f.workId]!; work.state = "waiting"; work.nextCheckAt = after(at, 5);
+    const intent = state.intents[work.intentId]!; intent.blocker = "Codex account quota read timed out"; intent.nextAction = "wait-subscription-telemetry";
+    return { reason: intent.blocker, failureKind: "telemetry" };
+  });
+}
 const prior = (executor: "local" | "claude", hostId: string, id = "prior"): AgentWork["invocations"][number] =>
   ({ id, executor, hostId, session: `${executor}-old-session`, startedAt: now, endedAt: after(now, 1), result: { outcome: "checkpoint", summary: "Prior durable checkpoint", evidence: [] } });
 
@@ -93,14 +102,43 @@ describe("Claude executor admission and run", () => {
   });
 
   it("treats another subscription's admission wait as due, while the Codex selector keeps its schedule", async () => {
-    const f = await claudeFixture(directories), at = new Date().toISOString();
-    await f.store.transact("codex-wait", "fixture", at, state => {
-      const work = state.agents[f.workId]!; work.state = "waiting"; work.nextCheckAt = after(at, 5);
-      state.intents[work.intentId]!.nextAction = "wait-subscription-telemetry"; return null;
-    });
+    const f = await claudeFixture(directories); await codexAdmissionWait(f);
     expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local" })).toEqual({ state: "idle" });
     expect(await runWorker(f.cfg, f.store, f.directory, { executor: "claude" })).toMatchObject({ outcome: "checkpoint" });
     expect(await f.lines()).toHaveLength(1);
+  });
+
+  it.each([
+    { label: "an in-run stop that reused an admission next action", setup: (work: AgentWork, at: string) => {
+      work.invocations = [{ ...prior("claude", "mac-pro"), startedAt: after(at, -2), endedAt: after(at, -1) }]; } },
+    { label: "an admission wait older than the latest invocation", wait: -10, setup: (work: AgentWork, at: string) => {
+      work.invocations = [{ ...prior("local", "mac-mini"), startedAt: after(at, -5), endedAt: after(at, -4) }]; } },
+    { label: "a hosted dispatch still in flight", wait: -1, setup: (work: AgentWork, at: string) => {
+      work.invocations = [{ id: "hosted-1", executor: "hosted", startedAt: after(at, -10), dispatchState: "sent", runIds: [] }]; } },
+  ])("keeps the ordinary schedule after $label", async ({ setup, wait }) => {
+    const f = await claudeFixture(directories), at = new Date().toISOString();
+    if (wait !== undefined) await codexAdmissionWait(f, after(at, wait));
+    await f.store.transact("schedule", "fixture", at, state => {
+      const work = state.agents[f.workId]!; setup(work, at); work.state = "waiting"; work.nextCheckAt = after(at, 5);
+      state.intents[work.intentId]!.nextAction = "wait-subscription-authentication"; return null;
+    });
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "claude" })).toEqual({ state: "idle" });
+    expect(await f.lines(".initialize")).toEqual([]);
+  });
+
+  it("keeps another owner's status when its own admission fails under that owner's live lease", async () => {
+    const f = await claudeFixture(directories), at = new Date().toISOString();
+    await f.store.transact("codex-running", "fixture", at, state => {
+      const work = state.agents[f.workId]!; work.state = "running"; work.lease = { owner: "codex-invocation", fence: 1, expiresAt: after(at, 30) }; state.fences[work.id] = 1;
+      work.invocations = [{ id: "codex-invocation", executor: "local", hostId: "mac-mini", startedAt: at }];
+      const intent = state.intents[work.intentId]!; intent.blocker = undefined; intent.nextAction = "await-repair-agent"; return null;
+    });
+    await f.set(".usage-mode", "error");
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "claude", workId: f.workId })).toMatchObject({ state: "budget-wait", failureKind: "telemetry" });
+    const state = (await f.store.read()).state, intent = state.intents[state.agents[f.workId]!.intentId]!;
+    expect(intent.nextAction).toBe("await-repair-agent"); expect(intent.blocker).toBeUndefined();
+    const [id] = Object.keys(state.transitions).filter(key => key.startsWith("admission-wait-claude-"));
+    expect(state.transitions[id!]!.result).toMatchObject({ executor: "claude", statusRetained: "live-lease" });
   });
 
   it("does not treat a scheduled checkpoint as due early", async () => {
@@ -194,5 +232,39 @@ describe("Claude executor CLI", () => {
     const f = await claudeFixture(directories), path = join(f.directory, "cd.json");
     await writeFile(path, JSON.stringify(f.cfg));
     await expect(cd(["worker", "--executor", "anthropic", "--config", path, "--source-dir", f.directory])).rejects.toThrow("Unknown agent executor");
+  });
+});
+
+describe("Claude executor through the held-aware worker entry", () => {
+  const spy = () => {
+    const calls: (string | undefined)[] = [];
+    return { calls, runWorker: async (_c: unknown, _s: unknown, _d: string, options: { workId?: string }) => { calls.push(options.workId); return { state: "launched", workId: options.workId }; } };
+  };
+  it("admits work behind another subscription's admission wait for Claude only", async () => {
+    const f = await claudeFixture(directories); await codexAdmissionWait(f);
+    const claude = spy(), local = spy();
+    expect(await runHeldAwareWorker({ runWorker: claude.runWorker, config: f.cfg, store: f.store, sourceDir: f.directory, options: { executor: "claude" }, environment: {} })).toEqual({ state: "launched", workId: f.workId });
+    expect(claude.calls).toEqual([f.workId]);
+    expect(await runHeldAwareWorker({ runWorker: local.runWorker, config: f.cfg, store: f.store, sourceDir: f.directory, options: { executor: "local" }, environment: {} })).toEqual({ state: "idle" });
+    expect(local.calls).toEqual([]);
+  });
+
+  it("still returns repair-held for held work", async () => {
+    const f = await claudeFixture(directories); await codexAdmissionWait(f);
+    await f.store.transact("hold", "fixture", new Date().toISOString(), state => {
+      state.pauses.push({ scope: `repair:${state.agents[f.workId]!.intentId}`, actor: "operator:root", reason: "r", resumeCondition: "c", createdAt: now, human: true }); return null;
+    });
+    const claude = spy();
+    expect(await runHeldAwareWorker({ runWorker: claude.runWorker, config: f.cfg, store: f.store, sourceDir: f.directory, options: { executor: "claude" }, environment: {} })).toEqual({ state: "repair-held", workId: f.workId });
+    expect(claude.calls).toEqual([]);
+  });
+
+  it("ignores an admission next action that has no admission-wait record", async () => {
+    const f = await claudeFixture(directories), at = new Date().toISOString();
+    await f.store.transact("stale", "fixture", at, state => {
+      const work = state.agents[f.workId]!; work.nextCheckAt = after(at, 5); state.intents[work.intentId]!.nextAction = "wait-subscription-telemetry"; return null;
+    });
+    const claude = spy();
+    expect(await runHeldAwareWorker({ runWorker: claude.runWorker, config: f.cfg, store: f.store, sourceDir: f.directory, options: { executor: "claude" }, environment: {} })).toEqual({ state: "idle" });
   });
 });

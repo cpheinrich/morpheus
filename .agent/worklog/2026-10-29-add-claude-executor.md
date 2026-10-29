@@ -67,3 +67,23 @@ adding the build before the worker will run on it.
   control request; the reader keeps stdin open until the reply.
 - `vitest --root /` to run an ad-hoc smoke file crawled the filesystem; `tsx` with an `.mts` file
   was used instead.
+
+## Appendix D: initial review response (before the follow-up turn)
+
+The fresh reviewer returned the initial turn blocked. F1 (substantive): the held-aware worker entry,
+which consumers must use when repair holds exist, has its own `due` predicate, so the Claude
+starvation fix never applied there. F2 (minor): the Claude due rule trusted `intent.nextAction`,
+which in-run stops also write and which can be stale, giving an attestation re-run loop, retries
+after an error without backoff, possible preemption of an in-flight hosted dispatch, and Claude
+waits overwriting a live owner's status.
+
+Both are fixed in one commit and go to the same reviewer's follow-up turn rather than the offered
+conditional clearance, because F2 changes `worker.ts`. A new pure module `src/cd/admission-wait.ts`
+(no worker import) holds one predicate used by the worker selector and the held-aware entry: work is
+due for Claude only when a subscription admission wait is its latest event (an `admission-wait-…`
+transition exists for it, nothing started or ended after the latest one, and no run or dispatch is
+open). A Claude admission wait under another owner's live lease records its transition but leaves
+the intent's status. Docs: the design bullet, the repair-control runbook's Selection bullet and the
+controller summary. Tests: 98 across the Claude and repair-control files; five new mutants (live
+invocation, latest-event comparison, record required, held-aware due, live-lease retention) each
+fail tests, sources byte-restored. `tests/cd` plus CLI dispatch: 1231/1231.

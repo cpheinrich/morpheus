@@ -564,7 +564,8 @@ it answers are in [the Claude executor design](cd-v2-claude-executor.md). In sho
   counts only if `system/init` reports `apiKeySource: "none"`. A `rate_limit_event` that would allow
   paid usage stops the run.
 - Claude admission waits are recorded under `admission-wait-claude-…` without moving the shared
-  work's schedule, and the Claude selector treats another subscription's admission wait as due.
+  work's schedule or overwriting a live owner's status. The Claude selector, including the
+  held-aware worker entry, treats work as due when a subscription admission wait is its latest event.
   Reservations, telemetry (`budget.telemetry.claude`) and session resume are per executor.
 - `--permission-mode bypassPermissions` has no filesystem sandbox in this version; the design lists
   what that leaves open for the consumer's authorization.
