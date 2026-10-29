@@ -453,8 +453,10 @@ export async function install(root, opts) {
     if (codex && (codex.outcome === "created" || codex.outcome === "updated")) {
         console.log("");
         console.log(`Codex will not run ${CODEX_HOOKS} until the hook is trusted. Once, per project:`);
-        console.log("  run `/hooks` in a Codex session and trust it.");
-        console.log("  Trust is recorded against the hook's hash, so an edit needs trusting again.");
+        console.log("  run `/hooks` in a Codex session opened in the main checkout and trust it.");
+        console.log("  Trust is recorded against the hook's hash, so an edit needs trusting again;");
+        console.log("  worktrees run the main checkout's hooks once it has merged this change.");
+        console.log("  `morpheus doctor` names every hook Codex will not run yet.");
     }
     const blocked = repairs.filter((r) => r.outcome === "blocked");
     if (blocked.length) {

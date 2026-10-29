@@ -34,6 +34,8 @@ export interface DoctorOptions {
     root: string;
     /** Skip checks that need the network. */
     offline?: boolean;
+    /** Codex's home, for the hook-trust check. Defaults to `$CODEX_HOME` or `~/.codex`. */
+    codexHome?: string;
 }
 export declare function doctor(opts: DoctorOptions): Promise<Finding[]>;
 export declare function formatFindings(findings: Finding[], label?: string): string;

@@ -18,6 +18,7 @@ import {
 } from "../session/bootstrap.js";
 import { POLL_GUARD_MARKER, POLL_GUARD_SCRIPT } from "../wait-ci/hook.js";
 import { missingInstructions } from "./instructions.js";
+import { codexTrustFindings, codexTrustReport } from "./codex-trust.js";
 import {
   ANALYTICS_SCHEMA_DIRECTORY,
   EMPTY_ANALYTICS_EVENT_MAP,
@@ -350,6 +351,8 @@ export interface DoctorOptions {
   root: string;
   /** Skip checks that need the network. */
   offline?: boolean;
+  /** Codex's home, for the hook-trust check. Defaults to `$CODEX_HOME` or `~/.codex`. */
+  codexHome?: string;
 }
 
 export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
@@ -544,6 +547,13 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
       `${POLL_GUARD_SCRIPT} is missing or not the generated Morpheus version, so the CI poll ` +
         "guard cannot run. Run `morpheus context install`.",
     );
+  }
+
+  // Wired is not running for Codex: it skips every hook nobody trusted with
+  // `/hooks`, silently. Read-only — trusting is the user's decision, and the
+  // desktop app rewrites ~/.codex/config.toml itself.
+  for (const finding of codexTrustFindings(await codexTrustReport(root, opts.codexHome))) {
+    add(finding.severity, finding.check, finding.message);
   }
 
   // The scaffold's AGENTS.md is written once; guidance added to the template

@@ -688,3 +688,19 @@ stay readable through the pull request's own refs until GitHub Support purges th
 stays until deleted. The rescue's own commit message and PR body also carried the absolute checkout
 path. **Before automation pushes content it did not author, ask whether the destination is public,
 and treat "could not tell" as yes.**
+
+## Codex trusts hooks per file path, and a worktree runs the main checkout's hooks
+
+2026-10-28 (MO-26-10-28-17.16.16). Read from Codex's source (0.163.0–0.165.0) and confirmed with
+`codex app-server`'s `hooks/list` against real checkouts and an isolated `CODEX_HOME`:
+
+- A `hooks.state` key is `<absolute hooks.json path>:<event>:<group>:<handler>`; the hash is
+  `sha256` over compact key-sorted JSON of the event label, matcher and the handler normalized with
+  its default timeout. Trust follows the file and the hook's position, not the repository.
+- In a linked worktree Codex reads `.codex/hooks.json` from the **main checkout**, keyed by the main
+  checkout's path. One trust covers every worktree; a branch's own hook edits do nothing in Codex
+  until the main checkout has them. A task worktree is the wrong place to test a Codex hook change.
+- `.codex/` folders are loaded from the project root down to the working directory, never above
+  the nearest `.git`, so a parent directory's hooks do not reach the repositories inside it.
+- Lakina's one trusted hook was recorded for `morpheus context brief`; the file had since changed to
+  the session shim, so Codex had silently stopped running it. Nothing reported that until `doctor`.

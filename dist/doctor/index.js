@@ -13,6 +13,7 @@ import { READ_HOOK_MARKER } from "../session/install.js";
 import { BOOTSTRAP_MARKER, MORPHEUS_BOOTSTRAP, MORPHEUS_SESSION_START, SESSION_START_MARKER, } from "../session/bootstrap.js";
 import { POLL_GUARD_MARKER, POLL_GUARD_SCRIPT } from "../wait-ci/hook.js";
 import { missingInstructions } from "./instructions.js";
+import { codexTrustFindings, codexTrustReport } from "./codex-trust.js";
 import { ANALYTICS_SCHEMA_DIRECTORY, EMPTY_ANALYTICS_EVENT_MAP, findAnalyticsContracts, } from "../analytics/contract.js";
 /**
  * Report drift without fixing it.
@@ -397,6 +398,12 @@ export async function doctor(opts) {
     if (guardScript === null || !guardScript.includes(POLL_GUARD_MARKER)) {
         add("warning", "instructions", `${POLL_GUARD_SCRIPT} is missing or not the generated Morpheus version, so the CI poll ` +
             "guard cannot run. Run `morpheus context install`.");
+    }
+    // Wired is not running for Codex: it skips every hook nobody trusted with
+    // `/hooks`, silently. Read-only — trusting is the user's decision, and the
+    // desktop app rewrites ~/.codex/config.toml itself.
+    for (const finding of codexTrustFindings(await codexTrustReport(root, opts.codexHome))) {
+        add(finding.severity, finding.check, finding.message);
     }
     // The scaffold's AGENTS.md is written once; guidance added to the template
     // later reaches a project only by hand. Name each rule that never arrived.
