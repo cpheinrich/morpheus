@@ -237,7 +237,7 @@ ptype() {
 }
 # Adaptive/Background throttle the worker's quota handshake to failure (#558).
 check "worker plist runs as an Interactive process" "$(ptype "$ROOT/com.consumer.cd-v2-worker.plist.template")" "Interactive"
-check "tick plist stays a Background process" "$(ptype "$ROOT/com.consumer.cd-v2-tick.plist.template")" "Background"
+check "tick template keeps its Background default" "$(ptype "$ROOT/com.consumer.cd-v2-tick.plist.template")" "Background"
 for f in "$ROOT"/*.sh.template; do
   /bin/bash -n "$f" 2>/dev/null && ok "bash syntax: $(basename "$f")" || bad "bash syntax: $(basename "$f")"
 done
