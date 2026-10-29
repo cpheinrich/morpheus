@@ -1,5 +1,15 @@
 # Decisions
 
+**HQ presentation is an executive-first shared system, with product/design leadership in Morpheus**
+— 2026-10-29. Every HQ page serves five-second orientation, thirty-second executive understanding
+and deliberate study; long detail remains in stable linked sections and appendices. Shell,
+executive brief, in-page navigation, bounded relationships, table behavior and chart framing belong
+in `morpheus-kit`; authorization, catalogues, copy, data transforms and domain-specific graphics
+remain project-owned. Prove new primitives with one real canary and a second-project consumer before
+bulk migration. `chief-product-officer` owns the product outcome and `vp-design` owns experience
+quality under it; both are canonical Morpheus guides distributed as pointers, and neither role
+grants authority by itself. Full standard: `docs/runbooks/hq-product-design.md`.
+
 **Required physical-device CD proof extends the existing full-test envelope** — 2026-10-28.
 An optional trusted profile/device/host/exact-inventory policy preserves legacy config bytes
 when absent, while opt-in changes configuration identity through normal migration.

@@ -218,3 +218,7 @@ export declare const agenticCtoPointerSkill: () => string;
 export declare const researchEngineerPointerSkill: () => string;
 /** The same canonical-guide distribution path as the other CTO contributor skills. */
 export declare const devopsEngineerPointerSkill: () => string;
+/** The product-leadership skill, distributed as a pointer to Morpheus's reviewed guide. */
+export declare const chiefProductOfficerPointerSkill: () => string;
+/** The VP of Design role under the CPO, using the same canonical-guide distribution path. */
+export declare const vpDesignPointerSkill: () => string;

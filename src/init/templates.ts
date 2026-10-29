@@ -17,6 +17,8 @@ import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
 import { STATIC_ROADMAP_README } from "../pm/index-gen.js";
 import { ctoSkillDescription } from "../cto/guide.js";
 import { AGENTIC_CTO_SKILL, RESEARCH_ENGINEER_SKILL, DEVOPS_ENGINEER_SKILL } from "../cto/skill.js";
+import { productSkillDescription } from "../product/guide.js";
+import { CHIEF_PRODUCT_OFFICER_SKILL, VP_DESIGN_SKILL } from "../product/skill.js";
 
 export interface Seed {
   name: string;
@@ -1894,4 +1896,43 @@ Keep normal delivery ahead of optional hardening. A skill or installed guide is 
 supervisor. Morpheus holds the reviewed copy and this installed CLI prints it.
 
 If \`morpheus cto guide devops-engineer\` is unknown, run \`morpheus self update\`.
+`;
+
+/** The product-leadership skill, distributed as a pointer to Morpheus's reviewed guide. */
+export const chiefProductOfficerPointerSkill = (): string => `---
+name: ${CHIEF_PRODUCT_OFFICER_SKILL}
+description: ${productSkillDescription()}
+---
+
+# Chief Product Officer
+
+Run \`morpheus product guide\` and follow it. Read the references it names with
+\`morpheus product guide <topic>\`, starting with \`morpheus product guide product-brief\` when
+framing an outcome. The role grants no publishing, spending, data or delivery authority.
+
+Until you have read it, record the audience/problem, evidence, outcome, scope/non-goals, success
+and guardrails; distinguish delivery, usability, adoption and outcome; and coordinate design and
+engineering against the same product brief. Morpheus holds the reviewed copy and this installed
+CLI prints it.
+
+If \`morpheus product guide\` is unknown, run \`morpheus self update\`.
+`;
+
+/** The VP of Design role under the CPO, using the same canonical-guide distribution path. */
+export const vpDesignPointerSkill = (): string => `---
+name: ${VP_DESIGN_SKILL}
+description: ${productSkillDescription(VP_DESIGN_SKILL)}
+---
+
+# VP of Design
+
+Run \`morpheus product guide vp-design\` and follow it. Read the references it names with
+\`morpheus product guide vp-design/<topic>\`. The Chief Product Officer owns the product outcome;
+this role owns experience quality and design-system coherence. It grants no additional authority.
+
+Until you have read it, audit the real integrated experience, establish hierarchy before styling,
+reuse the shared owner, validate responsive/accessibility states, and inspect final-build pixels.
+Morpheus holds the reviewed copy and this installed CLI prints it.
+
+If \`morpheus product guide vp-design\` is unknown, run \`morpheus self update\`.
 `;

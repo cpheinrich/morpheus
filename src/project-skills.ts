@@ -5,11 +5,13 @@ import matter from "@11ty/gray-matter";
 import {
   agenticCtoPointerSkill,
   brandReviewSkill,
+  chiefProductOfficerPointerSkill,
   commentQaSkill,
   devopsEngineerPointerSkill,
   meetingIntakeSkill,
   motionDesignExplorationSkill,
   researchEngineerPointerSkill,
+  vpDesignPointerSkill,
   websiteInitSkill,
   type Seed,
 } from "./init/templates.js";
@@ -18,6 +20,7 @@ import {
   DEVOPS_ENGINEER_SKILL,
   RESEARCH_ENGINEER_SKILL,
 } from "./cto/skill.js";
+import { CHIEF_PRODUCT_OFFICER_SKILL, VP_DESIGN_SKILL } from "./product/skill.js";
 
 export type ProjectKind = Seed["kind"];
 export type SkillProvider = "agents" | "claude";
@@ -97,6 +100,24 @@ export const PROJECT_SKILLS: readonly ProjectSkillDefinition[] = [
     canonical: true,
     guide: `morpheus cto guide ${DEVOPS_ENGINEER_SKILL}`,
     render: devopsEngineerPointerSkill,
+  },
+  {
+    name: CHIEF_PRODUCT_OFFICER_SKILL,
+    providers: ["agents", "claude"],
+    kinds: ALL_KINDS,
+    distribution: "pointer",
+    canonical: true,
+    guide: "morpheus product guide",
+    render: chiefProductOfficerPointerSkill,
+  },
+  {
+    name: VP_DESIGN_SKILL,
+    providers: ["agents", "claude"],
+    kinds: ALL_KINDS,
+    distribution: "pointer",
+    canonical: true,
+    guide: `morpheus product guide ${VP_DESIGN_SKILL}`,
+    render: vpDesignPointerSkill,
   },
   {
     name: "brand-review",

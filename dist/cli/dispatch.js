@@ -32,6 +32,7 @@ import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js"
 import { profileExtract, profileReport } from "./profile.js";
 import { pollGuardCommand, waitCiCommand } from "./wait-ci.js";
 import { ctoGuide } from "../cto/guide.js";
+import { productGuide } from "../product/guide.js";
 import { listProjectSkills, syncProjectSkillEntrypoints } from "./skills.js";
 import { HELP } from "./help.js";
 async function dispatchSelf({ flags, command, rest }) {
@@ -427,6 +428,19 @@ async function dispatchCto({ command, rest }) {
     console.error(`Unknown cto command "${command ?? ""}".\n\n${HELP}`);
     return 1;
 }
+async function dispatchProduct({ command, rest }) {
+    if (command === "guide") {
+        const guide = productGuide(rest[0]);
+        if (!guide.ok) {
+            console.error(guide.message);
+            return 1;
+        }
+        console.log(guide.text.replace(/\n$/, ""));
+        return 0;
+    }
+    console.error(`Unknown product command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+}
 async function dispatchSkills({ flags, command }) {
     if (command === "list" || command === undefined)
         return listProjectSkills(flags.json);
@@ -571,6 +585,7 @@ const groups = {
     "check": dispatchCheck,
     "qa": dispatchQa,
     "cto": dispatchCto,
+    "product": dispatchProduct,
     "skills": dispatchSkills,
     "profile": dispatchProfile,
     "wait-ci": dispatchWaitCi,

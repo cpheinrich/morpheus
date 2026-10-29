@@ -177,6 +177,8 @@ Usage
   morpheus cto guide [<topic>]  How an agent runs a delegated outcome under a written
                          mandate and budget; topics print its references (mandate, provenance)
                          and the skills under it (research-engineer, research-engineer/<reference>)
+  morpheus product guide [<topic>]  Product leadership and design guidance; topics print the
+                         CPO references and VP Design skill (vp-design, vp-design/<reference>)
 
 Options
   --dir <path>   Product directory (default: hq/product)

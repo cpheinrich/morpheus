@@ -536,6 +536,13 @@ needed.
   internal reporting cadence. A versioned CD proof envelope validates only shape/current binding;
   the CTO independently corroborates critical evidence before accepting narrow blockage. Missing
   or stale proof remains diagnosis, with the attempted claim retained, rather than global blockage.
+- **`chief-product-officer`** owns a delegated product outcome: the customer and business problem,
+  evidence, priorities, product brief, acceptance and portfolio tradeoffs. **`vp-design`** works
+  under that role to own information architecture, interaction and visual-system quality. Their
+  canonical files live in Morpheus and `morpheus product guide` prints them; every project kind
+  receives one-file pointers through init/sync. A role grants no product, publishing or spending
+  authority by itself. The CPO coordinates technical feasibility with the CTO rather than silently
+  absorbing engineering ownership.
 
 ### 7.2 Conventions and how they are enforced
 
@@ -2312,6 +2319,10 @@ failure mode that check exists to close.
 themed by that project's brand with no per-project styling work. Dashboards want higher information
 density than marketing pages, so the kit defines a small set of `--hq-*` tokens (density, table row
 height, muted surface) that *derive from* brand colours rather than introducing a parallel palette.
+
+The [HQ product and design standard](docs/runbooks/hq-product-design.md) defines the presentation
+contract above those tokens: executive-first hierarchy, page-type templates, local navigation,
+appendices, accessible tables/charts, responsive validation and the shared/project ownership line.
 
 ## 12. Brand and design
 
