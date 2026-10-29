@@ -91,3 +91,81 @@ in the real config (Evo/MacLock session shim, Evo `morpheus credentials status`,
   source showed them.
 
 ## Review
+
+One fresh reviewer subagent (runner id `aefa5cd9a75d5b377`, no inherited history) reviewed
+`74d3b90c..8583a015` at normal risk: a read-only diagnostic that writes no configuration. The
+runner measured 7.66 minutes. It checked the key, hash, normalization, enablement, project-layer,
+worktree and project-trust logic against Codex's source at `rust-v0.165.0`, then ran Codex's own
+`hooks/list` beside the committed `dist/` report over a scratch copy of the real config for
+`~/code/{morpheus,evo,lakina,kairos}` and this worktree: keys, hashes and trust states were
+identical. Focused tests passed (50), `tsc --noEmit` was clean, and `dist/` matched a fresh compile.
+It cleared the change with two minor findings, both fixed by the author in `ad3bc055` without a
+follow-up turn:
+
+- **R-1.** A linked worktree whose own `.codex/hooks.json` carries hooks while the main checkout has
+  none returned `no-hooks` silently, though Codex runs none of them there. It now reports that, with
+  a test for wired, empty and absent worktree files. In the same function, per the reviewer's
+  observation, the Codex home is read before the hooks file, so a machine without Codex reports
+  nothing even when the file is broken.
+- **R-2.** Trust keys were built from Git's symlink-resolved paths while Codex keys by the path it
+  was opened with, so trust recorded through a symlinked checkout would read as untrusted. Hook
+  state and project trust recorded under another spelling that resolves to the same file now count
+  (preferring an entry that records trust); the runbook says so; a symlink test covers trusted and
+  stale aliases.
+
+After the fixes: five further mutants (alias lookup, project alias, the worktree no-hooks report,
+state-before-file ordering, the empty-file guard) were all killed alongside the original fifteen;
+focused `doctor-codex-trust`, `doctor`, `doctor-instructions` and `session-install` gave 77 passed;
+`pnpm typecheck` and `pnpm compile` were clean; `doctor` in the four main checkouts still reports
+the same hooks as Codex's `hooks/list`.
+
+Normal-risk review cleared with no substantive findings. Minor R-1 (a worktree whose hooks the main checkout lacks was reported as having none) and R-2 (trust recorded under a symlinked spelling of the checkout read as untrusted) were fixed by the author in ad3bc055.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "74d3b90ca007ca45380b73243c0d5c2b70e423a8",
+  "reviewed": "8583a015f0e2a51aa931f2de0b1c2c54e60f384a",
+  "covered": "ad3bc055221cf7df8220e8d2634b15af20fd588f",
+  "authorSession": "0d17f3e2-e23e-440f-949e-057495fe4e55",
+  "reviewerSession": "aefa5cd9a75d5b377",
+  "risk": "normal",
+  "elapsedMinutes": 7.658483333333334,
+  "timing": {
+    "source": "runner",
+    "durationMs": 459509,
+    "evidence": "Claude Code Agent tool result for reviewer agentId aefa5cd9a75d5b377 (initial turn): usage duration_ms=459509."
+  },
+  "outcome": "complete",
+  "summary": "Normal-risk review cleared with no substantive findings. Minor R-1 (a worktree whose hooks the main checkout lacks was reported as having none) and R-2 (trust recorded under a symlinked spelling of the checkout read as untrusted) were fixed by the author in ad3bc055.",
+  "findings": [
+    {
+      "id": "R-1",
+      "severity": "minor",
+      "description": "In a linked worktree whose own .codex/hooks.json has hooks while the main checkout has no hooks.json, codexTrustReport returned no-hooks and doctor said nothing, although Codex runs none of those hooks there.",
+      "paths": [
+        "src/doctor/codex-trust.ts",
+        "dist/doctor/codex-trust.js",
+        "dist/doctor/codex-trust.js.map",
+        "tests/doctor-codex-trust.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "A no-hooks report now carries worktreeDiffers when the worktree's own file lists at least one hook, and codexTrustFindings names it: Codex runs none of these hooks until they merge and the main checkout is fast-forwarded. Tests cover a wired, an empty and an absent worktree file. The Codex home is now read before the hooks file, so a machine without Codex reports nothing even for a broken file (the reviewer's observation)."
+    },
+    {
+      "id": "R-2",
+      "severity": "minor",
+      "description": "Trust keys were built from Git's symlink-resolved paths while Codex keys by the path it was opened with, so hooks trusted through a symlinked checkout path would be reported as untrusted.",
+      "paths": [
+        "src/doctor/codex-trust.ts",
+        "dist/doctor/codex-trust.js",
+        "dist/doctor/codex-trust.js.map",
+        "tests/doctor-codex-trust.test.ts",
+        "docs/runbooks/context-freshness.md"
+      ],
+      "disposition": "fixed",
+      "response": "When the resolved key has no entry, a hooks.state entry whose path resolves to the same hooks file is matched by its event:group:handler suffix, preferring one that records trust; project trust does the same for the checkout and main checkout. A symlink test covers trusted and stale aliases, and the runbook states the unresolved-path keying."
+    }
+  ]
+}
+```
