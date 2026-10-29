@@ -1984,7 +1984,9 @@ the ignored `local/rescued/`.
   `gh repo view <owner/repo> --json visibility` for the push remote's push and fetch repositories
   and, on a fork, the trunk remote's. Public, `INTERNAL`, a remote that is not on GitHub, a missing
   or failing `gh` and an unparseable answer all keep the rescue local: unknown is public. Remotes
-  are identified from configured URLs, not `insteadOf` rewrites.
+  are identified from configured URLs and from where a `pushInsteadOf` rewrite actually sends the
+  push. A rewrite to anywhere that is neither GitHub nor this machine is unknown. `gh` is asked for
+  `github.com/<owner>/<repo>`, so `GH_HOST` cannot answer for a same-named repository elsewhere.
 - *Cache for one hour, never a failure.* Answers live in the primary checkout's ignored
   `local/sessions/repo-visibility.json`, and only where Git ignores it. The item proposed about a
   day. One hour was chosen because a repository can be made public at any time, and a stale
@@ -1999,6 +2001,8 @@ the ignored `local/rescued/`.
   require. The churn reset, the replay rule and the private-repository age-out are unchanged.
 - *Published text says less everywhere.* On private repositories the commit message and PR body
   name the trunk branch and the short host label, never the absolute checkout path or the full
-  hostname.
+  hostname. This departs from the item's "private repositories are unchanged, PR body included".
+  The task brief that relayed Chris's decision asked for it for every repository, as a cheap
+  privacy improvement.
 
 No dependency: `gh`, native Git and the existing replay.

@@ -27,10 +27,12 @@ async function git(root, args) {
     }
 }
 /**
- * Rescue branches with no remote copy. Read from refs alone, with no network:
- * a push updates the remote-tracking ref, so a branch with none on any remote
- * was kept local (a public repository), its push failed, or its remote branch
- * was deleted and pruned. Either way this clone holds the only copy.
+ * Rescue branches with no remote-tracking ref on any remote. Read from refs
+ * alone, with no network. In an ordinary clone a push writes that ref, so such
+ * a branch was kept local (a public repository), its push failed, or its
+ * remote branch was deleted and pruned, and this clone holds the only copy. A
+ * clone whose fetch refspec maps only some branches (`clone --single-branch`)
+ * gets no tracking ref even for a pushed rescue, so the finding says "likely".
  */
 export async function localRescueBranches(root) {
     const local = (await git(root, ["for-each-ref", "--sort=-committerdate", "--format=%(refname:short)%09%(committerdate:short)", "refs/heads/wip/trunk-*"])) ?? "";
@@ -104,7 +106,7 @@ export function localRescueFinding(rescues) {
     const more = rescues.length > RESCUES_SHOWN ? ` and ${rescues.length - RESCUES_SHOWN} more` : "";
     return {
         severity: "warning",
-        message: `${rescues.length} trunk rescue branch(es) exist only in this clone, with no remote copy, so no pull request will surface them: ` +
+        message: `${rescues.length} trunk rescue branch(es) have no remote-tracking ref, so they are likely only in this clone and no pull request will surface them: ` +
             `${shown.join(", ")}${more}. Inspect with git show --stat <branch>; recover with git switch <branch> or ` +
             `git cherry-pick <branch>; publish deliberately with git push origin <branch>; once handled, delete with git branch -D <branch>.`,
     };

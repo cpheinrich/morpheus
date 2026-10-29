@@ -56,9 +56,14 @@ day, with a private copy under the ignored `local/rescued/`.
 - **Every reachable repository is checked**, including the push remote's fetch URL when a separate
   push URL exists. `gh pr create` without `--repo` resolves its own base, so checking only the push
   URL could miss where the PR lands.
-- **Doctor uses "no remote-tracking ref" for unpushed.** It is network-free, and every successful
-  push writes that ref. A branch whose remote copy was deleted while a stale tracking ref survived
-  is not listed. After `git fetch --prune` it is.
+- **Doctor uses "no remote-tracking ref" for unpushed.** It is network-free, and in an ordinary
+  clone a push writes that ref. A `clone --single-branch` gets none even for a pushed rescue, so
+  the finding says "likely only in this clone" (review R-2). A branch whose remote copy was deleted
+  while a stale tracking ref survived is not listed. After `git fetch --prune` it is.
+- **Private-repository commit messages and PR bodies change too.** They drop the absolute checkout
+  path and full hostname, which departs from the item's "private repositories are unchanged, PR
+  body included". The task brief that relayed Chris's decision asked for this for every repository
+  (review R-3).
 
 ## Considered
 

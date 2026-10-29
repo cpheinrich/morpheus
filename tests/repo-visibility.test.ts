@@ -25,10 +25,14 @@ function memoryCache(initial: string | null = null): VisibilityCache & { data: s
   return cache;
 }
 const cacheOf = (repos: Record<string, { visibility: string; checkedAt: string }>) => JSON.stringify({ version: 1, repos });
+/** Answers `gh repo view github.com/<repo>` only: an unqualified name would let `GH_HOST` pick the server. */
 const runnerAnswering = (answers: Record<string, string>) =>
-  vi.fn<CommandRunner>(async (_command, args) => answers[args[2]!] === undefined
-    ? { code: 1, stdout: "", stderr: `HTTP 404: Not Found (${args[2]})` }
-    : { code: 0, stdout: JSON.stringify({ visibility: answers[args[2]!] }), stderr: "" });
+  vi.fn<CommandRunner>(async (_command, args) => {
+    const repo = args[2]!.startsWith("github.com/") ? args[2]!.slice("github.com/".length) : "";
+    return answers[repo] === undefined
+      ? { code: 1, stdout: "", stderr: `HTTP 404: Not Found (${args[2]})` }
+      : { code: 0, stdout: JSON.stringify({ visibility: answers[repo] }), stderr: "" };
+  });
 
 describe("parseGhVisibility", () => {
   it("accepts gh's three values and nothing else", () => {
@@ -53,7 +57,7 @@ describe("publishVerdict", () => {
     expect(await publishVerdict("/r", targets("o/a", "o/b"), runnerAnswering({ "o/b": "PUBLIC" }), NOW, null))
       .toEqual({ publish: false, repos: ["o/a", "o/b"], reason: "o/b is public" });
     expect(await publishVerdict("/r", targets("o/a"), runnerAnswering({}), NOW, null))
-      .toEqual({ publish: false, repos: ["o/a"], reason: "the visibility of o/a could not be read (HTTP 404: Not Found (o/a))" });
+      .toEqual({ publish: false, repos: ["o/a"], reason: "the visibility of o/a could not be read (HTTP 404: Not Found (github.com/o/a))" });
   });
 
   it("refuses with no repositories or an unidentified remote, without calling gh", async () => {
@@ -127,14 +131,32 @@ describe("rescueRepositories", () => {
     await git("remote", "set-url", "--push", "origin", "https://bot:ghp_secret@gitlab.com/o/r.git");
     expect(await rescueRepositories(dir, "origin", "upstream")).toEqual({
       repos: ["o/r"],
-      unidentified: ["https://gitlab.com/o/r.git is not a GitHub repository", "remote upstream has no URL"],
+      unidentified: [
+        "https://gitlab.com/o/r.git is not a GitHub repository",
+        "remote upstream has no URL",
+        "pushes go to https://gitlab.com/o/r.git, which is not a GitHub repository",
+      ],
     });
   });
 
-  it("reads the configured URL, not an insteadOf rewrite of it", async () => {
+  it("names the configured repository even when an insteadOf rewrite sends Git to a local mirror", async () => {
     await git("remote", "add", "origin", "https://github.com/o/r.git");
     await git("config", "url./srv/mirror/r.git.insteadOf", "https://github.com/o/r.git");
     expect((await exec("git", ["remote", "get-url", "origin"], { cwd: dir })).stdout.trim()).toBe("/srv/mirror/r.git");
     expect(await rescueRepositories(dir, "origin", "origin")).toEqual({ repos: ["o/r"], unidentified: [] });
+  });
+
+  it("also checks where a pushInsteadOf rewrite actually sends the push", async () => {
+    await git("remote", "add", "origin", "https://github.com/o/private.git");
+    // Rewritten to another GitHub repository: that one is checked as well.
+    await git("config", "url.https://github.com/other/public.git.pushInsteadOf", "https://github.com/o/private.git");
+    expect(await rescueRepositories(dir, "origin", "origin")).toEqual({ repos: ["o/private", "other/public"], unidentified: [] });
+    // Rewritten off GitHub and off this machine: nothing can say whether that is public.
+    await git("config", "--unset", "url.https://github.com/other/public.git.pushInsteadOf");
+    await git("config", "url.git@code.example.com:o/.pushInsteadOf", "https://github.com/o/");
+    expect(await rescueRepositories(dir, "origin", "origin")).toEqual({
+      repos: ["o/private"],
+      unidentified: ["pushes go to git@code.example.com:o/private.git, which is not a GitHub repository"],
+    });
   });
 });

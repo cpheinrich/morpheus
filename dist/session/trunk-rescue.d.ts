@@ -55,6 +55,12 @@ export declare function wipBranchName(date: string, host: string, taken: Readonl
 /** Pacific, like roadmap ids, so two machines name the same day the same way. */
 export declare function pacificDate(now: Date): string;
 export declare function shortHost(raw: string): string;
+/**
+ * Runs `gh` for real. A command that cannot start (`ENOENT`) has an empty
+ * `stderr`, so the error's message stands in for it, or the reason a rescue
+ * stayed local would read only "exit 1".
+ */
+export declare const runCommand: CommandRunner;
 export interface RescueDeps {
     /** Runs `gh`; injectable so tests never reach GitHub. */
     runner?: CommandRunner;

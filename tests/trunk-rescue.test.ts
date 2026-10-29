@@ -18,6 +18,7 @@ import {
   pacificDate,
   parsePorcelain,
   rescueDirtyTrunk,
+  runCommand,
   shortHost,
   wipBranchName,
   type CommandResult,
@@ -114,6 +115,12 @@ describe("index states and remotes", () => {
   it("finds staged content that differs from both HEAD and the working tree", () => {
     const raw = ["MM both.ts", "AM added.ts", "AD gone.ts", "M  staged-only.ts", " M tree-only.ts", " A intent.ts", "RM new.ts", "old.ts", "?? u.txt", ""].join("\0");
     expect(divergentStaged(raw)).toEqual(["both.ts", "added.ts", "gone.ts", "new.ts"]);
+  });
+  it("reports a command that cannot start by its error, not a bare exit code", async () => {
+    const result = await runCommand("morpheus-no-such-command-153755", ["repo", "view"], tmpdir());
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("spawn morpheus-no-such-command-153755 ENOENT");
   });
   it("reads owner/repo from GitHub remote URLs only", () => {
     expect(githubRepo("https://github.com/cpheinrich/morpheus.git")).toBe("cpheinrich/morpheus");
@@ -248,7 +255,7 @@ describe("rescuing a dirty trunk checkout", () => {
     expect(await git(remote, "log", "-1", "--format=%s", pushed)).toBe("WIP: uncommitted changes rescued from dirty main");
 
     // Visibility is read first, for the one repository the remote names, then the draft is opened.
-    expect(visibilityCalls().map((call) => call[1])).toEqual([["repo", "view", "o/r", "--json", "visibility"]]);
+    expect(visibilityCalls().map((call) => call[1])).toEqual([["repo", "view", "github.com/o/r", "--json", "visibility"]]);
     expect(prCalls()).toHaveLength(1);
     const [command, args, cwd] = prCalls()[0]!;
     expect(command).toBe("gh");
@@ -333,7 +340,7 @@ describe("rescuing a dirty trunk checkout", () => {
     const result = await rescueDirtyTrunk(local, { trunk: "upstream/main", branch: "main", sha }, deps());
     expect(result.outcome).toBe("rescued");
     // Both the fork and the base repository were confirmed private before anything was published.
-    expect(visibilityCalls().map((call) => call[1][2])).toEqual(["fork-owner/project", "up-owner/project"]);
+    expect(visibilityCalls().map((call) => call[1][2])).toEqual(["github.com/fork-owner/project", "github.com/up-owner/project"]);
     const args = prCalls()[0]![1];
     expect(args.slice(0, 9)).toEqual(["pr", "create", "--draft", "--repo", "up-owner/project", "--base", "main", "--head", `fork-owner:${branchBase}`]);
   });
@@ -341,7 +348,7 @@ describe("rescuing a dirty trunk checkout", () => {
   it("on a fork, keeps the rescue local when the base repository is public even though the fork is private", async () => {
     await forkRemotes();
     gh.mockImplementation(async (_command, args) => args[0] === "repo"
-      ? answer(args[2] === "up-owner/project" ? "PUBLIC" : "PRIVATE")
+      ? answer(args[2] === "github.com/up-owner/project" ? "PUBLIC" : "PRIVATE")
       : { code: 0, stdout: "https://github.com/up-owner/project/pull/42\n", stderr: "" });
     await writeFile(join(local, "project.pbxproj"), "mine\n");
     const sha = await git(local, "rev-parse", "HEAD");
@@ -714,7 +721,7 @@ describe("rescuing a dirty trunk checkout", () => {
 
       const report = (await inspectTrunkCheckout(local, { remote: "origin", branch: "main" }, null))!;
       expect(report.localRescues).toEqual([{ branch: `${branchBase}-2`, date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), files: 2 }]);
-      const message = `1 trunk rescue branch(es) exist only in this clone, with no remote copy, so no pull request will surface them: ${branchBase}-2 (2 file(s), ${report.localRescues[0]!.date}). Inspect with git show --stat <branch>; recover with git switch <branch> or git cherry-pick <branch>; publish deliberately with git push origin <branch>; once handled, delete with git branch -D <branch>.`;
+      const message = `1 trunk rescue branch(es) have no remote-tracking ref, so they are likely only in this clone and no pull request will surface them: ${branchBase}-2 (2 file(s), ${report.localRescues[0]!.date}). Inspect with git show --stat <branch>; recover with git switch <branch> or git cherry-pick <branch>; publish deliberately with git push origin <branch>; once handled, delete with git branch -D <branch>.`;
       expect(trunkCheckoutFindings(report, NOW)).toEqual([{ severity: "warning", message }]);
 
       // Branches belong to the repository: a task branch still reports them, and nothing else.
@@ -853,7 +860,7 @@ describe("trunk checkout findings", () => {
   it("names ten local rescue branches, then counts the rest", () => {
     const rescues = Array.from({ length: 12 }, (_, i) => ({ branch: `wip/trunk-2026-10-${String(i + 1).padStart(2, "0")}-box`, date: null, files: i === 0 ? null : i }));
     const { message } = localRescueFinding(rescues);
-    expect(message).toMatch(/^12 trunk rescue branch\(es\) exist only in this clone/);
+    expect(message).toMatch(/^12 trunk rescue branch\(es\) have no remote-tracking ref, so they are likely only in this clone/);
     expect(message).toContain("wip/trunk-2026-10-01-box (files unknown), wip/trunk-2026-10-02-box (1 file(s)),");
     expect(message).toContain("wip/trunk-2026-10-10-box (9 file(s)) and 2 more.");
     expect(message).not.toContain("2026-10-11");

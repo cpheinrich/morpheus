@@ -34,9 +34,9 @@ Xcode-rewritten `project.pbxproj`. So when HEAD is the trunk branch and tracked 
 **On a public repository the rescue stays local.** Pushing would publish whatever was lying in the
 checkout: morpheus #452 put an agent's private working document, a Tailscale hostname and local
 paths on the public web, and closing a PR unpublishes nothing. Before the proof, `brief` asks
-`gh repo view <owner/repo> --json visibility` for every repository the rescue would reach — the
-push remote's push and fetch URLs and, on a fork, the trunk remote — and publishes only when every
-one reads exactly `PRIVATE`. Public, internal, a remote that is not on GitHub, a missing or failing
+`gh repo view github.com/<owner/repo> --json visibility` for every repository the rescue would
+reach — the push remote's push and fetch URLs, where a `pushInsteadOf` rewrite actually sends the
+push and, on a fork, the trunk remote — and publishes only when every one reads exactly `PRIVATE`. Public, internal, a remote that is not on GitHub, a missing or failing
 `gh` and an answer it cannot parse all keep the branch local: **unknown is public**. Answers are
 cached for one hour in the primary checkout's ignored `local/sessions/repo-visibility.json`; a
 failed read is never cached. A local rescue gets the same commit, proofs and reset, and then
@@ -45,7 +45,9 @@ only copy. `brief` prints the branch, the diffstat, why it was not pushed, how t
 (`git switch <branch>`, or `git cherry-pick <branch>` onto another branch) and how to publish it
 deliberately (`git push origin <branch>`, then `gh pr create --draft --head <branch>`).
 `morpheus doctor` and `doctor --all` list every `wip/trunk-*` branch with no remote-tracking ref,
-from any checkout of the repository, until someone deletes it with `git branch -D`.
+from any checkout of the repository, until someone deletes it with `git branch -D`. A
+`clone --single-branch` gets no tracking ref even for a pushed rescue, so there the list can
+include one that does have a remote copy.
 
 It refuses, and reports instead, when a file's staged content differs from both HEAD and the
 working tree (committing the tree would drop the staged version), when a file removed from the

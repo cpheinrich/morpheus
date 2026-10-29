@@ -73,12 +73,17 @@ async function gitLines(root: string, args: string[]): Promise<string[]> {
 /** A URL fit to print: any `user:token@` is dropped. */
 const redactUrl = (url: string): string => url.replace(/\/\/[^/@\s]*@/, "//");
 
+/** A path on this machine. A push there publishes nothing. */
+const isLocalPath = (url: string): boolean => /^(\/|\.{1,2}\/|~|file:\/\/)/.test(url) || /^[A-Za-z]:[\\/]/.test(url);
+
 /**
- * The repositories a rescue would publish to, from the remotes' configured
- * URLs. Read from config rather than `git remote get-url`, which applies
- * `insteadOf` rewrites: those change the transport (a mirror, an SSH alias),
- * not which GitHub repository the remote is. Each URL that does not name a
- * GitHub repository is described in `unidentified`, and decides "local".
+ * The repositories a rescue would publish to. Both what the remotes are
+ * configured as (the repository a PR targets, before any `insteadOf` rewrite
+ * of the transport) and where the push actually lands after rewriting
+ * (`git remote get-url --push --all`), because a `pushInsteadOf` can send the
+ * branch somewhere the configured URL does not name. Every GitHub repository
+ * found either way is checked. Any URL that is neither a GitHub repository nor
+ * a path on this machine is described in `unidentified`, and decides "local".
  */
 export async function rescueRepositories(root: string, pushRemote: string, trunkRemote: string): Promise<{ repos: string[]; unidentified: string[] }> {
   const repos = new Set<string>();
@@ -95,6 +100,11 @@ export async function rescueRepositories(root: string, pushRemote: string, trunk
   await read(pushRemote, "pushurl", false);
   await read(pushRemote, "url", true);
   if (trunkRemote !== pushRemote) await read(trunkRemote, "url", true);
+  for (const url of await gitLines(root, ["remote", "get-url", "--push", "--all", pushRemote])) {
+    const repo = githubRepo(url);
+    if (repo) repos.add(repo.toLowerCase());
+    else if (!isLocalPath(url)) unidentified.push(`pushes go to ${redactUrl(url)}, which is not a GitHub repository`);
+  }
   return { repos: [...repos].sort(), unidentified };
 }
 
@@ -149,7 +159,9 @@ export async function publishVerdict(
   for (const repo of repos) {
     const cached = cachedVisibility(stored, repo, now);
     if (cached) { answers.push([repo, cached, undefined]); continue; }
-    const result = await runner("gh", ["repo", "view", repo, "--json", "visibility"], root)
+    // Host-qualified, so a `GH_HOST` pointing at an enterprise server cannot answer for a
+    // same-named repository there.
+    const result = await runner("gh", ["repo", "view", `github.com/${repo}`, "--json", "visibility"], root)
       .catch((error: unknown): CommandResult => ({ code: 1, stdout: "", stderr: String(error) }));
     const visibility = result.code === 0 ? parseGhVisibility(result.stdout) : null;
     if (visibility) {

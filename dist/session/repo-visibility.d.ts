@@ -42,11 +42,13 @@ export declare function parseGhVisibility(stdout: string): GhVisibility | null;
 /** `owner/repo` from a GitHub remote URL, or null. */
 export declare function githubRepo(url: string): string | null;
 /**
- * The repositories a rescue would publish to, from the remotes' configured
- * URLs. Read from config rather than `git remote get-url`, which applies
- * `insteadOf` rewrites: those change the transport (a mirror, an SSH alias),
- * not which GitHub repository the remote is. Each URL that does not name a
- * GitHub repository is described in `unidentified`, and decides "local".
+ * The repositories a rescue would publish to. Both what the remotes are
+ * configured as (the repository a PR targets, before any `insteadOf` rewrite
+ * of the transport) and where the push actually lands after rewriting
+ * (`git remote get-url --push --all`), because a `pushInsteadOf` can send the
+ * branch somewhere the configured URL does not name. Every GitHub repository
+ * found either way is checked. Any URL that is neither a GitHub repository nor
+ * a path on this machine is described in `unidentified`, and decides "local".
  */
 export declare function rescueRepositories(root: string, pushRemote: string, trunkRemote: string): Promise<{
     repos: string[];

@@ -25,10 +25,12 @@ export interface LocalRescue {
     files: number | null;
 }
 /**
- * Rescue branches with no remote copy. Read from refs alone, with no network:
- * a push updates the remote-tracking ref, so a branch with none on any remote
- * was kept local (a public repository), its push failed, or its remote branch
- * was deleted and pruned. Either way this clone holds the only copy.
+ * Rescue branches with no remote-tracking ref on any remote. Read from refs
+ * alone, with no network. In an ordinary clone a push writes that ref, so such
+ * a branch was kept local (a public repository), its push failed, or its
+ * remote branch was deleted and pruned, and this clone holds the only copy. A
+ * clone whose fetch refspec maps only some branches (`clone --single-branch`)
+ * gets no tracking ref even for a pushed rescue, so the finding says "likely".
  */
 export declare function localRescueBranches(root: string): Promise<LocalRescue[]>;
 export declare function inspectTrunkCheckout(root: string, trunk: TrunkRef, remoteSha: string | null): Promise<TrunkCheckoutReport | null>;

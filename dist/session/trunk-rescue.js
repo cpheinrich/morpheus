@@ -207,14 +207,19 @@ export function pacificDate(now) {
 export function shortHost(raw) {
     return raw.split(".")[0].toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "host";
 }
-const runCommand = async (command, args, cwd) => {
+/**
+ * Runs `gh` for real. A command that cannot start (`ENOENT`) has an empty
+ * `stderr`, so the error's message stands in for it, or the reason a rescue
+ * stayed local would read only "exit 1".
+ */
+export const runCommand = async (command, args, cwd) => {
     try {
         const { stdout, stderr } = await exec(command, args, { cwd, timeout: 60_000, env: gitSubprocessEnv() });
         return { code: 0, stdout, stderr };
     }
     catch (error) {
         const failed = error;
-        return { code: typeof failed.code === "number" ? failed.code : 1, stdout: failed.stdout ?? "", stderr: failed.stderr ?? failed.message };
+        return { code: typeof failed.code === "number" ? failed.code : 1, stdout: failed.stdout ?? "", stderr: failed.stderr || failed.message };
     }
 };
 const LIST_CAP = 50;

@@ -1055,7 +1055,7 @@ because pushing publishes whatever was in the checkout (#452 published an agent'
 a hostname and local paths, and closing a PR unpublishes nothing). Unknown is public. Answers are
 cached for an hour in the primary checkout's ignored `local/`; failures never are. A local rescue
 is never pushed or deleted automatically; the brief prints how to recover or publish it, and
-`doctor` lists every rescue branch with no remote copy until someone deletes it. Published text names the
+`doctor` lists every rescue branch with no remote-tracking ref until someone deletes it. Published text names the
 trunk branch and a short host label, never the checkout path or full hostname.
 Edits that are all IDE churn — per-user IDE state, a `.pbxproj` or Xcode XML file whose structure
 is unchanged, or content trunk already has — are reset after the same proof with a one-line report
