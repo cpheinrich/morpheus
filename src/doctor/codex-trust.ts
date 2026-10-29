@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { parse as parseToml } from "smol-toml";
@@ -314,13 +314,49 @@ export interface CodexTrustReport {
   worktreeDiffers?: boolean;
 }
 
-/** Codex's project-trust decision for a checkout: its own path, then the main checkout's. */
-function projectTrust(projects: Map<string, string>, location: HooksLocation): boolean {
+/**
+ * Codex's project-trust decision for a checkout: its own path, then the main
+ * checkout's. An entry under a symlinked spelling of either counts, as in
+ * `aliasedState`, because Codex looks up the path it was opened with.
+ */
+async function projectTrust(projects: Map<string, string>, location: HooksLocation): Promise<boolean> {
   for (const path of [location.checkout, location.main]) {
     const level = projects.get(path);
     if (level !== undefined) return level === "trusted";
   }
+  for (const path of [location.checkout, location.main]) {
+    const target = await realpath(path).catch(() => path);
+    for (const [key, level] of projects) {
+      if ((await realpath(key).catch(() => null)) === target) return level === "trusted";
+    }
+  }
   return false;
+}
+
+/**
+ * State recorded under another spelling of the same hooks file.
+ *
+ * Codex keys trust by the path it was opened with, unresolved, while Git
+ * reports symlink-resolved paths. A user who opens Codex through a symlinked
+ * `~/code` has trusted `<link>/.codex/hooks.json:…`; looking up only the
+ * resolved key would call those hooks untrusted — the unsafe direction for a
+ * report whose whole job is to say what is not running. So entries whose path
+ * resolves to this file are matched by their `<event>:<group>:<handler>`
+ * suffix, preferring one that records trust.
+ */
+async function aliasedState(state: Map<string, HookState>, hooksPath: string): Promise<Map<string, HookState>> {
+  const target = await realpath(hooksPath).catch(() => hooksPath);
+  const bySuffix = new Map<string, HookState>();
+  for (const [key, entry] of state) {
+    const match = /^(.+\/hooks\.json):([a-z_]+:\d+:\d+)$/.exec(key);
+    if (!match || match[1] === hooksPath) continue;
+    if ((await realpath(match[1]!).catch(() => null)) !== target) continue;
+    const existing = bySuffix.get(match[2]!);
+    if (!existing || (existing.trustedHash === undefined && entry.trustedHash !== undefined)) {
+      bySuffix.set(match[2]!, entry);
+    }
+  }
+  return bySuffix;
 }
 
 export async function codexTrustReport(root: string, home: string = codexHome()): Promise<CodexTrustReport> {
@@ -329,19 +365,27 @@ export async function codexTrustReport(root: string, home: string = codexHome())
   // directory, even when the hooks themselves come from the main checkout.
   if (!(await isDirectory(join(location.checkout, ".codex")))) return { kind: "no-hooks", location };
   const hooksPath = join(location.main, ".codex", "hooks.json");
+
+  // Before the hooks file: a machine without Codex has nothing to report,
+  // however that file looks.
+  const state = await readCodexState(home);
+  if (state.kind === "absent") return { kind: "no-codex", location, hooksPath };
+
   const file = await readHooksFile(hooksPath);
-  if (file.kind === "absent") return { kind: "no-hooks", location, hooksPath };
+  const own = location.linkedWorktree ? await readHooksFile(join(location.checkout, ".codex", "hooks.json")) : null;
+  if (file.kind === "absent") {
+    // A branch that wired hooks the main checkout does not have yet: Codex
+    // runs none of them here, which is the state this report exists to name.
+    const wired = own?.kind === "ok" && listCodexHooks(own.doc, hooksPath).hooks.length > 0;
+    return { kind: "no-hooks", location, hooksPath, worktreeDiffers: wired || undefined };
+  }
   if (file.kind === "unusable") return { kind: "unknown", location, hooksPath, why: `${hooksPath} — ${file.why}` };
   const listed = listCodexHooks(file.doc, hooksPath);
   if (listed.problem) return { kind: "unknown", location, hooksPath, why: `${hooksPath} — ${listed.problem}` };
-
-  const state = await readCodexState(home);
-  if (state.kind === "absent") return { kind: "no-codex", location, hooksPath };
   if (state.kind === "unusable") return { kind: "unknown", location, hooksPath, why: `${state.path} — ${state.why}` };
 
   let worktreeDiffers: boolean | undefined;
-  if (location.linkedWorktree) {
-    const own = await readHooksFile(join(location.checkout, ".codex", "hooks.json"));
+  if (own) {
     const identity = (hooks: CodexHook[]) =>
       hooks.map((h) => `${h.event}:${h.group}:${h.handler}:${h.hash ?? h.command}`).sort().join("\n");
     worktreeDiffers =
@@ -349,12 +393,19 @@ export async function codexTrustReport(root: string, home: string = codexHome())
       identity(listCodexHooks(own.doc, hooksPath).hooks) !== identity(listed.hooks);
   }
 
+  const aliases = await aliasedState(state.hookState, hooksPath);
+  const lookup = new Map(state.hookState);
+  for (const hook of listed.hooks) {
+    const alias = aliases.get(hook.key.slice(hooksPath.length + 1));
+    if (!lookup.has(hook.key) && alias) lookup.set(hook.key, alias);
+  }
+
   return {
     kind: "checked",
     location,
     hooksPath,
-    projectTrusted: projectTrust(state.projects, location),
-    hooks: listed.hooks.map((hook) => ({ ...hook, trust: trustOf(hook, state.hookState) })),
+    projectTrusted: await projectTrust(state.projects, location),
+    hooks: listed.hooks.map((hook) => ({ ...hook, trust: trustOf(hook, lookup) })),
     worktreeDiffers,
   };
 }
@@ -383,6 +434,14 @@ export interface TrustFinding {
 export function codexTrustFindings(report: CodexTrustReport): TrustFinding[] {
   const out: TrustFinding[] = [];
   const add = (message: string) => out.push({ severity: "warning", check: "codex-trust", message });
+  if (report.kind === "no-hooks" && report.worktreeDiffers) {
+    add(
+      `This worktree has a .codex/hooks.json, but the main checkout has no ${report.hooksPath}, which ` +
+        "is the file Codex runs in every worktree of this repository — so Codex runs none of these " +
+        "hooks here. They reach Codex sessions once they merge and the main checkout is fast-forwarded.",
+    );
+    return out;
+  }
   if (report.kind === "no-codex" || report.kind === "no-hooks") return out;
   if (report.kind === "unknown") {
     add(`Codex hook trust is unknown: could not read ${report.why}.`);

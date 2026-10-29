@@ -220,7 +220,9 @@ parts) and confirmed against what the installed Codex reports through `codex app
 - **Trust is per hook, per file.** `/hooks` writes `[hooks.state."<key>"] trusted_hash = "sha256:…"`,
   where the key is `<absolute path of hooks.json>:<event>:<group index>:<handler index>` and the
   hash covers the event, matcher and normalized handler (command, timeout, async, status message).
-  Moving a hook to another index, or changing its command, needs trusting again.
+  Moving a hook to another index, or changing its command, needs trusting again. The path is the
+  one Codex was opened with, unresolved; `doctor` also accepts trust recorded under a symlinked
+  spelling of the same file.
 - **A linked worktree runs the main checkout's hooks.** When the session's checkout is a linked
   worktree, Codex reads `.codex/hooks.json` from the main checkout, keyed by the main checkout's
   path. So trusting once in the main checkout covers every task worktree — and a branch's own edits

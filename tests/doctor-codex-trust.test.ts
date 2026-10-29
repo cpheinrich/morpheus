@@ -271,6 +271,39 @@ describe("codexTrustReport and its findings", () => {
     expect(differs[0]!.message).toContain(`differs from the main checkout's ${hooksPath()}`);
   });
 
+  it("names a worktree whose hooks the main checkout does not have at all", async () => {
+    await trust([]);
+    const worktree = join(base, "task");
+    await git(main, "worktree", "add", "-q", "--detach", worktree);
+    await rm(hooksPath());
+    const report = await codexTrustReport(worktree, home);
+    expect(report).toMatchObject({ kind: "no-hooks", worktreeDiffers: true });
+    const findings = codexTrustFindings(report);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.message).toContain(`the main checkout has no ${hooksPath()}`);
+    // A worktree with nothing wired either is not a finding, whether the file is empty or absent.
+    await writeFile(join(worktree, ".codex", "hooks.json"), '{"hooks":{}}');
+    expect(codexTrustFindings(await codexTrustReport(worktree, home))).toEqual([]);
+    await rm(join(worktree, ".codex", "hooks.json"));
+    expect(codexTrustFindings(await codexTrustReport(worktree, home))).toEqual([]);
+  });
+
+  it("honours trust recorded under a symlinked spelling of the same checkout", async () => {
+    const link = join(base, "link");
+    await exec("ln", ["-s", main, link]);
+    const linked = join(link, ".codex", "hooks.json");
+    const { hooks } = listCodexHooks(JSON.parse(codexHooksFile()), linked);
+    // Codex keys by the spelling it was opened with; Git reports the resolved path.
+    await trust(hooks.map((h) => entry(h.key, h.hash!)), { [link]: "trusted" });
+    const report = await codexTrustReport(main, home);
+    expect(report.projectTrusted).toBe(true);
+    expect(report.hooks!.map((h) => h.trust)).toEqual(["trusted", "trusted", "trusted"]);
+    expect(codexTrustFindings(report)).toEqual([]);
+    // Stale under the alias is still stale.
+    await trust([entry(hooks[0]!.key, "sha256:stale")], { [link]: "trusted" });
+    expect((await codexTrustReport(main, home)).hooks![0]!.trust).toBe("modified");
+  });
+
   it("points a linked worktree's trust at the main checkout", async () => {
     await trust([]);
     const worktree = join(base, "task");
@@ -305,6 +338,10 @@ describe("codexTrustReport and its findings", () => {
 
   it("says nothing on a machine without Codex, or for a checkout without .codex/", async () => {
     expect(codexTrustFindings(await codexTrustReport(main, join(base, "no-codex")))).toEqual([]);
+    // Even when the hooks file is broken: without Codex there is nothing it fails to run.
+    await writeFile(hooksPath(), "{");
+    expect(codexTrustFindings(await codexTrustReport(main, join(base, "no-codex")))).toEqual([]);
+    expect((await codexTrustReport(main, home)).kind).toBe("unknown");
     await rm(join(main, ".codex"), { recursive: true });
     expect((await codexTrustReport(main, home)).kind).toBe("no-hooks");
   });
