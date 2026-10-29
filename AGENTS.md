@@ -1,8 +1,7 @@
 # Morpheus — agent instructions
 
-Read this before doing anything. `CLAUDE.md` is a symlink to this file so Claude and Codex
-read the same instructions. It holds the rules every task needs; detail lives in runbooks that
-the **Read when** pointers below name — open one when its trigger applies, not before.
+Read this first. `CLAUDE.md` symlinks here. Detail lives in the runbooks named by the **Read when**
+table; open one only when its trigger applies.
 
 ## What this repo is
 
@@ -50,6 +49,7 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | [`test-quality.md`](docs/runbooks/test-quality.md) | Writing or reviewing tests; before calling anything "tested" |
 | [`inbox-cycle.md`](docs/runbooks/inbox-cycle.md) | Writing, answering or archiving an inbox |
 | [`website.md`](docs/runbooks/website.md) | Any website, waitlist, signup/contact form, `/hq`, consumer auth, or a new Firebase project |
+| [`hq-product-design.md`](docs/runbooks/hq-product-design.md) | Changing an HQ page, its information hierarchy, or a component that renders HQ content |
 | [`gh-manager.md`](docs/runbooks/gh-manager.md) | A PR may sit unattended, or the manager has touched yours |
 | [`folder-readmes.md`](docs/runbooks/folder-readmes.md) | Creating a directory, or deciding whether it needs a README |
 | [`cli-commands.md`](docs/runbooks/cli-commands.md) | You need a command not listed below |
