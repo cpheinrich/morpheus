@@ -1,4 +1,4 @@
-import { type PostResumeOrigin, type PostResumeQualification, type PostResumeAcceptance, type SourceAgeWaiver, type Attempt, type CdConfig, type CdState, type Channel, type DeliveryIntent, type Identity, type InternalObservation, type QuotaSnapshot, type Receipt, type SourceRevision, type TestEvidence, type UploadEvidence } from "./schema.js";
+import { type TestProof, type PostResumeOrigin, type PostResumeQualification, type PostResumeAcceptance, type SourceAgeWaiver, type Attempt, type CdConfig, type CdState, type Channel, type DeliveryIntent, type Identity, type InternalObservation, type QuotaSnapshot, type Receipt, type SourceRevision, type TestEvidence, type UploadEvidence } from "./schema.js";
 import { type GitHubStore } from "./store.js";
 export declare const milliseconds: (minutes: number) => number;
 export declare const after: (at: string, minutes: number) => string;
@@ -31,6 +31,11 @@ export declare function checkIdentity(state: CdState, identity: Identity): {
     intent: DeliveryIntent;
     attempt: Attempt;
 };
+/** Rechecked inside upload CAS and before accepted-upload proof reuse. No new authority. */
+export declare function assertPhysicalDeviceProof(config: CdConfig, proof: TestProof, expected?: Identity & {
+    appInputDigest: string;
+    configurationDigest: string;
+}): void;
 export declare function recordTests(state: CdState, config: CdConfig, evidence: TestEvidence): void;
 export declare function claimUpload(state: CdState, config: CdConfig, evidence: UploadEvidence, now: string): string;
 export declare function recordUpload(state: CdState, evidence: UploadEvidence, now: string): void;

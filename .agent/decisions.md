@@ -1,5 +1,13 @@
 # Decisions
 
+**Required physical-device CD proof extends the existing full-test envelope** — 2026-10-28.
+An optional trusted profile/device/host/exact-inventory policy preserves legacy config bytes
+when absent, while opt-in changes configuration identity through normal migration.
+Hardware child identity, first-attempt results and verified payload references compact into
+the existing proof; upload CAS and accepted-proof reuse enforce it without new ownership.
+Consumers must check the exported capability and actual config round-trip before adoption.
+This CD-specific validation reuses existing Zod, hashing and CAS; no package or generic module.
+
 **Continuous HQ reads extend the callable transport** — 2026-10-25.
 Keep one private per-company bounded board/agent/comment snapshot, published only by the
 configured connector and read only after current human authorization. Existing legacy HQ

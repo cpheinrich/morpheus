@@ -1,4 +1,4 @@
-import { postResumeExecutionProofSchema, postResumeOriginSchema, postResumeQualificationSchema, type PostResumeOrigin, type PostResumeQualification, type PostResumeAcceptance, budgetSpendingPolicySchema, configurationDigest, hash, sourceAgeWaiverSchema, type SourceAgeWaiver, type Attempt, type CdConfig, type CdState, type Channel, type DeliveryIntent, type Identity, type InternalObservation, type QuotaSnapshot, type Receipt, type SourceRevision, type TestEvidence, type UploadEvidence } from "./schema.js";
+import { physicalDevicePolicySchema, physicalDeviceEvidenceSchema, physicalDeviceProofSchema, type PhysicalDeviceEvidence, type PhysicalDeviceProof, type TestProof, postResumeExecutionProofSchema, postResumeOriginSchema, postResumeQualificationSchema, type PostResumeOrigin, type PostResumeQualification, type PostResumeAcceptance, budgetSpendingPolicySchema, configurationDigest, hash, sourceAgeWaiverSchema, type SourceAgeWaiver, type Attempt, type CdConfig, type CdState, type Channel, type DeliveryIntent, type Identity, type InternalObservation, type QuotaSnapshot, type Receipt, type SourceRevision, type TestEvidence, type UploadEvidence } from "./schema.js";
 import { CdWait } from "./errors.js";
 import { type GitHubStore } from "./store.js";
 
@@ -147,7 +147,43 @@ export function checkIdentity(state: CdState, identity: Identity): { intent: Del
   invariant(!attempt.runAttempt || attempt.runAttempt === identity.runAttempt, "A rerun cannot reuse an irreversible attempt");
   attempt.runId = identity.runId; attempt.runAttempt = identity.runAttempt; return found;
 }
+const physicalIdentityKeys = ["schemaVersion", "intentId", "attemptId", "dispatchEffectId", "sourceSha", "controlSha", "runId", "runAttempt", "appInputDigest", "configurationDigest"] as const;
+function physicalDeviceBinding(config: CdConfig, aggregate: TestEvidence | TestProof, child: PhysicalDeviceEvidence | PhysicalDeviceProof) {
+  invariant(config.tests.physicalDevice, "Physical-device evidence needs an explicitly configured policy");
+  const policy = physicalDevicePolicySchema.parse(config.tests.physicalDevice);
+  invariant(aggregate.configurationDigest === configurationDigest(config), "Physical-device policy configuration differs from aggregate evidence");
+  for (const key of physicalIdentityKeys) invariant(child[key] === aggregate[key], `Physical-device ${key} differs from aggregate evidence`);
+  for (const key of ["profile", "deviceId", "hostId"] as const) invariant(child[key] === policy[key], `Physical-device ${key} differs from configured policy`);
+  invariant(new Set(child.artifacts.map(artifact => artifact.name)).size === child.artifacts.length
+    && child.artifacts.every(artifact => aggregate.artifacts.filter(parent => parent.name === artifact.name && parent.sha256 === artifact.sha256).length === 1),
+  "Physical-device payload references differ from verified aggregate artifacts");
+  return policy;
+}
+function compactPhysicalDevice(config: CdConfig, evidence: TestEvidence): PhysicalDeviceProof | undefined {
+  if (evidence.physicalDevice === undefined && config.tests.physicalDevice === undefined) return undefined;
+  invariant(evidence.physicalDevice, "Required physical-device evidence is missing");
+  const child = physicalDeviceEvidenceSchema.parse(evidence.physicalDevice), policy = physicalDeviceBinding(config, evidence, child);
+  const inventoryHash = hash([...policy.testIds].sort()), ids = child.inventory.ids;
+  invariant(ids.length === policy.testIds.length && new Set(ids).size === ids.length
+    && child.inventory.sha256 === inventoryHash && hash([...ids].sort()) === inventoryHash,
+  "Physical-device inventory differs from exact configured test plan");
+  invariant(child.results.length === ids.length && new Set(child.results.map(result => result.id)).size === ids.length
+    && child.results.every(result => ids.includes(result.id) && result.status === "passed" && result.attempts === 1),
+  "Physical-device tests require every configured test to pass on its first attempt");
+  const { inventory: _inventory, results: _results, ...binding } = child;
+  return { ...binding, policyHash: hash(policy), evidenceHash: hash(child), inventoryHash, executedCount: child.results.length, firstAttemptPassed: true };
+}
+/** Rechecked inside upload CAS and before accepted-upload proof reuse. No new authority. */
+export function assertPhysicalDeviceProof(config: CdConfig, proof: TestProof, expected?: Identity & { appInputDigest: string; configurationDigest: string }): void {
+  if (proof.physicalDevice === undefined && config.tests.physicalDevice === undefined) return;
+  invariant(proof.physicalDevice, "Required physical-device proof is missing");
+  const child = physicalDeviceProofSchema.parse(proof.physicalDevice), policy = physicalDeviceBinding(config, proof, child);
+  if (expected) for (const key of physicalIdentityKeys) invariant(child[key] === expected[key], `Physical-device ${key} differs from current upload execution`);
+  invariant(child.policyHash === hash(policy) && child.inventoryHash === hash([...policy.testIds].sort())
+    && child.executedCount === policy.testIds.length, "Physical-device compact proof differs from required policy/inventory");
+}
 export function recordTests(state: CdState, config: CdConfig, evidence: TestEvidence): void {
+  const physicalDevice = compactPhysicalDevice(config, evidence);
   const before = attemptAt(state, evidence.intentId, evidence.attemptId), optional = postResumeAcceptance(state, before.intent);
   invariant(!optional?.yielded && (!optional?.releases[before.attempt.id] || before.attempt.tests), "Released/yielded acceptance cannot acquire new test authority");
   const { intent, attempt } = checkIdentity(state, evidence);
@@ -158,14 +194,19 @@ export function recordTests(state: CdState, config: CdConfig, evidence: TestEvid
   for (const result of evidence.results) invariant(ids.includes(result.id) && (result.status === "passed" || result.status === "skipped" && config.tests.allowedSkips.includes(result.id)), `Full test failed or unexpectedly skipped: ${result.id}`);
   invariant(evidence.artifacts.length > 0 && evidence.artifacts.every(artifact => /^[a-f0-9]{64}$/.test(artifact.sha256)) && /^[a-f0-9]{64}$/.test(evidence.validator.sha256), "Full tests need hashed artifacts and validator");
   const evidenceHash = hash(evidence);
-  if (attempt.tests) invariant(attempt.tests.evidenceHash === evidenceHash, "Test evidence is immutable");
+  if (attempt.tests) {
+    invariant(attempt.tests.evidenceHash === evidenceHash, "Test evidence is immutable");
+    return; // An identical receipt cannot rewind upload/reconciliation progress.
+  }
   // Complete inventories/results stay in their downloaded, hashed Actions artifact.
   // The hot ledger retains the verified proof, not hundreds of repeated test rows.
-  attempt.tests = { schemaVersion: 1, intentId: evidence.intentId, attemptId: evidence.attemptId, dispatchEffectId: evidence.dispatchEffectId, sourceSha: evidence.sourceSha, controlSha: evidence.controlSha, runId: evidence.runId, runAttempt: evidence.runAttempt, scope: "full", appInputDigest: evidence.appInputDigest, configurationDigest: evidence.configurationDigest, evidenceHash, inventoryHash: evidence.inventory.sha256, executedCount: evidence.results.length, skippedIds: evidence.results.filter(result => result.status === "skipped").map(result => result.id), artifacts: evidence.artifacts, validator: evidence.validator }; intent.state = "uploading"; intent.nextAction = "await-upload-claim";
+  attempt.tests = { schemaVersion: 1, intentId: evidence.intentId, attemptId: evidence.attemptId, dispatchEffectId: evidence.dispatchEffectId, sourceSha: evidence.sourceSha, controlSha: evidence.controlSha, runId: evidence.runId, runAttempt: evidence.runAttempt, scope: "full", appInputDigest: evidence.appInputDigest, configurationDigest: evidence.configurationDigest, evidenceHash, inventoryHash: evidence.inventory.sha256, executedCount: evidence.results.length, skippedIds: evidence.results.filter(result => result.status === "skipped").map(result => result.id), artifacts: evidence.artifacts, validator: evidence.validator, ...(physicalDevice ? { physicalDevice } : {}) }; intent.state = "uploading"; intent.nextAction = "await-upload-claim";
 }
 export function claimUpload(state: CdState, config: CdConfig, evidence: UploadEvidence, now: string): string {
   const before = attemptAt(state, evidence.intentId, evidence.attemptId);
   assertPostResumeNewEffect(state, config, before.intent, before.attempt, now);
+  invariant(before.attempt.tests, "A complete passing full-test inventory is required before upload");
+  assertPhysicalDeviceProof(config, before.attempt.tests, { ...evidence, appInputDigest: before.attempt.appInputDigest, configurationDigest: before.attempt.configurationDigest });
   const { intent, attempt } = checkIdentity(state, evidence);
   invariant(attempt.tests, "A complete passing full-test inventory is required before upload");
   invariant(!attempt.upload, "Upload already claimed; reconcile the existing operation");
