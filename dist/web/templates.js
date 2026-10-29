@@ -1948,6 +1948,8 @@ export const hqLayout = (ctx, name) => {
     return `import type { Metadata } from "next";
 import Link from "next/link";
 
+import { SectionLinks } from "morpheus-kit/section-links/react";
+
 import { currentUser } from "${ctx.imp(self, "lib/auth/current-user")}";
 
 import { HqSearch } from "./HqSearch";
@@ -1991,6 +1993,8 @@ export default async function HqLayout({ children }: { children: React.ReactNode
       </header>
 
       <div className="mx-auto w-full max-w-[1320px] px-6 py-12">{children}</div>
+      {/* Every h2–h4 on an HQ page gets a copyable #section link on hover; no page opts in. */}
+      <SectionLinks />
     </div>
   );
 }

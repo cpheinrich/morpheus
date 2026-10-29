@@ -2036,3 +2036,15 @@ start a Codex process per project on every run.
 
 A user-level, trust-once-per-machine design is written up in the context-freshness runbook and
 filed as its own item rather than built here, because it writes the user's live Codex config.
+
+## HQ section links are a layout-mounted component, built rather than borrowed — 2026-10-28
+
+MO-26-10-28-23.32.51. Chris asked for a copyable `#section` link on every HQ heading. He wanted it
+at the design-system level and in Morpheus, so existing pages are covered without being edited.
+`morpheus-kit/section-links/react` is mounted once in the HQ layout and finds headings in the DOM.
+The alternative was a `<Heading>` component, which would reach only the pages someone changed.
+Considered `anchor-js` 5.0.0 (last published 2023-01) and `rehype-autolink-headings` 7.1.0
+(2023-11). Both inject a link node into the heading. React erases that node on the next text update,
+and inside a not-yet-hydrated Suspense boundary it causes a hydration mismatch. The rehype plugin
+also covers only Markdown. Neither copies to the clipboard. We built about 250 lines with no new
+dependency: one floating icon, and an `id` attribute as the only write into a heading.

@@ -26,6 +26,8 @@
     "./hq-search/build": "./dist/hq-search/build.js",
     "./hq-search/pdf": "./dist/hq-search/pdf.js",
     "./hq-search/react": "./dist/hq-search/react.js",
+    "./section-links": "./dist/section-links/index.js",
+    "./section-links/react": "./dist/section-links/react.js",
     "./registry": "./dist/registry/index.js",
     "./profile": "./dist/profile/index.js",
     "./doctor": "./dist/doctor/index.js",
