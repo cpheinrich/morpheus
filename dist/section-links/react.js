@@ -13,7 +13,7 @@ const DEFAULT_CLASSES = {
     status: "morpheus-section-links__status",
 };
 const DEFAULT_COPY = {
-    label: (title) => `Copy link to “${title}”`,
+    label: "Copy link to “{title}”",
     copied: "Link copied",
     failed: "Could not copy — the link is in the address bar",
 };
@@ -88,19 +88,33 @@ export function SectionLinks({ selector, scope, exclude, classes, copy }) {
     const targetRef = useRef(null);
     const buttonRef = useRef(null);
     const generatedRef = useRef(new WeakMap());
+    // The navigation whose fragment has been dealt with, by the browser, by this component, or by
+    // the reader copying it. Keyed per navigation rather than per URL: returning to the same URL
+    // through a link renders fresh headings that need the scroll again, while a heading remounting
+    // under the URL the reader is already on must not yank the page.
+    const handledRef = useRef(null);
     useEffect(() => {
         let frame = 0;
-        let scrolledFor = "";
         const pass = () => {
             frame = 0;
             const assigned = assignHeadingIds(document, options, generatedRef.current);
-            // The browser looked for the fragment before this id existed, so a shared link to a
-            // generated id would otherwise leave the reader at the top of the page.
+            const key = navigationKey();
+            if (handledRef.current === key)
+                return;
             const wanted = fragmentId(window.location.hash);
-            if (wanted && assigned.has(wanted) && scrolledFor !== window.location.href) {
-                scrolledFor = window.location.href;
+            if (!wanted) {
+                handledRef.current = key;
+            }
+            else if (assigned.has(wanted)) {
+                // The browser, or the router, looked for the fragment before this id existed, so a shared
+                // link to a generated id would otherwise leave the reader where they were.
+                handledRef.current = key;
                 document.getElementById(wanted)?.scrollIntoView();
             }
+            else if (document.getElementById(wanted)) {
+                handledRef.current = key; // an authored id: the browser has already scrolled to it
+            }
+            // Otherwise the target has not rendered yet; a later pass will find it.
         };
         pass();
         const observer = new MutationObserver(() => {
@@ -178,15 +192,22 @@ export function SectionLinks({ selector, scope, exclude, classes, copy }) {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
             return;
         event.preventDefault();
-        const href = sectionHref(window.location, target.id);
-        // Replace rather than push: copying a link should not add a Back step. Passing the current
-        // state through keeps a router's own history entry (Next.js stores its tree there) intact.
-        window.history.replaceState(window.history.state, "", href);
+        // Read the id now: a generated id follows its heading's text, which may have changed since
+        // the icon was placed.
+        const id = target.heading.id;
+        if (!id)
+            return;
+        const href = sectionHref(window.location, id);
+        // Replace rather than push: copying a link should not add a Back step.
+        window.history.replaceState(routerVisibleState(window.history.state), "", href);
+        // The reader is already at this section; a heading remounting here must not scroll to it.
+        handledRef.current = navigationKey();
         copyText(href).then(() => setStatus("copied"), () => setStatus("failed"));
     }, [target]);
     const message = status === "copied" ? labels.copied : status === "failed" ? labels.failed : "";
+    const label = target ? labels.label.replaceAll("{title}", target.title) : "";
     return (_jsxs(_Fragment, { children: [_jsx("style", { children: STYLES }), _jsx("span", { className: classNames.status, role: "status", "aria-live": "polite", children: message }), target
-                ? createPortal(_jsx("a", { ref: buttonRef, className: classNames.button, href: `#${encodeURIComponent(target.id)}`, "aria-label": labels.label(target.title), title: message || labels.label(target.title), "data-status": status, style: {
+                ? createPortal(_jsx("a", { ref: buttonRef, className: classNames.button, href: `#${encodeURIComponent(target.heading.id || target.id)}`, "aria-label": label, title: message || label, "data-status": status, style: {
                         top: target.top,
                         left: target.left,
                         width: target.size,
@@ -194,6 +215,27 @@ export function SectionLinks({ selector, scope, exclude, classes, copy }) {
                         color: target.color,
                     }, onClick: onClick, children: status === "copied" ? (_jsx("svg", { className: classNames.icon, viewBox: "0 0 24 24", "aria-hidden": "true", children: _jsx("path", { d: "M5 12.5l4.5 4.5L19 7.5" }) })) : (_jsxs("svg", { className: classNames.icon, viewBox: "0 0 24 24", "aria-hidden": "true", children: [_jsx("path", { d: "M9.5 14.5l5-5" }), _jsx("path", { d: "M11 6.5l1.6-1.6a4 4 0 0 1 5.7 5.7L16.7 12.2" }), _jsx("path", { d: "M13 17.5l-1.6 1.6a4 4 0 0 1-5.7-5.7l1.6-1.6" })] })) }), document.body)
                 : null] }));
+}
+/**
+ * The history state to replace with. Next.js's App Router patches `replaceState` and forwards a
+ * state carrying its `__NA` marker untouched, without updating its own idea of the URL — so the
+ * next router refresh would quietly drop the fragment. Without the marker, Next copies its
+ * internal entries back itself and adopts the new URL. Any other router's state passes through.
+ */
+function routerVisibleState(state) {
+    if (!state || typeof state !== "object" || !("__NA" in state))
+        return state;
+    const { __NA: _marker, ...rest } = state;
+    return rest;
+}
+/**
+ * One value per navigation. The Navigation API keys an entry and keeps the key across
+ * `replaceState`; without it, the URL is the closest stand-in.
+ */
+function navigationKey() {
+    const navigation = window
+        .navigation;
+    return navigation?.currentEntry?.key ?? window.location.href;
 }
 function copyText(text) {
     // The Clipboard API exists only in a secure context; the address bar already holds the link.

@@ -3268,7 +3268,8 @@ Clicking it copies `page#section` and replaces the address-bar URL without addin
 The behaviour is a property of the layout rather than of each page: a component every page had
 to use would cover only the pages someone remembered to change. The icon floats beside the
 heading instead of being injected into it, because React owns heading children and an injected node
-breaks on re-render and on late hydration. See `src/section-links/README.md`.
+is erased on re-render. A missing `id` is the only write. Adding one before a Suspense boundary
+hydrates logs a development-only attribute mismatch. See `src/section-links/README.md`.
 
 `morpheus web init` includes this path whenever it scaffolds `/hq`: the visible search control,
 private static index route, deployment-versioned URL, neutral styling, and a working overview

@@ -193,6 +193,86 @@ describe("SectionLinks", () => {
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Copy failed"));
   });
 
+  it("hands Next's patched replaceState a state without its marker, so the router adopts the URL", async () => {
+    window.history.replaceState({ __NA: true, __PRIVATE_NEXTJS_INTERNALS_TREE: "tree", other: 1 }, "");
+    const original = window.history.replaceState.bind(window.history);
+    const received: unknown[] = [];
+    window.history.replaceState = (data: unknown, unused: string, url?: string | URL | null) => {
+      received.push(data);
+      original(data, unused, url);
+    };
+    try {
+      render(
+        <>
+          <Page />
+          <SectionLinks />
+        </>,
+      );
+      pointAt = () => screen.getByRole("heading", { level: 2, name: "Overview" });
+      hover(100, 20);
+      fireEvent.click(await screen.findByRole("link", { name: "Copy link to “Overview”" }));
+      expect(received).toEqual([{ __PRIVATE_NEXTJS_INTERNALS_TREE: "tree", other: 1 }]);
+      expect(window.location.hash).toBe("#overview");
+    } finally {
+      window.history.replaceState = original;
+    }
+  });
+
+  it("copies the heading's current id when its text changed under a still pointer", async () => {
+    render(
+      <>
+        <Page />
+        <SectionLinks copy={{ label: "Link to {title}" }} />
+      </>,
+    );
+    const overview = screen.getByRole("heading", { level: 2, name: "Overview" });
+    pointAt = () => overview;
+    hover(100, 20);
+    const link = await screen.findByRole("link", { name: "Link to Overview" });
+
+    overview.querySelector("span")!.textContent = "Loaded overview";
+    await waitFor(() => expect(overview.id).toBe("loaded-overview"));
+    fireEvent.click(link);
+
+    expect(writeText).toHaveBeenCalledWith(
+      `${window.location.origin}/hq/research?tab=labs#loaded-overview`,
+    );
+  });
+
+  it("scrolls once per navigation: not when a copied section remounts, again on a fresh visit", async () => {
+    const remount = () => {
+      const main = document.querySelector("main")!;
+      const fresh = document.createElement("h2");
+      fresh.textContent = "Overview";
+      main.querySelector("h2")!.replaceWith(fresh);
+      return fresh;
+    };
+    render(
+      <>
+        <Page />
+        <SectionLinks />
+      </>,
+    );
+    pointAt = () => screen.getByRole("heading", { level: 2, name: "Overview" });
+    hover(100, 20);
+    fireEvent.click(await screen.findByRole("link", { name: "Copy link to “Overview”" }));
+    expect(window.location.hash).toBe("#overview");
+
+    const remounted = remount();
+    await waitFor(() => expect(remounted.id).toBe("overview"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    // Leave, let the other page render, then follow a link back to the section.
+    window.history.pushState(null, "", "/hq/other");
+    document.querySelector("main")!.append(document.createElement("p"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    window.history.pushState(null, "", "/hq/research?tab=labs#overview");
+    const returned = remount();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+    expect(scrollIntoView.mock.contexts[0]).toBe(returned);
+  });
+
   it("clears the confirmation after a moment", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {

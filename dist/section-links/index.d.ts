@@ -54,6 +54,8 @@ export type GeneratedIds = WeakMap<Element, {
 /**
  * Give every eligible heading an id, and return the ids that are new in this pass. A generated id
  * is re-derived when its heading's text changes — a heading that renders "Loading…" first should
- * not be addressed as `loading` forever.
+ * not be addressed as `loading` forever — and when an element rendered later turns out to carry
+ * the same id. Uniqueness is only checked at assignment, and a heading earlier in the document
+ * would otherwise capture `#id`, `getElementById` and `url(#id)` from, say, a chart's gradient.
  */
 export declare function assignHeadingIds(doc: Document, options: SectionLinkOptions, generated: GeneratedIds): Set<string>;

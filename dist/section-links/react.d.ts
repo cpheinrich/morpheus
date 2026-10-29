@@ -4,8 +4,12 @@ export type SectionLinksClassNames = {
     icon: string;
     status: string;
 };
+/**
+ * Plain strings, because the component is mounted from a server-component layout and a function
+ * prop cannot cross that boundary. `{title}` in `label` is replaced with the heading's text.
+ */
 export type SectionLinksCopy = {
-    label: (title: string) => string;
+    label: string;
     copied: string;
     failed: string;
 };

@@ -145,6 +145,27 @@ describe("assignHeadingIds", () => {
     expect([...assigned]).toEqual(["overview"]);
   });
 
+  it("yields a generated id to an element rendered later with the same id", () => {
+    document.body.innerHTML = `<main><h2>Equity</h2><h2 id="kept">Kept</h2></main>`;
+    const generated: GeneratedIds = new WeakMap();
+    assignHeadingIds(document, DEFAULT_SECTION_LINK_OPTIONS, generated);
+    const heading = document.querySelector("main h2")!;
+    expect(heading.id).toBe("equity");
+
+    // A chart that measures before drawing adds its gradient after the heading has its id.
+    document.querySelector("main")!.insertAdjacentHTML(
+      "beforeend",
+      `<svg><linearGradient id="equity"></linearGradient></svg>`,
+    );
+    const assigned = assignHeadingIds(document, DEFAULT_SECTION_LINK_OPTIONS, generated);
+
+    expect(heading.id).toBe("equity-1");
+    expect(document.getElementById("equity")?.tagName).toBe("linearGradient");
+    expect([...assigned]).toEqual(["equity-1"]);
+    expect(document.getElementById("kept")?.id).toBe("kept");
+    expect(assignHeadingIds(document, DEFAULT_SECTION_LINK_OPTIONS, generated).size).toBe(0);
+  });
+
   it("searches the whole body when the page has no main", () => {
     document.body.innerHTML = `<div><h2>Standalone</h2></div>`;
     expect(sectionScope(document, DEFAULT_SECTION_LINK_OPTIONS)).toBe(document.body);

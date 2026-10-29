@@ -108,7 +108,9 @@ export type GeneratedIds = WeakMap<Element, { id: string; text: string }>;
 /**
  * Give every eligible heading an id, and return the ids that are new in this pass. A generated id
  * is re-derived when its heading's text changes — a heading that renders "Loading…" first should
- * not be addressed as `loading` forever.
+ * not be addressed as `loading` forever — and when an element rendered later turns out to carry
+ * the same id. Uniqueness is only checked at assignment, and a heading earlier in the document
+ * would otherwise capture `#id`, `getElementById` and `url(#id)` from, say, a chart's gradient.
  */
 export function assignHeadingIds(
   doc: Document,
@@ -117,6 +119,17 @@ export function assignHeadingIds(
 ): Set<string> {
   const scope = sectionScope(doc, options);
   const assigned = new Set<string>();
+  let idCounts: Map<string, number> | null = null;
+  // One walk of the document, and only on a pass that has a generated id to check.
+  const shared = (id: string): boolean => {
+    if (!idCounts) {
+      idCounts = new Map();
+      for (const element of doc.querySelectorAll("[id]")) {
+        idCounts.set(element.id, (idCounts.get(element.id) ?? 0) + 1);
+      }
+    }
+    return (idCounts.get(id) ?? 0) > 1;
+  };
   for (const heading of scope.querySelectorAll<HTMLElement>(options.selector)) {
     if (heading.closest(options.exclude)) continue;
     const text = headingText(heading);
@@ -124,7 +137,7 @@ export function assignHeadingIds(
     const ours = previous !== undefined && heading.id === previous.id;
     // An id this module did not write — authored, or replaced since by its owner — is left alone.
     if (heading.id && !ours) continue;
-    if (ours && previous.text === text) continue;
+    if (ours && previous.text === text && !shared(heading.id)) continue;
     if (!text) continue;
 
     if (ours) heading.removeAttribute("id");
