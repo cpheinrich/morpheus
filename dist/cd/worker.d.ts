@@ -1,5 +1,7 @@
-import { type AgentResult, type CdConfig, type QuotaSnapshot } from "./schema.js";
+import { type AgentExecutor, type AgentResult, type CdConfig, type QuotaSnapshot } from "./schema.js";
 import { GitHubStore } from "./store.js";
+/** Built-in tools that could outlive or escape a bounded repair invocation. */
+export declare const CLAUDE_DISALLOWED_TOOLS: readonly string[];
 export declare const agentResultSchema: {
     type: string;
     additionalProperties: boolean;
@@ -37,19 +39,19 @@ export declare function normalizeClaudeQuota(value: unknown, now: string, model?
 export declare function codexQuota(command: string[], cwd: string, now: string): Promise<QuotaSnapshot>;
 export declare class QuotaReader {
     readonly config: CdConfig;
-    readonly executor: "local" | "hosted";
+    readonly executor: AgentExecutor;
     readonly sourceDir: string;
     readonly environment: NodeJS.ProcessEnv;
     readonly fetcher: typeof fetch;
     private cached?;
     private retryAt;
-    constructor(config: CdConfig, executor: "local" | "hosted", sourceDir: string, environment?: NodeJS.ProcessEnv, fetcher?: typeof fetch);
+    constructor(config: CdConfig, executor: AgentExecutor, sourceDir: string, environment?: NodeJS.ProcessEnv, fetcher?: typeof fetch);
     read(now?: string): Promise<QuotaSnapshot>;
 }
 export declare function scheduleHosted(config: CdConfig, store: GitHubStore, now: string): Promise<void>;
 export declare function verifyRepair(config: CdConfig, store: GitHubStore, sourceDir: string, result: AgentResult): Promise<string>;
 export declare function runWorker(config: CdConfig, store: GitHubStore, sourceDir: string, options: {
-    executor: "local" | "hosted";
+    executor: AgentExecutor;
     hostId?: string;
     workId?: string;
     invocationId?: string;

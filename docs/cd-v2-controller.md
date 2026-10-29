@@ -396,7 +396,7 @@ and [auto-notify update](https://developer.apple.com/documentation/appstoreconne
 
 ## Repair execution and capacity
 
-`cd worker --executor local|hosted --config ABS --source-dir ABS` owns a due repair
+`cd worker --executor local|hosted|claude --config ABS --source-dir ABS` owns a due repair
 task. Hosted dispatch supplies `--work-id`, `--invocation-id`, `--task-digest` from
 the immutable ledger task. The workflow inputs also include intent and strategy.
 Visibility sweeps precede bounded dispatch retry; duplicate invocations cannot
@@ -542,13 +542,40 @@ must retain the invocation owner and fence; a stale process cannot finish throug
 an error fallback. This supports recovery after quiescence, not concurrent unfenced
 work or proof of actual two-host failover.
 
+### Opt-in Claude subscription executor
+
+`agents.claude` (`command`, `model`, `account: { email, subscription: "pro" | "max" }`) and
+`cd worker --executor claude [--host-id ID]` run repair work on an operator's own native Claude
+Code sign-in on a registered Mac. Nothing selects it implicitly; Codex stays the default `local`
+executor with unchanged arguments, keys and digest. The full design, its evidence and the critique
+it answers are in [the Claude executor design](cd-v2-claude-executor.md). In short:
+
+- The worker refuses unless the ledger's configuration digest equals this configuration's, so the
+  executor is usable only after the consumer's reviewed migration.
+- Every Claude process starts with an `initialize` control request and continues only for a build
+  in `CLAUDE_CODE_ANALYSED_VERSIONS`, the bound email and plan, first-party, and no API-key or token
+  source. Processes run with `--strict-mcp-config --setting-sources ""` and an environment stripped
+  of `ANTHROPIC_*`, `CLAUDE_CODE_*` and `CCR_*`, with `DISABLE_AUTOUPDATER=1`.
+- Quota is the CLI's own `get_usage` reading (`cd quota --executor claude`), never a file. It must
+  be fresh by the analysed build's rules, list session, weekly and configured-family windows from the
+  server's `limits[]`, agree with the repeated window figures, and report paid extra usage disabled.
+  The existing 80/90 policy and 30-second meter apply.
+- The repair prompt is written only after the run's own `initialize` binds, and its structured result
+  counts only if `system/init` reports `apiKeySource: "none"`. A `rate_limit_event` that would allow
+  paid usage stops the run.
+- Claude admission waits are recorded under `admission-wait-claude-…` without moving the shared
+  work's schedule, and the Claude selector treats another subscription's admission wait as due.
+  Reservations, telemetry (`budget.telemetry.claude`) and session resume are per executor.
+- `--permission-mode bypassPermissions` has no filesystem sandbox in this version; the design lists
+  what that leaves open for the consumer's authorization.
+
 Native capacity, provider outages and rate limits are durable retryable waits.
 They do not manufacture a repair defect. Real/unknown failures own durable agent
 work, and two independent strategies precede technical human escalation. Explicit
 operator pause records are honored by admission and promotion; issues are never
 an arbitrary command-execution surface.
 
-`cd quota --executor local|hosted` makes a no-model telemetry probe. Codex uses
+`cd quota --executor local|hosted|claude` makes a no-model telemetry probe. Codex uses
 `account/rateLimits/read`. A configured `MORPHEUS_CD_QUOTA_FILE` or executor
 `quotaFile` supplies actual `{observedAt, source, windows:[{id,usedPercent,resetsAt}]}`.
 The native account reader gives the configured shim up to 60 seconds total,

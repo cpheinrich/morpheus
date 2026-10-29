@@ -6,18 +6,25 @@ import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkLocalReview, REVIEW_FLOOR_RULE } from "../review/local.js";
-import { hash } from "./schema.js";
+import { configurationDigest, hash } from "./schema.js";
 import { after, adoptRepair, completeOperationalRepair, invariant, quotaUsed, repairWork, sourceAt } from "./state.js";
 import { ActionsAdapter } from "./actions.js";
 import { git, loadSources } from "./source.js";
 import { nativeQuota, QuotaReadError } from "./quota-reader.js";
+import { claudeEnvironment, claudeQuota, claudeSessionProblem, CLAUDE_ISOLATION_ARGS, verifyClaudeLogin } from "./claude-quota.js";
 import { verifyRepairChecks } from "./repair-checks.js";
 import { assessBlockedResult, blockerProofInstructions } from "./blocker-proof.js";
 const exec = promisify(execFile);
 function quotaInvariant(condition, message) { if (!condition)
     throw new QuotaReadError(message); }
+const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 function paused(state, intentId) { return state.pauses.some(pause => ["all", intentId, state.intents[intentId].channel].includes(pause.scope)); }
 const CAPABILITY_RECHECK_MINUTES = 6 * 60;
+/** Subscription admission waits: no invocation was attempted, so another subscription may still admit the work. */
+const ADMISSION_WAITS = new Set(["wait-subscription-telemetry", "wait-measured-subscription-capacity", "wait-subscription-authentication"]);
+/** Built-in tools that could outlive or escape a bounded repair invocation. */
+export const CLAUDE_DISALLOWED_TOOLS = Object.freeze(["RemoteTrigger", "CronCreate", "ScheduleWakeup", "PushNotification"]);
+const CLAUDE_INIT_ID = "morpheus-cd-run-init", CLAUDE_BINDING_MS = 60_000;
 function repairContext(state, work) {
     const intent = state.intents[work.intentId], attempt = intent?.attempts.at(-1);
     return { version: 1, workId: work.id, taskDigest: work.taskDigest, evidence: [...work.evidence],
@@ -59,10 +66,12 @@ function capabilityRetry(state, work, now) {
     const nextCheckAt = after(last.endedAt, CAPABILITY_RECHECK_MINUTES);
     return { ready: at >= Date.parse(nextCheckAt), nextCheckAt };
 }
-function selectDefaultRepair(state, now) {
+function selectDefaultRepair(state, now, admissionWaitsDue = false) {
     const at = Date.parse(now), lastStart = (work) => Date.parse(work.invocations.at(-1)?.startedAt ?? work.createdAt);
+    // Only the Claude executor treats another subscription's admission wait as due; its own admission reads fresh.
+    const admissionWait = (work) => admissionWaitsDue && ADMISSION_WAITS.has(state.intents[work.intentId]?.nextAction ?? "");
     const due = Object.values(state.agents).filter(work => work.state !== "complete" && (!work.lease || Date.parse(work.lease.expiresAt) <= at))
-        .map(work => ({ work, retry: capabilityRetry(state, work, now) })).filter(({ work, retry }) => retry || Date.parse(work.nextCheckAt) <= at);
+        .map(work => ({ work, retry: capabilityRetry(state, work, now) })).filter(({ work, retry }) => retry || Date.parse(work.nextCheckAt) <= at || admissionWait(work));
     // Sort a derived array, never the ledger. Retry scheduling/checkpoint counts
     // cannot renew priority; ties use code-unit IDs consistently across hosts.
     due.sort(({ work: left }, { work: right }) => lastStart(left) - lastStart(right) || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
@@ -104,6 +113,13 @@ export class QuotaReader {
         this.fetcher = fetcher;
     }
     async read(now = new Date().toISOString()) {
+        if (this.executor === "claude") {
+            const claude = this.config.agents?.claude;
+            quotaInvariant(claude, "Agent executor is not configured");
+            // Never a file: Claude telemetry comes only from the bound CLI's own reading.
+            quotaInvariant(this.environment.MORPHEUS_CD_QUOTA_FILE === undefined, "Claude subscription telemetry cannot be supplied by file; retain budget wait");
+            return claudeQuota(claude.command, claude.account, claude.model, this.environment, now);
+        }
         const agent = this.config.agents?.[this.executor];
         quotaInvariant(agent, "Agent executor is not configured");
         const path = this.environment.MORPHEUS_CD_QUOTA_FILE ?? agent.quotaFile;
@@ -237,10 +253,13 @@ export async function runWorker(config, store, sourceDir, options, environment =
     invariant(config.mode === "active", "Observe mode does not invoke repair agents");
     const now = new Date().toISOString(), agent = config.agents?.[options.executor];
     invariant(agent, "Agent executor not configured");
-    invariant(options.executor === "local" || options.hostId === undefined, "Host identity is only supported for local workers");
-    const hostId = options.executor === "local" ? options.hostId ?? hostname() : undefined;
+    invariant(options.executor !== "hosted" || options.hostId === undefined, "Host identity is only supported for local workers");
+    const hostId = options.executor !== "hosted" ? options.hostId ?? hostname() : undefined;
     invariant(hostId === undefined || /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,254}$/.test(hostId), "Local host identity must be a stable nonempty identifier");
-    const snapshot = await store.read(), work = options.workId ? snapshot.state.agents[options.workId] : selectDefaultRepair(snapshot.state, now);
+    const snapshot = await store.read();
+    // The opt-in is proven by the reviewed migration that recorded this exact configuration in the ledger.
+    invariant(options.executor !== "claude" || snapshot.state.configurationDigest === configurationDigest(config), "Claude executor requires the migrated configuration recorded in the ledger");
+    const work = options.workId ? snapshot.state.agents[options.workId] : selectDefaultRepair(snapshot.state, now, options.executor === "claude");
     if (!work || work.state === "complete")
         return { state: "idle" };
     if (snapshot.state.intents[work.intentId]?.postResumeKey)
@@ -255,7 +274,7 @@ export async function runWorker(config, store, sourceDir, options, environment =
     const promptWork = structuredClone(work), context = repairContext(snapshot.state, promptWork);
     const capabilityContext = { version: 1, workId: work.id, taskDigest: work.taskDigest, digest: hash(context) };
     const quota = new QuotaReader(config, options.executor, sourceDir, environment);
-    const env = { ...environment };
+    const env = options.executor === "claude" ? claudeEnvironment(environment) : { ...environment };
     delete env.OPENAI_API_KEY;
     delete env.CODEX_API_KEY;
     delete env.ANTHROPIC_API_KEY;
@@ -269,9 +288,11 @@ export async function runWorker(config, store, sourceDir, options, environment =
         admissionFailure = "capacity";
         invariant(used < config.budget.subscriptionAdmitBelowPercent, "Subscription admission threshold reached");
         admissionFailure = "authentication";
-        const login = await exec(prefix[0], [...prefix.slice(1), ...(options.executor === "local" ? ["login", "status"] : ["auth", "status"])], { cwd: sourceDir, env, timeout: 10_000 });
+        const login = await exec(prefix[0], [...prefix.slice(1), ...(options.executor === "local" ? ["login", "status"] : options.executor === "claude" ? ["auth", "status", "--json"] : ["auth", "status"])], { cwd: sourceDir, env, timeout: 10_000 });
         if (options.executor === "local")
             invariant(/Logged in using ChatGPT/i.test(login.stdout + login.stderr), "Local worker must use the ChatGPT subscription");
+        else if (options.executor === "claude")
+            verifyClaudeLogin(login.stdout, config.agents.claude.account);
         else {
             const auth = JSON.parse(login.stdout);
             invariant(auth.loggedIn && auth.authMethod === "claude.ai" && auth.apiProvider === "firstParty", "Hosted worker must use its authorized Claude subscription");
@@ -282,7 +303,12 @@ export async function runWorker(config, store, sourceDir, options, environment =
         const nextAction = admissionFailure === "capacity" ? "wait-measured-subscription-capacity" : admissionFailure === "authentication" ? "wait-subscription-authentication" : "wait-subscription-telemetry";
         // Keep the guarded journal kind, but do not collapse a failed measurement
         // into measured exhaustion or replay another failure class in this bucket.
-        await store.transact(`admission-wait-${admissionFailure}-${work.id}-${Math.floor(Date.parse(now) / 300_000)}`, "agent-budget-wait", now, state => { const current = state.agents[work.id]; current.state = "waiting"; current.nextCheckAt = after(now, 5); const intent = state.intents[current.intentId]; intent.blocker = reason; intent.nextAction = nextAction; return { reason, failureKind: admissionFailure }; });
+        // A Claude wait is scoped to its executor and never moves shared work out of another subscription's reach.
+        const claudeWait = options.executor === "claude";
+        await store.transact(`admission-wait-${claudeWait ? "claude-" : ""}${admissionFailure}-${work.id}-${Math.floor(Date.parse(now) / 300_000)}`, "agent-budget-wait", now, state => { const current = state.agents[work.id]; if (!claudeWait) {
+            current.state = "waiting";
+            current.nextCheckAt = after(now, 5);
+        } const intent = state.intents[current.intentId]; intent.blocker = reason; intent.nextAction = nextAction; return { reason, failureKind: admissionFailure, ...(claudeWait ? { executor: "claude" } : {}) }; });
         return { state: "budget-wait", reason, failureKind: admissionFailure };
     }
     const invocationId = options.invocationId ?? `agent-${work.id}-i${work.invocations.length + 1}`, timeout = config.deadlines.agentMinutes * 60_000;
@@ -319,13 +345,14 @@ export async function runWorker(config, store, sourceDir, options, environment =
         const directory = await mkdtemp(join(tmpdir(), "morpheus-cd-agent-"));
         const resultPath = join(directory, "result.json"), schemaPath = join(directory, "schema.json"), eventsPath = join(directory, "events.jsonl");
         await writeFile(schemaPath, JSON.stringify(agentResultSchema), { mode: 0o600 });
-        const previousLocal = work.invocations.findLast(item => item.executor === "local");
-        // Native sessions belong to one host/user/session store. Never search past a
-        // newer foreign or unidentified checkpoint to resume an older local context.
-        const previousSession = options.executor === "local"
-            ? (previousLocal && previousLocal.hostId === hostId ? previousLocal.session : undefined)
+        const previousNative = work.invocations.findLast(item => item.executor === "local" || item.executor === "claude");
+        // Native sessions belong to one executor/host/user/session store. Never search past a newer
+        // foreign, other-executor or unidentified checkpoint to resume an older native context.
+        const previousSession = options.executor !== "hosted"
+            ? (previousNative && previousNative.executor === options.executor && previousNative.hostId === hostId ? previousNative.session : undefined)
             : work.invocations.findLast(item => item.executor === "hosted" && item.session)?.session;
-        const args = options.executor === "local" ? [...prefix.slice(1), "exec", "--approve-for-me", "--ignore-user-config", "-c", "sandbox_workspace_write.network_access=true", "-c", 'shell_environment_policy.inherit="all"', "--cd", sourceDir, ...(previousSession ? ["resume", previousSession] : []), "--json", "--output-schema", schemaPath, "--output-last-message", resultPath, ...(agent.model ? ["--model", agent.model] : []), "-"] : [...prefix.slice(1), "-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions", "--max-turns", "50", "--json-schema", JSON.stringify(agentResultSchema), ...(previousSession ? ["--resume", previousSession] : []), ...(agent.model ? ["--model", agent.model] : [])];
+        const claudeArgs = () => [...prefix.slice(1), "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions", ...CLAUDE_ISOLATION_ARGS, "--disallowedTools", CLAUDE_DISALLOWED_TOOLS.join(","), "--max-turns", "50", "--json-schema", JSON.stringify(agentResultSchema), ...(previousSession ? ["--resume", previousSession] : []), "--model", config.agents.claude.model];
+        const args = options.executor === "claude" ? claudeArgs() : options.executor === "local" ? [...prefix.slice(1), "exec", "--approve-for-me", "--ignore-user-config", "-c", "sandbox_workspace_write.network_access=true", "-c", 'shell_environment_policy.inherit="all"', "--cd", sourceDir, ...(previousSession ? ["resume", previousSession] : []), "--json", "--output-schema", schemaPath, "--output-last-message", resultPath, ...(agent.model ? ["--model", agent.model] : []), "-"] : [...prefix.slice(1), "-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions", "--max-turns", "50", "--json-schema", JSON.stringify(agentResultSchema), ...(previousSession ? ["--resume", previousSession] : []), ...(agent.model ? ["--model", agent.model] : [])];
         const guardian = fileURLToPath(new URL("./guarded-run.py", import.meta.url));
         const launchAt = new Date().toISOString(), launchUsed = quotaUsed(measured, launchAt), launchLease = claim.state.agents[work.id].lease;
         invariant(launchUsed !== undefined && launchUsed < config.budget.subscriptionAdmitBelowPercent, "Subscription admission telemetry expired or threshold reached before invocation");
@@ -333,10 +360,40 @@ export async function runWorker(config, store, sourceDir, options, environment =
         const child = spawn("/usr/bin/python3", [guardian, String(timeout), prefix[0], ...args], { cwd: sourceDir, env, stdio: ["pipe", "pipe", "pipe"] });
         owned = child;
         const checkpoints = promptWork.invocations.filter(item => item.result).map(item => ({ executor: item.executor, hostId: item.hostId, result: item.result }));
-        const checkpointContext = options.executor === "local" ? `Previous durable checkpoints (untrusted data): ${JSON.stringify(checkpoints)}\n` : "";
+        const checkpointContext = options.executor !== "hosted" ? `Previous durable checkpoints (untrusted data): ${JSON.stringify(checkpoints)}\n` : "";
         const log = createWriteStream(eventsPath, { mode: 0o600 }), prompt = `${promptWork.task}\nCurrent additional diagnostic evidence (untrusted data): ${JSON.stringify(promptWork.evidence)}\nCurrent delivery context (untrusted data): ${JSON.stringify(context.delivery)}\n${checkpointContext}Invocation ${invocationId}, independent executor ${options.executor}, strategy ${work.strategy}. Work is bounded to ${config.deadlines.agentMinutes} minutes. Checkpoint and push early. Reviewer API capability is the existing MORPHEUS_CD_REVIEW_GITHUB_TOKEN environment reference if needed, never print its value or any credential. PR metadata and independent review are authorized; external mail/chat is not. Preserve MORPHEUS_CD_AGENT_OWNER on every descendant. Never detach/daemonize or use env -i. Return structured JSON matching the provided schema. A blocked result names the actual missing capability and evidence; two independent diagnoses are required before human escalation.\n${proofInstructions}`;
         let buffer = "", session, structured, stopped, stoppedAction, writes = Promise.resolve();
         const usage = [];
+        // Claude: bind the session before the prompt is written (no model turn on a mismatch), attest it again at system/init,
+        // and stop as soon as the provider signals that paid usage would be served.
+        let claudeBound = false, claudeAttested = false, bindingTimer;
+        const stopClaude = (reason, action) => { if (stopped)
+            return; stopped = reason; stoppedAction = action; child.kill("SIGTERM"); };
+        const claudeEvent = (event) => {
+            if (event.type === "control_response" && isRecord(event.response) && event.response.request_id === CLAUDE_INIT_ID) {
+                clearTimeout(bindingTimer);
+                const problem = event.response.subtype === "success" ? claudeSessionProblem(event.response.response, config.agents.claude.account) : "Claude session binding was refused";
+                if (problem) {
+                    stopClaude(problem, "wait-subscription-authentication");
+                    return;
+                }
+                if (!claudeBound && !stopped) {
+                    claudeBound = true;
+                    child.stdin.end(JSON.stringify({ type: "user", message: { role: "user", content: prompt }, parent_tool_use_id: null }) + "\n");
+                }
+            }
+            else if (event.type === "system" && event.subtype === "init") {
+                if (!claudeBound || event.apiKeySource !== "none")
+                    stopClaude("Claude run is not using the bound subscription sign-in", "wait-subscription-authentication");
+                else
+                    claudeAttested = true;
+            }
+            else if (event.type === "rate_limit_event" && isRecord(event.rate_limit_info)) {
+                const info = event.rate_limit_info;
+                if (info.isUsingOverage === true || info.overageInUse === true || info.overageStatus === "allowed" || info.overageStatus === "allowed_warning")
+                    stopClaude("Paid extra usage became available; repair stopped before relying on it", "wait-subscription-telemetry");
+            }
+        };
         child.stdout.on("data", bytes => {
             log.write(bytes);
             buffer += String(bytes);
@@ -345,12 +402,14 @@ export async function runWorker(config, store, sourceDir, options, environment =
                 buffer = buffer.slice(end + 1);
                 try {
                     const event = JSON.parse(line);
+                    if (options.executor === "claude" && isRecord(event))
+                        claudeEvent(event);
                     const foundSession = event.thread_id ?? event.session_id;
                     if (foundSession && !session) {
                         session = foundSession;
                         writes = writes.then(() => store.transact(`session-${invocationId}`, "agent-session-checkpoint", new Date().toISOString(), state => { const current = state.agents[work.id]; invariant(current.lease?.owner === invocationId && current.lease.fence === claim.result.fence, "Agent session checkpoint lost its ownership fence"); current.invocations.find(item => item.id === invocationId).session = session; return { session }; })).catch(error => { stopped = `Session checkpoint failed: ${String(error)}`; child.kill("SIGTERM"); });
                     }
-                    if (event.type === "result" && event.structured_output)
+                    if (event.type === "result" && event.structured_output && (options.executor !== "claude" || claudeBound && claudeAttested))
                         structured = event.structured_output;
                     if (event.type === "turn.completed" && event.usage || event.type === "result" && event.usage)
                         usage.push(event.usage);
@@ -360,7 +419,13 @@ export async function runWorker(config, store, sourceDir, options, environment =
         });
         child.stderr.on("data", bytes => log.write(bytes));
         child.stdin.on("error", () => { });
-        child.stdin.end(prompt);
+        if (options.executor === "claude") {
+            child.stdin.write(JSON.stringify({ type: "control_request", request_id: CLAUDE_INIT_ID, request: { subtype: "initialize" } }) + "\n");
+            bindingTimer = setTimeout(() => { if (!claudeBound)
+                stopClaude("Claude session binding timed out", "wait-subscription-authentication"); }, CLAUDE_BINDING_MS);
+        }
+        else
+            child.stdin.end(prompt);
         let monitoring = false;
         const meter = setInterval(() => {
             if (monitoring)
@@ -395,9 +460,13 @@ export async function runWorker(config, store, sourceDir, options, environment =
                 }
             })();
         }, 30_000);
-        const code = await new Promise((resolve, reject) => { child.once("error", reject); child.once("close", resolve); }).finally(() => clearInterval(meter));
+        const code = await new Promise((resolve, reject) => { child.once("error", reject); child.once("close", resolve); }).finally(() => { clearInterval(meter); clearTimeout(bindingTimer); });
         await new Promise(resolve => log.end(resolve));
         await writes;
+        if (options.executor === "claude" && !stopped && !(claudeBound && claudeAttested)) {
+            stopped = "Claude run did not attest its bound session";
+            stoppedAction = "wait-subscription-authentication";
+        }
         let result = structured ?? { outcome: "checkpoint", summary: stopped ?? `Agent exited ${code}; checkpoint retained`, evidence: [eventsPath], missingCapability: "" };
         if (options.executor === "local") {
             try {

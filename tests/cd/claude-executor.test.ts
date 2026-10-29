@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { rm } from "node:fs/promises";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { cd } from "../../src/cd/cli.js";
 import { configSchema, configurationDigest, type AgentWork } from "../../src/cd/schema.js";
 import { after } from "../../src/cd/state.js";
 import { CLAUDE_DISALLOWED_TOOLS, runWorker } from "../../src/cd/worker.js";
@@ -7,7 +9,7 @@ import { claudeFixture } from "./claude-fixture.js";
 import { config, now } from "./fixtures.js";
 
 const directories: string[] = [];
-afterEach(async () => { await Promise.all(directories.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
+afterEach(async () => { vi.restoreAllMocks(); await Promise.all(directories.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
 const claudeAgent = { model: "fable", account: { email: "operator@example.com", subscription: "max" } };
 const prior = (executor: "local" | "claude", hostId: string, id = "prior"): AgentWork["invocations"][number] =>
   ({ id, executor, hostId, session: `${executor}-old-session`, startedAt: now, endedAt: after(now, 1), result: { outcome: "checkpoint", summary: "Prior durable checkpoint", evidence: [] } });
@@ -176,5 +178,21 @@ describe("Claude executor admission and run", () => {
     await f.set(".event", JSON.stringify({ type: "rate_limit_event", rate_limit_info: { status: "allowed", overageStatus: "rejected", overageDisabledReason: "org_level_disabled" }, session_id: "s", uuid: "u" }));
     await runWorker(f.cfg, f.store, f.directory, { executor: "claude" });
     expect((await f.store.read()).state.agents[f.workId]!.invocations.at(-1)!.result).toMatchObject({ summary: "Synthetic Claude checkpoint" });
+  });
+});
+
+describe("Claude executor CLI", () => {
+  it("prints one fresh Claude reading from cd quota --executor claude", async () => {
+    const f = await claudeFixture(directories), path = join(f.directory, "cd.json");
+    await writeFile(path, JSON.stringify(f.cfg));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    expect(await cd(["quota", "--executor", "claude", "--config", path, "--source-dir", f.directory])).toBe(0);
+    expect(JSON.parse(log.mock.calls.at(-1)![0] as string)).toMatchObject({ source: "Claude Code get_usage", model: "fable" });
+  });
+
+  it("still refuses an unknown executor", async () => {
+    const f = await claudeFixture(directories), path = join(f.directory, "cd.json");
+    await writeFile(path, JSON.stringify(f.cfg));
+    await expect(cd(["worker", "--executor", "anthropic", "--config", path, "--source-dir", f.directory])).rejects.toThrow("Unknown agent executor");
   });
 });

@@ -20,7 +20,7 @@ collide. Keep IDs stable across restarts and change them when a session store is
 replaced. A different or unidentified host starts fresh from the durable task and
 checkpoint evidence; it never copies native session or authentication files.
 The shared local reservation still serializes repair work across these hosts.
-See [repair execution](cd-v2-controller.md#repair-execution-and-capacity) for the
+A Mac whose repair worker uses its operator's own Claude subscription instead runs `--executor claude` against a configuration with `agents.claude`; point that command at the absolute versioned `claude` binary and read [the Claude executor design](cd-v2-claude-executor.md) before rendering it. See [repair execution](cd-v2-controller.md#repair-execution-and-capacity) for the
 resume boundary. Each host needs its own reviewed credential/CLI readiness proof;
 source tests do not establish real failover, and this does not activate a worker.
 

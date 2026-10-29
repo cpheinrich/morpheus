@@ -243,6 +243,12 @@ ownership before the first real run.
   (`claude_code_version` 2.1.312; `account` with `email`, `organization`, `subscriptionType`
   `"Claude Max"`, `apiProvider` `"firstParty"`); `list_permission_rules` showing the four deny rules
   with source `cliArg` under `bypassPermissions` and `--setting-sources ""`.
+- One live run through the executor's protocol (Haiku, no tools; the only model turn spent on this
+  design): `initialize` reply, then `system/init` with `apiKeySource: "none"`, no MCP servers and
+  `bypassPermissions`, then a `rate_limit_event` with `overageStatus: "rejected"`
+  (`org_level_disabled`), then a `result` carrying `structured_output`, in 2.5 s. `system/init`
+  arrives before any model output in stream-json input mode, and a structured-output reply uses two
+  turns of `--max-turns`.
 - CLI 2.1.312 source excerpts: `x1n` (usage builder, strips `limits` when seeded), `ZHt`/`U` (60 s
   snapshot, one-hour seeded fallback), `cachedUsageUtilization` in `~/.claude.json`.
 - `claude auth status --json` keys: `analyticsDisabled`, `apiProvider`, `authMethod`,
