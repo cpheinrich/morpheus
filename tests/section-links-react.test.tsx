@@ -8,6 +8,9 @@ import { SectionLinks } from "../src/section-links/react.js";
 const writeText = vi.fn<(text: string) => Promise<void>>();
 const scrollIntoView = vi.fn();
 let pointAt: (x: number, y: number) => Element | null;
+// jsdom has no layout; every element reports this box, so the gutter has room unless a test narrows it.
+let textLeft = 100;
+const originalRect = Element.prototype.getBoundingClientRect;
 
 function Page() {
   return (
@@ -44,11 +47,15 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = scrollIntoView;
   pointAt = () => null;
   document.elementFromPoint = (x: number, y: number) => pointAt(x, y);
+  textLeft = 100;
+  Element.prototype.getBoundingClientRect = () =>
+    ({ left: textLeft, top: 20, width: 600, height: 32, right: textLeft + 600, bottom: 52, x: textLeft, y: 20 }) as DOMRect;
 });
 
 afterEach(() => {
   cleanup();
   document.body.innerHTML = "";
+  Element.prototype.getBoundingClientRect = originalRect;
 });
 
 describe("SectionLinks", () => {
@@ -271,6 +278,58 @@ describe("SectionLinks", () => {
     const returned = remount();
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
     expect(scrollIntoView.mock.contexts[0]).toBe(returned);
+  });
+
+  it("keeps the icon wholly in a narrow margin, shrinking it, and offers none where there is no room", async () => {
+    render(
+      <>
+        <Page />
+        <SectionLinks />
+      </>,
+    );
+    pointAt = () => screen.getByRole("heading", { level: 2, name: "Overview" });
+
+    for (const left of [20, 16]) {
+      textLeft = left;
+      hover(100, 20 + left);
+      // Re-query each time: a stale, detached link would still report the previous position.
+      await waitFor(() => {
+        const link = screen.getByRole("link", { name: "Copy link to “Overview”" });
+        const iconLeft = parseFloat(link.style.left);
+        const iconWidth = parseFloat(link.style.width);
+        expect(iconLeft).toBeGreaterThanOrEqual(2);
+        expect(iconWidth).toBeGreaterThanOrEqual(12);
+        // The gap has shrunk to its 2px minimum and the icon ends there, clear of the text.
+        expect(iconLeft + iconWidth + 2).toBe(left);
+      });
+    }
+
+    textLeft = 10;
+    hover(100, 40);
+    await waitFor(() => expect(screen.queryByRole("link")).toBeNull());
+  });
+
+  it("opens the folded section a shared link points into, then scrolls to it", async () => {
+    window.history.replaceState(null, "", "/hq/research#hidden-result");
+    render(
+      <>
+        <main>
+          <details>
+            <summary>Show 3 more</summary>
+            <details>
+              <summary>Nested</summary>
+              <h3>Hidden result</h3>
+            </details>
+          </details>
+        </main>
+        <SectionLinks />
+      </>,
+    );
+
+    const heading = document.getElementById("hidden-result")!;
+    expect(heading).not.toBeNull();
+    expect([...document.querySelectorAll("details")].map((d) => d.open)).toEqual([true, true]);
+    expect(scrollIntoView.mock.contexts[0]).toBe(heading);
   });
 
   it("clears the confirmation after a moment", async () => {

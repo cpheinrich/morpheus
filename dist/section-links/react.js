@@ -2,10 +2,15 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { DEFAULT_SECTION_LINK_OPTIONS, assignHeadingIds, eligibleHeading, fragmentId, headingText, sectionHref, sectionScope, } from "./index.js";
+import { DEFAULT_SECTION_LINK_OPTIONS, assignHeadingIds, eligibleHeading, fragmentId, headingText, revealAncestors, sectionHref, sectionScope, } from "./index.js";
 /** How far left of a heading the pointer may be and still be on it — the icon sits in that gutter. */
 const GUTTER = 40;
 const GAP = 6;
+/** On a narrow layout the gap and then the icon shrink to fit the margin, down to these. */
+const MIN_GAP = 2;
+const MIN_SIZE = 12;
+/** Kept clear of the viewport edge. */
+const EDGE = 2;
 const FEEDBACK_MS = 1600;
 const DEFAULT_CLASSES = {
     button: "morpheus-section-links__button",
@@ -109,7 +114,11 @@ export function SectionLinks({ selector, scope, exclude, classes, copy }) {
                 // The browser, or the router, looked for the fragment before this id existed, so a shared
                 // link to a generated id would otherwise leave the reader where they were.
                 handledRef.current = key;
-                document.getElementById(wanted)?.scrollIntoView();
+                const target = document.getElementById(wanted);
+                if (target) {
+                    revealAncestors(target);
+                    target.scrollIntoView();
+                }
             }
             else if (document.getElementById(wanted)) {
                 handledRef.current = key; // an authored id: the browser has already scrolled to it
@@ -243,20 +252,32 @@ function copyText(text) {
         return Promise.reject(new Error("Clipboard unavailable"));
     return navigator.clipboard.writeText(text);
 }
-/** Where the icon goes: vertically centred on the heading's first line, just left of its text. */
+/**
+ * Where the icon goes: vertically centred on the heading's first line, wholly in the margin to the
+ * left of its text. A single-column layout can leave only a few pixels there, so the gap and then
+ * the icon shrink to fit; where even the smallest icon would cover the first letter, there is none.
+ */
 function measure(heading) {
     if (!heading.isConnected || !heading.id)
         return null;
     const style = getComputedStyle(heading);
     const fontSize = parseFloat(style.fontSize) || 16;
-    const size = Math.round(Math.min(20, Math.max(14, fontSize * 0.7)));
     const line = firstLine(heading, style, fontSize);
+    const room = Math.floor(line.left - EDGE);
+    let size = Math.round(Math.min(20, Math.max(14, fontSize * 0.7)));
+    let gap = GAP;
+    if (room < size + gap) {
+        gap = MIN_GAP;
+        size = Math.min(size, room - gap);
+    }
+    if (size < MIN_SIZE)
+        return null;
     return {
         heading,
         id: heading.id,
         title: headingText(heading),
         top: Math.round(line.top + (line.height - size) / 2),
-        left: Math.round(Math.max(4, line.left - GAP - size)),
+        left: Math.round(line.left - gap - size),
         size,
         color: style.color,
     };
