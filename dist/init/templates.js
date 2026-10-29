@@ -59,8 +59,6 @@ there. Very little of the *reasoning* behind them lives in this repo.
   — the specification: what the structure is, and why it is that way
 - [\`AGENTS.md\`](${MORPHEUS_REPO}/blob/main/AGENTS.md)
   — the operating principles: claiming work, what a pull request must carry, the inbox cycle
-- [HQ product and design standard](${MORPHEUS_REPO}/blob/main/docs/runbooks/hq-product-design.md)
-  — read before changing an HQ page, its information hierarchy, or a component that renders it
 
 This is aimed at agents arriving with **no memory of this project**. Without that context the
 conventions here look arbitrary, and the resulting mistakes are confident ones: "tidying" a
