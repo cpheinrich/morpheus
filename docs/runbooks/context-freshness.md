@@ -206,7 +206,62 @@ session certifies `fresh` having never opened the file a human replies in.
 **Codex will not run an untrusted hook, and says nothing when it declines.** Once per project, run
 `/hooks` in a Codex session and trust it. Trust is recorded against the hook's hash, so editing the
 file means trusting it again — and until then `.codex/hooks.json` exists and does nothing, which
-looks exactly like working.
+looks exactly like working. **`morpheus doctor` reports it**: every hook Codex will not run yet,
+whether it was never trusted or changed since, and the exact place to run `/hooks`. It reads
+`~/.codex/config.toml` (or `$CODEX_HOME`) and never writes it: trusting a hook is the user's
+security decision, and the desktop app rewrites that file itself.
+
+### How Codex hook trust works
+
+Read from Codex's source at `rust-v0.163.0`, `0.164.0-alpha.11.1` and `0.165.0` (identical in these
+parts) and confirmed against what the installed Codex reports through `codex app-server`'s
+`hooks/list`. `src/doctor/codex-trust.ts` reproduces it, and its tests pin hashes Codex computed.
+
+- **Trust is per hook, per file.** `/hooks` writes `[hooks.state."<key>"] trusted_hash = "sha256:…"`,
+  where the key is `<absolute path of hooks.json>:<event>:<group index>:<handler index>` and the
+  hash covers the event, matcher and normalized handler (command, timeout, async, status message).
+  Moving a hook to another index, or changing its command, needs trusting again.
+- **A linked worktree runs the main checkout's hooks.** When the session's checkout is a linked
+  worktree, Codex reads `.codex/hooks.json` from the main checkout, keyed by the main checkout's
+  path. So trusting once in the main checkout covers every task worktree — and a branch's own edits
+  to its hooks reach Codex only after they merge *and* the main checkout is fast-forwarded. `doctor`
+  run in a worktree says so, and warns when the worktree's file differs from the one Codex runs.
+  (The worktree still needs a `.codex/` directory of its own for Codex to load the project layer.)
+- **Parent directories are not searched.** Codex loads `.codex/` folders from the project root
+  (the nearest `.git`) down to the working directory, never above it, so a `~/code/.codex/hooks.json`
+  would not apply to `~/code/evo`. Project trust (`[projects."<path>"]`) is exact-path too, checked
+  for the checkout and then the main checkout; an untrusted project loads no project hooks at all.
+- **User-level hooks run everywhere with one trust.** Hooks in `~/.codex/config.toml` or
+  `~/.codex/hooks.json` run in every project and worktree, keyed by that file's path — the
+  codebase-memory `SessionStart` hook is one. Loading both files' hooks prints a "prefer a single
+  representation" warning at every session start.
+
+### Proposed: trust Morpheus's Codex hooks once per machine
+
+Not built yet. Per-repository trust costs one `/hooks` pass per project per machine, repeated
+whenever a hook's command changes. User-level hooks are trusted once per machine:
+
+- **An explicit device command** — `morpheus codex hooks install [--check]`, consented like
+  `codebase-memory install`: a person runs it, never a session hook or an agent on its own
+  initiative. It writes Morpheus's three Codex hooks (session shim, read hook, poll guard) as a
+  marked, replaceable block in `~/.codex/config.toml`, the representation already in use there, so
+  no new warning appears. Re-running replaces only the marked block; `--check` reports drift without
+  writing. Afterwards the person runs `/hooks` once to trust them.
+- **Stable commands, logic in the CLI.** Each hook calls a fixed entry point, e.g.
+  `morpheus codex-hook session-start`, that exits 0 at once outside a Morpheus checkout (no
+  `.morpheus/` at the Git toplevel) or when `morpheus` is absent. Because the hashed text never
+  changes, a Morpheus release never invalidates the trust.
+- **Run once even when both copies are trusted.** Keep the per-repository `.codex/hooks.json`: it
+  is the bootstrap bridge on a device with no Morpheus CLI, and how other machines and collaborators
+  get the hooks. When both are trusted, Codex runs both, which would print the brief twice and make
+  the poll guard count each poll twice. So both copies claim the event first — by `session_id` and
+  the tool call's `turn_id`/`tool_use_id`, with an exclusive create in `local/sessions/` — and the
+  second claimant exits 0.
+- **Risks to settle first.** The desktop app writes `[hooks.state]` and project trust into the same
+  file, so the writer must re-read immediately before an atomic replace and refuse while the file
+  is changing; the block sits after codebase-memory's own block, so reinstalling either shifts the
+  other's group index and asks for trust again. Writing `~/.codex/hooks.json` instead avoids both
+  but brings the every-session warning above.
 
 **When something has moved**, `context refresh` prints what landed on the trunk and which records
 changed. Re-read those and refresh again — the delta is the point, not the ceremony. **Do not
