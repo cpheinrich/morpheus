@@ -122,3 +122,126 @@ day, with a private copy under the ignored `local/rescued/`.
     runner, returned `{"publish":false,"repos":["cpheinrich/morpheus"],"reason":"cpheinrich/morpheus is public"}`.
 - Not run: a full rescue of a real dirty trunk. The fixture tests drive the same Git path, and only
   the `gh` answer is mocked there.
+
+## Review
+
+One fresh reviewer subagent (runner id `ae746649b721ace9b`, no inherited history) reviewed
+`bfb77f20..aac48751` at high risk. The change decides whether unreviewed edits are published, and
+it changes the duplicate match that allows `git reset --hard`. The runner measured 7.83 minutes.
+The reviewer ran the two focused suites (64 passed), recompiled `src/` to confirm the committed
+`dist/` matches, and confirmed #452's branch is gone. On the five specific questions it found:
+
+- no path pushes or opens a PR unless visibility is known `PRIVATE`;
+- no network call sits between a proof and its reset;
+- local-mode dedupe cannot reset away edits that no branch holds;
+- the cache can authorize publishing only inside the documented one-hour window;
+- doctor is correct for ordinary clones.
+
+It had four minor findings and one incidental one, with nothing substantive. The author fixed every
+minor finding in `684d52a9`, without a follow-up turn:
+
+- **R-1.** The visibility check read only configured URLs, so a cross-host `pushInsteadOf` could
+  send a push somewhere unchecked. `GH_HOST` could also make `gh` answer for another server. The
+  check now also reads `git remote get-url --push --all`: a GitHub destination is added to the
+  check, and any other non-local destination makes the verdict unknown. It now asks for
+  `github.com/<owner>/<repo>`. New unit tests cover both rewrite cases, and real `gh` accepts the
+  host-qualified form.
+- **R-2.** A single-branch clone has no tracking ref for a pushed rescue. The doctor finding now
+  says "no remote-tracking ref … likely only in this clone", and the runbook names the limitation.
+- **R-3.** The records now attribute the private-repository text change to the task brief.
+- **R-4.** A `gh` that cannot start now reports `spawn … ENOENT`, not "exit 1". The runner is
+  exported and tested.
+- **R-5 (incidental).** Two older rescue branches are still public on morpheus. Deleting them is
+  irreversible, so that is Chris's decision, tracked as MO-26-10-28-17.09.59.
+
+After the fixes, `pnpm exec vitest run tests/trunk-rescue.test.ts tests/repo-visibility.test.ts
+tests/agent-instructions.test.ts tests/doctor.test.ts` gave 107 passed, and `pnpm typecheck` and
+`pnpm compile` were clean.
+
+High-risk review cleared with no substantive findings. Minor R-1 (cross-host pushInsteadOf and GH_HOST could check a different repository than the push reaches), R-2 (single-branch clones make doctor list pushed rescues), R-3 (private-repository text change unattributed) and R-4 (missing gh reported as exit 1) were fixed by the author; incidental R-5 (two older rescue branches still public on morpheus) is deferred to MO-26-10-28-17.09.59 for Chris's decision.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "bfb77f2021a3402bd1fa6fcec6c65bf212962bd0",
+  "reviewed": "aac48751cedeb2709ed6a87d8aad12f0446d3a80",
+  "covered": "684d52a91164f8d9aa08074102ab9adb9a71363c",
+  "authorSession": "0d17f3e2-e23e-440f-949e-057495fe4e55",
+  "reviewerSession": "ae746649b721ace9b",
+  "risk": "high",
+  "elapsedMinutes": 7.831166666666666,
+  "timing": {
+    "source": "runner",
+    "durationMs": 469870,
+    "evidence": "Claude Code Agent tool result for reviewer agentId ae746649b721ace9b (initial turn): usage duration_ms=469870."
+  },
+  "outcome": "complete",
+  "summary": "High-risk review cleared with no substantive findings. Minor R-1 (cross-host pushInsteadOf and GH_HOST could check a different repository than the push reaches), R-2 (single-branch clones make doctor list pushed rescues), R-3 (private-repository text change unattributed) and R-4 (missing gh reported as exit 1) were fixed by the author; incidental R-5 (two older rescue branches still public on morpheus) is deferred to MO-26-10-28-17.09.59 for Chris's decision.",
+  "findings": [
+    {
+      "id": "R-1",
+      "severity": "minor",
+      "description": "Visibility was read for the configured remote URLs only, so a pushInsteadOf rewrite to another host or owner could push somewhere unchecked, and an unqualified gh repo view could answer for a same-named repository on GH_HOST.",
+      "paths": [
+        "src/session/repo-visibility.ts",
+        "dist/session/repo-visibility.d.ts",
+        "dist/session/repo-visibility.js",
+        "dist/session/repo-visibility.js.map",
+        "tests/repo-visibility.test.ts",
+        "tests/trunk-rescue.test.ts",
+        "docs/runbooks/context-freshness.md",
+        ".agent/decisions.md"
+      ],
+      "disposition": "fixed",
+      "response": "rescueRepositories also reads git remote get-url --push --all: a GitHub destination joins the checked set and any destination that is neither GitHub nor a local path is unidentified, so the rescue stays local. gh is asked for github.com/<owner>/<repo>. Unit tests cover a rewrite to another GitHub repository and to a non-GitHub SSH host; real gh accepts the host-qualified form."
+    },
+    {
+      "id": "R-2",
+      "severity": "minor",
+      "description": "In a clone whose fetch refspec maps only some branches, a pushed private rescue has no remote-tracking ref, so doctor said it existed only in this clone with no remote copy.",
+      "paths": [
+        "src/session/trunk-health.ts",
+        "dist/session/trunk-health.d.ts",
+        "dist/session/trunk-health.js",
+        "dist/session/trunk-health.js.map",
+        "tests/trunk-rescue.test.ts",
+        "docs/runbooks/context-freshness.md",
+        "architecture.md"
+      ],
+      "disposition": "fixed",
+      "response": "The finding now says the branches have no remote-tracking ref and are likely only in this clone; the code comment, runbook and architecture name the single-branch limitation, and the worklog's claim that every push writes the ref was corrected."
+    },
+    {
+      "id": "R-3",
+      "severity": "minor",
+      "description": "The item said private repositories are unchanged, PR body included, but the change also strips the checkout path from private-repository text without the records saying who decided that.",
+      "paths": [".agent/decisions.md"],
+      "disposition": "fixed",
+      "response": "The decisions entry and the worklog now state the departure and attribute it to the task brief that relayed Chris's decision."
+    },
+    {
+      "id": "R-4",
+      "severity": "minor",
+      "description": "When gh is not installed the promisified execFile error has an empty stderr, which the ?? fallback kept, so the brief's reason read only '(exit 1)'.",
+      "paths": [
+        "src/session/trunk-rescue.ts",
+        "dist/session/trunk-rescue.d.ts",
+        "dist/session/trunk-rescue.js",
+        "dist/session/trunk-rescue.js.map",
+        "tests/trunk-rescue.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "runCommand uses stderr || message and is exported; a test runs a command that does not exist and asserts the stderr is 'spawn <command> ENOENT'."
+    },
+    {
+      "id": "R-5",
+      "severity": "incidental",
+      "description": "Two rescue branches pushed before this change (wip/trunk-2026-10-08-* at fbf69e3b and wip/trunk-2026-10-25-* at 990d0136) are still public on cpheinrich/morpheus, with absolute checkout paths in their commit messages.",
+      "paths": ["hq/product/roadmap/MO-26-10-28-17.09.59-retire-public-rescue-branches.md"],
+      "disposition": "deferred",
+      "response": "Not caused by this change, and deleting a remote branch is irreversible, so the disposition is Chris's; filed with options and a verification command.",
+      "roadmap": "MO-26-10-28-17.09.59"
+    }
+  ]
+}
+```
