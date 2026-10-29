@@ -9,13 +9,30 @@ import { cd } from "../../src/cd/cli.js";
 import { after, repairWork } from "../../src/cd/state.js";
 import { codexQuota, QuotaReader, runWorker, scheduleHosted } from "../../src/cd/worker.js";
 import { BLOCKER_PROOF_PREFIX, type BlockerClaimReceipt } from "../../src/cd/blocker-proof.js";
+import { git, loadSources } from "../../src/cd/source.js";
+import { verifyRepairChecks } from "../../src/cd/repair-checks.js";
+import { checkLocalReview } from "../../src/review/local.js";
 import { FakeGitHub } from "./fake-github.js";
-import { config, now, prepared } from "./fixtures.js";
+import { config, now, prepared, source } from "./fixtures.js";
+import { physicalPolicy } from "./physical-device-fixtures.js";
 
 const directories: string[] = [];
 vi.mock("node:child_process", async original => {
   const real = await original<typeof import("node:child_process")>();
   return { ...real, spawn: vi.fn(real.spawn) };
+});
+// Pass-through unless a repair-verification test stubs the provider/Git side of verifyRepair.
+vi.mock("../../src/cd/source.js", async original => {
+  const real = await original<typeof import("../../src/cd/source.js")>();
+  return { ...real, git: vi.fn(real.git), loadSources: vi.fn(real.loadSources) };
+});
+vi.mock("../../src/cd/repair-checks.js", async original => {
+  const real = await original<typeof import("../../src/cd/repair-checks.js")>();
+  return { ...real, verifyRepairChecks: vi.fn(real.verifyRepairChecks) };
+});
+vi.mock("../../src/review/local.js", async original => {
+  const real = await original<typeof import("../../src/review/local.js")>();
+  return { ...real, checkLocalReview: vi.fn(real.checkLocalReview) };
 });
 afterEach(async () => { vi.useRealTimers(); await Promise.all(directories.splice(0).map(path => rm(path, { recursive: true, force: true }))); vi.restoreAllMocks(); vi.mocked(spawn).mockClear(); });
 
@@ -477,6 +494,45 @@ describe("bounded unchanged capability waits", () => {
     expect(request.mock.calls.filter(call => call[1].includes("/actions/"))).toEqual([]);
     expect(quota).not.toHaveBeenCalled(); expect(await f.calls()).toHaveLength(1);
     expect((await f.store.read()).head).toBe(before.head);
+  });
+});
+
+describe("repair source admissibility at verification", () => {
+  afterEach(() => { for (const mock of [git, loadSources, verifyRepairChecks, checkLocalReview]) vi.mocked(mock).mockReset(); });
+  // The fixture attempted a (order 0); b (order 1) predates the plan when the floor is c (order 2).
+  async function mergedRepair(merged: string, floor?: string) {
+    const f = await nativeFixture();
+    if (floor) f.cfg.tests.physicalDevice = { ...physicalPolicy(), sourceFloor: floor.repeat(40) };
+    await f.store.transact("observed-main", "fixture", new Date().toISOString(), state => { state.lastMain = "a".repeat(40); return null; });
+    const pull = { merged: true, merge_commit_sha: merged.repeat(40), head: { sha: "e".repeat(40) }, base: { ref: "main", sha: "a".repeat(40), repo: null }, body: "review-record: .agent/worklog/repair.md", labels: [{ name: "agent-reviewed" }] };
+    const original = f.api.request.bind(f.api);
+    f.api.request = async <T>(method: string, path: string, body?: unknown): Promise<T> => path === "repos/example/app/pulls/42" ? structuredClone(pull) as T : original<T>(method, path, body);
+    vi.mocked(git).mockReturnValue(""); vi.mocked(verifyRepairChecks).mockResolvedValue({ checkIds: [], superseded: [] }); vi.mocked(checkLocalReview).mockReturnValue([]);
+    vi.mocked(loadSources).mockResolvedValue([source("a", 0), source("b", 1), source("c", 2)]);
+    await writeFile(f.callsPath + ".result", JSON.stringify({ outcome: "repaired", summary: "Merged a reviewed repair", evidence: [], pullRequest: "https://github.com/example/app/pull/42", sourceSha: merged.repeat(40), reviewHead: "e".repeat(40), missingCapability: "" }));
+    return f;
+  }
+  it.each([
+    ["the attempted source", "a", undefined, `Repair source ${"a".repeat(40)} does not descend past attempted source ${"a".repeat(40)}`],
+    ["a source below the floor", "b", "c", `Source ${"b".repeat(40)} predates physical-device source floor ${"c".repeat(40)}`],
+  ])("returns %s as a verification checkpoint, not a transaction error", async (_label, merged, floor, message) => {
+    const f = await mergedRepair(merged, floor), before = (await f.store.read()).state;
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).toMatchObject({ outcome: "checkpoint", repairedSha: undefined });
+    const state = (await f.store.read()).state, work = state.agents[f.workId]!, last = work.invocations.at(-1)!, intent = state.intents[work.intentId]!;
+    expect(last.result!.summary).toContain(`deterministic verification pending: ${message}`);
+    expect(state.transitions[`worker-ended-${last.id}`]!.result).toMatchObject({ outcome: "checkpoint" }); expect(state.transitions[`worker-error-${last.id}`]).toBeUndefined();
+    expect(work.state).toBe("pending"); expect(intent.source).toBe("a".repeat(40)); expect(intent.lineage).toEqual(before.intents[work.intentId]!.lineage); expect(state.sources).toEqual(before.sources);
+    expect(intent.blocker).toContain(message); expect(intent.nextAction).toBe("resume-repair-checkpoint");
+  });
+  it("shows the agent which sources it may return, outside the capability digest, and adopts the floor itself", async () => {
+    const f = await mergedRepair("c", "c");
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", workId: f.workId })).toMatchObject({ outcome: "repaired", repairedSha: "c".repeat(40) });
+    const state = (await f.store.read()).state, work = state.agents[f.workId]!, prompt = (await f.calls())[0]!.prompt, prefix = "Repair source admissibility (controller facts): ";
+    expect(JSON.parse(prompt.split("\n").find(line => line.startsWith(prefix))!.slice(prefix.length))).toEqual({ lastMain: "a".repeat(40), attemptedSources: ["a".repeat(40)],
+      physicalDevice: { profile: "regression-v1", testIds: physicalPolicy().testIds, sourceFloor: "c".repeat(40) } });
+    expect(prompt).toContain("A code repair is adopted only when its merged main source is at or after the delivery context's source, strictly after every attemptedSources entry");
+    assertPromptDigest(state, f.workId, work.invocations.at(-1)!.id, prompt);
+    expect(work.state).toBe("complete"); expect(state.intents[work.intentId]!.source).toBe("c".repeat(40)); expect(state.lastMain).toBe("c".repeat(40));
   });
 });
 
