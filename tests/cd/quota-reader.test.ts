@@ -22,6 +22,7 @@ function fakeReader(autoClose = true, cleaned = true) {
   const stdout = new PassThrough(), stderr = new PassThrough(), control = new PassThrough();
   const signals: string[] = [], commands: unknown[] = [];
   const child = Object.assign(new EventEmitter(), {
+    pid: 4301,
     stdin: Object.assign(new PassThrough(), { write(data: string) { commands.push(JSON.parse(data)); return true; } }),
     stdout, stderr, stdio: [null, stdout, stderr, control],
     kill(signal: string) {
@@ -174,6 +175,111 @@ describe("native quota read bounds and protocol", () => {
   });
 });
 
+describe("sanitized configured reader startup diagnostics", () => {
+  const safe = "Evo CD worker: startup failed (phase=config-initialize kind=timeout)";
+  const exited = "Codex account quota configured reader exited (code=2)";
+  const phases = ["pin", "version", "scope", "inventory", "policy", "final-verify", "exec",
+    ...["config", "policy"].flatMap(prefix => ["launch", "initialize", "read", "drain", "validate", "cleanup"].map(step => `${prefix}-${step}`))];
+
+  it.each([
+    ...phases.map(phase => `phase=${phase} kind=invalid`),
+    ...["invalid", "timeout", "os-error", "exit", "protocol", "bounds", "eof", "output"].map(kind => `phase=pin kind=${kind}`),
+    "phase=exec kind=os-error errno=1", "phase=exec kind=os-error errno=4095",
+    "phase=exec kind=exit code=-255", "phase=exec kind=exit code=0", "phase=exec kind=exit code=255",
+  ])("includes only the exact accepted helper diagnostic %s in the quota error", async fields => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const f = fakeReader(), rejected = rejection(nativeQuota(["fixture"], "/fixture", f.at));
+    const line = `Evo CD worker: startup failed (${fields})`;
+    f.stderr.write(line + "\n"); f.control.write('{"reader":"exited","code":2}\n');
+    expect((await rejected).message).toBe(`${exited}; ${line} (readerPid=4301) (phase=initialize elapsedMs=0)`);
+    expect(f.signals).toEqual(["SIGTERM"]); expect(log).not.toHaveBeenCalled();
+  });
+
+  it("retains a fragmented first diagnostic while discarding other lines and duplicates", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const f = fakeReader(), rejected = rejection(nativeQuota(["fixture"], "/fixture", f.at));
+    f.stderr.write("SECRET PROVIDER TEXT\n" + safe.slice(0, 24));
+    f.stderr.write(safe.slice(24) + "\n" + safe + "\nEvo CD worker: startup failed (phase=exec kind=exit code=7)\n");
+    f.control.write('{"reader":"exited","code":2}\n');
+    expect((await rejected).message).toBe(`${exited}; ${safe} (readerPid=4301) (phase=initialize elapsedMs=0)`);
+    expect(log).not.toHaveBeenCalled(); expect(f.stderr.readableLength).toBe(0);
+  });
+
+  it.each([0, 30])("reports a late diagnostic once without delaying failure or the cleanup fuse (early bytes=%s)", async earlyBytes => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const f = fakeReader(false), rejected = rejection(nativeQuota(["fixture"], "/fixture", f.at));
+    f.stderr.write(safe.slice(0, earlyBytes));
+    f.control.write('{"reader":"exited","code":2}\n');
+    const failure = await rejected;
+    expect(failure.message).toBe(`${exited} (phase=initialize elapsedMs=0)`);
+    expect(f.signals).toEqual(["SIGTERM"]); expect(log).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(17);
+    f.stderr.write(safe.slice(earlyBytes, 40)); f.stderr.write(safe.slice(40) + "\n" + safe + "\nSECRET\n");
+    expect(log.mock.calls).toEqual([[`Codex account quota configured reader startup diagnostic; ${safe} (readerPid=4301) (phase=initialize elapsedMs=17)`]]);
+    expect(failure.message).toBe(`${exited} (phase=initialize elapsedMs=0)`);
+    await vi.advanceTimersByTimeAsync(2_982); expect(f.signals).toEqual(["SIGTERM"]);
+    await vi.advanceTimersByTimeAsync(1); expect(f.signals).toEqual(["SIGTERM", "SIGKILL"]);
+    f.control.write('{"cleanup":"terminated"}\n'); f.child.emit("close", 0);
+    expect(log).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "SECRET PROVIDER TEXT", safe + " SECRET", "SECRET " + safe, safe + "\r", safe + " ",
+    safe.replace("config-initialize", "initialize"), safe.replace("config-initialize", "config-secret"),
+    safe.replace("timeout", "secret"), safe.replace("timeout", "Timeout"),
+    "Evo CD worker: startup failed (phase=pin kind=os-error errno=0)",
+    "Evo CD worker: startup failed (phase=pin kind=os-error errno=4096)",
+    "Evo CD worker: startup failed (phase=pin kind=os-error errno=-1)",
+    "Evo CD worker: startup failed (phase=pin kind=exit code=-256)",
+    "Evo CD worker: startup failed (phase=pin kind=exit code=256)",
+    "Evo CD worker: startup failed (phase=pin kind=exit code=-0)",
+    "Evo CD worker: startup failed (phase=pin kind=exit code=01)",
+    "Evo CD worker: startup failed (phase=pin kind=exit code=+1)",
+    "Evo CD worker: startup failed (phase=pin kind=exit code=1.0)",
+    "Evo CD worker: startup failed (phase=pin kind=exit code=1e1)",
+    "Evo CD worker: startup failed (phase=pin kind=exit errno=1)",
+    "Evo CD worker: startup failed (phase=pin kind=os-error code=1)",
+    "Evo CD worker: startup failed (phase=pin kind=timeout errno=1)",
+    "Evo CD worker: startup failed (phase=pin kind=exit code=SECRET)",
+    "Evo CD worker: startup failed (phase=pin kind=exit code=1 code=2)",
+    "X".repeat(129) + safe,
+  ])("discards unrecognized, malformed or oversized stderr %#", async line => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const f = fakeReader(), rejected = rejection(nativeQuota(["fixture"], "/fixture", f.at));
+    f.stderr.write(line + "\n"); f.control.write('{"reader":"exited","code":2}\n');
+    expect((await rejected).message).toBe(`${exited} (phase=initialize elapsedMs=0)`);
+    expect(log).not.toHaveBeenCalled(); expect(f.stderr.readableLength).toBe(0);
+  });
+
+  it("discards an unterminated diagnostic rather than admitting a possible trailing suffix", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const f = fakeReader(), rejected = rejection(nativeQuota(["fixture"], "/fixture", f.at));
+    f.stderr.write(safe); f.control.write('{"reader":"exited","code":2}\n');
+    expect((await rejected).message).toBe(`${exited} (phase=initialize elapsedMs=0)`);
+    f.stderr.end(" SECRET"); expect(log).not.toHaveBeenCalled();
+  });
+
+  it("drops an oversized fragmented line through its newline, then recognizes a fresh line", async () => {
+    const f = fakeReader(), rejected = rejection(nativeQuota(["fixture"], "/fixture", f.at));
+    f.stderr.write("X".repeat(128)); f.stderr.write(safe + "\n" + safe + "\n");
+    f.control.write('{"reader":"exited","code":2}\n');
+    expect((await rejected).message).toBe(`${exited}; ${safe} (readerPid=4301) (phase=initialize elapsedMs=0)`);
+  });
+
+  it.each([0, 1])("caps all stderr scanning at exactly 4096 bytes (overflow=%s)", async overflow => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const f = fakeReader(), rejected = rejection(nativeQuota(["fixture"], "/fixture", f.at));
+    const prefix = "X".repeat(4096 - safe.length - 2 + overflow) + "\n";
+    f.stderr.write(prefix.slice(0, 2000)); f.stderr.write(prefix.slice(2000) + safe + "\n");
+    f.stderr.write("\n" + safe + "\n" + "SECRET".repeat(100_000));
+    f.control.write('{"reader":"exited","code":2}\n');
+    expect((await rejected).message).toBe(overflow === 0
+      ? `${exited}; ${safe} (readerPid=4301) (phase=initialize elapsedMs=0)`
+      : `${exited} (phase=initialize elapsedMs=0)`);
+    expect(log).not.toHaveBeenCalled(); expect(f.stderr.readableLength).toBe(0);
+  });
+});
+
 async function fixture(options: Record<string, unknown>) {
   const directory = await mkdtemp(join(tmpdir(), "cd-quota-reader-")); folders.push(directory);
   const script = join(directory, "protocol.mjs"), settings = join(directory, "settings.json"), pidFile = join(directory, "descendant.json");
@@ -183,6 +289,7 @@ const settings=JSON.parse(await readFile(process.argv[2],"utf8"));
 if(settings.orphan){await writeFile(process.argv[3],JSON.stringify({pid:process.pid,pgid:process.ppid}));setInterval(()=>{},1000);await new Promise(()=>{});}
 if(settings.descendant){const child=spawn(process.execPath,["-e","setInterval(()=>{},1000)"],{stdio:"ignore"});await writeFile(process.argv[3],JSON.stringify({pid:child.pid,modelOwner:process.env.MORPHEUS_CD_AGENT_OWNER??null,quotaOwner:process.env.MORPHEUS_CD_QUOTA_READER_OWNER}));}
 if(settings.stderr){for(let i=0;i<32;i++)if(!process.stderr.write("X".repeat(65536)))await once(process.stderr,"drain");}
+if(settings.startupDiagnostic)process.stderr.write("Evo CD worker: startup failed (phase=config-initialize kind=timeout)\\n");
 if(settings.exitCode!==undefined){process.stderr.write("SECRET PROVIDER TEXT");process.exit(settings.exitCode);}
 await new Promise(r=>setTimeout(r,settings.startup??0));
 for await(const line of createInterface({input:process.stdin})){const m=JSON.parse(line);
@@ -193,6 +300,27 @@ if(m.method==="account/rateLimits/read"){console.log(JSON.stringify({id:2,result
 }
 
 describe("real offline quota reader processes", () => {
+  it("preserves one sanitized startup diagnostic across real pipes and removes the foreground descendant", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const f = await fixture({ descendant: true, startupDiagnostic: true, exitCode: 2 });
+    const reading = nativeQuota(f.command, f.directory, new Date().toISOString());
+    const supervisor = vi.mocked(spawn).mock.results.at(-1)!.value as ChildProcess;
+    const closed = new Promise<number | null>(resolve => supervisor.once("close", resolve));
+    const error = await rejection(reading);
+    expect(await closed).toBe(0);
+    const output = [error.message, ...log.mock.calls.map(([message]) => String(message))];
+    const safe = "Evo CD worker: startup failed (phase=config-initialize kind=timeout)";
+    expect(output.filter(line => line.includes(safe))).toHaveLength(1);
+    expect(output.join("\n")).not.toContain("SECRET");
+    const context = `(phase=initialize elapsedMs=ELAPSED)`, detail = `; ${safe} (readerPid=${supervisor.pid}) ${context}`;
+    expect([
+      ["Codex account quota configured reader exited (code=2)" + detail],
+      [`Codex account quota configured reader exited (code=2) ${context}`, "Codex account quota configured reader startup diagnostic" + detail],
+    ]).toContainEqual(output.map(line => line.replace(/elapsedMs=[0-9]+\)/g, "elapsedMs=ELAPSED)")));
+    const descendant = JSON.parse(await readFile(f.pidFile, "utf8"));
+    expect(() => process.kill(descendant.pid, 0)).toThrow();
+  });
+
   it("reports a missing executable and confirms private reader cleanup", async () => {
     const f = await fixture({});
     const reading = nativeQuota([join(f.directory, "absent-reader")], f.directory, new Date().toISOString());

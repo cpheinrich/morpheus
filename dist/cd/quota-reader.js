@@ -2,6 +2,21 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { quotaUsed } from "./state.js";
 const READ_MS = 60_000, RPC_MS = 10_000, CLEANUP_FUSE_MS = 3_000;
+const STARTUP_LINE_BYTES = 128, STARTUP_SCAN_BYTES = 4096;
+/** The configured helper emits this fixed vocabulary; stderr itself is untrusted. */
+function startupDiagnostic(line) {
+    const match = /^Evo CD worker: startup failed \(phase=(pin|version|scope|inventory|policy|final-verify|exec|(?:config|policy)-(?:launch|initialize|read|drain|validate|cleanup)) kind=(invalid|timeout|os-error|exit|protocol|bounds|eof|output)(?: (errno|code)=(-?(?:0|[1-9][0-9]{0,3})))?\)$/.exec(line);
+    if (!match)
+        return;
+    const [, , kind, field, number] = match;
+    if (field) {
+        const value = Number(number);
+        if (String(value) !== number || !(kind === "os-error" && field === "errno" && value > 0 && value <= 4095
+            || kind === "exit" && field === "code" && value >= -255 && value <= 255))
+            return;
+    }
+    return line;
+}
 /** Only fixed protocol diagnostics, never provider output or configuration. */
 export class QuotaReadError extends Error {
 }
@@ -10,10 +25,12 @@ export async function nativeQuota(command, cwd, observedAt) {
     return new Promise((resolve, reject) => {
         const started = Date.now(), deadline = started + READ_MS;
         let phase = "initialize", buffer = "", control = "", controlBytes = 0, cleanup = false, cleanupSeen = false, settled = false, stopping = false, value;
+        let startup, stderrLine = "", stderrBytes = 0, oversizedLine = false, failed = false;
         let rpcDeadline = Infinity, rpcTimer, fuse;
         const helper = fileURLToPath(new URL("./quota-reader.py", import.meta.url));
         const child = spawn("/usr/bin/python3", [helper, String(READ_MS), command[0], ...command.slice(1), "app-server"], { cwd, stdio: ["pipe", "pipe", "pipe", "pipe"] });
         const diagnostic = (reason) => new QuotaReadError(`Codex account quota ${reason} (phase=${phase} elapsedMs=${Math.max(0, Date.now() - started)})`);
+        const startupContext = () => `${startup} (readerPid=${Number.isSafeInteger(child.pid) && child.pid > 0 ? child.pid : "unknown"})`;
         const stop = () => {
             if (stopping)
                 return;
@@ -26,17 +43,43 @@ export async function nativeQuota(command, cwd, observedAt) {
             if (settled)
                 return;
             settled = true;
+            failed = true;
             clearTimeout(timer);
             clearTimeout(rpcTimer);
+            const error = diagnostic(startup ? `${reason}; ${startupContext()}` : reason);
             // Failure stops the model now; bounded reader cleanup grants no grace.
             stop();
-            reject(diagnostic(reason));
+            reject(error);
         };
         const timer = setTimeout(() => fail("read timed out"), READ_MS);
         const send = (message) => child.stdin.write(JSON.stringify(message) + "\n");
         child.on("error", () => fail("reader could not start"));
         child.stdin.on("error", () => fail("transport unavailable"));
-        child.stderr.on("data", () => { }); // Drain without retaining provider text.
+        child.stderr.on("data", (bytes) => {
+            // Keep draining after failure: control and stderr pipes can arrive in either order.
+            const scan = bytes.subarray(0, STARTUP_SCAN_BYTES - stderrBytes);
+            stderrBytes += scan.byteLength;
+            for (const byte of scan) {
+                if (startup)
+                    return;
+                if (byte === 10) {
+                    if (!oversizedLine)
+                        startup = startupDiagnostic(stderrLine);
+                    stderrLine = "";
+                    oversizedLine = false;
+                    if (startup && failed)
+                        console.error(diagnostic(`configured reader startup diagnostic; ${startupContext()}`).message);
+                }
+                else if (!oversizedLine) {
+                    if (stderrLine.length === STARTUP_LINE_BYTES) {
+                        stderrLine = "";
+                        oversizedLine = true;
+                    }
+                    else
+                        stderrLine += String.fromCharCode(byte);
+                }
+            }
+        });
         child.stdio[3].on("data", (bytes) => {
             controlBytes += bytes.byteLength;
             if (controlBytes > 256) {
