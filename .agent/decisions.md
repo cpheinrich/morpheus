@@ -2006,3 +2006,25 @@ the ignored `local/rescued/`.
   privacy improvement.
 
 No dependency: `gh`, native Git and the existing replay.
+
+## Doctor reports Codex hook trust, read-only — 2026-10-28
+
+MO-26-10-28-17.16.16. Codex runs a repository's `.codex/hooks.json` only after `/hooks` trust and
+says nothing when it declines, so a wired, untrusted read hook silently returns `context refresh` to
+the bare assertion. `doctor` now names each hook Codex will not run (never trusted, changed since
+trusted, switched off, or in an untrusted project) and where to run `/hooks`. It reproduces Codex's
+trust key and hash from Codex's source (0.163.0–0.165.0) and its tests pin hashes Codex itself
+computed; a hook it cannot reproduce reads "unverified", and an unreadable config reads "unknown",
+never "untrusted". **It never writes `~/.codex/config.toml`**: trust is the user's security decision
+and the desktop app rewrites that file. In a linked worktree it reports the main checkout's file,
+because that is what Codex runs there.
+
+Adopted `smol-toml` 1.9.1 (published 2026-10-09, zero dependencies, BSD-3-Clause) to read the file:
+config.toml is arbitrary TOML that Codex and other installers edit, and a hand-written reader that
+misparsed a form it did not know would report trusted hooks as untrusted. Considered asking the
+installed Codex through `codex app-server`'s `hooks/list`, which is authoritative and was used to
+verify this; rejected as `doctor`'s mechanism because the API is marked experimental and it would
+start a Codex process per project on every run.
+
+A user-level, trust-once-per-machine design is written up in the context-freshness runbook and
+filed as its own item rather than built here, because it writes the user's live Codex config.
