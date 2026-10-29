@@ -31,3 +31,28 @@ Validation:
 - No full local suite, phone use, runtime adoption or release dispatch. CI owns the full suite.
 
 Public evidence uses synthetic identifiers. Upstream issue551 records the gap; source/API publication remains separate from consumer pin/migration and operational acceptance.
+
+## Independent review
+
+Fresh independent high-risk review cleared the required physical-device CD proof extension with no findings. The reviewer inspected policy/schema, exact inventory and first-attempt validation, verified-payload callers, upload CAS ordering, accepted-proof reuse before Apple, immutable replay and post-resume/unknown-upload consequences; generated implementation matches source. Independently ran 255 focused tests and diff check. Synthetic evidence only; no device, installed consumer runtime, Apple interaction or full local suite.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "5e9335e57739da68f314e484deb5b21b064f42d2",
+  "reviewed": "065dc9cd50ad939584274ca3b9aee288aeca873a",
+  "covered": "065dc9cd50ad939584274ca3b9aee288aeca873a",
+  "authorSession": "01a18417-9814-7751-b873-d5fd3b1a8385",
+  "reviewerSession": "/root/cd_migration/device_proof_review",
+  "risk": "high",
+  "elapsedMinutes": 2.1166666666666667,
+  "timing": {
+    "source": "clock",
+    "durationMs": 127000,
+    "evidence": "Author observed initial reviewer invocation boundary 2026-10-29T00:44:18Z and final response receipt boundary 2026-10-29T00:46:25Z for /root/cd_migration/device_proof_review. Includes tool execution and waits."
+  },
+  "outcome": "complete",
+  "summary": "Fresh independent high-risk review cleared the required physical-device CD proof extension with no findings. The reviewer inspected policy/schema, exact inventory and first-attempt validation, verified-payload callers, upload CAS ordering, accepted-proof reuse before Apple, immutable replay and post-resume/unknown-upload consequences; generated implementation matches source. Independently ran 255 focused tests and diff check. Synthetic evidence only; no device, installed consumer runtime, Apple interaction or full local suite.",
+  "findings": []
+}
+```
