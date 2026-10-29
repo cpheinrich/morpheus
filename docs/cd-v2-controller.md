@@ -506,6 +506,11 @@ lines, trailing text and all other stderr remain discarded. The first recognized
 line is included in the quota error when already available. If it arrives after
 failure, it is emitted once to the worker's private stderr with the reader PID,
 read phase and elapsed time. No failure waits for stderr or gains cleanup grace.
+The `cd quota` and `cd worker` executables set their exit status while the owned
+reader's existing stream and cleanup handles drain. Quota rejection and the
+worker's budget-wait result still happen immediately; process exit preserves
+late diagnostics and the existing three-second cleanup fuse. Other CLI commands,
+including the lightweight `context record-read` path, retain immediate exit.
 Failures report a fixed phase and elapsed time. A
 configured reader that cannot spawn or exits early also reports only its numeric
 OS error or exit code, rather than waiting for the initialization deadline.
