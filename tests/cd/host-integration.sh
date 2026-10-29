@@ -231,6 +231,13 @@ grep -A1 'StartInterval' "$ROOT/com.consumer.cd-v2-tick.plist.template" | grep -
   && ok "tick plist wakes automatically every 300 s" || bad "tick plist lacks 300 s StartInterval"
 grep -A1 'StartInterval' "$ROOT/com.consumer.cd-v2-worker.plist.template" | grep -q '300' \
   && ok "worker plist wakes automatically every 300 s (self-healing)" || bad "worker plist lacks 300 s StartInterval"
+ptype() {
+  python3 -c 'import plistlib, sys; print(plistlib.load(open(sys.argv[1], "rb")).get("ProcessType", "<unset>"))' "$1" 2>/dev/null \
+    || echo unreadable
+}
+# Adaptive/Background throttle the worker's quota handshake to failure (#558).
+check "worker plist runs as an Interactive process" "$(ptype "$ROOT/com.consumer.cd-v2-worker.plist.template")" "Interactive"
+check "tick plist stays a Background process" "$(ptype "$ROOT/com.consumer.cd-v2-tick.plist.template")" "Background"
 for f in "$ROOT"/*.sh.template; do
   /bin/bash -n "$f" 2>/dev/null && ok "bash syntax: $(basename "$f")" || bad "bash syntax: $(basename "$f")"
 done
