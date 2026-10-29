@@ -381,6 +381,25 @@ const cancelledCompanionCensus: Record<string, unknown>[] = [
     "steps": []
   }
 ];
+describe("physical-device source floor at planning", () => {
+  // The source predates the floor: refuse before any build number, and tell repair why.
+  it.each([["b", true], ["a", false]])("routes planning against floor %s to repair before reserving a build (refused: %s)", async (floor, refused) => {
+    const h = await harness();
+    h.cfg.tests.physicalDevice = { ...physicalPolicy(), sourceFloor: floor.repeat(40) };
+    vi.mocked(loadSources).mockResolvedValue([source(), source("b", 1)]);
+    await h.store.transact("floor-config", "fixture", now, state => {
+      const intent = state.intents[h.intentId]!; state.configurationDigest = configurationDigest(h.cfg);
+      intent.attempts[0]!.status = "failed"; intent.state = "pending"; intent.nextAction = "dispatch-full-tests"; intent.nextCheckAt = now; return null;
+    });
+    const result = await h.controller.tick(after(now, 5)), state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    if (!refused) { expect(result.errors).toEqual([]); expect(intent.attempts.map(item => item.sourceSha)).toEqual(["a".repeat(40), "a".repeat(40)]); expect(h.dispatch).toHaveBeenCalledTimes(1); return; }
+    const message = `Source ${"a".repeat(40)} predates physical-device source floor ${"b".repeat(40)}, so it cannot carry the configured physical test plan (profile regression-v1, 2 tests); deliver a main source at or after the floor`;
+    expect(result.errors).toEqual([{ intentId: h.intentId, message }]);
+    expect(intent.state).toBe("repairing"); expect(intent.nextAction).toBe("run-repair-agent"); expect(intent.attempts).toHaveLength(1);
+    expect(Object.values(state.agents).map(work => work.evidence)).toEqual([[message]]);
+    expect(state.builds["123/1.0"]!.reservations).toEqual({ [h.attemptId]: { buildNumber: "8", at: now, burned: true } }); expect(h.dispatch).not.toHaveBeenCalled();
+  });
+});
 describe("terminal job placeholders", () => {
   async function expectRepair(h: Awaited<ReturnType<typeof admissionHarness>>) {
     const state = (await h.store.read()).state, intent = state.intents[h.intentId]!;

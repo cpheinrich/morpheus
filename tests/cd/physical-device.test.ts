@@ -3,9 +3,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { CD_PHYSICAL_DEVICE_EVIDENCE_VERSION, canonical, configSchema, configurationDigest, hash, type PhysicalDeviceProof, type TestEvidence } from "../../src/cd/schema.js";
-import { assertPhysicalDeviceProof, claimUpload, recordTests, recordUpload, releasePostResumeExecution, postResumeExecutionFingerprint, after } from "../../src/cd/state.js";
+import { adoptRepair, assertPhysicalDeviceProof, claimUpload, createIntent, newState, planAttempt, recordTests, recordUpload, releasePostResumeExecution, postResumeExecutionFingerprint, after } from "../../src/cd/state.js";
 import { validatePayloadFiles } from "../../src/cd/evidence.js";
-import { config, now, prepared } from "./fixtures.js";
+import { config, now, prepared, source } from "./fixtures.js";
 import { optionalFixture } from "./post-resume-fixtures.js";
 import { physicalPolicy } from "./physical-device-fixtures.js";
 
@@ -121,5 +121,45 @@ describe("required physical-device evidence", () => {
     const before = structuredClone(f.state);
     recordTests(f.state, cfg, f.tests); expect(f.state).toEqual(before);
     expect(() => claimUpload(f.state, cfg, f.upload, now)).toThrow(); expect(f.state).toEqual(before);
+  });
+});
+
+describe("physical-device source floor", () => {
+  const floorConfig = (floor: string) => { const cfg = deviceConfig(); cfg.tests.physicalDevice!.sourceFloor = floor; return cfg; };
+  // a (order 0) predates the test plan; b (order 1) first carries it; c (order 2) follows.
+  function planned(floor: string, selected = "a") {
+    const cfg = floorConfig(floor), state = newState(cfg, "epoch", now); state.sources = [source("a", 0), source("b", 1), source("c", 2)];
+    const intent = createIntent(state, cfg, "staging", state.sources.find(item => item.sha === selected.repeat(40))!, now, now);
+    return { cfg, state, intent };
+  }
+  it("keeps existing physical configuration bytes when absent and refuses a malformed floor", () => {
+    // Pinned from a4680c9f, before the field existed: an existing policy keeps its digest.
+    expect(configurationDigest(deviceConfig())).toBe("7dcd8a463f9d0af583a28562e6dc9ccbf32b2ec21b6bb6f35835ffccc9e85e21");
+    expect(canonical(configSchema.parse(deviceConfig()))).not.toContain("sourceFloor");
+    const parsed = configSchema.parse(floorConfig("b".repeat(40)));
+    expect(parsed.tests.physicalDevice!.sourceFloor).toBe("b".repeat(40));
+    expect(configurationDigest(parsed)).not.toBe(configurationDigest(deviceConfig()));
+    for (const floor of ["b".repeat(39), "b".repeat(41), "B".repeat(40), "main", ""]) expect(configSchema.safeParse(floorConfig(floor)).success).toBe(false);
+  });
+  it.each([["a", "a", true], ["a", "b", false], ["b", "b", true], ["c", "b", true]])("plans source %s against floor %s only at or after it (admitted: %s)", (selected, floor, admitted) => {
+    const f = planned(floor.repeat(40), selected), before = structuredClone(f.state);
+    if (admitted) { expect(planAttempt(f.state, f.cfg, f.intent.id, "c".repeat(40), "7", now).sourceSha).toBe(selected.repeat(40)); return; }
+    expect(() => planAttempt(f.state, f.cfg, f.intent.id, "c".repeat(40), "7", now)).toThrow(`Source ${"a".repeat(40)} predates physical-device source floor ${"b".repeat(40)}`);
+    expect(f.state).toEqual(before); expect(f.state.builds).toEqual({});
+  });
+  it("refuses an unknown floor instead of reading it as no floor", () => {
+    const f = planned("f".repeat(40), "c"), before = structuredClone(f.state);
+    expect(() => planAttempt(f.state, f.cfg, f.intent.id, "c".repeat(40), "7", now)).toThrow(`Physical-device source floor ${"f".repeat(40)} is not a verified first-parent main source`);
+    expect(f.state).toEqual(before);
+  });
+  it("adopts a repair only at or after the floor, without mutating on refusal", () => {
+    const f = planned("c".repeat(40)); f.cfg.tests.physicalDevice!.sourceFloor = undefined;
+    planAttempt(f.state, f.cfg, f.intent.id, "c".repeat(40), "7", now).status = "failed";
+    f.cfg.tests.physicalDevice!.sourceFloor = "c".repeat(40);
+    const before = structuredClone(f.state);
+    expect(() => adoptRepair(f.state, f.cfg, f.intent.id, f.state.sources[1]!, "reviewed merge below the floor", now)).toThrow(`Source ${"b".repeat(40)} predates physical-device source floor`);
+    expect(f.state).toEqual(before);
+    adoptRepair(f.state, f.cfg, f.intent.id, f.state.sources[2]!, "reviewed merge at the floor", now);
+    expect(f.state.intents[f.intent.id]!.source).toBe("c".repeat(40)); expect(f.state.intents[f.intent.id]!.state).toBe("pending");
   });
 });

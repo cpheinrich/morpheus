@@ -100,6 +100,33 @@ describe("durable slot/source obligations", () => {
   });
 });
 
+describe("repair adoption descends past attempted sources", () => {
+  // a (order 0) failed, a reviewed repair b (order 1) then failed too; c (order 2) is newer main.
+  function twiceFailed() {
+    const { state, intentId } = prepared(), cfg = config(); state.sources.push(source("b", 1), source("c", 2));
+    state.intents[intentId]!.attempts[0]!.status = "failed";
+    adoptRepair(state, cfg, intentId, state.sources[1]!, "first reviewed repair", now);
+    planAttempt(state, cfg, intentId, "c".repeat(40), "8", now).status = "failed";
+    return { state, cfg, intentId };
+  }
+  it.each([["a", "descend along configured main history"], ["b", `does not descend past attempted source ${"b".repeat(40)}`]])("refuses re-adopting %s without mutation", (sha, message) => {
+    const f = twiceFailed(), before = structuredClone(f.state);
+    expect(() => adoptRepair(f.state, f.cfg, f.intentId, f.state.sources.find(item => item.sha === sha.repeat(40))!, "reused merge", now)).toThrow(message);
+    expect(f.state).toEqual(before);
+  });
+  it("adopts the next newer source and keeps the earlier lineage", () => {
+    const f = twiceFailed(); adoptRepair(f.state, f.cfg, f.intentId, f.state.sources[2]!, "second reviewed repair", now);
+    const intent = f.state.intents[f.intentId]!;
+    expect(intent.source).toBe("c".repeat(40)); expect(intent.lineage.map(item => item.source)).toEqual(["a", "b", "c"].map(digit => digit.repeat(40)));
+  });
+  it("still allows an unattempted current source, as before", () => {
+    const cfg = config(), state = newState(cfg, "e", now); state.sources = [source()];
+    const intent = createIntent(state, cfg, "staging", state.sources[0]!, now, now);
+    adoptRepair(state, cfg, intent.id, state.sources[0]!, "reviewed merge before any attempt", now);
+    expect(intent.lineage).toHaveLength(2); expect(intent.state).toBe("pending");
+  });
+});
+
 describe("irreversible identity, evidence and promotion", () => {
   it("allocates global per-app/version decimal numbers without JS precision loss", () => {
     const state = newState(config(), "e", now);

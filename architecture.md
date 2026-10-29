@@ -3616,6 +3616,10 @@ accepted-proof reuse refuse absent or conflicting required hardware proof.
 Omitting policy preserves legacy normalized configuration bytes/digests.
 Consumer capability/config-round-trip checks and lossless configuration migration
 precede adoption; the evidence qualifier owns actual hardware observations.
+An optional policy `sourceFloor` names the first main source carrying the test
+plan: planning and repair adoption refuse older sources before a build number is
+spent, and repair adoption also requires strict descent past every source already
+attempted for the intent.
 There is no second dispatcher, lease or receipt. A terminal, exactly bound workflow
 with a current accepted upload can reuse its immutable downloaded full-test proof
 after strict identity/input/configuration/claim validation and a fresh pinned Git

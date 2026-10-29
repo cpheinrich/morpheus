@@ -23,6 +23,16 @@ and MCP servers are excluded. The run keeps `bypassPermissions` without a filesy
 version, a named difference from Codex for each consumer to authorize. No dependency: the existing
 reader supervisor, guardian, Zod and CAS store.
 
+**CD sources are admitted against the physical-device floor before a build is spent** — 2026-10-29.
+MO-26-10-29-16.10.51, #562. Evo's repair agent adopted an older merged PR whose source predated
+the device-gate scheme, so the dispatched attempt failed at once and its generic failure taught the
+next agent nothing. The policy gains an optional `sourceFloor`: planning and repair adoption refuse
+an older source with a message naming the floor, and adoption requires strict descent past every
+attempted source. An unknown floor refuses. The worker checks before its completion CAS so a refusal
+is a checkpoint, and shows the agent `lastMain`, attempted sources and the policy on a line kept out
+of the capability digest, because main moving alone must not wake a capability wait. Absent floors
+keep config bytes; automatic slot selection is unchanged. Existing Zod and state guards; no dependency.
+
 **Required physical-device CD proof extends the existing full-test envelope** — 2026-10-28.
 An optional trusted profile/device/host/exact-inventory policy preserves legacy config bytes
 when absent, while opt-in changes configuration identity through normal migration.

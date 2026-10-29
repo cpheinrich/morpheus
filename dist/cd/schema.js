@@ -25,6 +25,9 @@ const physicalIdentifier = z.string().min(1).max(1024).refine(value => value ===
 export const physicalDevicePolicySchema = z.object({
     schemaVersion: z.literal(1), profile: physicalIdentifier, deviceId: physicalIdentifier, hostId: physicalIdentifier,
     testIds: z.array(physicalIdentifier).min(1).max(2048).refine(ids => new Set(ids).size === ids.length, "physical test IDs must be unique"),
+    // First first-parent main commit whose source carries this test plan. Older sources cannot pass it,
+    // so planning and repair adoption refuse them before a build number is spent. Absent hashes as before.
+    sourceFloor: sha.optional(),
 }).strict();
 export const configSchema = z.object({
     schemaVersion: z.literal(1), repository: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),

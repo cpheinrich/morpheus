@@ -16,6 +16,7 @@ export declare const physicalDevicePolicySchema: z.ZodObject<{
     deviceId: z.ZodString;
     hostId: z.ZodString;
     testIds: z.ZodArray<z.ZodString>;
+    sourceFloor: z.ZodOptional<z.ZodString>;
 }, z.core.$strict>;
 export declare const configSchema: z.ZodObject<{
     schemaVersion: z.ZodLiteral<1>;
@@ -77,6 +78,7 @@ export declare const configSchema: z.ZodObject<{
             deviceId: z.ZodString;
             hostId: z.ZodString;
             testIds: z.ZodArray<z.ZodString>;
+            sourceFloor: z.ZodOptional<z.ZodString>;
         }, z.core.$strict>>;
     }, z.core.$strip>>;
     native: z.ZodOptional<z.ZodObject<{

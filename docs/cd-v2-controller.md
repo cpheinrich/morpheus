@@ -172,7 +172,8 @@ A consumer may add `tests.physicalDevice` to its trusted configuration:
   "profile": "device-regression-v1",
   "deviceId": "synthetic-device",
   "hostId": "synthetic-host",
-  "testIds": ["DeviceTests/testCamera", "DeviceTests/testHealth"]
+  "testIds": ["DeviceTests/testCamera", "DeviceTests/testHealth"],
+  "sourceFloor": "0123456789abcdef0123456789abcdef01234567"
 }
 ```
 
@@ -181,6 +182,17 @@ choose a smaller passing plan. Omission preserves the previous normalized
 configuration and digest. Adding or changing policy changes configuration identity
 and requires the existing explicit lossless migration; it does not rewrite old
 attempts, release holds or resume work.
+
+Optional `sourceFloor` is the full SHA of the first first-parent main commit whose
+source carries this test plan; older sources cannot pass it. When it is set,
+planning refuses an older selected source before reserving a build number, and
+that refusal routes the intent to repair with a message naming the floor. Repair
+adoption, and the worker's check of a merged repair, refuse an older source too.
+A floor that is not a verified first-parent main source refuses rather than
+admitting everything. Omitting the field keeps an existing policy's configuration
+bytes and digest; adding it changes configuration identity like any other policy
+change. The runtime round-trip check below covers it: a runtime that predates the
+field rejects the strict policy object instead of dropping it.
 
 Before adopting the policy, consumers must import
 `CD_PHYSICAL_DEVICE_EVIDENCE_VERSION` from `morpheus-kit/cd`, require exactly
@@ -408,6 +420,15 @@ repairs may complete from direct evidence without inventing a code PR; pre-uploa
 retry still requires executor quiescence. Accepted/uncertain binaries continue
 provider reconciliation under their original identity.
 
+A code repair's merged source is adopted only when it is at or after the intent's
+current source, strictly after every source already attempted for that intent (re-running
+a source repeats its outcome and spends another build number), and at or after any
+physical-device `sourceFloor`. The worker checks this after verifying the PR, so a
+refused source becomes a checkpoint whose summary says why; adoption re-checks inside
+the completion CAS. The prompt carries a separate `Repair source admissibility`
+line with `lastMain`, the attempted sources and the physical policy's profile, test IDs
+and floor, so the agent can see which sources are admissible.
+
 Without an explicit `--work-id`, selection considers only non-complete work whose
 next check is due (or whose capability context warrants a recheck below) and whose
 lease is absent or expired. Paused and post-resume
@@ -443,7 +464,8 @@ permission or review clearance.
 The immutable `worker-start` transition result records a versioned context
 digest associated with its exact work, task, invocation and fence. It covers the
 task and evidence plus delivery context actually frozen into the prompt before
-quota admission. CAS reloads preserve that original digest, so evidence arriving
+quota admission. The admissibility line is outside that digest, so main moving on
+its own does not wake a capability wait. CAS reloads preserve that original digest, so evidence arriving
 during admission remains new for the next invocation. Retry clocks, native
 HEADs, usage and self-generated checkpoints are not capability changes. Old or
 malformed receipts or unsupported historical blocked claims cannot suppress

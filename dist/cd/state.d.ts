@@ -26,6 +26,10 @@ export declare function createIntent(state: CdState, config: CdConfig, channel: 
 /** Slot decisions and watermark mutate together inside one ledger transaction. */
 export declare function evaluateSlots(state: CdState, config: CdConfig, now: string): void;
 export declare function reserveBuild(state: CdState, appId: string, version: string, attemptId: string, providerMaximum: string, now: string): string;
+/** A configured physical-device floor names the first main source that carries its test plan. */
+export declare function assertSourceAdmissible(state: CdState, config: CdConfig, source: SourceRevision): void;
+/** Checks only; adoptRepair applies it before mutating, and the worker before its completion CAS. */
+export declare function assertRepairAdmissible(state: CdState, config: CdConfig, intentId: string, source: SourceRevision): void;
 export declare function planAttempt(state: CdState, config: CdConfig, intentId: string, controlSha: string, providerMaximum: string, now: string, lane?: "local" | "hosted"): Attempt;
 export declare function checkIdentity(state: CdState, identity: Identity): {
     intent: DeliveryIntent;

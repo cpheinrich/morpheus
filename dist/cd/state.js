@@ -168,9 +168,31 @@ export function reserveBuild(state, appId, version, attemptId, providerMaximum, 
     sequence.reservations[attemptId] = { buildNumber, at: now, burned: true };
     return buildNumber;
 }
+/** A configured physical-device floor names the first main source that carries its test plan. */
+export function assertSourceAdmissible(state, config, source) {
+    const policy = config.tests.physicalDevice, floor = policy?.sourceFloor;
+    if (!policy || !floor)
+        return;
+    // An unknown floor is not "no floor": refusing keeps a typo or unobserved commit from admitting everything.
+    const boundary = state.sources.find(item => item.sha === floor);
+    invariant(boundary, `Physical-device source floor ${floor} is not a verified first-parent main source; correct tests.physicalDevice.sourceFloor through a configuration migration`);
+    invariant(source.order >= boundary.order, `Source ${source.sha} predates physical-device source floor ${floor}, so it cannot carry the configured physical test plan (profile ${policy.profile}, ${policy.testIds.length} tests); deliver a main source at or after the floor`);
+}
+/** Checks only; adoptRepair applies it before mutating, and the worker before its completion CAS. */
+export function assertRepairAdmissible(state, config, intentId, source) {
+    const intent = intentAt(state, intentId), previous = sourceAt(state, intent.source);
+    invariant(!intent.postResumeKey, "Post-resume acceptance source cannot be adopted or retargeted");
+    invariant(source.order >= previous.order, "Repair source must descend along configured main history");
+    // Re-adopting a source that already ran repeats its outcome and spends another build number.
+    const attempted = intent.attempts.map(attempt => sourceAt(state, attempt.sourceSha)).reduce((latest, item) => !latest || item.order > latest.order ? item : latest, undefined);
+    invariant(!attempted || source.order > attempted.order, `Repair source ${source.sha} does not descend past attempted source ${attempted?.sha}; return a newer reviewed main merge`);
+    assertSourceAdmissible(state, config, source);
+}
 export function planAttempt(state, config, intentId, controlSha, providerMaximum, now, lane = "local") {
     const intent = intentAt(state, intentId), source = sourceAt(state, intent.source);
     invariant(intent.state !== "delivered" && !intent.attempts.some(attempt => attempt.status === "active"), "Intent already has an active or delivered attempt");
+    // A plain error here routes the intent to repair with this message; no build number is reserved.
+    assertSourceAdmissible(state, config, source);
     const lineageAge = intent.lineage.find(item => item.inputDigest === source.inputDigest)?.mainEnteredAt ?? source.mainEnteredAt;
     invariant(intent.validation && intent.sourceAgeWaiver || Date.parse(lineageAge) + config.channels[intent.channel].minimumAgeHours * 3_600_000 <= Date.parse(now), "Production source is not old enough");
     if (intent.postResumeKey) {
@@ -404,9 +426,8 @@ export function repairWork(state, intentId, evidence, now) {
     return id;
 }
 export function adoptRepair(state, config, intentId, source, evidence, now) {
-    const intent = intentAt(state, intentId), previous = sourceAt(state, intent.source);
-    invariant(!intent.postResumeKey, "Post-resume acceptance source cannot be adopted or retargeted");
-    invariant(source.order >= previous.order, "Repair source must descend along configured main history");
+    assertRepairAdmissible(state, config, intentId, source);
+    const intent = intentAt(state, intentId);
     intent.source = source.sha;
     intent.lineage.push({ source: source.sha, inputDigest: source.inputDigest, mainEnteredAt: source.mainEnteredAt, reason: "reviewed merged repair", evidence });
     for (const attempt of intent.attempts)
