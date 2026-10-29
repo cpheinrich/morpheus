@@ -3258,6 +3258,19 @@ bundle only as a lazy import, and the private index is fetched only when an auth
 search. At the current repository scale this avoids a service and operational state; consumers
 should revisit the architecture when the compressed index becomes materially large.
 
+#### Section links
+
+Every section of an HQ page is addressable and shareable without any page opting in.
+`morpheus-kit/section-links/react` is mounted once in the HQ layout. It gives each `h2`–`h4` that
+lacks an `id` GitHub's slug of its text, the same address the heading has in the repository's
+Markdown, and leaves authored ids alone. Hovering a heading or its left gutter shows a link icon.
+Clicking it copies `page#section` and replaces the address-bar URL without adding a history entry.
+The behaviour is a property of the layout rather than of each page: a component every page had
+to use would cover only the pages someone remembered to change. The icon floats beside the
+heading instead of being injected into it, because React owns heading children and an injected node
+is erased on re-render. A missing `id` is the only write. Adding one before a Suspense boundary
+hydrates logs a development-only attribute mismatch. See `src/section-links/README.md`.
+
 `morpheus web init` includes this path whenever it scaffolds `/hq`: the visible search control,
 private static index route, deployment-versioned URL, neutral styling, and a working overview
 document. The starter catalogue is intentionally explicit rather than a repository-wide scan.

@@ -133,6 +133,8 @@ describe("scaffoldWeb", () => {
     const layout = await readFile(join(root, "apps/web/app/hq/layout.tsx"), "utf8");
     expect(layout).toContain("<HqSearch");
     expect(layout).toContain("VERCEL_GIT_COMMIT_SHA");
+    expect(layout).toContain('from "morpheus-kit/section-links/react"');
+    expect(layout).toContain("<SectionLinks />");
 
     const route = await readFile(join(root, "apps/web/app/hq/search-index/route.ts"), "utf8");
     expect(route).toContain("hqSearchResponseHeaders");
