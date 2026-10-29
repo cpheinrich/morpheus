@@ -19,13 +19,20 @@ const channel = z.object({
     externalGroupIds: z.array(z.string().min(1)).min(1).optional(),
 }).strict();
 const relativeScript = z.string().refine(value => !value.startsWith("/") && !value.split("/").includes(".."), "must be repository relative");
+/** Consumers must check this exported capability before adopting an opt-in policy. */
+export const CD_PHYSICAL_DEVICE_EVIDENCE_VERSION = 1;
+const physicalIdentifier = z.string().min(1).max(1024).refine(value => value === value.trim() && !/[\x00-\x1f\x7f]/.test(value), "must be nonblank without surrounding whitespace or controls");
+export const physicalDevicePolicySchema = z.object({
+    schemaVersion: z.literal(1), profile: physicalIdentifier, deviceId: physicalIdentifier, hostId: physicalIdentifier,
+    testIds: z.array(physicalIdentifier).min(1).max(2048).refine(ids => new Set(ids).size === ids.length, "physical test IDs must be unique"),
+}).strict();
 export const configSchema = z.object({
     schemaVersion: z.literal(1), repository: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
     mainBranch: z.string().default("main"), stateBranch: z.string().default("morpheus-cd-state"),
     mode: z.enum(["observe", "active"]).default("observe"), inputs: z.array(z.string().min(1)).min(1),
     controlRef: z.string().default("main"), deliveryWorkflow: z.string().default("cd-v2-delivery.yml"),
     channels: z.object({ staging: channel, production: channel }).strict(),
-    tests: z.object({ allowedSkips: z.array(z.string()).default([]) }).default({ allowedSkips: [] }),
+    tests: z.object({ allowedSkips: z.array(z.string()).default([]), physicalDevice: physicalDevicePolicySchema.optional() }).default({ allowedSkips: [] }),
     native: z.object({ workingDirectory: relativeScript, project: z.string(), testScheme: z.string(), xcodeVersion: z.string(), destination: z.string() }).optional(),
     execution: z.object({ localRunner: z.string(), hostedRunner: z.string().default("macos-26"), maxNativeJobs: z.number().int().min(1).max(2).default(2) }).optional(),
     hooks: z.object({ preflightScript: relativeScript.optional(), verifyScript: relativeScript.optional() }).optional(),
@@ -73,6 +80,21 @@ export const postResumeAcceptanceSchema = z.object({
     yielded: z.object({ attemptId: postResumeId, at: timestamp }).strict().optional(),
     releases: z.record(digest.or(postResumeId), postResumeExecutionProofSchema.extend({ identityDigest: digest, leaseOwner: z.string().min(1), fence: z.number().int().positive(), at: timestamp }).strict()),
     groups: z.record(digest, z.object({ attemptId: postResumeId, groupId: z.string().min(1), buildId: z.string().min(1), claimedAt: timestamp, observedAt: timestamp.optional() }).strict()),
+}).strict();
+const physicalBinding = {
+    schemaVersion: z.literal(1), intentId: physicalIdentifier, attemptId: physicalIdentifier, dispatchEffectId: physicalIdentifier,
+    sourceSha: sha, controlSha: sha, runId: z.string().regex(/^[1-9][0-9]*$/), runAttempt: z.string().regex(/^[1-9][0-9]*$/),
+    appInputDigest: digest, configurationDigest: digest, profile: physicalIdentifier, deviceId: physicalIdentifier, hostId: physicalIdentifier,
+    platform: z.literal("iOS"), simulated: z.literal(false),
+    artifacts: z.array(z.object({ name: physicalIdentifier, sha256: digest }).strict()).min(1).max(64),
+};
+export const physicalDeviceEvidenceSchema = z.object({
+    ...physicalBinding, inventory: z.object({ ids: z.array(physicalIdentifier).min(1).max(2048), sha256: digest }).strict(),
+    results: z.array(z.object({ id: physicalIdentifier, status: z.enum(["passed", "failed", "skipped"]), attempts: z.number().int().positive() }).strict()).min(1).max(2048),
+}).strict();
+export const physicalDeviceProofSchema = z.object({
+    ...physicalBinding, policyHash: digest, evidenceHash: digest, inventoryHash: digest, executedCount: z.number().int().positive().max(2048),
+    firstAttemptPassed: z.literal(true),
 }).strict();
 export function canonical(value) {
     if (Array.isArray(value))

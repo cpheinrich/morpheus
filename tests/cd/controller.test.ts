@@ -9,6 +9,7 @@ import { CdWait } from "../../src/cd/errors.js";
 import { configurationDigest, hash, type Attempt, type CdState } from "../../src/cd/schema.js";
 import { FakeGitHub } from "./fake-github.js";
 import { config, now, observation, prepared, source } from "./fixtures.js";
+import { physicalPolicy } from "./physical-device-fixtures.js";
 
 vi.mock("../../src/cd/source.js", async original => ({ ...await original<typeof import("../../src/cd/source.js")>(), loadSources: vi.fn(), verifyValidator: vi.fn() }));
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(loadSources).mockResolvedValue([source()]); vi.mocked(verifyValidator).mockImplementation(() => {}); });
@@ -680,8 +681,9 @@ describe("controller failure sequences", () => {
   });
 });
 
-async function acceptedHarness(change?: (attempt: Attempt, state: CdState) => void, allowedSkips: string[] = []) {
+async function acceptedHarness(change?: (attempt: Attempt, state: CdState) => void, allowedSkips: string[] = [], physical = false) {
   const cfg = config(); cfg.tests.allowedSkips = allowedSkips;
+  if (physical) cfg.tests.physicalDevice = physicalPolicy();
   const fixture = prepared("staging", cfg), intent = fixture.state.intents[fixture.intentId]!, attempt = intent.attempts[0]!;
   if (allowedSkips.includes(fixture.tests.results[0]!.id)) { fixture.tests.results[0]!.status = "skipped"; delete attempt.tests; recordTests(fixture.state, cfg, fixture.tests); }
   claimUpload(fixture.state, cfg, fixture.upload, now); recordUpload(fixture.state, { ...fixture.upload, outcome: "accepted", providerUploadId: "resource" }, now);
@@ -699,6 +701,33 @@ async function acceptedHarness(change?: (attempt: Attempt, state: CdState) => vo
 }
 
 describe("durable accepted-upload test proof", () => {
+  it("reuses a required physical-device proof through exact Apple receipt without redownloading or rewriting it", async () => {
+    const h = await acceptedHarness(undefined, [], true), before = (await h.store.read()).state;
+    const result = await h.controller.tick(after(now, 2)), state = (await h.store.read()).state;
+    expect(result.errors).toEqual([]); expect(h.evidence).not.toHaveBeenCalled(); expect(h.observe).toHaveBeenCalledTimes(1);
+    expect(state.intents[h.intentId]!.attempts[0]!.tests).toEqual(before.intents[h.intentId]!.attempts[0]!.tests);
+    expect(state.intents[h.intentId]!.receipt!.testEvidenceHash).toBe(before.intents[h.intentId]!.attempts[0]!.tests!.evidenceHash);
+    for (const key of ["builds", "budget", "fences", "pauses", "sources", "slots"] as const) expect(state[key]).toEqual(before[key]);
+  });
+  it.each(["missing", "device", "host", "inventory", "source", "retry", "payload"] as const)("refuses conflicting required physical %s before Apple or artifact access", async kind => {
+    const h = await acceptedHarness(attempt => {
+      if (kind === "missing") delete attempt.tests!.physicalDevice;
+      else {
+        const proof = attempt.tests!.physicalDevice!;
+        if (kind === "device") proof.deviceId = "other";
+        if (kind === "host") proof.hostId = "other";
+        if (kind === "inventory") proof.inventoryHash = hash("partial");
+        if (kind === "source") proof.sourceSha = "d".repeat(40);
+        if (kind === "retry") proof.firstAttemptPassed = false as true;
+        if (kind === "payload") proof.artifacts = [{ name: "absent.json", sha256: hash("absent") }];
+      }
+    }, [], true);
+    const before = (await h.store.read()).state, result = await h.controller.tick(after(now, 2)), state = (await h.store.read()).state;
+    expect(result.errors).toHaveLength(1); expect(h.evidence).not.toHaveBeenCalled(); expect(h.observe).not.toHaveBeenCalled();
+    expect(h.assign).not.toHaveBeenCalled(); expect(h.dispatch).not.toHaveBeenCalled();
+    expect(state.intents[h.intentId]!.receipt).toBeUndefined();
+    for (const key of ["builds", "budget", "fences", "pauses", "sources", "slots"] as const) expect(state[key]).toEqual(before[key]);
+  });
   it("delivers through ordinary Apple readback without redownloading or rewriting the proof", async () => {
     const h = await acceptedHarness(), before = (await h.store.read()).state, proof = before.intents[h.intentId]!.attempts[0]!.tests!;
     const result = await h.controller.tick(after(now, 2)), state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
