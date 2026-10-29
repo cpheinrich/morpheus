@@ -8,6 +8,15 @@ export declare const sourceAgeWaiverSchema: z.ZodObject<{
     grantedAt: z.ZodISODateTime;
 }, z.core.$strict>;
 export type SourceAgeWaiver = z.infer<typeof sourceAgeWaiverSchema>;
+/** Consumers must check this exported capability before adopting an opt-in policy. */
+export declare const CD_PHYSICAL_DEVICE_EVIDENCE_VERSION: 1;
+export declare const physicalDevicePolicySchema: z.ZodObject<{
+    schemaVersion: z.ZodLiteral<1>;
+    profile: z.ZodString;
+    deviceId: z.ZodString;
+    hostId: z.ZodString;
+    testIds: z.ZodArray<z.ZodString>;
+}, z.core.$strict>;
 export declare const configSchema: z.ZodObject<{
     schemaVersion: z.ZodLiteral<1>;
     repository: z.ZodString;
@@ -62,6 +71,13 @@ export declare const configSchema: z.ZodObject<{
     }, z.core.$strict>;
     tests: z.ZodDefault<z.ZodObject<{
         allowedSkips: z.ZodDefault<z.ZodArray<z.ZodString>>;
+        physicalDevice: z.ZodOptional<z.ZodObject<{
+            schemaVersion: z.ZodLiteral<1>;
+            profile: z.ZodString;
+            deviceId: z.ZodString;
+            hostId: z.ZodString;
+            testIds: z.ZodArray<z.ZodString>;
+        }, z.core.$strict>>;
     }, z.core.$strip>>;
     native: z.ZodOptional<z.ZodObject<{
         workingDirectory: z.ZodString;
@@ -232,6 +248,68 @@ export interface Artifact {
     id?: string;
     path?: string;
 }
+export declare const physicalDeviceEvidenceSchema: z.ZodObject<{
+    inventory: z.ZodObject<{
+        ids: z.ZodArray<z.ZodString>;
+        sha256: z.ZodString;
+    }, z.core.$strict>;
+    results: z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        status: z.ZodEnum<{
+            skipped: "skipped";
+            failed: "failed";
+            passed: "passed";
+        }>;
+        attempts: z.ZodNumber;
+    }, z.core.$strict>>;
+    schemaVersion: z.ZodLiteral<1>;
+    intentId: z.ZodString;
+    attemptId: z.ZodString;
+    dispatchEffectId: z.ZodString;
+    sourceSha: z.ZodString;
+    controlSha: z.ZodString;
+    runId: z.ZodString;
+    runAttempt: z.ZodString;
+    appInputDigest: z.ZodString;
+    configurationDigest: z.ZodString;
+    profile: z.ZodString;
+    deviceId: z.ZodString;
+    hostId: z.ZodString;
+    platform: z.ZodLiteral<"iOS">;
+    simulated: z.ZodLiteral<false>;
+    artifacts: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        sha256: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+export declare const physicalDeviceProofSchema: z.ZodObject<{
+    policyHash: z.ZodString;
+    evidenceHash: z.ZodString;
+    inventoryHash: z.ZodString;
+    executedCount: z.ZodNumber;
+    firstAttemptPassed: z.ZodLiteral<true>;
+    schemaVersion: z.ZodLiteral<1>;
+    intentId: z.ZodString;
+    attemptId: z.ZodString;
+    dispatchEffectId: z.ZodString;
+    sourceSha: z.ZodString;
+    controlSha: z.ZodString;
+    runId: z.ZodString;
+    runAttempt: z.ZodString;
+    appInputDigest: z.ZodString;
+    configurationDigest: z.ZodString;
+    profile: z.ZodString;
+    deviceId: z.ZodString;
+    hostId: z.ZodString;
+    platform: z.ZodLiteral<"iOS">;
+    simulated: z.ZodLiteral<false>;
+    artifacts: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        sha256: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+export type PhysicalDeviceEvidence = z.infer<typeof physicalDeviceEvidenceSchema>;
+export type PhysicalDeviceProof = z.infer<typeof physicalDeviceProofSchema>;
 export interface TestEvidence extends Identity {
     scope: "full";
     appInputDigest: string;
@@ -250,6 +328,7 @@ export interface TestEvidence extends Identity {
         sha256: string;
         revision?: "control" | "source";
     };
+    physicalDevice?: PhysicalDeviceEvidence;
 }
 export interface TestProof extends Identity {
     scope: "full";
@@ -261,6 +340,7 @@ export interface TestProof extends Identity {
     skippedIds: string[];
     artifacts: Artifact[];
     validator: TestEvidence["validator"];
+    physicalDevice?: PhysicalDeviceProof;
 }
 export interface UploadEvidence extends Identity {
     appId: string;

@@ -1,6 +1,7 @@
 import { hash, type PostResumeOrigin, type PostResumeQualification, type TestEvidence, type UploadEvidence } from "../../src/cd/schema.js";
 import { after, createPostResumeAcceptance, newState, planAttempt, postResumeFingerprint, recordTests, claimUpload } from "../../src/cd/state.js";
 import { config, now, source } from "./fixtures.js";
+import { addPhysicalEvidence } from "./physical-device-fixtures.js";
 
 export function optionalFixture(upload = false, cfg = config()) {
   const state = newState(cfg, "epoch", now);
@@ -15,6 +16,7 @@ export function optionalFixture(upload = false, cfg = config()) {
   const identity = { schemaVersion: 1 as const, intentId, attemptId: attempt.id, dispatchEffectId: attempt.dispatchEffectId, sourceSha: attempt.sourceSha, controlSha: attempt.controlSha, runId: "100", runAttempt: "1" };
   const tests: TestEvidence = { ...identity, scope: "full", appInputDigest: attempt.appInputDigest, configurationDigest: attempt.configurationDigest, inventory: { ids: ["AppTests/testFull"], sha256: hash(["AppTests/testFull"]) }, results: [{ id: "AppTests/testFull", status: "passed" }], artifacts: [{ name: "results.json", sha256: hash("results") }], validator: { path: "scripts/verify.mjs", sha256: hash("validator") } };
   const evidence: UploadEvidence = { ...identity, appId: attempt.appId, version: attempt.version, buildNumber: attempt.buildNumber, ipaSha256: hash("ipa") };
+  if (cfg.tests.physicalDevice) addPhysicalEvidence(tests, cfg.tests.physicalDevice);
   if (upload) { recordTests(state, cfg, tests); claimUpload(state, cfg, evidence, now); attempt.artifactsVerifiedAt = now; }
   return { cfg, state, before, origin, qualification, intentId, attemptId: attempt.id, attempt, identity, tests, upload: evidence };
 }

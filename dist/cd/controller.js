@@ -4,7 +4,7 @@ import { AppleRequestError } from "./apple.js";
 import { boundedGitHubReadApi, pages } from "./store.js";
 import { loadSources, verifyValidator } from "./source.js";
 import { CdWait } from "./errors.js";
-import { adoptSources, after, attemptAt, assertPostResumeAdmission, assertPostResumeNewEffect, ordinaryDemand, postResumeAcceptance, postResumeGroupKey, claimPostResumeGroup, protectedPostResumeUpload, yieldPostResumeAttempt, claimExternalReview, claimGroup, deliver, evaluateSlots, externalReviewKey, invariant, planAttempt, recordTests, recordUpload, repairWork, validateObservation } from "./state.js";
+import { assertPhysicalDeviceProof, adoptSources, after, attemptAt, assertPostResumeAdmission, assertPostResumeNewEffect, ordinaryDemand, postResumeAcceptance, postResumeGroupKey, claimPostResumeGroup, protectedPostResumeUpload, yieldPostResumeAttempt, claimExternalReview, claimGroup, deliver, evaluateSlots, externalReviewKey, invariant, planAttempt, recordTests, recordUpload, repairWork, validateObservation } from "./state.js";
 function knownJob(value) {
     const job = value;
     return !!job && Number.isSafeInteger(job.id) && job.id > 0 && Number.isSafeInteger(job.run_id) && typeof job.head_sha === "string"
@@ -95,6 +95,7 @@ function acceptedTestProof(state, config, intent, attempt, run) {
         && (upload.providerUploadId === undefined || typeof upload.providerUploadId === "string" && upload.providerUploadId.trim().length > 0), "Reusable upload app/version/build/IPA differs");
     const reservation = state.builds[`${attempt.appId}/${attempt.version}`]?.reservations[attempt.id];
     invariant(reservation?.burned === true && reservation.buildNumber === attempt.buildNumber, "Reusable upload build reservation differs");
+    assertPhysicalDeviceProof(config, proof);
     return proof;
 }
 export function status(state, now) {

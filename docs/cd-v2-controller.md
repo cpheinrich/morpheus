@@ -162,6 +162,66 @@ pause, cursor and receipt checks still determine delivery; this is not authority
 reupload, manufacture raw results or count a workflow conclusion as availability.
 An artifact name, count or workflow conclusion never proves full tests.
 
+### Opt-in required physical-device evidence
+
+A consumer may add `tests.physicalDevice` to its trusted configuration:
+
+```json
+{
+  "schemaVersion": 1,
+  "profile": "device-regression-v1",
+  "deviceId": "synthetic-device",
+  "hostId": "synthetic-host",
+  "testIds": ["DeviceTests/testCamera", "DeviceTests/testHealth"]
+}
+```
+
+Presence requires the complete exact configured test inventory; reports cannot
+choose a smaller passing plan. Omission preserves the previous normalized
+configuration and digest. Adding or changing policy changes configuration identity
+and requires the existing explicit lossless migration; it does not rewrite old
+attempts, release holds or resume work.
+
+Before adopting the policy, consumers must import
+`CD_PHYSICAL_DEVICE_EVIDENCE_VERSION` from `morpheus-kit/cd`, require exactly
+`1`, and verify that the actual runtime's `configSchema.parse(config)`
+round-trips the expected physical policy. Older runtimes can strip unknown nested
+configuration fields, so writing JSON alone is not capability evidence. Source
+publication, reviewed consumer pins, full runtime import manifests, migration and
+installed-runtime qualification are separate steps.
+
+The existing `scope: "full"` `TestEvidence` gains an optional
+`physicalDevice` child. That child repeats every common identity plus
+`appInputDigest` and `configurationDigest`; it contains the configured
+`profile`, `deviceId`, `hostId`, literal `platform: "iOS"` and
+`simulated: false`, an `inventory: {ids, sha256}`, exact per-ID
+`results: [{id, status, attempts}]`, and hardware payload
+`artifacts: [{name, sha256}]`. IDs and their hash must exactly match the configured
+plan, each result must be `passed` with `attempts: 1`, and each hardware
+payload reference must match exactly one hashed aggregate sibling file.
+The existing payload verifier checks those real bytes. The pinned consumer
+qualifier remains responsible for deriving the actual device and runner identity,
+enumeration, results and service mode from its test tooling; a report's asserted
+device name is not independent hardware attestation.
+
+Record one aggregate only after simulator and hardware lanes finish. Recording
+simulator evidence first and later adding hardware changes its immutable hash and
+is refused. An identical replay is a no-op and cannot rewind upload progress.
+The ledger compacts the child into its execution/policy/inventory/evidence hashes,
+execution count, first-attempt result and payload references. Required compact
+proof is checked inside the normal upload-claim CAS before run identity, fence,
+lease or owner mutation, and before accepted-upload proof reuse can contact Apple.
+The existing receipt's aggregate `testEvidenceHash` therefore binds the hardware
+evidence without another receipt, command, scheduler or lease.
+
+Missing, stale, substituted, partial, duplicate, skipped or retried hardware proof
+refuses admission. A configured allowed simulator skip never permits a required
+hardware skip. Physical testing can use a development-signed app from the same
+source; this proof alone does not claim its binary/signing mode equals the uploaded
+IPA. The consumer must record and qualify that distinction. Existing unknown-upload,
+burned-build and typed post-resume provenance rules remain in force: evidence replay
+does not restore released native authority or authorize a second upload.
+
 `cd record --kind repair-diagnostic --config ABS --evidence FILE` appends
 untrusted diagnostic data to one existing repair after its latest execution
 attempt has failed. This is separate from `record --kind failure`, which still

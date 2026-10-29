@@ -3584,7 +3584,15 @@ The implementation is `src/cd/`, exported as `morpheus-kit/cd` and `morpheus cd`
 its [operator contract](docs/cd-v2-controller.md) documents config, evidence and
 workflow inputs. GitHub Git commits store the authoritative state and events with
 single-parent nonforce updates and per-invocation ownership. Compact verified
-test proofs reference hashed native artifacts. A terminal, exactly bound workflow
+test proofs reference hashed native artifacts. Consumers may additionally require
+physical-device evidence through an opt-in trusted
+profile/device/host/exact-test policy. The same full-test envelope and compact
+ledger proof retain its execution and policy bindings; upload-claim CAS and
+accepted-proof reuse refuse absent or conflicting required hardware proof.
+Omitting policy preserves legacy normalized configuration bytes/digests.
+Consumer capability/config-round-trip checks and lossless configuration migration
+precede adoption; the evidence qualifier owns actual hardware observations.
+There is no second dispatcher, lease or receipt. A terminal, exactly bound workflow
 with a current accepted upload can reuse its immutable downloaded full-test proof
 after strict identity/input/configuration/claim validation and a fresh pinned Git
 validator check. Artifact service availability after acceptance is not an ongoing
