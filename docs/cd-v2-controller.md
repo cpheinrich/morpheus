@@ -189,7 +189,8 @@ planning refuses an older selected source before reserving a build number, and
 that refusal routes the intent to repair with a message naming the floor. Repair
 adoption, and the worker's check of a merged repair, refuse an older source too.
 A floor that is not a verified first-parent main source refuses rather than
-admitting everything. Omitting the field keeps an existing policy's configuration
+admitting everything; planning then waits (`wait-physical-source-floor`) for a
+configuration migration instead of starting repair agents that cannot fix it. Omitting the field keeps an existing policy's configuration
 bytes and digest; adding it changes configuration identity like any other policy
 change. The runtime round-trip check below covers it: a runtime that predates the
 field rejects the strict policy object instead of dropping it.

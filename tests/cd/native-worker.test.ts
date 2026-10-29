@@ -522,6 +522,7 @@ describe("repair source admissibility at verification", () => {
     expect(last.result!.summary).toContain(`deterministic verification pending: ${message}`);
     expect(state.transitions[`worker-ended-${last.id}`]!.result).toMatchObject({ outcome: "checkpoint" }); expect(state.transitions[`worker-error-${last.id}`]).toBeUndefined();
     expect(work.state).toBe("pending"); expect(intent.source).toBe("a".repeat(40)); expect(intent.lineage).toEqual(before.intents[work.intentId]!.lineage); expect(state.sources).toEqual(before.sources);
+    expect(intent.blocker).toContain(message); expect(intent.nextAction).toBe("resume-repair-checkpoint");
   });
   it("shows the agent which sources it may return, outside the capability digest, and adopts the floor itself", async () => {
     const f = await mergedRepair("c", "c");
@@ -529,6 +530,7 @@ describe("repair source admissibility at verification", () => {
     const state = (await f.store.read()).state, work = state.agents[f.workId]!, prompt = (await f.calls())[0]!.prompt, prefix = "Repair source admissibility (controller facts): ";
     expect(JSON.parse(prompt.split("\n").find(line => line.startsWith(prefix))!.slice(prefix.length))).toEqual({ lastMain: "a".repeat(40), attemptedSources: ["a".repeat(40)],
       physicalDevice: { profile: "regression-v1", testIds: physicalPolicy().testIds, sourceFloor: "c".repeat(40) } });
+    expect(prompt).toContain("A code repair is adopted only when its merged main source is at or after the delivery context's source, strictly after every attemptedSources entry");
     assertPromptDigest(state, f.workId, work.invocations.at(-1)!.id, prompt);
     expect(work.state).toBe("complete"); expect(state.intents[work.intentId]!.source).toBe("c".repeat(40)); expect(state.lastMain).toBe("c".repeat(40));
   });

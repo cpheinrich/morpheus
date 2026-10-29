@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { CD_PHYSICAL_DEVICE_EVIDENCE_VERSION, canonical, configSchema, configurationDigest, hash, type PhysicalDeviceProof, type TestEvidence } from "../../src/cd/schema.js";
 import { adoptRepair, assertPhysicalDeviceProof, claimUpload, createIntent, newState, planAttempt, recordTests, recordUpload, releasePostResumeExecution, postResumeExecutionFingerprint, after } from "../../src/cd/state.js";
 import { validatePayloadFiles } from "../../src/cd/evidence.js";
+import { CdWait } from "../../src/cd/errors.js";
 import { config, now, prepared, source } from "./fixtures.js";
 import { optionalFixture } from "./post-resume-fixtures.js";
 import { physicalPolicy } from "./physical-device-fixtures.js";
@@ -147,9 +148,11 @@ describe("physical-device source floor", () => {
     expect(() => planAttempt(f.state, f.cfg, f.intent.id, "c".repeat(40), "7", now)).toThrow(`Source ${"a".repeat(40)} predates physical-device source floor ${"b".repeat(40)}`);
     expect(f.state).toEqual(before); expect(f.state.builds).toEqual({});
   });
-  it("refuses an unknown floor instead of reading it as no floor", () => {
+  it("waits on an unknown floor instead of reading it as no floor or starting repair", () => {
     const f = planned("f".repeat(40), "c"), before = structuredClone(f.state);
-    expect(() => planAttempt(f.state, f.cfg, f.intent.id, "c".repeat(40), "7", now)).toThrow(`Physical-device source floor ${"f".repeat(40)} is not a verified first-parent main source`);
+    let refusal: unknown;
+    try { planAttempt(f.state, f.cfg, f.intent.id, "c".repeat(40), "7", now); } catch (error) { refusal = error; }
+    expect(refusal).toBeInstanceOf(CdWait); expect(refusal).toMatchObject({ code: "physical-source-floor", message: expect.stringContaining(`Physical-device source floor ${"f".repeat(40)} is not a verified first-parent main source`) });
     expect(f.state).toEqual(before);
   });
   it("adopts a repair only at or after the floor, without mutating on refusal", () => {

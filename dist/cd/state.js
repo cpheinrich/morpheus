@@ -174,8 +174,10 @@ export function assertSourceAdmissible(state, config, source) {
     if (!policy || !floor)
         return;
     // An unknown floor is not "no floor": refusing keeps a typo or unobserved commit from admitting everything.
+    // Only a configuration migration can correct it, so it waits for the operator rather than starting repair agents.
     const boundary = state.sources.find(item => item.sha === floor);
-    invariant(boundary, `Physical-device source floor ${floor} is not a verified first-parent main source; correct tests.physicalDevice.sourceFloor through a configuration migration`);
+    if (!boundary)
+        throw new CdWait(`Physical-device source floor ${floor} is not a verified first-parent main source; correct tests.physicalDevice.sourceFloor through a configuration migration`, "physical-source-floor");
     invariant(source.order >= boundary.order, `Source ${source.sha} predates physical-device source floor ${floor}, so it cannot carry the configured physical test plan (profile ${policy.profile}, ${policy.testIds.length} tests); deliver a main source at or after the floor`);
 }
 /** Checks only; adoptRepair applies it before mutating, and the worker before its completion CAS. */

@@ -399,6 +399,18 @@ describe("physical-device source floor at planning", () => {
     expect(Object.values(state.agents).map(work => work.evidence)).toEqual([[message]]);
     expect(state.builds["123/1.0"]!.reservations).toEqual({ [h.attemptId]: { buildNumber: "8", at: now, burned: true } }); expect(h.dispatch).not.toHaveBeenCalled();
   });
+  it("waits for an operator on an unknown floor without starting a repair agent", async () => {
+    const h = await harness();
+    h.cfg.tests.physicalDevice = { ...physicalPolicy(), sourceFloor: "f".repeat(40) };
+    await h.store.transact("unknown-floor-config", "fixture", now, state => {
+      const intent = state.intents[h.intentId]!; state.configurationDigest = configurationDigest(h.cfg);
+      intent.attempts[0]!.status = "failed"; intent.state = "pending"; intent.nextAction = "dispatch-full-tests"; intent.nextCheckAt = now; return null;
+    });
+    await h.controller.tick(after(now, 5));
+    const state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(intent.state).toBe("waiting"); expect(intent.nextAction).toBe("wait-physical-source-floor"); expect(intent.blocker).toContain(`Physical-device source floor ${"f".repeat(40)}`);
+    expect(state.agents).toEqual({}); expect(intent.attempts).toHaveLength(1); expect(h.dispatch).not.toHaveBeenCalled();
+  });
 });
 describe("terminal job placeholders", () => {
   async function expectRepair(h: Awaited<ReturnType<typeof admissionHarness>>) {
