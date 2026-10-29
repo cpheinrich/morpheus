@@ -1,7 +1,7 @@
-import type { CdState } from "./schema.js";
+import type { AgentExecutor, CdState } from "./schema.js";
 import { type LedgerStore } from "./repair-control.js";
 export interface WorkerOptions {
-    executor: "local" | "hosted";
+    executor: AgentExecutor;
     hostId?: string;
     workId?: string;
     invocationId?: string;

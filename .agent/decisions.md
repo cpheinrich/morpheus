@@ -10,6 +10,19 @@ bulk migration. `chief-product-officer` owns the product outcome and `vp-design`
 quality under it; both are canonical Morpheus guides distributed as pointers, and neither role
 grants authority by itself. Full standard: `docs/runbooks/hq-product-design.md`.
 
+**A native Claude subscription is an opt-in third repair executor, bound in-process** — 2026-10-29.
+MO-26-10-29-14.02.58. Chris asked for repair work on his own Claude Max sign-in on the MacBook Pro,
+not Zoe's accounts and not hosted Claude. `agents.claude` and `--executor claude` are separate from
+`local` (Codex stays the default, byte-identical) and require the ledger to hold the migrated
+configuration. Usage comes from the CLI's own `get_usage` control request, so no token is exported
+and no scope is added; it is trusted only from builds whose freshness code was read
+(`CLAUDE_CODE_ANALYSED_VERSIONS`), and only with paid extra usage disabled and a listed
+model-family window. Identity is bound through the `initialize` reply in every Claude process before
+any prompt, because `auth status` cannot see a key injected through a settings file; settings files
+and MCP servers are excluded. The run keeps `bypassPermissions` without a filesystem sandbox in this
+version, a named difference from Codex for each consumer to authorize. No dependency: the existing
+reader supervisor, guardian, Zod and CAS store.
+
 **Required physical-device CD proof extends the existing full-test envelope** — 2026-10-28.
 An optional trusted profile/device/host/exact-inventory policy preserves legacy config bytes
 when absent, while opt-in changes configuration identity through normal migration.

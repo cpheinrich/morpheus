@@ -113,6 +113,17 @@ export declare const configSchema: z.ZodObject<{
             model: z.ZodOptional<z.ZodString>;
             quotaFile: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>>;
+        claude: z.ZodOptional<z.ZodObject<{
+            command: z.ZodDefault<z.ZodArray<z.ZodString>>;
+            model: z.ZodString;
+            account: z.ZodObject<{
+                email: z.ZodEmail;
+                subscription: z.ZodEnum<{
+                    max: "max";
+                    pro: "pro";
+                }>;
+            }, z.core.$strict>;
+        }, z.core.$strict>>;
     }, z.core.$strip>>;
     budget: z.ZodDefault<z.ZodObject<{
         togetherLimitUsd: z.ZodDefault<z.ZodNumber>;
@@ -498,6 +509,8 @@ export interface DeliveryIntent {
     eligibleAt?: string;
     external?: ExternalStatus;
 }
+/** `local` is the native Codex executor; `claude` the opt-in native Claude subscription; `hosted` the GitHub workflow. */
+export type AgentExecutor = "local" | "hosted" | "claude";
 export interface AgentWork {
     id: string;
     intentId: string;
@@ -511,7 +524,7 @@ export interface AgentWork {
     lease?: Lease;
     invocations: {
         id: string;
-        executor: "local" | "hosted";
+        executor: AgentExecutor;
         hostId?: string;
         startedAt: string;
         endedAt?: string;

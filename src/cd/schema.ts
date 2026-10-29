@@ -42,6 +42,12 @@ export const configSchema = z.object({
   agents: z.object({
     local: z.object({ command: command.default(["codex"]), model: z.string().optional(), quotaFile: z.string().optional() }),
     hosted: z.object({ workflow: z.string(), ref: z.string().default("main"), command: command.default(["claude"]), model: z.string().optional(), quotaFile: z.string().optional() }).optional(),
+    // Opt-in host-bound native Claude subscription (docs/cd-v2-claude-executor.md). Absent, configs hash as before.
+    claude: z.object({
+      command: command.default(["claude"]),
+      model: z.string().regex(/^(?:claude-)?(?:opus|fable|sonnet|haiku)(?:-[a-zA-Z0-9_.-]*)?(?:\[[a-zA-Z0-9]+\])?$/, "must name a known Claude model family"),
+      account: z.object({ email: z.email(), subscription: z.enum(["pro", "max"]) }).strict(),
+    }).strict().optional(),
   }).optional(),
   budget: z.object({ togetherLimitUsd: z.number().min(0).max(250).default(250), subscriptionAdmitBelowPercent: z.number().min(0).max(80).default(80), subscriptionStopAtPercent: z.number().min(0).max(90).default(90) }).default({ togetherLimitUsd: 250, subscriptionAdmitBelowPercent: 80, subscriptionStopAtPercent: 90 }),
   deadlines: z.object({ wakeMinutes: z.number().positive().default(15), admissionMinutes: z.number().positive().default(15), testMinutes: z.number().positive().default(180), uploadMinutes: z.number().positive().default(90), agentMinutes: z.number().positive().max(45).default(45), appleObservationMinutes: z.number().positive().default(30), pollMinutes: z.number().positive().default(5), deliveryHours: z.number().positive().max(6).default(6) }).default({ wakeMinutes: 15, admissionMinutes: 15, testMinutes: 180, uploadMinutes: 90, agentMinutes: 45, appleObservationMinutes: 30, pollMinutes: 5, deliveryHours: 6 }),
@@ -145,9 +151,11 @@ export interface DeliveryIntent {
   state: "pending" | "testing" | "uploading" | "processing" | "delivered" | "repairing" | "waiting" | "paused";
   nextAction: string; nextCheckAt: string; blocker?: string; attempts: Attempt[]; receipt?: Receipt; eligibleAt?: string; external?: ExternalStatus;
 }
+/** `local` is the native Codex executor; `claude` the opt-in native Claude subscription; `hosted` the GitHub workflow. */
+export type AgentExecutor = "local" | "hosted" | "claude";
 export interface AgentWork {
   id: string; intentId: string; taskDigest: string; task: string; evidence: string[]; strategy: number; state: "pending" | "running" | "waiting" | "complete";
-  createdAt: string; nextCheckAt: string; lease?: Lease; invocations: { id: string; executor: "local" | "hosted"; hostId?: string; startedAt: string; endedAt?: string; session?: string; result?: AgentResult; usage?: unknown[]; runIds?: string[]; dispatchState?: "intended" | "sent" | "uncertain"; dispatchCount?: number; lastDispatchAt?: string }[];
+  createdAt: string; nextCheckAt: string; lease?: Lease; invocations: { id: string; executor: AgentExecutor; hostId?: string; startedAt: string; endedAt?: string; session?: string; result?: AgentResult; usage?: unknown[]; runIds?: string[]; dispatchState?: "intended" | "sent" | "uncertain"; dispatchCount?: number; lastDispatchAt?: string }[];
 }
 export interface AgentResult { outcome: "repaired" | "checkpoint" | "blocked"; summary: string; pullRequest?: string; sourceSha?: string; reviewHead?: string; evidence: string[]; missingCapability?: string }
 export interface CdState {

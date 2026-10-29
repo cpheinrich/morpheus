@@ -23,7 +23,8 @@ const HELP = `morpheus cd config|init|tick|request|status|verify-execution|claim
   record --kind tests|failure|quiescence --evidence FILE (or - for stdin)
   record --kind repair-diagnostic --evidence FILE  Bounded data for an existing failed repair
   upload-hook --phase before|resource|after
-  worker --executor local|hosted [--host-id ID] [--work-id ID --invocation-id ID --task-digest SHA256]
+  worker --executor local|hosted|claude [--host-id ID] [--work-id ID --invocation-id ID --task-digest SHA256]
+  quota --executor local|hosted|claude  One fresh subscription reading, no model turn
   budget --operation spend-as-needed --campaign ID --cap-micros N --authorization-ref REF
   budget --operation reserve|settle --id ID [--request FILE --maximum-micros N|--actual-micros N]
     reserve [--authority FILE --authority-digest SHA256]  Explicit reviewed source CI grant
@@ -150,7 +151,7 @@ export async function cd(argv, environment = process.env) {
             result = { valid: true, configurationDigest: configurationDigest(config), config };
             break;
         case "quota": {
-            invariant(values.executor === "local" || values.executor === "hosted", "Quota probe requires --executor local|hosted");
+            invariant(values.executor === "local" || values.executor === "hosted" || values.executor === "claude", "Quota probe requires --executor local|hosted|claude");
             result = await new QuotaReader(config, values.executor, sourceDir, environment).read(now);
             break;
         }
@@ -274,7 +275,7 @@ export async function cd(argv, environment = process.env) {
             break;
         }
         case "worker": {
-            invariant(values.executor === undefined || values.executor === "local" || values.executor === "hosted", "Unknown agent executor");
+            invariant(values.executor === undefined || values.executor === "local" || values.executor === "hosted" || values.executor === "claude", "Unknown agent executor");
             result = await runWorker(config, store, sourceDir, { executor: values.executor ?? "local", hostId: values["host-id"], workId: values["work-id"], invocationId: values["invocation-id"], taskDigest: values["task-digest"] }, environment);
             break;
         }
