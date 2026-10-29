@@ -77,6 +77,17 @@ export function fragmentId(hash: string): string | null {
   }
 }
 
+/**
+ * Open every closed `<details>` around an element, as the browser does when it follows a fragment
+ * itself. `scrollIntoView` does not, so a section inside "Show more" would otherwise leave the
+ * reader at the top of the page with the target still folded away.
+ */
+export function revealAncestors(element: Element): void {
+  for (let node = element.parentElement; node; node = node.parentElement) {
+    if (node instanceof HTMLDetailsElement && !node.open) node.open = true;
+  }
+}
+
 /** What the reader sees: rendered whitespace collapses, so the slug should too. */
 export function headingText(heading: Element): string {
   return (heading.textContent ?? "").replace(/\s+/g, " ").trim();

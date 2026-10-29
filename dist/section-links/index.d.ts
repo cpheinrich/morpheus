@@ -36,6 +36,12 @@ export declare function uniqueId(base: string, taken: (id: string) => boolean): 
 export declare function sectionHref(location: Pick<Location, "origin" | "pathname" | "search">, id: string): string;
 /** The id a fragment names, or null; a malformed escape is not an id. */
 export declare function fragmentId(hash: string): string | null;
+/**
+ * Open every closed `<details>` around an element, as the browser does when it follows a fragment
+ * itself. `scrollIntoView` does not, so a section inside "Show more" would otherwise leave the
+ * reader at the top of the page with the target still folded away.
+ */
+export declare function revealAncestors(element: Element): void;
 /** What the reader sees: rendered whitespace collapses, so the slug should too. */
 export declare function headingText(heading: Element): string;
 /** The root headings are searched in. */

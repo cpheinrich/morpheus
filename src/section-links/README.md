@@ -18,12 +18,15 @@ No page changes. Headings are found in the DOM, so pages written later are cover
   the repository's Markdown. A generated id follows its heading's text, so a heading that renders
   "Loading…" first is not addressed as `loading` forever. If an element rendered later carries
   the same id, such as a chart's gradient, the heading's id is re-derived. A link to a generated
-  id still lands: the component scrolls to it once the id exists, once per navigation.
+  id still lands: the component scrolls to it once the id exists, once per navigation, opening any
+  closed `<details>` around it first, as the browser does for an id it can find itself.
 - **Scope.** By default it looks in `main` (the body if there is none) and skips `nav`, `aside`,
   dialogs and anything under `[data-section-links="off"]`. `selector`, `scope` and `exclude` props
   override each of these.
 - **Look.** The icon takes the heading's colour at reduced opacity, so it suits a light or dark
-  theme without configuration. The built-in styles use `:where()` and have zero specificity: a
+  theme without configuration. It always sits wholly in the margin left of the text. Where a
+  single-column layout leaves little margin, the gap and then the icon shrink, down to 12px. Where
+  even that would cover the first letter, no icon is shown. The built-in styles use `:where()` and have zero specificity: a
   project restyles it by passing `classes` (as with `hq-search/react`) or by writing a rule for
   `.morpheus-section-links__button`. `copy` takes plain strings (`label` replaces `{title}`), so it
   can be passed from a server-component layout.

@@ -8,6 +8,7 @@ import {
   eligibleHeading,
   fragmentId,
   headingSlug,
+  revealAncestors,
   sectionHref,
   sectionScope,
   uniqueId,
@@ -171,6 +172,19 @@ describe("assignHeadingIds", () => {
     expect(sectionScope(document, DEFAULT_SECTION_LINK_OPTIONS)).toBe(document.body);
     assignHeadingIds(document, DEFAULT_SECTION_LINK_OPTIONS, new WeakMap());
     expect(document.querySelector("h2")?.id).toBe("standalone");
+  });
+});
+
+describe("revealAncestors", () => {
+  it("opens every closed details around an element and nothing else", () => {
+    document.body.innerHTML = `
+      <details id="outer"><summary>Outer</summary>
+        <details id="inner" open><summary>Inner</summary><h3 id="target">Target</h3></details>
+      </details>
+      <details id="unrelated"><summary>Elsewhere</summary></details>`;
+    revealAncestors(document.getElementById("target")!);
+    const open = (id: string) => (document.getElementById(id) as HTMLDetailsElement).open;
+    expect([open("outer"), open("inner"), open("unrelated")]).toEqual([true, true, false]);
   });
 });
 
