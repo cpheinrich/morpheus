@@ -24,7 +24,8 @@ const HELP = `morpheus cd config|init|tick|request|status|verify-execution|claim
   record --kind tests|failure|quiescence --evidence FILE (or - for stdin)
   record --kind repair-diagnostic --evidence FILE  Bounded data for an existing failed repair
   upload-hook --phase before|resource|after
-  worker --executor local|hosted [--host-id ID] [--work-id ID --invocation-id ID --task-digest SHA256]
+  worker --executor local|hosted|claude [--host-id ID] [--work-id ID --invocation-id ID --task-digest SHA256]
+  quota --executor local|hosted|claude  One fresh subscription reading, no model turn
   budget --operation spend-as-needed --campaign ID --cap-micros N --authorization-ref REF
   budget --operation reserve|settle --id ID [--request FILE --maximum-micros N|--actual-micros N]
     reserve [--authority FILE --authority-digest SHA256]  Explicit reviewed source CI grant
@@ -122,7 +123,7 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
   let result: unknown;
   switch (positionals[0]) {
     case "config": result = { valid: true, configurationDigest: configurationDigest(config), config }; break;
-    case "quota": { invariant(values.executor === "local" || values.executor === "hosted", "Quota probe requires --executor local|hosted"); result = await new QuotaReader(config, values.executor, sourceDir, environment).read(now); break; }
+    case "quota": { invariant(values.executor === "local" || values.executor === "hosted" || values.executor === "claude", "Quota probe requires --executor local|hosted|claude"); result = await new QuotaReader(config, values.executor, sourceDir, environment).read(now); break; }
     case "init": result = await store.initialize(now); break;
     case "status": { const snapshot = await store.read(); result = { head: snapshot.head, epoch: snapshot.state.epoch, mode: config.mode, intents: status(snapshot.state, now), slots: snapshot.state.slots, agents: snapshot.state.agents, budget: snapshot.state.budget, budgetStatus: budgetStatus(snapshot.state, config), pauses: snapshot.state.pauses }; break; }
     case "tick": {
@@ -201,7 +202,7 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
       break;
     }
     case "worker": {
-      invariant(values.executor === undefined || values.executor === "local" || values.executor === "hosted", "Unknown agent executor");
+      invariant(values.executor === undefined || values.executor === "local" || values.executor === "hosted" || values.executor === "claude", "Unknown agent executor");
       result = await runWorker(config, store, sourceDir, { executor: values.executor ?? "local", hostId: values["host-id"], workId: values["work-id"], invocationId: values["invocation-id"], taskDigest: values["task-digest"] }, environment); break;
     }
     case "budget": {

@@ -1,9 +1,9 @@
 // Worker-only entry: runs an INJECTED, unchanged runWorker behind the repair-only control.
 // It never imports a worker module, so the caller binds the exact pinned runtime it runs.
-import type { CdState } from "./schema.js";
+import type { AgentExecutor, CdState } from "./schema.js";
 import { RepairControlInvalid, RepairHeld, guardStore, repairHeld, validateRepairControls, type LedgerStore } from "./repair-control.js";
 
-export interface WorkerOptions { executor: "local" | "hosted"; hostId?: string; workId?: string; invocationId?: string; taskDigest?: string }
+export interface WorkerOptions { executor: AgentExecutor; hostId?: string; workId?: string; invocationId?: string; taskDigest?: string }
 export type RunWorkerPort<C, S extends LedgerStore> = (config: C, store: S, sourceDir: string, options: WorkerOptions, environment?: NodeJS.ProcessEnv) => Promise<unknown>;
 export type HeldAwareResult = { state: "repair-held"; workId: string } | { state: "repair-control-invalid"; reason: string } | { state: "idle" } | unknown;
 
