@@ -52,7 +52,7 @@ Fresh review found a zero-duration timing bypass and a runbook contradiction. Th
   "version": 2,
   "base": "46d1bc24af1717942ac68c36fcd2bce0cdf0c2b8",
   "reviewed": "587efb1da99085828a60e6a17b585f0dcab6ed1e",
-  "covered": "56728da80b6a1e0a3e909bfaf42eead2f7d0e17e",
+  "covered": "2aded10b21bd023d579bcfc2dc85dba822f287ee",
   "authorSession": "codex:01a18ddd-0316-74e2-bfe5-2c037f7d198f",
   "reviewerSession": "/root/morpheus_review_policy_reviewer",
   "risk": "normal",
@@ -63,13 +63,18 @@ Fresh review found a zero-duration timing bypass and a runbook contradiction. Th
     "evidence": "Codex reviewer rollout 01a18ed6-c90a-7dc1-b74e-b964df3ad69d: task_started 2026-10-30T22:03:23.299Z and task_complete 2026-10-30T22:03:59.438Z."
   },
   "outcome": "complete",
-  "summary": "Fresh review found a zero-duration timing bypass and a runbook contradiction. The first correction left an intermediate incomplete-turn path open; the reviewer blocked that follow-up. A shared timing guard, focused regression and runbook correction resolved both findings, and the original reviewer cleared the final commit in the remaining ordinary turn.",
+  "summary": "Fresh review found a zero-duration timing bypass and a runbook contradiction. The first correction left an intermediate incomplete-turn path open; the reviewer blocked that follow-up. A shared timing guard, focused regression and runbook correction resolved both findings, and the original reviewer cleared the final commit in the remaining ordinary turn. CI found AGENTS.md above its 20,000-byte budget; wording was shortened, and the original reviewer conditionally cleared the final exception clarification.",
   "findings": [
     {
       "id": "REV-1",
       "severity": "substantive",
       "description": "A zero-duration template placeholder for an incomplete review turn could be accepted when a later same-reviewer turn cleared, bypassing the positive measurement requirement.",
-      "paths": ["src/review/local.ts", "tests/local-review.test.ts", "dist/review/local.js", "dist/review/local.js.map"],
+      "paths": [
+        "src/review/local.ts",
+        "tests/local-review.test.ts",
+        "dist/review/local.js",
+        "dist/review/local.js.map"
+      ],
       "disposition": "fixed",
       "response": "The final shared timing loop rejects durationMs zero for every version 2 turn. Regressions cover a zero initial turn and a zero intermediate incomplete follow-up before a later clearance; focused review tests pass 151/151. The original reviewer directly probed both and cleared."
     },
@@ -77,9 +82,28 @@ Fresh review found a zero-duration timing bypass and a runbook contradiction. Th
       "id": "REV-2",
       "severity": "minor",
       "description": "The runbook's nonfinal follow-up list omitted incomplete even though it now permits continuation after that outcome.",
-      "paths": ["docs/runbooks/independent-review.md"],
+      "paths": [
+        "docs/runbooks/independent-review.md"
+      ],
       "disposition": "fixed",
       "response": "The runbook now includes incomplete among permissible nonfinal follow-up outcomes; original reviewer verified."
+    },
+    {
+      "id": "REV-3",
+      "severity": "minor",
+      "description": "The revised AGENTS.md sentence implied all extra turns require human authorization, conflicting with automatic verification and finalization exceptions.",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "disposition": "fixed",
+      "response": "Replaced only the sentence specified by the original reviewer; AGENTS.md is 19,946 bytes and the focused agent-instructions suite passes 14/14.",
+      "condition": {
+        "paths": [
+          "AGENTS.md"
+        ],
+        "evidence": "Replace the sentence with \"Other extra turns, and all turns after finalization, require human authorization.\" Change only AGENTS.md and the review worklog; keep AGENTS.md under 20,000 bytes and pass tests/agent-instructions.test.ts."
+      },
+      "conditionMet": "Diff from 90cd4bf changes only the specified sentence in AGENTS.md; wc -c reports 19,946 bytes; pnpm exec vitest run tests/agent-instructions.test.ts --reporter=dot passed 14/14."
     }
   ],
   "followUps": [
@@ -106,6 +130,24 @@ Fresh review found a zero-duration timing bypass and a runbook contradiction. Th
         "evidence": "Same Codex reviewer rollout: task_started 2026-10-30T22:10:22.331Z and task_complete 2026-10-30T22:10:31.340Z."
       },
       "summary": "Shared version 2 timing guard rejects both zero-duration paths; positive-duration same-reviewer continuation passes. REV-1 and REV-2 cleared with no new findings."
+    },
+    {
+      "reviewerSession": "/root/morpheus_review_policy_reviewer",
+      "commit": "90cd4bf4407e4b6a3831831d6187ab75a0ef344f",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.26998333333333335,
+      "timing": {
+        "source": "clock",
+        "durationMs": 16199,
+        "evidence": "Same Codex reviewer rollout: task_started 2026-10-30T22:15:26.245Z and task_complete 2026-10-30T22:15:42.444Z."
+      },
+      "scopeReason": "After ordinary clearance, CI found AGENTS.md exceeded the startup-context budget; reviewer checked the shortened wording and conditioned final exception clarification.",
+      "humanAuthorization": {
+        "approvedBy": "Christopher Heinrich",
+        "approvedAt": "2026-10-30T21:52:23.884Z",
+        "reason": "Christopher explicitly authorized letting the same reviewer finish this review and removing unnecessary approval for ordinary incomplete-review continuation."
+      },
+      "summary": "Conditionally cleared AGENTS.md wording after the CI size fix. REV-3 requires one exact sentence clarification and focused byte/test evidence."
     }
   ]
 }
