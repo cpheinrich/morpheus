@@ -1755,7 +1755,7 @@ substantive finding, and is checked against the commits it covers: the worklog, 
 paths, and explanatory Markdown only — never normative policy files. An explicit human exception is recorded per extra same-reviewer turn
 as `humanAuthorization` (approver, ISO timestamp and reason), preserving the full history and
 all other checks; one authorization never permits subsequent turns. An evidence-pending incomplete
-turn may resume only with explicit authorization on the next same-reviewer turn; the original
+turn may resume with the same reviewer within the ordinary turn cap without human authorization; the original
 verdict stays unchanged and every historical and new turn must satisfy its budget. Incidental pre-existing bugs are recorded
 separately; related unchanged code is blocking only when causally relevant to the PR or acceptance.
 

@@ -326,13 +326,13 @@ describe("three-turn cap", () => {
     expect(check(save(r))).toEqual([]);
     expect(check(save({ ...r, followUp: turn(reviewed, "cleared") }))[0]?.message).toContain("not both");
   });
-  it("allows a third turn only after a blocked second turn", () => {
+  it("allows a third turn after a blocked or incomplete second turn", () => {
     writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
     writeFileSync(join(root, "code.ts"), "second fix"); const covered = commit();
     const r = { ...record(), covered, findings: [substantive], followUps: [turn(first, "blocked"), turn(covered, "cleared")] };
     expect(check(save(r))).toEqual([]);
-    expect(check(save({ ...r, followUps: [turn(first, "cleared"), turn(covered, "cleared")] }))[0]?.message).toContain("only after the second turn returned blocked");
-    expect(check(save({ ...r, followUps: [turn(first, "incomplete"), turn(covered, "cleared")] }))[0]?.message).toContain("only after the second turn returned blocked");
+    expect(check(save({ ...r, followUps: [turn(first, "cleared"), turn(covered, "cleared")] }))[0]?.message).toContain("after a blocked or incomplete turn");
+    expect(check(save({ ...r, followUps: [turn(first, "incomplete"), turn(covered, "cleared")] }))).toEqual([]);
     expect(check(save({ ...r, followUps: [turn(first, "blocked"), turn(covered, "blocked")] }))[0]?.message).toContain("final follow-up must clear");
   });
   it("refuses a fourth turn outright", () => {
@@ -403,17 +403,17 @@ describe("late corrections after clearance", () => {
     writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
     const r = { ...record(), covered: corrected, findings: [substantive], followUps: [turn(first, "cleared"), { ...turn(corrected, "cleared"), scopeReason }] };
     expect(check(save(r))).toEqual([]);
-    expect(check(save({ ...r, followUps: [turn(first, "cleared"), turn(corrected, "cleared")] }))[0]?.message).toContain("only after the second turn returned blocked");
+    expect(check(save({ ...r, followUps: [turn(first, "cleared"), turn(corrected, "cleared")] }))[0]?.message).toContain("after a blocked or incomplete turn");
     // The scope reason belongs on the turn that spends the slot, not the one that cleared before it.
-    expect(check(save({ ...r, followUps: [{ ...turn(first, "cleared"), scopeReason }, turn(corrected, "cleared")] }))[0]?.message).toContain("only after the second turn returned blocked");
+    expect(check(save({ ...r, followUps: [{ ...turn(first, "cleared"), scopeReason }, turn(corrected, "cleared")] }))[0]?.message).toContain("after a blocked or incomplete turn");
     // Without the correction turn, the correction commit is exactly the uncovered code the rule refuses.
     expect(check(save({ ...r, covered: first, followUps: [turn(first, "cleared")] }))[0]?.message).toContain("invalidate");
   });
-  it("never automatically follows an incomplete turn, even with a scope reason", () => {
+  it("resumes an incomplete turn within the ordinary cap", () => {
     writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
     writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
     const r = { ...record(), covered: corrected, findings: [substantive], followUps: [turn(first, "incomplete"), { ...turn(corrected, "cleared"), scopeReason }] };
-    expect(check(save(r))[0]?.message).toContain("only after the second turn returned blocked");
+    expect(check(save(r))).toEqual([]);
   });
   it("refuses a correction once both follow-up turns are spent", () => {
     writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
@@ -1014,7 +1014,7 @@ describe("the shape Evo #291 needs", () => {
 });
 
 
-describe("authorized continuation after missing review evidence", () => {
+describe("same-reviewer continuation after missing review evidence", () => {
   const authorization = { approvedBy: "Chris Heinrich", approvedAt: "2026-09-28T23:09:04Z", reason: "Explicitly authorized another same-reviewer turn after obtaining the missing evidence." };
   function pendingEvidence(): LocalReviewRecord {
     const r = record();
@@ -1026,16 +1026,16 @@ describe("authorized continuation after missing review evidence", () => {
     ];
     return r;
   }
-  it("preserves an incomplete verdict when a human authorizes the next same-reviewer clearance", () => {
+  it("preserves an incomplete verdict when the same reviewer clears the next turn", () => {
     const r = pendingEvidence();
     expect(check(save(r))).toEqual([]);
     expect(r.followUps![0]!.outcome).toBe("incomplete");
   });
-  it("requires authorization on the next turn, even within the default turn cap", () => {
+  it("does not require authorization within the default turn cap", () => {
     const r = pendingEvidence();
     r.followUps![0]!.humanAuthorization = authorization;
     delete r.followUps![1]!.humanAuthorization;
-    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
+    expect(check(save(r))).toEqual([]);
   });
   it.each([0, 1])("still enforces the budget of follow-up %i", index => {
     const r = pendingEvidence();
@@ -1053,10 +1053,10 @@ describe("authorized continuation after missing review evidence", () => {
   });
 });
 
-describe("an authorized follow-up rescues an initial review under the floor", () => {
+describe("a same-reviewer follow-up rescues an initial review under the floor", () => {
   const authorization = { approvedBy: "cpheinrich", approvedAt: "2026-10-08T11:06:12Z", reason: "Authorized one extra same-reviewer turn after a clean initial review fell under the floor." };
   const timing = (durationMs: number) => ({ source: "runner" as const, durationMs, evidence: `Runner total_duration_ms for this turn: ${durationMs}.` });
-  // Shaped like kairos#70: a clean 22 s initial pass recorded incomplete, then one authorized turn.
+  // Shaped like kairos#70: a clean 22 s initial pass recorded incomplete, then one same-reviewer turn.
   function rescued(followUpMs = 30000): LocalReviewRecord {
     const r = record();
     return {
@@ -1064,7 +1064,7 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
       followUps: [{ reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared", elapsedMinutes: followUpMs / 60000, timing: timing(followUpMs), humanAuthorization: authorization, summary: "Re-read the change in full and cleared it." }],
     };
   }
-  it("accepts an authorized clearing follow-up of exactly 30 seconds, and preserves the initial verdict", () => {
+  it("accepts a clearing follow-up of exactly 30 seconds, and preserves the initial verdict", () => {
     const r = rescued(30000);
     expect(check(save(r))).toEqual([]);
     const written = readFileSync(join(root, path), "utf8");
@@ -1072,7 +1072,7 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
   });
   // Under the floor the rescue predicate refuses first; over it, the finalization predecessor check does.
   it.each([
-    [22000, "authorized same-reviewer turn of at least 30 seconds that clears"],
+    [22000, "same-reviewer turn of at least 30 seconds that clears"],
     [180000, "the incomplete turn before it"],
   ])("refuses a finalization turn as the only follow-up to a %i ms incomplete initial review", (initialMs, message) => {
     const r = rescued(30000);
@@ -1080,17 +1080,17 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
     r.followUps![0] = { ...r.followUps![0]!, scopeReason: "Finalize the documentation.", finalization: { paths: ["README.md"], evidence: "Re-read README.md.", attestation: "Restates already-reviewed behaviour." } };
     expect(check(save(r))[0]?.message).toContain(message);
   });
-  it("does not count an authorized finalization turn as the review that meets the floor", () => {
+  it("does not count a finalization turn as the review that meets the floor", () => {
     const r = rescued(30000);
     const authorized = r.followUps![0]!;
     r.followUps = [
       { ...authorized, elapsedMinutes: 20000 / 60000, timing: timing(20000) },
       { ...authorized, commit: r.covered, scopeReason: "Finalize the documentation.", finalization: { paths: [path], evidence: "Re-read the worklog.", attestation: "Closes out the record only." } },
     ];
-    expect(check(save(r))[0]?.message).toContain("authorized same-reviewer turn of at least 30 seconds that clears");
+    expect(check(save(r))[0]?.message).toContain("same-reviewer turn of at least 30 seconds that clears");
   });
-  it("refuses an authorized follow-up one millisecond under the floor", () => {
-    expect(check(save(rescued(29999)))[0]?.message).toContain("authorized same-reviewer turn of at least 30 seconds that clears");
+  it("refuses a follow-up one millisecond under the floor", () => {
+    expect(check(save(rescued(29999)))[0]?.message).toContain("same-reviewer turn of at least 30 seconds that clears");
   });
   it("refuses an under-floor initial review recorded as cleared rather than incomplete", () => {
     const r = rescued(); delete r.initialOutcome;
@@ -1099,9 +1099,9 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
     r.followUps![0]!.scopeReason = "Late correction after an under-floor initial review.";
     expect(check(save(r))[0]?.message).toContain("under 30 seconds at normal or high risk is not a review");
   });
-  it("refuses an unauthorized follow-up", () => {
+  it("allows an ordinary follow-up without human authorization", () => {
     const r = rescued(); delete r.followUps![0]!.humanAuthorization;
-    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+    expect(check(save(r))).toEqual([]);
   });
   it("refuses a malformed authorization", () => {
     const r = rescued(); r.followUps![0]!.humanAuthorization = { ...authorization, approvedAt: "yesterday" };
@@ -1113,7 +1113,7 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
   });
   it("refuses an incomplete initial review with no follow-up at all", () => {
     const r = rescued(); delete r.followUps;
-    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+    expect(check(save(r))[0]?.message).toContain("needs a same-reviewer follow-up");
   });
   it("refuses an authorized follow-up that does not clear", () => {
     const r = rescued(); r.followUps![0]!.outcome = "blocked";
@@ -1124,11 +1124,11 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
     r.elapsedMinutes = 30000 / 60000; r.timing = timing(30000);
     expect(check(save(r))).toEqual([]);
   });
-  it("still requires authorization to resume an incomplete initial review that met the floor", () => {
+  it("lets the same reviewer resume an incomplete initial review that met the floor", () => {
     const r = rescued(); r.elapsedMinutes = 180000 / 60000; r.timing = timing(180000);
     expect(check(save(r))).toEqual([]);
     delete r.followUps![0]!.humanAuthorization;
-    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+    expect(check(save(r))).toEqual([]);
   });
 });
 
@@ -1223,8 +1223,8 @@ describe("the floor is waived for a trivially small change, measured from Git", 
     expect(check(save(quick({ risk: "small", elapsedMinutes: 0.1 })))).toEqual([]);
   });
   // Shaped like evo#412 and kairos#70: an under-floor initial turn honestly recorded incomplete,
-  // then an authorized same-reviewer turn that cleared, also under 30 seconds.
-  it("accepts the incomplete-then-authorized shape on a trivial change and refuses it otherwise", () => {
+  // then a same-reviewer turn that cleared, also under 30 seconds.
+  it("accepts the incomplete-then-cleared shape on a trivial change and refuses it otherwise", () => {
     const timing = (durationMs: number) => ({ source: "runner" as const, durationMs, evidence: `Runner total_duration_ms for this turn: ${durationMs}.` });
     const shaped = (): LocalReviewRecord => ({
       ...record(), version: 2, covered: reviewed, elapsedMinutes: 22100 / 60000, timing: timing(22100), initialOutcome: "incomplete",
@@ -1233,11 +1233,11 @@ describe("the floor is waived for a trivially small change, measured from Git", 
     change({ ".github/workflows/pr-check.yml": lines(5), "docs/runbook.md": lines(2), "qa/ci-scoping.test.mjs": lines(19) });
     expect(check(save(shaped()))).toEqual(waived(7, 19));
     change({ ".github/workflows/pr-check.yml": lines(5), "src/gate.ts": lines(2) });
-    expect(check(save(shaped()))[0]?.message).toContain("needs an authorized same-reviewer turn of at least 30 seconds that clears (not a trivial change");
-    // The waiver relaxes only the floor: authorization is still required to resume an incomplete turn.
+    expect(check(save(shaped()))[0]?.message).toContain("needs a same-reviewer turn of at least 30 seconds that clears (not a trivial change");
+    // The waiver relaxes only the floor. The original reviewer, timing and turn cap remain required.
     change({ ".github/workflows/pr-check.yml": lines(5) });
     const unauthorized = shaped(); delete unauthorized.followUps![0]!.humanAuthorization;
-    expect(check(save(unauthorized))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+    expect(check(save(unauthorized))).toEqual(waived(5, 0));
   });
   it("prints the waiver in check pr at exactly 20 non-test and 40 test lines, and not one line over either", () => {
     const line = "~ [review-floor] waived: review floor (trivial diff: 20 non-test, 40 test lines)";

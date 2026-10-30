@@ -187,6 +187,10 @@ line and the `agent-reviewed` label. Commit the record and run `morpheus review 
 pushing; open the PR with the label already applied (`gh pr create --label agent-reviewed`), or as a
 draft if it must exist earlier — an unlabelled draft waits instead of failing. Merge trunk rather
 than rebase after review.
+An incomplete turn can resume with the same reviewer within the ordinary three-turn cap after
+the author supplies missing evidence or fixes; do not ask the human to authorize that continuation.
+Keep the incomplete verdict in the record. Human authorization remains necessary for an extra
+turn beyond the ordinary cap or after a finalization turn.
 
 **Every PR carries** tests for anything testable (or an explicit reason), a documentation update
 when behaviour changes, a test plan with the commands actually run, open questions stated plainly,
