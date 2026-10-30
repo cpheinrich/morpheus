@@ -3613,13 +3613,19 @@ cron triggers, and the workflow can also be dispatched with a `channel` and an `
 Each run builds the current `main`, and the two channels differ only in how many automated tests
 they run: a smoke scope for staging, the full suite for production. There is no source-age wait and
 no intent or lineage that outlives a run. A failed run blocks nothing, and the next slot builds
-newer `main`. One run per channel is enforced by a per-channel concurrency group that never cancels.
+newer `main`. A per-channel concurrency group keeps one run per channel. It never cancels a run in
+progress, but GitHub replaces an already-pending run when a newer one queues, so at most one slot
+waits.
 Its jobs:
 
 1. `plan` reads `.morpheus/cd.json` at the source commit. It records what the run uses: the source,
    the Morpheus `main` SHA, a configuration digest and an input digest. A scheduled staging slot
    skips only when no watched input changed since its last receipt tag.
-2. `preflight` calls Morpheus `release-preflight` to confirm the source is a reviewed merge on `main`.
+2. `preflight` calls Morpheus `release-preflight`. It confirms the source is a reviewed merge, and it
+   also requires the source to be the current head of `main`. A run that waited behind another, or
+   that raced a merge, would therefore fail on a process-only property and lose its slot. Before
+   scheduling starts, S4 replaces this with a plan check that the source is a reviewed merge
+   reachable from `main`.
 3. `tests` runs Morpheus `ios-ci`, with a fresh simulator per retry.
 4. Staging Firebase rules are deployed for this source. The phone gate exercises staging for
    both channels, so this runs on every run.
@@ -3637,10 +3643,10 @@ process warns or is deleted.
 | Check today (V2 location) | Target |
 |---|---|
 | Tests, and test integrity: every enumerated test ran, an undocumented skip fails (`ios-ci`, consumer verifier) | **Blocks** |
-| A test that failed then passed on retry | **Warns**, and the test is auto-quarantined. A quarantined test still runs, but its failure warns until a fix removes it from the list. |
+| A test that failed then passed on retry | Warns. The steward or a person may add a quarantine entry in a reviewed PR (one test, a linked issue, expiry ≤ 14 days); a quarantined test runs outside the blocking suite and its failure warns until the entry expires, then blocks again. |
 | Physical-iPhone gate (collector evidence rules) | **Blocks** |
 | Firebase rules: V2 preflight required live rules to equal the client source; 7 of the 17 failures | Replaced by deploying the source's rules before upload. **Blocks** on what protects users: forward only (never roll back), refuse rules `main` never held, every index READY. |
-| Source is a reviewed merge on `main` (`release-preflight`) | **Blocks** |
+| Source is a reviewed merge on `main` | **Blocks**. Being the current head of `main`, which `release-preflight` also requires, is process-only; S4 relaxes it. |
 | Signing, entitlement/IPA verification, app validation script | **Blocks** |
 | Apple VALID, internally ready, held by the internal group | **Blocks**: this is delivery |
 | External groups, Beta App Review | **Warns** |
@@ -3663,7 +3669,9 @@ nothing writes when nothing happens.
 
 Moving off V2 rewrites no history:
 
-1. Stop V2's writers by unloading the Pro tick and the Mini worker.
+1. Stop V2's writers. Unload the Pro tick and the Mini worker, disable the `cd-v2` workflows, and
+   wait for or cancel any V2 delivery or repair run in flight. Those runs also write the ledger and
+   can upload a reserved build number.
 2. Tag the `morpheus-cd-state` head as `archive/cd-v2-state-final` and lock the branch.
 3. Seed one receipt tag per channel from `state.json`'s last delivered receipt.
 4. Delete the branch only after the archive tag is verified.
@@ -3677,7 +3685,10 @@ ledger-reserved numbers, so V3 uploads begin at cutover, never alongside V2.
 import manifests. GitHub requires `uses:` lines to be literal, so the one value is `main` itself,
 and an Evo test asserts that no Morpheus reference is anything else. Each run resolves `main` to a
 SHA once in `plan` and uses it for ios-ci's composite actions and artifact helper. It records that
-SHA in the summary and the receipt.
+SHA in the summary and the receipt. The reusable workflows called at `@main` resolve when the run
+is created. The upload action resolves when its job starts, possibly hours later, so S4 runs it
+from a checkout at the plan's SHA, as ios-ci does with its actions; until then the recorded SHA
+may not be the upload code that ran.
 
 Hosts run no Morpheus delivery runtime of their own. The Mac runners check Morpheus out per run.
 The global `morpheus` CLI on each machine follows `main` through `morpheus self update`. Xcode
@@ -3685,7 +3696,8 @@ versions and runner images are Chris's separate pin; the workflow states them, a
 delivery configuration.
 
 **Configuration is read from `main` and recorded, never enforced.** `.morpheus/cd.json` holds
-channels, app and group identities, schedule, inputs and native settings. A change merges like any
+channels, app and group identities, watched inputs and native settings. The cron schedule lives in
+the workflow. A change merges like any
 other file, and the next run uses it. Its digest goes into the receipt, so every attempt says what
 it used, and there are no migrations.
 
@@ -3714,7 +3726,7 @@ long-lived supervising sessions. The GitHub Manager stays a PR backstop and has 
 | Rules (EV-26-10-30-14.56.33) | Evo | `firebase-deploy.yml` delivery contract (`environment`, `source-sha`, `deploy`) | now |
 | S4 (EV-26-10-30-16.14.48) | Evo | Cutover: cron on, V2 workflows and host agents off, ledger archived, receipt tags seeded, Evo #702 closed | after S3, Rules, B |
 | S5 (EV-26-10-30-16.14.52) | Evo | Delete V2 and the legacy lanes from Evo | after S4 and its soak; parallel with M1 |
-| M1 (MO-26-10-30-16.06.29) | Morpheus | Delete `src/cd`, its tests and docs, the `morpheus cd` command and V2-only upload inputs | after S4; parallel with S5 |
+| M1 (MO-26-10-30-16.06.29) | Morpheus | Delete `src/cd`, its tests and docs, the `morpheus cd` command and V2-only upload inputs, after moving the quota reader the Paperclip pilot still loads | after S4 and its soak; parallel with S5 |
 
 Acceptance for S4 is one scheduled staging and one scheduled production delivery through V3. S5 and
 M1 wait for two consecutive V3 deliveries per channel.

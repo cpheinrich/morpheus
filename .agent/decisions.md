@@ -2128,12 +2128,26 @@ independent watchdog texts Chris. Evo's legacy release lanes already proved the 
 it gains the phone gate, rules deployment for the exact source and an internal-availability
 readback. Full design and stages: architecture.md §18.2 "Stateless iOS delivery".
 
-This supersedes, on Evo's cutover: **CD V2 owns delivery through internal availability**
-(2026-10-18) and its later refinements in this file (readiness waits, cancelled-dependent proofs,
-accepted-proof reuse, artifact admission snapshots for CD, source finance, spending policy,
-source-age waivers, native and Claude repair executors, quota startup bounds, repair diagnostics,
-blocked-repair proofs and wakes, physical-device proof envelopes, source floors, and the
-2026-10-28 supervision mandate). **External TestFlight follows internal acceptance** (2026-10-19)
-stands, with external distribution reported as a warning. The bounded artifact helper used by
-`ios-ci` stays. No dependency: existing GitHub concurrency, Morpheus reusable workflows and the
-upload action's automatic build number.
+On Evo's cutover this supersedes the CD V2 decisions in this file, including:
+
+- **CD V2 owns delivery through internal availability** (2026-10-18), and its refinements for
+  cancelled-dependent proofs, accepted-proof reuse, empty external tester lists, cancelled
+  SourceCI verification and physical-device proof envelopes;
+- source finance, the spending policy and source-age waivers;
+- the native and Claude repair executors, quota startup bounds, hosted repair credentials and model
+  quota, and live provider route diagnostics;
+- repair diagnostics, blocked-repair proofs and wakes, source floors, and the 2026-10-28
+  supervision mandate;
+- the macOS host supervisor shipped as templates copied from an exact commit.
+
+Three decisions stand:
+
+- **Wait for explicit internal beta readiness** (2026-10-20). V3 still requires internal readiness
+  before it calls a build delivered.
+- **Artifact admission snapshots the source before uploading** (2026-10-23). The bounded artifact
+  helper that Morpheus `ios-ci` runs keeps that contract.
+- **External TestFlight follows internal acceptance** (2026-10-19). External distribution is now
+  reported as a warning.
+
+No dependency: existing GitHub concurrency, Morpheus reusable workflows and the upload action's
+automatic build number.
