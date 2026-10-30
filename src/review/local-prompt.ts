@@ -56,9 +56,10 @@ either resolves what the previous turn left blocked, after the author has addres
 unresolved concerns, or is a late correction after a clearance: when full CI shows a fix is
 needed after you cleared the code, the author may spend a remaining turn in THIS SAME session,
 recording the scope decision as that turn's scopeReason; you clear or block the correction commit.
-Otherwise a cleared turn ends the review, and an incomplete one escalates. If missing evidence
-left a turn incomplete within its budget, explicit humanAuthorization on the next same-reviewer
-turn may resume it. Preserve the incomplete verdict; authorization never waives any turn's budget.
+Otherwise a cleared turn ends the review. If evidence is missing, record the turn incomplete,
+then resume the same reviewer within the ordinary turn cap after the author supplies it. Preserve
+the incomplete verdict; every turn must stay within its budget. Human authorization is required
+only for turns beyond the ordinary cap or after finalization, as described below.
 If substantive concerns remain after the last turn, or a correction is needed once the turns are
 spent, leave the PR open, disable auto-merge, and flag the concrete unresolved issue for the
 human. One automatic fourth turn is available only for a small correction to a previously
