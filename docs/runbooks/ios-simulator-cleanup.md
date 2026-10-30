@@ -40,6 +40,11 @@ includes that behavioral suite. The action uses Node built-ins and Apple's `simc
 no dependency installation and no App Store credentials. Archives do not use simulator
 devices.
 
+A retry of failed tests (`test-iterations`, see `scripts/ios-test-retry.py`) erases the job-owned
+device in place with `simctl shutdown` and `simctl erase` before each later attempt. Its UDID and
+ownership name do not change, so this cleanup still covers it; if the erase fails, the job fails
+rather than retrying in the used device.
+
 Shutdown may race with XCTest completing teardown. Cleanup still attempts deletion of the exact owned device after a shutdown error; a failed deletion remains a job failure.
 
 Fresh serial runners may have no XCTest worker directory. Its specific missing-set diagnostic is treated as an empty optional set; other inventory failures still fail cleanup.

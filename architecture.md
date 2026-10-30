@@ -3540,7 +3540,31 @@ build-for-testing step compiles the whole scheme regardless of which subset will
 build-time exclusion would be a no-op. The intended use is a per-PR caller keeping an expensive
 `XCTMeasureOptions` performance test out of every pull request while a separate nightly caller
 (which never sets this input) runs the full scheme; empty by default, so an existing caller's
-selection is unchanged.
+selection is unchanged. `test-plan`, `only-testing` and `skip-testing` are the whole scope
+surface: a staging caller names a smoke plan or selection, and production leaves them empty to
+run the full suite.
+Failed tests are retried in a clean simulator, never in the session that failed them.
+`test-iterations` is the total number of attempts (default 3; 0 or 1 runs once). Attempt 1 runs
+the caller's selection unchanged. When it fails, `scripts/ios-test-retry.py` erases the job-owned
+simulator in place (`simctl shutdown`, then `erase`, same UDID, so the post hook still owns
+cleanup), runs the caller's `pre-test-script` again with `RESULTS` and `LOGS` pointing at
+`attempt-<n>/`, and starts a new serial `xcodebuild test-without-building` with `-only-testing`
+for the tests still failing and, where the selected Xcode has it, `-collect-test-diagnostics
+never`, without which Xcode 27 spends 600 seconds collecting diagnostics after each failure. A
+test that passes on a retry is flaky: a warning annotation, a job-summary line and the
+`flaky-tests` workflow output (a JSON array) report it, and the job does not fail. A test that
+fails every attempt fails the job. Only a test seen passing counts: one missing from a retry's
+results stays failing, and a nonzero exit that no named test failure explains (a crashed or
+unbootstrapped bundle, or an exit contradicting all-passing results) is never retried away. With
+no job-owned simulator to erase there is one attempt. Xcode's in-process
+`-retry-tests-on-failure` is gone: it kept the simulator and the app's data, so Evo's
+leftover-state UI failures failed all three iterations, and relaunching per repetition re-ran
+whole UI bundles (2026-10-05). `Tests.xcresult`, `tests.json` and `summary.json` stay the first
+attempt's, because `xcresulttool merge` reports a test that failed and then passed as failed;
+`test-attempts.json` beside them records each attempt's selection, exit status and failures, the
+flaky tests and the verdict the job follows. A caller's `test-evidence-script` that requires every
+test in `tests.json` to pass must accept the ones `test-attempts.json` lists as flaky. The script
+is reached through `actions-ref`, so a caller pinning this workflow pins that to the same commit.
 Rendered XCTest attachments are retained on every run; a failed run additionally keeps
 both result bundles and raw `xcodebuild` logs. Firebase-backed apps can opt into an exact
 `firebase-tools` version, a repository config, an explicit synthetic project id and emulator list,

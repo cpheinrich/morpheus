@@ -177,7 +177,10 @@ test('workflow routes builds/tests through owned destination and registers uncon
   assert.match(workflow, /uses: \.\/\.morpheus-ci\/\.github\/actions\/ios-simulator/);
   assert.ok(workflow.indexOf("name: Check out this workflow's actions") < workflow.indexOf('uses: ./.morpheus-ci/.github/actions/ios-simulator'));
   assert.match(workflow, /ref: \$\{\{ inputs\.actions-ref \}\}/);
-  assert.equal((workflow.match(/MORPHEUS_IOS_DESTINATION:-\$DESTINATION/g) ?? []).length, 3);
+  // Both build steps here; the test step's xcodebuild runs in the retry script.
+  assert.equal((workflow.match(/MORPHEUS_IOS_DESTINATION:-\$DESTINATION/g) ?? []).length, 2);
+  const retry = readFileSync(new URL('../../../scripts/ios-test-retry.py', import.meta.url), 'utf8');
+  assert.match(retry, /destination = env\.get\('MORPHEUS_IOS_DESTINATION'\) or env\['DESTINATION'\]/);
   assert.match(workflow, /persistent: \$\{\{ runner\.environment == 'self-hosted' \}\}/);
   assert.match(action, /persistent:\n[\s\S]*default: "false"/);
   assert.match(action, /post: post.mjs\n  post-if: always\(\)/);

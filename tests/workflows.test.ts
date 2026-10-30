@@ -2271,8 +2271,9 @@ describe("ios-ci.yml", () => {
     expect(String(test?.env && (test.env as Record<string, unknown>).SKIP_TESTING)).toBe(
       "${{ inputs.skip-testing }}",
     );
-    expect(String(test?.run)).toContain("-skip-testing:");
-    expect(String(test?.run)).toContain('while IFS= read -r identifier');
+    // The test step's retry script turns each line into one literal argument.
+    const retry = await readFile(join(import.meta.dirname, "../scripts/ios-test-retry.py"), "utf8");
+    expect(retry).toContain("[f'-skip-testing:{test}' for test in lines('SKIP_TESTING')]");
     expect((exportEvidence?.env as Record<string, unknown>)?.ONLY_TESTING).toBe(
       "${{ inputs.only-testing }}",
     );
@@ -2437,14 +2438,15 @@ describe("ios-ci.yml", () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const build = steps.find((step) => step.name === "Build for testing");
     const test = steps.find((step) => step.name === "Run unit and UI tests");
+    // The test step runs every attempt through the retry script.
+    const retry = await readFile(join(import.meta.dirname, "../scripts/ios-test-retry.py"), "utf8");
     expect(String(build?.run)).toContain("xcodebuild build-for-testing");
-    expect(String(test?.run)).toContain("xcodebuild test-without-building");
+    expect(String(test?.run)).toContain('python3 -I -S -B "$retry"');
+    expect(retry).toContain("['xcodebuild', 'test-without-building'");
     expect(String(build?.run)).toContain("-disableAutomaticPackageResolution");
-    expect(String(test?.run)).toContain("-disableAutomaticPackageResolution");
-    expect(String(test?.run)).toContain('-parallel-testing-enabled "$PARALLEL_TESTING"');
-    expect(String(test?.run)).toContain(
-      '-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS"',
-    );
+    expect(retry).toContain("'-disableAutomaticPackageResolution'");
+    expect(retry).toContain("['-parallel-testing-enabled', env.get('PARALLEL_TESTING', 'NO')]");
+    expect(retry).toContain("['-maximum-parallel-testing-workers', env['MAXIMUM_PARALLEL_TESTING_WORKERS']]");
     expect(build?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}");
     expect(test?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}");
   });
@@ -2463,7 +2465,8 @@ describe("ios-ci.yml", () => {
     expect(String(java?.if)).toContain("inputs.firebase-emulators");
     expect(String(install?.run)).toContain('firebase-tools@$FIREBASE_CLI_VERSION');
     expect(String(test?.run)).toContain("firebase emulators:exec");
-    expect(String(test?.run)).toContain('test_command="$pre_test_command && $test_command"');
+    // The retry script runs the fixture before every attempt, so each one is inside the emulators.
+    expect(String(test?.run)).toContain(`printf -v test_command 'python3 -I -S -B %q' "$retry"`);
     expect(String(test?.run)).toContain('--config "$GITHUB_WORKSPACE/$FIREBASE_CONFIG"');
 
     const diagnostics = steps.find(
