@@ -105,7 +105,7 @@ Independent normal-risk review of 162686d5 confirmed the owner decisions are rec
   "summary": "Independent normal-risk review of 162686d5 confirmed the owner decisions are recorded faithfully and the code claims hold (App Store Connect next build number with a host floor, ios-ci's exact artifact-helper rule, the helper kept). It cleared on condition F1 (substantive): the quarantine row described an automatic list that would silently make tests non-blocking; it now describes the reviewed, expiring quarantine S1 builds. Minor fixes: M1 now moves the quota reader the Paperclip pilot still loads and fixes the compile script (F2); M1 gating is consistent with the soak (F3); the supersedes list keeps readiness waits and artifact snapshots standing and names the missing V2 decisions (F4); the upload action's resolution time (F5), release-preflight's current-head requirement and pending-run replacement (F6), stopping in-flight V2 runs before archiving (F7) and the schedule's location (F8) are stated accurately, with S4's item carrying the fixes. The trunk merge that followed was hand-resolved in decisions.md, keeping both new entries.",
   "findings": [
     {
-      "id": "F1",
+      "id": "S0-F1",
       "severity": "substantive",
       "disposition": "fixed",
       "paths": [
@@ -123,7 +123,7 @@ Independent normal-risk review of 162686d5 confirmed the owner decisions are rec
       "conditionMet": "bd63528c: grep -n auto-quarantin architecture.md returned nothing; pnpm morpheus pm validate: all project management files are valid."
     },
     {
-      "id": "F2",
+      "id": "S0-F2",
       "severity": "minor",
       "disposition": "fixed",
       "paths": [
@@ -133,7 +133,7 @@ Independent normal-risk review of 162686d5 confirmed the owner decisions are rec
       "response": "M1 now requires moving the quota reader or retiring the pilot's dependency first (naming quota.mjs, supervisor.py, inventory.example.json, the pilot design doc) and updating the compile script."
     },
     {
-      "id": "F3",
+      "id": "S0-F3",
       "severity": "minor",
       "disposition": "fixed",
       "paths": [
@@ -144,7 +144,7 @@ Independent normal-risk review of 162686d5 confirmed the owner decisions are rec
       "response": "All three now say after S4 and its soak (two consecutive V3 deliveries per channel), parallel with S5."
     },
     {
-      "id": "F4",
+      "id": "S0-F4",
       "severity": "minor",
       "disposition": "fixed",
       "paths": [
@@ -154,7 +154,7 @@ Independent normal-risk review of 162686d5 confirmed the owner decisions are rec
       "response": "The list is now 'including', names the omitted decisions, and states that internal readiness, artifact admission snapshots and external-after-internal stand."
     },
     {
-      "id": "F5",
+      "id": "S0-F5",
       "severity": "minor",
       "disposition": "fixed",
       "paths": [
@@ -164,7 +164,7 @@ Independent normal-risk review of 162686d5 confirmed the owner decisions are rec
       "response": "architecture.md states the limit and that S4 runs the upload action from a checkout at the plan SHA; Evo's S4 item (darwin-health/evo#710) carries that step."
     },
     {
-      "id": "F6",
+      "id": "S0-F6",
       "severity": "minor",
       "disposition": "fixed",
       "paths": [
@@ -174,7 +174,7 @@ Independent normal-risk review of 162686d5 confirmed the owner decisions are rec
       "response": "Both are described accurately; the current-head requirement is classified process-only and S4 replaces it with a reviewed-merge-reachable-from-main check (also in the S4 item)."
     },
     {
-      "id": "F7",
+      "id": "S0-F7",
       "severity": "minor",
       "disposition": "fixed",
       "paths": [
@@ -184,7 +184,7 @@ Independent normal-risk review of 162686d5 confirmed the owner decisions are rec
       "response": "Step 1 now disables the cd-v2 workflows and waits for or cancels in-flight V2 runs before tagging; the S4 item says the same."
     },
     {
-      "id": "F8",
+      "id": "S0-F8",
       "severity": "minor",
       "disposition": "fixed",
       "paths": [
@@ -194,7 +194,7 @@ Independent normal-risk review of 162686d5 confirmed the owner decisions are rec
       "response": "The sentence lists channels, identities, watched inputs and native settings, and says the cron lives in the workflow."
     },
     {
-      "id": "I1",
+      "id": "S0-I1",
       "severity": "incidental",
       "disposition": "fixed",
       "paths": [
