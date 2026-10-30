@@ -56,7 +56,9 @@ export const configSchema = z.object({
   deadlines: z.object({ wakeMinutes: z.number().positive().default(15), admissionMinutes: z.number().positive().default(15), testMinutes: z.number().positive().default(180), uploadMinutes: z.number().positive().default(90), agentMinutes: z.number().positive().max(45).default(45), appleObservationMinutes: z.number().positive().default(30), pollMinutes: z.number().positive().default(5), deliveryHours: z.number().positive().max(6).default(6) }).default({ wakeMinutes: 15, admissionMinutes: 15, testMinutes: 180, uploadMinutes: 90, agentMinutes: 45, appleObservationMinutes: 30, pollMinutes: 5, deliveryHours: 6 }),
 }).strict().superRefine((config, context) => {
   if (config.channels.staging.schedule.kind !== "six-hour") context.addIssue({ code: "custom", path: ["channels", "staging"], message: "staging uses six-hour UTC slots" });
-  if (config.channels.production.schedule.kind !== "daily" || config.channels.production.minimumAgeHours < 24) context.addIssue({ code: "custom", path: ["channels", "production"], message: "production requires daily UTC slots and at least 24 hours on main" });
+  // Production builds current main like staging unless the consumer opts into an age (minimumAgeHours,
+  // default 0); the two channels differ by cadence and tests, not by a required wait on main.
+  if (config.channels.production.schedule.kind !== "daily") context.addIssue({ code: "custom", path: ["channels", "production"], message: "production uses daily UTC slots" });
   for (const name of ["staging", "production"] as const) {
     const app = config.channels[name], groups = app.externalGroupIds;
     if (groups && (new Set(groups).size !== groups.length || groups.includes(app.internalGroupId) || groups.includes(app.validationGroupId ?? ""))) context.addIssue({ code: "custom", path: ["channels", name, "externalGroupIds"], message: "external groups must be unique and separate from internal/validation groups" });

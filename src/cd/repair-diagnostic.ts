@@ -32,7 +32,8 @@ function prepare(input: unknown) {
 type Prepared = ReturnType<typeof prepare>;
 function target(state: CdState, input: Prepared): AgentWork {
   const evidence = input.evidence, intent = state.intents[evidence.intentId], work = state.agents[evidence.workId];
-  invariant(intent?.id === evidence.intentId && intent.state === "repairing" && !intent.receipt, "Diagnostic intent is not an undelivered current repair");
+  // A failed intent waits for its retry rather than parking in `repairing`; any undelivered intent qualifies.
+  invariant(intent?.id === evidence.intentId && intent.state !== "delivered" && !intent.receipt, "Diagnostic intent is not an undelivered current repair");
   invariant(work?.id === evidence.workId && work.intentId === intent.id && ["pending", "running", "waiting"].includes(work.state), "Diagnostic repair work is missing, complete or belongs to another intent");
   const siblings = Object.values(state.agents).filter(item => item.intentId === intent.id);
   invariant(siblings.filter(item => item.state !== "complete").length === 1 && Number.isSafeInteger(work.strategy) && work.strategy > 0 && siblings.every(item => item === work || item.state === "complete" && item.strategy < work.strategy), "Diagnostic target is not the unique latest repair work");

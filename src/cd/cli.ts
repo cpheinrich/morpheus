@@ -157,7 +157,7 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
     }
     case "record-upload": {
       const evidence = uploadEvidence(await jsonInput(required(values.evidence, "--evidence")) as Record<string, unknown>);
-      result = await store.transact(`upload-record-${evidence.attemptId}-${hash(evidence).slice(0, 24)}`, "record-upload-result", now, state => { recordUpload(state, evidence, now); return { uploadOperationId: `upload:${evidence.attemptId}`, outcome: evidence.outcome, providerUploadId: evidence.providerUploadId }; }); break;
+      result = await store.transact(`upload-record-${evidence.attemptId}-${hash(evidence).slice(0, 24)}`, "record-upload-result", now, state => { recordUpload(state, evidence, now, config); return { uploadOperationId: `upload:${evidence.attemptId}`, outcome: evidence.outcome, providerUploadId: evidence.providerUploadId }; }); break;
     }
     case "upload-hook": {
       const identity = environmentIdentity(environment), phase = required(values.phase, "--phase");
@@ -176,7 +176,7 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
       for (const [key, value] of Object.entries(common)) invariant(raw[key] === undefined || String(raw[key]) === String(value), `Upload hook ${key} mismatch`);
       const evidence = uploadEvidence({ ...common, ...raw });
       if (phase === "after") invariant(evidence.outcome === "accepted" || evidence.outcome === "rejected", "After hook needs explicit accepted/rejected provider receipt");
-      result = await store.transact(`upload-record-${identity.attemptId}-${hash(evidence).slice(0, 24)}`, "record-upload-result", now, state => { recordUpload(state, evidence, now); return { uploadOperationId: `upload:${identity.attemptId}`, outcome: evidence.outcome, providerUploadId: evidence.providerUploadId }; }); break;
+      result = await store.transact(`upload-record-${identity.attemptId}-${hash(evidence).slice(0, 24)}`, "record-upload-result", now, state => { recordUpload(state, evidence, now, config); return { uploadOperationId: `upload:${identity.attemptId}`, outcome: evidence.outcome, providerUploadId: evidence.providerUploadId }; }); break;
     }
     case "record": {
       const path = required(values.evidence, "--evidence");

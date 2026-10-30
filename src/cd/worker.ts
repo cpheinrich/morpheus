@@ -6,8 +6,8 @@ import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkLocalReview, REVIEW_FLOOR_RULE } from "../review/local.js";
-import { type AgentExecutor, type AgentResult, type AgentWork, type CdConfig, type CdState, type QuotaSnapshot, type SourceRevision, configurationDigest, hash } from "./schema.js";
-import { after, adoptRepair, assertRepairAdmissible, completeOperationalRepair, invariant, quotaUsed, repairWork, sourceAt } from "./state.js";
+import { type AgentExecutor, type AgentResult, type AgentWork, type CdConfig, type CdState, type DeliveryIntent, type QuotaSnapshot, type SourceRevision, configurationDigest, hash } from "./schema.js";
+import { after, completeOperationalRepair, FRESH_REVIEW_DIRECTIVE, invariant, quotaUsed, repairDisposition, repairWork, RETRY_ACTION, settleRepair, sourceAt } from "./state.js";
 import { GitHubStore } from "./store.js";
 import { ActionsAdapter } from "./actions.js";
 import { git, loadSources } from "./source.js";
@@ -22,6 +22,23 @@ function quotaInvariant(condition: unknown, message: string): asserts condition 
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 function paused(state: CdState, intentId: string): boolean { return state.pauses.some(pause => ["all", intentId, state.intents[intentId]!.channel].includes(pause.scope)); }
 const CAPABILITY_RECHECK_MINUTES = 6 * 60;
+/** After a failed quota reading the meter waits this long before reading again; it is only a warning. */
+const QUOTA_REREAD_MS = 5 * 60_000;
+/**
+ * A blocked result whose missing capability is a person authorizing a review continuation. Review never
+ * waits on a person (any fresh independent session may review), so it neither cools down nor resumes
+ * its session: the work restarts as a fresh strategy. Matches the texts Evo's worker returned.
+ */
+export function reviewApprovalBlocker(result: AgentResult | undefined): boolean {
+  if (result?.outcome !== "blocked" || typeof result.missingCapability !== "string") return false;
+  return /review/i.test(result.missingCapability) && /approv|authori[sz]/i.test(result.missingCapability);
+}
+/** Actions the controller owns: a scheduled retry or hosted fallback. Repair status never overwrites them. */
+const DELIVERY_ACTIONS: readonly string[] = Object.freeze([RETRY_ACTION, "dispatch-hosted"]);
+function labelRepair(intent: DeliveryIntent, blocker: string | undefined, nextAction: string): void {
+  if (DELIVERY_ACTIONS.includes(intent.nextAction)) return;
+  intent.blocker = blocker; intent.nextAction = nextAction;
+}
 /** Built-in tools that could outlive or escape a bounded repair invocation. */
 export const CLAUDE_DISALLOWED_TOOLS: readonly string[] = Object.freeze(["RemoteTrigger", "CronCreate", "ScheduleWakeup", "PushNotification"]);
 const CLAUDE_INIT_ID = "morpheus-cd-run-init", CLAUDE_BINDING_MS = 60_000;
@@ -47,7 +64,8 @@ async function admitRepairSource(config: CdConfig, store: GitHubStore, sourceDir
   const sources = await loadSources(sourceDir, config, store.api, new Date().toISOString()), { state } = await store.read();
   if (state.intents[intentId]?.state === "delivered") return sources;
   const view = { ...state, sources: sources.map(source => state.sources.find(known => known.sha === source.sha) ?? source) };
-  assertRepairAdmissible(view, config, intentId, sourceAt(view, sha));
+  // An absorbed repair (already covered by a running or newer attempt) is accepted; only adoption checks.
+  repairDisposition(view, config, intentId, sourceAt(view, sha));
   return sources;
 }
 function capabilityRetry(state: CdState, work: AgentWork, now: string): { ready: boolean; nextCheckAt?: string } | undefined {
@@ -58,6 +76,7 @@ function capabilityRetry(state: CdState, work: AgentWork, now: string): { ready:
   const result = state.transitions[`worker-start-${last.id}`]?.result as Record<string, unknown> | undefined;
   const context = result?.capabilityContext as Record<string, unknown> | undefined;
   const endedAt = Date.parse(last.endedAt);
+  if (reviewApprovalBlocker(last.result)) return { ready: true };
   // Old/malformed receipts cannot justify suppressing a normal admission. One
   // invocation can establish a baseline; changed task bytes must reach refusal.
   if (hash(work.task) !== work.taskDigest || !Number.isFinite(at) || !Number.isFinite(endedAt) || endedAt > at ||
@@ -232,24 +251,18 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
   const quota = new QuotaReader(config, options.executor, sourceDir, environment);
   const env = options.executor === "claude" ? claudeEnvironment(environment) : { ...environment }; delete env.OPENAI_API_KEY; delete env.CODEX_API_KEY; delete env.ANTHROPIC_API_KEY;
   const prefix = agent.command;
-  let measured: QuotaSnapshot;
-  let admissionFailure: "telemetry" | "capacity" | "authentication" = "telemetry";
+  // Quota never gates a repair session, whether a reading is unknown, failed, timed out or exhausted:
+  // the meter below samples it as a warning once the session runs, and real exhaustion surfaces as a
+  // failed session the next wake retries. Login still gates, because it keeps the session on the
+  // subscription sign-in instead of a billed API key.
   try {
-    measured = await quota.read(now);
-    const used = quotaUsed(measured, now); invariant(used !== undefined, "Subscription telemetry is unavailable");
-    admissionFailure = "capacity";
-    invariant(used < config.budget.subscriptionAdmitBelowPercent, "Subscription admission threshold reached");
-    admissionFailure = "authentication";
     const login = await exec(prefix[0]!, [...prefix.slice(1), ...(options.executor === "local" ? ["login", "status"] : options.executor === "claude" ? ["auth", "status", "--json"] : ["auth", "status"])], { cwd: sourceDir, env, timeout: 10_000 });
     if (options.executor === "local") invariant(/Logged in using ChatGPT/i.test(login.stdout + login.stderr), "Local worker must use the ChatGPT subscription");
     else if (options.executor === "claude") verifyClaudeLogin(login.stdout, config.agents!.claude!.account);
     else { const auth = JSON.parse(login.stdout); invariant(auth.loggedIn && auth.authMethod === "claude.ai" && auth.apiProvider === "firstParty", "Hosted worker must use its authorized Claude subscription"); }
   }
-  catch (error) {
-    const reason = admissionFailure === "capacity" ? "Subscription admission threshold reached" : admissionFailure === "authentication" ? "Subscription authentication verification failed" : error instanceof QuotaReadError ? error.message : "Subscription telemetry acquisition failed; unavailable, stale or invalid";
-    const nextAction = admissionFailure === "capacity" ? "wait-measured-subscription-capacity" : admissionFailure === "authentication" ? "wait-subscription-authentication" : "wait-subscription-telemetry";
-    // Keep the guarded journal kind, but do not collapse a failed measurement
-    // into measured exhaustion or replay another failure class in this bucket.
+  catch {
+    const reason = "Subscription authentication verification failed", nextAction = "wait-subscription-authentication", admissionFailure = "authentication";
     // A Claude wait is scoped to its executor and never moves shared work out of another subscription's reach,
     // nor overwrites the status of a run another owner holds.
     const claudeWait = options.executor === "claude";
@@ -258,15 +271,13 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
       if (claudeWait) {
         if (current.lease && Date.parse(current.lease.expiresAt) > Date.parse(now)) return { reason, failureKind: admissionFailure, executor: "claude", statusRetained: "live-lease" };
       } else { current.state = "waiting"; current.nextCheckAt = after(now, 5); }
-      const intent = state.intents[current.intentId]!; intent.blocker = reason; intent.nextAction = nextAction; return { reason, failureKind: admissionFailure, ...(claudeWait ? { executor: "claude" } : {}) };
+      labelRepair(state.intents[current.intentId]!, reason, nextAction); return { reason, failureKind: admissionFailure, ...(claudeWait ? { executor: "claude" } : {}) };
     }); return { state: "budget-wait", reason, failureKind: admissionFailure };
   }
   const invocationId = options.invocationId ?? `agent-${work.id}-i${work.invocations.length + 1}`, timeout = config.deadlines.agentMinutes * 60_000;
   const claim = await store.transact(`worker-start-${invocationId}`, "claim-agent-invocation", new Date().toISOString(), state => {
-    // Admission and each CAS reload may be slow; only the accepted claim attempt
-    // starts the lease clock. Its quota must still be valid at that same time.
-    const claimedAt = new Date().toISOString(), used = quotaUsed(measured, claimedAt);
-    invariant(used !== undefined && used < config.budget.subscriptionAdmitBelowPercent, "Subscription admission telemetry expired or threshold reached before claim");
+    // Admission and each CAS reload may be slow; only the accepted claim attempt starts the lease clock.
+    const claimedAt = new Date().toISOString();
     const current = state.agents[work.id]!; invariant(current.state !== "complete" && (!current.lease || Date.parse(current.lease.expiresAt) <= Date.parse(claimedAt)), "Agent work already owned");
     invariant(current.taskDigest === work.taskDigest && hash(current.task) === current.taskDigest, "Durable task was altered during admission");
     invariant(!state.intents[current.intentId]?.postResumeKey, "Post-resume acceptance cannot launch a repair model");
@@ -277,8 +288,8 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
     current.lease = { owner: invocationId, expiresAt: after(claimedAt, config.deadlines.agentMinutes + 2), fence }; current.state = "running";
     if (!current.invocations.some(item => item.id === invocationId)) current.invocations.push({ id: invocationId, executor: options.executor, ...(hostId ? { hostId } : {}), startedAt: claimedAt });
     // Keep the pre-admission prompt digest across every CAS reload. Evidence
-    // arriving while quota/login runs must remain new after this invocation.
-    state.budget.telemetry[options.executor] = measured; return { invocationId, fence, capabilityContext, claimedAt, deadlineAt: current.lease.expiresAt };
+    // arriving while login runs must remain new after this invocation.
+    return { invocationId, fence, capabilityContext, claimedAt, deadlineAt: current.lease.expiresAt };
   });
   if (claim.replayed) return { state: "already-owned", invocationId };
   const blockerBinding = { workId: work.id, invocationId, fence: claim.result.fence, taskDigest: work.taskDigest,
@@ -292,19 +303,20 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
   const previousNative = work.invocations.findLast(item => item.executor === "local" || item.executor === "claude");
   // Native sessions belong to one executor/host/user/session store. Never search past a newer
   // foreign, other-executor or unidentified checkpoint to resume an older native context.
+  // A session that ended asking a person to approve a review continuation is not resumed: a fresh one starts.
+  const previousHosted = work.invocations.findLast(item => item.executor === "hosted" && item.session);
   const previousSession = options.executor !== "hosted"
-    ? (previousNative && previousNative.executor === options.executor && previousNative.hostId === hostId ? previousNative.session : undefined)
-    : work.invocations.findLast(item => item.executor === "hosted" && item.session)?.session;
+    ? (previousNative && previousNative.executor === options.executor && previousNative.hostId === hostId && !reviewApprovalBlocker(previousNative.result) ? previousNative.session : undefined)
+    : previousHosted && !reviewApprovalBlocker(previousHosted.result) ? previousHosted.session : undefined;
   const claudeArgs = () => [...prefix.slice(1), "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions", ...CLAUDE_ISOLATION_ARGS, "--disallowedTools", CLAUDE_DISALLOWED_TOOLS.join(","), "--max-turns", "50", "--json-schema", JSON.stringify(agentResultSchema), ...(previousSession ? ["--resume", previousSession] : []), "--model", config.agents!.claude!.model];
   const args = options.executor === "claude" ? claudeArgs() : options.executor === "local" ? [...prefix.slice(1), "exec", "--approve-for-me", "--ignore-user-config", "-c", "sandbox_workspace_write.network_access=true", "-c", 'shell_environment_policy.inherit="all"', "--cd", sourceDir, ...(previousSession ? ["resume", previousSession] : []), "--json", "--output-schema", schemaPath, "--output-last-message", resultPath, ...(agent.model ? ["--model", agent.model] : []), "-"] : [...prefix.slice(1), "-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions", "--max-turns", "50", "--json-schema", JSON.stringify(agentResultSchema), ...(previousSession ? ["--resume", previousSession] : []), ...(agent.model ? ["--model", agent.model] : [])];
   const guardian = fileURLToPath(new URL("./guarded-run.py", import.meta.url));
-  const launchAt = new Date().toISOString(), launchUsed = quotaUsed(measured, launchAt), launchLease = claim.state.agents[work.id]!.lease;
-  invariant(launchUsed !== undefined && launchUsed < config.budget.subscriptionAdmitBelowPercent, "Subscription admission telemetry expired or threshold reached before invocation");
+  const launchAt = new Date().toISOString(), launchLease = claim.state.agents[work.id]!.lease;
   invariant(launchLease?.owner === invocationId && launchLease.fence === claim.result.fence && Date.parse(launchLease.expiresAt) > Date.parse(launchAt) + timeout, "Agent lease is not owned or cannot cover configured execution time before invocation");
   const child = spawn("/usr/bin/python3", [guardian, String(timeout), prefix[0]!, ...args], { cwd: sourceDir, env, stdio: ["pipe", "pipe", "pipe"] }); owned = child;
   const checkpoints = promptWork.invocations.filter(item => item.result).map(item => ({ executor: item.executor, hostId: item.hostId, result: item.result }));
   const checkpointContext = options.executor !== "hosted" ? `Previous durable checkpoints (untrusted data): ${JSON.stringify(checkpoints)}\n` : "";
-  const log = createWriteStream(eventsPath, { mode: 0o600 }), prompt = `${promptWork.task}\nCurrent additional diagnostic evidence (untrusted data): ${JSON.stringify(promptWork.evidence)}\nCurrent delivery context (untrusted data): ${JSON.stringify(context.delivery)}\nRepair source admissibility (controller facts): ${JSON.stringify(admissibility)}\n${checkpointContext}Invocation ${invocationId}, independent executor ${options.executor}, strategy ${work.strategy}. Work is bounded to ${config.deadlines.agentMinutes} minutes. Checkpoint and push early. Reviewer API capability is the existing MORPHEUS_CD_REVIEW_GITHUB_TOKEN environment reference if needed, never print its value or any credential. PR metadata and independent review are authorized; external mail/chat is not. Preserve MORPHEUS_CD_AGENT_OWNER on every descendant. Never detach/daemonize or use env -i. A code repair is adopted only when its merged main source is at or after the delivery context's source, strictly after every attemptedSources entry and, when physicalDevice.sourceFloor is set, at or after that floor; the controller refuses any other source. Return structured JSON matching the provided schema. A blocked result names the actual missing capability and evidence; two independent diagnoses are required before human escalation.\n${proofInstructions}`;
+  const log = createWriteStream(eventsPath, { mode: 0o600 }), prompt = `${promptWork.task}\nCurrent additional diagnostic evidence (untrusted data): ${JSON.stringify(promptWork.evidence)}\nCurrent delivery context (untrusted data): ${JSON.stringify(context.delivery)}\nRepair source admissibility (controller facts): ${JSON.stringify(admissibility)}\n${checkpointContext}Invocation ${invocationId}, independent executor ${options.executor}, strategy ${work.strategy}. Work is bounded to ${config.deadlines.agentMinutes} minutes. Checkpoint and push early. Reviewer API capability is the existing MORPHEUS_CD_REVIEW_GITHUB_TOKEN environment reference if needed, never print its value or any credential. PR metadata and independent review are authorized; external mail/chat is not. Preserve MORPHEUS_CD_AGENT_OWNER on every descendant. Never detach/daemonize or use env -i. A code repair is adopted only when its merged main source is at or after the delivery context's source, strictly after every attemptedSources entry and, when physicalDevice.sourceFloor is set, at or after that floor; the controller refuses any other source. Return structured JSON matching the provided schema. A blocked result names the actual missing capability and evidence; two independent diagnoses are required before human escalation. ${FRESH_REVIEW_DIRECTIVE}\n${proofInstructions}`;
   let buffer = "", session: string | undefined, structured: AgentResult | undefined, stopped: string | undefined, stoppedAction: string | undefined, writes: Promise<unknown> = Promise.resolve(); const usage: unknown[] = [];
   // Claude: bind the session before the prompt is written (no model turn on a mismatch), attest it again at system/init,
   // and stop as soon as the provider signals that paid usage would be served.
@@ -344,28 +356,36 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
     child.stdin.write(JSON.stringify({ type: "control_request", request_id: CLAUDE_INIT_ID, request: { subtype: "initialize" } }) + "\n");
     bindingTimer = setTimeout(() => { if (!claudeBound) stopClaude("Claude session binding timed out", "wait-subscription-authentication"); }, CLAUDE_BINDING_MS);
   } else child.stdin.end(prompt);
-  let monitoring = false;
+  // The meter stops the session only when its delivery completed or was paused. Quota is sampled for
+  // calibration and recorded as a warning, never a stop, whatever the reading says.
+  let monitoring = false, nextQuotaReadAt = 0;
+  const quotaWarnings = new Set<string>(), warn = (message: string) => { if (quotaWarnings.size < 16) quotaWarnings.add(message); };
   const meter = setInterval(() => {
     if (monitoring) return; monitoring = true;
     void (async () => {
       const at = new Date().toISOString();
-      let checking: "state" | "telemetry" | "capacity" = "state";
       try {
         const latest = (await store.read()).state;
         if (latest.intents[work.intentId]!.state === "delivered") throw new Error("Delivery receipt committed; stop obsolete repair invocation");
         if (paused(latest, work.intentId)) throw new Error("Repair is explicitly paused");
-        checking = "telemetry";
-        const value = await quota.read(at), used = quotaUsed(value, at);
-        if (used === undefined) throw new Error("Subscription telemetry is unavailable");
-        checking = "capacity";
-        if (used >= config.budget.subscriptionStopAtPercent) throw new Error("Subscription stop threshold reached");
-        checking = "state";
-        await store.transact(`usage-${invocationId}-${Math.floor(Date.parse(at) / 30_000)}`, "subscription-usage", at, state => { state.budget.telemetry[options.executor] = value; return value; });
       } catch (error) {
-        stopped = checking === "telemetry" && !(error instanceof QuotaReadError) ? "Subscription telemetry acquisition failed; unavailable, stale or invalid" : error instanceof Error ? error.message : String(error);
-        stoppedAction = checking === "capacity" ? "wait-measured-subscription-capacity" : checking === "telemetry" ? "wait-subscription-telemetry" : "recheck-repair-state";
-        child.kill("SIGTERM");
-      } finally { monitoring = false; }
+        stopped = error instanceof Error ? error.message : String(error); stoppedAction = "recheck-repair-state";
+        child.kill("SIGTERM"); monitoring = false; return;
+      }
+      if (Date.now() >= nextQuotaReadAt) {
+        try {
+          const value = await quota.read(at), used = quotaUsed(value, at);
+          if (used === undefined) { warn("Warning: subscription telemetry is stale, expired or invalid"); nextQuotaReadAt = Date.now() + QUOTA_REREAD_MS; }
+          else {
+            if (used >= config.budget.subscriptionStopAtPercent) warn(`Warning: subscription usage reached ${config.budget.subscriptionStopAtPercent}% (warning threshold only)`);
+            await store.transact(`usage-${invocationId}-${Math.floor(Date.parse(at) / 30_000)}`, "subscription-usage", at, state => { state.budget.telemetry[options.executor] = value; return value; });
+          }
+        } catch (error) {
+          warn(`Warning: ${error instanceof QuotaReadError ? error.message : "subscription telemetry acquisition failed; unavailable, stale or invalid"}`);
+          nextQuotaReadAt = Date.now() + QUOTA_REREAD_MS;
+        }
+      }
+      monitoring = false;
     })();
   }, 30_000);
   const code = await new Promise<number | null>((resolve, reject) => { child.once("error", reject); child.once("close", resolve); }).finally(() => { clearInterval(meter); clearTimeout(bindingTimer); });
@@ -379,20 +399,22 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
     try { repairedSha = await verifyRepair(config, store, sourceDir, result); sources = await admitRepairSource(config, store, sourceDir, work.intentId, repairedSha); }
     catch (error) { repairedSha = undefined; sources = undefined; verificationError = error instanceof Error ? error.message : String(error); result = { ...result, outcome: "checkpoint", summary: `${result.summary}; deterministic verification pending: ${verificationError}` }; }
   }
-  const endedAt = new Date().toISOString();
+  const endedAt = new Date().toISOString(), approval = reviewApprovalBlocker(result);
   const completion = await store.transact(`worker-ended-${invocationId}`, "agent-checkpoint", endedAt, state => {
     const current = state.agents[work.id]!; invariant(current.lease?.owner === invocationId && current.lease.fence === claim.result.fence, "Agent completion lost its ownership fence");
     const assessed = assessBlockedResult(result, blockerBinding, endedAt, hash(repairContext(state, current))), effective = assessed.result;
     const invocation = current.invocations.find(item => item.id === invocationId)!; invocation.endedAt = endedAt; invocation.result = effective; invocation.session = session; invocation.usage = usage; current.lease = undefined;
+    let repair: "adopted" | "absorbed" | undefined;
     if (state.intents[current.intentId]!.state === "delivered") current.state = "complete";
-    else if (repairedSha && sources) { state.sources = sources.map(source => state.sources.find(known => known.sha === source.sha) ?? source); state.lastMain = sources.at(-1)?.sha; adoptRepair(state, config, current.intentId, sourceAt(state, repairedSha), result.pullRequest!, endedAt); current.state = "complete"; }
-    else if (effective.outcome === "repaired" && !effective.pullRequest) { completeOperationalRepair(state, current.intentId, effective.evidence, endedAt); current.state = "complete"; }
-    else if (effective.outcome === "blocked" && current.strategy < 2) { current.state = "complete"; repairWork(state, current.intentId, [...current.evidence, effective.summary, effective.missingCapability ?? "unknown capability"], endedAt); }
-    else { current.state = effective.outcome === "blocked" || stopped ? "waiting" : "pending"; current.nextCheckAt = assessed.continueImmediately ? endedAt : after(endedAt, config.deadlines.pollMinutes); const intent = state.intents[current.intentId]!; intent.blocker = stopped ?? (effective.missingCapability || verificationError); intent.nextAction = stopped ? stoppedAction ?? "recheck-repair-state" : assessed.claim?.status === "rejected" ? "continue-blocker-diagnosis" : effective.outcome === "blocked" ? "verify-blocker-candidate-with-cto" : "resume-repair-checkpoint"; }
-    return { workId: current.id, invocationId, outcome: effective.outcome, repairedSha, checkpoint: directory, ...(assessed.claim ? { blockerClaim: assessed.claim } : {}) };
+    else if (repairedSha && sources) { state.sources = sources.map(source => state.sources.find(known => known.sha === source.sha) ?? source); state.lastMain = sources.at(-1)?.sha; repair = settleRepair(state, config, current.id, sourceAt(state, repairedSha), result.pullRequest!, endedAt); current.state = "complete"; }
+    else if (effective.outcome === "repaired" && !effective.pullRequest) { completeOperationalRepair(state, current.intentId, effective.evidence, endedAt, current.id); current.state = "complete"; }
+    else if (approval || effective.outcome === "blocked" && current.strategy < 2) { current.state = "complete"; repairWork(state, current.intentId, [...current.evidence, effective.summary, result.missingCapability || effective.missingCapability || "unknown capability", ...(approval ? [FRESH_REVIEW_DIRECTIVE] : [])], endedAt); }
+    else { current.state = effective.outcome === "blocked" || stopped ? "waiting" : "pending"; current.nextCheckAt = assessed.continueImmediately ? endedAt : after(endedAt, config.deadlines.pollMinutes); labelRepair(state.intents[current.intentId]!, stopped ?? (effective.missingCapability || verificationError), stopped ? stoppedAction ?? "recheck-repair-state" : assessed.claim?.status === "rejected" ? "continue-blocker-diagnosis" : effective.outcome === "blocked" ? "verify-blocker-candidate-with-cto" : "resume-repair-checkpoint"); }
+    return { workId: current.id, invocationId, outcome: effective.outcome, repairedSha, checkpoint: directory, ...(repair ? { repair } : {}), ...(approval ? { reviewApprovalRefused: true } : {}), ...(quotaWarnings.size ? { quotaWarnings: [...quotaWarnings] } : {}), ...(assessed.claim ? { blockerClaim: assessed.claim } : {}) };
   });
   const receipt = completion.result.blockerClaim;
   return { workId: work.id, invocationId, outcome: completion.result.outcome, repairedSha, checkpoint: directory,
+    ...(completion.result.repair ? { repair: completion.result.repair } : {}), ...(completion.result.quotaWarnings ? { quotaWarnings: completion.result.quotaWarnings } : {}),
     ...(receipt ? { blockerClaim: { status: receipt.status, proofDigest: receipt.proofDigest, reason: receipt.reason } } : {}) };
   } catch (error) {
     const at = new Date().toISOString(), reason = error instanceof Error ? error.message : String(error), stillOwned = owned && owned.exitCode === null && owned.signalCode === null;

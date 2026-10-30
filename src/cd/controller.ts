@@ -5,8 +5,9 @@ import { AppleAdapter, AppleRequestError } from "./apple.js";
 import { GitHubStore, boundedGitHubReadApi, type GitHubReadLimit, pages } from "./store.js";
 import { loadSources, verifyValidator } from "./source.js";
 import { CdWait } from "./errors.js";
-import { assertPhysicalDeviceProof, adoptSources, after, attemptAt, assertPostResumeAdmission, assertPostResumeNewEffect, ordinaryDemand, postResumeAcceptance, postResumeGroupKey, claimPostResumeGroup, protectedPostResumeUpload, yieldPostResumeAttempt, claimExternalReview, claimGroup, deliver, evaluateSlots, externalReviewKey, invariant, planAttempt, recordTests, recordUpload, repairWork, validateObservation } from "./state.js";
+import { assertPhysicalDeviceProof, adoptSources, after, attemptAt, assertPostResumeAdmission, assertPostResumeNewEffect, failedAttempts, ordinaryDemand, postResumeAcceptance, postResumeGroupKey, claimPostResumeGroup, protectedPostResumeUpload, yieldPostResumeAttempt, claimExternalReview, claimGroup, deliver, evaluateSlots, externalReviewKey, invariant, planAttempt, recordTests, recordUpload, repairWork, retargetRetry, scheduleRetry, validateObservation } from "./state.js";
 
+export const UNPROVEN_TERMINATION_WARNING = "Warning: native executor termination was not proved by the job census. The failed attempt is fenced out of upload and the retry waits for the next slot; diagnose any leaked host process or VM.";
 interface WorkflowJob {
   id: number; run_id: number; run_attempt?: number; head_sha: string;
   status: string; conclusion: string | null; created_at?: unknown; started_at: string | null; completed_at: string | null;
@@ -66,6 +67,16 @@ function jobAdmission(jobs: unknown[], config: CdConfig, lane: Attempt["lane"]):
   };
 }
 
+/**
+ * When an uncertain upload's executor can no longer act: recorded host quiescence, or expiry of the
+ * upload claim's lease. A retired build is burned, observed late and never promoted, so the residual
+ * risk of a straggler finishing its upload is an unused provider binary, not a second delivery.
+ */
+function uploaderReleasedAt(attempt: Attempt, now: string): string | undefined {
+  if (attempt.quiescence) return attempt.quiescence.observedAt;
+  const expiry = attempt.lease?.expiresAt;
+  return expiry && Date.parse(expiry) <= Date.parse(now) ? expiry : undefined;
+}
 /** Acceptance must not depend on downloading the same verified artifacts again. */
 function acceptedTestProof(state: CdState, config: CdConfig, intent: DeliveryIntent, attempt: Attempt, run: WorkflowRun): TestProof | undefined {
   const proof = attempt.tests, upload = attempt.upload;
@@ -106,7 +117,19 @@ function acceptedTestProof(state: CdState, config: CdConfig, intent: DeliveryInt
 
 export interface TickResult { mode: "observe" | "active"; stateHead: string; intents: unknown[]; decisions: unknown[]; errors: { intentId: string; message: string }[] }
 export function status(state: CdState, now: string): unknown[] {
-  return Object.values(state.intents).map(intent => ({ id: intent.id, channel: intent.channel, validation: intent.validation, sourceAgeWaiver: intent.sourceAgeWaiver, state: intent.state, originalSource: intent.originalSource, source: intent.source, slot: intent.slot, oldestDebtAt: intent.oldestDebtAt, deadlineAt: intent.deadlineAt, overdue: intent.state !== "delivered" && Date.parse(now) > Date.parse(intent.deadlineAt), nextAction: intent.nextAction, nextCheckAt: intent.nextCheckAt, blocker: intent.blocker, attempts: intent.attempts.map(attempt => ({ id: attempt.id, buildNumber: attempt.buildNumber, lane: attempt.lane, runId: attempt.runId, status: attempt.status, upload: attempt.upload?.outcome })), receipt: intent.receipt, ...(intent.external ? { external: intent.external } : {}) }));
+  return Object.values(state.intents).map(intent => ({ id: intent.id, channel: intent.channel, validation: intent.validation, sourceAgeWaiver: intent.sourceAgeWaiver, state: intent.state, originalSource: intent.originalSource, source: intent.source, slot: intent.slot, oldestDebtAt: intent.oldestDebtAt, deadlineAt: intent.deadlineAt, overdue: intent.state !== "delivered" && Date.parse(now) > Date.parse(intent.deadlineAt), nextAction: intent.nextAction, nextCheckAt: intent.nextCheckAt, blocker: intent.blocker, failedAttempts: failedAttempts(intent), attempts: intent.attempts.map(attempt => ({ id: attempt.id, buildNumber: attempt.buildNumber, lane: attempt.lane, runId: attempt.runId, status: attempt.status, upload: attempt.upload?.outcome })), receipt: intent.receipt, ...(intent.external ? { external: intent.external } : {}) }));
+}
+export const REPEATED_FAILURE_PREFIX = "Repeated delivery failure:";
+/**
+ * Failures retry instead of parking, so repetition is the signal a person needs. Every tick reports
+ * an outstanding delivery with two or more failed or retired attempts through its errors, the same
+ * channel that already carries reconcile failures.
+ */
+export function repeatedFailureAlerts(state: CdState): TickResult["errors"] {
+  return Object.values(state.intents).filter(intent => intent.state !== "delivered" && !intent.postResumeKey && failedAttempts(intent) >= 2).map(intent => {
+    const last = intent.attempts.at(-1)!;
+    return { intentId: intent.id, message: `${REPEATED_FAILURE_PREFIX} ${failedAttempts(intent)} attempts of ${intent.channel} delivery ${intent.id} failed or were retired (latest ${last.id}, build ${last.buildNumber}, ${last.status}); next ${intent.nextAction} at ${intent.nextCheckAt}${intent.blocker ? `: ${intent.blocker}` : ""}` };
+  });
 }
 export class Controller {
   constructor(readonly config: CdConfig, readonly store: GitHubStore, readonly actions: ActionsAdapter, readonly apple: AppleAdapter, readonly sourceDir: string, readonly clock: () => string = () => new Date().toISOString()) {}
@@ -118,7 +141,7 @@ export class Controller {
     const pure = (state: CdState) => { adoptSources(state, sources, now); evaluateSlots(state, this.config, now); return { slots: state.slots.length }; };
     if (observe || this.config.mode === "observe") {
       const state = structuredClone(snapshot.state); pure(state);
-      return { mode: "observe", stateHead: snapshot.head, intents: status(state, now), decisions: state.slots, errors: [] };
+      return { mode: "observe", stateHead: snapshot.head, intents: status(state, now), decisions: state.slots, errors: repeatedFailureAlerts(state) };
     }
     await this.store.repairBackup();
     const evaluated = await this.store.transact(`tick-${randomUUID()}`, "evaluate-slots", now, pure), errors: TickResult["errors"] = [];
@@ -162,7 +185,7 @@ export class Controller {
         await this.store.transact(`late-observation-${attempt.id}-${Math.floor(Date.parse(now) / 300_000)}`, "monitor-retired-upload", now, state => { const old = attemptAt(state, intent.id, attempt.id).attempt; old.uploadObservations ??= []; old.uploadObservations.push({ at: now, uploadState: late.uploadState, buildId: late.observation?.buildId, processingState: late.observation?.processingState, diagnostics: late.diagnostics }); return { attemptId: old.id, lateBuildId: late.observation?.buildId, promoted: false }; });
       } catch (error) { errors.push({ intentId: intent.id, message: `Retired identity observation unavailable: ${String(error)}` }); }
     }
-    const final = await this.store.read(); return { mode: "active", stateHead: final.head, intents: status(final.state, now), decisions: final.state.slots, errors };
+    const final = await this.store.read(); return { mode: "active", stateHead: final.head, intents: status(final.state, now), decisions: final.state.slots, errors: [...errors, ...repeatedFailureAlerts(final.state)] };
   }
   private async reconcileExternal(intentId: string, now: string): Promise<void> {
     const snapshot = await this.store.read(), intent = snapshot.state.intents[intentId]!, receipt = intent.receipt;
@@ -254,11 +277,17 @@ export class Controller {
     }
     if (!attempt) {
       if (optional && current.attempts.length) return; // Definitive optional failure is spent, never a retry plan.
-      if (current.state === "repairing" || current.state === "paused") return;
+      // No failure parks the channel. A `repairing` intent from an older runtime plans like any other;
+      // the retry time is its nextCheckAt, already honored by tick(), and repair runs alongside.
+      if (current.state === "paused") return;
       if (current.eligibleAt && Date.parse(current.eligibleAt) > Date.parse(now)) return;
       const app = this.config.channels[current.channel], maximum = await this.apple.maximum(app.appId, app.version, optional ? { maximumRequests: 8, timeoutMs: 30_000 } : undefined);
       const control = await this.store.api.request<{ sha: string }>("GET", `repos/${this.config.repository}/commits/${encodeURIComponent(this.config.controlRef)}`);
-      await this.store.transact(`plan-${current.id}-a${current.attempts.length + 1}`, "plan-attempt", now, state => ({ attemptId: planAttempt(state, this.config, current.id, control.sha, maximum, this.currentTime(state, current.id, now), current.nextAction === "dispatch-hosted" ? "hosted" : "local").id }));
+      await this.store.transact(`plan-${current.id}-a${current.attempts.length + 1}`, "plan-attempt", now, state => {
+        const at = this.currentTime(state, current.id, now);
+        retargetRetry(state, this.config, current.id, at);
+        return { attemptId: planAttempt(state, this.config, current.id, control.sha, maximum, at, current.nextAction === "dispatch-hosted" ? "hosted" : "local").id };
+      });
       const planned = (await this.store.read()).state.intents[current.id]!.attempts.at(-1)!;
       await this.dispatch(current.id, current.channel, planned, now); return;
     }
@@ -296,7 +325,7 @@ export class Controller {
       found.attempt.runId ??= String(run.id); found.attempt.runAttempt ??= String(run.run_attempt);
       if (run.status === "completed") found.attempt.workflowTerminalAt ??= now;
       for (const tests of evidence.tests) { recordTests(state, this.config, tests); found.attempt.artifactsVerifiedAt = now; }
-      for (const upload of evidence.uploads) if (found.attempt.upload) recordUpload(state, upload, now);
+      for (const upload of evidence.uploads) if (found.attempt.upload) recordUpload(state, upload, now, this.config);
       return { runId: String(run.id), artifacts: evidence.tests.length + evidence.uploads.length };
     });
     const observedAttempt = (await this.store.read()).state.intents[current.id]!.attempts.find(item => item.id === attempt.id)!;
@@ -337,7 +366,8 @@ export class Controller {
   }
   private async failedRun(intentId: string, attempt: Attempt, run: WorkflowRun, jobs: unknown[], now: string, reason = `Workflow ${run.id} ended ${run.conclusion}`): Promise<void> {
     const admission = jobAdmission(jobs, this.config, attempt.lane), neverStarted = admission.neverStarted && !attempt.tests, hostedEnded = admission.hostedEnded;
-    await this.store.transact(`failure-${attempt.id}-${run.run_attempt}-${hash({ jobs, quiescence: attempt.quiescence }).slice(0, 12)}`, "native-failure", now, state => {
+    // The retry-era id re-evaluates a terminal attempt an older runtime left active without quiescence.
+    await this.store.transact(`failure-retry-${attempt.id}-${run.run_attempt}-${hash({ jobs, quiescence: attempt.quiescence }).slice(0, 12)}`, "native-failure", now, state => {
       const current = attemptAt(state, intentId, attempt.id);
       // An upload hook or another reconciler can win after the census was read.
       // Failure classification cannot release that newer owner or revive old work.
@@ -351,15 +381,19 @@ export class Controller {
         current.intent.state = "waiting"; current.intent.nextAction = "observe-failed-acceptance"; current.intent.nextCheckAt = after(now, this.config.deadlines.pollMinutes); return { reason, optional: true };
       }
       const noStart = neverStarted && !current.attempt.tests;
-      if (current.attempt.quiescence || noStart || hostedEnded) {
-        current.attempt.quiescence ??= { kind: hostedEnded ? "hosted-terminated" : "host-terminated", ref: hostedEnded ? `GitHub hosted ephemeral VM job completion: ${jobs.map(job => (job as WorkflowJob).id).join(",")}` : `GitHub complete exact-attempt job census: no native job assigned/started, run ${run.id}/${run.run_attempt}`, observedAt: now };
-        current.attempt.status = "failed";
+      const terminationProved = Boolean(current.attempt.quiescence || noStart || hostedEnded);
+      if (terminationProved) current.attempt.quiescence ??= { kind: hostedEnded ? "hosted-terminated" : "host-terminated", ref: hostedEnded ? `GitHub hosted ephemeral VM job completion: ${jobs.map(job => (job as WorkflowJob).id).join(",")}` : `GitHub complete exact-attempt job census: no native job assigned/started, run ${run.id}/${run.run_attempt}`, observedAt: now };
+      // The workflow is terminal and holds no upload claim. Failing the attempt fences any straggling
+      // executor out of upload (the claim CAS needs the current active attempt), so a missing
+      // host-termination proof is a warning for repair, not a reason to hold the channel.
+      current.attempt.status = "failed";
+      if (noStart && attempt.lane === "local") {
+        current.intent.state = "pending"; current.intent.nextAction = "dispatch-hosted"; current.intent.nextCheckAt = now;
+        return { reason, neverStarted, hostedEnded };
       }
-      const admissionFailure = noStart && attempt.lane === "local";
-      current.intent.state = admissionFailure ? "pending" : "repairing";
-      current.intent.nextAction = admissionFailure ? "dispatch-hosted" : "run-repair-agent"; current.intent.nextCheckAt = now;
-      if (!admissionFailure) repairWork(state, intentId, [reason, `https://github.com/${this.config.repository}/actions/runs/${run.id}`, ...(!noStart && !hostedEnded ? ["Native admission absence is not proved; host-side owned process/VM termination evidence is required before replacement"] : [])], now);
-      return { reason, neverStarted, hostedEnded };
+      repairWork(state, intentId, [reason, `https://github.com/${this.config.repository}/actions/runs/${run.id}`, ...(terminationProved ? [] : [UNPROVEN_TERMINATION_WARNING])], now);
+      scheduleRetry(state, this.config, intentId, reason, now);
+      return { reason, neverStarted, hostedEnded, terminationProved, retryAt: current.intent.nextCheckAt };
     });
   }
   private async reconcileUpload(intentId: string, attempt: Attempt, run: WorkflowRun, now: string): Promise<void> {
@@ -367,7 +401,7 @@ export class Controller {
     const observation = provider.observation;
     await this.store.transact(`upload-observation-${attempt.id}-${Math.floor(Date.parse(now) / 300_000)}`, "observe-upload-and-build", now, next => { const current = attemptAt(next, intentId, attempt.id); current.attempt.uploadObservations ??= []; current.attempt.uploadObservations.push({ at: now, uploadState: provider.uploadState, buildId: observation?.buildId, processingState: observation?.processingState, diagnostics: provider.diagnostics }); current.intent.nextCheckAt = after(now, this.config.deadlines.pollMinutes); return { buildId: observation?.buildId, uploadState: provider.uploadState }; });
     if (["FAILED", "INVALID"].includes(provider.uploadState ?? "") || observation && ["FAILED", "INVALID"].includes(observation.processingState)) {
-      await this.store.transact(`provider-rejected-${attempt.id}`, "provider-rejection", now, next => { const current = attemptAt(next, intentId, attempt.id); current.attempt.upload!.diagnostics = provider.diagnostics; if (current.attempt.status !== "active" || current.intent.attempts.at(-1)?.id !== attempt.id || current.intent.state === "delivered") return { late: true }; if (!current.attempt.upload!.acceptedAt) current.attempt.upload!.outcome = "rejected"; if (!current.intent.postResumeKey) current.attempt.status = "failed"; if (current.intent.postResumeKey) { current.intent.state = "waiting"; current.intent.nextAction = "observe-rejected-acceptance"; return { rejected: true }; } if (next.groupOperations[current.intent.groupId]?.attemptId === attempt.id) next.groupOperations[current.intent.groupId]!.completedAt = now; repairWork(next, intentId, [`Apple rejected ${attempt.appId}/${attempt.version}/${attempt.buildNumber}`, provider.diagnostics ?? "No additional diagnostics"], now); return { uploadState: provider.uploadState, processingState: observation?.processingState }; }); return;
+      await this.store.transact(`provider-rejected-${attempt.id}`, "provider-rejection", now, next => { const current = attemptAt(next, intentId, attempt.id); current.attempt.upload!.diagnostics = provider.diagnostics; if (current.attempt.status !== "active" || current.intent.attempts.at(-1)?.id !== attempt.id || current.intent.state === "delivered") return { late: true }; if (!current.attempt.upload!.acceptedAt) current.attempt.upload!.outcome = "rejected"; if (!current.intent.postResumeKey) current.attempt.status = "failed"; if (current.intent.postResumeKey) { current.intent.state = "waiting"; current.intent.nextAction = "observe-rejected-acceptance"; return { rejected: true }; } if (next.groupOperations[current.intent.groupId]?.attemptId === attempt.id) next.groupOperations[current.intent.groupId]!.completedAt = now; const reason = `Apple rejected ${attempt.appId}/${attempt.version}/${attempt.buildNumber}`; repairWork(next, intentId, [reason, provider.diagnostics ?? "No additional diagnostics"], now); scheduleRetry(next, this.config, intentId, reason, now); return { uploadState: provider.uploadState, processingState: observation?.processingState, retryAt: current.intent.nextCheckAt }; }); return;
     }
     if (observation) {
       const recorded = await this.store.transact(`provider-visible-${attempt.id}-${hash(observation).slice(0, 20)}`, "exact-build-observation", now, next => { const current = attemptAt(next, intentId, attempt.id); current.attempt.observation = observation; current.attempt.upload!.acceptedAt ??= now; current.attempt.upload!.outcome = "accepted"; if (current.attempt.status !== "active" || current.intent.attempts.at(-1)?.id !== attempt.id || current.intent.state === "delivered") return { late: true, buildId: observation.buildId }; current.intent.state = "processing"; current.intent.nextAction = "verify-internal-distribution"; current.intent.nextCheckAt = after(now, this.config.deadlines.pollMinutes); return { late: false, buildId: observation.buildId, processingState: observation.processingState }; });
@@ -405,21 +439,21 @@ export class Controller {
       // Terminal self-hosted job state alone does not prove its uploader is dead.
       // Retain reservation and ask the repair executor for host/provider evidence.
       const observations = (await this.store.read()).state.intents[intentId]!.attempts.find(item => item.id === attempt.id)!.uploadObservations ?? [];
-      const observationStart = Math.max(Date.parse(observations[0]?.at ?? now), Date.parse(attempt.quiescence?.observedAt ?? now));
-      if (attempt.quiescence && run.status === "completed" && !attempt.upload!.acceptedAt && observations.length >= 2 && Date.parse(now) - observationStart >= this.config.deadlines.appleObservationMinutes * 60_000) {
+      const released = uploaderReleasedAt(attempt, now), observationStart = Math.max(Date.parse(observations[0]?.at ?? now), Date.parse(released ?? now));
+      if (released && run.status === "completed" && !attempt.upload!.acceptedAt && observations.length >= 2 && Date.parse(now) - observationStart >= this.config.deadlines.appleObservationMinutes * 60_000) {
         await this.store.transact(`retire-${attempt.id}`, "retire-uncertain-upload", now, next => {
           const current = attemptAt(next, intentId, attempt.id), upload = current.attempt.upload;
           // Acceptance/resource hooks can commit after the absence read above. Only
           // this CAS transition's current state can release an uncertain reservation.
           if (protectedPostResumeUpload(next, current.intent, current.attempt)) return { retired: false };
           if (current.attempt.status !== "active" || current.intent.attempts.at(-1)?.id !== attempt.id || current.intent.state === "delivered" || !upload || upload.acceptedAt || ["accepted", "rejected"].includes(upload.outcome)) return { retired: false };
-          const observations = current.attempt.uploadObservations ?? [], quiescence = current.attempt.quiescence;
-          const start = Math.max(Date.parse(observations[0]?.at ?? now), Date.parse(quiescence?.observedAt ?? now));
-          if (!quiescence || !current.attempt.workflowTerminalAt || observations.some(item => item.buildId) || observations.length < 2 || Date.parse(now) - start < this.config.deadlines.appleObservationMinutes * 60_000) return { retired: false };
+          const observations = current.attempt.uploadObservations ?? [], released = uploaderReleasedAt(current.attempt, now);
+          const start = Math.max(Date.parse(observations[0]?.at ?? now), Date.parse(released ?? now));
+          if (!released || !current.attempt.workflowTerminalAt || observations.some(item => item.buildId) || observations.length < 2 || Date.parse(now) - start < this.config.deadlines.appleObservationMinutes * 60_000) return { retired: false };
           current.attempt.status = "retired-uncertain"; current.intent.state = "pending"; current.intent.nextAction = "dispatch-full-tests"; current.intent.nextCheckAt = now;
           return { retired: true, burnedBuild: attempt.buildNumber, monitorLateAppearance: true };
         });
-      } else await this.processingDiagnosis(intentId, attempt, now, `Upload/build absent after bounded observation; executor ${run.id} requires confirmed host/provider quiescence before replacement`);
+      } else await this.processingDiagnosis(intentId, attempt, now, `Upload/build absent after bounded observation; executor ${run.id} retires once its workflow is terminal and its upload lease has expired (or host quiescence is recorded), then the observation window passes`);
     }
   }
   private async processingDiagnosis(intentId: string, attempt: Attempt, now: string, reason: string): Promise<void> {
