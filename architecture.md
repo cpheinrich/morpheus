@@ -1759,7 +1759,8 @@ correction. Its original scope and predecessor stay checked. It cannot resolve a
 substantive finding, and is checked against the commits it covers: the worklog, already-conditioned
 paths, and explanatory Markdown only — never normative policy files. Records from the three-turn
 contract keep their bounded `verification` fourth turn valid. Every verdict, incomplete ones
-included, stays in the record and every historical and new turn must satisfy its budget. Incidental pre-existing bugs are recorded
+included, stays in the record; a cleared or blocked turn must satisfy its budget, while a turn
+that ran out of time is recorded incomplete with its real duration and the next turn continues. Incidental pre-existing bugs are recorded
 separately; related unchanged code is blocking only when causally relevant to the PR or acceptance.
 
 Initial risk-based ceilings are 10/15/30 minutes, with a 30-second floor at normal and high risk, with one justified initial extension of at most

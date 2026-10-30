@@ -65,7 +65,8 @@ timeout, crash, lost session or missing evidence); or is a late correction after
 when full CI shows a fix is needed after the code was cleared, the author spends a remaining turn,
 recording the scope decision as that turn's scopeReason, and the reviewer clears or blocks the
 correction commit. Otherwise a cleared turn ends the review. Preserve every verdict, incomplete
-ones included; no turn's budget is ever waived.
+ones included. A cleared or blocked turn must stay within its budget; a turn that ran out of time
+is incomplete, with its real duration, and the next turn continues.
 A follow-up resumes this session when it can. When it cannot, the author starts a fresh reviewer
 instead, with no human sign-off, and gives it the packet, every earlier finding and the record so
 far. If you are that fresh reviewer, read the earlier findings first: you may not drop one, and a

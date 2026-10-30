@@ -10,16 +10,20 @@ session"*, then *"increase the automatic review limit to 5 rounds for all Morphe
 the continued guidance that review feedback should be substantive and we shouldn't block changes
 because of some trivial thing the reviewer flags."* This supersedes the three-turn cap
 (2026-09-18), the same-reviewer rule in every entry that states it, authorization to resume an
-incomplete turn (2026-09-28, 2026-10-08) and authorization after finalization within the cap
-(2026-09-28). Five ordinary turns, counting the initial review and incomplete ones, need no one's
-approval; each after the fifth carries `humanAuthorization`, which stays optional for back-compat.
+incomplete turn (2026-09-28, 2026-10-08), authorization after finalization within the cap
+(2026-09-28), and the same-reviewer, three-turn half of "Incomplete independent reviews resume
+within the ordinary cap" (#565, earlier the same day; its positive-duration rule stands). An
+incomplete turn may also record the overrun that made it incomplete: budgets bind turns that
+render a verdict, so a timed-out reviewer no longer blocks the record forever, and PR414's
+human override for that case is not needed. Five ordinary turns, counting the initial review and
+incomplete ones, need no one's approval; each after the fifth carries `humanAuthorization`, which
+stays optional for back-compat.
 Finalization stays one per PR and outside the count. A follow-up may be a fresh session; the guard
 against reviewer shopping is mechanical: a `handoff` names every earlier finding (by optional
 per-finding `turn`), and a `blocked` turn that is handed over names its substantive findings in
 `blockedOn`, so nothing found earlier can be dropped silently. A fresh reviewer's turn gets the
 initial ceiling. Reviewers block only on substantive problems; style and wording are notes the
-author may decline in one line. PR414's human override for incomplete reviews is superseded. No
-dependency: Zod and the existing checker.
+author may decline in one line. No dependency: Zod and the existing checker.
 
 **HQ presentation is an executive-first shared system, with product/design leadership in Morpheus**
 — 2026-10-29. Every HQ page serves five-second orientation, thirty-second executive understanding
@@ -2104,3 +2108,20 @@ render again on the client. The rehype plugin also covers only Markdown. Neither
 clipboard. We built about 300 lines with no new dependency: one floating icon, and an `id`
 attribute as the only write into a heading. That attribute logs a development-only hydration
 mismatch in such a boundary; production is unaffected.
+
+## Incomplete independent reviews resume within the ordinary cap — 2026-10-30
+
+*Superseded the same day where the entry at the top of this file is broader ("Reviews never wait
+on approval inside five turns, and any fresh reviewer may continue", MO-26-10-30-14.56.24): the
+ordinary cap is five turns, not three; the continuation may be a fresh reviewer, not only the
+original; and turns after finalization need authorization only beyond the five. What stands from
+this entry: no authorization to resume an incomplete turn, the incomplete verdict preserved, and
+every version 2 turn measured above zero.*
+
+Chris clarified that asking for approval merely to let the original reviewer finish an incomplete
+review was unintentional. The author may resume that reviewer after providing missing evidence or
+fixes while an ordinary turn remains. Preserve the incomplete verdict, the original reviewer,
+per-turn timing and budgets, and the three-turn cap. This supersedes the 2026-09-28 and 2026-10-08
+decisions requiring `humanAuthorization` after every incomplete turn. Authorization still governs
+extra substantive turns beyond the ordinary cap and turns after finalization. The review validator,
+reviewer prompt, runbook, architecture, and agent instructions now state the same rule.

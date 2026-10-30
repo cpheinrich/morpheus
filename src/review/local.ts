@@ -359,12 +359,20 @@ export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialC
     if (turn.timing && Math.abs(turn.elapsedMinutes - turn.timing.durationMs / 60000) > 1e-9) {
       throw new Error("elapsedMinutes must equal timing.durationMs / 60000 without rounding; use the measured duration, never a reviewer estimate");
     }
+    if (record.version === 2 && turn.timing?.durationMs === 0) {
+      throw new Error("version 2 requires a positive measured duration for every turn; zero is the template placeholder");
+    }
   }
   if (unconditional && !turns.length) throw new Error("substantive findings require a follow-up review turn unless cleared under a recorded condition");
   if (record.findings.some(f => f.severity === "substantive" && f.disposition !== "fixed" && f.disposition !== "disputed")) throw new Error("substantive findings cannot be deferred");
   const budget = REVIEW_BUDGET_MINUTES[record.risk];
   const multiplier = record.extensionReason ? 1.5 : 1;
-  if (record.elapsedMinutes > budget * multiplier) throw new Error("review exceeded its budget; record incomplete and escalate instead of claiming completion");
+  // A ceiling binds a turn that renders a verdict. A turn that ran out of time is recorded
+  // incomplete with its honest measurement and gives no clearance, and the next turn (the same
+  // reviewer resumed, or a fresh one) continues; refusing the record for it would leave a timed-out
+  // review blocked for good, which is the stall this contract exists to prevent.
+  const overrun = (turn: { outcome: string; elapsedMinutes: number }, ceiling: number) => turn.outcome !== "incomplete" && turn.elapsedMinutes > ceiling;
+  if (overrun({ outcome: record.initialOutcome ?? record.outcome, elapsedMinutes: record.elapsedMinutes }, budget * multiplier)) throw new Error("review exceeded its budget; record incomplete and escalate instead of claiming completion");
   // Five ordinary turns need nobody's approval, the initial review and incomplete turns included;
   // each one after that carries its own humanAuthorization. Finalization stays outside the count.
   let ordinal = 1;
@@ -459,7 +467,7 @@ export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialC
     // reviewer taking over does not, so its ordinary turn gets the initial ceiling (no extension).
     const fresh = !sameReviewer(turn.reviewerSession, (turns[index - 1] ?? record).reviewerSession);
     const ceiling = fresh && !turn.finalization && !turn.verification ? budget : budget / 2;
-    if (turn.elapsedMinutes > ceiling) throw new Error(fresh ? "a fresh reviewer's turn exceeded the initial-review budget; record incomplete and continue with another turn" : "follow-up exceeded its budget; record incomplete and escalate instead of claiming completion");
+    if (overrun(turn, ceiling)) throw new Error(fresh ? "a fresh reviewer's turn exceeded the initial-review budget; record it incomplete and continue with another turn" : "follow-up exceeded its budget; record it incomplete and continue with another turn instead of claiming a verdict");
     const next = turns[index + 1];
     if (!next) {
       // With a conditional clearance the author's fix may land after the final turn; the commit

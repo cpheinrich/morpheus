@@ -1040,7 +1040,7 @@ describe("the shape Evo #291 needs", () => {
 });
 
 
-describe("authorized continuation after missing review evidence", () => {
+describe("continuation after missing review evidence", () => {
   const authorization = { approvedBy: "Chris Heinrich", approvedAt: "2026-09-28T23:09:04Z", reason: "Explicitly authorized another same-reviewer turn after obtaining the missing evidence." };
   function pendingEvidence(): LocalReviewRecord {
     const r = record();
@@ -1052,7 +1052,7 @@ describe("authorized continuation after missing review evidence", () => {
     ];
     return r;
   }
-  it("preserves an incomplete verdict when a human authorizes the next same-reviewer clearance", () => {
+  it("preserves an incomplete verdict when the same reviewer clears the next turn", () => {
     const r = pendingEvidence();
     expect(check(save(r))).toEqual([]);
     expect(r.followUps![0]!.outcome).toBe("incomplete");
@@ -1062,11 +1062,29 @@ describe("authorized continuation after missing review evidence", () => {
     delete r.followUps![1]!.humanAuthorization;
     expect(check(save(r))).toEqual([]);
   });
-  it.each([0, 1])("still enforces the budget of follow-up %i", index => {
+  it("still enforces the budget of the turn that clears", () => {
     const r = pendingEvidence();
-    r.followUps![index]!.elapsedMinutes = 450001 / 60000;
-    r.followUps![index]!.timing!.durationMs = 450001;
+    r.followUps![1]!.elapsedMinutes = 450001 / 60000;
+    r.followUps![1]!.timing!.durationMs = 450001;
     expect(check(save(r))[0]?.message).toContain("follow-up exceeded its budget");
+  });
+  it("lets the incomplete turn record the overrun that made it incomplete", () => {
+    // A timed-out reviewer clears nothing; refusing the record for its honest duration would
+    // leave the review blocked for good. The turn that clears is still held to its ceiling.
+    const r = pendingEvidence();
+    r.followUps![0]!.elapsedMinutes = 1200000 / 60000;
+    r.followUps![0]!.timing!.durationMs = 1200000;
+    delete r.followUps![1]!.humanAuthorization;
+    expect(check(save(r))).toEqual([]);
+    r.followUps![0]!.outcome = "blocked";
+    expect(check(save(r))[0]?.message).toContain("follow-up exceeded its budget");
+  });
+  it("rejects an unmeasured intermediate incomplete turn before clearance", () => {
+    const r = pendingEvidence();
+    r.followUps![0]!.elapsedMinutes = 0;
+    r.followUps![0]!.timing!.durationMs = 0;
+    delete r.followUps![1]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("positive measured duration");
   });
   it("accepts a fresh reviewer after the incomplete turn, and still requires final clearance", () => {
     const r = pendingEvidence();
@@ -1080,10 +1098,10 @@ describe("authorized continuation after missing review evidence", () => {
   });
 });
 
-describe("an authorized follow-up rescues an initial review under the floor", () => {
+describe("a later turn rescues an initial review under the floor", () => {
   const authorization = { approvedBy: "cpheinrich", approvedAt: "2026-10-08T11:06:12Z", reason: "Authorized one extra same-reviewer turn after a clean initial review fell under the floor." };
   const timing = (durationMs: number) => ({ source: "runner" as const, durationMs, evidence: `Runner total_duration_ms for this turn: ${durationMs}.` });
-  // Shaped like kairos#70: a clean 22 s initial pass recorded incomplete, then one authorized turn.
+  // Shaped like kairos#70: a clean 22 s initial pass recorded incomplete, then one same-reviewer turn.
   function rescued(followUpMs = 30000): LocalReviewRecord {
     const r = record();
     return {
@@ -1091,7 +1109,7 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
       followUps: [{ reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared", elapsedMinutes: followUpMs / 60000, timing: timing(followUpMs), humanAuthorization: authorization, summary: "Re-read the change in full and cleared it." }],
     };
   }
-  it("accepts an authorized clearing follow-up of exactly 30 seconds, and preserves the initial verdict", () => {
+  it("accepts a clearing follow-up of exactly 30 seconds, and preserves the initial verdict", () => {
     const r = rescued(30000);
     expect(check(save(r))).toEqual([]);
     const written = readFileSync(join(root, path), "utf8");
@@ -1107,7 +1125,7 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
     r.followUps![0] = { ...r.followUps![0]!, scopeReason: "Finalize the documentation.", finalization: { paths: ["README.md"], evidence: "Re-read README.md.", attestation: "Restates already-reviewed behaviour." } };
     expect(check(save(r))[0]?.message).toContain(message);
   });
-  it("does not count an authorized finalization turn as the review that meets the floor", () => {
+  it("does not count a finalization turn as the review that meets the floor", () => {
     const r = rescued(30000);
     const authorized = r.followUps![0]!;
     r.followUps = [
@@ -1129,6 +1147,32 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
   it("accepts the clearing follow-up without any authorization", () => {
     const r = rescued(); delete r.followUps![0]!.humanAuthorization;
     expect(check(save(r))).toEqual([]);
+  });
+  it("rejects a zero-duration initial placeholder even when a later turn clears", () => {
+    const r = rescued();
+    r.elapsedMinutes = 0;
+    r.timing = timing(0);
+    delete r.followUps![0]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("positive measured duration");
+  });
+  it("rejects a zero-duration incomplete follow-up before a later clearance", () => {
+    const r = rescued();
+    const clearance = { ...r.followUps![0]!, humanAuthorization: undefined };
+    r.followUps = [
+      { ...clearance, outcome: "incomplete", elapsedMinutes: 0, timing: timing(0) },
+      clearance,
+    ];
+    expect(check(save(r))[0]?.message).toContain("positive measured duration");
+  });
+  it("lets a timed-out initial review stand as incomplete and a fresh reviewer clear", () => {
+    const r = rescued();
+    r.elapsedMinutes = 1200000 / 60000; r.timing = timing(1200000);
+    r.followUps![0] = { ...r.followUps![0]!, reviewerSession: "b2c3d4e5f6a7b8c9d", humanAuthorization: undefined, handoff: { reason: "The initial reviewer ran past its 15-minute ceiling and was stopped.", findings: [] }, elapsedMinutes: 600000 / 60000, timing: timing(600000) };
+    expect(check(save(r))).toEqual([]);
+    // Claimed as a completed initial review, the same overrun is still refused.
+    delete r.initialOutcome;
+    r.followUps![0]!.scopeReason = "Late correction after the initial review.";
+    expect(check(save(r))[0]?.message).toContain("review exceeded its budget");
   });
   it("refuses a malformed authorization", () => {
     const r = rescued(); r.followUps![0]!.humanAuthorization = { ...authorization, approvedAt: "yesterday" };
@@ -1252,8 +1296,8 @@ describe("the floor is waived for a trivially small change, measured from Git", 
     expect(check(save(quick({ risk: "small", elapsedMinutes: 0.1 })))).toEqual([]);
   });
   // Shaped like evo#412 and kairos#70: an under-floor initial turn honestly recorded incomplete,
-  // then an authorized same-reviewer turn that cleared, also under 30 seconds.
-  it("accepts the incomplete-then-authorized shape on a trivial change and refuses it otherwise", () => {
+  // then a same-reviewer turn that cleared, also under 30 seconds.
+  it("accepts the incomplete-then-cleared shape on a trivial change and refuses it otherwise", () => {
     const timing = (durationMs: number) => ({ source: "runner" as const, durationMs, evidence: `Runner total_duration_ms for this turn: ${durationMs}.` });
     const shaped = (): LocalReviewRecord => ({
       ...record(), version: 2, covered: reviewed, elapsedMinutes: 22100 / 60000, timing: timing(22100), initialOutcome: "incomplete",

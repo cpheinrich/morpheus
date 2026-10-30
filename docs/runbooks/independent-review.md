@@ -191,8 +191,10 @@ the record shows it. Otherwise a `cleared` turn ends the review.
 New user-requested scope after clearance is not a late correction. Put separable work in its own
 roadmap item and PR; if it is inseparable from this PR's acceptance, explain that in `scopeReason`
 and use a remaining turn. The cap still applies.
-Keep every verdict, incomplete ones included. Every historical and new turn must still meet its
-budget; authorization never waives an overrun. The cap is what stops an author and reviewers
+Keep every verdict, incomplete ones included. A turn that renders a verdict (`cleared` or
+`blocked`) must meet its budget, and authorization never waives that overrun. A turn that ran out
+of time is recorded `incomplete` with its real measured duration; it clears nothing, and the next
+turn continues, so a timed-out reviewer never blocks the record for good. The cap is what stops an author and reviewers
 trading fixes and findings indefinitely, at a session's cost per turn. Each ordinary turn after
 the fifth needs its own `humanAuthorization` ([below](#beyond-five-turns)). Unresolved substantive
 concerns after the last turn, or a correction needed once the turns are spent and no human has
@@ -343,7 +345,7 @@ and `blockedOn` on a `blocked` turn a fresh reviewer took over from. Every entry
 be `blocked` or `incomplete`, or `cleared` when the entry after it carries a `scopeReason` for the
 late correction it covers; the last must be `cleared`. A
 follow-up that comes directly after an initial review with no substantive findings is that same
-shape and needs a `scopeReason` too. An `incomplete` entry may be followed by any turn, with all per-turn budgets satisfied. A single
+shape and needs a `scopeReason` too. An `incomplete` entry may be followed by any turn, and may itself record the overrun that made it incomplete. A single
 `followUp` object, the shape from the two-turn contract, still validates as one turn. Each turn's
 `commit` must descend from the previous one. `elapsedMinutes` at the top level measures the
 initial review only; each follow-up's is checked against the follow-up ceiling on its own.
