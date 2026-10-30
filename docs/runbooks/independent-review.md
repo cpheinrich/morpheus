@@ -210,14 +210,19 @@ its response, and the record so far. Nobody's approval is needed. Record that tu
 `reviewerSession`, plus `handoff: { reason, findings }`: why the earlier reviewer did not continue,
 and the ids of every finding recorded before this turn. A finding raised after the initial review
 carries `turn` (1 is the initial review, the default), so the checker knows which findings came
-earlier. When the turn being taken over returned `blocked`, it names the substantive findings it
-blocked on in `blockedOn`.
+earlier. Every `blocked` follow-up before a fresh reviewer's turn names the substantive findings
+it blocked on in `blockedOn`, even when another turn (say, the same reviewer resumed and timed out)
+came between them. The initial review cannot carry `blockedOn`; its blocking findings are its
+substantive findings at `turn` 1.
 
 That is what keeps replacement from becoming reviewer shopping: every turn stays in the record,
 and nothing an earlier reviewer found disappears with its session. `check pr` refuses a fresh
 reviewer's turn without a handoff, a handoff that leaves out an earlier finding or names one the
-record no longer holds, a handed-over `blocked` turn without `blockedOn`, and a `blockedOn` id that
-is missing from the record or is not substantive. A finding the fresh reviewer disagrees with stays
+record no longer holds, an earlier `blocked` follow-up without `blockedOn`, and a `blockedOn` id
+that is missing from the record or is not substantive. The guard is relative to the recorded
+`turn`: relabelling a finding's turn is the same fabrication as leaving it out, which no check of an
+author-written record can catch, and `blockedOn` is what anchors a blocked verdict to its findings.
+A finding the fresh reviewer disagrees with stays
 in the record at its original severity, with the reasoned response; it is visible, not silent. A
 fresh reviewer's ordinary turn has the initial-review ceiling rather than the follow-up ceiling,
 because it reads the change from scratch. It is still a fresh session: never the author, and never
@@ -348,7 +353,9 @@ follow-up that comes directly after an initial review with no substantive findin
 shape and needs a `scopeReason` too. An `incomplete` entry may be followed by any turn, and may itself record the overrun that made it incomplete. A single
 `followUp` object, the shape from the two-turn contract, still validates as one turn. Each turn's
 `commit` must descend from the previous one. `elapsedMinutes` at the top level measures the
-initial review only; each follow-up's is checked against the follow-up ceiling on its own.
+initial review only. A follow-up by the same reviewer as the turn before it is checked against the
+follow-up ceiling; a fresh reviewer's ordinary turn against the initial ceiling; and an
+`incomplete` turn may record the overrun that made it incomplete.
 
 `base` is the merge base; `reviewed` is the initial code commit; `covered` is the final commit
 covered by reviewer clearance or the author's minor fixes. All are full 40-character SHAs and

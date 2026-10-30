@@ -511,8 +511,11 @@ function checkHandoffs(record: LocalReviewRecord, turns: ReviewFollowUp[]): void
       return;
     }
     if (!turn.handoff) throw new Error(`turn ${number} is taken by a fresh reviewer session; record handoff { reason, findings } naming every earlier finding it was given`);
-    if (previous.outcome === "blocked" && !previous.blockedOn?.length) {
-      throw new Error(`the blocked turn before turn ${number} must name its substantive findings in blockedOn when a fresh reviewer takes over`);
+    // Every blocked follow-up before a fresh reviewer, not only the one right before it: otherwise a
+    // resumed turn that times out in between would let what the blocked turn rested on go unnamed.
+    const unnamed = turns.slice(0, index).findIndex(earlier => earlier.outcome === "blocked" && !earlier.blockedOn?.length);
+    if (unnamed >= 0) {
+      throw new Error(`the blocked turn ${unnamed + 2} must name its substantive findings in blockedOn when a fresh reviewer takes over at turn ${number}`);
     }
     const earlier = record.findings.filter(f => (f.turn ?? 1) < number).map(f => f.id);
     const given = new Set(turn.handoff.findings);

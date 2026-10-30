@@ -1515,6 +1515,11 @@ describe("five automatic turns and any fresh reviewer (2026-10-30)", () => {
     expect(check(save({ ...r, findings: [finding("F01"), finding("F02", "minor", 2)] }))[0]?.message).toContain("only substantive findings block");
     // The same reviewer resuming its own blocked turn needs none of this.
     expect(check(save({ ...r, followUps: [follow("blocked"), follow("cleared")] }))).toEqual([]);
+    // A resumed turn that timed out in between does not let the blocked turn go unnamed (review R1).
+    const later = { ...takeover, handoff: handoff(["F01"]) };
+    const unnamed: LocalReviewRecord = { ...r, findings: [finding("F01")], followUps: [follow("blocked"), follow("incomplete"), later] };
+    expect(check(save(unnamed))[0]?.message).toContain("the blocked turn 2 must name its substantive findings in blockedOn when a fresh reviewer takes over at turn 4");
+    expect(check(save({ ...unnamed, followUps: [follow("blocked", { blockedOn: ["F01"] }), follow("incomplete"), later] }))).toEqual([]);
   });
   it("refuses a handoff on a turn the same reviewer took", () => {
     const r: LocalReviewRecord = { ...record(), followUps: [follow("cleared", { scopeReason: "Late correction after the clean initial review.", handoff: handoff([]) })] };
