@@ -25,6 +25,11 @@ export const INSTRUCTION_ANCHORS = [
         add: "\"**Refresh again only when a gated command refuses**\" in Context freshness",
     },
     {
+        name: "simplicity first",
+        pattern: /simplicity first/i,
+        add: "the **Simplicity first** rule: plan the simplest design that meets the requirements, take one simplification pass before implementing, and add complexity, gates or approvals only when observed behaviour proves the need",
+    },
+    {
         // 2026-10-30: consumer AGENTS.md files still told agents the three-turn cap and the
         // same-reviewer rule, which is what left Evo's CD repair waiting on an approval.
         name: "five review turns",

@@ -62,6 +62,10 @@ Review scope follows consequences, not changed lines. Bugs caused, exposed or wo
 and problems preventing acceptance criteria, are in scope. Other pre-existing bugs are incidental
 follow-ups. Flag independently discovered critical risks for human judgment; do not silently widen
 the PR. Blocking findings need a concrete failure scenario and a causal connection to this change.
+Complexity the PR adds is in scope too ([`architecture.md` §2](../../architecture.md), principle
+11). A simpler version with the same behaviour, in fewer parts or lines, is a minor finding. A gate,
+approval step, state, option or mechanism that the requirements do not need is substantive. Its
+failure scenario is the legitimate work it would stop or delay.
 
 ### Substantive findings block; notes do not
 
@@ -73,9 +77,12 @@ problem, recorded with severity `substantive`:
 - missing or wrong tests for behaviour the change introduces or alters;
 - a security or data-loss risk;
 - a broken contract: an interface, schema, workflow input or caller the change breaks;
-- documentation the change has made untrue.
+- documentation the change has made untrue;
+- a gate, approval step, state, option or mechanism the requirements do not need (Simplicity
+  first: architecture principle 11, above).
 
-Wording, style, naming, optional refactors and nice-to-haves are `minor` notes. They never by
+Wording, style, naming, optional refactors, local simplifications and nice-to-haves are `minor`
+notes. They never by
 themselves make a turn `blocked`, and a review whose only findings are notes clears. The author
 may decline a note with a one-line reason (disposition `disputed`, the reason as its `response`)
 and spends no turn on it. The reviewer contract (`src/review/local-prompt.ts`) and the legacy

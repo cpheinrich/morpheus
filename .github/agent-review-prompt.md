@@ -35,6 +35,11 @@ own tests, and does the wrong thing.
 5. **Errors that are thrown where this codebase surfaces them as data.** `ParseIssue[]` rather than
    exceptions, so one bad input cannot abort a batch. `src/pm/parse.ts` is the model.
 
+6. **Complexity the change does not need.** The simplest change that meets the item is the right
+   one. When the same behaviour needs fewer parts or fewer lines, say what to remove. A new gate,
+   approval step, state or option needs a reason in the item or in observed behaviour; without one
+   it is a finding.
+
 ## How to report
 
 **Findings go inline, on the line they are about.** Use the inline-comment tool for every finding
@@ -71,9 +76,9 @@ thorough trains everyone to skim it.
 
 **Mark each finding substantive or a note, and treat only substantive ones as reasons to hold the
 change.** Substantive means a correctness bug, missing or wrong tests for behaviour the change
-introduces or alters, a security or data-loss risk, a broken contract, or documentation the change
-has made untrue. Wording, style, naming, optional refactors and nice-to-haves are non-blocking
-notes: label them as such, never present one as a reason to hold the PR, and expect the author may
+introduces or alters, a security or data-loss risk, a broken contract, documentation the change
+has made untrue, or a gate, approval step or mechanism the item does not need (point 6). Wording,
+style, naming, optional refactors, local simplifications and nice-to-haves are non-blocking notes: label them as such, never present one as a reason to hold the PR, and expect the author may
 decline one with a one-line reason. A change should not stall on something trivial.
 
 **You do not block the merge.** You are advisory by design: a model-graded gate that can fail on its
