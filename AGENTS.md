@@ -166,31 +166,26 @@ because Y") when small. **Prefer lightweight:** build when the need is under ~10
 domain-specific, or every candidate is unmaintained. Record the outcome in `.agent/decisions.md`.
 
 **The authoring agent owns the entire review loop.** Finish the relevant focused tests, inspect
-their actual results, and give the reviewer the complete packet before its first turn. For UI work,
-include final-build simulator captures of each materially changed screen and state. Open the
-captures yourself; the independent reviewer must inspect their pixels. Replace them after visual
-fixes. If a test cannot run, state the exact limitation and
-keep the PR draft until validation finishes; a later code correction spends a remaining review
-turn. Aim to finish in an initial review and one focused response. The third turn is a ceiling for
-a genuine late correction or unresolved substantive finding, not a planned step. One bounded
-same-reviewer verification turn may cover a small final correction under the runbook. Commit the
-implementation and tests. When CI, visual evidence or PR metadata matters to review, move the
+results, and give the reviewer the complete packet before its first turn. For UI work, provide
+final-build simulator captures of changed screens and states. Inspect them; so must the reviewer.
+Replace them after visual fixes. If a test cannot run, state why and keep the PR draft until validation
+finishes; a later code fix spends a review turn. Aim for an initial review and one focused response.
+The third turn is a ceiling for a late correction or unresolved finding. The runbook permits one bounded
+same-reviewer verification turn for a small final fix. Commit implementation and tests. When CI,
+visual evidence or PR metadata matters to review, move the
 item to `review` and open an unlabelled draft PR first so the reviewer sees them. Then run
 `morpheus review prepare --base origin/main` (it prints a packet; it launches nothing), spawn
 **one fresh reviewer** with repository access and that packet and no inherited history, then
-handle findings, the record, CI and merge yourself. Do not wait for a monitor, another agent or
-GitHub Actions. If no independent session can be started, say so and leave the PR open with
+handle findings, record, CI and merge yourself. If no independent session can start, leave the PR open with
 auto-merge off — never self-review. **Read [`independent-review.md`](docs/runbooks/independent-review.md)
-before spawning the reviewer**: it holds the turn cap, budgets and floors, timing evidence,
-conditional clearance, finalization, `humanAuthorization`, record fields, the `review-record:`
-line and the `agent-reviewed` label. Commit the record and run `morpheus review validate` before
+before spawning the reviewer**: it defines turn caps, budgets, timing, clearance, finalization,
+`humanAuthorization`, record fields, `review-record:` and `agent-reviewed`. Commit the record and run `morpheus review validate` before
 pushing; open the PR with the label already applied (`gh pr create --label agent-reviewed`), or as a
 draft if it must exist earlier — an unlabelled draft waits instead of failing. Merge trunk rather
 than rebase after review.
-An incomplete turn can resume with the same reviewer within the ordinary three-turn cap after
-the author supplies missing evidence or fixes; do not ask the human to authorize that continuation.
-Keep the incomplete verdict in the record. Human authorization remains necessary for an extra
-turn beyond the ordinary cap or after a finalization turn.
+Within the three-turn cap, the same reviewer may resume an incomplete review after missing
+evidence or fixes arrive, without human authorization. Record the incomplete verdict. Extra turns
+or turns after finalization still require human authorization.
 
 **Every PR carries** tests for anything testable (or an explicit reason), a documentation update
 when behaviour changes, a test plan with the commands actually run, open questions stated plainly,
