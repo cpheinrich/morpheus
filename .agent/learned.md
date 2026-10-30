@@ -704,3 +704,25 @@ and treat "could not tell" as yes.**
   the nearest `.git`, so a parent directory's hooks do not reach the repositories inside it.
 - Lakina's one trusted hook was recorded for `morpheus context brief`; the file had since changed to
   the session shim, so Codex had silently stopped running it. Nothing reported that until `doctor`.
+
+## xcodebuild's in-process retry cannot clear state the failed run left behind
+
+2026-10-30 (MO-26-10-30-15.16.58), measured with a two-UI-test fixture on Xcode 27.0 and the iOS
+26.5 simulator: the first test launches the app, which leaves a marker in its container; the second
+asserts a first launch. In one session the second fails; rerun alone after `simctl erase` it passes.
+`-retry-tests-on-failure` repeats it in the same simulator and app container, so it fails every
+iteration, which is the shape of Evo's leftover-state UI failures. Related facts from the same runs:
+
+- `xcrun xcresulttool merge` of the failed attempt and its passing retry reports the test as
+  `Failed`, with two `Repetition` children (not in chronological order). Merging cannot turn a
+  recovered test into a pass, so the first attempt's bundle stays the evidence and the verdict lives
+  beside it.
+- `-only-testing:Target/Class/testMethod()` with the parentheses selects an XCTest method. The
+  target is the `name` of the `Unit test bundle`/`UI test bundle` node in
+  `xcresulttool get test-results tests`; a `Test Case` node's `nodeIdentifier` is `Class/method()`.
+  The summary's `testFailures` carries the same pair as `targetName` and `testIdentifierString`.
+- `xcodebuild test-without-building` shuts down a simulator it booted; `simctl shutdown` on an
+  already shut-down device exits 149, and `simctl erase` needs it shut down.
+- On Xcode 27, after a failing test, xcodebuild waited the full 600 s and logged
+  `Failure collecting diagnostics from simulator: Timed out after 600.0 seconds`, collecting nothing.
+  `-collect-test-diagnostics never` removes the wait.
