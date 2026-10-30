@@ -85,7 +85,8 @@ describe("Morpheus's own AGENTS.md", () => {
   });
 
   it("states the five automatic review turns, fresh reviewers and substantive-only blocking, in both places", async () => {
-    for (const text of [await read(), agents(SEED)]) {
+    for (const raw of [await read(), agents(SEED)]) {
+      const text = raw.replace(/\s+/g, " ");
       expect(text).toMatch(/five turns run without anyone's approval/i);
       expect(text).toContain("blocks only on substantive problems");
       expect(text).toContain("start a fresh one with the earlier findings");
