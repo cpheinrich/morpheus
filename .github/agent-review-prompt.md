@@ -35,6 +35,11 @@ own tests, and does the wrong thing.
 5. **Errors that are thrown where this codebase surfaces them as data.** `ParseIssue[]` rather than
    exceptions, so one bad input cannot abort a batch. `src/pm/parse.ts` is the model.
 
+6. **Complexity the change does not need.** The simplest change that meets the item is the right
+   one. When the same behaviour needs fewer parts or fewer lines, say what to remove. A new gate,
+   approval step, state or option needs a reason in the item or in observed behaviour; without one
+   it is a finding.
+
 ## How to report
 
 **Findings go inline, on the line they are about.** Use the inline-comment tool for every finding

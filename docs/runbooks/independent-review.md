@@ -59,6 +59,10 @@ Review scope follows consequences, not changed lines. Bugs caused, exposed or wo
 and problems preventing acceptance criteria, are in scope. Other pre-existing bugs are incidental
 follow-ups. Flag independently discovered critical risks for human judgment; do not silently widen
 the PR. Blocking findings need a concrete failure scenario and a causal connection to this change.
+Complexity the PR adds is in scope too ([`architecture.md` §2](../../architecture.md), principle
+11). A simpler version with the same behaviour, in fewer parts or lines, is a minor finding. A gate,
+approval step, state, option or mechanism that the requirements do not need is substantive. Its
+failure scenario is the legitimate work it would stop or delay.
 
 | Risk | Initial ceiling | Follow-up ceiling |
 |---|---:|---:|

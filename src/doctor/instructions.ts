@@ -46,6 +46,11 @@ export const INSTRUCTION_ANCHORS: readonly InstructionAnchor[] = [
     pattern: /refresh[^.]{0,60}\bonly\b[^.]{0,60}\brefus/i,
     add: "\"**Refresh again only when a gated command refuses**\" in Context freshness",
   },
+  {
+    name: "simplicity first",
+    pattern: /simplicity first/i,
+    add: "the **Simplicity first** rule: plan the simplest design that meets the requirements, take one simplification pass before implementing, and add complexity, gates or approvals only when observed behaviour proves the need",
+  },
 ];
 
 /** Emphasis, code spans and wrapping removed, so `**Break\nloops.**` still reads as `Break loops.`. */
