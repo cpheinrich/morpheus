@@ -28,3 +28,11 @@ duration for every turn of a resumed incomplete initial review, with regression 
 initial turn and an intermediate incomplete turn. The runbook sentence includes `incomplete`.
 Focused review tests now pass 150/150, and typecheck and compile pass again. The original
 reviewer will inspect this correction in an ordinary follow-up.
+
+The original reviewer found REV-1 only partially fixed at `38801f2`: an intermediate incomplete
+follow-up could still have zero measured duration when the initial turn was complete. The
+positive-duration guard now applies to every version 2 turn before any rescue or continuation
+logic. A new regression uses a complete initial review, a zero-duration incomplete follow-up,
+and a later clearance without human authorization; validation rejects the placeholder. The
+focused review suite passes 151/151. The same reviewer will inspect this final correction in
+the remaining ordinary turn.

@@ -1037,6 +1037,13 @@ describe("same-reviewer continuation after missing review evidence", () => {
     delete r.followUps![1]!.humanAuthorization;
     expect(check(save(r))).toEqual([]);
   });
+  it("rejects an unmeasured intermediate incomplete turn before clearance", () => {
+    const r = pendingEvidence();
+    r.followUps![0]!.elapsedMinutes = 0;
+    r.followUps![0]!.timing!.durationMs = 0;
+    delete r.followUps![1]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("positive measured duration");
+  });
   it.each([0, 1])("still enforces the budget of follow-up %i", index => {
     const r = pendingEvidence();
     r.followUps![index]!.elapsedMinutes = 450001 / 60000;
