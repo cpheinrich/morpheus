@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { agents, contextFreshness, type Seed } from "../src/init/templates.js";
 import { GATED } from "../src/session/gate.js";
+import { LOCAL_REVIEW_PROMPT } from "../src/review/local-prompt.js";
 
 const ROOT = join(import.meta.dirname, "..");
 const SEED: Seed = { name: "Acme Health", prefix: "ACH", kind: "company", owner: "cpheinrich" };
@@ -80,8 +81,27 @@ describe("Morpheus's own AGENTS.md", () => {
     for (const text of [await read(), agents(SEED)]) {
       expect(text).toContain("Finish the relevant focused tests");
       expect(text).toMatch(/packet before (its|the reviewer's) first turn|before the reviewer's first turn; send the full packet/);
-      expect(text).toMatch(/third turn is a ceiling/i);
     }
+  });
+
+  it("states the five automatic review turns, fresh reviewers and substantive-only blocking, in both places", async () => {
+    for (const raw of [await read(), agents(SEED)]) {
+      const text = raw.replace(/\s+/g, " ");
+      expect(text).toMatch(/five turns run without anyone's approval/i);
+      expect(text).toContain("blocks only on substantive problems");
+      expect(text).toContain("start a fresh one with the earlier findings");
+      // The 2026-10-30 policy replaced these; restating either would put agents back to waiting.
+      expect(text).not.toMatch(/third turn is a ceiling/i);
+      expect(text).not.toMatch(/same-reviewer verification turn/i);
+    }
+  });
+
+  it("gives the reviewer the same contract the validator enforces", () => {
+    expect(LOCAL_REVIEW_PROMPT).toContain("Block only on substantive problems");
+    expect(LOCAL_REVIEW_PROMPT).toContain("never by themselves make a turn blocked");
+    expect(LOCAL_REVIEW_PROMPT).toContain("up to five turns without anyone's approval");
+    expect(LOCAL_REVIEW_PROMPT).toContain("the author starts a fresh reviewer");
+    expect(LOCAL_REVIEW_PROMPT).not.toMatch(/THIS SAME|same-reviewer turn|replacement reviewer/i);
   });
 });
 

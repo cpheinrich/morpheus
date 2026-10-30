@@ -10,6 +10,11 @@ declare const FollowUp: z.ZodObject<{
         approvedAt: z.ZodISODateTime;
         reason: z.ZodString;
     }, z.core.$strict>>;
+    handoff: z.ZodOptional<z.ZodObject<{
+        reason: z.ZodString;
+        findings: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    blockedOn: z.ZodOptional<z.ZodArray<z.ZodString>>;
     verification: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
             "finding-fix": "finding-fix";
@@ -41,12 +46,19 @@ declare const FollowUp: z.ZodObject<{
 }, z.core.$strict>;
 export type ReviewFollowUp = z.infer<typeof FollowUp>;
 /**
- * Reviewer turns after the initial review. Three turns in total is the cap that stops an
- * author and a reviewer trading fixes and findings indefinitely: a turn is spent to resolve
- * what the previous one left blocked, or on a late correction after a clearance that names
- * its scope decision, and nothing after the last one is automatic.
+ * Ordinary review turns a pull request gets without anyone's approval, counting the initial review
+ * (Chris, 2026-10-30). Three proved too few: agents stalled waiting for a human to approve another
+ * round. The cap still exists, because an author and a reviewer trading fixes and findings
+ * indefinitely burns a session per turn; beyond it each ordinary turn carries `humanAuthorization`.
+ * Incomplete turns count. The one automatic finalization turn does not, as before.
  */
-export declare const MAX_FOLLOW_UPS = 2;
+export declare const MAX_REVIEW_TURNS = 5;
+export declare const MAX_FOLLOW_UPS: number;
+/**
+ * Where the three-turn contract put its one bounded `verification` turn: the fourth. Records that
+ * used it stay valid, so it stays checked there; under five automatic turns it is no longer needed.
+ */
+export declare const VERIFICATION_TURN_INDEX = 2;
 export declare const FINAL_VERIFICATION_CEILING_MINUTES = 5;
 export declare const FINAL_VERIFICATION_NON_TEST_LINES = 40;
 export declare const FINAL_VERIFICATION_TEST_LINES = 80;
@@ -105,6 +117,7 @@ export declare const ReviewRecord: z.ZodObject<{
     }, z.core.$strict>>>;
     findings: z.ZodArray<z.ZodObject<{
         id: z.ZodString;
+        turn: z.ZodOptional<z.ZodNumber>;
         severity: z.ZodEnum<{
             minor: "minor";
             substantive: "substantive";
@@ -136,6 +149,11 @@ export declare const ReviewRecord: z.ZodObject<{
             approvedAt: z.ZodISODateTime;
             reason: z.ZodString;
         }, z.core.$strict>>;
+        handoff: z.ZodOptional<z.ZodObject<{
+            reason: z.ZodString;
+            findings: z.ZodArray<z.ZodString>;
+        }, z.core.$strict>>;
+        blockedOn: z.ZodOptional<z.ZodArray<z.ZodString>>;
         verification: z.ZodOptional<z.ZodObject<{
             kind: z.ZodEnum<{
                 "finding-fix": "finding-fix";
@@ -175,6 +193,11 @@ export declare const ReviewRecord: z.ZodObject<{
             approvedAt: z.ZodISODateTime;
             reason: z.ZodString;
         }, z.core.$strict>>;
+        handoff: z.ZodOptional<z.ZodObject<{
+            reason: z.ZodString;
+            findings: z.ZodArray<z.ZodString>;
+        }, z.core.$strict>>;
+        blockedOn: z.ZodOptional<z.ZodArray<z.ZodString>>;
         verification: z.ZodOptional<z.ZodObject<{
             kind: z.ZodEnum<{
                 "finding-fix": "finding-fix";
@@ -208,6 +231,13 @@ export declare const ReviewRecord: z.ZodObject<{
 export type LocalReviewRecord = z.infer<typeof ReviewRecord>;
 /** Follow-up turns in order, whichever field the record used. */
 export declare function followUpTurns(record: LocalReviewRecord): ReviewFollowUp[];
+/**
+ * Whether two turns were taken by one reviewer session. A Codex task path is exact, because the
+ * runner issued that spelling; a global id ignores a provider prefix and case, as reuse checks do.
+ */
+export declare function sameReviewer(a: string, b: string): boolean;
+/** Every distinct reviewer session in the record, initial first. */
+export declare function reviewerSessions(record: LocalReviewRecord): string[];
 /** The trunk base the reviewer's clearance covered: the latest recorded integration, else the original. */
 export declare function coveredBase(record: LocalReviewRecord): string;
 /** Findings the reviewer pre-cleared and the author fixed under the stated condition. */

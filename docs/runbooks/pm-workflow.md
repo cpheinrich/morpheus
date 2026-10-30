@@ -229,8 +229,9 @@ Reading a log (`--log`, `--log-failed`) is never counted. A human can set `MORPH
 
 **Finish the author-managed independent review before enabling auto-merge.** Opening a PR,
 pushing commits, or changing labels never starts a reviewer session. Follow the
-[review contract](independent-review.md), return to the original reviewer for the
-permitted follow-up turns when required, and publish complete evidence before merging.
+[review contract](independent-review.md), resume the reviewer (or start a fresh one with the
+earlier findings when it cannot be resumed) for the permitted follow-up turns when required, and
+publish complete evidence before merging.
 
 **Legacy GitHub review is opt-in.** Only repositories explicitly enabling the old
 `agent-review.yml` run a model when a PR opens or a collaborator requests `@claude` re-review.

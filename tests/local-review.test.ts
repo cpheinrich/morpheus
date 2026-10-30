@@ -90,11 +90,14 @@ describe("independent review lifecycle", () => {
     writeFileSync(join(root, "other.ts"), "unrelated"); r.covered = commit();
     expect(check(save(r))[0]?.message).toContain("exceed");
   });
-  it("requires the original reviewer to clear substantive fixes", () => {
+  it("requires a follow-up turn to clear substantive fixes, by the original reviewer or a recorded fresh one", () => {
     const r = record(); r.findings = [{ id: "F01", severity: "substantive", description: "Missing authorization guard", paths: ["code.ts"], disposition: "fixed", response: "Added the authorization guard" }];
     expect(check(save(r))[0]?.message).toContain("follow-up");
     r.followUp = { reviewerSession: "b2c3d4e5f6a7b8c9d", commit: reviewed, outcome: "cleared", elapsedMinutes: 2, summary: "Verified the authorization guard" };
-    expect(check(save(r))[0]?.message).toContain("original reviewer");
+    expect(check(save(r))[0]?.message).toContain("fresh reviewer session; record handoff");
+    r.followUp.handoff = { reason: "The original reviewer session timed out and cannot be resumed.", findings: ["F01"] };
+    expect(check(save(r))).toEqual([]);
+    delete r.followUp.handoff;
     r.followUp.reviewerSession = r.reviewerSession;
     expect(check(save(r))).toEqual([]);
     r.followUp.outcome = "blocked";
@@ -147,6 +150,8 @@ describe("measured review timing", () => {
       expect(output).toContain("The author measures each turn from runner duration metadata");
       expect(output).toContain("Do not estimate\nelapsed time from workload");
       expect(output).toContain("Zero is a placeholder, not a measurement");
+      expect(output).toContain("Find concrete defects and unneeded complexity");
+      expect(output).toContain("mechanism that the requirements do not need is substantive; a local simplification is minor");
       expect(output).not.toContain("risk class; elapsed minutes;");
     } finally { log.mockRestore(); }
   });
@@ -316,7 +321,7 @@ describe("merging trunk after coverage", () => {
   });
 });
 
-describe("three-turn cap", () => {
+describe("turn sequence", () => {
   const substantive = { id: "F01", severity: "substantive" as const, description: "Missing authorization guard", paths: ["code.ts"], disposition: "fixed" as const, response: "Added the authorization guard" };
   function turn(commit: string, outcome: "cleared" | "incomplete" | "blocked", elapsedMinutes = 2) {
     return { reviewerSession: "a1b2c3d4e5f6a7b8c", commit, outcome, elapsedMinutes, summary: `Follow-up returned ${outcome} after inspecting the fix.` };
@@ -326,18 +331,15 @@ describe("three-turn cap", () => {
     expect(check(save(r))).toEqual([]);
     expect(check(save({ ...r, followUp: turn(reviewed, "cleared") }))[0]?.message).toContain("not both");
   });
-  it("allows a third turn only after a blocked second turn", () => {
+  it("follows a blocked or an incomplete turn freely, and a cleared one only as a late correction", () => {
     writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
     writeFileSync(join(root, "code.ts"), "second fix"); const covered = commit();
     const r = { ...record(), covered, findings: [substantive], followUps: [turn(first, "blocked"), turn(covered, "cleared")] };
     expect(check(save(r))).toEqual([]);
-    expect(check(save({ ...r, followUps: [turn(first, "cleared"), turn(covered, "cleared")] }))[0]?.message).toContain("only after the second turn returned blocked");
-    expect(check(save({ ...r, followUps: [turn(first, "incomplete"), turn(covered, "cleared")] }))[0]?.message).toContain("only after the second turn returned blocked");
+    expect(check(save({ ...r, followUps: [turn(first, "cleared"), turn(covered, "cleared")] }))[0]?.message).toContain("a turn after a cleared turn is a late correction");
+    // An incomplete turn is followed with no human authorization at all.
+    expect(check(save({ ...r, followUps: [turn(first, "incomplete"), turn(covered, "cleared")] }))).toEqual([]);
     expect(check(save({ ...r, followUps: [turn(first, "blocked"), turn(covered, "blocked")] }))[0]?.message).toContain("final follow-up must clear");
-  });
-  it("refuses a fourth turn outright", () => {
-    const r = { ...record(), findings: [substantive], followUps: [turn(reviewed, "blocked"), turn(reviewed, "blocked"), turn(reviewed, "cleared")] };
-    expect(check(save(r as unknown as LocalReviewRecord))).toHaveLength(1);
   });
   it("holds every follow-up to the follow-up ceiling at its boundary", () => {
     writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
@@ -403,26 +405,28 @@ describe("late corrections after clearance", () => {
     writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
     const r = { ...record(), covered: corrected, findings: [substantive], followUps: [turn(first, "cleared"), { ...turn(corrected, "cleared"), scopeReason }] };
     expect(check(save(r))).toEqual([]);
-    expect(check(save({ ...r, followUps: [turn(first, "cleared"), turn(corrected, "cleared")] }))[0]?.message).toContain("only after the second turn returned blocked");
+    expect(check(save({ ...r, followUps: [turn(first, "cleared"), turn(corrected, "cleared")] }))[0]?.message).toContain("a turn after a cleared turn is a late correction");
     // The scope reason belongs on the turn that spends the slot, not the one that cleared before it.
-    expect(check(save({ ...r, followUps: [{ ...turn(first, "cleared"), scopeReason }, turn(corrected, "cleared")] }))[0]?.message).toContain("only after the second turn returned blocked");
+    expect(check(save({ ...r, followUps: [{ ...turn(first, "cleared"), scopeReason }, turn(corrected, "cleared")] }))[0]?.message).toContain("a turn after a cleared turn is a late correction");
     // Without the correction turn, the correction commit is exactly the uncovered code the rule refuses.
     expect(check(save({ ...r, covered: first, followUps: [turn(first, "cleared")] }))[0]?.message).toContain("invalidate");
   });
-  it("never automatically follows an incomplete turn, even with a scope reason", () => {
+  it("continues after an incomplete turn without anyone's approval", () => {
     writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
     writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
     const r = { ...record(), covered: corrected, findings: [substantive], followUps: [turn(first, "incomplete"), { ...turn(corrected, "cleared"), scopeReason }] };
-    expect(check(save(r))[0]?.message).toContain("only after the second turn returned blocked");
+    expect(check(save(r))).toEqual([]);
   });
-  it("refuses a correction once both follow-up turns are spent", () => {
+  it("spends the fourth and fifth turns on corrections, and refuses a sixth without authorization", () => {
     writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
     writeFileSync(join(root, "code.ts"), "second fix"); const second = commit();
     writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
-    const r = { ...record(), covered: corrected, findings: [substantive], followUps: [turn(first, "blocked"), turn(second, "cleared"), { ...turn(corrected, "cleared"), scopeReason }] };
-    const findings = check(save(r as unknown as LocalReviewRecord));
+    const followUps = [turn(first, "blocked"), turn(second, "cleared"), { ...turn(corrected, "cleared"), scopeReason }, { ...turn(corrected, "cleared"), scopeReason }];
+    const r = { ...record(), covered: corrected, findings: [substantive], followUps };
+    expect(check(save(r))).toEqual([]);
+    const findings = check(save({ ...r, followUps: [...followUps, { ...turn(corrected, "cleared"), scopeReason }] }));
     expect(findings).toHaveLength(1);
-    expect(findings[0]?.message).toContain("humanAuthorization");
+    expect(findings[0]?.message).toContain("review turn 6 is beyond the 5 automatic turns");
   });
   it("keeps a named hand-resolved trunk merge valid once a correction turn moves covered past it", () => {
     save(record());
@@ -495,8 +499,14 @@ describe("review evidence floors and shapes", () => {
     const r: LocalReviewRecord = { ...record(), reviewerSession: "/root/review" };
     r.followUp = { reviewerSession: "/root/review", commit: reviewed, scopeReason: "Late correction verified by original reviewer", outcome: "cleared", elapsedMinutes: 2, summary: "Verified the correction and focused tests." };
     expect(check(save(r))).toEqual([]);
+    // A different task path is a fresh reviewer: allowed, but only with its handoff recorded.
     r.followUp.reviewerSession = "/root/other";
-    expect(check(save(r))[0]?.message).toContain("original reviewer");
+    expect(check(save(r))[0]?.message).toContain("fresh reviewer session; record handoff");
+    r.followUp.handoff = { reason: "The /root/review session was lost when the runner restarted.", findings: [] };
+    expect(check(save(r))).toEqual([]);
+    // Replacement never extends to the author reviewing their own change.
+    r.followUp.reviewerSession = `codex:${record().authorSession}`;
+    expect(check(save(r))[0]?.message).toContain("independent");
   });
   it("floors the initial review at 30 seconds for normal and high risk only", () => {
     expect(check(save({ ...record(), elapsedMinutes: 0.49 }))[0]?.message).toContain("under 30 seconds");
@@ -653,41 +663,48 @@ describe("conditional clearance", () => {
 });
 
 
-describe("human-authorized extra review turns", () => {
+describe("human-authorized turns beyond the automatic five", () => {
   const authorization = { approvedBy: "Chris Heinrich", approvedAt: "2026-09-25T18:00:00Z", reason: "Explicitly approved one additional review for the late CI correction." };
+  /** Six turns: the initial review and five cleared late corrections, the last one past the cap. */
   function extraTurns() {
     const r = record();
-    r.followUps = Array.from({ length: 3 }, () => ({ reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, scopeReason: "Late CI correction requires another bounded review.", summary: "Verified the correction and its focused regression test." }));
+    r.followUps = Array.from({ length: 5 }, () => ({ reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, scopeReason: "Late CI correction requires another bounded review.", summary: "Verified the correction and its focused regression test." }));
     return r;
   }
-  it("keeps the default cap and accepts an explicitly authorized extra turn", () => {
+  it("keeps the five-turn cap and accepts an explicitly authorized sixth turn", () => {
     const r = extraTurns();
     expect(check(save(r))[0]?.message).toContain("humanAuthorization");
-    r.followUps![2]!.humanAuthorization = authorization;
+    r.followUps![4]!.humanAuthorization = authorization;
     expect(check(save(r))).toEqual([]);
   });
   it("does not extend one authorization to the next turn", () => {
-    const r = extraTurns(); r.followUps![2]!.humanAuthorization = authorization;
+    const r = extraTurns(); r.followUps![4]!.humanAuthorization = authorization;
     r.followUps!.push({ ...r.followUps![0]! });
-    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
+    expect(check(save(r))[0]?.message).toContain("review turn 7 is beyond the 5 automatic turns");
   });
-  it("retains same-reviewer, final-clearance, and coverage requirements", () => {
-    const r = extraTurns(); r.followUps![2]!.humanAuthorization = authorization;
-    r.followUps![2]!.reviewerSession = "b2c3d4e5f6a7b8c9d";
-    expect(check(save(r))[0]?.message).toContain("original reviewer");
-    r.followUps![2]!.reviewerSession = r.reviewerSession;
-    r.followUps![2]!.outcome = "blocked";
+  it("retains final-clearance and coverage requirements, and a fresh reviewer still records its handoff", () => {
+    const r = extraTurns(); r.followUps![4]!.humanAuthorization = authorization;
+    r.followUps![4]!.reviewerSession = "b2c3d4e5f6a7b8c9d";
+    expect(check(save(r))[0]?.message).toContain("fresh reviewer session; record handoff");
+    r.followUps![4]!.handoff = { reason: "The earlier reviewer session expired before the correction landed.", findings: [] };
+    expect(check(save(r))).toEqual([]);
+    r.followUps![4]!.outcome = "blocked";
     expect(check(save(r))).toHaveLength(1);
-    r.followUps![2]!.outcome = "cleared";
+    r.followUps![4]!.outcome = "cleared";
     save(r); writeFileSync(join(root, "code.ts"), "unreviewed correction");
     expect(check(commit())[0]?.message).toContain("invalidate");
   });
   it("rejects empty or malformed authorization evidence", () => {
     const r = extraTurns();
     for (const bad of [{ ...authorization, approvedBy: " " }, { ...authorization, approvedAt: "yesterday" }, { ...authorization, reason: "" }]) {
-      r.followUps![2]!.humanAuthorization = bad;
+      r.followUps![4]!.humanAuthorization = bad;
       expect(check(save(r))).toHaveLength(1);
     }
+  });
+  it("still validates historical authorizations on turns inside the five", () => {
+    const r = extraTurns(); r.followUps = r.followUps!.slice(0, 3);
+    r.followUps[2]!.humanAuthorization = authorization;
+    expect(check(save(r))).toEqual([]);
   });
 });
 
@@ -739,13 +756,16 @@ describe("one bounded automatic final verification", () => {
     r.findings = [{ id: "F01", severity: "substantive", description: "The policy statement was inaccurate.", paths: [changedPath], disposition: "fixed", response: "Corrected the statement." }];
     expect(check(save(r))[0]?.message).toContain("normative policy");
   });
-  it("refuses a fifth automatic implementation pass, reviewer reset, and an incomplete predecessor", () => {
+  it("counts toward the five turns, takes a handoff like any turn, and never resumes an incomplete predecessor", () => {
     const r = fourTurns("late-test", "tests/guard.test.ts", "expect(guard()).toBe(false);\n");
-    r.followUps!.push({ reviewerSession: r.reviewerSession, commit: r.covered, outcome: "cleared", elapsedMinutes: 1, scopeReason: "Another correction.", summary: "Another review." });
-    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
-    r.followUps!.pop();
+    const another = { reviewerSession: r.reviewerSession, commit: r.covered, outcome: "cleared" as const, elapsedMinutes: 1, scopeReason: "Another correction.", summary: "Another review." };
+    r.followUps!.push(another);
+    expect(check(save(r))).toEqual([]);
+    r.followUps!.push({ ...another });
+    expect(check(save(r))[0]?.message).toContain("review turn 6 is beyond the 5 automatic turns");
+    r.followUps!.splice(3);
     r.followUps![2]!.reviewerSession = "b2c3d4e5f6a7b8c9d";
-    expect(check(save(r))[0]?.message).toContain("original reviewer");
+    expect(check(save(r))[0]?.message).toContain("fresh reviewer session; record handoff");
     r.followUps![2]!.reviewerSession = r.reviewerSession;
     r.followUps![1]!.outcome = "incomplete";
     expect(check(save(r))[0]?.message).toContain("cannot resume an incomplete");
@@ -753,7 +773,7 @@ describe("one bounded automatic final verification", () => {
   it("does not turn finalization bookkeeping into an extra implementation review", () => {
     const r = fourTurns("late-test", "tests/guard.test.ts", "expect(guard()).toBe(false);\n");
     r.followUps![1]!.finalization = { paths: [path], evidence: "Re-read the review record.", attestation: "Only the already-cleared record was finalized." };
-    expect(check(save(r))[0]?.message).toContain("every turn after finalization requires explicit humanAuthorization");
+    expect(check(save(r))[0]?.message).toContain("nothing follows finalization automatically");
   });
   it("enforces the cumulative budget at its boundary and keeps historical authorized turns valid", () => {
     const r = fourTurns("late-test", "tests/guard.test.ts", "expect(guard()).toBe(false);\n");
@@ -783,9 +803,8 @@ describe("one automatic finalization-only turn", () => {
   }
   it("clears an explanatory documentation commit beyond the cap, without a human decision", () => {
     const r = record();
-    r.followUps = Array.from({ length: 3 }, () => ({ reviewerSession: session, commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, scopeReason: "Late CI correction requires another bounded review.", summary: "Verified the correction and its focused regression test." }));
-    r.followUps[2]!.humanAuthorization = { approvedBy: "Chris Heinrich", approvedAt: "2026-09-27T12:00:00Z", reason: "Explicitly approved one additional substantive review turn." };
-    // A fourth follow-up would normally need its own authorization; a finalization turn does not.
+    r.followUps = Array.from({ length: 4 }, () => ({ reviewerSession: session, commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, scopeReason: "Late CI correction requires another bounded review.", summary: "Verified the correction and its focused regression test." }));
+    // A sixth ordinary turn would need its own authorization; a finalization turn does not.
     expect(check(save({ ...r, followUps: [...r.followUps, { ...finalize(["docs/runbooks/guide.md"]), finalization: undefined }] }))[0]?.message).toContain("humanAuthorization");
     const covered = docCommit("Explains the behaviour that was already reviewed.");
     r.covered = covered;
@@ -809,31 +828,36 @@ describe("one automatic finalization-only turn", () => {
     r.followUps![1]!.elapsedMinutes = 5;
     expect(check(save(r))).toEqual([]);
   });
-  it("requires the original reviewer and refuses a replacement", () => {
+  it("may be taken by a fresh reviewer, but only with its handoff recorded", () => {
     const r = cleared();
     r.followUps![1]!.reviewerSession = "b2c3d4e5f6a7b8c9d";
-    expect(check(save(r))[0]?.message).toContain("original reviewer session");
+    expect(check(save(r))[0]?.message).toContain("fresh reviewer session; record handoff");
+    r.followUps![1]!.handoff = { reason: "The reviewer that cleared the implementation could not be resumed.", findings: [] };
+    expect(check(save(r))).toEqual([]);
   });
   it.each(["blocked", "incomplete"] as const)("leaves a %s finalization turn blocked rather than clearing", outcome => {
     const r = cleared();
     r.followUps![1]!.outcome = outcome;
     expect(check(save(r))[0]?.message).toContain("blocked");
   });
-  it("allows explicitly authorized continuation and still requires finalization scope", () => {
+  it("allows continuation after finalization, historical authorization included, and still requires finalization scope", () => {
     const r = cleared();
     r.followUps!.push({ reviewerSession: session, commit: r.covered, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Another look after finalization.", summary: "Verified the explicitly authorized correction after finalization.", humanAuthorization: { approvedBy: "Chris Heinrich", approvedAt: "2026-09-27T12:30:00Z", reason: "Authorized another substantive turn after the finalization turn." } });
     expect(check(save(r))).toEqual([]);
+    // Within the five ordinary turns that authorization is no longer needed.
     delete r.followUps![2]!.humanAuthorization;
-    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
+    expect(check(save(r))).toEqual([]);
     const bare = cleared();
     delete bare.followUps![1]!.scopeReason;
     expect(check(save(bare))[0]?.message).toContain("scopeReason");
   });
-  it("requires authorization after an early finalization even within the ordinary cap", () => {
+  it("lets a late correction follow an early finalization within the cap, and only with its scope reason", () => {
     const r = cleared();
     r.followUps!.shift();
     r.followUps!.push({ reviewerSession: session, commit: r.covered, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Late correction after finalization.", summary: "Verified the correction." });
-    expect(check(save(r))[0]?.message).toContain("every turn after finalization");
+    expect(check(save(r))).toEqual([]);
+    delete r.followUps![1]!.scopeReason;
+    expect(check(save(r))[0]?.message).toContain("a turn after a cleared turn is a late correction");
   });
   it("checks the actual predecessor and historical finalization scope after authorized continuation", () => {
     const r = cleared();
@@ -851,12 +875,15 @@ describe("one automatic finalization-only turn", () => {
     r.followUps![2]!.commit = r.covered;
     expect(check(save(r))[0]?.message).toContain("may cover only the review record");
   });
-  it("requires a separate authorization for every subsequent turn", () => {
+  it("does not count finalization toward the five, and requires authorization for each ordinary turn after them", () => {
     const r = cleared();
-    const turn = { reviewerSession: session, commit: r.covered, outcome: "cleared" as const, elapsedMinutes: 2, scopeReason: "Authorized late correction.", summary: "Verified the correction.", humanAuthorization: { approvedBy: "Chris Heinrich", approvedAt: "2026-09-28T23:09:04Z", reason: "Explicitly authorized additional review rounds to complete the PR." } };
-    r.followUps!.push(turn, { ...turn, humanAuthorization: undefined });
-    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
-    r.followUps![3]!.humanAuthorization = turn.humanAuthorization;
+    const turn = { reviewerSession: session, commit: r.covered, outcome: "cleared" as const, elapsedMinutes: 2, scopeReason: "Late correction after finalization.", summary: "Verified the correction." };
+    // Initial, one cleared turn, finalization (uncounted), then turns three to five.
+    r.followUps!.push({ ...turn }, { ...turn }, { ...turn });
+    expect(check(save(r))).toEqual([]);
+    r.followUps!.push({ ...turn });
+    expect(check(save(r))[0]?.message).toContain("review turn 6 is beyond the 5 automatic turns");
+    r.followUps![5]!.humanAuthorization = { approvedBy: "Chris Heinrich", approvedAt: "2026-09-28T23:09:04Z", reason: "Explicitly authorized additional review rounds to complete the PR." };
     expect(check(save(r))).toEqual([]);
   });
   it("cannot resolve substantive findings by itself", () => {
@@ -894,10 +921,11 @@ describe("one automatic finalization-only turn", () => {
     r.followUps![1]!.commit = covered;
     expect(check(save(r))[0]?.message).toContain("may cover only the review record");
   });
-  it("leaves the ordinary three-turn contract and human authorizations unchanged", () => {
+  it("leaves the ordinary five-turn cap and human authorizations unchanged", () => {
     const plain = record();
-    plain.followUps = Array.from({ length: 3 }, () => ({ reviewerSession: session, commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, scopeReason: "Late CI correction requires another bounded review.", summary: "Verified the correction and its focused regression test." }));
+    plain.followUps = Array.from({ length: 5 }, () => ({ reviewerSession: session, commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, scopeReason: "Late CI correction requires another bounded review.", summary: "Verified the correction and its focused regression test." }));
     expect(check(save(plain))[0]?.message).toContain("humanAuthorization");
+    expect(check(save({ ...plain, followUps: plain.followUps.slice(0, 4) }))).toEqual([]);
     expect(check(save({ ...record(), followUps: [{ reviewerSession: session, commit: reviewed, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Late CI correction.", summary: "Verified the correction and its regression test." }] }))).toEqual([]);
   });
 });
@@ -1014,7 +1042,7 @@ describe("the shape Evo #291 needs", () => {
 });
 
 
-describe("authorized continuation after missing review evidence", () => {
+describe("continuation after missing review evidence", () => {
   const authorization = { approvedBy: "Chris Heinrich", approvedAt: "2026-09-28T23:09:04Z", reason: "Explicitly authorized another same-reviewer turn after obtaining the missing evidence." };
   function pendingEvidence(): LocalReviewRecord {
     const r = record();
@@ -1026,37 +1054,56 @@ describe("authorized continuation after missing review evidence", () => {
     ];
     return r;
   }
-  it("preserves an incomplete verdict when a human authorizes the next same-reviewer clearance", () => {
+  it("preserves an incomplete verdict when the same reviewer clears the next turn", () => {
     const r = pendingEvidence();
     expect(check(save(r))).toEqual([]);
     expect(r.followUps![0]!.outcome).toBe("incomplete");
   });
-  it("requires authorization on the next turn, even within the default turn cap", () => {
+  it("continues after the incomplete turn with no authorization at all", () => {
     const r = pendingEvidence();
-    r.followUps![0]!.humanAuthorization = authorization;
     delete r.followUps![1]!.humanAuthorization;
-    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
+    expect(check(save(r))).toEqual([]);
   });
-  it.each([0, 1])("still enforces the budget of follow-up %i", index => {
+  it("still enforces the budget of the turn that clears", () => {
     const r = pendingEvidence();
-    r.followUps![index]!.elapsedMinutes = 450001 / 60000;
-    r.followUps![index]!.timing!.durationMs = 450001;
+    r.followUps![1]!.elapsedMinutes = 450001 / 60000;
+    r.followUps![1]!.timing!.durationMs = 450001;
     expect(check(save(r))[0]?.message).toContain("follow-up exceeded its budget");
   });
-  it("retains the original reviewer and requires final clearance", () => {
+  it("lets the incomplete turn record the overrun that made it incomplete", () => {
+    // A timed-out reviewer clears nothing; refusing the record for its honest duration would
+    // leave the review blocked for good. The turn that clears is still held to its ceiling.
+    const r = pendingEvidence();
+    r.followUps![0]!.elapsedMinutes = 1200000 / 60000;
+    r.followUps![0]!.timing!.durationMs = 1200000;
+    delete r.followUps![1]!.humanAuthorization;
+    expect(check(save(r))).toEqual([]);
+    r.followUps![0]!.outcome = "blocked";
+    expect(check(save(r))[0]?.message).toContain("follow-up exceeded its budget");
+  });
+  it("rejects an unmeasured intermediate incomplete turn before clearance", () => {
+    const r = pendingEvidence();
+    r.followUps![0]!.elapsedMinutes = 0;
+    r.followUps![0]!.timing!.durationMs = 0;
+    delete r.followUps![1]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("positive measured duration");
+  });
+  it("accepts a fresh reviewer after the incomplete turn, and still requires final clearance", () => {
     const r = pendingEvidence();
     r.followUps![1]!.reviewerSession = "b2c3d4e5f6a7b8c9d";
-    expect(check(save(r))[0]?.message).toContain("original reviewer");
-    r.followUps![1]!.reviewerSession = r.reviewerSession;
+    delete r.followUps![1]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("fresh reviewer session; record handoff");
+    r.followUps![1]!.handoff = { reason: "The reviewer session that went incomplete could not be recovered.", findings: [] };
+    expect(check(save(r))).toEqual([]);
     r.followUps![1]!.outcome = "incomplete";
     expect(check(save(r))[0]?.message).toContain("final follow-up must clear");
   });
 });
 
-describe("an authorized follow-up rescues an initial review under the floor", () => {
+describe("a later turn rescues an initial review under the floor", () => {
   const authorization = { approvedBy: "cpheinrich", approvedAt: "2026-10-08T11:06:12Z", reason: "Authorized one extra same-reviewer turn after a clean initial review fell under the floor." };
   const timing = (durationMs: number) => ({ source: "runner" as const, durationMs, evidence: `Runner total_duration_ms for this turn: ${durationMs}.` });
-  // Shaped like kairos#70: a clean 22 s initial pass recorded incomplete, then one authorized turn.
+  // Shaped like kairos#70: a clean 22 s initial pass recorded incomplete, then one same-reviewer turn.
   function rescued(followUpMs = 30000): LocalReviewRecord {
     const r = record();
     return {
@@ -1064,7 +1111,7 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
       followUps: [{ reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared", elapsedMinutes: followUpMs / 60000, timing: timing(followUpMs), humanAuthorization: authorization, summary: "Re-read the change in full and cleared it." }],
     };
   }
-  it("accepts an authorized clearing follow-up of exactly 30 seconds, and preserves the initial verdict", () => {
+  it("accepts a clearing follow-up of exactly 30 seconds, and preserves the initial verdict", () => {
     const r = rescued(30000);
     expect(check(save(r))).toEqual([]);
     const written = readFileSync(join(root, path), "utf8");
@@ -1072,7 +1119,7 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
   });
   // Under the floor the rescue predicate refuses first; over it, the finalization predecessor check does.
   it.each([
-    [22000, "authorized same-reviewer turn of at least 30 seconds that clears"],
+    [22000, "a later turn of at least 30 seconds that clears"],
     [180000, "the incomplete turn before it"],
   ])("refuses a finalization turn as the only follow-up to a %i ms incomplete initial review", (initialMs, message) => {
     const r = rescued(30000);
@@ -1080,17 +1127,17 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
     r.followUps![0] = { ...r.followUps![0]!, scopeReason: "Finalize the documentation.", finalization: { paths: ["README.md"], evidence: "Re-read README.md.", attestation: "Restates already-reviewed behaviour." } };
     expect(check(save(r))[0]?.message).toContain(message);
   });
-  it("does not count an authorized finalization turn as the review that meets the floor", () => {
+  it("does not count a finalization turn as the review that meets the floor", () => {
     const r = rescued(30000);
     const authorized = r.followUps![0]!;
     r.followUps = [
       { ...authorized, elapsedMinutes: 20000 / 60000, timing: timing(20000) },
       { ...authorized, commit: r.covered, scopeReason: "Finalize the documentation.", finalization: { paths: [path], evidence: "Re-read the worklog.", attestation: "Closes out the record only." } },
     ];
-    expect(check(save(r))[0]?.message).toContain("authorized same-reviewer turn of at least 30 seconds that clears");
+    expect(check(save(r))[0]?.message).toContain("a later turn of at least 30 seconds that clears");
   });
   it("refuses an authorized follow-up one millisecond under the floor", () => {
-    expect(check(save(rescued(29999)))[0]?.message).toContain("authorized same-reviewer turn of at least 30 seconds that clears");
+    expect(check(save(rescued(29999)))[0]?.message).toContain("a later turn of at least 30 seconds that clears");
   });
   it("refuses an under-floor initial review recorded as cleared rather than incomplete", () => {
     const r = rescued(); delete r.initialOutcome;
@@ -1099,21 +1146,49 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
     r.followUps![0]!.scopeReason = "Late correction after an under-floor initial review.";
     expect(check(save(r))[0]?.message).toContain("under 30 seconds at normal or high risk is not a review");
   });
-  it("refuses an unauthorized follow-up", () => {
+  it("accepts the clearing follow-up without any authorization", () => {
     const r = rescued(); delete r.followUps![0]!.humanAuthorization;
-    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+    expect(check(save(r))).toEqual([]);
+  });
+  it("rejects a zero-duration initial placeholder even when a later turn clears", () => {
+    const r = rescued();
+    r.elapsedMinutes = 0;
+    r.timing = timing(0);
+    delete r.followUps![0]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("positive measured duration");
+  });
+  it("rejects a zero-duration incomplete follow-up before a later clearance", () => {
+    const r = rescued();
+    const clearance = { ...r.followUps![0]!, humanAuthorization: undefined };
+    r.followUps = [
+      { ...clearance, outcome: "incomplete", elapsedMinutes: 0, timing: timing(0) },
+      clearance,
+    ];
+    expect(check(save(r))[0]?.message).toContain("positive measured duration");
+  });
+  it("lets a timed-out initial review stand as incomplete and a fresh reviewer clear", () => {
+    const r = rescued();
+    r.elapsedMinutes = 1200000 / 60000; r.timing = timing(1200000);
+    r.followUps![0] = { ...r.followUps![0]!, reviewerSession: "b2c3d4e5f6a7b8c9d", humanAuthorization: undefined, handoff: { reason: "The initial reviewer ran past its 15-minute ceiling and was stopped.", findings: [] }, elapsedMinutes: 600000 / 60000, timing: timing(600000) };
+    expect(check(save(r))).toEqual([]);
+    // Claimed as a completed initial review, the same overrun is still refused.
+    delete r.initialOutcome;
+    r.followUps![0]!.scopeReason = "Late correction after the initial review.";
+    expect(check(save(r))[0]?.message).toContain("review exceeded its budget");
   });
   it("refuses a malformed authorization", () => {
     const r = rescued(); r.followUps![0]!.humanAuthorization = { ...authorization, approvedAt: "yesterday" };
     expect(check(save(r))[0]?.message).toMatch(/approvedAt|datetime/i);
   });
-  it("refuses a follow-up from a different reviewer", () => {
+  it("accepts a fresh reviewer for the follow-up once its handoff is recorded", () => {
     const r = rescued(); r.followUps![0]!.reviewerSession = "b2c3d4e5f6a7b8c9d";
-    expect(check(save(r))[0]?.message).toContain("original reviewer");
+    expect(check(save(r))[0]?.message).toContain("fresh reviewer session; record handoff");
+    r.followUps![0]!.handoff = { reason: "The 22-second initial session ended and cannot be resumed.", findings: [] };
+    expect(check(save(r))).toEqual([]);
   });
   it("refuses an incomplete initial review with no follow-up at all", () => {
     const r = rescued(); delete r.followUps;
-    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+    expect(check(save(r))[0]?.message).toContain("an incomplete initial review needs a later turn that clears");
   });
   it("refuses an authorized follow-up that does not clear", () => {
     const r = rescued(); r.followUps![0]!.outcome = "blocked";
@@ -1124,11 +1199,11 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
     r.elapsedMinutes = 30000 / 60000; r.timing = timing(30000);
     expect(check(save(r))).toEqual([]);
   });
-  it("still requires authorization to resume an incomplete initial review that met the floor", () => {
+  it("resumes an incomplete initial review that met the floor without authorization", () => {
     const r = rescued(); r.elapsedMinutes = 180000 / 60000; r.timing = timing(180000);
     expect(check(save(r))).toEqual([]);
     delete r.followUps![0]!.humanAuthorization;
-    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+    expect(check(save(r))).toEqual([]);
   });
 });
 
@@ -1223,8 +1298,8 @@ describe("the floor is waived for a trivially small change, measured from Git", 
     expect(check(save(quick({ risk: "small", elapsedMinutes: 0.1 })))).toEqual([]);
   });
   // Shaped like evo#412 and kairos#70: an under-floor initial turn honestly recorded incomplete,
-  // then an authorized same-reviewer turn that cleared, also under 30 seconds.
-  it("accepts the incomplete-then-authorized shape on a trivial change and refuses it otherwise", () => {
+  // then a same-reviewer turn that cleared, also under 30 seconds.
+  it("accepts the incomplete-then-cleared shape on a trivial change and refuses it otherwise", () => {
     const timing = (durationMs: number) => ({ source: "runner" as const, durationMs, evidence: `Runner total_duration_ms for this turn: ${durationMs}.` });
     const shaped = (): LocalReviewRecord => ({
       ...record(), version: 2, covered: reviewed, elapsedMinutes: 22100 / 60000, timing: timing(22100), initialOutcome: "incomplete",
@@ -1233,11 +1308,11 @@ describe("the floor is waived for a trivially small change, measured from Git", 
     change({ ".github/workflows/pr-check.yml": lines(5), "docs/runbook.md": lines(2), "qa/ci-scoping.test.mjs": lines(19) });
     expect(check(save(shaped()))).toEqual(waived(7, 19));
     change({ ".github/workflows/pr-check.yml": lines(5), "src/gate.ts": lines(2) });
-    expect(check(save(shaped()))[0]?.message).toContain("needs an authorized same-reviewer turn of at least 30 seconds that clears (not a trivial change");
-    // The waiver relaxes only the floor: authorization is still required to resume an incomplete turn.
+    expect(check(save(shaped()))[0]?.message).toContain("needs a later turn of at least 30 seconds that clears (not a trivial change");
+    // Resuming an incomplete turn needs no authorization, so the same shape without one is waived alike.
     change({ ".github/workflows/pr-check.yml": lines(5) });
     const unauthorized = shaped(); delete unauthorized.followUps![0]!.humanAuthorization;
-    expect(check(save(unauthorized))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+    expect(check(save(unauthorized))).toEqual(waived(5, 0));
   });
   it("prints the waiver in check pr at exactly 20 non-test and 40 test lines, and not one line over either", () => {
     const line = "~ [review-floor] waived: review floor (trivial diff: 20 non-test, 40 test lines)";
@@ -1370,5 +1445,103 @@ describe("review validate runs CI's record check before a push", () => {
     expect(validateReview(root, configBase, path)).toBe(0);
     expect(log.some(l => l.includes("waived"))).toBe(false);
     expect(errors).toEqual([]);
+  });
+});
+
+describe("five automatic turns and any fresh reviewer (2026-10-30)", () => {
+  const original = "a1b2c3d4e5f6a7b8c";
+  const fresh = "b2c3d4e5f6a7b8c9d";
+  const authorization = { approvedBy: "Chris Heinrich", approvedAt: "2026-10-30T18:00:00Z", reason: "Explicitly authorized a sixth review turn for this pull request." };
+  const handoff = (findings: string[]) => ({ reason: "The earlier reviewer session timed out and cannot be resumed.", findings });
+  type Finding = LocalReviewRecord["findings"][number];
+  type Turn = NonNullable<LocalReviewRecord["followUps"]>[number];
+  const finding = (id: string, severity: Finding["severity"] = "substantive", turn?: number): Finding => ({
+    id, severity, description: `Finding ${id} with a concrete failure scenario.`, paths: ["code.ts"], disposition: "fixed", response: `Fixed ${id} and reran its focused test.`, ...(turn ? { turn } : {}),
+  });
+  const follow = (outcome: Turn["outcome"], over: Partial<Turn> = {}): Turn => ({ reviewerSession: original, commit: reviewed, outcome, elapsedMinutes: 2, summary: `The turn returned ${outcome}.`, ...over });
+
+  it("validates five turns without humanAuthorization and refuses a sixth at the boundary", () => {
+    const five: LocalReviewRecord = { ...record(), findings: [finding("F01")], followUps: [follow("blocked"), follow("blocked"), follow("incomplete"), follow("cleared")] };
+    expect(check(save(five))).toEqual([]);
+    const six: LocalReviewRecord = { ...five, followUps: [follow("blocked"), follow("blocked"), follow("incomplete"), follow("blocked"), follow("cleared")] };
+    expect(check(save(six))[0]?.message).toBe("review turn 6 is beyond the 5 automatic turns (the initial review counts); each ordinary turn after the fifth needs explicit humanAuthorization");
+    six.followUps![4] = { ...six.followUps![4]!, humanAuthorization: authorization };
+    expect(check(save(six))).toEqual([]);
+  });
+  it("counts incomplete turns, the initial one included, toward the five", () => {
+    const r: LocalReviewRecord = { ...record(), initialOutcome: "incomplete", followUps: [follow("incomplete"), follow("incomplete"), follow("incomplete"), follow("incomplete"), follow("cleared")] };
+    expect(check(save(r))[0]?.message).toContain("review turn 6 is beyond the 5 automatic turns");
+    expect(check(save({ ...r, followUps: r.followUps!.slice(1) }))).toEqual([]);
+  });
+  it("lets a fresh reviewer take over an incomplete initial review with no humanAuthorization", () => {
+    // Shaped like darwin-health/evo#665: the initial reviewer returned incomplete with one finding,
+    // the author corrected it, and the original session could not be recovered.
+    const r: LocalReviewRecord = { ...record(), initialOutcome: "incomplete", findings: [finding("EV665-R1")], followUps: [follow("cleared", { reviewerSession: fresh, elapsedMinutes: 12, handoff: handoff(["EV665-R1"]) })] };
+    expect(check(save(r))).toEqual([]);
+    expect(r.followUps![0]!.humanAuthorization).toBeUndefined();
+  });
+  it("gives a fresh reviewer's ordinary turn the initial ceiling, at its boundary", () => {
+    const turn = follow("cleared", { reviewerSession: fresh, scopeReason: "Late correction after the clean initial review.", handoff: handoff([]), elapsedMinutes: 15 });
+    expect(check(save({ ...record(), followUps: [turn] }))).toEqual([]);
+    expect(check(save({ ...record(), followUps: [{ ...turn, elapsedMinutes: 15 + 1 / 60000 }] }))[0]?.message).toContain("a fresh reviewer's turn exceeded the initial-review budget");
+    // A resumed reviewer already holds the context and keeps the follow-up ceiling.
+    const { handoff: _, ...resumed } = turn;
+    expect(check(save({ ...record(), followUps: [{ ...resumed, reviewerSession: original, elapsedMinutes: 7.5 }] }))).toEqual([]);
+    expect(check(save({ ...record(), followUps: [{ ...resumed, reviewerSession: original, elapsedMinutes: 7.5 + 1 / 60000 }] }))[0]?.message).toContain("follow-up exceeded its budget");
+  });
+  it("hands every earlier finding to the fresh reviewer, and refuses one dropped from the handoff or the record", () => {
+    const r: LocalReviewRecord = { ...record(), findings: [finding("F01"), finding("N01", "minor")], followUps: [follow("cleared", { reviewerSession: fresh, handoff: handoff(["F01", "N01"]) })] };
+    expect(check(save(r))).toEqual([]);
+    r.followUps![0]!.handoff = handoff(["F01"]);
+    expect(check(save(r))[0]?.message).toContain("was not given earlier finding N01");
+    r.followUps![0]!.handoff = handoff(["F01", "N01"]);
+    expect(check(save({ ...r, findings: [finding("F01")] }))[0]?.message).toContain("names N01, which is not an earlier finding in this record");
+  });
+  it("does not ask a handoff for findings raised at or after its own turn", () => {
+    const r: LocalReviewRecord = { ...record(), findings: [finding("F01"), finding("F03", "minor", 3)], followUps: [follow("blocked", { blockedOn: ["F01"] }), follow("cleared", { reviewerSession: fresh, handoff: handoff(["F01"]) })] };
+    expect(check(save(r))).toEqual([]);
+    expect(check(save({ ...r, findings: [finding("F01"), finding("F03", "minor", 4)] }))[0]?.message).toContain("finding F03 names turn 4, but the record has 3 turns");
+  });
+  it("keeps what a replaced blocked turn found", () => {
+    const blocked = follow("blocked", { blockedOn: ["F02"] });
+    const takeover = follow("cleared", { reviewerSession: fresh, handoff: handoff(["F01", "F02"]) });
+    const r: LocalReviewRecord = { ...record(), findings: [finding("F01"), finding("F02", "substantive", 2)], followUps: [blocked, takeover] };
+    expect(check(save(r))).toEqual([]);
+    // A blocked verdict handed over must name what it blocked on, so those findings cannot vanish with the session.
+    expect(check(save({ ...r, followUps: [follow("blocked"), takeover] }))[0]?.message).toContain("must name its substantive findings in blockedOn");
+    // Dropped from the record...
+    expect(check(save({ ...r, findings: [finding("F01")], followUps: [blocked, { ...takeover, handoff: handoff(["F01"]) }] }))[0]?.message).toContain("blocked on finding F02, which is not in the record");
+    // ...or left out of the handoff.
+    expect(check(save({ ...r, followUps: [blocked, { ...takeover, handoff: handoff(["F01"]) }] }))[0]?.message).toContain("was not given earlier finding F02");
+    // Only a substantive finding can be what a turn blocked on.
+    expect(check(save({ ...r, findings: [finding("F01"), finding("F02", "minor", 2)] }))[0]?.message).toContain("only substantive findings block");
+    // The same reviewer resuming its own blocked turn needs none of this.
+    expect(check(save({ ...r, followUps: [follow("blocked"), follow("cleared")] }))).toEqual([]);
+    // A resumed turn that timed out in between does not let the blocked turn go unnamed (review R1).
+    const later = { ...takeover, handoff: handoff(["F01"]) };
+    const unnamed: LocalReviewRecord = { ...r, findings: [finding("F01")], followUps: [follow("blocked"), follow("incomplete"), later] };
+    expect(check(save(unnamed))[0]?.message).toContain("the blocked turn 2 must name its substantive findings in blockedOn when a fresh reviewer takes over at turn 4");
+    expect(check(save({ ...unnamed, followUps: [follow("blocked", { blockedOn: ["F01"] }), follow("incomplete"), later] }))).toEqual([]);
+  });
+  it("refuses a handoff on a turn the same reviewer took", () => {
+    const r: LocalReviewRecord = { ...record(), followUps: [follow("cleared", { scopeReason: "Late correction after the clean initial review.", handoff: handoff([]) })] };
+    expect(check(save(r))[0]?.message).toContain("records a handoff but uses the same reviewer session");
+  });
+  it("holds a fresh reviewer session to the one-task rule, including sessions an earlier record used for follow-ups", () => {
+    const used = "c3d4e5f6a7b8c9d0e";
+    writeFileSync(join(root, ".agent/worklog/2026-09-09-earlier.md"), `Earlier review.\n\n\`\`\`morpheus-review\n${JSON.stringify({ ...record(), reviewerSession: "d4e5f6a7b8c9d0e1f", summary: "Earlier review.", followUps: [{ ...follow("cleared"), reviewerSession: used }] })}\n\`\`\`\n`);
+    reviewed = commit();
+    const r: LocalReviewRecord = { ...record(), followUps: [follow("cleared", { reviewerSession: fresh, scopeReason: "Late correction after the clean initial review.", handoff: handoff([]) })] };
+    expect(check(save(r))).toEqual([]);
+    r.followUps![0]!.reviewerSession = used;
+    expect(check(save(r))[0]?.message).toBe(`reviewer session ${used} already appears in .agent/worklog/2026-09-09-earlier.md; every review needs a fresh reviewer session`);
+  });
+  it("scopes task-path follow-up reuse to the parent session", () => {
+    const earlier = { ...record(), reviewerSession: "/root/first", summary: "Earlier review.", followUps: [{ ...follow("cleared"), reviewerSession: "/root/fresh" }] };
+    writeFileSync(join(root, ".agent/worklog/earlier.md"), `Earlier review.\n\n\`\`\`morpheus-review\n${JSON.stringify(earlier)}\n\`\`\`\n`);
+    reviewed = commit();
+    const r: LocalReviewRecord = { ...record(), reviewerSession: "/root/review", followUps: [follow("cleared", { reviewerSession: "/root/fresh", scopeReason: "Late correction after the clean initial review.", handoff: handoff([]) })] };
+    expect(check(save(r))[0]?.message).toContain("reviewer session /root/fresh already appears in .agent/worklog/earlier.md");
+    expect(check(save({ ...r, authorSession: "1b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d" }))).toEqual([]);
   });
 });

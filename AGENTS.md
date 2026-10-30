@@ -109,29 +109,30 @@ Offline: `MORPHEUS_OFFLINE=1`. Forks, hooks, receipts and Codex hook trust: **re
 
 ## Working conventions
 
+**Simplicity first.** Plan the simplest design that meets the requirements, then take one pass
+before building to strip what it does not need; for the same result, fewer parts and fewer lines
+win. Add a state, option, gate or approval step only when observed behaviour proves the need. Read
+a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
+tightening one; removing one is a recorded decision.
+
 **Claim before starting**, with `morpheus pm claim <ID>` — the remote branch **is** the claim.
 Never create the branch by hand. Use **one worktree per implementation task**: from a shared
 checkout `pm claim` prints a fresh worktree; read its records, refresh there, and claim again
 there. Do not run concurrent authors on one task worktree. **Name slugs like branches**
-(`--slug update-roadmap-ids`, verb-noun, ≤ 32 characters). Ids, worktrees and resume:
+(`--slug update-roadmap-ids`, verb-noun, ≤ 32 characters). After the PR merges, run
+`morpheus pm cleanup <ID>` from the primary checkout. Ids, worktrees, resume and cleanup:
 [`pm-workflow.md`](docs/runbooks/pm-workflow.md).
-New task worktrees live in the system temporary directory. After the PR merges, run
-`morpheus pm cleanup <ID>` from the primary checkout. It proves the exact PR merged and
-preserves dirty, locked, active, or ambiguous worktrees. Use `pm worktrees` to inspect
-older sibling checkouts before cleaning them. Its generated session receipt is safe to
-remove after these checks; other ignored local data remains protected.
 
 **A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
 voice and browser chat enter the same lifecycle: create or link the roadmap item, claim it, work
 on its branch, test it, open a PR and merge it. A trusted author can authorize the work; the
 channel cannot waive the records or review path. Never edit or release directly from a transcript.
 
-**Register every reusable skill once.** A new canonical directory under `.agents/skills/` or
-`.claude/skills/` must be classified in `src/project-skills.ts` as project-facing or Morpheus-only.
-Project-facing definitions drive `morpheus init`, `morpheus skills list [--json]` and
-`morpheus skills sync`; descriptions come from the rendered `SKILL.md` frontmatter. Do not add a
-second hand-maintained JSON catalog. The project-skill tests refuse an unclassified directory or a
-provider entrypoint that is absent from the registry.
+**Register every reusable skill once.** Classify each new canonical directory under
+`.agents/skills/` or `.claude/skills/` in `src/project-skills.ts` as project-facing or
+Morpheus-only; that registry drives `morpheus init`, `skills list [--json]` and `skills sync`, with
+descriptions from the rendered `SKILL.md` frontmatter. Add no second JSON catalog; tests refuse an
+unclassified directory or an unregistered provider entrypoint.
 
 **An external mutation ships with an exact target and proof.** Prefer a pasted one-shot CLI command
 with explicit account, project and resource identifiers (console prose is fallback only), with a
@@ -166,24 +167,21 @@ because Y") when small. **Prefer lightweight:** build when the need is under ~10
 domain-specific, or every candidate is unmaintained. Record the outcome in `.agent/decisions.md`.
 
 **The authoring agent owns the entire review loop.** Finish the relevant focused tests, inspect
-their actual results, and give the reviewer the complete packet before its first turn. For UI work,
-include final-build simulator captures of each materially changed screen and state. Open the
-captures yourself; the independent reviewer must inspect their pixels. Replace them after visual
-fixes. If a test cannot run, state the exact limitation and
-keep the PR draft until validation finishes; a later code correction spends a remaining review
-turn. Aim to finish in an initial review and one focused response. The third turn is a ceiling for
-a genuine late correction or unresolved substantive finding, not a planned step. One bounded
-same-reviewer verification turn may cover a small final correction under the runbook. Commit the
-implementation and tests. When CI, visual evidence or PR metadata matters to review, move the
+results, and give the reviewer the complete packet before its first turn. For UI work, provide
+final-build simulator captures of changed screens and states. Inspect them; so must the reviewer.
+Replace them after visual fixes. If a test cannot run, state why and keep the PR draft until validation
+finishes; a later code fix spends a review turn. Aim for an initial review and one focused response.
+Five turns run without anyone's approval; they are a ceiling, not a plan. A reviewer blocks only on
+substantive problems; style and wording notes never block. When a reviewer times out or cannot be
+resumed, start a fresh one with the earlier findings. Commit implementation and tests. When CI,
+visual evidence or PR metadata matters to review, move the
 item to `review` and open an unlabelled draft PR first so the reviewer sees them. Then run
 `morpheus review prepare --base origin/main` (it prints a packet; it launches nothing), spawn
 **one fresh reviewer** with repository access and that packet and no inherited history, then
-handle findings, the record, CI and merge yourself. Do not wait for a monitor, another agent or
-GitHub Actions. If no independent session can be started, say so and leave the PR open with
+handle findings, record, CI and merge yourself. If no independent session can start, leave the PR open with
 auto-merge off — never self-review. **Read [`independent-review.md`](docs/runbooks/independent-review.md)
-before spawning the reviewer**: it holds the turn cap, budgets and floors, timing evidence,
-conditional clearance, finalization, `humanAuthorization`, record fields, the `review-record:`
-line and the `agent-reviewed` label. Commit the record and run `morpheus review validate` before
+before spawning the reviewer**: it defines the turn cap, fresh-reviewer handoffs, budgets, timing,
+clearance, finalization, `humanAuthorization`, record fields, `review-record:` and `agent-reviewed`. Commit the record and run `morpheus review validate` before
 pushing; open the PR with the label already applied (`gh pr create --label agent-reviewed`), or as a
 draft if it must exist earlier — an unlabelled draft waits instead of failing. Merge trunk rather
 than rebase after review.

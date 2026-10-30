@@ -1,5 +1,30 @@
 # Decisions
 
+**Reviews never wait on approval inside five turns, and any fresh reviewer may continue** —
+2026-10-30. MO-26-10-30-14.56.24. Evo's CD staging channel stalled from 2026-10-26 because a
+test-only repair PR (evo#665) had an incomplete initial review: the next turn needed
+`humanAuthorization` and the same reviewer session, and when Robbie authorized it the session could
+no longer be recovered. Chris: *"I absolutely don't want things to get blocked because they need
+approval for reviews … that shouldn't be a requirement. You should be able to use any fresh
+session"*, then *"increase the automatic review limit to 5 rounds for all Morpheus projects — with
+the continued guidance that review feedback should be substantive and we shouldn't block changes
+because of some trivial thing the reviewer flags."* This supersedes the three-turn cap
+(2026-09-18), the same-reviewer rule in every entry that states it, authorization to resume an
+incomplete turn (2026-09-28, 2026-10-08), authorization after finalization within the cap
+(2026-09-28), and the same-reviewer, three-turn half of "Incomplete independent reviews resume
+within the ordinary cap" (#565, earlier the same day; its positive-duration rule stands). An
+incomplete turn may also record the overrun that made it incomplete: budgets bind turns that
+render a verdict, so a timed-out reviewer no longer blocks the record forever, and PR414's
+human override for that case is not needed. Five ordinary turns, counting the initial review and
+incomplete ones, need no one's approval; each after the fifth carries `humanAuthorization`, which
+stays optional for back-compat.
+Finalization stays one per PR and outside the count. A follow-up may be a fresh session; the guard
+against reviewer shopping is mechanical: a `handoff` names every earlier finding (by optional
+per-finding `turn`), and a `blocked` turn that is handed over names its substantive findings in
+`blockedOn`, so nothing found earlier can be dropped silently. A fresh reviewer's turn gets the
+initial ceiling. Reviewers block only on substantive problems; style and wording are notes the
+author may decline in one line. No dependency: Zod and the existing checker.
+
 **iOS test retries rerun only the failed tests in a freshly erased simulator; a pass there warns**
 — 2026-10-30. MO-26-10-30-15.16.58. Chris's direction: checks that protect users block, everything
 else warns, and simplify rather than add machinery. Xcode's in-process `-retry-tests-on-failure`
@@ -2100,3 +2125,101 @@ render again on the client. The rehype plugin also covers only Markdown. Neither
 clipboard. We built about 300 lines with no new dependency: one floating icon, and an `id`
 attribute as the only write into a heading. That attribute logs a development-only hydration
 mismatch in such a boundary; production is unaffected.
+
+## Incomplete independent reviews resume within the ordinary cap — 2026-10-30
+
+*Superseded the same day where the entry at the top of this file is broader ("Reviews never wait
+on approval inside five turns, and any fresh reviewer may continue", MO-26-10-30-14.56.24): the
+ordinary cap is five turns, not three; the continuation may be a fresh reviewer, not only the
+original; and turns after finalization need authorization only beyond the five. What stands from
+this entry: no authorization to resume an incomplete turn, the incomplete verdict preserved, and
+every version 2 turn measured above zero.*
+
+Chris clarified that asking for approval merely to let the original reviewer finish an incomplete
+review was unintentional. The author may resume that reviewer after providing missing evidence or
+fixes while an ordinary turn remains. Preserve the incomplete verdict, the original reviewer,
+per-turn timing and budgets, and the three-turn cap. This supersedes the 2026-09-28 and 2026-10-08
+decisions requiring `humanAuthorization` after every incomplete turn. Authorization still governs
+extra substantive turns beyond the ordinary cap and turns after finalization. The review validator,
+reviewer prompt, runbook, architecture, and agent instructions now state the same rule.
+
+## Simplicity first: a design earns its complexity — 2026-10-30
+
+MO-26-10-30-15.28.23. Chris audited a CD pipeline that had been failing for a long time and found
+that much of its friction came from complexity and gates. He had asked for some of those gates, and
+agents then built them stricter than he meant. The entry above is one instance. His rule, for
+Morpheus and every Morpheus project: every design or plan, small or large, starts from the simplest
+version that meets the requirements, and gets one quick simplification pass before implementation.
+Complexity, gates and authorization requirements are added only when the system's observed
+behaviour proves them necessary. When two designs give the same result in the common case, fewer
+parts and fewer lines win. A requested safeguard is read narrowly. Only a check that protects users
+may block: tests, device gates, signing and upload verification. Quota, approval and bookkeeping
+checks warn. This is the rule Chris gave in the same audit. Agents ask before tightening a
+safeguard. Reviewers apply the same preference. A simpler version with the same
+behaviour is a minor finding. A gate, approval step, state, option or mechanism that the
+requirements do not need is substantive.
+
+The rule lives in `architecture.md` §2 (principle 11), in `AGENTS.md` and the scaffold template,
+and in the independent-review contract and rung-2 persona. `doctor` names it in any project whose
+`AGENTS.md` lacks it, which is the existing route for template guidance. It is deliberately not a
+CI check or a required artifact: a check that demands evidence of a simplification pass gets
+ceremony, as the folder-README decision found. It removes no existing gate. Each removal remains
+its own recorded decision. No dependency.
+
+## iOS delivery becomes stateless; CD V2 is retired — 2026-10-30
+
+MO-26-10-30-16.04.16. After CD V2's first ten days (17 failed deliveries, a four-day staging stall
+behind a repair that needed an approval that never came), Chris decided, as owner:
+
+- **Checks that protect users block; the rest warn.** Tests, the physical-iPhone gate, Firebase
+  rules compatibility, signing and upload verification block. Process checks warn or go.
+- **No quota gates.** Exceeding agent quota is a warning: "get it working and get everything
+  calibrated before I worry about any agent token quota".
+- **Retire the validation-campaign machinery**: fault injection, campaigns, drills and the
+  proofs built for the eight-delivery campaign. It was only a means to get the system working.
+- **One Morpheus version, the latest**: "We should just have the latest one." A consumer's CD
+  references Morpheus `main` in one place, with no per-file pins or import manifests, and hosts
+  run the same reference.
+- **Simplify the ledger as the lead judges best** ("I trust your judgment").
+- **Production builds fresh `main` like staging, with no source-age wait,** and differs only by
+  running more automated tests. CD deploys the Firebase rules for the source it ships.
+- **Independent review allows five automatic rounds for every Morpheus project, and reviewers
+  block only on substantive issues.** This supersedes the three-turn cap once the review-policy
+  change implementing it merges; until then the runbook's cap applies.
+- Host Xcode and dependency version pinning are out of scope here; Chris owns them separately.
+
+The lead's design call, within that mandate: **replace V2 with one stateless run per slot rather
+than slim it.** Nearly every V2 mechanism existed only to serve its own ledger and controller:
+configuration digests and their migrations, reserved and burned build numbers, fences and leases,
+pinned runtimes, the campaign and the repair queue's quota gates. With build numbers from App Store
+Connect, config read from `main`, fresh `main` every slot and a single repair owner, nothing is left
+for a controller to own. The ledger becomes GitHub's run history plus one annotated receipt tag per
+delivered build, and the old state branch is archived by tag, not rewritten. Repair has one owner
+(a fresh, time-boxed steward session started by a credential-free health check), and one
+independent watchdog texts Chris. Evo's legacy release lanes already proved the stateless shape;
+it gains the phone gate, rules deployment for the exact source and an internal-availability
+readback. Full design and stages: architecture.md §18.2 "Stateless iOS delivery".
+
+On Evo's cutover this supersedes the CD V2 decisions in this file, including:
+
+- **CD V2 owns delivery through internal availability** (2026-10-18), and its refinements for
+  cancelled-dependent proofs, accepted-proof reuse, empty external tester lists, cancelled
+  SourceCI verification and physical-device proof envelopes;
+- source finance, the spending policy and source-age waivers;
+- the native and Claude repair executors, quota startup bounds, hosted repair credentials and model
+  quota, and live provider route diagnostics;
+- repair diagnostics, blocked-repair proofs and wakes, source floors, and the 2026-10-28
+  supervision mandate;
+- the macOS host supervisor shipped as templates copied from an exact commit.
+
+Three decisions stand:
+
+- **Wait for explicit internal beta readiness** (2026-10-20). V3 still requires internal readiness
+  before it calls a build delivered.
+- **Artifact admission snapshots the source before uploading** (2026-10-23). The bounded artifact
+  helper that Morpheus `ios-ci` runs keeps that contract.
+- **External TestFlight follows internal acceptance** (2026-10-19). External distribution is now
+  reported as a warning.
+
+No dependency: existing GitHub concurrency, Morpheus reusable workflows and the upload action's
+automatic build number.

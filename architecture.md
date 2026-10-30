@@ -72,6 +72,20 @@ Chris, plus a small number of family and friends. It is not a product. Three con
 10. **Extract on the second use, never the first.** Nothing enters the kit until a second project
     needs it. A wrong abstraction propagates into everything that adopts it.
 
+11. **Simplicity first; complexity is earned.** Every design, from a small feature to a delivery
+    pipeline, starts from the simplest version that meets the requirements and gets one more
+    simplification pass before it is built. A component, state, configuration option, check, gate
+    or approval step is added when the system's observed behaviour shows it is needed, not because
+    it might be. When two designs give the same result in the common case, the one with fewer parts
+    and fewer lines wins, because it is likelier to work and easier to repair. Principle 9 decides
+    how a necessary rule is enforced; this one decides whether the rule should exist. A requested
+    safeguard is read at its narrowest reasonable scope. Only a check that protects users, such as
+    tests, device gates, or signing and upload verification, may block; quota, approval and
+    bookkeeping checks warn. Agents ask before tightening a safeguard, and removing an existing one
+    is a recorded decision rather than a side effect. Reviewers hold changes to the same standard
+    (rung 2, §9). A simpler equivalent is a minor finding. A gate, approval step, state, option or
+    mechanism that the requirements do not need is a substantive one.
+
 ---
 
 # Part II — The shape of a project
@@ -1730,37 +1744,43 @@ Four of them, each catching what it can so the rung above only sees what genuine
 | Rung | Verifier | Catches | Blocks |
 |---|---|---|---|
 | 1 | **Automated checks** — tests, types, lint, build, `check pr` | Anything mechanically decidable | Merge |
-| 2 | **Agent review** — a fresh session, bounded follow-up | Wrong-but-clean: untested failure modes, widened scope, decisions quietly reversed | Merge by default |
+| 2 | **Agent review** — a fresh session, bounded follow-up | Wrong-but-clean: untested failure modes, widened scope, decisions quietly reversed, unneeded complexity | Merge by default |
 | 3 | **Conformance** — the change against `qa/acceptance/`, staging against the designs | Built the wrong thing correctly | Deploy |
 | 4 | **Human sign-off** | Taste, strategy, real risk | Deploy |
 
 **Rung 2 is a bounded, author-managed independent session, required by default.**
 `review.required` defaults to true; false is a project opt-out reported by conventions. The author
 runs `morpheus review prepare` to print a packet, then explicitly spawns a fresh reviewer
-subagent/session without author chat, responds once, and resumes the same reviewer
-if substantive findings were raised. Minor-only findings need no second pass. A review is capped
-at three ordinary turns; a follow-up resolves a blocked turn, or spends a remaining turn on a late
-correction after clearance, named by its scope reason. Unresolved substantive disagreements,
+subagent/session without author chat, responds once, and resumes the reviewer
+if substantive findings were raised. Minor-only findings need no second pass. A reviewer blocks
+only on substantive problems (correctness, missing or wrong tests for changed behaviour, security or
+data loss, a broken contract, documentation made untrue); wording, style, naming and optional
+refactors are non-blocking notes the author may decline in one line. A review has five ordinary
+turns without anyone's approval, counting the initial review and incomplete turns; a follow-up
+resolves a blocked turn, continues after an incomplete one, or spends a remaining turn on a late
+correction after clearance, named by its scope reason. Any follow-up may be taken by a fresh
+reviewer when the earlier session timed out or cannot be resumed; its `handoff` names every earlier
+finding it was given, and a handed-over blocked turn names its findings in `blockedOn`, so
+replacement cannot drop what an earlier reviewer found. Unresolved substantive disagreements,
 incomplete review, exhausted budgets and a correction needed after the last turn leave the PR
-open and flagged, with auto-merge disabled. One additional same-reviewer verification turn may
-cover a small fix to a recorded finding or a late test-only correction: at most four exact changed
-paths, 80 changed test lines, 40 changed non-test lines, five minutes, and cumulative ordinary
-review time at most twice the initial risk ceiling. It cannot follow an incomplete turn or
-finalization, change normative policy, reset the reviewer, or authorize a fifth implementation
-turn. New substantive concerns still block. One automatic
-finalization-only turn per PR is allowed, at five minutes, recorded as `finalization` with the
-reviewer's attested paths, evidence and scope. It must be the last automatic turn and cleared; every later same-reviewer turn requires explicit
-`humanAuthorization`. Its original scope and predecessor stay checked. It cannot resolve a
+open and flagged, with auto-merge disabled. Each ordinary turn after the fifth needs an explicit
+human exception, recorded as `humanAuthorization` (approver, ISO timestamp and reason),
+preserving the full history and all other checks; one authorization never permits subsequent
+turns. One automatic
+finalization-only turn per PR is allowed outside the count, at five minutes, recorded as `finalization` with the
+reviewer's attested paths, evidence and scope; an ordinary turn may follow it only as a late
+correction. Its original scope and predecessor stay checked. It cannot resolve a
 substantive finding, and is checked against the commits it covers: the worklog, already-conditioned
-paths, and explanatory Markdown only — never normative policy files. An explicit human exception is recorded per extra same-reviewer turn
-as `humanAuthorization` (approver, ISO timestamp and reason), preserving the full history and
-all other checks; one authorization never permits subsequent turns. An evidence-pending incomplete
-turn may resume only with explicit authorization on the next same-reviewer turn; the original
-verdict stays unchanged and every historical and new turn must satisfy its budget. Incidental pre-existing bugs are recorded
+paths, and explanatory Markdown only — never normative policy files. Records from the three-turn
+contract keep their bounded `verification` fourth turn valid. Every verdict, incomplete ones
+included, stays in the record; a cleared or blocked turn must satisfy its budget, while a turn
+that ran out of time is recorded incomplete with its real duration and the next turn continues. Incidental pre-existing bugs are recorded
 separately; related unchanged code is blocking only when causally relevant to the PR or acceptance.
 
-Initial risk-based ceilings are 10/15/30 minutes, with a one-minute floor at normal and high risk, with one justified initial extension of at most
-50%; the follow-up ceiling is half the initial budget. One reviewer, no reviewer subagents. The
+Initial risk-based ceilings are 10/15/30 minutes, with a 30-second floor at normal and high risk, with one justified initial extension of at most
+50%; the follow-up ceiling is half the initial budget, except that a fresh reviewer taking over
+gets the initial ceiling because it reads the change from scratch. One reviewer per turn, no
+reviewer subagents. The
 provider's authoring session owns enforcement and any available usage ceiling; CI validates the
 reported evidence without making a model call. The canonical provider-neutral prompt ships in
 `src/review/local-prompt.ts`. Project instructions and learned failures supply local context.
@@ -3623,146 +3643,155 @@ sources still build, failed runs retry, and manual forced builds always run. An 
 screenshots is distinguishable from one that failed to capture them. This is bounded recovery,
 not an independent scheduler.
 
-**CD V2 design:** [Morpheus CD pipeline V2](docs/cd-pipeline-v2.md) defines the
-replacement delivery contract and migration for Evo: six-hour staging, daily aged
-production, durable recovery ownership and exact internal TestFlight receipts.
-The design is separate from rollout acceptance; existing consumers retain the
-legacy behavior below until explicitly migrated and verified. Shared controller,
-provider and agent code belongs in Morpheus; consumer repositories supply policy,
-identities and app/backend hooks. See the linked RCA, research and design probes.
+**Stateless iOS delivery (CD V3) — the target design, 2026-10-30.** CD V2 (`src/cd/`,
+[its design](docs/cd-pipeline-v2.md)) put a deterministic controller, a Git ledger and a repair
+queue between `main` and TestFlight. In its first ten days it failed 17 deliveries and stalled
+staging for four days. Most of its machinery existed only to serve its own ledger: configuration
+digests and their guarded migrations, reserved and burned build numbers, ownership fences and
+leases, per-file pins with import manifests, a validation campaign with fault drills, and quota
+gates on the repair worker. Chris's decisions of 2026-10-30 (`.agent/decisions.md`) remove the
+reasons for all of it. Delivery is therefore rebuilt as **one stateless run per slot** and V2 is
+deleted rather than slimmed. Until the stages below land, V2 keeps delivering and its code and
+documents remain. This paragraph is the specification; the V2 documents are history.
 
-The implementation is `src/cd/`, exported as `morpheus-kit/cd` and `morpheus cd`;
-its [operator contract](docs/cd-v2-controller.md) documents config, evidence and
-workflow inputs. GitHub Git commits store the authoritative state and events with
-single-parent nonforce updates and per-invocation ownership. Compact verified
-test proofs reference hashed native artifacts. Consumers may additionally require
-physical-device evidence through an opt-in trusted
-profile/device/host/exact-test policy. The same full-test envelope and compact
-ledger proof retain its execution and policy bindings; upload-claim CAS and
-accepted-proof reuse refuse absent or conflicting required hardware proof.
-Omitting policy preserves legacy normalized configuration bytes/digests.
-Consumer capability/config-round-trip checks and lossless configuration migration
-precede adoption; the evidence qualifier owns actual hardware observations.
-An optional policy `sourceFloor` names the first main source carrying the test
-plan: planning and repair adoption refuse older sources before a build number is
-spent, and repair adoption also requires strict descent past every source already
-attempted for the intent.
-There is no second dispatcher, lease or receipt. A terminal, exactly bound workflow
-with a current accepted upload can reuse its immutable downloaded full-test proof
-after strict identity/input/configuration/claim validation and a fresh pinned Git
-validator check. Artifact service availability after acceptance is not an ongoing
-receipt dependency. Missing proof retains the download path; malformed reusable
-proof refuses. The proof is never treated as raw results or re-recorded, and fresh
-Apple readback still owns availability and receipt creation. Upload and group operations have
-durable claims; actual provider receipts complete the original obligation.
-A separate evidence-only repair-diagnostic recorder binds an existing unique
-latest repair/task to its already-bound latest failed attempt. It appends bounded
-canonical diagnostic JSON through the same CAS/event store without changing
-execution, ownership, source, policy, clocks or funding. Current-target checks
-guard each new append; a verified immutable note receipt survives later normal
-owner progression without granting applicability or restarting work.
-A separate post-resume acceptance origin can prepare uncounted validation work
-without changing the original campaign journal or enrolling ordinary deliveries.
-The normal Store binds its closed origin, qualifications, zero-effect yield and
-owned execution-release records. Ordinary demand wins every new optional effect
-claim with fresh time on each CAS retry. A quiesced unknown optional upload keeps
-its same active source/build/claim for readback instead of retiring or retargeting.
-Its additive internal membership claim has one stable invocation owner; unknown
-replies stay read-only until positive membership appears. Normal ordinary group
-ownership, cursor monotonicity and old retired observation-only behavior remain.
-This is a source boundary, not consumer adoption or fault/operational authority;
-see [the post-resume contract](docs/cd-pipeline-v2.md#additive-post-resume-recovery-acceptance-source-boundary).
-A **repair-only control** ([runbook](docs/runbooks/cd-repair-control.md)) can hold new repair-agent admission
-for one exact supplemental validation intent: a namespaced `repair:<intent>` pause that existing delivery
-gates ignore, enforced only by a worker-only entry around an injected unchanged `runWorker` and released
-only after the exact delivered receipt with all target work complete.
-Hosted scheduling (`cd tick` → `scheduleHosted`) is **not** held: a consumer must keep hosted scheduling off while any
-hold exists, and the unchanged `cd worker`/`cd tick` entry points ignore the hold.
-Bounded subscription workers retain immutable tasks, session checkpoints and
-actual quota telemetry. Hosted Claude admission joins shared and explicitly
-configured model-family windows; missing capacity remains a budget wait rather
-than silently treating an exhausted or unavailable model as healthy. Failed usage
-reads expose only fixed recognized diagnostics, never arbitrary provider text or
-credentials; actual scoped workflow authority and quota remain rollout proofs.
-The hosted repair route is optional: registered native Codex workers can share
-the same GitHub queue while preserving one global local-subscription reservation.
-Native account reads require explicit ordinary subscription eligibility before
-admission and during metering; missing or false allowance never admits prepaid
-credit fallback even when the reported usage windows are low.
-The native no-model quota reader has a 60-second total startup/read budget and
-a final RPC ceiling of 10 seconds within it. Its separate foreground-session
-supervisor retains a private group leader through cleanup, with a two-second
-cleanup bound and three-second parent fuse; failure remains fail-closed
-immediately, and success waits for confirmed cleanup and completion-time quota
-validation. This does not change the model guardian or the five-minute telemetry
-TTL. Frozen consumer workers adopt the source only through a separate reviewed
-quiet-host operation.
-If its supervisor disappears, the private reader leader kills its own live group;
-post-reap Darwin permission responses stay within the same cleanup polling bound.
-Worker leases and invocation start timestamps use a fresh clock after quota and
-login admission, recomputed inside each CAS claim attempt. Quota is revalidated
-at that attempt and after its acknowledgment before model launch; stale/reset
-telemetry never authorizes a launch or clears another owner's fence. The returned
-owned lease must still cover strictly more than the configured execution duration
-before launch, or the existing fenced unstarted cleanup refuses it. The lease
-duration remains `agentMinutes + 2`, and the guardian execution limit is unchanged.
-Transaction event timestamps remain request times; later write/acknowledgment,
-launch setup and guardian teardown still consume the existing margin.
-Native invocation identity names the host/user/session store; only its latest
-same-host local session can resume. Foreign or unidentified sessions restart from
-the immutable task and durable checkpoint evidence without copying native sessions
-or credentials. Owner and fence guard session, completion and error checkpoints.
-Existing configured hosted normalization is unchanged; removing that route is an
-explicit consumer configuration migration, not a silent ledger reset. Source-level
-tests do not establish actual two-Mac readiness or failover acceptance.
+**One run, one channel, fresh `main`.** Evo's `ios-delivery.yml` is the whole pipeline.
+Staging runs every six hours when watched inputs changed; production runs daily. Both are GitHub
+cron triggers, and the workflow can also be dispatched with a `channel` and an `upload` switch.
+Each run builds the current `main`, and the two channels differ only in how many automated tests
+they run: a smoke scope for staging, the full suite for production. There is no source-age wait and
+no intent or lineage that outlives a run. A failed run blocks nothing, and the next slot builds
+newer `main`. A per-channel concurrency group keeps one run per channel. It never cancels a run in
+progress, but GitHub replaces an already-pending run when a newer one queues, so at most one slot
+waits.
+Its jobs:
 
-An explicitly human-authorized campaign may opt into a durable spend-as-needed budget
-policy through the normal audited `cd budget` transaction. The optional ledger policy
-records campaign/cap/authorization/time without changing configuration or epoch.
-Ordinary admission then checks recorded spend plus only the current bounded operation;
-old request maxima are audit records, not internal holds. Original IDs/digests, unknown
-operations and real settlement tombstones remain intact. Status reports zero internal
-holds and remaining against recorded spend, with unsettled operations/overspend visible;
-it makes no provider-balance/final-invoice or simultaneous-spend guarantee. Real late
-costs remain recordable. Default reservation/config250 and subscription80/90 policy
-remains for ledgers that have not explicitly opted in. See
-[the spending policy](docs/cd-v2-controller.md#human-authorized-spend-as-needed-campaigns).
+1. `plan` reads `.morpheus/cd.json` at the source commit. It records what the run uses: the source,
+   the Morpheus `main` SHA, a configuration digest and an input digest. A scheduled staging slot
+   skips only when no watched input changed since its last receipt tag.
+2. `preflight` calls Morpheus `release-preflight`. It confirms the source is a reviewed merge, and it
+   also requires the source to be the current head of `main`. A run that waited behind another, or
+   that raced a merge, would therefore fail on a process-only property and lose its slot. Before
+   scheduling starts, S4 replaces this with a plan check that the source is a reviewed merge
+   reachable from `main`.
+3. `tests` runs Morpheus `ios-ci`, with a fresh simulator per retry.
+4. Staging Firebase rules are deployed for this source. The phone gate exercises staging for
+   both channels, so this runs on every run.
+5. The physical-iPhone gate runs.
+6. Production rules are deployed for this source, on production runs only. A dry run checks them
+   instead of deploying.
+7. The app is signed and uploaded with the next App Store Connect build number.
+8. A readback confirms internal availability.
+9. External distribution and the receipt tag are handled; neither blocks.
+10. A summary lists stage results, warnings and flaky tests.
 
-Administrative source publication funding has one explicit, optional budget-reserve
-path in `src/cd/source-finance.ts`. A strict independently reviewed grant pins the
-exact source request, repository, existing epoch, supplied and stored native
-configuration digests, amount, finite source scope, aggregate ceiling and short
-admission window. Values belong to the engagement, never shared campaign constants.
-The existing owner-bound GitHub CAS and complete envelope receipt readback remain
-required; checks precede replay and repeat with fresh time/liability in every CAS
-callback. Native schema, ordinary paid reservation admission and controller behavior
-remain unchanged. Without the explicit spending-policy opt-in, the configured at-most-$250 guard in
-`reservePaid` and ordinary `cd budget reserve` refuses new paid reservations that would exceed it; exact old
-reserved paid identities still replay. Local delivery intent creation, attempt
-planning and dispatch are not gated by this dollar guard and retain their existing
-controls. A source grant itself authorizes no native operation. The
-[source finance contract](docs/cd-source-finance.md) defines the CLI,
-reserved `source-ci-` namespace and operator-attestation trust boundary.
+**What blocks and what warns.** A check that protects users blocks; a check that only protects the
+process warns or is deleted.
 
-App-only
-repairs reset production age; unchanged input
-digests retain their first lineage age through controller repairs. These are
-implementation properties, distinct from real consumer rollout acceptance.
-An explicitly human-authorized manual validation request may waive source age
-for its one immutable delivery lineage. It records the approval reference and
-request time, requires an exact verified main source, and retains full native,
-upload and internal-group evidence. This exception never changes automatic slot
-selection, ordinary production age, configuration identity or operational cursors.
+| Check today (V2 location) | Target |
+|---|---|
+| Tests, and test integrity: every enumerated test ran, an undocumented skip fails (`ios-ci`, consumer verifier) | **Blocks** |
+| A test that failed then passed on retry | Warns. The steward or a person may add a quarantine entry in a reviewed PR (one test, a linked issue, expiry ≤ 14 days); a quarantined test runs outside the blocking suite and its failure warns until the entry expires, then blocks again. |
+| Physical-iPhone gate (collector evidence rules) | **Blocks** |
+| Firebase rules: V2 preflight required live rules to equal the client source; 7 of the 17 failures | Replaced by deploying the source's rules before upload. **Blocks** on what protects users: forward only (never roll back), refuse rules `main` never held, every index READY. |
+| Source is a reviewed merge on `main` | **Blocks**. Being the current head of `main`, which `release-preflight` also requires, is process-only; S4 relaxes it. |
+| Signing, entitlement/IPA verification, app validation script | **Blocks** |
+| Apple VALID, internally ready, held by the internal group | **Blocks**: this is delivery |
+| External groups, Beta App Review | **Warns** |
+| Sentry release configuration | **Warns** |
+| Receipt tag written; Morpheus SHA recorded | Tag **warns**. An unresolvable Morpheus SHA fails the plan, because ios-ci needs an exact commit. |
+| Ledger ownership, CAS, fences, leases, attempt immutability and invariants | Deleted: no ledger |
+| Configuration digest equality and guarded config migrations | Deleted: digest recorded, never enforced |
+| Build-number reservation and burning | Deleted: App Store Connect next number |
+| Slot admission, production source age, source floor, strict repair descent | Deleted: fresh `main` every run |
+| Quota admission/stop, usage readers, budget reservations, spending policy, source finance | Deleted. Running out of agent quota is a warning in the steward's log. |
+| Parking in `repairing`, repair holds, human-approved continuations | Deleted: a failure never holds the channel |
+| Pinned-runtime and import-manifest verification; trusted re-verification of test and device evidence in separate qualify jobs; artifact-root admission | Deleted. The producing job's own verdict stands; the bounded artifact helper inside Morpheus `ios-ci` stays. |
+| Post-resume, native-admission, fault drills, campaign holds, wake probes, reply-loss audit | Deleted |
 
-Channels may explicitly opt into post-delivery external TestFlight distribution
-with `externalGroupIds`. Internal acceptance and its receipt remain independent;
-external status requires exact-build testing state, nonempty tester lists and all
-external memberships. A valid empty external tester list records an ordinary
-pending wait without a tick error or provider mutation; malformed evidence still
-refuses, and the core never adds or invites testers.
-Review claims are shared by app/build, durable before the provider call, and
-uncertain outcomes reconcile without blind resubmission. Consumers own explicit
-configuration migration and runtime adoption; absence of the opt-in is unchanged.
+**The ledger is the run history plus one tag per delivered build.** GitHub keeps every attempt.
+A delivered build gets an annotated tag `testflight/<channel>/<version>-<build>` on its source
+commit, carrying the receipt JSON: source, Morpheus SHA, digests, run, build id and states. Staging
+change detection reads the latest tag. Nothing else is stored: no state file, CAS or polling, so
+nothing writes when nothing happens.
+
+Moving off V2 rewrites no history:
+
+1. Stop V2's writers. Unload the Pro tick and the Mini worker, disable the `cd-v2` workflows, and
+   wait for or cancel any V2 delivery or repair run in flight. Those runs also write the ledger and
+   can upload a reserved build number.
+2. Tag the `morpheus-cd-state` head as `archive/cd-v2-state-final` and lock the branch.
+3. Seed one receipt tag per channel from `state.json`'s last delivered receipt.
+4. Delete the branch only after the archive tag is verified.
+
+**Build numbers come from App Store Connect.** With no reserved number, Morpheus's
+`ios-testflight-upload` asks for the next number. Its host-local floor covers an upload Apple has
+not listed yet. A lost reply costs at most a skipped number. The only collision risk is with V2's
+ledger-reserved numbers, so V3 uploads begin at cutover, never alongside V2.
+
+**One Morpheus version: `main`.** Evo references Morpheus only at `@main`: no per-file pins and no
+import manifests. GitHub requires `uses:` lines to be literal, so the one value is `main` itself,
+and an Evo test asserts that no Morpheus reference is anything else. Each run resolves `main` to a
+SHA once in `plan` and uses it for ios-ci's composite actions and artifact helper. It records that
+SHA in the summary and the receipt. The reusable workflows called at `@main` resolve when the run
+is created. The upload action resolves when its job starts, possibly hours later, so S4 runs it
+from a checkout at the plan's SHA, as ios-ci does with its actions; until then the recorded SHA
+may not be the upload code that ran.
+
+Hosts run no Morpheus delivery runtime of their own. The Mac runners check Morpheus out per run.
+The global `morpheus` CLI on each machine follows `main` through `morpheus self update`. Xcode
+versions and runner images are Chris's separate pin; the workflow states them, and they are not
+delivery configuration.
+
+**Configuration is read from `main` and recorded, never enforced.** `.morpheus/cd.json` holds
+channels, app and group identities, watched inputs and native settings. The cron schedule lives in
+the workflow. A change merges like any
+other file, and the next run uses it. Its digest goes into the receipt, so every attempt says what
+it used, and there are no migrations.
+
+**One repair owner, one independent alarm.**
+
+- The **CD steward** is a cheap, credential-free health check on the always-on host, run every
+  few hours. It reads only the delivery runs. When a channel is failing, stuck or stale, it starts
+  one fresh, time-boxed agent session that diagnoses, repairs through the normal PR path, records
+  what it did and exits. Nothing carries over between sessions except the written record. If the
+  health check cannot read state three times in a row, it texts Chris.
+- **`ios-delivery-watchdog.yml`** is an independent GitHub cron. When an eligible change misses its
+  delivery SLO it opens one issue and texts Chris. It never repairs.
+
+Retired actors: the Pro controller tick, the Mini repair worker, the recovery watchdog, and
+long-lived supervising sessions. The GitHub Manager stays a PR backstop and has no delivery role.
+
+**Stages.** Each stage keeps real delivery working.
+
+| Stage | Repo | Goal | Group |
+|---|---|---|---|
+| A (MO-26-10-30-15.16.58) | Morpheus | `ios-ci` retries in a fresh simulator and reports flaky tests (`flaky-tests` output) | now |
+| B (EV-26-10-30-15.20.47) | Evo | CD steward plus a re-enabled delivery watchdog that measures V2 and V3 | now |
+| S1 (EV-26-10-30-15.28.38) | Evo | Staging smoke scope vs production full suite; quarantine list and verifier semantics | now |
+| S2 (EV-26-10-30-15.29.26) | Evo | Every non-CD Morpheus reference at `@main` | merged (evo#704) |
+| S3 (EV-26-10-30-15.25.08) | Evo | `ios-delivery.yml`, dispatch-only with dry runs until cutover; the phone gate admits it | now; merges after the rules contract and the Xcode pin |
+| Rules (EV-26-10-30-14.56.33) | Evo | `firebase-deploy.yml` delivery contract (`environment`, `source-sha`, `deploy`) | now |
+| S4 (EV-26-10-30-16.14.48) | Evo | Cutover: cron on, V2 workflows and host agents off, ledger archived, receipt tags seeded, Evo #702 closed | after S3, Rules, B |
+| S5 (EV-26-10-30-16.14.52) | Evo | Delete V2 and the legacy lanes from Evo | after S4 and its soak; parallel with M1 |
+| M1 (MO-26-10-30-16.06.29) | Morpheus | Delete `src/cd`, its tests and docs, the `morpheus cd` command and V2-only upload inputs, after moving the quota reader the Paperclip pilot still loads | after S4 and its soak; parallel with S5 |
+
+Acceptance for S4 is one scheduled staging and one scheduled production delivery through V3. S5 and
+M1 wait for two consecutive V3 deliveries per channel.
+
+Rollback before S5: re-enable V2's workflows and agents. V2's next reservation must first be
+raised past App Store Connect's latest build number, so forward fixes are preferred. After S5,
+rollback is a revert.
+
+The deletions remove about 150 files and 28,500 lines from Evo:
+
+- `ops/macos/evo-cd-v2/`: 95 files, 20,500 lines. Of these, 44 files and 8,200 lines are campaign,
+  fault, drill, proof, admission, post-resume and migration code, and 7,000 lines are runtime
+  manifests.
+- The `cd-v2` workflows and legacy lanes, `cd-v2-*`, the recovery and nightly scripts, their tests
+  and nine runbooks.
+
+They remove about 13,400 lines from Morpheus: `src/cd` (3,800), `tests/cd` (7,500), the CD
+documents (2,100), plus `dist/cd`.
 
 Apps whose nightly release is dispatched from the Mac mini share one admission core,
 `src/ios/nightly-core.ts`, extracted from Evo's controller (darwin-health/evo #307, #309). It
