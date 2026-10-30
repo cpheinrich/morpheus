@@ -2093,3 +2093,47 @@ per-turn timing and budgets, and the three-turn cap. This supersedes the 2026-09
 decisions requiring `humanAuthorization` after every incomplete turn. Authorization still governs
 extra substantive turns beyond the ordinary cap and turns after finalization. The review validator,
 reviewer prompt, runbook, architecture, and agent instructions now state the same rule.
+
+## iOS delivery becomes stateless; CD V2 is retired — 2026-10-30
+
+MO-26-10-30-16.04.16. After CD V2's first ten days (17 failed deliveries, a four-day staging stall
+behind a repair that needed an approval that never came), Chris decided, as owner:
+
+- **Checks that protect users block; the rest warn.** Tests, the physical-iPhone gate, Firebase
+  rules compatibility, signing and upload verification block. Process checks warn or go.
+- **No quota gates.** Exceeding agent quota is a warning: "get it working and get everything
+  calibrated before I worry about any agent token quota".
+- **Retire the validation-campaign machinery**: fault injection, campaigns, drills and the
+  proofs built for the eight-delivery campaign. It was only a means to get the system working.
+- **One Morpheus version, the latest**: "We should just have the latest one." A consumer's CD
+  references Morpheus `main` in one place, with no per-file pins or import manifests, and hosts
+  run the same reference.
+- **Simplify the ledger as the lead judges best** ("I trust your judgment").
+- **Production builds fresh `main` like staging, with no source-age wait,** and differs only by
+  running more automated tests. CD deploys the Firebase rules for the source it ships.
+- **Independent review allows five automatic rounds for every Morpheus project, and reviewers
+  block only on substantive issues.** This supersedes the three-turn cap once the review-policy
+  change implementing it merges; until then the runbook's cap applies.
+- Host Xcode and dependency version pinning are out of scope here; Chris owns them separately.
+
+The lead's design call, within that mandate: **replace V2 with one stateless run per slot rather
+than slim it.** Nearly every V2 mechanism existed only to serve its own ledger and controller:
+configuration digests and their migrations, reserved and burned build numbers, fences and leases,
+pinned runtimes, the campaign and the repair queue's quota gates. With build numbers from App Store
+Connect, config read from `main`, fresh `main` every slot and a single repair owner, nothing is left
+for a controller to own. The ledger becomes GitHub's run history plus one annotated receipt tag per
+delivered build, and the old state branch is archived by tag, not rewritten. Repair has one owner
+(a fresh, time-boxed steward session started by a credential-free health check), and one
+independent watchdog texts Chris. Evo's legacy release lanes already proved the stateless shape;
+it gains the phone gate, rules deployment for the exact source and an internal-availability
+readback. Full design and stages: architecture.md §18.2 "Stateless iOS delivery".
+
+This supersedes, on Evo's cutover: **CD V2 owns delivery through internal availability**
+(2026-10-18) and its later refinements in this file (readiness waits, cancelled-dependent proofs,
+accepted-proof reuse, artifact admission snapshots for CD, source finance, spending policy,
+source-age waivers, native and Claude repair executors, quota startup bounds, repair diagnostics,
+blocked-repair proofs and wakes, physical-device proof envelopes, source floors, and the
+2026-10-28 supervision mandate). **External TestFlight follows internal acceptance** (2026-10-19)
+stands, with external distribution reported as a warning. The bounded artifact helper used by
+`ios-ci` stays. No dependency: existing GitHub concurrency, Morpheus reusable workflows and the
+upload action's automatic build number.
