@@ -875,24 +875,24 @@ three times, stop: change approach, or \`pm block\` with what you learned. Never
 **The authoring agent owns the entire review loop.** Finish the relevant focused tests and inspect
 results before the reviewer's first turn; send the full packet and available UI evidence. If a test
 cannot run, document why and keep the PR draft until validation finishes. Aim for one review and
-one response; the third turn is a ceiling for genuine late corrections or unresolved findings.
-After committing implementation/tests,
+one response; five turns run without anyone's approval, a ceiling, not a plan. A reviewer blocks
+only on substantive problems; style and wording notes never block. When a reviewer times out or
+cannot be resumed, start a fresh one with the earlier findings. After committing implementation/tests,
 run \`morpheus review prepare --base origin/main\`; this prints a review packet and does not
 launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
 repository access and that packet, without inheriting the author's conversation history.
-The reviewer returns findings to the author; the author manages fixes, any allowed follow-up,
-the review record, CI, and merge. Do not wait for a PR monitor, another standing agent, or
-GitHub Actions to start this review. CI checks the evidence; it does not perform the review.
+The author handles findings, follow-ups, the record, CI and merge. Do not wait for a PR monitor
+or GitHub Actions to start this review; CI checks the evidence and does not perform it.
 The author measures each turn from runner duration metadata or actual clock readings, never a
 reviewer's workload estimate. New version 2 records require timing source, milliseconds and
 evidence for every turn; compute elapsedMinutes as durationMs / 60000 without rounding.
-If the runner cannot start an independent session, report that concrete limitation and keep
-the PR open with auto-merge disabled; never substitute self-review or assume a monitor will act.
+If no independent session can start, say so and keep the PR open with auto-merge disabled;
+never self-review.
 
 **Independent review is required before merge.** Before spawning the reviewer, read the
-[review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md): three
-ordinary turns plus one narrow verification, budgets, finalization, \`humanAuthorization\`,
-deferrals naming a roadmap item, and the record fields. Record the review in the task worklog, commit
+[review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md): the turn
+cap, fresh-reviewer handoffs, budgets, finalization, \`humanAuthorization\`, deferrals naming a
+roadmap item, and the record fields. Record the review in the task worklog, commit
 it, and run \`morpheus review validate\`. Then label the PR and mark it ready, or create it labelled
 with a visible \`review-record:\` line. For CI or PR evidence, open an unlabelled draft before
 review; drafts wait instead of failing. Merge trunk rather

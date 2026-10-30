@@ -171,22 +171,20 @@ results, and give the reviewer the complete packet before its first turn. For UI
 final-build simulator captures of changed screens and states. Inspect them; so must the reviewer.
 Replace them after visual fixes. If a test cannot run, state why and keep the PR draft until validation
 finishes; a later code fix spends a review turn. Aim for an initial review and one focused response.
-The third turn is a ceiling for a late correction or unresolved finding. The runbook permits one bounded
-same-reviewer verification turn for a small final fix. Commit implementation and tests. When CI,
+Five turns run without anyone's approval; they are a ceiling, not a plan. A reviewer blocks only on
+substantive problems; style and wording notes never block. When a reviewer times out or cannot be
+resumed, start a fresh one with the earlier findings. Commit implementation and tests. When CI,
 visual evidence or PR metadata matters to review, move the
 item to `review` and open an unlabelled draft PR first so the reviewer sees them. Then run
 `morpheus review prepare --base origin/main` (it prints a packet; it launches nothing), spawn
 **one fresh reviewer** with repository access and that packet and no inherited history, then
 handle findings, record, CI and merge yourself. If no independent session can start, leave the PR open with
 auto-merge off — never self-review. **Read [`independent-review.md`](docs/runbooks/independent-review.md)
-before spawning the reviewer**: it defines turn caps, budgets, timing, clearance, finalization,
-`humanAuthorization`, record fields, `review-record:` and `agent-reviewed`. Commit the record and run `morpheus review validate` before
+before spawning the reviewer**: it defines the turn cap, fresh-reviewer handoffs, budgets, timing,
+clearance, finalization, `humanAuthorization`, record fields, `review-record:` and `agent-reviewed`. Commit the record and run `morpheus review validate` before
 pushing; open the PR with the label already applied (`gh pr create --label agent-reviewed`), or as a
 draft if it must exist earlier — an unlabelled draft waits instead of failing. Merge trunk rather
 than rebase after review.
-Within the three-turn cap, the same reviewer may resume an incomplete review after missing
-evidence or fixes arrive, without human authorization. Record the incomplete verdict. Other extra
-turns, and all turns after finalization, require human authorization.
 
 **Every PR carries** tests for anything testable (or an explicit reason), a documentation update
 when behaviour changes, a test plan with the commands actually run, open questions stated plainly,

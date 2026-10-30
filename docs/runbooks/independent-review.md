@@ -11,7 +11,8 @@ incomplete until the author supplies final-build evidence.
 If a test cannot
 run, record the exact limitation and keep the PR draft until validation finishes. CI can run in
 parallel, but an avoidable late test correction consumes a review turn. Aim for an initial review
-and one focused response; three ordinary turns are a ceiling, not a plan. Commit implementation
+and one focused response; five turns run without anyone's approval, and that is a ceiling, not a
+plan. Commit implementation
 and tests. When CI, visual evidence or PR metadata matters to review, move the item to `review`
 and open an unlabelled draft first; the reviewer should see that evidence and the final ticket
 state. Then
@@ -29,8 +30,10 @@ the PR open with auto-merge disabled; never substitute self-review or assume a m
 
 The author is the agent/session implementing the PR, including OpenClaw, Codex, or Claude.
 Use its runner's fresh-session/subagent facility with history inheritance disabled. Supply the
-prepared packet and repository location, and retain the reviewer session ID for the allowed
-follow-up turns. A reviewer is a bounded task started by the author, not a standing PR-monitoring agent.
+prepared packet and repository location, and retain the reviewer session ID so a follow-up can
+resume it; when it cannot be resumed, a fresh reviewer takes the next turn
+([below](#any-fresh-reviewer-may-take-a-turn)). A reviewer is a bounded task started by the
+author, not a standing PR-monitoring agent.
 
 The canonical contract ships in `src/review/local-prompt.ts`; the old `review prompt` command and
 `.github/agent-review-prompt.md` remain for explicitly enabled legacy GitHub reviewers.
@@ -64,6 +67,27 @@ Complexity the PR adds is in scope too ([`architecture.md` §2](../../architectu
 approval step, state, option or mechanism that the requirements do not need is substantive. Its
 failure scenario is the legitimate work it would stop or delay.
 
+### Substantive findings block; notes do not
+
+Chris, 2026-10-30: review feedback should be substantive, and a change should not be held because
+of some trivial thing the reviewer flagged. A reviewer returns `blocked` only for a substantive
+problem, recorded with severity `substantive`:
+
+- a correctness bug;
+- missing or wrong tests for behaviour the change introduces or alters;
+- a security or data-loss risk;
+- a broken contract: an interface, schema, workflow input or caller the change breaks;
+- documentation the change has made untrue;
+- a gate, approval step, state, option or mechanism the requirements do not need (Simplicity
+  first: architecture principle 11, above).
+
+Wording, style, naming, optional refactors, local simplifications and nice-to-haves are `minor`
+notes. They never by
+themselves make a turn `blocked`, and a review whose only findings are notes clears. The author
+may decline a note with a one-line reason (disposition `disputed`, the reason as its `response`)
+and spends no turn on it. The reviewer contract (`src/review/local-prompt.ts`) and the legacy
+GitHub persona (`.github/agent-review-prompt.md`) say the same.
+
 | Risk | Initial ceiling | Follow-up ceiling |
 |---|---:|---:|
 | Small, low consequence | 10 minutes | 5 minutes |
@@ -76,9 +100,9 @@ execution rather than reading overran it, and two worklogs chose between two ela
 which side of the ceiling each landed on; a ceiling that only produces accounting is not a ceiling.
 There is also a floor: an initial review under 30 seconds at normal or high risk is refused.
 Small risk has no floor. An under-floor initial turn can only be preserved as `"initialOutcome":
-"incomplete"`; the record is then accepted when a same-reviewer follow-up measures at least
-30 seconds and clears. An incomplete turn may resume within the ordinary turn cap without human
-authorization or a late-correction `scopeReason`.
+"incomplete"`; the record is then accepted when a later ordinary turn, the same reviewer resumed or
+a fresh one, measures at least 30 seconds and clears. No one's approval is needed to continue after
+an incomplete turn, and a late-correction `scopeReason` is not required of that turn.
 The floor is waived when the validator, reading Git from `base` to `covered`, finds a trivial
 change: at most 20 changed non-test lines and 40 lines in test-named files (`*.test.*`, `*.spec.*`,
 `test_*.py`, `*_test.py|go`, `*Test(s).swift|kt|java`), every other file configuration, workflow or
@@ -89,8 +113,9 @@ not the reviewer. When the waiver applies, `check pr` prints `~ [review-floor] w
 how often it fires; nothing is added to the record, whose committed range it is recomputed from.
 The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
 validates reported durations; it cannot interrupt a provider's session or measure its billing.
-No reviewer subagents, full-suite reruns by default, or automatic repeated sessions. On timeout,
-budget exhaustion or missing evidence, record incomplete and keep the PR open.
+No reviewer subagents or full-suite reruns by default. On timeout, budget exhaustion or missing
+evidence, record that turn incomplete and keep the PR open; the next turn resumes the reviewer or
+starts a fresh one, within the five automatic turns.
 
 ### Measure each turn; do not ask the reviewer to estimate it
 
@@ -123,10 +148,12 @@ rewrite old outcomes from an estimated duration or manufacture a measurement to 
 Without a reliable measurement, record incomplete and obtain the evidence. Review ceilings,
 outcomes and escalation rules are unchanged.
 
-The author responds to every finding. For minor-only findings, one fix/response round is enough.
-For any substantive finding, resume the original reviewer to assess responses, fixes and their
-regressions, unless the reviewer cleared it conditionally (below). Preserve original severity.
-Reviewer retractions may clear a disputed finding, but author disagreement alone cannot.
+The author responds to every finding. For minor-only findings, one fix/response round is enough,
+and a declined note needs only its one-line reason. For any substantive finding, a follow-up turn
+assesses responses, fixes and their regressions (the original reviewer resumed, or a fresh one
+given the earlier findings when it cannot be), unless the reviewer cleared it conditionally
+(below). Preserve original severity. Reviewer retractions may clear a disputed finding, but author
+disagreement alone cannot.
 
 **A deferral is a ticket, not a sentence.** A finding left `deferred` or `open` names the roadmap
 item that tracks it in `roadmap`, and `check pr` requires that item to exist on the branch. File
@@ -157,51 +184,71 @@ documentation that explains the fix in the same way, for the same reason. A cond
 an unconditional substantive finding still needs its turn. This is Alex's proposal from #241: a
 two-line fix should not need a human or a fresh session re-deriving the whole context.
 
-**A review normally has at most three turns**: the initial review and at most two same-reviewer
-follow-ups, each at the follow-up ceiling. A follow-up is spent one of two ways. It resolves what
-the previous turn left `blocked` (or the substantive findings of the initial review), after the
-author has addressed those concrete concerns. Or it is a **late correction after a clearance**:
-when full CI, or a test the reviewer did not run, shows a fix is needed after the initial review
-or a follow-up already cleared the code, the author commits the fix and spends a remaining turn
-on the same reviewer, naming the scope decision in that turn's `scopeReason` ("late CI
-correction: two legacy UI tests assumed the old layout"). A clean initial review therefore has two
-such slots and a review that already used a fix follow-up has one; the author makes that scope
-decision within the task's budget, and the record shows it. Otherwise a `cleared` turn ends the
-review. Missing evidence can leave a turn incomplete within its budget; resume the same reviewer
-after supplying the evidence, within the ordinary turn cap.
+**Five review turns run without anyone's approval** (Chris, 2026-10-30, for every Morpheus
+project): the initial review and up to four follow-ups, incomplete turns included. Three proved too
+few; agents stalled waiting for a human to approve another round. A follow-up is spent one of
+three ways. It resolves what the previous turn left `blocked` (or the substantive findings of the
+initial review), after the author has addressed those concrete concerns. It continues after an
+`incomplete` turn: a timeout, a crash, a lost session or missing evidence. Or it is a **late
+correction after a clearance**: when full CI, or a test the reviewer did not run, shows a fix is
+needed after a turn already cleared the code, the author commits the fix and spends a remaining
+turn, naming the scope decision in that turn's `scopeReason` ("late CI correction: two legacy UI
+tests assumed the old layout"); the author makes that scope decision within the task's budget, and
+the record shows it. Otherwise a `cleared` turn ends the review.
 New user-requested scope after clearance is not a late correction. Put separable work in its own
 roadmap item and PR; if it is inseparable from this PR's acceptance, explain that in `scopeReason`
-and use a remaining same-reviewer turn. The cap still applies.
-Keep the original incomplete verdict. Every historical and new turn must still meet its budget;
-authorization never waives an overrun. The cap is
-what stops an author and a reviewer trading fixes and findings indefinitely, at a session's cost
-per turn. Unresolved substantive concerns after the last turn, or a correction needed once the
-turns are spent, mean blocked: remove `agent-reviewed`, disable auto-merge, and flag the remaining
-work for the human, unless the narrow verification exception below applies. Never replace the
-reviewer to obtain approval.
+and use a remaining turn. The cap still applies.
+Keep every verdict, incomplete ones included. A turn that renders a verdict (`cleared` or
+`blocked`) must meet its budget, and authorization never waives that overrun. A turn that ran out
+of time is recorded `incomplete` with its real measured duration; it clears nothing, and the next
+turn continues, so a timed-out reviewer never blocks the record for good. The cap is what stops an author and reviewers
+trading fixes and findings indefinitely, at a session's cost per turn. Each ordinary turn after
+the fifth needs its own `humanAuthorization` ([below](#beyond-five-turns)). Unresolved substantive
+concerns after the last turn, or a correction needed once the turns are spent and no human has
+authorized another, mean blocked: remove `agent-reviewed`, disable auto-merge, and flag the
+remaining work for the human.
 
-**One bounded fourth verification turn.** After all three ordinary turns, the original reviewer
-may verify one small final correction without a human exception. Record
-`verification: { kind, paths, evidence }` on the third `followUps` entry and name the reason in
-`scopeReason`. `kind` is `late-test` for a test-only correction after clearance, or
-`finding-fix` for a correction confined to a previously recorded, fixed finding's paths and
-associated tests. The attested paths must exactly match the changed author-commit paths, excluding
-the review worklog; at most four paths, 80 changed test lines and 40 changed non-test lines are
-allowed. Test files are recognized by filename, not by membership in a `tests/` directory:
-helpers and scripts there count as implementation. Normative policy files, including
-`architecture.md`, `.agent/decisions.md`, and this runbook, are excluded. Main merges keep their existing exact-or-named
-integration rule and do not consume a turn. The turn is capped at five minutes; initial plus all
-ordinary follow-up time through it must stay within twice the risk-class initial ceiling
-(20/30/60 minutes for small/normal/high). Earlier turns retain their own ceilings. The prior
-turn must be cleared or blocked, never incomplete; an incomplete or blocked verification does not
-clear the PR. A new substantive concern, larger diff, or another implementation correction
-needs explicit human authorization. The same reviewer and full history remain mandatory. A
-finalization-only turn does not grant another implementation pass, and an automatic verification
-cannot follow finalization. There is no automatic fifth implementation turn.
+### Any fresh reviewer may take a turn
+
+A follow-up does not have to be the original reviewer session. Resume it when you can. When it
+timed out, crashed or cannot be recovered, start a fresh reviewer exactly as the first was started
+(a new session, no inherited author history) and give it the packet, every earlier finding with
+its response, and the record so far. Nobody's approval is needed. Record that turn's own
+`reviewerSession`, plus `handoff: { reason, findings }`: why the earlier reviewer did not continue,
+and the ids of every finding recorded before this turn. A finding raised after the initial review
+carries `turn` (1 is the initial review, the default), so the checker knows which findings came
+earlier. Every `blocked` follow-up before a fresh reviewer's turn names the substantive findings
+it blocked on in `blockedOn`, even when another turn (say, the same reviewer resumed and timed out)
+came between them. The initial review cannot carry `blockedOn`; its blocking findings are its
+substantive findings at `turn` 1.
+
+That is what keeps replacement from becoming reviewer shopping: every turn stays in the record,
+and nothing an earlier reviewer found disappears with its session. `check pr` refuses a fresh
+reviewer's turn without a handoff, a handoff that leaves out an earlier finding or names one the
+record no longer holds, an earlier `blocked` follow-up without `blockedOn`, and a `blockedOn` id
+that is missing from the record or is not substantive. The guard is relative to the recorded
+`turn`: relabelling a finding's turn is the same fabrication as leaving it out, which no check of an
+author-written record can catch, and `blockedOn` is what anchors a blocked verdict to its findings.
+A finding the fresh reviewer disagrees with stays
+in the record at its original severity, with the reasoned response; it is visible, not silent. A
+fresh reviewer's ordinary turn has the initial-review ceiling rather than the follow-up ceiling,
+because it reads the change from scratch. It is still a fresh session: never the author, and never
+one that appears in another worklog.
+
+### Verification and finalization turns
+
+**The legacy verification turn.** Records written under the three-turn contract may carry
+`verification: { kind, paths, evidence }` on their third `followUps` entry (the fourth turn), and
+it stays validated as it was: `late-test` covers only test files, `finding-fix` only a fixed
+finding's paths and tests, the attested paths must exactly match the changed author-commit paths
+(at most four, with 80 test and 40 non-test lines), normative policy is excluded, the turn is
+capped at five minutes with cumulative ordinary time within twice the initial ceiling, it cannot
+follow an incomplete turn or finalization, and it must clear. Under five automatic turns it is no
+longer needed: spend an ordinary turn instead.
 
 **One automatic finalization-only turn per pull request.** Finishing an approved change should
 not cost a human decision. Beyond the cap — and after an authorized extra turn, if there was one —
-the same reviewer may spend one short turn whose only job is to close out work it already cleared:
+a reviewer may spend one short turn whose only job is to close out work already cleared:
 the explanatory prose describing that work, the review record itself, or the completion of a
 condition it already set. Add `finalization: { paths, evidence, attestation }` to that
 `followUps` entry, alongside a `scopeReason` naming what it finalized. The reviewer writes it;
@@ -215,13 +262,13 @@ attempt to do paperwork does not create code-review clearance or justify asking 
 implementation review; use a remaining ordinary follow-up for an actual late correction.
 
 It is bounded on every side, because an automatic turn that could approve implementation would
-simply be a fourth review with no decision behind it:
+simply be a sixth review with no decision behind it:
 
-- **One per pull request.** A second needs `humanAuthorization` as an ordinary substantive turn.
+- **One per pull request.** A second is recorded as an ordinary turn, under the five-turn cap.
 - **Five minutes.** Anything that takes longer is a review and spends a turn.
-- **Last automatic word.** Nothing follows it automatically. Explicitly authorized same-reviewer
-  turns may follow; every later turn must carry its own `humanAuthorization`, even inside the
-  ordinary turn cap. Preserve the finalization record and validate its original scope and predecessor.
+- **Outside the count, not a back door.** It does not count toward the five. An ordinary turn may
+  follow it only as a late correction with its `scopeReason`, within the five, or beyond them with
+  `humanAuthorization`. Preserve the finalization record and validate its original scope and predecessor.
 - **`cleared` only, and it follows a clearance.** A reviewer with a remaining concern records
   `blocked` or `incomplete`, and the pull request stays blocked — including when the turn before
   the finalization turn is the one that blocked. It cannot resolve a substantive finding: the
@@ -250,12 +297,16 @@ the exception: a reviewer setting a condition should name the related documentat
 counterparts in `condition.paths` from the start.** The finalization turn is the backstop, not the
 plan.
 
-An explicit human decision may authorize one additional same-reviewer turn. Add
-`humanAuthorization: { approvedBy, approvedAt, reason }` to that extra `followUps` entry,
+### Beyond five turns
+
+An explicit human decision may authorize each ordinary turn after the fifth. Add
+`humanAuthorization: { approvedBy, approvedAt, reason }` to that `followUps` entry,
 using an ISO timestamp and a reason identifying the human's decision and scope. Every
-turn beyond the default cap needs its own authorization; preserve all earlier turns.
+turn beyond the cap needs its own authorization; preserve all earlier turns.
 This attestation is human-auditable, not cryptographic proof. Never infer approval from
 a merge request or manufacture it. Clearance, coverage, budget and CI checks still apply.
+Records written under earlier contracts that carry `humanAuthorization` on a turn inside the five
+stay valid; the field is simply no longer needed there.
 The parser accepts at most 20 recorded follow-ups as an input-size bound, not authorization.
 
 
@@ -267,7 +318,7 @@ session has ended and the pull request sits, the scheduled GitHub Manager takes 
 review; and it fixes its own findings in the same session, because handing them back to an absent
 author is the stall again. That is a separate, narrower record (`morpheus-manager-review`, selected
 by a `manager-reviewed` label that only `morpheus-gh-manager[bot]` may apply), not a turn in this
-contract: the three-turn cap, `humanAuthorization` and finalization rules here are unchanged, and
+contract: the five-turn cap, `humanAuthorization` and finalization rules here are unchanged, and
 an existing `morpheus-review` record is left as the history the manager read.
 
 An author must still never wait for it. It acts only after a cooldown, it cannot clear a change to
@@ -298,17 +349,20 @@ but the same path within the same parent session cannot review another task. Fol
 retain the exact path and inherit the record's parent provenance. A task name supplied
 to a spawn request is not evidence; use the canonical path the runner actually returns.
 These fields attest provenance; their syntax cannot prove a session was launched.
-For follow-up turns, add `followUps`, normally at most two entries, or three with the bounded
-verification above. Human-authorized and finalization turns remain separately bounded. Each has the
-same `reviewerSession`, `commit`, `outcome` (`cleared`, `incomplete`, `blocked`), `elapsedMinutes`,
-and `summary`. Every entry but the last must be `blocked` or `incomplete`, or `cleared` when
-the entry after it carries a `scopeReason` for the late correction it covers; the last must be
-`cleared`. A follow-up directly after a cleared initial review with no substantive findings
-needs a `scopeReason` too. An `incomplete` entry can be followed by the same reviewer within
-the ordinary cap, with all per-turn budgets satisfied. A single
+For follow-up turns, add `followUps`, at most four entries without authorization.
+Human-authorized and finalization turns remain separately bounded. Each has the `reviewerSession`
+of the session that took it, `commit`, `outcome` (`cleared`, `incomplete`, `blocked`),
+`elapsedMinutes`, and `summary`, plus `handoff` when its reviewer differs from the turn before
+and `blockedOn` on a `blocked` turn a fresh reviewer took over from. Every entry but the last must
+be `blocked` or `incomplete`, or `cleared` when the entry after it carries a `scopeReason` for the
+late correction it covers; the last must be `cleared`. A
+follow-up that comes directly after an initial review with no substantive findings is that same
+shape and needs a `scopeReason` too. An `incomplete` entry may be followed by any turn, and may itself record the overrun that made it incomplete. A single
 `followUp` object, the shape from the two-turn contract, still validates as one turn. Each turn's
 `commit` must descend from the previous one. `elapsedMinutes` at the top level measures the
-initial review only; each follow-up's is checked against the follow-up ceiling on its own.
+initial review only. A follow-up by the same reviewer as the turn before it is checked against the
+follow-up ceiling; a fresh reviewer's ordinary turn against the initial ceiling; and an
+`incomplete` turn may record the overrun that made it incomplete.
 
 `base` is the merge base; `reviewed` is the initial code commit; `covered` is the final commit
 covered by reviewer clearance or the author's minor fixes. All are full 40-character SHAs and
@@ -319,8 +373,9 @@ are actually the stated fixes. Unrelated changes invalidate coverage and require
 and budget decision, not an automatic restart.
 
 After `covered`, only this worklog may change, except for trunk merges as described below and a
-late correction that spends a remaining turn: commit the fix, have the same reviewer clear it as
-the next `followUps` entry with its `scopeReason`, and move `covered` to that commit. The commits
+late correction that spends a remaining turn: commit the fix, have a reviewer (resumed, or fresh
+with its handoff) clear it as the next `followUps` entry with its `scopeReason`, and move `covered`
+to that commit. The commits
 between the previous clearance and that turn are covered by the reviewer's clearance of it, the
 same way the `reviewed`..`covered` range is covered by any follow-up; a hand-resolved trunk merge
 already named in `trunkIntegrations` there stays named and valid. This avoids the hash loop
@@ -361,7 +416,7 @@ Records written under the 2026-09-16 documentation-only rule may still carry
 above covers those merges too.
 
 Unresolved substantive findings, incomplete reviews and code commits after coverage remain
-blocked; exhausting the three turns never means automatic merge regardless of findings.
+blocked; exhausting the five turns never means automatic merge regardless of findings.
 
 Put a visible line in the PR body (not inside a comment or code fence):
 
