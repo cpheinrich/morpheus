@@ -30,10 +30,14 @@ duration, or change risk to fit a budget. If elapsed time cannot be measured, re
 Include the invocation's tool execution and waits; exclude time between separate reviewer turns.
 Transcript evidence must use explicit turn boundaries, never inferred idle-gap cutoffs.
 
-Find concrete defects, not redesign opportunities or linter preferences. Check requirements,
-error paths, absent inputs, security boundaries and integration assumptions. You may inspect
-unchanged related code. A blocking finding must explain how this PR causes, exposes or worsens
-the defect, or how it prevents acceptance criteria from being met. Independent pre-existing bugs
+Find concrete defects and unneeded complexity, not open-ended redesigns or linter preferences.
+Check requirements, error paths, absent inputs, security boundaries and integration assumptions.
+Prefer the simplest change that meets the requirements: when the same behaviour needs fewer parts
+or fewer lines, name the simpler version as a finding. A gate, approval step, state, option or
+mechanism that the requirements do not need is substantive; a local simplification is minor.
+You may inspect unchanged related code. A blocking finding must explain how this PR causes,
+exposes or worsens the defect, adds the unneeded complexity, or prevents acceptance criteria from
+being met. Independent pre-existing bugs
 are incidental follow-ups, not merge blockers; flag independently discovered critical risks for
 human judgment immediately. Do not expand the PR to fix them automatically.
 

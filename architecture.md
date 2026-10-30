@@ -72,6 +72,16 @@ Chris, plus a small number of family and friends. It is not a product. Three con
 10. **Extract on the second use, never the first.** Nothing enters the kit until a second project
     needs it. A wrong abstraction propagates into everything that adopts it.
 
+11. **Simplicity first; complexity is earned.** Every design, from a small feature to a delivery
+    pipeline, starts from the simplest version that meets the requirements and gets one more
+    simplification pass before it is built. A component, state, configuration option, check, gate
+    or approval step is added when the system's observed behaviour shows it is needed, not because
+    it might be. When two designs give the same result in the common case, the one with fewer parts
+    and fewer lines wins, because it is likelier to work and easier to repair. Principle 9 decides
+    how a necessary rule is enforced; this one decides whether the rule should exist. A requested
+    safeguard is read at its narrowest reasonable scope, and removing an existing one is a recorded
+    decision rather than a side effect.
+
 ---
 
 # Part II — The shape of a project

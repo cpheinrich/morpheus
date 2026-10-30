@@ -2093,3 +2093,23 @@ per-turn timing and budgets, and the three-turn cap. This supersedes the 2026-09
 decisions requiring `humanAuthorization` after every incomplete turn. Authorization still governs
 extra substantive turns beyond the ordinary cap and turns after finalization. The review validator,
 reviewer prompt, runbook, architecture, and agent instructions now state the same rule.
+
+## Simplicity first: a design earns its complexity — 2026-10-30
+
+MO-26-10-30-15.28.23. Chris audited a CD pipeline that had been failing for a long time and found
+that much of its friction came from complexity and gates. He had asked for some of those gates, and
+agents then built them stricter than he meant. The entry above is one instance. His rule, for
+Morpheus and every Morpheus project: every design or plan, small or large, starts from the simplest
+version that meets the requirements, and gets one quick simplification pass before implementation.
+Complexity, gates and authorization requirements are added only when the system's observed
+behaviour proves them necessary. When two designs give the same result in the common case, fewer
+parts and fewer lines win. Reviewers apply the same preference. A simpler version with the same
+behaviour is a minor finding. A gate, approval step, state, option or mechanism that the
+requirements do not need is substantive.
+
+The rule lives in `architecture.md` §2 (principle 11), in `AGENTS.md` and the scaffold template,
+and in the independent-review contract and rung-2 persona. `doctor` names it in any project whose
+`AGENTS.md` lacks it, which is the existing route for template guidance. It is deliberately not a
+CI check or a required artifact: a check that demands evidence of a simplification pass gets
+ceremony, as the folder-README decision found. It removes no existing gate. Each removal remains
+its own recorded decision. No dependency.

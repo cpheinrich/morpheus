@@ -784,6 +784,12 @@ ${credentialsInstructions()}
 ${codebaseMemoryBootstrap()}
 ## Working conventions
 
+**Simplicity first.** Plan the simplest design that meets the requirements, then take one pass
+before building to strip what it does not need; for the same result, fewer parts and fewer lines
+win. Add a state, option, gate or approval step only when observed behaviour proves the need. Read
+a requested safeguard narrowly, preferring a warning to a block, and ask rather than tighten it.
+Removing an existing gate is still a recorded decision.
+
 **Claim work before starting it:**
 
 \`\`\`sh
@@ -806,20 +812,15 @@ requested user-visible result. Release jobs must depend on
 \`cpheinrich/morpheus/.github/workflows/release-preflight.yml@main\` and check out its \`sha\` output.
 Do not extract a recurring production probe until a second project needs the same one.
 
-**Build vs. borrow — check before writing a generic module.** Before implementing any capability
-that is not specific to this product's domain — parsing, diffing, scheduling, retries, rate
-limiting, fuzzy search, date handling, CLI plumbing — make one quick search of the ecosystem's
-registry for a maintained package that already solves it. If a credible candidate appears, check
-its last publish and dependency footprint before deciding.
-
-**Propose, don't decide silently — in either direction.** If a credible package exists, say so
-before building: an open (❗) inbox item when the choice shapes the architecture, a line in the PR body
-("considered X, built instead because Y" / "adopted X, N deps, maintained") when it is small.
-Silently building what a package solves and silently adopting a heavy dependency are the same
-mistake. **Prefer lightweight** — zero-to-few dependencies beats featureful; a framework pulled
-in to save 60 lines is worse than the 60 lines. Build when the need is small — roughly under 100
-lines — genuinely domain-specific, or every candidate is unmaintained. Record the outcome in \`.agent/decisions.md\`
-so the choice is not relitigated next session.
+**Build vs. borrow — check before writing a generic module.** Before implementing anything not
+specific to this product's domain — parsing, diffing, scheduling, retries, rate limiting, fuzzy
+search, date handling, CLI plumbing — make one quick search of the registry for a maintained
+package; check its last publish and dependency footprint. **Propose, don't decide silently — in
+either direction:** an open (❗) inbox item when the choice shapes the architecture, a PR-body line
+("considered X, built instead because Y") when small. **Prefer lightweight:**
+a framework pulled in to save 60 lines is worse than the 60 lines; build when the need is under
+~100 lines, domain-specific, or every candidate is unmaintained. Record the outcome in
+\`.agent/decisions.md\`.
 
 **When you hit real ambiguity, block — do not guess:** \`morpheus pm block <ID> --needs "<what
 would unblock you>"\`. Escalating is cheap; shipping half-baked is expensive.
