@@ -321,6 +321,9 @@ export function validateReviewRecord(record, opts = {}) {
     const resumed = record.initialOutcome === "incomplete";
     if (resumed && !turns.length)
         throw new Error("an incomplete initial review needs a same-reviewer follow-up that clears");
+    if (resumed && [record, ...turns].some(turn => turn.elapsedMinutes === 0)) {
+        throw new Error("every turn in a resumed incomplete review needs a positive measured duration; zero is the template placeholder");
+    }
     // Normal and high risk require a measured initial pass of at least 30 seconds.
     // Small risk keeps no floor: a one-line change can genuinely be read faster.
     // A pass under the floor is not a review, so it cannot count as one. It can only be preserved

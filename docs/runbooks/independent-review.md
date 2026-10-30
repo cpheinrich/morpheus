@@ -297,10 +297,11 @@ These fields attest provenance; their syntax cannot prove a session was launched
 For follow-up turns, add `followUps`, normally at most two entries, or three with the bounded
 verification above. Human-authorized and finalization turns remain separately bounded. Each has the
 same `reviewerSession`, `commit`, `outcome` (`cleared`, `incomplete`, `blocked`), `elapsedMinutes`,
-and `summary`. Every entry but the last must be `blocked`, or `cleared` when the entry after it
-carries a `scopeReason` for the late correction it covers; the last must be `cleared`. A
-follow-up that comes directly after a cleared initial review with no substantive findings is that same
-shape and needs a `scopeReason` too. An `incomplete` entry can be followed by the same reviewer within the ordinary cap, with all per-turn budgets satisfied. A single
+and `summary`. Every entry but the last must be `blocked` or `incomplete`, or `cleared` when
+the entry after it carries a `scopeReason` for the late correction it covers; the last must be
+`cleared`. A follow-up directly after a cleared initial review with no substantive findings
+needs a `scopeReason` too. An `incomplete` entry can be followed by the same reviewer within
+the ordinary cap, with all per-turn budgets satisfied. A single
 `followUp` object, the shape from the two-turn contract, still validates as one turn. Each turn's
 `commit` must descend from the previous one. `elapsedMinutes` at the top level measures the
 initial review only; each follow-up's is checked against the follow-up ceiling on its own.

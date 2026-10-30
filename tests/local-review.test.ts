@@ -1103,6 +1103,22 @@ describe("a same-reviewer follow-up rescues an initial review under the floor", 
     const r = rescued(); delete r.followUps![0]!.humanAuthorization;
     expect(check(save(r))).toEqual([]);
   });
+  it("rejects a zero-duration initial placeholder even when a later turn clears", () => {
+    const r = rescued();
+    r.elapsedMinutes = 0;
+    r.timing = timing(0);
+    delete r.followUps![0]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("positive measured duration");
+  });
+  it("rejects a zero-duration incomplete follow-up before a later clearance", () => {
+    const r = rescued();
+    const clearance = { ...r.followUps![0]!, humanAuthorization: undefined };
+    r.followUps = [
+      { ...clearance, outcome: "incomplete", elapsedMinutes: 0, timing: timing(0) },
+      clearance,
+    ];
+    expect(check(save(r))[0]?.message).toContain("positive measured duration");
+  });
   it("refuses a malformed authorization", () => {
     const r = rescued(); r.followUps![0]!.humanAuthorization = { ...authorization, approvedAt: "yesterday" };
     expect(check(save(r))[0]?.message).toMatch(/approvedAt|datetime/i);

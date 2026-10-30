@@ -19,3 +19,12 @@ Checks: `vitest run tests/local-review.test.ts` passed 148 tests; `vitest run te
 passed 79 tests; `pnpm typecheck` and `pnpm compile` passed. `pnpm morpheus pm index` hit a sandbox
 permission error when `tsx` attempted its IPC pipe, so the compiled CLI ran `node dist/cli/index.js
 pm index` successfully with no index changes. Independent review and CI follow.
+
+The fresh independent reviewer of `587efb1` found REV-1: a zero-duration template placeholder
+for an incomplete initial turn could be rescued by a later 30-second clearance, bypassing the
+existing positive-duration invariant. It also found REV-2: one runbook sentence omitted
+`incomplete` from permissible nonfinal follow-up outcomes. The author now rejects zero elapsed
+duration for every turn of a resumed incomplete initial review, with regression cases for the
+initial turn and an intermediate incomplete turn. The runbook sentence includes `incomplete`.
+Focused review tests now pass 150/150, and typecheck and compile pass again. The original
+reviewer will inspect this correction in an ordinary follow-up.
