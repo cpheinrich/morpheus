@@ -112,8 +112,8 @@ Offline: `MORPHEUS_OFFLINE=1`. Forks, hooks, receipts and Codex hook trust: **re
 **Simplicity first.** Plan the simplest design that meets the requirements, then take one pass
 before building to strip what it does not need; for the same result, fewer parts and fewer lines
 win. Add a state, option, gate or approval step only when observed behaviour proves the need. Read
-a requested safeguard narrowly, preferring a warning to a block, and ask rather than tighten it.
-Removing an existing gate is still a recorded decision.
+a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
+tightening one; removing one is a recorded decision.
 
 **Claim before starting**, with `morpheus pm claim <ID>` — the remote branch **is** the claim.
 Never create the branch by hand. Use **one worktree per implementation task**: from a shared

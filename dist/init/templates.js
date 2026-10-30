@@ -787,8 +787,8 @@ ${codebaseMemoryBootstrap()}
 **Simplicity first.** Plan the simplest design that meets the requirements, then take one pass
 before building to strip what it does not need; for the same result, fewer parts and fewer lines
 win. Add a state, option, gate or approval step only when observed behaviour proves the need. Read
-a requested safeguard narrowly, preferring a warning to a block, and ask rather than tighten it.
-Removing an existing gate is still a recorded decision.
+a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
+tightening one; removing one is a recorded decision.
 
 **Claim work before starting it:**
 

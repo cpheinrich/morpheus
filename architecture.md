@@ -79,8 +79,12 @@ Chris, plus a small number of family and friends. It is not a product. Three con
     it might be. When two designs give the same result in the common case, the one with fewer parts
     and fewer lines wins, because it is likelier to work and easier to repair. Principle 9 decides
     how a necessary rule is enforced; this one decides whether the rule should exist. A requested
-    safeguard is read at its narrowest reasonable scope, and removing an existing one is a recorded
-    decision rather than a side effect.
+    safeguard is read at its narrowest reasonable scope. Only a check that protects users, such as
+    tests, device gates, or signing and upload verification, may block; quota, approval and
+    bookkeeping checks warn. Agents ask before tightening a safeguard, and removing an existing one
+    is a recorded decision rather than a side effect. Reviewers hold changes to the same standard
+    (rung 2, §9). A simpler equivalent is a minor finding. A gate, approval step, state, option or
+    mechanism that the requirements do not need is a substantive one.
 
 ---
 
@@ -1740,7 +1744,7 @@ Four of them, each catching what it can so the rung above only sees what genuine
 | Rung | Verifier | Catches | Blocks |
 |---|---|---|---|
 | 1 | **Automated checks** — tests, types, lint, build, `check pr` | Anything mechanically decidable | Merge |
-| 2 | **Agent review** — a fresh session, bounded follow-up | Wrong-but-clean: untested failure modes, widened scope, decisions quietly reversed | Merge by default |
+| 2 | **Agent review** — a fresh session, bounded follow-up | Wrong-but-clean: untested failure modes, widened scope, decisions quietly reversed, unneeded complexity | Merge by default |
 | 3 | **Conformance** — the change against `qa/acceptance/`, staging against the designs | Built the wrong thing correctly | Deploy |
 | 4 | **Human sign-off** | Taste, strategy, real risk | Deploy |
 

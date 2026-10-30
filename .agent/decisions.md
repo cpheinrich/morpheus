@@ -2103,7 +2103,10 @@ Morpheus and every Morpheus project: every design or plan, small or large, start
 version that meets the requirements, and gets one quick simplification pass before implementation.
 Complexity, gates and authorization requirements are added only when the system's observed
 behaviour proves them necessary. When two designs give the same result in the common case, fewer
-parts and fewer lines win. Reviewers apply the same preference. A simpler version with the same
+parts and fewer lines win. A requested safeguard is read narrowly. Only a check that protects users
+may block: tests, device gates, signing and upload verification. Quota, approval and bookkeeping
+checks warn. This is the rule Chris gave in the same audit. Agents ask before tightening a
+safeguard. Reviewers apply the same preference. A simpler version with the same
 behaviour is a minor finding. A gate, approval step, state, option or mechanism that the
 requirements do not need is substantive.
 
