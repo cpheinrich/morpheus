@@ -21,7 +21,8 @@ const fakeXcodebuild = `#!${process.execPath}
 const fs = require('node:fs');
 const argv = process.argv.slice(2);
 if (argv[0] === '-help') {
-  console.log(process.env.OLD_XCODE ? '-only-testing' : '-only-testing\\n-collect-test-diagnostics on-failure|never');
+  // Like the real one (Xcode 27.0), the usage goes to stderr, not stdout.
+  console.error(process.env.OLD_XCODE ? '-only-testing' : '-only-testing\\n-collect-test-diagnostics on-failure|never');
   process.exit(0);
 }
 const value = flag => argv[argv.indexOf(flag) + 1];

@@ -55,7 +55,9 @@ def retry_selection(tests):
     args = ['-parallel-testing-enabled', 'NO']
     # Without this, Xcode 27 spends 600 s collecting diagnostics after each failure.
     # Older Xcode has no such flag, and passing one it does not know fails the invocation.
-    if '-collect-test-diagnostics' in subprocess.run(['xcodebuild', '-help'], capture_output=True, text=True).stdout:
+    # xcodebuild prints its usage to stderr.
+    usage = subprocess.run(['xcodebuild', '-help'], capture_output=True, text=True)
+    if '-collect-test-diagnostics' in usage.stdout + usage.stderr:
         args += ['-collect-test-diagnostics', 'never']
     return args + [f'-only-testing:{test}' for test in tests]
 
