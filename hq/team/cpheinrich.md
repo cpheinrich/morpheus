@@ -60,3 +60,15 @@ Next groups are missing-worktree recovery (#430, checking overlap with PR508), l
 
 ~
 
+## ❗ 7. Blocked: CD V2 never blocks delivery on failed attempts, quota reads or review approval · `claude` · [MO-26-10-30-14.56.46](../product/roadmap/MO-26-10-30-14.56.46-unblock-cd-delivery.md)
+
+**MO-26-10-30-14.56.46 — CD V2 never blocks delivery on failed attempts, quota reads or review approval** is stopped and holding its branch.
+
+**What I need:**
+
+superseded by the V3 delivery replacement
+
+I stopped rather than guessing — a plausible guess here costs more to find later than this
+question costs to answer.
+
+~
