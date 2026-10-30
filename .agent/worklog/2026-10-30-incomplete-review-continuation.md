@@ -45,6 +45,8 @@ REV-1 and REV-2 are fixed with no new findings. The initial review and both foll
 within their normal-risk budgets. The review's measured turns came from the Codex runner's
 explicit task-start and task-complete timestamps.
 
+Fresh review found a zero-duration timing bypass and a runbook contradiction. The first correction left an intermediate incomplete-turn path open; the reviewer blocked that follow-up. A shared timing guard, focused regression and runbook correction resolved both findings, and the original reviewer cleared the final commit in the remaining ordinary turn.
+
 ```morpheus-review
 {
   "version": 2,
