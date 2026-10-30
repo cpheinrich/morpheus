@@ -184,8 +184,8 @@ pushing; open the PR with the label already applied (`gh pr create --label agent
 draft if it must exist earlier — an unlabelled draft waits instead of failing. Merge trunk rather
 than rebase after review.
 Within the three-turn cap, the same reviewer may resume an incomplete review after missing
-evidence or fixes arrive, without human authorization. Record the incomplete verdict. Extra turns
-or turns after finalization still require human authorization.
+evidence or fixes arrive, without human authorization. Record the incomplete verdict. Other extra
+turns, and all turns after finalization, require human authorization.
 
 **Every PR carries** tests for anything testable (or an explicit reason), a documentation update
 when behaviour changes, a test plan with the commands actually run, open questions stated plainly,
