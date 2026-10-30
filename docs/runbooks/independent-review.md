@@ -72,9 +72,9 @@ execution rather than reading overran it, and two worklogs chose between two ela
 which side of the ceiling each landed on; a ceiling that only produces accounting is not a ceiling.
 There is also a floor: an initial review under 30 seconds at normal or high risk is refused.
 Small risk has no floor. An under-floor initial turn can only be preserved as `"initialOutcome":
-"incomplete"`; the record is then accepted when a same-reviewer follow-up carrying
-`humanAuthorization` measures at least 30 seconds and clears. The next turn after any incomplete
-initial turn needs that authorization, and a late-correction `scopeReason` is not required of it.
+"incomplete"`; the record is then accepted when a same-reviewer follow-up measures at least
+30 seconds and clears. An incomplete turn may resume within the ordinary turn cap without human
+authorization or a late-correction `scopeReason`.
 The floor is waived when the validator, reading Git from `base` to `covered`, finds a trivial
 change: at most 20 changed non-test lines and 40 lines in test-named files (`*.test.*`, `*.spec.*`,
 `test_*.py`, `*_test.py|go`, `*Test(s).swift|kt|java`), every other file configuration, workflow or
@@ -163,13 +163,13 @@ on the same reviewer, naming the scope decision in that turn's `scopeReason` ("l
 correction: two legacy UI tests assumed the old layout"). A clean initial review therefore has two
 such slots and a review that already used a fix follow-up has one; the author makes that scope
 decision within the task's budget, and the record shows it. Otherwise a `cleared` turn ends the
-review, and an `incomplete` one escalates. Missing evidence can leave a turn incomplete within
-its budget; explicit `humanAuthorization` on the next same-reviewer turn permits resuming it.
+review. Missing evidence can leave a turn incomplete within its budget; resume the same reviewer
+after supplying the evidence, within the ordinary turn cap.
 New user-requested scope after clearance is not a late correction. Put separable work in its own
 roadmap item and PR; if it is inseparable from this PR's acceptance, explain that in `scopeReason`
 and use a remaining same-reviewer turn. The cap still applies.
 Keep the original incomplete verdict. Every historical and new turn must still meet its budget;
-authorization never waives an overrun. Nothing follows an incomplete turn automatically. The cap is
+authorization never waives an overrun. The cap is
 what stops an author and a reviewer trading fixes and findings indefinitely, at a session's cost
 per turn. Unresolved substantive concerns after the last turn, or a correction needed once the
 turns are spent, mean blocked: remove `agent-reviewed`, disable auto-merge, and flag the remaining
@@ -297,10 +297,11 @@ These fields attest provenance; their syntax cannot prove a session was launched
 For follow-up turns, add `followUps`, normally at most two entries, or three with the bounded
 verification above. Human-authorized and finalization turns remain separately bounded. Each has the
 same `reviewerSession`, `commit`, `outcome` (`cleared`, `incomplete`, `blocked`), `elapsedMinutes`,
-and `summary`. Every entry but the last must be `blocked`, or `cleared` when the entry after it
-carries a `scopeReason` for the late correction it covers; the last must be `cleared`. A
-follow-up that comes directly after an initial review with no substantive findings is that same
-shape and needs a `scopeReason` too. An `incomplete` entry can be followed only with explicit `humanAuthorization` on the next turn and with all per-turn budgets satisfied. A single
+and `summary`. Every entry but the last must be `blocked` or `incomplete`, or `cleared` when
+the entry after it carries a `scopeReason` for the late correction it covers; the last must be
+`cleared`. A follow-up directly after a cleared initial review with no substantive findings
+needs a `scopeReason` too. An `incomplete` entry can be followed by the same reviewer within
+the ordinary cap, with all per-turn budgets satisfied. A single
 `followUp` object, the shape from the two-turn contract, still validates as one turn. Each turn's
 `commit` must descend from the previous one. `elapsedMinutes` at the top level measures the
 initial review only; each follow-up's is checked against the follow-up ceiling on its own.

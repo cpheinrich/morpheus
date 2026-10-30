@@ -95,7 +95,7 @@ export const ReviewRecord = z.object({
   extensionReason: Text.optional(),
   outcome: z.enum(["complete", "incomplete", "blocked"]),
   /**
-   * The initial turn's own verdict, when it was incomplete and an authorized same-reviewer turn
+   * The initial turn's own verdict, when it was incomplete and a same-reviewer turn
    * later completed the review. `outcome` is the final verdict, so without this the incomplete
    * initial verdict would have to be rewritten rather than preserved.
    */
@@ -314,25 +314,28 @@ export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialC
     if (turn.timing && Math.abs(turn.elapsedMinutes - turn.timing.durationMs / 60000) > 1e-9) {
       throw new Error("elapsedMinutes must equal timing.durationMs / 60000 without rounding; use the measured duration, never a reviewer estimate");
     }
+    if (record.version === 2 && turn.timing?.durationMs === 0) {
+      throw new Error("version 2 requires a positive measured duration for every turn; zero is the template placeholder");
+    }
   }
   if (unconditional && !turns.length) throw new Error("substantive findings require a follow-up from the original reviewer unless cleared under a recorded condition");
   if (record.findings.some(f => f.severity === "substantive" && f.disposition !== "fixed" && f.disposition !== "disputed")) throw new Error("substantive findings cannot be deferred");
   const budget = REVIEW_BUDGET_MINUTES[record.risk];
   const multiplier = record.extensionReason ? 1.5 : 1;
   if (record.elapsedMinutes > budget * multiplier) throw new Error("review exceeded its budget; record incomplete and escalate instead of claiming completion");
-  // An incomplete initial turn resumes only on explicit human authorization, exactly as an
-  // incomplete follow-up does; it is not a clearance, so it needs no late-correction scope reason.
+  // An incomplete turn can resume with the same reviewer within the ordinary turn cap. It is
+  // not a clearance, so the continuation needs no late-correction scope reason.
   const resumed = record.initialOutcome === "incomplete";
-  if (resumed && !turns[0]?.humanAuthorization) throw new Error("an incomplete initial review resumes only with explicit humanAuthorization on the next same-reviewer turn");
+  if (resumed && !turns.length) throw new Error("an incomplete initial review needs a same-reviewer follow-up that clears");
   // Normal and high risk require a measured initial pass of at least 30 seconds.
   // Small risk keeps no floor: a one-line change can genuinely be read faster.
   // A pass under the floor is not a review, so it cannot count as one. It can only be preserved
-  // as incomplete, and the review is then the authorized same-reviewer turn, which must meet the
-  // floor itself and clear. Without this the authorized resumption the contract offers never lands.
+  // as incomplete, and the review is then the same-reviewer turn, which must meet the
+  // floor itself and clear. Without this the resumption the contract offers never lands.
   // A trivially small change (TRIVIAL_DIFF_MAX_LINES) is waived: there the floor measures the diff.
   // The waiver relaxes the 30 seconds, not the measurement: a zero duration is the template's
   // placeholder, so a record with any zero-length turn never qualifies.
-  const rescuedByTurn = turns.some(turn => turn.humanAuthorization && !turn.finalization && turn.outcome === "cleared" && turn.elapsedMinutes >= 0.5);
+  const rescuedByTurn = turns.some(turn => !turn.finalization && turn.outcome === "cleared" && turn.elapsedMinutes >= 0.5);
   if (record.risk !== "small" && record.elapsedMinutes < 0.5 && !(resumed && rescuedByTurn)) {
     const measured = [record, ...turns].every(turn => turn.elapsedMinutes > 0);
     const size = measured ? opts.trivialChange?.() : undefined;
@@ -340,7 +343,7 @@ export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialC
       const why = size ? ` (not a trivial change: ${size.reason})` : "";
       // A finalization turn only closes out an existing clearance, so it is never the review that counts.
       if (!resumed) throw new Error(`an initial review under 30 seconds at normal or high risk is not a review; record it as initialOutcome incomplete, or record what was actually done${why}`);
-      throw new Error(`an initial review under 30 seconds at normal or high risk needs an authorized same-reviewer turn of at least 30 seconds that clears${why}`);
+      throw new Error(`an initial review under 30 seconds at normal or high risk needs a same-reviewer turn of at least 30 seconds that clears${why}`);
     }
     waivers.push(floorWaiver(size));
   }
@@ -348,8 +351,8 @@ export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialC
   // reviewer cleared the code. It spends one of the remaining turns and must name the scope
   // decision in its scopeReason, so the record shows why a cleared review was reopened. A turn
   // after blocked, or after substantive initial findings, is the ordinary fix follow-up and needs
-  // none. An incomplete turn may be missing evidence; only explicit human authorization can
-  // resume it. Per-turn budget checks still reject exhausted reviews, including historical turns.
+  // none. An incomplete turn may be missing evidence; the same reviewer can resume it within
+  // the ordinary turn cap. Per-turn budget checks still reject exhausted reviews.
   if (!substantive && !resumed && turns[0] && !turns[0].scopeReason) throw new Error("a follow-up after a clean initial review is a late correction and needs an explicit scope reason");
   // One automatic finalization-only turn per pull request; later turns need human authorization. It finishes
   // an approved change: it cannot resolve a substantive finding, run long, or be repeated, and a
@@ -407,8 +410,8 @@ export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialC
       // check then happens in checkLocalReview, which can see the paths.
       const coversLast = turn.commit === record.covered || conditionallyCleared(record).length > 0;
       if (turn.outcome !== "cleared" || !coversLast) throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
-    } else if ((turn.outcome === "incomplete" && !next.humanAuthorization) || (turn.outcome === "cleared" && !next.scopeReason)) {
-      throw new Error("a third turn is allowed only after the second turn returned blocked, after a cleared turn as a late correction with an explicit scope reason, or after an incomplete turn with explicit humanAuthorization");
+    } else if (turn.outcome === "cleared" && !next.scopeReason) {
+      throw new Error("a third turn is allowed after a blocked or incomplete turn, or after a cleared turn as a late correction with an explicit scope reason");
     }
   });
   return waivers;

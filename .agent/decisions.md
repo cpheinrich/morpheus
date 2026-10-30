@@ -2083,3 +2083,13 @@ render again on the client. The rehype plugin also covers only Markdown. Neither
 clipboard. We built about 300 lines with no new dependency: one floating icon, and an `id`
 attribute as the only write into a heading. That attribute logs a development-only hydration
 mismatch in such a boundary; production is unaffected.
+
+## Incomplete independent reviews resume within the ordinary cap — 2026-10-30
+
+Chris clarified that asking for approval merely to let the original reviewer finish an incomplete
+review was unintentional. The author may resume that reviewer after providing missing evidence or
+fixes while an ordinary turn remains. Preserve the incomplete verdict, the original reviewer,
+per-turn timing and budgets, and the three-turn cap. This supersedes the 2026-09-28 and 2026-10-08
+decisions requiring `humanAuthorization` after every incomplete turn. Authorization still governs
+extra substantive turns beyond the ordinary cap and turns after finalization. The review validator,
+reviewer prompt, runbook, architecture, and agent instructions now state the same rule.
