@@ -109,29 +109,30 @@ Offline: `MORPHEUS_OFFLINE=1`. Forks, hooks, receipts and Codex hook trust: **re
 
 ## Working conventions
 
+**Simplicity first.** Plan the simplest design that meets the requirements, then take one pass
+before building to strip what it does not need; for the same result, fewer parts and fewer lines
+win. Add a state, option, gate or approval step only when observed behaviour proves the need. Read
+a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
+tightening one; removing one is a recorded decision.
+
 **Claim before starting**, with `morpheus pm claim <ID>` — the remote branch **is** the claim.
 Never create the branch by hand. Use **one worktree per implementation task**: from a shared
 checkout `pm claim` prints a fresh worktree; read its records, refresh there, and claim again
 there. Do not run concurrent authors on one task worktree. **Name slugs like branches**
-(`--slug update-roadmap-ids`, verb-noun, ≤ 32 characters). Ids, worktrees and resume:
+(`--slug update-roadmap-ids`, verb-noun, ≤ 32 characters). After the PR merges, run
+`morpheus pm cleanup <ID>` from the primary checkout. Ids, worktrees, resume and cleanup:
 [`pm-workflow.md`](docs/runbooks/pm-workflow.md).
-New task worktrees live in the system temporary directory. After the PR merges, run
-`morpheus pm cleanup <ID>` from the primary checkout. It proves the exact PR merged and
-preserves dirty, locked, active, or ambiguous worktrees. Use `pm worktrees` to inspect
-older sibling checkouts before cleaning them. Its generated session receipt is safe to
-remove after these checks; other ignored local data remains protected.
 
 **A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
 voice and browser chat enter the same lifecycle: create or link the roadmap item, claim it, work
 on its branch, test it, open a PR and merge it. A trusted author can authorize the work; the
 channel cannot waive the records or review path. Never edit or release directly from a transcript.
 
-**Register every reusable skill once.** A new canonical directory under `.agents/skills/` or
-`.claude/skills/` must be classified in `src/project-skills.ts` as project-facing or Morpheus-only.
-Project-facing definitions drive `morpheus init`, `morpheus skills list [--json]` and
-`morpheus skills sync`; descriptions come from the rendered `SKILL.md` frontmatter. Do not add a
-second hand-maintained JSON catalog. The project-skill tests refuse an unclassified directory or a
-provider entrypoint that is absent from the registry.
+**Register every reusable skill once.** Classify each new canonical directory under
+`.agents/skills/` or `.claude/skills/` in `src/project-skills.ts` as project-facing or
+Morpheus-only; that registry drives `morpheus init`, `skills list [--json]` and `skills sync`, with
+descriptions from the rendered `SKILL.md` frontmatter. Add no second JSON catalog; tests refuse an
+unclassified directory or an unregistered provider entrypoint.
 
 **An external mutation ships with an exact target and proof.** Prefer a pasted one-shot CLI command
 with explicit account, project and resource identifiers (console prose is fallback only), with a

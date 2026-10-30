@@ -23,13 +23,13 @@ describe("instruction anchors", () => {
 
   it("name exactly what a pre-wait-ci AGENTS.md is missing", () => {
     // Evo's shape: the rollout predated wait-ci, so the loop breaker never
-    // learned the command, and nothing said so.
+    // learned the command, and nothing said so. It also predates simplicity first.
     const evo = [
       "**Break loops.** If the same command fails the same way twice, stop.",
       "## Local testing: focused first",
       "**Refresh again only when a gated command refuses**, and then re-read.",
     ].join("\n");
-    expect(names(evo)).toEqual(["wait-ci", "wait-ci for workflow runs"]);
+    expect(names(evo)).toEqual(["wait-ci", "wait-ci for workflow runs", "simplicity first"]);
     expect(names("# agents\n")).toEqual(INSTRUCTION_ANCHORS.map((a) => a.name));
   });
 
@@ -38,11 +38,13 @@ describe("instruction anchors", () => {
       "**Break",
       "loops.** run `morpheus",
       "wait-ci <n>` once, or `morpheus wait-ci --run <id>`; focused tests first. Refresh again",
-      "only when a gated command refuses.",
+      "only when a gated command refuses. **Simplicity",
+      "first.**",
     ].join("\n");
     expect(names(wrapped)).toEqual([]);
-    expect(names("Break loops. morpheus wait-ci --runner; focused first; refresh only on refusal")).toEqual(["wait-ci for workflow runs"]);
-    expect(names("Break loops. morpheus wait-ci --workflow x; focused first; refresh whenever. Refusals happen")).toEqual(["refresh on refusal"]);
+    expect(names("Break loops. morpheus wait-ci --runner; focused first; refresh only on refusal. Simplicity first")).toEqual(["wait-ci for workflow runs"]);
+    expect(names("Break loops. morpheus wait-ci --workflow x; focused first; refresh whenever. Refusals happen. Simplicity first")).toEqual(["refresh on refusal"]);
+    expect(names("Break loops. morpheus wait-ci --run 1; focused first; refresh only on refusal. Keep it simple")).toEqual(["simplicity first"]);
   });
 });
 
@@ -69,6 +71,7 @@ describe("doctor reports instruction and poll-guard drift", () => {
       `${POLL_GUARD_SCRIPT} is missing or not the generated Morpheus version, so the CI poll guard cannot run. Run \`morpheus context install\`.`,
       `AGENTS.md lacks the template's "wait-ci" guidance — add ${INSTRUCTION_ANCHORS[0]!.add}. Source: \`agents()\` in Morpheus's src/init/templates.ts.`,
       `AGENTS.md lacks the template's "wait-ci for workflow runs" guidance — add ${INSTRUCTION_ANCHORS[1]!.add}. Source: \`agents()\` in Morpheus's src/init/templates.ts.`,
+      `AGENTS.md lacks the template's "simplicity first" guidance — add ${INSTRUCTION_ANCHORS[5]!.add}. Source: \`agents()\` in Morpheus's src/init/templates.ts.`,
     ]);
 
     await installContext(root, { write: true, handle: "nobody" });
