@@ -10,8 +10,10 @@ starts a new serial xcodebuild for only what still fails. A test that passes on 
 is flaky: an annotation, a job-summary line and a `flaky-tests` output, never a failure. A test
 failing every attempt fails the job, and a failure that names no test is never retried away.
 `test-iterations` keeps its name and now defaults to 3 attempts. The first attempt's bundle stays
-canonical and `test-attempts.json` carries the verdict, because `xcresulttool merge` was measured
-reporting a recovered test as failed. Considered fastlane-plugin-test_center 3.19.1 (`multi_scan`;
+the evidence and `test-attempts.json` records every attempt; when everything recovered, `tests.json`
+and `summary.json` show recovered tests as passed with `Repetition` children, Xcode's own retry
+shape, because Evo's validator reads them and `xcresulttool merge` (measured) reports a recovered
+test as failed. Considered fastlane-plugin-test_center 3.19.1 (`multi_scan`;
 last published 2022-08-18, needs Ruby and fastlane); built about 200 lines of standard-library
 Python instead, since the artifact stage already makes `python3` a runner requirement.
 

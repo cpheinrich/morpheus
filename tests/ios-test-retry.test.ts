@@ -43,10 +43,14 @@ fs.writeFileSync(process.env.SIM_STATE, 'used');
 const bundle = value('-resultBundlePath');
 fs.mkdirSync(bundle, { recursive: true });
 const targets = [...new Set(results.map(t => t.id.split('/')[0]))];
-fs.writeFileSync(bundle + '/fake-tests.json', JSON.stringify({ testNodes: [{ nodeType: 'Test Plan', name: 'App', children:
-  targets.map(target => ({ nodeType: target.endsWith('UITests') ? 'UI test bundle' : 'Unit test bundle', name: target, children:
-    results.filter(t => t.id.startsWith(target + '/')).map(t => ({ nodeType: 'Test Suite', name: t.id.split('/')[1], children: [
-      { nodeType: 'Test Case', nodeIdentifier: t.id.split('/').slice(1).join('/'), result: t.result }] })) })) }] }));
+// Containers fail when anything below them fails, as xcresulttool reports them.
+const outcome = list => list.some(t => t.result === 'Failed') ? 'Failed' : 'Passed';
+const inTarget = target => results.filter(t => t.id.startsWith(target + '/'));
+fs.writeFileSync(bundle + '/fake-tests.json', JSON.stringify({ testNodes: [{ nodeType: 'Test Plan', name: 'App', result: outcome(results), children:
+  targets.map(target => ({ nodeType: target.endsWith('UITests') ? 'UI test bundle' : 'Unit test bundle', name: target, result: outcome(inTarget(target)), children:
+    inTarget(target).map(t => ({ nodeType: 'Test Suite', name: t.id.split('/')[1], result: t.result, children: [
+      { nodeType: 'Test Case', nodeIdentifier: t.id.split('/').slice(1).join('/'), result: t.result,
+        children: t.result === 'Failed' ? [{ nodeType: 'Failure Message', name: 'failed' }] : [] }] })) })) }] }));
 const failures = results.filter(t => t.result === 'Failed').map(t => t.behavior === 'unnamed-failure'
   ? { targetName: t.id.split('/')[0], failureText: 'The test runner crashed' }
   : { targetName: t.id.split('/')[0], testIdentifierString: t.id.split('/').slice(1).join('/') });
@@ -83,7 +87,8 @@ async function harness(tests: Test[], extra: Record<string, string> = {}) {
   dirs.push(dir);
   for (const child of ["bin", "Results", "Logs", ".morpheus-ci/scripts"]) await mkdir(join(dir, child), { recursive: true });
   await symlink(script, join(dir, ".morpheus-ci/scripts/ios-test-retry.py"));
-  for (const [name, body] of [["xcodebuild", fakeXcodebuild], ["xcrun", fakeXcrun]]) {
+  const fakeGit = `#!/bin/bash\necho ${"a".repeat(40)}\n`;
+  for (const [name, body] of [["xcodebuild", fakeXcodebuild], ["xcrun", fakeXcrun], ["git", fakeGit]]) {
     await writeFile(join(dir, "bin", name!), body!);
     await chmod(join(dir, "bin", name!), 0o755);
   }
@@ -268,6 +273,62 @@ describe("ios-test-retry.py", () => {
     const { code, stdout } = await h.run();
     expect(code).toBe(2);
     expect(stdout).toContain("test-iterations must be a whole number");
+  });
+});
+
+// How Evo's verify-results.mjs reads tests.json and summary.json (darwin-health/evo, 2026-10-30):
+// a test's own result decides, its Repetition children are its attempts, and the summary must pass.
+function validatorView(tree: { testNodes: Node[] }, summary: { result: string; failedTests: number }) {
+  const tests: { id: string; result: string; attempts: string[] }[] = [];
+  const visit = (node: Node, target?: string) => {
+    if (node.nodeType.endsWith("test bundle")) target = node.name;
+    if (node.nodeType === "Test Case") {
+      const attempts = (node.children ?? []).filter((c) => c.nodeType === "Repetition").map((c) => c.result!);
+      tests.push({ id: `${target}/${node.nodeIdentifier}`, result: node.result!, attempts });
+    } else for (const child of node.children ?? []) visit(child, target);
+  };
+  tree.testNodes.forEach((node) => visit(node));
+  return { tests, passes: summary.result === "Passed" && summary.failedTests === 0 && tests.every((t) => t.result === "Passed") };
+}
+type Node = { nodeType: string; name?: string; nodeIdentifier?: string; result?: string; children?: Node[] };
+
+describe("results a caller's validator reads", () => {
+  const exportStep = async () => ((load(await readFile(".github/workflows/ios-ci.yml", "utf8")) as {
+    jobs: { test: { steps: Step[] } } }).jobs.test.steps.find((s) => s.name === "Export complete test evidence")!);
+  const evidenceEnv = { EXECUTION_ID: "", TEST_SELECTION: "", TEST_EVIDENCE_SCRIPT: "" };
+
+  it("shows a test that passed on a clean retry the way Xcode's own retry did, and keeps it through export", async () => {
+    const h = await harness([{ id: unit, behavior: "pass" }, { id: stale, behavior: "leftover" }], evidenceEnv);
+    expect((await h.run()).code).toBe(0);
+    const before = await h.read("Results/tests.json");
+    expect((await h.run(["/bin/bash", "-e", "-c", (await exportStep()).run!])).code).toBe(0);
+    expect(await h.read("Results/tests.json")).toBe(before);
+
+    const tree = JSON.parse(await h.read("Results/tests.json"));
+    const summary = JSON.parse(await h.read("Results/summary.json"));
+    const view = validatorView(tree, summary);
+    expect(view.passes).toBe(true);
+    expect(view.tests).toEqual([
+      { id: unit, result: "Passed", attempts: [] },
+      { id: stale, result: "Passed", attempts: ["Failed", "Passed"] },
+    ]);
+    expect(summary).toMatchObject({ result: "Passed", failedTests: 0, testFailures: [], retries: "test-attempts.json" });
+    // Every container above the recovered test passes too: nothing below it still fails.
+    expect(tree.testNodes[0].result).toBe("Passed");
+    expect(tree.testNodes[0].children.map((bundle: Node) => bundle.result)).toEqual(["Passed", "Passed"]);
+    // The first attempt's own bundle is untouched evidence of the failure.
+    const raw = JSON.parse(await h.read("Results/Tests.xcresult/fake-tests.json"));
+    expect(validatorView(raw, { result: "Failed", failedTests: 1 }).tests.find((t) => t.id === stale)?.result).toBe("Failed");
+  });
+
+  it("leaves the first attempt's own export when a test failed every attempt", async () => {
+    const h = await harness([{ id: unit, behavior: "pass" }, { id: stale, behavior: "leftover" }, { id: broken, behavior: "fail" }], evidenceEnv);
+    expect((await h.run()).code).toBe(65);
+    await expect(h.read("Results/tests.json")).rejects.toThrow();
+    expect((await h.run(["/bin/bash", "-e", "-c", (await exportStep()).run!])).code).toBe(0);
+    const view = validatorView(JSON.parse(await h.read("Results/tests.json")), JSON.parse(await h.read("Results/summary.json")));
+    expect(view.passes).toBe(false);
+    expect(view.tests.map((t) => [t.id, t.result])).toEqual([[unit, "Passed"], [stale, "Failed"], [broken, "Failed"]]);
   });
 });
 

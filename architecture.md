@@ -3559,12 +3559,15 @@ unbootstrapped bundle, or an exit contradicting all-passing results) is never re
 no job-owned simulator to erase there is one attempt. Xcode's in-process
 `-retry-tests-on-failure` is gone: it kept the simulator and the app's data, so Evo's
 leftover-state UI failures failed all three iterations, and relaunching per repetition re-ran
-whole UI bundles (2026-10-05). `Tests.xcresult`, `tests.json` and `summary.json` stay the first
-attempt's, because `xcresulttool merge` reports a test that failed and then passed as failed;
-`test-attempts.json` beside them records each attempt's selection, exit status and failures, the
-flaky tests and the verdict the job follows. A caller's `test-evidence-script` that requires every
-test in `tests.json` to pass must accept the ones `test-attempts.json` lists as flaky. The script
-is reached through `actions-ref`, so a caller pinning this workflow pins that to the same commit.
+whole UI bundles (2026-10-05). `Tests.xcresult` stays the first attempt's bundle and each retry
+keeps its own under `attempt-<n>/`; `test-attempts.json` records each attempt's selection, exit
+status and failures, the flaky tests and the verdict. A caller's `test-evidence-script` still reads
+`tests.json` and `summary.json`: they are the first attempt's export, except that when the retries
+recovered every failure each recovered test reads as passed with its attempts as `Repetition`
+children and the summary passes, the shape Xcode's in-process retry gave them. Without that, Evo's
+validator would fail a run the retries had cleared; `xcresulttool merge` cannot produce it,
+because it reports a test that failed and then passed as failed. The script is reached through
+`actions-ref`, so a caller pinning this workflow pins that to the same commit.
 Rendered XCTest attachments are retained on every run; a failed run additionally keeps
 both result bundles and raw `xcodebuild` logs. Firebase-backed apps can opt into an exact
 `firebase-tools` version, a repository config, an explicit synthetic project id and emulator list,

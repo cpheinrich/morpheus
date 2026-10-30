@@ -12,8 +12,11 @@ data, so a UI test broken by state an earlier test left behind failed all three 
 (Evo delivery runs, October 2026).
 
 Attempt 1 keeps Tests.xcresult and tests.log at the root of RESULTS and LOGS; attempt n uses
-attempt-n/ under both. test-attempts.json at the root of RESULTS records every attempt.
+attempt-n/ under both. test-attempts.json at the root of RESULTS records every attempt. When the
+retries recovered every failure, tests.json and summary.json there show it the way Xcode's own
+retry did (see combine), so a caller's result validator keeps working unchanged.
 """
+import copy
 import json
 import os
 import re
@@ -121,7 +124,42 @@ def read_results(bundle, keep=None):
     # A failure Xcode reports without naming a test (a crashed or unbootstrapped bundle)
     # cannot be rerun selectively, so it must never be retried away.
     attributed = None not in failed and None not in reported and reported <= failed
-    return {'tests': tests, 'failed': failed, 'attributed': attributed}
+    return {'tests': tests, 'failed': failed, 'attributed': attributed, 'tree': exported['tests'],
+            'summary': exported['summary']}
+
+
+def combine(first, history):
+    """Attempt 1's exports with each recovered test's retries as its Repetition children.
+
+    This is the shape -retry-tests-on-failure gave tests.json and summary.json: the test passed,
+    and its repetitions show the failure first. Only called once every failure has recovered.
+    """
+    tree, summary = copy.deepcopy(first['tree']), copy.deepcopy(first['summary'])
+
+    def visit(node, target):
+        if node.get('nodeType', '').endswith('test bundle'):
+            target = node.get('name')
+        test = f"{target}/{node.get('nodeIdentifier')}"
+        if node.get('nodeType') == 'Test Case':
+            if test in history:
+                node['children'] = [{'nodeType': 'Repetition', 'name': 'Repetition 1', 'result': node['result'],
+                                     'children': node.get('children', [])}]
+                node['children'] += [{'nodeType': 'Repetition', 'name': f'Repetition {n}', 'result': result}
+                                     for n, result in enumerate(history[test], 2)]
+                node['result'] = 'Passed'
+            return
+        if node.get('result') == 'Failed':
+            node['result'] = 'Passed'
+        for child in node.get('children', []):
+            visit(child, target)
+
+    for node in tree.get('testNodes') or []:
+        visit(node, None)
+    for counts in [summary, *summary.get('devicesAndConfigurations', [])]:
+        counts['passedTests'] = counts.get('passedTests', 0) + counts.get('failedTests', 0)
+        counts['failedTests'] = 0
+    summary.update(result='Passed', testFailures=[], retries='test-attempts.json')
+    return tree, summary
 
 
 def erase(device):
@@ -155,7 +193,7 @@ def main():
     if unexplained:
         print('::error::xcodebuild failed without a failure that names a test, so nothing was retried.', flush=True)
 
-    passed_on = {}
+    passed_on, history = {}, {}
     for attempt in range(2, attempts + 1):
         if not failing or unexplained:
             break
@@ -171,6 +209,7 @@ def main():
         for test in failing:
             if outcome and all(o in PASSING for o in outcome['tests'].get(test, ['Missing'])):
                 passed_on[test] = attempt
+            history.setdefault(test, []).append('Passed' if test in passed_on else 'Failed')
         failing = entry['failed'] = [test for test in failing if test not in passed_on]
         if status and (not outcome or not outcome['attributed'] or not failing):
             print(f'::error::Attempt {attempt} failed without a failure that names a retried test.', flush=True)
@@ -181,6 +220,9 @@ def main():
     record['result'] = 'passed' if passed else 'failed'
     record['flaky'] = [{'id': test, 'passedOnAttempt': attempt} for test, attempt in sorted(passed_on.items())]
     record['failed'] = [] if passed else failing
+    if passed and passed_on:
+        for name, exported in zip(('tests', 'summary'), combine(first, history)):
+            (results / f'{name}.json').write_text(json.dumps(exported, indent=2) + '\n')
     (results / 'test-attempts.json').write_text(json.dumps(record, indent=2) + '\n')
     report(record)
     return 0 if passed else (status or 1)

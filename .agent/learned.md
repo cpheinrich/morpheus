@@ -723,6 +723,7 @@ iteration, which is the shape of Evo's leftover-state UI failures. Related facts
   The summary's `testFailures` carries the same pair as `targetName` and `testIdentifierString`.
 - `xcodebuild test-without-building` shuts down a simulator it booted; `simctl shutdown` on an
   already shut-down device exits 149, and `simctl erase` needs it shut down.
-- On Xcode 27, after a failing test, xcodebuild waited the full 600 s and logged
-  `Failure collecting diagnostics from simulator: Timed out after 600.0 seconds`, collecting nothing.
-  `-collect-test-diagnostics never` removes the wait.
+- On Xcode 27, in one of two failing runs, xcodebuild waited the full 600 s after the tests and
+  logged `Failure collecting diagnostics from simulator: Timed out after 600.0 seconds`, collecting
+  nothing; the other finished promptly. Runs with `-collect-test-diagnostics never` never waited.
+- `xcodebuild -help` prints its usage to stderr, not stdout.
