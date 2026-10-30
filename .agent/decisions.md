@@ -1,5 +1,26 @@
 # Decisions
 
+**Reviews never wait on approval inside five turns, and any fresh reviewer may continue** —
+2026-10-30. MO-26-10-30-14.56.24. Evo's CD staging channel stalled from 2026-10-26 because a
+test-only repair PR (evo#665) had an incomplete initial review: the next turn needed
+`humanAuthorization` and the same reviewer session, and when Robbie authorized it the session could
+no longer be recovered. Chris: *"I absolutely don't want things to get blocked because they need
+approval for reviews … that shouldn't be a requirement. You should be able to use any fresh
+session"*, then *"increase the automatic review limit to 5 rounds for all Morpheus projects — with
+the continued guidance that review feedback should be substantive and we shouldn't block changes
+because of some trivial thing the reviewer flags."* This supersedes the three-turn cap
+(2026-09-18), the same-reviewer rule in every entry that states it, authorization to resume an
+incomplete turn (2026-09-28, 2026-10-08) and authorization after finalization within the cap
+(2026-09-28). Five ordinary turns, counting the initial review and incomplete ones, need no one's
+approval; each after the fifth carries `humanAuthorization`, which stays optional for back-compat.
+Finalization stays one per PR and outside the count. A follow-up may be a fresh session; the guard
+against reviewer shopping is mechanical: a `handoff` names every earlier finding (by optional
+per-finding `turn`), and a `blocked` turn that is handed over names its substantive findings in
+`blockedOn`, so nothing found earlier can be dropped silently. A fresh reviewer's turn gets the
+initial ceiling. Reviewers block only on substantive problems; style and wording are notes the
+author may decline in one line. PR414's human override for incomplete reviews is superseded. No
+dependency: Zod and the existing checker.
+
 **HQ presentation is an executive-first shared system, with product/design leadership in Morpheus**
 — 2026-10-29. Every HQ page serves five-second orientation, thirty-second executive understanding
 and deliberate study; long detail remains in stable linked sections and appendices. Shell,

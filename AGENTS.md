@@ -171,9 +171,11 @@ include final-build simulator captures of each materially changed screen and sta
 captures yourself; the independent reviewer must inspect their pixels. Replace them after visual
 fixes. If a test cannot run, state the exact limitation and
 keep the PR draft until validation finishes; a later code correction spends a remaining review
-turn. Aim to finish in an initial review and one focused response. The third turn is a ceiling for
-a genuine late correction or unresolved substantive finding, not a planned step. One bounded
-same-reviewer verification turn may cover a small final correction under the runbook. Commit the
+turn. Aim to finish in an initial review and one focused response.
+Five turns run without anyone's approval; they are a ceiling for genuine late corrections or
+unresolved substantive findings, not planned steps. A reviewer blocks only on substantive problems;
+style and wording notes never block.
+When a reviewer times out or cannot be resumed, start a fresh one with the earlier findings. Commit the
 implementation and tests. When CI, visual evidence or PR metadata matters to review, move the
 item to `review` and open an unlabelled draft PR first so the reviewer sees them. Then run
 `morpheus review prepare --base origin/main` (it prints a packet; it launches nothing), spawn
@@ -181,8 +183,8 @@ item to `review` and open an unlabelled draft PR first so the reviewer sees them
 handle findings, the record, CI and merge yourself. Do not wait for a monitor, another agent or
 GitHub Actions. If no independent session can be started, say so and leave the PR open with
 auto-merge off — never self-review. **Read [`independent-review.md`](docs/runbooks/independent-review.md)
-before spawning the reviewer**: it holds the turn cap, budgets and floors, timing evidence,
-conditional clearance, finalization, `humanAuthorization`, record fields, the `review-record:`
+before spawning the reviewer**: it holds the turn cap, fresh-reviewer handoffs, budgets and floors,
+timing evidence, conditional clearance, finalization, `humanAuthorization`, record fields, the `review-record:`
 line and the `agent-reviewed` label. Commit the record and run `morpheus review validate` before
 pushing; open the PR with the label already applied (`gh pr create --label agent-reviewed`), or as a
 draft if it must exist earlier — an unlabelled draft waits instead of failing. Merge trunk rather

@@ -874,7 +874,9 @@ three times, stop: change approach, or \`pm block\` with what you learned. Never
 **The authoring agent owns the entire review loop.** Finish the relevant focused tests and inspect
 results before the reviewer's first turn; send the full packet and available UI evidence. If a test
 cannot run, document why and keep the PR draft until validation finishes. Aim for one review and
-one response; the third turn is a ceiling for genuine late corrections or unresolved findings.
+one response; five turns run without anyone's approval, a ceiling for genuine late corrections or
+unresolved findings. A reviewer blocks only on substantive problems; style and wording notes never
+block. When a reviewer times out or cannot be resumed, start a fresh one with the earlier findings.
 After committing implementation/tests,
 run \`morpheus review prepare --base origin/main\`; this prints a review packet and does not
 launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
@@ -889,9 +891,9 @@ If the runner cannot start an independent session, report that concrete limitati
 the PR open with auto-merge disabled; never substitute self-review or assume a monitor will act.
 
 **Independent review is required before merge.** Before spawning the reviewer, read the
-[review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md): three
-ordinary turns plus one narrow verification, budgets, finalization, \`humanAuthorization\`,
-deferrals naming a roadmap item, and the record fields. Record the review in the task worklog, commit
+[review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md): five
+automatic turns, fresh-reviewer handoffs, budgets, finalization, \`humanAuthorization\` beyond the
+fifth turn, deferrals naming a roadmap item, and the record fields. Record the review in the task worklog, commit
 it, and run \`morpheus review validate\`. Then label the PR and mark it ready, or create it labelled
 with a visible \`review-record:\` line. For CI or PR evidence, open an unlabelled draft before
 review; drafts wait instead of failing. Merge trunk rather

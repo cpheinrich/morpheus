@@ -1737,30 +1737,35 @@ Four of them, each catching what it can so the rung above only sees what genuine
 **Rung 2 is a bounded, author-managed independent session, required by default.**
 `review.required` defaults to true; false is a project opt-out reported by conventions. The author
 runs `morpheus review prepare` to print a packet, then explicitly spawns a fresh reviewer
-subagent/session without author chat, responds once, and resumes the same reviewer
-if substantive findings were raised. Minor-only findings need no second pass. A review is capped
-at three ordinary turns; a follow-up resolves a blocked turn, or spends a remaining turn on a late
-correction after clearance, named by its scope reason. Unresolved substantive disagreements,
+subagent/session without author chat, responds once, and resumes the reviewer
+if substantive findings were raised. Minor-only findings need no second pass. A reviewer blocks
+only on substantive problems (correctness, missing or wrong tests for changed behaviour, security or
+data loss, a broken contract, documentation made untrue); wording, style, naming and optional
+refactors are non-blocking notes the author may decline in one line. A review has five ordinary
+turns without anyone's approval, counting the initial review and incomplete turns; a follow-up
+resolves a blocked turn, continues after an incomplete one, or spends a remaining turn on a late
+correction after clearance, named by its scope reason. Any follow-up may be taken by a fresh
+reviewer when the earlier session timed out or cannot be resumed; its `handoff` names every earlier
+finding it was given, and a handed-over blocked turn names its findings in `blockedOn`, so
+replacement cannot drop what an earlier reviewer found. Unresolved substantive disagreements,
 incomplete review, exhausted budgets and a correction needed after the last turn leave the PR
-open and flagged, with auto-merge disabled. One additional same-reviewer verification turn may
-cover a small fix to a recorded finding or a late test-only correction: at most four exact changed
-paths, 80 changed test lines, 40 changed non-test lines, five minutes, and cumulative ordinary
-review time at most twice the initial risk ceiling. It cannot follow an incomplete turn or
-finalization, change normative policy, reset the reviewer, or authorize a fifth implementation
-turn. New substantive concerns still block. One automatic
-finalization-only turn per PR is allowed, at five minutes, recorded as `finalization` with the
-reviewer's attested paths, evidence and scope. It must be the last automatic turn and cleared; every later same-reviewer turn requires explicit
-`humanAuthorization`. Its original scope and predecessor stay checked. It cannot resolve a
+open and flagged, with auto-merge disabled. Each ordinary turn after the fifth needs an explicit
+human exception, recorded as `humanAuthorization` (approver, ISO timestamp and reason),
+preserving the full history and all other checks; one authorization never permits subsequent
+turns. One automatic
+finalization-only turn per PR is allowed outside the count, at five minutes, recorded as `finalization` with the
+reviewer's attested paths, evidence and scope; an ordinary turn may follow it only as a late
+correction. Its original scope and predecessor stay checked. It cannot resolve a
 substantive finding, and is checked against the commits it covers: the worklog, already-conditioned
-paths, and explanatory Markdown only — never normative policy files. An explicit human exception is recorded per extra same-reviewer turn
-as `humanAuthorization` (approver, ISO timestamp and reason), preserving the full history and
-all other checks; one authorization never permits subsequent turns. An evidence-pending incomplete
-turn may resume only with explicit authorization on the next same-reviewer turn; the original
-verdict stays unchanged and every historical and new turn must satisfy its budget. Incidental pre-existing bugs are recorded
+paths, and explanatory Markdown only — never normative policy files. Records from the three-turn
+contract keep their bounded `verification` fourth turn valid. Every verdict, incomplete ones
+included, stays in the record and every historical and new turn must satisfy its budget. Incidental pre-existing bugs are recorded
 separately; related unchanged code is blocking only when causally relevant to the PR or acceptance.
 
-Initial risk-based ceilings are 10/15/30 minutes, with a one-minute floor at normal and high risk, with one justified initial extension of at most
-50%; the follow-up ceiling is half the initial budget. One reviewer, no reviewer subagents. The
+Initial risk-based ceilings are 10/15/30 minutes, with a 30-second floor at normal and high risk, with one justified initial extension of at most
+50%; the follow-up ceiling is half the initial budget, except that a fresh reviewer taking over
+gets the initial ceiling because it reads the change from scratch. One reviewer per turn, no
+reviewer subagents. The
 provider's authoring session owns enforcement and any available usage ceiling; CI validates the
 reported evidence without making a model call. The canonical provider-neutral prompt ships in
 `src/review/local-prompt.ts`. Project instructions and learned failures supply local context.
