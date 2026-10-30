@@ -1,5 +1,10 @@
 # Morpheus CD pipeline V2
 
+> **Superseded 2026-10-30.** iOS delivery is being rebuilt as one stateless run per slot
+> (architecture.md §18.2, "Stateless iOS delivery"; `.agent/decisions.md`, 2026-10-30). This
+> document describes V2 while it still delivers, until Evo's cutover; MO-26-10-30-16.06.29 deletes
+> it with `src/cd/`.
+
 Status: design under independent review, 2026-10-18. Owner: Morpheus. First consumer: Evo.
 Roadmap: MO-26-10-18-06.52.29. Implementation and operational acceptance follow
 this design; approving this document does not assert that delivery works.

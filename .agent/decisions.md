@@ -2116,3 +2116,61 @@ and in the independent-review contract and rung-2 persona. `doctor` names it in 
 CI check or a required artifact: a check that demands evidence of a simplification pass gets
 ceremony, as the folder-README decision found. It removes no existing gate. Each removal remains
 its own recorded decision. No dependency.
+
+## iOS delivery becomes stateless; CD V2 is retired — 2026-10-30
+
+MO-26-10-30-16.04.16. After CD V2's first ten days (17 failed deliveries, a four-day staging stall
+behind a repair that needed an approval that never came), Chris decided, as owner:
+
+- **Checks that protect users block; the rest warn.** Tests, the physical-iPhone gate, Firebase
+  rules compatibility, signing and upload verification block. Process checks warn or go.
+- **No quota gates.** Exceeding agent quota is a warning: "get it working and get everything
+  calibrated before I worry about any agent token quota".
+- **Retire the validation-campaign machinery**: fault injection, campaigns, drills and the
+  proofs built for the eight-delivery campaign. It was only a means to get the system working.
+- **One Morpheus version, the latest**: "We should just have the latest one." A consumer's CD
+  references Morpheus `main` in one place, with no per-file pins or import manifests, and hosts
+  run the same reference.
+- **Simplify the ledger as the lead judges best** ("I trust your judgment").
+- **Production builds fresh `main` like staging, with no source-age wait,** and differs only by
+  running more automated tests. CD deploys the Firebase rules for the source it ships.
+- **Independent review allows five automatic rounds for every Morpheus project, and reviewers
+  block only on substantive issues.** This supersedes the three-turn cap once the review-policy
+  change implementing it merges; until then the runbook's cap applies.
+- Host Xcode and dependency version pinning are out of scope here; Chris owns them separately.
+
+The lead's design call, within that mandate: **replace V2 with one stateless run per slot rather
+than slim it.** Nearly every V2 mechanism existed only to serve its own ledger and controller:
+configuration digests and their migrations, reserved and burned build numbers, fences and leases,
+pinned runtimes, the campaign and the repair queue's quota gates. With build numbers from App Store
+Connect, config read from `main`, fresh `main` every slot and a single repair owner, nothing is left
+for a controller to own. The ledger becomes GitHub's run history plus one annotated receipt tag per
+delivered build, and the old state branch is archived by tag, not rewritten. Repair has one owner
+(a fresh, time-boxed steward session started by a credential-free health check), and one
+independent watchdog texts Chris. Evo's legacy release lanes already proved the stateless shape;
+it gains the phone gate, rules deployment for the exact source and an internal-availability
+readback. Full design and stages: architecture.md §18.2 "Stateless iOS delivery".
+
+On Evo's cutover this supersedes the CD V2 decisions in this file, including:
+
+- **CD V2 owns delivery through internal availability** (2026-10-18), and its refinements for
+  cancelled-dependent proofs, accepted-proof reuse, empty external tester lists, cancelled
+  SourceCI verification and physical-device proof envelopes;
+- source finance, the spending policy and source-age waivers;
+- the native and Claude repair executors, quota startup bounds, hosted repair credentials and model
+  quota, and live provider route diagnostics;
+- repair diagnostics, blocked-repair proofs and wakes, source floors, and the 2026-10-28
+  supervision mandate;
+- the macOS host supervisor shipped as templates copied from an exact commit.
+
+Three decisions stand:
+
+- **Wait for explicit internal beta readiness** (2026-10-20). V3 still requires internal readiness
+  before it calls a build delivered.
+- **Artifact admission snapshots the source before uploading** (2026-10-23). The bounded artifact
+  helper that Morpheus `ios-ci` runs keeps that contract.
+- **External TestFlight follows internal acceptance** (2026-10-19). External distribution is now
+  reported as a warning.
+
+No dependency: existing GitHub concurrency, Morpheus reusable workflows and the upload action's
+automatic build number.
