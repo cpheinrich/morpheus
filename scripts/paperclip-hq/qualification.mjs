@@ -8,10 +8,10 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { callableClient } from './lib/client.js';
 import { createConnector } from './lib/connector.js';
-import { poolFixture, until } from '../../plugins/codex-claude/tests/pool-fixtures.mjs';
-import { hqProfileDigest } from '../../plugins/codex-claude/src/pool-hq.mjs';
-import { loadPool } from '../../plugins/codex-claude/src/pool-config.mjs';
-import { projectIdentity } from '../../plugins/codex-claude/src/store.mjs';
+import { poolFixture, until } from '../../plugins/factory/tests/pool-fixtures.mjs';
+import { hqProfileDigest } from '../../plugins/factory/src/pool-hq.mjs';
+import { loadPool } from '../../plugins/factory/src/pool-config.mjs';
+import { projectIdentity } from '../../plugins/factory/src/store.mjs';
 
 const projectId = 'demo-morpheus-hq';
 if (process.env.GCLOUD_PROJECT !== projectId || process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:19200' || process.env.FIREBASE_AUTH_EMULATOR_HOST !== '127.0.0.1:19199') throw new Error('Dedicated demo emulators required');

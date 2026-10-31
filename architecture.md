@@ -1533,7 +1533,7 @@ authority isolation and consumer delivery remain explicit qualification gates.
 
 Interactive remote delegation ([design](docs/paperclip-interactive-bridge.md)) lets the Codex
 desktop conversation coordinate remote Claude and Codex workers through the optional
-`codex-claude` bridge (§18.0). One Paperclip issue is one pool conversation and each provider
+`factory` bridge (§18.0). One Paperclip issue is one pool conversation and each provider
 turn is one Paperclip process-adapter run; the Paperclip-spawned runner on the controller host
 claims the journaled turn, reserves the account, and holds the SSH session whose stdin is the
 remote guardian's lease. The desktop bridge only journals, reads the Paperclip run log through a
@@ -3209,7 +3209,7 @@ improvement?* Yes → kit. No → template.
 
 ### 18.0 Optional personal agent plugins
 
-`plugins/codex-claude/` is a deliberate exception to the kit's single-package distribution:
+`plugins/factory/` is a deliberate exception to the kit's single-package distribution:
 it is a personal Codex/Claude Code integration, not a dependency of company repositories. It owns its
 manifest, skill, hooks, runtime, lockfile, tests and installation documentation. Neither
 `morpheus init` nor the CLI installer activates it. Explicit per-device installation copies

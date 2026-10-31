@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "claude-codex": {
+      "command": "node",
+      "args": ["${HOME}/plugins/factory/scripts/claude-mcp.mjs"]
+    }
+  }
+}
