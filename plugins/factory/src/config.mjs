@@ -184,15 +184,20 @@ export function route(config, task, gateways, operation, primary = "codex") {
 export const delegates = (decision, primary) =>
   Boolean(decision.gateway) || decision.executor !== primary;
 // A worker never inherits a credential the configuration names: the admin login and every
-// gateway's key variable. The selected gateway's key has already been copied into the
-// provider's own variable by then, so removing its source changes nothing for the worker.
+// gateway's key variable. The provider's own variables are the exception. Native mode
+// strips every ANTHROPIC_*/OPENAI_* variable, so by now one is present only because the
+// selected gateway route set it, even when a keyRef names that same variable.
+const ROUTE_VARIABLES = new Set(["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "OPENAI_API_KEY"]);
 export function withoutReferencedSecrets(env, config) {
   const refs = [
     ...config.gateways.map((g) => g.keyRef),
     ...(config.admin ? [config.admin.emailRef, config.admin.passwordRef] : []),
   ];
   const clean = { ...env };
-  for (const ref of refs) if (ref.startsWith("env:")) delete clean[ref.slice(4)];
+  for (const ref of refs) {
+    const name = ref.startsWith("env:") ? ref.slice(4) : null;
+    if (name && !ROUTE_VARIABLES.has(name)) delete clean[name];
+  }
   return clean;
 }
 

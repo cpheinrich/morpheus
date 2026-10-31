@@ -14,6 +14,7 @@ import {
   readGatewayQuota,
   resolveKeyRef,
   delegates,
+  withoutReferencedSecrets,
 } from "../src/config.mjs";
 const task = { project: "/repo/.git", override: "auto" };
 const gw = (name, provider, usedPercent) => ({ name, provider, baseUrl: "http://gw", keyRef: "env:KEY", usedPercent });
@@ -445,4 +446,26 @@ test("an explicit override prefers its provider's gateway and never delegates to
   assert.equal(two.gateway.name, "pool-b");
   // Off still beats any override.
   assert.equal(delegates(route({ ...c, mode: "off" }, task, gateways, "claude"), "codex"), false);
+});
+
+test("worker environments drop configured secret references but keep the route's own key", () => {
+  const config = configSchema.parse({
+    gateways: [
+      { name: "c", provider: "claude", baseUrl: "http://gw", keyRef: "env:ANTHROPIC_AUTH_TOKEN" },
+      { name: "x", provider: "codex", baseUrl: "http://gw", keyRef: "env:POOL_CODEX_KEY" },
+    ],
+    admin: { emailRef: "env:POOL_ADMIN_EMAIL", passwordRef: "exec:/bin/pw" },
+  });
+  const env = withoutReferencedSecrets(
+    {
+      ANTHROPIC_BASE_URL: "http://gw",
+      ANTHROPIC_AUTH_TOKEN: "sk-route",
+      POOL_CODEX_KEY: "sk-other",
+      POOL_ADMIN_EMAIL: "admin@x",
+      PATH: "bin",
+    },
+    config,
+  );
+  // The selected route set ANTHROPIC_*; a keyRef naming the same variable must not erase it.
+  assert.deepEqual(env, { ANTHROPIC_BASE_URL: "http://gw", ANTHROPIC_AUTH_TOKEN: "sk-route", PATH: "bin" });
 });

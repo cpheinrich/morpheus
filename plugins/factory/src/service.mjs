@@ -69,6 +69,8 @@ const RECENT_RUN_LIMIT = 5;
 // a different account from the native login's, so neither may resume the other.
 export const sessionKeyFor = (cwd, gateway) =>
   gateway ? `${cwd}#gateway:${gateway.name}` : cwd;
+const routeChanged = (previous, decision) =>
+  `Run ${previous.id} asked its question on ${previous.gateway ? `the ${previous.gateway} gateway (${previous.executor})` : `native ${previous.executor}`}, but routing now chooses: ${decision.reason}. Reply once that route is chosen again, or start a new handoff without replySource.`;
 export class Manager {
   runs = new Map();
   taskMutations = new Map();
@@ -208,6 +210,12 @@ export class Manager {
         );
       const continuation =
         previous?.state === "needs_input" || !!previous?.question;
+      // A reply resumes the conversation that asked, so it must take the same route.
+      if (
+        continuation &&
+        (previous.executor !== worker || (previous.sessionKey ?? previous.cwd) !== sessionKey)
+      )
+        throw new Error(routeChanged(previous, decision));
       if (
         continuation &&
         (!["codex", "user"].includes(args.replySource) || !args.replyReason)
@@ -809,9 +817,7 @@ export class Manager {
       const sameRoute = (run) =>
         run.executor === worker && (run.sessionKey ?? run.cwd) === sessionKey;
       if (previous && previous.state === "needs_input" && !sameRoute(previous))
-        throw new Error(
-          `Run ${previous.id} ran on a different route than this one (${decision.reason}); answer it with the same route, or start a new task without replySource.`,
-        );
+        throw new Error(routeChanged(previous, decision));
       previous ??= [...runs.active, ...runs.recent].find(sameRoute);
       const codexSession =
         worker === "codex"

@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { defaults } from "../src/config.mjs";
-import { initStore, configWrite, taskRead } from "../src/store.mjs";
+import { initStore, configWrite, taskRead, atomic, runDir } from "../src/store.mjs";
 import { Manager, claudeTaskId } from "../src/service.mjs";
 
 const BASE = "http://gw.test:8080";
@@ -19,6 +19,7 @@ async function harness(t, binaries) {
     FACTORY_HOME: process.env.FACTORY_HOME,
     PATH: process.env.PATH,
     GW_KEY: process.env.GW_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     GW_ADMIN_EMAIL: process.env.GW_ADMIN_EMAIL,
     GW_ADMIN_PASSWORD: process.env.GW_ADMIN_PASSWORD,
     fetch: globalThis.fetch,
@@ -67,12 +68,12 @@ async function harness(t, binaries) {
   return { root, repo: await realpath(repo) };
 }
 
-async function gatewayConfig(provider) {
+async function gatewayConfig(provider, keyRef = "env:GW_KEY") {
   await configWrite({
     ...defaults(),
     mode: "automatic",
     // Only the coordinator's own provider has a gateway, so routing must pick it.
-    gateways: [{ name: "pool", provider, baseUrl: BASE, keyRef: "env:GW_KEY" }],
+    gateways: [{ name: "pool", provider, baseUrl: BASE, keyRef }],
     admin: { emailRef: "env:GW_ADMIN_EMAIL", passwordRef: "env:GW_ADMIN_PASSWORD" },
   });
 }
@@ -181,7 +182,9 @@ echo '{"type":"turn.completed","usage":{}}'
     join(root, "bin", "codex"),
     (await readFile(join(root, "bin", "codex"), "utf8")).replaceAll("__ROOT__", root),
   );
-  await gatewayConfig("codex");
+  // The key reference names the provider's own variable: the worker must still receive it.
+  process.env.OPENAI_API_KEY = "sk-gateway-test";
+  await gatewayConfig("codex", "env:OPENAI_API_KEY");
   const m = new Manager();
   t.after(() => m.viewer.close());
   const threadId = "0199cccc-dddd-7eee-8fff-000011112222";
@@ -207,7 +210,8 @@ echo '{"type":"turn.completed","usage":{}}'
   assert.match(env, /^OPENAI_API_KEY=sk-gateway-test$/m);
   assert.match(env, /^FACTORY_DELEGATED=1$/m);
   assert.doesNotMatch(env, /^CODEX_THREAD_ID=/m);
-  assert.doesNotMatch(env, /^(GW_ADMIN_PASSWORD|GW_ADMIN_EMAIL|GW_KEY)=/m);
+  // The admin login this config references is removed; the route's own key is not.
+  assert.doesNotMatch(env, /^(GW_ADMIN_PASSWORD|GW_ADMIN_EMAIL)=/m);
   assert.match(await readFile(join(root, "stdin"), "utf8"), /delegated by Codex\./);
   const task = await taskRead(threadId);
   assert.deepEqual(task.codexSessions, {
@@ -228,4 +232,25 @@ echo '{"type":"turn.completed","usage":{}}'
   // It resumes the gateway conversation saved by the first run.
   assert.deepEqual(resumed.slice(0, 2), ["exec", "resume"]);
   assert.ok(resumed.includes("0199bbbb-cccc-7ddd-8eee-ffff00001111"));
+  // A question asked on another route cannot be answered on this one: a native Claude
+  // worker's needs_input stays with native Claude even though the Codex gateway is chosen.
+  const asked = "0199dddd-eeee-7fff-8000-111122223333";
+  await mkdir(runDir(asked), { recursive: true });
+  await atomic(join(runDir(asked), "run.json"), {
+    id: asked,
+    executor: "claude",
+    threadId,
+    cwd: repo,
+    gateway: null,
+    state: "needs_input",
+    terminal: true,
+    question: null,
+  });
+  await m.mutateTask(threadId, (current) => {
+    current.runId = asked;
+  });
+  await assert.rejects(
+    m.start({ threadId, prompt: "Blue", replySource: "codex", replyReason: "routine default" }),
+    /asked its question on native claude, but routing now chooses: .*pool gateway \(codex\)/,
+  );
 });
