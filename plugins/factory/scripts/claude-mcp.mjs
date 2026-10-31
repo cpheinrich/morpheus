@@ -27,7 +27,7 @@ const run = {
 const specs = {
   inspect: [
     "codex.inspect",
-    "Read the current executor recommendation, Claude's remaining subscription allowance and the recorded session settings.",
+    "Read the current executor recommendation, gateway quota and the recorded session settings.",
     { ...session, operation: z.enum(["codex", "claude"]).optional() },
   ],
   start: [

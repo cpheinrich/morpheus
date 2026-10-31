@@ -8,7 +8,6 @@ import {
   configSchema,
   defaults,
   route,
-  remaining,
   modelSelection,
   permissionMode,
   subscriptionEnv,
@@ -58,33 +57,6 @@ test("fresh settings default to 90 percent and preserve saved thresholds", async
   assert.equal(saved.threshold, 30);
   assert.equal(route(saved, task, [gw("claude", "claude", 30)]).executor, "codex");
   assert.equal(route(saved, task, [gw("claude", "claude", 29.99)]).executor, "claude");
-});
-test("allowance uses most depleted fresh known window and fails closed", () => {
-  const window = (usedPercent) => ({
-    usedPercent,
-    resetsAt: Date.now() / 1000 + 60,
-  });
-  assert.equal(
-    remaining({
-      rateLimitsByLimitId: {
-        codex: { primary: window(12), secondary: window(93) },
-      },
-    }),
-    7,
-  );
-  assert.equal(remaining({ rateLimits: { primary: window(100) } }), 0);
-  for (const primary of [
-    window(-1),
-    window(101),
-    window(NaN),
-    { usedPercent: 20, resetsAt: 0 },
-  ])
-    assert.equal(remaining({ rateLimits: { primary } }), null);
-  assert.equal(
-    remaining({ rateLimits: { limitId: "other", primary: window(0) } }),
-    null,
-  );
-  assert.equal(remaining({}), null);
 });
 test("model and effort are mapped independently, with provenance", () => {
   const c = defaults();
@@ -352,6 +324,12 @@ test("placement picks the most-headroom gateway below the threshold", () => {
   // At or above the threshold, or unknown, the gateway is skipped.
   assert.equal(route(c, task, [gw("claude", "claude", 90)]).executor, "codex");
   assert.equal(route(c, task, [gw("claude", "claude", null)]).executor, "codex");
+  // The coordinator's own provider is never a delegate: a codex gateway with more
+  // headroom than the claude gateway is skipped when Codex coordinates.
+  assert.equal(
+    route(c, task, [gw("claude", "claude", 80), gw("codex", "codex", 10)]).executor,
+    "claude",
+  );
   // An explicit model still wins over the greedy pick.
   assert.equal(route(c, task, gateways, "codex").executor, "codex");
 });

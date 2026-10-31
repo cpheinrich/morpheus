@@ -18,14 +18,9 @@ export function subscriptionFromLoginStatus(text) {
 export async function checkCodex(cwd = process.cwd(), run = exec, gateway = null) {
   if (gateway) {
     const key = await resolveKeyRef(gateway.keyRef);
-    return {
-      env: {
-        ...process.env,
-        OPENAI_API_KEY: key,
-        [delegatedMarker]: "1",
-      },
-      subscription: "gateway",
-    };
+    const env = codexEnv(process.env);
+    env.OPENAI_API_KEY = key;
+    return { env, subscription: "gateway" };
   }
   const env = codexEnv(process.env);
   let text;

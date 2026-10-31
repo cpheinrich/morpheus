@@ -26,16 +26,11 @@ export async function checkClaude(cwd = process.cwd(), run = exec, gateway = nul
   // Gateway mode: point the CLI at a pooled subscription and skip the native check.
   if (gateway) {
     const key = await resolveKeyRef(gateway.keyRef);
-    return {
-      env: {
-        ...process.env,
-        ANTHROPIC_BASE_URL: gateway.baseUrl,
-        ANTHROPIC_AUTH_TOKEN: key,
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-        [delegatedMarker]: "1",
-      },
-      subscription: "gateway",
-    };
+    const env = subscriptionEnv(process.env);
+    env.ANTHROPIC_BASE_URL = gateway.baseUrl;
+    env.ANTHROPIC_AUTH_TOKEN = key;
+    env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
+    return { env, subscription: "gateway" };
   }
   // CLI settings can inject credentials after environment sanitization. Refuse
   // provider overrides rather than editing the user's settings or credentials.

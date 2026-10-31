@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 
 export const home = () =>
   process.env.FACTORY_HOME ||
@@ -30,8 +30,8 @@ export const configSchema = z
   .object({
     version: z.literal(1).default(1),
     mode: modeSchema.default("off"),
-    // Applies to whichever agent is coordinating: below this share of its own allowance
-    // remaining, it hands substantive work to the other agent.
+    // A pooled gateway is used while its account is below this share of usage; at or
+    // above it the coordinator falls back to native. 90 leaves a little headroom.
     threshold: z.number().min(1).max(100).default(90),
     gateways: z
       .array(
@@ -124,24 +124,6 @@ export const configSchema = z
   })
   .strict();
 export const defaults = () => configSchema.parse({});
-export function remaining(limits) {
-  const bucket = limits?.rateLimitsByLimitId?.codex ?? limits?.rateLimits;
-  if (!bucket || (bucket.limitId && bucket.limitId !== "codex")) return null;
-  const windows = [bucket.primary, bucket.secondary].filter((v) => v != null);
-  if (
-    !windows.length ||
-    windows.some(
-      (v) =>
-        !Number.isFinite(v.usedPercent) ||
-        v.usedPercent < 0 ||
-        v.usedPercent > 100 ||
-        !Number.isFinite(v.resetsAt) ||
-        v.resetsAt * 1000 <= Date.now(),
-    )
-  )
-    return null;
-  return Math.min(...windows.map((v) => 100 - v.usedPercent));
-}
 // The primary is the agent coordinating the conversation. A gateway is a pooled
 // subscription; the coordinator delegates to the one with the most headroom, and
 // falls back to native once every gateway is at or above the threshold.
@@ -155,7 +137,7 @@ export function route(config, task, gateways, operation, primary = "codex") {
   if (mode === "manual")
     return { executor: primary, reason: "Manual delegation only" };
   const candidates = (gateways ?? []).filter(
-    (g) => g.usedPercent != null && g.usedPercent < config.threshold,
+    (g) => g.provider !== primary && g.usedPercent != null && g.usedPercent < config.threshold,
   );
   if (candidates.length === 0)
     return { executor: primary, reason: "No pooled subscription below threshold; native" };
@@ -178,10 +160,14 @@ export async function resolveKeyRef(keyRef) {
     return value;
   }
   if (keyRef.startsWith("secret:")) {
+    const path = keyRef.slice(7);
     try {
-      return (await readFile(keyRef.slice(7), "utf8")).trim();
+      const info = await stat(path);
+      if (info.mode & 0o077)
+        throw new Error(`is group/world readable; chmod 600 ${path}`);
+      return (await readFile(path, "utf8")).trim();
     } catch (error) {
-      throw new Error(`Cannot read secret ${keyRef.slice(7)}: ${error.message}`);
+      throw new Error(`Cannot read secret ${path}: ${error.message}`);
     }
   }
   throw new Error(`Invalid keyRef "${keyRef}": use env:NAME or secret:path`);
@@ -189,6 +175,8 @@ export async function resolveKeyRef(keyRef) {
 
 // Read each gateway's account usage from the sub2api admin API. Fails closed: an
 // unreadable quota is `usedPercent: null`, which route() treats as no headroom.
+// Assumes one sub2api instance (the first gateway's baseUrl) and one account per
+// provider; a multi-instance or multi-account pool needs a richer mapping.
 export async function readGatewayQuota(
   gateways,
   { adminEmail, adminPassword, fetchImpl = globalThis.fetch } = {},
@@ -336,7 +324,7 @@ export function subscriptionEnv(env) {
   const clean = { ...env };
   for (const key of Object.keys(clean)) {
     if (
-      /^(ANTHROPIC_|CLAUDE_CODE_(USE_|OAUTH_TOKEN|API_KEY|BASE_URL|SIMPLE|SAFE_MODE|EFFORT_LEVEL|PROJECT_DIR_NAME))/.test(
+      /^(ANTHROPIC_|CLAUDE_CODE_(USE_|OAUTH_TOKEN|API_KEY|BASE_URL|SIMPLE|SAFE_MODE|EFFORT_LEVEL|PROJECT_DIR_NAME)|FACTORY_ADMIN_)/.test(
         key,
       ) ||
       key === "CLAUDECODE"
@@ -392,7 +380,7 @@ export function codexEnv(env) {
   const clean = { ...env };
   for (const key of Object.keys(clean))
     if (
-      /^(OPENAI_|CODEX_API_KEY|CODEX_THREAD_ID|CLAUDE_CODE_SESSION_ID)/.test(key) ||
+      /^(OPENAI_|CODEX_API_KEY|CODEX_THREAD_ID|CLAUDE_CODE_SESSION_ID|FACTORY_ADMIN_)/.test(key) ||
       key === "CLAUDECODE"
     )
       delete clean[key];

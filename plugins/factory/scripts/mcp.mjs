@@ -11,7 +11,7 @@ const task = {
 const run = { runId: z.string().uuid() };
 const specs = {
   inspect: [
-    "Read current executor recommendation, subscription allowance and verified task settings.",
+    "Read current executor recommendation, gateway quota and verified task settings.",
     { ...task, operation: z.enum(["codex", "claude"]).optional() },
   ],
   start: [
