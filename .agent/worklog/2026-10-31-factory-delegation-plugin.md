@@ -144,6 +144,19 @@ Two substantive findings (route() did not filter the delegate provider; FACTORY_
         "evidence": "Clock readings around the follow-up reviewer subagent invocation."
       },
       "summary": "Both substantive findings are resolved and no new substantive issue was introduced. Three minor items (dead import, untested 0600 check, wording) were noted and subsequently fixed."
+    },
+    {
+      "reviewerSession": "opencode/977dd986-9e3e-4d27-b618-ff9c15022af1",
+      "commit": "ab3dac77fa7760fdaf7c751ece2f8a7a58f4fcc5",
+      "outcome": "cleared",
+      "scopeReason": "late correction: three minor tidy fixes (dead import, 0600 test, wording) after the follow-up cleared the substantive fixes",
+      "elapsedMinutes": 2,
+      "timing": {
+        "source": "clock",
+        "durationMs": 120000,
+        "evidence": "Clock readings around the third reviewer subagent invocation."
+      },
+      "summary": "All three minor fixes are correct and introduce no regression."
     }
   ]
 }
