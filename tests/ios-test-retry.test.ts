@@ -92,7 +92,8 @@ async function harness(tests: Test[], extra: Record<string, string> = {}) {
     await writeFile(join(dir, "bin", name!), body!);
     await chmod(join(dir, "bin", name!), 0o755);
   }
-  await writeFile(join(dir, "pre-test.sh"), 'printf \'{"preTest":"%s","results":"%s","logs":"%s"}\\n\' "$MORPHEUS_IOS_DESTINATION" "$RESULTS" "$LOGS" >> "$EVENTS"\n');
+  await writeFile(join(dir, "pre-test.sh"), 'printf \'{"preTest":"%s","results":"%s","logs":"%s"}\\n\' "$MORPHEUS_IOS_DESTINATION" "$RESULTS" "$LOGS" >> "$EVENTS"\n' +
+    'if [ -n "${PRE_TEST_FAIL_ON:-}" ] && [[ "$RESULTS" == *"$PRE_TEST_FAIL_ON" ]]; then exit 7; fi\n');
   await writeFile(join(dir, "sim-state"), "clean");
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>), PATH: `${dir}/bin:${process.env.PATH}`, GITHUB_WORKSPACE: dir,
@@ -268,11 +269,15 @@ describe("ios-test-retry.py", () => {
     expect(retry!.argv.filter((a) => /^-(only|skip)-testing:/.test(a))).toEqual([`-only-testing:${stale}`]);
   });
 
-  it("refuses a malformed attempt count", async () => {
-    const h = await harness([{ id: unit, behavior: "pass" }], { TEST_ITERATIONS: "2.5" });
+  it("reports only the pre-test script when it fails before a retry", async () => {
+    const h = await harness([{ id: unit, behavior: "pass" }, { id: stale, behavior: "leftover" }],
+      { PRE_TEST_SCRIPT: "pre-test.sh", PRE_TEST_FAIL_ON: "attempt-2" });
     const { code, stdout } = await h.run();
-    expect(code).toBe(2);
-    expect(stdout).toContain("test-iterations must be a whole number");
+    expect(code).toBe(7);
+    expect((await h.invocations()).length).toBe(1);
+    expect(stdout).toContain("::error::The pre-test script failed before attempt 2.");
+    expect(stdout).not.toContain("failed without a failure");
+    expect(JSON.parse(await h.read("Results/test-attempts.json"))).toMatchObject({ result: "failed", failed: [stale] });
   });
 });
 

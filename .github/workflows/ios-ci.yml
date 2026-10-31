@@ -28,7 +28,8 @@ on:
       actions-ref:
         description: >
           The commit, tag or branch of cpheinrich/morpheus whose composite actions this run uses
-          (ios-simulator, swift-changed-files). A `uses:` line cannot take an expression and
+          (ios-simulator, swift-changed-files), and whose scripts/ios-test-retry.py runs and
+          retries the tests. A `uses:` line cannot take an expression and
           github.job_workflow_sha is empty inside a called workflow's steps (verified 2026-10-14),
           so a consumer that pins this workflow to a commit passes the same commit here and its
           actions stop floating on main (cpheinrich/morpheus#393). The default keeps today's
@@ -394,7 +395,7 @@ jobs:
       # branch name, which floats under a consumer's pin (cpheinrich/morpheus#393), or a checkout
       # of the repository at `inputs.actions-ref` used by local path. The checkout is read-only,
       # credential-free (the repository is public), sparse, and lives in its own directory inside
-      # the workspace; nothing else in this job reads that directory.
+      # the workspace; besides those actions, only the test step reads it, for its retry script.
       - name: Validate bounded artifact helper pin
         if: ${{ steps.scope.outputs.run == 'true' }}
         working-directory: .

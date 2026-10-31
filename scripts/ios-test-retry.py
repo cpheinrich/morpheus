@@ -66,7 +66,10 @@ def retry_selection(tests):
 
 
 def run(attempt, selection, results, logs):
-    """One attempt: the caller's pre-test script, then one xcodebuild, logged to a file and stdout."""
+    """One attempt: the caller's pre-test script, then one xcodebuild, logged to a file and stdout.
+
+    Returns the exit status and whether xcodebuild ran: a failed pre-test script reports itself.
+    """
     results.mkdir(parents=True, exist_ok=True)
     logs.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, RESULTS=str(results), LOGS=str(logs))
@@ -74,7 +77,7 @@ def run(attempt, selection, results, logs):
         prepared = subprocess.run(['bash', f"{env['GITHUB_WORKSPACE']}/{env['PRE_TEST_SCRIPT']}"], env=env)
         if prepared.returncode:
             print(f'::error::The pre-test script failed before attempt {attempt}.', flush=True)
-            return prepared.returncode
+            return prepared.returncode, False
     command = ['xcodebuild', 'test-without-building', *xcodebuild_args(results / 'Tests.xcresult'), *selection]
     with open(logs / 'tests.log', 'wb') as log:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
@@ -82,7 +85,7 @@ def run(attempt, selection, results, logs):
             sys.stdout.buffer.write(chunk)
             sys.stdout.buffer.flush()
             log.write(chunk)
-        return process.wait()
+        return process.wait(), True
 
 
 def read_results(bundle, keep=None):
@@ -173,24 +176,20 @@ def erase(device):
 
 def main():
     results, logs = Path(os.environ['RESULTS']), Path(os.environ['LOGS'])
-    attempts = os.environ.get('TEST_ITERATIONS', '0')
-    if not attempts.isdigit():
-        print(f'::error::test-iterations must be a whole number of attempts, not {attempts!r}.', flush=True)
-        return 2
-    attempts = max(int(attempts), 1)
+    attempts = max(int(os.environ.get('TEST_ITERATIONS') or 0), 1)  # Validated before the build.
     device = DEVICE.match(os.environ.get('MORPHEUS_IOS_DESTINATION', ''))
     if attempts > 1 and not device:
         print('::notice::Retries need the job-owned iOS simulator, so this run has one attempt.', flush=True)
         attempts = 1
 
     record = {'schemaVersion': 1, 'maxAttempts': attempts, 'attempts': []}
-    status = run(1, first_selection(), results, logs)
+    status, tested = run(1, first_selection(), results, logs)
     first = read_results(results / 'Tests.xcresult') if status else None
     failing = sorted(first['failed']) if first and first['attributed'] else []
     record['attempts'].append({'attempt': 1, 'resultBundle': 'Tests.xcresult', 'selection': 'caller',
                                'exitCode': status, 'failed': failing})
     unexplained = status != 0 and not failing
-    if unexplained:
+    if unexplained and tested:
         print('::error::xcodebuild failed without a failure that names a test, so nothing was retried.', flush=True)
 
     passed_on, history = {}, {}
@@ -204,7 +203,8 @@ def main():
             entry['simulator'] = 'erase failed'
             break
         entry['simulator'] = 'erased'
-        status = entry['exitCode'] = run(attempt, retry_selection(failing), results / directory, logs / directory)
+        status, tested = run(attempt, retry_selection(failing), results / directory, logs / directory)
+        entry['exitCode'] = status
         outcome = read_results(results / directory / 'Tests.xcresult', keep=results / directory)
         for test in failing:
             if outcome and all(o in PASSING for o in outcome['tests'].get(test, ['Missing'])):
@@ -212,7 +212,8 @@ def main():
             history.setdefault(test, []).append('Passed' if test in passed_on else 'Failed')
         failing = entry['failed'] = [test for test in failing if test not in passed_on]
         if status and (not outcome or not outcome['attributed'] or not failing):
-            print(f'::error::Attempt {attempt} failed without a failure that names a retried test.', flush=True)
+            if tested:
+                print(f'::error::Attempt {attempt} failed without a failure that names a retried test.', flush=True)
             unexplained = True
 
     # Only a test seen passing counts: one missing from a retry's results is still failing.

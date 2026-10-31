@@ -43,7 +43,10 @@ devices.
 A retry of failed tests (`test-iterations`, see `scripts/ios-test-retry.py`) erases the job-owned
 device in place with `simctl shutdown` and `simctl erase` before each later attempt. Its UDID and
 ownership name do not change, so this cleanup still covers it; if the erase fails, the job fails
-rather than retrying in the used device.
+rather than retrying in the used device. On a persistent runner the erase also discards the warmed
+template's first-boot work, so a retry runs on a cold, pristine device: on the hosted probe its
+first boot and app launch took a few minutes. A test too slow for a cold device fails its retries
+too, which reports it as failing rather than flaky.
 
 Shutdown may race with XCTest completing teardown. Cleanup still attempts deletion of the exact owned device after a shutdown error; a failed deletion remains a job failure.
 
