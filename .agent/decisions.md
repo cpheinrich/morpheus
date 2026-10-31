@@ -1311,6 +1311,18 @@ closed. This compatibility surface must be reverified after Codex updates. Claud
 cannot atomically disable paid overage per invocation; account-level extra usage must be
 disabled for a hard subscription-only spend boundary. No API-key fallback is implemented.
 
+**codex-claude becomes the factory delegation plugin** — 2026-10-31
+(MO-26-10-31-04.37.59). `plugins/codex-claude/` is renamed `plugins/factory/` and
+generalized from a two-way Codex↔Claude bridge into a provider-agnostic delegation layer.
+Either Claude or Codex coordinates and fans out to workers: native Claude/Codex, or pooled
+subscriptions behind a sub2api gateway. A `gateways` config lists `{ name, provider,
+baseUrl, keyRef }`; `keyRef` is `env:NAME` or `secret:path`, never a raw key. Quota is read
+from the gateway's admin API and fails closed. Placement is explicit model → the
+most-headroom gateway below the threshold (default 90% used) → native. The earlier
+native-only constraint (strip overrides, require a claude.ai/ChatGPT sign-in) existed to
+avoid API-key billing; a sub2api gateway routes to the subscription, so gateway mode sets
+the provider overrides instead of stripping them, while native mode is unchanged.
+
 **Remote pool workers run through Paperclip's process adapter, not its native Runner** —
 2026-10-24 (MO-26-10-24-00.59.32). Chris asked to delegate interactively from the Codex desktop
 conversation to remote Claude and Codex workers through the existing bridge and Paperclip. The

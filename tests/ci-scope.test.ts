@@ -45,7 +45,7 @@ describe("Morpheus CI inputs", () => {
     ["src/cd/control.ts", node], ["tests/pm.test.ts", node],
     ["src/qa/web/server.ts", { ...node, browser: true }],
     ["dist/qa/store.js", { ...node, browser: true }], ["tests/browser/fixture.html", { ...node, browser: true }],
-    ["plugins/codex-claude/src/service.mjs", { ...node, bridge: true }],
+    ["plugins/factory/src/service.mjs", { ...node, bridge: true }],
     [".github/actions/ios-testflight-upload/artifact-stage/stage.py", { ...node, browser: true, artifacts: true }],
     ["tests/artifacts/test_stage.py", { ...node, browser: true, artifacts: true }],
     ["tests/artifact-workflows.test.ts", { ...node, artifacts: true }],
@@ -59,18 +59,18 @@ describe("Morpheus CI inputs", () => {
   });
 
   it("unions mixed paths without allowing a later prose path to clear a flag", () => {
-    expect(selectPaths(["src/cd/control.ts", "plugins/codex-claude/src/service.mjs", "docs/guide.md"]))
+    expect(selectPaths(["src/cd/control.ts", "plugins/factory/src/service.mjs", "docs/guide.md"]))
       .toEqual({ ...node, bridge: true });
     expect(selectPaths(["unknown", "docs/guide.md"])).toEqual(all);
   });
 
   it("covers every repository import used by the actual browser and bridge tests", () => {
     const suites = ["tests/browser/qa-comments.spec.ts", "tests/browser/qa-web-context.spec.ts"];
-    const plugin = join(root, "plugins/codex-claude");
+    const plugin = join(root, "plugins/factory");
     const pluginFiles = readdirSync(plugin, { recursive: true }).filter((p): p is string => typeof p === "string" && p.endsWith(".mjs") && !p.includes("node_modules"));
     for (const [roots, flag, sentinel] of [
       [suites.map(p => join(root, p)), "browser", "src/qa/web/server.ts"],
-      [pluginFiles.map(p => join(plugin, p)), "bridge", "plugins/codex-claude/src/service.mjs"],
+      [pluginFiles.map(p => join(plugin, p)), "bridge", "plugins/factory/src/service.mjs"],
     ] as const) {
       const program = ts.createProgram([...roots], { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, target: ts.ScriptTarget.ESNext, allowJs: true, skipLibCheck: true });
       const files = program.getSourceFiles().map(f => relative(root, f.fileName)).filter(p => !p.includes("node_modules") && !p.startsWith(".."));
@@ -154,7 +154,7 @@ describe("workflow dispatch and required status", () => {
       const expected = result !== "success" || flag !== "false";
       expect(evaluate(workflow.jobs.node!.if!, needs)).toBe(true);
       expect(evaluate(workflow.jobs.node!.with!["run-check"] as string, needs)).toBe(expected);
-      for (const name of ["qa-browser", "codex-claude", "artifact-abi"]) {
+      for (const name of ["qa-browser", "factory", "artifact-abi"]) {
         expect(evaluate(workflow.jobs[name]!.if!, needs), `${name}/${result}/${flag}`).toBe(expected);
         expect(evaluate(workflow.jobs[name]!.if!, needs, true)).toBe(false);
       }

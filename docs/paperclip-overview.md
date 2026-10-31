@@ -90,7 +90,7 @@ There are **two complementary integration surfaces today**:
 
 - **Git linkage:** `scripts/paperclip-bridge/` connects committed repository tasks and evidence
   to Paperclip issues.
-- **Interactive delegation:** `plugins/codex-claude/` connects a Codex conversation to a worker
+- **Interactive delegation:** `plugins/factory/` connects a Codex conversation to a worker
   profile, Paperclip issue/runs and native CLI session. Its live state is private local data.
 
 They are not automatically joined end to end yet: starting an interactive pool conversation
@@ -420,6 +420,6 @@ are not a universal one-command installer for the interactive stack.
 
 - [Interactive bridge design and live evidence](paperclip-interactive-bridge.md)
 - [Git task linkage and authentication contract](paperclip-integration.md)
-- [Bridge setup and pool commands](../plugins/codex-claude/README.md#remote-pool-workers-through-paperclip)
+- [Bridge setup and pool commands](../plugins/factory/README.md#remote-pool-workers-through-paperclip)
 - [Earlier infrastructure pilot](paperclip-pilot-design.md) and [results](paperclip-pilot-results.md)
 - [Workflow comparison](paperclip-workflow-comparison.md) — evaluation results and their limits

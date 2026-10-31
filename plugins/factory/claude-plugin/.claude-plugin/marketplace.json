@@ -1,0 +1,16 @@
+{
+  "name": "factory-local",
+  "owner": {
+    "name": "Morpheus contributors"
+  },
+  "metadata": {
+    "description": "Local install of the Morpheus factory bridge for Claude Code."
+  },
+  "plugins": [
+    {
+      "name": "factory",
+      "source": "./",
+      "description": "Opt-in subscription delegation from Claude Code to Codex."
+    }
+  ]
+}

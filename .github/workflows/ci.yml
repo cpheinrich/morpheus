@@ -35,7 +35,7 @@ jobs:
         id: scope
         run: node scripts/ci-scope.mjs
 
-  codex-claude:
+  factory:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.bridge != 'false') }}
     runs-on: macos-latest
@@ -46,7 +46,7 @@ jobs:
         with:
           node-version: "22"
       - name: Test optional Claude bridge without model calls
-        working-directory: plugins/codex-claude
+        working-directory: plugins/factory
         run: |
           pnpm install --ignore-workspace --frozen-lockfile
           pnpm check

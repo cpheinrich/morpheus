@@ -1,6 +1,6 @@
 # Authenticated HQ actors in the existing worker pool
 
-`MO-26-10-25-03.51.24` adds a local admission facade to the existing `codex-claude`
+`MO-26-10-25-03.51.24` adds a local admission facade to the existing `factory`
 Manager-owned Pool. The outbound Firebase connector supplies a freshly verified actor;
 this facade does not authenticate browser requests. It uses the existing private Unix
 socket (mode 600), existing Pool home, conversations, native runner and account
@@ -41,7 +41,7 @@ controller user. Its strict shape is:
 
 `projectId` must be the configured Paperclip project UUID when present. The complete
 controller tuple must match `pool.json`. Use exported `hqProfileDigest(profile)` from
-`plugins/codex-claude/src/pool-hq.mjs` on the profile returned by `loadPool()`; it hashes
+`plugins/factory/src/pool-hq.mjs` on the profile returned by `loadPool()`; it hashes
 canonical sorted-key JSON of the entire parsed profile, including host executables,
 account, provider, model, effort, permission and workspace. `projectIdentity(repository)`
 supplies the controller-local repository identity. `repository` is independent of the

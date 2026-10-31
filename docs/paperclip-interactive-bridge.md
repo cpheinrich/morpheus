@@ -15,7 +15,7 @@ qa/acceptance/MO-26-10-24-00.59.32.md.
 
 ## Root proposal (retained)
 
-The user stays in their Codex desktop conversation. Extend the optional codex-claude plugin
+The user stays in their Codex desktop conversation. Extend the optional factory plugin
 with pool start/status/wait/logs/answer/follow-up/stop/reattach operations for both providers.
 Paperclip owns task admission, run identity and durable history. The existing bridge owns
 coordinator-facing supervision, provider event parsing and clarification/permission policy.
@@ -184,7 +184,7 @@ can settle an unknown task disposition only when its native createdByRunId match
 
 ## Data and identity
 
-Coordinator store (`$CODEX_CLAUDE_HOME/pool/`, 0700/0600):
+Coordinator store (`$FACTORY_HOME/pool/`, 0700/0600):
 `conversations/<conversationId>/conversation.json` (threadId, profile, bindingSha256,
 provider, issueId), `turns/<n>.json` (coordinator-owned intent: prompt digest, submission
 state `posting|unknown|submitted`, replySource/reason), `turns/<n>.claim/` and
@@ -193,7 +193,7 @@ state `posting|unknown|submitted`, replySource/reason), `turns/<n>.claim/` and
 `answers/` (audit), `cursor.json` (Paperclip log offset and fold), `issues/<issueId>.json`
 (index). `accounts/<account>.json` holds controller-side reservations.
 
-Host store (worker's `$CODEX_CLAUDE_HOME`): `pool-host.json` (operator-staged profile
+Host store (worker's `$FACTORY_HOME`): `pool-host.json` (operator-staged profile
 entries), `pool-locks/<workspace digest>/`, `pool-runs/<runUuid>.json` (receipt) and the
 normal bridge `runs/<id>/` guardian directories.
 

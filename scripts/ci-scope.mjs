@@ -11,7 +11,7 @@ export function selectPaths(paths) {
   const selected = flags(false);
   for (const path of paths) {
     if (/^(?:docs\/(?!runbooks\/|examples\/)|hq\/|qa\/acceptance\/|\.agent\/worklog\/)[\s\S]+\.md$/.test(path)) continue;
-    if (path.startsWith('plugins/codex-claude/')) {
+    if (path.startsWith('plugins/factory/')) {
       selected.node = selected.bridge = true;
     } else if (path.startsWith('.github/actions/ios-testflight-upload/') || path.startsWith('tests/artifacts/')) {
       selected.node = selected.artifacts = selected.browser = true;

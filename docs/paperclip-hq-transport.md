@@ -170,7 +170,7 @@ refresh credentials atomically with mode0600, and refreshes its cached ID token 
 before expiry. No Admin SDK credential is sent to the Mac. Enroll the connector separately,
 never reuse a human identity. Credential responses and exceptions are never logged.
 
-Set `CODEX_CLAUDE_HOME` to the already installed coordinator home when launching; the existing
+Set `FACTORY_HOME` to the already installed coordinator home when launching; the existing
 bridge client uses that environment variable to find the single Pool. Preserve the exact
 qualified client runtime and coordinator; do not point this at a default second Pool. A
 LaunchAgent should use absolute Node/config/module paths and private stdout/stderr files.
