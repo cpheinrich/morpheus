@@ -35,7 +35,7 @@ check, a wording nit), all fixed. No substantive issue remains.
     "durationMs": 480000,
     "evidence": "Clock readings around the initial reviewer subagent invocation."
   },
-  "outcome": "cleared",
+  "outcome": "complete",
   "summary": "Two substantive findings (route() did not filter the delegate provider; FACTORY_ADMIN_* leaked into the worker env) and six minor findings. All fixed or documented; a follow-up turn cleared the fixes and three further minor items were fixed.",
   "findings": [
     {
