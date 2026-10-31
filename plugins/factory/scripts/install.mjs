@@ -71,24 +71,29 @@ function installClaudePlugin(path) {
   else quiet("claude", ["plugin", "install", id]);
 }
 // An install of this package under its old name is migrated, step by step, and each
-// step is reported. A step that fails is reported too and never fails the install:
-// the new package is already registered by the time this runs.
-async function migrateLegacy(catalog, catalogName) {
-  const legacy = legacyPaths(homedir());
-  const present =
+// step is reported in `report`. A step that fails is reported too and never fails the
+// install. Migration is two phases: `migrateLegacySettings` runs before the Claude half
+// (so our status line never chains the dead recorder) and only writes state the old
+// plugin can live without; `removeLegacy` runs once the new install has committed, so a
+// failed install never leaves the user with neither plugin.
+const legacy = legacyPaths(homedir());
+const report = [];
+const step = async (label, action) => {
+  try {
+    const detail = await action();
+    report.push(`${label}: ${detail ?? "done"}`);
+  } catch (e) {
+    report.push(`${label}: FAILED (${e.message}); finish it by hand`);
+  }
+};
+async function legacyPresent(catalog) {
+  return (
     (await exists(legacy.install)) ||
     (await exists(legacy.config)) ||
-    catalog?.plugins?.some((p) => p?.name === LEGACY.name);
-  if (!present) return [];
-  const report = [];
-  const step = async (label, action) => {
-    try {
-      const detail = await action();
-      report.push(`${label}: ${detail ?? "done"}`);
-    } catch (e) {
-      report.push(`${label}: FAILED (${e.message}); finish it by hand`);
-    }
-  };
+    Boolean(catalog?.plugins?.some((p) => p?.name === LEGACY.name))
+  );
+}
+async function migrateLegacySettings() {
   await step("settings", async () => {
     const old = await readJSON(legacy.config, null);
     if (!old) return "no old config.json";
@@ -116,6 +121,10 @@ async function migrateLegacy(catalog, catalogName) {
       await writeJSON(claudeSettings, settings);
       return next.statusLine ? "restored the status line it had chained" : "removed the old recorder";
     });
+  }
+}
+async function removeLegacy(catalogName) {
+  if (withClaude) {
     await step("Claude plugin", () => {
       quiet("claude", ["plugin", "uninstall", LEGACY.claudePlugin]);
       quiet("claude", ["plugin", "marketplace", "remove", LEGACY.claudeMarketplace]);
@@ -144,8 +153,8 @@ async function migrateLegacy(catalog, catalogName) {
   report.push(
     `left ${legacy.store} (old run records; delete it once no session that used the old plugin is open) and any hooks.state entries for ${LEGACY.name} in ${join(codexHome, "config.toml")} (inert; Codex owns that file while it runs)`,
   );
-  return report;
 }
+let migrating = false;
 try {
   if (process.platform !== "darwin")
     throw new Error("This release is supported on macOS execution hosts only.");
@@ -223,7 +232,7 @@ try {
     if (e.code !== "ENOENT") throw e;
   }
   const catalogName = catalog?.name || "personal";
-  let migration = [];
+  migrating = await legacyPresent(catalog);
   try {
     await rename(next, destination);
     const installed = JSON.parse(
@@ -236,8 +245,8 @@ try {
     await probe(installed.installedPath);
     console.log(`Verified installed MCP tools at ${installed.installedPath}`);
     // The old name's status line must be gone before ours installs, or ours would chain
-    // the dead recorder; so migration runs between the Codex and Claude halves.
-    migration = await migrateLegacy(catalog, catalogName);
+    // the dead recorder; so its settings migrate between the Codex and Claude halves.
+    if (migrating) await migrateLegacySettings();
     if (withClaude) {
       await probeClaude(destination);
       installClaudePlugin(join(destination, "claude-plugin"));
@@ -256,16 +265,22 @@ try {
     throw e;
   }
   await rm(previous, { recursive: true, force: true });
-  if (migration.length)
-    console.log(
-      `Migrated from ${LEGACY.name}:\n` + migration.map((line) => `  - ${line}`).join("\n"),
-    );
+  // Only now, with factory committed, is the old plugin removed.
+  if (migrating) await removeLegacy(catalogName);
   console.log(
     `Installed a standalone copy at ${destination}. Routing remains at its existing setting (off on first install). Start a new Codex task (and Claude session) to load the plugin and review/trust its hooks. Then run doctor and explicitly enable manual or automatic mode.`,
   );
 } catch (e) {
   console.error(e.message);
+  if (migrating)
+    report.push(
+      `the install failed, so ${LEGACY.name} was left installed; rerun after fixing the error above`,
+    );
   process.exitCode = 1;
 } finally {
+  if (report.length)
+    console.log(
+      `Migration from ${LEGACY.name}:\n` + report.map((line) => `  - ${line}`).join("\n"),
+    );
   await rm(temp, { recursive: true, force: true });
 }

@@ -207,7 +207,7 @@ export async function resolveKeyRef(keyRef, { run = exec, env = process.env } = 
     } catch (error) {
       // The child's stderr and stdout stay out of the message: they may hold the value.
       throw new Error(
-        `Cannot resolve ${keyRef}: ${command} ${error.code != null ? `exited ${error.code}` : error.message}`,
+        `Cannot resolve ${keyRef}: ${command} ${typeof error.code === "number" ? `exited ${error.code}` : `could not run (${error.code ?? error.message})`}`,
       );
     }
     const value = String(stdout).trim();
@@ -286,6 +286,8 @@ export async function readGatewayQuota(
 // An account is as full as its most-used window: a subscription with an empty 5-hour
 // window but a nearly spent week has no headroom. A window whose reset time has passed
 // is skipped (sub2api only refreshes on use, so it reports the finished window's figure).
+// sub2api gives no reset time with Claude's 5-hour utilization, so that one window is
+// always counted as read.
 // Returns usedPercent null when no window is readable, which routing treats as no headroom.
 export function accountUsage(provider, extra, now = Date.now()) {
   const live = (resetAt) => {
