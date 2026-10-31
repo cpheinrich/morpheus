@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { codexEnv, resolveKeyRef, delegatedMarker } from "./config.mjs";
+import { codexEnv, resolveKeyRef } from "./config.mjs";
 const exec = promisify(execFile);
 export const resultSchemaPath = fileURLToPath(
   new URL("../prompts/codex-result.schema.json", import.meta.url),

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { configRead, configWrite } from "../src/store.mjs";
@@ -273,6 +273,14 @@ test("resolveKeyRef resolves env and secret references, never a raw key", async 
   assert.equal(await resolveKeyRef("env:TEST_KEY"), "sk-value");
   await assert.rejects(resolveKeyRef("env:MISSING_KEY"), /not set/);
   await assert.rejects(resolveKeyRef("sk-raw"), /Invalid keyRef/);
+  // secret:path reads a 0600 file and refuses a group/world-readable one.
+  const dir = await mkdtemp(join(tmpdir(), "keyref-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const secret = join(dir, "key");
+  await writeFile(secret, "sk-secret\n", { mode: 0o600 });
+  assert.equal(await resolveKeyRef(`secret:${secret}`), "sk-secret");
+  await chmod(secret, 0o644);
+  await assert.rejects(resolveKeyRef(`secret:${secret}`), /group\/world permissions/);
 });
 
 test("readGatewayQuota reads the sub2api admin API and fails closed", async () => {

@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
-import { subscriptionEnv, resolveKeyRef, delegatedMarker } from "./config.mjs";
+import { subscriptionEnv, resolveKeyRef } from "./config.mjs";
 const exec = promisify(execFile);
 export function subscriptionFromAuthStatus(text) {
   let auth;

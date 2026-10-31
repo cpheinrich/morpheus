@@ -164,7 +164,7 @@ export async function resolveKeyRef(keyRef) {
     try {
       const info = await stat(path);
       if (info.mode & 0o077)
-        throw new Error(`is group/world readable; chmod 600 ${path}`);
+        throw new Error(`has group/world permissions; chmod 600 ${path}`);
       return (await readFile(path, "utf8")).trim();
     } catch (error) {
       throw new Error(`Cannot read secret ${path}: ${error.message}`);
