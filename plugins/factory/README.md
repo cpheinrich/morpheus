@@ -88,8 +88,13 @@ Ask Codex naturally:
 
 Automatic mode delegates to a pooled gateway while its account is below the threshold
 (**90% used** by default), picking the gateway with the most headroom; once every gateway
-is at or above the threshold it falls back to the coordinator's native login. An explicit
-model request still wins. This is subscription usage, not a token count for a single chat.
+is at or above the threshold the work stays with the coordinator. **A gateway of the
+coordinator's own provider counts:** it is a separate subscription reached as an API, so a
+Claude session can hand work to the Claude behind a gateway and a Codex task to the Codex
+behind one. The only route never taken is the coordinator's own native login, which would
+be circular. An explicit executor request (“use Claude”, `operation`) prefers that
+provider's gateway when one is below the threshold, then the other provider's native
+login; asking for the coordinator's own provider with no such gateway keeps the work here. This is subscription usage, not a token count for a single chat.
 The coordinator still consumes its own allowance while supervising. Missing/stale usage is
 reported as unknown and never treated as headroom. Existing saved thresholds are preserved
 when updating the plugin; change one with `bridge.mjs config`.
@@ -230,6 +235,29 @@ both. Start a new Claude session after installing, and review its hooks.
   detected from `exec` output; manage that in your ChatGPT account.
 - **No loops.** Both workers run with `FACTORY_DELEGATED=1`; the hooks of either plugin
   then do nothing and both MCP servers refuse to start a further delegation.
+
+### Same-provider workers behind a gateway
+
+When routing picks the coordinator's own provider behind a gateway, the same start tool
+launches that worker (`codex_start` from Claude, `claude_start` from Codex); the run's
+`executor` and `gateway` fields say what ran.
+
+- **A Claude worker for a Claude session** runs `claude -p` with the gateway's base URL and
+  token, the session's own model and effort, and the session's own permission mode, so it is
+  never wider than the coordinator. It can ask live questions; the coordinator answers them
+  with `codex_answer` (`source: claude` for a routine clarification, `user` to attest a real
+  answer), under the same rules as `claude_answer`.
+- **A Codex worker for a Codex task** runs `codex exec` against the gateway with the task's own
+  model and effort. Its sandbox follows the task's approval policy: never-approve full access
+  maps to full access, on-request to read-only.
+- **Sessions are kept per route.** A worker's saved conversation is keyed by worktree and
+  gateway (`<cwd>#gateway:<name>`), so a gateway conversation never resumes a native one or
+  another gateway's. A `needs_input` reply must use the route the question came from.
+- **Credentials stay out of the worker.** It gets only the provider's own variables; every
+  variable a configured `keyRef`, `emailRef` or `passwordRef` names is removed from its
+  environment, along with `FACTORY_ADMIN_*`.
+- **No shared memory.** Memory sharing exports the other agent's store, so a same-provider
+  worker receives none.
 
 ## Remote pool workers through Paperclip
 

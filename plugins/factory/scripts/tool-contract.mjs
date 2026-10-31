@@ -33,6 +33,7 @@ export const codexMethods = Object.freeze([
   "view",
   "status",
   "wait",
+  "answer",
   "stop",
   "override",
   "memories",

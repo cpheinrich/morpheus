@@ -23,6 +23,8 @@ import {
   assertPoolAuthority,
   readGatewayQuota,
   resolveAdminCredentials,
+  delegates,
+  withoutReferencedSecrets,
 } from "./config.mjs";
 import {
   atomic,
@@ -63,6 +65,12 @@ export function previewSelection(config, snapshot) {
   }
 }
 const RECENT_RUN_LIMIT = 5;
+// Saved worker sessions are keyed by worktree and route: a gateway's conversation lives in
+// a different account from the native login's, so neither may resume the other.
+export const sessionKeyFor = (cwd, gateway) =>
+  gateway ? `${cwd}#gateway:${gateway.name}` : cwd;
+const routeChanged = (previous, decision) =>
+  `Run ${previous.id} asked its question on ${previous.gateway ? `the ${previous.gateway} gateway (${previous.executor})` : `native ${previous.executor}`}, but routing now chooses: ${decision.reason}. Reply once that route is chosen again, or start a new handoff without replySource.`;
 export class Manager {
   runs = new Map();
   taskMutations = new Map();
@@ -178,7 +186,9 @@ export class Manager {
         snapshot,
         route: decision,
       } = await this.inspect(args.threadId, args.operation);
-      if (decision.executor !== "claude") throw new Error(decision.reason);
+      if (!delegates(decision, "codex")) throw new Error(decision.reason);
+      // A Codex task delegates to Claude (native or gateway) or to Codex behind a gateway.
+      const worker = decision.executor;
       // Worktree correction is explicit because Morpheus can move work after the turn starts.
       const identity = await projectIdentity(args.cwd || snapshot.cwd);
       if (identity.project !== task.project)
@@ -186,7 +196,13 @@ export class Manager {
           "Delegation directory must belong to the Codex task repository.",
         );
       task.cwd = identity.cwd;
-      task.claudeSession = task.sessions?.[task.cwd] || null;
+      // Saved worker sessions are kept per route, so a gateway conversation never resumes a
+      // native one (or another gateway's) in the same worktree.
+      const sessionKey = sessionKeyFor(task.cwd, decision.gateway);
+      task.claudeSession =
+        worker === "claude" ? task.sessions?.[sessionKey] || null : null;
+      const codexSession =
+        worker === "codex" ? task.codexSessions?.[sessionKey] || null : null;
       const previous = task.runId ? await this.status(task.runId) : null;
       if (previous && !previous.terminal)
         throw new Error(
@@ -194,6 +210,12 @@ export class Manager {
         );
       const continuation =
         previous?.state === "needs_input" || !!previous?.question;
+      // A reply resumes the conversation that asked, so it must take the same route.
+      if (
+        continuation &&
+        (previous.executor !== worker || (previous.sessionKey ?? previous.cwd) !== sessionKey)
+      )
+        throw new Error(routeChanged(previous, decision));
       if (
         continuation &&
         (!["codex", "user"].includes(args.replySource) || !args.replyReason)
@@ -216,12 +238,24 @@ export class Manager {
       if (active.length >= config.maxConcurrent)
         throw new Error("Delegation concurrency limit reached.");
       await this.recoverOrphans(task);
-      const selection = modelSelection(config, snapshot, {
-        model: args.model,
-        effort: args.effort,
-      });
       const permissions = permissionMode(snapshot);
-      const { env } = await checkClaude(task.cwd, undefined, decision.gateway ?? null);
+      // A Codex worker runs the coordinator's own model and effort; the sandbox follows the
+      // same approval mapping, never wider (full access only for a never-approve task).
+      const selection =
+        worker === "claude"
+          ? modelSelection(config, snapshot, { model: args.model, effort: args.effort })
+          : {
+              model: args.model ?? snapshot.model,
+              effort: args.effort ?? snapshot.reasoningEffort ?? null,
+            };
+      const codexSandbox = worker === "codex" ? codexPermission(permissions) : null;
+      const env = withoutReferencedSecrets(
+        (worker === "claude"
+          ? await checkClaude(task.cwd, undefined, decision.gateway ?? null)
+          : await checkCodex(task.cwd, undefined, decision.gateway ?? null)
+        ).env,
+        config,
+      );
       const latestConfig = await configRead();
       const latestTask = await taskRead(task.id);
       if (
@@ -238,16 +272,23 @@ export class Manager {
       task.memoryEnabled =
         config.memorySharing &&
         (await codexMemoryEnabled(await this.client(), task));
-      const memories = await memoryContext(config, task, "codex");
-      const prompt = await handoff(args.prompt, memories);
+      // Shared memory is the other agent's store, so a same-provider worker gets none.
+      const memories =
+        worker === "claude" ? await memoryContext(config, task, "codex") : [];
+      const prompt =
+        worker === "claude"
+          ? await handoff(args.prompt, memories, "Codex")
+          : await codexHandoff(args.prompt, memories, "Codex");
       const record = {
         id,
-        executor: "claude",
+        executor: worker,
         threadId: task.id,
         cwd: task.cwd,
+        sessionKey,
+        gateway: decision.gateway?.name ?? null,
         host: hostname(),
         selection,
-        permissions,
+        permissions: codexSandbox?.name ?? permissions,
         background: args.background === true,
         createdAt: Date.now(),
         state: "starting",
@@ -255,6 +296,7 @@ export class Manager {
         question: null,
         result: null,
         claudeSession: task.claudeSession,
+        codexSession,
         replySource: args.replySource,
         replyReason: args.replyReason,
       };
@@ -262,9 +304,13 @@ export class Manager {
         record,
         {
           runId: id,
-          argv: claudeArgs(task.claudeSession, selection, permissions),
+          argv:
+            worker === "claude"
+              ? claudeArgs(task.claudeSession, selection, permissions)
+              : codexArgs(codexSession, selection, codexSandbox, decision.gateway ?? null),
           cwd: task.cwd,
           prompt,
+          ...(worker === "codex" ? { input: "text" } : {}),
           background: record.background,
           graceSeconds: config.disconnectGraceSeconds,
           maxRunSeconds: config.maxRunSeconds,
@@ -477,7 +523,10 @@ export class Manager {
     if (effects.session) {
       await this.mutateTask(run.threadId, (task) => {
         task.claudeSession = effects.session;
-        task.sessions = { ...task.sessions, [run.cwd]: effects.session };
+        task.sessions = {
+          ...task.sessions,
+          [run.sessionKey ?? run.cwd]: effects.session,
+        };
       });
     }
     if (effects.ended) this.send(run, { type: "close" });
@@ -491,7 +540,7 @@ export class Manager {
       await this.mutateTask(run.threadId, (task) => {
         task.codexSessions = {
           ...task.codexSessions,
-          [run.cwd]: run.newSession,
+          [run.sessionKey ?? run.cwd]: run.newSession,
         };
       });
     }
@@ -506,6 +555,8 @@ export class Manager {
       codexSession,
       threadId,
       cwd,
+      sessionKey,
+      gateway,
       host,
       selection,
       permissions,
@@ -528,6 +579,8 @@ export class Manager {
       codexSession,
       threadId,
       cwd,
+      sessionKey,
+      gateway: gateway ?? null,
       host,
       selection,
       permissions,
@@ -592,7 +645,8 @@ export class Manager {
     return this.public(run);
   }
   async answer(args) {
-    if (!["codex", "user"].includes(args.source))
+    // The coordinator answers as itself (codex or claude) or attests a user's answer.
+    if (!["codex", "claude", "user"].includes(args.source))
       throw new Error("Invalid answer source");
     const run = this.runs.get(args.runId);
     if (!run || !run.question)
@@ -601,10 +655,8 @@ export class Manager {
       );
     const task = await taskRead(run.threadId);
     const config = await configRead();
-    if (
-      args.source === "codex" &&
-      task.supervisionReplies >= config.maxSupervisionReplies
-    )
+    const autonomous = args.source !== "user";
+    if (autonomous && task.supervisionReplies >= config.maxSupervisionReplies)
       throw new Error("Supervision limit reached. Escalate to the user.");
     if (run.question.id !== args.questionId)
       throw new Error("Stale question id");
@@ -615,7 +667,7 @@ export class Manager {
       throw new Error(
         "Tool permission requests require user approval; this bridge only delegates clarification judgment.",
       );
-    if (args.source === "codex" && !args.reason)
+    if (autonomous && !args.reason)
       throw new Error(
         "Record why this clarification does not require the user.",
       );
@@ -722,7 +774,9 @@ export class Manager {
         args.sessionId,
         args.operation,
       );
-      if (decision.executor !== "codex") throw new Error(decision.reason);
+      if (!delegates(decision, "claude")) throw new Error(decision.reason);
+      // A Claude session delegates to Codex (native or gateway) or to Claude behind a gateway.
+      const worker = decision.executor;
       const session = task.session;
       if (!session?.cwd || !session.permissionMode)
         throw new Error(
@@ -759,12 +813,22 @@ export class Manager {
           "Delegation directory must belong to the Claude session repository.",
         );
       task.cwd = identity.cwd;
-      previous ??= [...runs.active, ...runs.recent].find(
-        (run) => run.cwd === task.cwd,
-      );
+      const sessionKey = sessionKeyFor(task.cwd, decision.gateway);
+      const sameRoute = (run) =>
+        run.executor === worker && (run.sessionKey ?? run.cwd) === sessionKey;
+      if (previous && previous.state === "needs_input" && !sameRoute(previous))
+        throw new Error(routeChanged(previous, decision));
+      previous ??= [...runs.active, ...runs.recent].find(sameRoute);
       const codexSession =
-        previous?.codexSession ?? task.codexSessions?.[task.cwd] ?? null;
-      // Codex exec cannot ask mid-run, so every question arrives as needs_input.
+        worker === "codex"
+          ? (previous?.codexSession ?? task.codexSessions?.[sessionKey] ?? null)
+          : null;
+      const claudeSession =
+        worker === "claude"
+          ? (previous?.claudeSession ?? task.sessions?.[sessionKey] ?? null)
+          : null;
+      // Codex exec cannot ask mid-run, so its every question arrives as needs_input; a
+      // Claude worker can also ask live, answered through codex.answer.
       const continuation = previous?.state === "needs_input";
       if (
         continuation &&
@@ -792,16 +856,30 @@ export class Manager {
       if (active.length >= config.maxConcurrent)
         throw new Error("Delegation concurrency limit reached.");
       await this.recoverOrphans(task);
-      const selection = codexSelection(config, session, {
-        model: args.model,
-        effort: args.effort,
-      });
       const outside = !`${identity.project}/`.startsWith(`${identity.cwd}/`);
-      const permission = codexPermission(
-        session.permissionMode,
-        outside ? [identity.project] : [],
+      // A Claude worker inherits the session's own model, effort and permission mode, so
+      // it can never be wider than the coordinator.
+      const selection =
+        worker === "codex"
+          ? codexSelection(config, session, { model: args.model, effort: args.effort })
+          : {
+              model: args.model ?? session.model ?? config.modelFallback ?? "opus",
+              effort:
+                config.effortMap[args.effort ?? session.effort] ??
+                session.effort ??
+                "high",
+            };
+      const permission =
+        worker === "codex"
+          ? codexPermission(session.permissionMode, outside ? [identity.project] : [])
+          : { name: session.permissionMode };
+      const env = withoutReferencedSecrets(
+        (worker === "codex"
+          ? await checkCodex(task.cwd, undefined, decision.gateway ?? null)
+          : await checkClaude(task.cwd, undefined, decision.gateway ?? null)
+        ).env,
+        config,
       );
-      const { env } = await checkCodex(task.cwd, undefined, decision.gateway ?? null);
       const latestConfig = await configRead();
       const latestTask = await taskRead(task.id);
       if (
@@ -816,14 +894,21 @@ export class Manager {
       await mkdir(runDir(id), { mode: 0o700 });
       // Claude's own memory switches are checked inside memoryContext.
       task.memoryEnabled = config.memorySharing;
-      const memories = await memoryContext(config, task, "claude");
-      const prompt = await codexHandoff(args.prompt, memories);
+      // Shared memory is the other agent's store, so a same-provider worker gets none.
+      const memories =
+        worker === "codex" ? await memoryContext(config, task, "claude") : [];
+      const prompt =
+        worker === "codex"
+          ? await codexHandoff(args.prompt, memories, "Claude Code")
+          : await handoff(args.prompt, memories, "Claude Code");
       const record = {
         id,
-        executor: "codex",
+        executor: worker,
         threadId: task.id,
         sessionId: args.sessionId,
         cwd: task.cwd,
+        sessionKey,
+        gateway: decision.gateway?.name ?? null,
         host: hostname(),
         selection,
         permissions: permission.name,
@@ -834,6 +919,7 @@ export class Manager {
         question: null,
         result: null,
         codexSession,
+        claudeSession,
         replySource: args.replySource,
         replyReason: args.replyReason,
       };
@@ -841,10 +927,13 @@ export class Manager {
         record,
         {
           runId: id,
-          argv: codexArgs(codexSession, selection, permission, decision.gateway ?? null),
+          argv:
+            worker === "codex"
+              ? codexArgs(codexSession, selection, permission, decision.gateway ?? null)
+              : claudeArgs(claudeSession, selection, permission.name),
           cwd: task.cwd,
           prompt,
-          input: "text",
+          ...(worker === "codex" ? { input: "text" } : {}),
           background: record.background,
           graceSeconds: config.disconnectGraceSeconds,
           maxRunSeconds: config.maxRunSeconds,
@@ -891,7 +980,7 @@ export class Manager {
     try {
       const s = await this.claudeInspect(args.sessionId);
       return {
-        additionalContext: `Codex delegation routing (sessionId ${args.sessionId}): ${JSON.stringify(s.route)}. Use the factory delegate-to-codex skill and codex_* tools. Inspect active runs before starting another run. Explicit user instructions override automatic routing.`,
+        additionalContext: `Factory delegation routing (sessionId ${args.sessionId}): ${JSON.stringify(s.route)}. A gateway route runs a worker on that pooled subscription, Claude included; only this session's own native login is never a delegate. Use the factory delegate-to-codex skill and codex_* tools. Inspect active runs before starting another run. Explicit user instructions override automatic routing.`,
       };
     } catch (e) {
       return {
@@ -973,6 +1062,14 @@ export class Manager {
     if (method === "codex.inspect")
       return this.claudeInspect(args.sessionId, args.operation);
     if (method === "codex.start") return this.codexStart(args);
+    // A gateway Claude worker can ask live; its Claude coordinator answers here.
+    if (method === "codex.answer") {
+      const runId = await this.codexRunId(args);
+      const run = await this.status(runId);
+      if (run.threadId !== claudeTaskId(args.sessionId))
+        throw new Error("The requested run belongs to another Claude session.");
+      return this.answer({ ...args, runId });
+    }
     if (method === "codex.hook") return this.codexHook(args);
     if (method === "codex.override") {
       if (!["auto", "codex", "claude", "off"].includes(args.executor))

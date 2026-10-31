@@ -144,31 +144,61 @@ export const configSchema = z
   })
   .strict();
 export const defaults = () => configSchema.parse({});
-// The primary is the agent coordinating the conversation. A gateway is a pooled
-// subscription; the coordinator delegates to the one with the most headroom, and
-// falls back to native once every gateway is at or above the threshold.
+// The primary is the agent coordinating the conversation, running on this host's native
+// login. A gateway is a separate pooled subscription reached as an API, so any gateway is a
+// delegate, including one of the coordinator's own provider: only the coordinator's own
+// native login is excluded, because handing work to it would be circular. Automatic routing
+// picks the gateway with the most headroom below the threshold and otherwise keeps the work
+// here. A result delegates when it names a gateway or another provider (see `delegates`).
 export function route(config, task, gateways, operation, primary = "codex") {
   const mode = config.projects[task.project] ?? config.mode;
   if (config.mode === "off" || mode === "off" || task.disabled)
     return { executor: primary, reason: "Delegation disabled" };
+  const below = (gateways ?? []).filter(
+    (g) => g.usedPercent != null && g.usedPercent < config.threshold,
+  );
+  const roomiest = (list) =>
+    list.reduce((a, b) => (b.usedPercent < a.usedPercent ? b : a));
+  const describe = (g) =>
+    `${g.name} gateway (${g.provider}) at ${g.usedPercent}% used, below ${config.threshold}%`;
   const override = operation ?? task.override;
-  if (override === "codex" || override === "claude")
-    return { executor: override, reason: "Explicit override" };
+  if (override === "codex" || override === "claude") {
+    const pooled = below.filter((g) => g.provider === override);
+    if (pooled.length) {
+      const g = roomiest(pooled);
+      return { executor: override, reason: `Explicit override; ${describe(g)}`, gateway: g };
+    }
+    return override === primary
+      ? { executor: primary, reason: `Explicit override; no ${override} gateway below ${config.threshold}%, so it stays here` }
+      : { executor: override, reason: `Explicit override; native ${override} on this host` };
+  }
   if (mode === "manual")
     return { executor: primary, reason: "Manual delegation only" };
-  const candidates = (gateways ?? []).filter(
-    (g) => g.provider !== primary && g.usedPercent != null && g.usedPercent < config.threshold,
-  );
-  if (candidates.length === 0)
-    return { executor: primary, reason: "No pooled subscription below threshold; native" };
-  const best = candidates.reduce((a, b) =>
-    100 - a.usedPercent > 100 - b.usedPercent ? a : b,
-  );
-  return {
-    executor: best.provider,
-    reason: `${best.name} at ${best.usedPercent}%; most headroom`,
-    gateway: best,
-  };
+  if (below.length === 0)
+    return { executor: primary, reason: `No gateway below ${config.threshold}% used; work stays here` };
+  const best = roomiest(below);
+  return { executor: best.provider, reason: `${describe(best)}; most headroom`, gateway: best };
+}
+// Whether a routing decision hands the work to a worker. Staying with the coordinator's own
+// native login is the one route that does not.
+export const delegates = (decision, primary) =>
+  Boolean(decision.gateway) || decision.executor !== primary;
+// A worker never inherits a credential the configuration names: the admin login and every
+// gateway's key variable. The provider's own variables are the exception. Native mode
+// strips every ANTHROPIC_*/OPENAI_* variable, so by now one is present only because the
+// selected gateway route set it, even when a keyRef names that same variable.
+const ROUTE_VARIABLES = new Set(["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "OPENAI_API_KEY"]);
+export function withoutReferencedSecrets(env, config) {
+  const refs = [
+    ...config.gateways.map((g) => g.keyRef),
+    ...(config.admin ? [config.admin.emailRef, config.admin.passwordRef] : []),
+  ];
+  const clean = { ...env };
+  for (const ref of refs) {
+    const name = ref.startsWith("env:") ? ref.slice(4) : null;
+    if (name && !ROUTE_VARIABLES.has(name)) delete clean[name];
+  }
+  return clean;
 }
 
 // Resolve a key reference to its value at spawn time. `env:NAME` reads the named

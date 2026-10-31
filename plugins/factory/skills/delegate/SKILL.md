@@ -1,6 +1,6 @@
 ---
 name: delegate
-description: Coordinate Claude Code subscription work within a persistent Codex task. Use when the user asks to delegate to Claude, manage its session, switch executors, inspect budget routing, or when the enabled routing hook recommends Claude.
+description: Coordinate delegated work within a persistent Codex task — to Claude natively or through a gateway, or to the Codex behind a gateway. Use when the user asks to delegate, manage a delegated session, switch executors, inspect budget routing, or when the enabled routing hook recommends a worker.
 ---
 
 # Claude delegation
@@ -19,8 +19,10 @@ never submit a local task to a different machine by guessing its project path.
    writer and wait until terminal before taking over its files.
 3. Automatic mode delegates to a pooled gateway while its account is below the threshold
    (90% used by default), picking the gateway with the most headroom; once every gateway is
-   at or above the threshold it falls back to the coordinator's native login. An explicit
-   model request still wins. Recheck after tools or completed stages. Unknown/stale usage is
+   at or above the threshold the work stays here. A gateway of your own provider counts:
+   it is a separate subscription, so the router may hand work to the Claude (or Codex)
+   behind a gateway; only your own native login is never a delegate. An explicit executor
+   request prefers that provider's gateway, then the other provider's native login. Recheck after tools or completed stages. Unknown/stale usage is
    not headroom. Do not switch an in-flight writer. A threshold is a subscription
    percentage, not a local token counter; coordination still consumes the coordinator's
    allowance.
@@ -71,6 +73,11 @@ never submit a local task to a different machine by guessing its project path.
     disabled memory sharing. Each agent writes only its own native memory store; repository
     AGENTS.md/CLAUDE.md remain project instructions. Shared full access means this is an
     ownership convention, not an OS-level write sandbox. Do not create cross-store symlinks.
+
+When routing picks the Codex behind a gateway, `claude_start` launches a Codex worker (the
+run's `executor` is `codex`, `gateway` names it) with this task's own model and effort and a
+sandbox no wider than this task's. It cannot ask mid-run: its question arrives as a
+`needs_input` result, answered by starting again with `replySource`/`replyReason`.
 
 Claude-coordinated sessions may own multiple concurrent Codex runs only in different
 working directories. `codex_inspect` lists them; wait, view, status and stop by `runId`.
