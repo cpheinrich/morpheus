@@ -5,7 +5,14 @@ import { Codex } from "../src/codex.mjs";
 import { checkClaude } from "../src/claude.mjs";
 import { checkCodex } from "../src/codex-exec.mjs";
 import { readClaudeUsage } from "../src/claude-usage.mjs";
-import { claudeRemaining, home, delegatedMarker } from "../src/config.mjs";
+import {
+  claudeRemaining,
+  home,
+  delegatedMarker,
+  readGatewayQuota,
+  resolveAdminCredentials,
+  resolveKeyRef,
+} from "../src/config.mjs";
 import { loadPool, hostEntry, bindingDigest } from "../src/pool-config.mjs";
 import { atomic, readJSON } from "../src/store.mjs";
 import { homedir } from "node:os";
@@ -111,6 +118,49 @@ try {
       recordedAt: usage?.recordedAt ?? null,
     };
     result.config = await configRead();
+    if (result.config.gateways.length) {
+      // What routing will see: each gateway's quota through the configured admin
+      // credentials, and whether each key reference resolves. Values never appear;
+      // only the reference, whether it resolved, and the error text otherwise.
+      const admin = await resolveAdminCredentials(result.config);
+      const quota = await readGatewayQuota(result.config.gateways, admin);
+      result.gateways = await Promise.all(
+        quota.map(async (g) => {
+          const entry = {
+            name: g.name,
+            provider: g.provider,
+            baseUrl: g.baseUrl,
+            usedPercent: g.usedPercent,
+            belowThreshold: g.usedPercent != null && g.usedPercent < result.config.threshold,
+            keyRef: g.keyRef,
+          };
+          if (g.error) entry.quotaError = g.error;
+          try {
+            await resolveKeyRef(g.keyRef);
+            entry.keyResolves = true;
+          } catch (e) {
+            entry.keyResolves = false;
+            entry.keyError = e.message;
+          }
+          return entry;
+        }),
+      );
+      result.gatewayAdmin = { source: admin.source };
+      if (admin.error) result.gatewayAdmin.error = admin.error;
+      if (admin.source === "missing")
+        (result.notes ??= []).push(
+          "Gateways are configured but no admin login is available: set config.admin to {emailRef, passwordRef} references, or export FACTORY_ADMIN_EMAIL and FACTORY_ADMIN_PASSWORD where the bridge service starts. Without it every gateway's quota is unknown and routing stays native.",
+        );
+      const claudeGateway = result.config.gateways.some((g) => g.provider === "claude");
+      if (result.claudeError && claudeGateway)
+        (result.notes ??= []).push(
+          "claudeError concerns native Claude delegation only. A Claude gateway needs no claude.ai login on this host; one is in fact best avoided (see below).",
+        );
+      if (result.claude && claudeGateway)
+        (result.notes ??= []).push(
+          "This host has a saved claude.ai login and a Claude gateway. The Claude CLI was observed to keep using the saved login and fail with 401 against the gateway token; run `claude auth logout` on hosts that delegate Claude work through a gateway.",
+        );
+    }
     if (result.config.subscriptionModels)
       (result.notes ??= []).push(
         "config.subscriptionModels is deprecated and ignored: any explicit model id is passed to the Claude CLI, which decides availability. Remove the key when convenient.",

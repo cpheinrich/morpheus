@@ -37,10 +37,23 @@ The installer copies the package, installs its locked dependencies, tests it, ve
 installed MCP servers against their exact shared tool-name contracts, and uses Codex's
 bundled plugin-creator helper to register it in the personal marketplace. A contract error
 lists the missing, unexpected, and observed tool names. It
-preserves other marketplace entries. If that helper is elsewhere, set
-`CODEX_PLUGIN_CREATOR` to its `create_basic_plugin.py` path. Installation does not choose
-manual or automatic mode. Finish existing delegated runs before updating the package;
-restart the bridge after an update so it loads the new source.
+preserves other marketplace entries. The helper is looked for under
+`~/.codex/.tmp/plugins/.agents/skills/plugin-creator/` and the older
+`~/.codex/skills/.system/plugin-creator/`; if it is elsewhere, set `CODEX_PLUGIN_CREATOR`
+to its `create_basic_plugin.py` path. Installation does not choose manual or automatic
+mode. Finish existing delegated runs before updating the package; restart the bridge after
+an update so it loads the new source.
+
+**Migrating from `codex-claude`** (this package's name until 2026-10-31) is part of the same
+run. When the installer finds the old install it carries the old settings into
+`~/.local/share/factory/config.json` (mode, limits, model and effort maps, project modes;
+not `threshold`, which reversed its meaning from percent remaining to percent used and
+returns to its default), restores the Claude status line the old recorder had chained,
+uninstalls the old Claude plugin and marketplace, removes the old Codex plugin and its
+personal-marketplace entry, and deletes `~/plugins/codex-claude`. It prints each step. It
+leaves `~/.local/share/codex-claude` (old run records, safe to delete once no session that
+used the old plugin is open) and the inert `hooks.state` lines for the old plugin in
+`~/.codex/config.toml`, which Codex owns while it runs.
 
 Start a new Codex task to load the installed skill/tools. Review and trust the plugin hooks
 through `/hooks`; installing a plugin does not itself trust hooks. On each execution host,
@@ -98,12 +111,42 @@ key:
 }
 ```
 
-`keyRef` is `env:NAME` (an environment variable) or `secret:path` (a 0600 file), resolved
-at spawn time. Quota is read from the gateway's admin API
-(`GET /api/v1/admin/accounts`); the admin credentials come from `FACTORY_ADMIN_EMAIL` and
-`FACTORY_ADMIN_PASSWORD`. When a gateway is selected, the bridge sets the provider
-overrides instead of stripping them and skips the native sign-in check. Native mode is
-unchanged: it still strips overrides and requires a `claude.ai`/ChatGPT sign-in.
+`keyRef` is `env:NAME` (an environment variable), `secret:path` (a 0600 file) or
+`exec:/path/to/command arg…` (a command run without a shell, split on whitespace, whose
+trimmed stdout is the value), resolved at spawn time and never logged. The `exec:` form is
+how a credentials manager stays the single source of truth, for example
+`exec:/opt/homebrew/bin/darwin-env get FACTORY_CLAUDE_KEY`; give the command an absolute
+path, since the bridge service inherits the PATH of whichever session started it.
+
+Quota is read from the gateway's admin API (`GET /api/v1/admin/accounts`) with an admin
+login. Configure it as references too:
+
+```json
+{
+  "admin": {
+    "emailRef": "exec:/opt/homebrew/bin/darwin-env get FACTORY_ADMIN_EMAIL",
+    "passwordRef": "exec:/opt/homebrew/bin/darwin-env get FACTORY_ADMIN_PASSWORD"
+  }
+}
+```
+
+Without `admin`, the service falls back to `FACTORY_ADMIN_EMAIL` and
+`FACTORY_ADMIN_PASSWORD` in its own environment. That environment is the one of the
+Claude or Codex session that first started the service, which is rarely the shell that
+exported them (a desktop-app session exports nothing), so `env:` references and the env
+fallback usually mean "quota unknown, routing native". `bridge.mjs doctor` shows each
+gateway's `usedPercent`, whether it is below the threshold, whether its `keyRef` resolves,
+and where the admin login came from, so a misconfiguration is visible before a delegation
+is attempted.
+
+When a gateway is selected, the bridge sets the provider overrides instead of stripping
+them and skips the native sign-in check. Native mode is unchanged: it still strips
+overrides and requires a `claude.ai`/ChatGPT sign-in. **A saved `claude.ai` login defeats
+the Claude gateway:** with both present, the Claude CLI was observed to keep using the
+saved login and fail with `401 Invalid API key` against the gateway token (and to take
+over two minutes doing it), although the documented precedence says the token wins. On a
+host that delegates Claude work through a gateway, run `claude auth logout`; `doctor` notes
+the combination.
 
 The selected model and effort are mapped independently at each Claude launch:
 

@@ -22,6 +22,7 @@ import {
   codexPermission,
   assertPoolAuthority,
   readGatewayQuota,
+  resolveAdminCredentials,
 } from "./config.mjs";
 import {
   atomic,
@@ -150,10 +151,10 @@ export class Manager {
     const task = await this.mutateTask(id, (current) => {
       Object.assign(current, identity);
     });
-    const gateways = await readGatewayQuota(config.gateways, {
-      adminEmail: process.env.FACTORY_ADMIN_EMAIL,
-      adminPassword: process.env.FACTORY_ADMIN_PASSWORD,
-    });
+    const gateways = await readGatewayQuota(
+      config.gateways,
+      await resolveAdminCredentials(config),
+    );
     return {
       task,
       snapshot,
@@ -669,10 +670,10 @@ export class Manager {
   async claudeInspect(sessionId, operation) {
     const config = await configRead();
     const taskId = claudeTaskId(sessionId);
-    const gateways = await readGatewayQuota(config.gateways, {
-      adminEmail: process.env.FACTORY_ADMIN_EMAIL,
-      adminPassword: process.env.FACTORY_ADMIN_PASSWORD,
-    });
+    const gateways = await readGatewayQuota(
+      config.gateways,
+      await resolveAdminCredentials(config),
+    );
     let runs;
     const task = await this.taskTransaction(taskId, async (current) => {
       let changed = false;

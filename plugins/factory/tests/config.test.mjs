@@ -283,6 +283,61 @@ test("resolveKeyRef resolves env and secret references, never a raw key", async 
   await assert.rejects(resolveKeyRef(`secret:${secret}`), /group\/world permissions/);
 });
 
+test("exec: references run a command without a shell and never leak its output", async () => {
+  // The schema accepts exec: alongside env: and secret:, and refuses a bare prefix.
+  const parsed = configSchema.parse({
+    gateways: [{ name: "c", provider: "claude", baseUrl: "http://gw", keyRef: "exec:/usr/local/bin/darwin-env get FACTORY_CLAUDE_KEY" }],
+    admin: { emailRef: "exec:/usr/local/bin/darwin-env get FACTORY_ADMIN_EMAIL", passwordRef: "secret:/p" },
+  });
+  assert.equal(parsed.admin.passwordRef, "secret:/p");
+  assert.equal(defaults().admin, null);
+  for (const bad of ["exec:", "env:", "secret:"])
+    assert.throws(() => configSchema.parse({ gateways: [{ name: "c", provider: "claude", baseUrl: "http://gw", keyRef: bad }] }), /never a raw key/);
+  const calls = [];
+  const run = async (command, args, options) => {
+    calls.push({ command, args, shell: options.shell });
+    if (command === "/bin/fail") {
+      const e = new Error("spawn failed");
+      e.code = 3;
+      e.stdout = "sk-leaked";
+      throw e;
+    }
+    if (command === "/bin/empty") return { stdout: "\n" };
+    return { stdout: "  sk-from-command\n" };
+  };
+  assert.equal(await resolveKeyRef("exec:/bin/getkey get  FACTORY_CLAUDE_KEY", { run }), "sk-from-command");
+  assert.deepEqual(calls[0], { command: "/bin/getkey", args: ["get", "FACTORY_CLAUDE_KEY"], shell: undefined });
+  await assert.rejects(resolveKeyRef("exec:/bin/empty", { run }), /printed nothing/);
+  await assert.rejects(resolveKeyRef("exec:/bin/fail", { run }), (e) => {
+    assert.match(e.message, /exited 3/);
+    assert.doesNotMatch(e.message, /sk-leaked/);
+    return true;
+  });
+  await assert.rejects(resolveKeyRef("exec:   ", { run }), /needs a command/);
+});
+
+test("admin credentials come from configured references, else the service environment", async () => {
+  const env = { FACTORY_ADMIN_EMAIL: "a@x", FACTORY_ADMIN_PASSWORD: "pw" };
+  const { resolveAdminCredentials } = await import("../src/config.mjs");
+  assert.deepEqual(await resolveAdminCredentials(defaults(), { env }), {
+    adminEmail: "a@x",
+    adminPassword: "pw",
+    source: "env",
+  });
+  assert.equal((await resolveAdminCredentials(defaults(), { env: {} })).source, "missing");
+  const withRefs = configSchema.parse({ admin: { emailRef: "env:E", passwordRef: "exec:/bin/pw" } });
+  const resolved = await resolveAdminCredentials(withRefs, {
+    env: { E: "admin@x" },
+    run: async () => ({ stdout: "secret-pw\n" }),
+  });
+  assert.deepEqual(resolved, { adminEmail: "admin@x", adminPassword: "secret-pw", source: "config" });
+  // A reference that cannot be resolved reports why and yields no credentials, so quota
+  // reads fail closed instead of the service crashing.
+  const broken = await resolveAdminCredentials(withRefs, { env: {}, run: async () => ({ stdout: "x" }) });
+  assert.equal(broken.adminEmail, undefined);
+  assert.match(broken.error, /Environment variable E is not set/);
+});
+
 test("readGatewayQuota reads the sub2api admin API and fails closed", async () => {
   const fetchImpl = async (url, opts) => {
     if (url.endsWith("/api/v1/auth/login")) {
@@ -321,6 +376,33 @@ test("readGatewayQuota reads the sub2api admin API and fails closed", async () =
     fetchImpl: async () => ({ ok: false, status: 401, json: async () => ({}) }),
   });
   assert.equal(bad[0].usedPercent, null);
+});
+
+test("an account is as full as its most-used live window", async () => {
+  const { accountUsage } = await import("../src/config.mjs");
+  const now = Date.parse("2026-10-31T13:30:00Z");
+  // Claude: an empty 5-hour window does not hide a nearly spent week.
+  assert.deepEqual(
+    accountUsage("claude", { session_window_utilization: 0, passive_usage_7d_utilization: 0.93, passive_usage_7d_reset: now / 1000 + 3600 }, now),
+    { usedPercent: 93, windows: { "5h": 0, "7d": 93 } },
+  );
+  // A 7-day window whose reset time has passed is not counted.
+  assert.deepEqual(
+    accountUsage("claude", { session_window_utilization: 0.06, passive_usage_7d_utilization: 0.93, passive_usage_7d_reset: now / 1000 - 60 }, now),
+    { usedPercent: 6, windows: { "5h": 6 } },
+  );
+  // Codex: the higher of the two, skipping a 5-hour window that already reset.
+  assert.equal(
+    accountUsage("codex", { codex_5h_used_percent: 80, codex_5h_reset_at: "2026-10-31T08:32:08Z", codex_7d_used_percent: 53, codex_7d_reset_at: "2026-11-05T05:11:11Z" }, now).usedPercent,
+    53,
+  );
+  assert.equal(
+    accountUsage("codex", { codex_5h_used_percent: 80, codex_5h_reset_at: "2026-10-31T14:00:00Z", codex_7d_used_percent: 53, codex_7d_reset_at: "2026-11-05T05:11:11Z" }, now).usedPercent,
+    80,
+  );
+  // Nothing readable is unknown, never headroom.
+  assert.deepEqual(accountUsage("claude", {}, now), { usedPercent: null, windows: {} });
+  assert.equal(accountUsage("codex", { codex_7d_used_percent: "53" }, now).usedPercent, null);
 });
 
 test("placement picks the most-headroom gateway below the threshold", () => {
