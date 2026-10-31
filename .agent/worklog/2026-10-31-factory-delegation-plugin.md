@@ -20,6 +20,8 @@ single-instance assumption) were fixed or documented. A follow-up turn cleared
 the fixes and raised three further minor items (a dead import, an untested 0600
 check, a wording nit), all fixed. No substantive issue remains.
 
+Two substantive findings (route() did not filter the delegate provider; FACTORY_ADMIN_* leaked into the worker env) and six minor findings. All fixed or documented; a follow-up turn cleared the fixes and three further minor items were fixed.
+
 ```morpheus-review
 {
   "version": 2,
