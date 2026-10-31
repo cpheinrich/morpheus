@@ -13,6 +13,7 @@ import {
   subscriptionEnv,
   readGatewayQuota,
   resolveKeyRef,
+  delegates,
 } from "../src/config.mjs";
 const task = { project: "/repo/.git", override: "auto" };
 const gw = (name, provider, usedPercent) => ({ name, provider, baseUrl: "http://gw", keyRef: "env:KEY", usedPercent });
@@ -411,15 +412,37 @@ test("placement picks the most-headroom gateway below the threshold", () => {
   const r = route(c, task, gateways);
   assert.equal(r.executor, "claude");
   assert.equal(r.gateway.name, "claude");
-  // At or above the threshold, or unknown, the gateway is skipped.
-  assert.equal(route(c, task, [gw("claude", "claude", 90)]).executor, "codex");
+  // At or above the threshold, or unknown, the gateway is skipped and the work stays here.
+  const stay = route(c, task, [gw("claude", "claude", 90)]);
+  assert.deepEqual([stay.executor, stay.gateway, delegates(stay, "codex")], ["codex", undefined, false]);
   assert.equal(route(c, task, [gw("claude", "claude", null)]).executor, "codex");
-  // The coordinator's own provider is never a delegate: a codex gateway with more
-  // headroom than the claude gateway is skipped when Codex coordinates.
-  assert.equal(
-    route(c, task, [gw("claude", "claude", 80), gw("codex", "codex", 10)]).executor,
-    "claude",
-  );
-  // An explicit model still wins over the greedy pick.
-  assert.equal(route(c, task, gateways, "codex").executor, "codex");
+  // A gateway of the coordinator's own provider is a separate subscription, so it is a
+  // delegate like any other: with more headroom it wins when Codex coordinates.
+  const own = route(c, task, [gw("claude", "claude", 80), gw("codex", "codex", 10)]);
+  assert.deepEqual([own.executor, own.gateway.name, delegates(own, "codex")], ["codex", "codex", true]);
+  assert.match(own.reason, /codex gateway \(codex\) at 10% used, below 90%; most headroom/);
+  // The same holds for a Claude coordinator and a Claude gateway.
+  const claudeOwn = route(c, task, [gw("claude", "claude", 0), gw("codex", "codex", 53)], undefined, "claude");
+  assert.deepEqual([claudeOwn.executor, claudeOwn.gateway.name, delegates(claudeOwn, "claude")], ["claude", "claude", true]);
+});
+
+test("an explicit override prefers its provider's gateway and never delegates to the coordinator's own login", () => {
+  const c = { ...defaults(), mode: "manual" };
+  const gateways = [gw("claude", "claude", 5), gw("codex", "codex", 53)];
+  // Another provider: its gateway when one is below the threshold, else its native login.
+  const viaGateway = route(c, task, gateways, "claude");
+  assert.deepEqual([viaGateway.executor, viaGateway.gateway.name], ["claude", "claude"]);
+  const native = route(c, task, [gw("claude", "claude", 95)], "claude");
+  assert.deepEqual([native.executor, native.gateway, delegates(native, "codex")], ["claude", undefined, true]);
+  // The coordinator's own provider: its gateway, or the work stays here.
+  const ownGateway = route(c, task, gateways, "codex");
+  assert.deepEqual([ownGateway.executor, ownGateway.gateway.name, delegates(ownGateway, "codex")], ["codex", "codex", true]);
+  const here = route(c, task, [gw("claude", "claude", 5)], "codex");
+  assert.deepEqual([here.executor, here.gateway, delegates(here, "codex")], ["codex", undefined, false]);
+  assert.match(here.reason, /no codex gateway below 90%, so it stays here/);
+  // Among several gateways of one provider the roomiest wins.
+  const two = route(c, task, [gw("pool-a", "codex", 40), gw("pool-b", "codex", 12)], "codex");
+  assert.equal(two.gateway.name, "pool-b");
+  // Off still beats any override.
+  assert.equal(delegates(route({ ...c, mode: "off" }, task, gateways, "claude"), "codex"), false);
 });

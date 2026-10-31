@@ -15,14 +15,14 @@ const specs = {
     { ...task, operation: z.enum(["codex", "claude"]).optional() },
   ],
   start: [
-    "Delegate a bounded task to Claude on this host in the current repository. First inspect; only pass user-authorized handoff content.",
+    "Delegate a bounded task to the worker routing chose: Claude (native or through a gateway) or Codex through a gateway, never this task's own native login. Runs on this host in the current repository. First inspect; only pass user-authorized handoff content.",
     {
       ...task,
       prompt: z.string().min(1).max(200000),
       replySource: z.enum(["codex", "user"]).optional(),
       replyReason: z.string().optional(),
       cwd: z.string().optional(),
-      operation: z.enum(["claude"]).optional(),
+      operation: z.enum(["claude", "codex"]).optional(),
       model: z.string().optional(),
       effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
       background: z.boolean().default(false),

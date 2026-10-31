@@ -1311,6 +1311,21 @@ closed. This compatibility surface must be reverified after Codex updates. Claud
 cannot atomically disable paid overage per invocation; account-level extra usage must be
 disabled for a hard subscription-only spend boundary. No API-key fallback is implemented.
 
+**A gateway of the coordinator's own provider is a valid delegate** — 2026-10-31
+(MO-26-10-31-06.49.52). Chris, after a Claude session reported routing to the Codex gateway
+although the Claude gateway sat at 0%: *"Claude should be able to delegate to a claude thats
+behind the gateway as an API. Just not route to the current claude that's active on the
+machine thats delegating because that would be circular"*, and the same for Codex. This
+supersedes the "coordinator's own provider is never a delegate" filter shipped with the
+entry below. Only the coordinator's own native login is excluded. Automatic routing picks
+the roomiest gateway of either provider below the threshold, else keeps the work here; an
+explicit executor prefers that provider's gateway, then the other provider's native login.
+The existing start tools launch whichever worker routing chose. A same-provider worker
+inherits the coordinator's model, effort and permission mode or sandbox, gets no shared
+memory, and its saved session is keyed per gateway. A Claude worker's live question is
+answered through a new `codex_answer` tool. Every variable a configured secret reference
+names is removed from worker environments. No dependency.
+
 **codex-claude becomes the factory delegation plugin** — 2026-10-31
 (MO-26-10-31-04.37.59). `plugins/codex-claude/` is renamed `plugins/factory/` and
 generalized from a two-way Codex↔Claude bridge into a provider-agnostic delegation layer.

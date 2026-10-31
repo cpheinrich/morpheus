@@ -3217,15 +3217,18 @@ the package into a personal marketplace; execution remains off until enabled. Pe
 settings and session records stay outside the repository.
 
 The bridge works in both directions. Whichever agent holds the conversation is the
-coordinator; it routes at safe checkpoints using its *own* subscription allowance, keeps
-explicit task/operation overrides, and starts the other agent subscription-authenticated on
-the same host and worktree. Automatic mode defaults to delegating below 50% remaining in the
-coordinator's least remaining reported allowance window; explicit saved thresholds are
-preserved. The coordinator consumes its own allowance while supervising. Codex reports its
-windows through the app server; Claude Code exposes them only to its status line, so a
-recorder status line (chaining any existing one) writes them for routing, and missing or
-stale data never triggers a handoff. Claude permission modes map onto Codex's sandbox
-without widening (only an explicit bypass reaches full access). Delegated workers are marked
+coordinator, on this host's native login; it routes at safe checkpoints, keeps explicit
+task/operation overrides, and starts workers on the same host and worktree. A worker is the
+other agent on its native login, or either agent behind a pooled-subscription gateway
+(sub2api), reached as an API with its own key. A gateway of the coordinator's own provider
+is a valid delegate because it is a separate subscription; the coordinator's own native
+login never is, because that would be circular. Automatic mode picks the gateway with the
+most headroom below its threshold (90% used by default, read from the gateway's admin API)
+and otherwise keeps the work with the coordinator; missing or stale usage never triggers a
+handoff. The coordinator consumes its own allowance while supervising. A worker never
+widens permissions: Claude permission modes map onto Codex's sandbox (only an explicit
+bypass reaches full access), a same-provider worker inherits the coordinator's own mode or
+sandbox, and saved worker sessions are kept per gateway so routes never resume each other. Delegated workers are marked
 so neither side's hooks or tools delegate back. Native Claude session ids
 provide persistence; a leased process guardian bounds live workers. Permission metadata
 must be verified before delegation, and unknown/restricted confinement fails closed in the
