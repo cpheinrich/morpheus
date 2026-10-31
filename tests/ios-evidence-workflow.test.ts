@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
@@ -10,7 +11,9 @@ type Step = { id?: string; name?: string; uses?: string; run?: string; if?: stri
 const workflow = async () => load(await readFile(new URL('../.github/workflows/ios-ci.yml', import.meta.url), 'utf8')) as { jobs: { test: { steps: Step[] } } };
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), 'ios-evidence-'));
-  for (const child of ['bin', 'results', 'logs']) await mkdir(join(dir, child));
+  for (const child of ['bin', 'results', 'logs', '.morpheus-ci/scripts']) await mkdir(join(dir, child), { recursive: true });
+  // The test step runs this workflow's retry script from its actions checkout.
+  await symlink(fileURLToPath(new URL('../scripts/ios-test-retry.py', import.meta.url)), join(dir, '.morpheus-ci/scripts/ios-test-retry.py'));
   const env = { ...process.env, PATH: `${dir}/bin:${process.env.PATH}`, GITHUB_WORKSPACE: dir, RESULTS: `${dir}/results`, LOGS: `${dir}/logs`, ARG_LOG: `${dir}/argv`, PROJECT: 'App.xcodeproj', SCHEME: 'App', CONFIGURATION: 'Debug', SDK: 'iphonesimulator', PLATFORM: 'iOS Simulator', DESTINATION: 'id=test', SOURCE_PACKAGES: `${dir}/packages`, DERIVED_DATA: `${dir}/derived`, PARALLEL_TESTING: 'NO', MAXIMUM_PARALLEL_TESTING_WORKERS: '0', TEST_PLAN: '', SKIP_TESTING: '', TEST_ITERATIONS: '0', FIREBASE_EMULATORS: 'false', PRE_TEST_SCRIPT: '', ONLY_TESTING: '', TEST_SELECTION: '', TEST_EVIDENCE_SCRIPT: '' };
   async function binary(name: string, script: string) { const path = join(dir, 'bin', name); await writeFile(path, '#!/bin/bash\n'+script); await chmod(path, 0o755); }
   await binary('xcodebuild', 'printf "%s\\n" "$@" > "$ARG_LOG"\n');
@@ -74,23 +77,6 @@ describe('native selection and result evidence', () => {
       const args = (await readFile(f.env.ARG_LOG,'utf8')).trim().split('\n');
       expect(args.filter(a => a.startsWith('-only-testing:'))).toEqual(['-only-testing:AppTests','-only-testing:AppUITests/Editor/testSave()','-only-testing:AppUITests/$(touch injected)/test']);
       await expect(readFile(join(f.dir,'injected'))).rejects.toThrow();
-    } finally { await rm(f.dir,{recursive:true,force:true}); }
-  });
-  it('retries failed tests in the same process, and only when retries are enabled', async () => {
-    const f = await fixture();
-    try {
-      await f.run('Run unit and UI tests');
-      const plain = (await readFile(f.env.ARG_LOG,'utf8')).trim().split('\n');
-      expect(plain).not.toContain('-retry-tests-on-failure');
-      expect(plain).not.toContain('-test-iterations');
-      f.env.TEST_ITERATIONS = '3';
-      await f.run('Run unit and UI tests');
-      const args = (await readFile(f.env.ARG_LOG,'utf8')).trim().split('\n');
-      const at = args.indexOf('-retry-tests-on-failure');
-      expect(at).toBeGreaterThan(0);
-      expect(args.slice(at, at + 3)).toEqual(['-retry-tests-on-failure','-test-iterations','3']);
-      // A relaunch per retry re-executes the whole UI bundle (2026-10-05); it must not come back.
-      expect(args).not.toContain('-test-repetition-relaunch-enabled');
     } finally { await rm(f.dir,{recursive:true,force:true}); }
   });
   it('retains the exact manifest and commit, runs the validator, and uploads after any result', async () => {

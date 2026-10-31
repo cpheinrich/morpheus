@@ -103,7 +103,7 @@ on:
       test-iterations:
         description: Forwarded to ios-ci.yml; see its input of the same name.
         type: number
-        default: 0
+        default: 3
       only-testing:
         description: >
           Forwarded to ios-ci.yml: newline-separated xcodebuild -only-testing identifiers

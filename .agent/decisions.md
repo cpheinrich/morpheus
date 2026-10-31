@@ -25,6 +25,23 @@ per-finding `turn`), and a `blocked` turn that is handed over names its substant
 initial ceiling. Reviewers block only on substantive problems; style and wording are notes the
 author may decline in one line. No dependency: Zod and the existing checker.
 
+**iOS test retries rerun only the failed tests in a freshly erased simulator; a pass there warns**
+— 2026-10-30. MO-26-10-30-15.16.58. Chris's direction: checks that protect users block, everything
+else warns, and simplify rather than add machinery. Xcode's in-process `-retry-tests-on-failure`
+kept the simulator and app data, so Evo's leftover-state UI failures failed all three iterations.
+`ios-ci.yml` now runs the caller's selection once, then erases the job-owned device in place (no
+new device, so ownership and post-hook cleanup are unchanged), reruns the pre-test script and
+starts a new serial xcodebuild for only what still fails. A test that passes on that clean retry
+is flaky: an annotation, a job-summary line and a `flaky-tests` output, never a failure. A test
+failing every attempt fails the job, and a failure that names no test is never retried away.
+`test-iterations` keeps its name and now defaults to 3 attempts. The first attempt's bundle stays
+the evidence and `test-attempts.json` records every attempt; when everything recovered, `tests.json`
+and `summary.json` show recovered tests as passed with `Repetition` children, Xcode's own retry
+shape, because Evo's validator reads them and `xcresulttool merge` (measured) reports a recovered
+test as failed. Considered fastlane-plugin-test_center 3.19.1 (`multi_scan`;
+last published 2022-08-18, needs Ruby and fastlane); built about 200 lines of standard-library
+Python instead, since the artifact stage already makes `python3` a runner requirement.
+
 **HQ presentation is an executive-first shared system, with product/design leadership in Morpheus**
 — 2026-10-29. Every HQ page serves five-second orientation, thirty-second executive understanding
 and deliberate study; long detail remains in stable linked sections and appendices. Shell,
