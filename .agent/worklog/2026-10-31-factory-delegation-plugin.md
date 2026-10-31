@@ -27,7 +27,7 @@ check, a wording nit), all fixed. No substantive issue remains.
   "reviewed": "6768ba9ada9152c1845eca3917c2a811c8dc4e67",
   "covered": "ab3dac77fa7760fdaf7c751ece2f8a7a58f4fcc5",
   "authorSession": "ses_e6f078b7dffequWPGBJnFpal4a",
-  "reviewerSession": "ses_e6e35c556ffeZExtcwAMeaByLy",
+  "reviewerSession": "opencode/977dd986-9e3e-4d27-b618-ff9c15022af1",
   "risk": "normal",
   "elapsedMinutes": 8,
   "timing": {
@@ -39,7 +39,7 @@ check, a wording nit), all fixed. No substantive issue remains.
   "summary": "Two substantive findings (route() did not filter the delegate provider; FACTORY_ADMIN_* leaked into the worker env) and six minor findings. All fixed or documented; a follow-up turn cleared the fixes and three further minor items were fixed.",
   "findings": [
     {
-      "id": "F1",
+      "id": "F01",
       "severity": "substantive",
       "description": "route() treated every gateway as a candidate regardless of provider, so a gateway of the coordinator's own provider could be picked as the delegate and fail the delegation.",
       "paths": ["plugins/factory/src/config.mjs"],
@@ -47,7 +47,7 @@ check, a wording nit), all fixed. No substantive issue remains.
       "response": "route() now filters g.provider !== primary, and a test covers the mixed-pool case."
     },
     {
-      "id": "F2",
+      "id": "F02",
       "severity": "substantive",
       "description": "FACTORY_ADMIN_EMAIL/PASSWORD leaked into the delegated worker environment because gateway mode spread the full process.env and the strip regexes did not cover FACTORY_ADMIN_.",
       "paths": ["plugins/factory/src/claude.mjs", "plugins/factory/src/codex-exec.mjs", "plugins/factory/src/config.mjs"],
@@ -55,7 +55,7 @@ check, a wording nit), all fixed. No substantive issue remains.
       "response": "FACTORY_ADMIN_ is added to the strip regexes, and gateway mode builds on subscriptionEnv/codexEnv instead of spreading process.env."
     },
     {
-      "id": "F3",
+      "id": "F03",
       "severity": "minor",
       "description": "readGatewayQuota assumes one sub2api instance and one account per provider.",
       "paths": ["plugins/factory/src/config.mjs"],
@@ -63,7 +63,7 @@ check, a wording nit), all fixed. No substantive issue remains.
       "response": "Documented as a limitation in a comment."
     },
     {
-      "id": "F4",
+      "id": "F04",
       "severity": "minor",
       "description": "The threshold comment still described the old remaining-allowance semantics.",
       "paths": ["plugins/factory/src/config.mjs"],
@@ -71,7 +71,7 @@ check, a wording nit), all fixed. No substantive issue remains.
       "response": "Comment rewritten to describe gateway usage."
     },
     {
-      "id": "F5",
+      "id": "F05",
       "severity": "minor",
       "description": "The inspect tool descriptions still mentioned subscription allowance.",
       "paths": ["plugins/factory/scripts/mcp.mjs", "plugins/factory/scripts/claude-mcp.mjs"],
@@ -79,7 +79,7 @@ check, a wording nit), all fixed. No substantive issue remains.
       "response": "Descriptions updated to gateway quota."
     },
     {
-      "id": "F6",
+      "id": "F06",
       "severity": "minor",
       "description": "remaining() was dead production code after the re-architecture.",
       "paths": ["plugins/factory/src/config.mjs", "plugins/factory/tests/config.test.mjs"],
@@ -87,7 +87,7 @@ check, a wording nit), all fixed. No substantive issue remains.
       "response": "Removed the function and its test."
     },
     {
-      "id": "F7",
+      "id": "F07",
       "severity": "minor",
       "description": "resolveKeyRef did not enforce the documented 0600 mode on secret files.",
       "paths": ["plugins/factory/src/config.mjs"],
@@ -95,7 +95,7 @@ check, a wording nit), all fixed. No substantive issue remains.
       "response": "resolveKeyRef now refuses a group/world-permission secret file, with a test."
     },
     {
-      "id": "F8",
+      "id": "F08",
       "severity": "minor",
       "description": "Gateway mode did not scrub conflicting provider env vars the way native mode does.",
       "paths": ["plugins/factory/src/claude.mjs", "plugins/factory/src/codex-exec.mjs"],
@@ -103,7 +103,7 @@ check, a wording nit), all fixed. No substantive issue remains.
       "response": "Gateway mode now builds on subscriptionEnv/codexEnv, which strip the provider overrides first."
     },
     {
-      "id": "F9",
+      "id": "F09",
       "severity": "minor",
       "turn": 2,
       "description": "delegatedMarker was imported but unused after the gateway-mode change.",
@@ -132,7 +132,7 @@ check, a wording nit), all fixed. No substantive issue remains.
   ],
   "followUps": [
     {
-      "reviewerSession": "ses_e6e35c556ffeZExtcwAMeaByLy",
+      "reviewerSession": "opencode/977dd986-9e3e-4d27-b618-ff9c15022af1",
       "commit": "c66e673375dee4d106ec6edf9a337a2b82cd3027",
       "outcome": "cleared",
       "elapsedMinutes": 3,
