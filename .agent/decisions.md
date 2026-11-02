@@ -1,5 +1,13 @@
 # Decisions
 
+**Exact HQ record lookups precede token relevance by default** — 2026-11-02.
+MO-26-11-02-13.16.08, #478. Numeric token frequency must not displace the requested record.
+Use existing stored identity fields and the canonical roadmap-ID grammar, with filename
+boundaries, before the result limit. Keep ordinary MiniSearch/source-weight ranking within
+each group and preserve explicit project callbacks as a full ranking override. This is a
+small domain-specific correction using the existing MiniSearch dependency, with no second
+index, payload version, search provider or new package.
+
 **Reviews never wait on approval inside five turns, and any fresh reviewer may continue** —
 2026-10-30. MO-26-10-30-14.56.24. Evo's CD staging channel stalled from 2026-10-26 because a
 test-only repair PR (evo#665) had an incomplete initial review: the next turn needed

@@ -23,7 +23,7 @@ export type HqSearchResult = IndexedHqSearchResult & {
 };
 export type HqSearchOptions = {
     limit?: number;
-    /** Project-specific ranking without forking the shared engine. */
+    /** Replaces default ranking, including exact-identity precedence. */
     sourceWeight?: (result: IndexedHqSearchResult) => number;
 };
 export declare function createHqSearchIndex(documents: HqSearchDocument[]): MiniSearch<HqSearchDocument>;

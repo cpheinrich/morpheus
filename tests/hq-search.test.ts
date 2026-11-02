@@ -85,6 +85,57 @@ describe("HQ search documents", () => {
     expect(result?.href).toBe("/hq/product/roadmap/launch");
   });
 
+  it.each([false, true])("prefers a complete roadmap ID to numeric tokens and body mentions (reload=%s)", async (reload) => {
+    const id = "LK-26-08-28-13.52.42";
+    const path = `hq/product/roadmap/${id}-add-shared-hq-search.md`;
+    const catalog = [
+      markdownSearchDocument({
+        id: `markdown:${path}`, title: "Add shared HQ search", href: "/roadmap", path,
+        source: "A historical plan to add shared HQ search. ".repeat(40), metadata: { id },
+      }),
+      markdownSearchDocument({
+        id: "inbox", title: "LK 26 08 28 13 52", href: "/inbox", path: "hq/team/alexoedelman.md",
+        source: "Q4 report: 42.02% and 42.96%.",
+      }),
+      markdownSearchDocument({
+        id: "mention", title: "Status", href: "/status", path: "hq/team/README.md",
+        source: `Discussion of ${id}. `.repeat(20),
+      }),
+    ];
+    const index = reload ? await loadHqSearchIndex(createHqSearchPayload(catalog)) : createHqSearchIndex(catalog);
+    const weighted = searchHq(index, id, { sourceWeight: (result) => result.path.includes("roadmap/") ? 0.35 : 1 });
+    expect(weighted[0]?.path).not.toBe(path); // The fixture reproduces ordinary token scoring.
+    expect(searchHq(index, `  ${id.toLowerCase()}  `, 1).map((result) => result.path)).toEqual([path]);
+  });
+
+  it.each(["MO-055", "MO-26-07-29-045", "MO-2026-08-01-15.26.34"])("recognizes the complete legacy roadmap ID %s", (id) => {
+    const path = `product/roadmap/${id}-fix-search.md`;
+    const index = createHqSearchIndex([
+      markdownSearchDocument({ id: "target", title: "Fix search", href: "/target", path, source: "Historical record. ".repeat(100) }),
+      markdownSearchDocument({ id: "other", title: "Status", href: "/other", path: "team/README.md", source: id.repeat(20) }),
+    ]);
+    expect(searchHq(index, id)[0]?.path).toBe(path);
+  });
+
+  it.each(["Plan 42.02", "product/roadmap/plan-42.02.md", "plan-42.02.md", "plan-42.02"])("prefers exact title/path identity %s", (query) => {
+    const index = createHqSearchIndex([
+      markdownSearchDocument({ id: "target", title: "Plan 42.02", href: "/target", path: "product/roadmap/plan-42.02.md", source: "Historical record. ".repeat(100) }),
+      markdownSearchDocument({ id: "other", title: "Status", href: "/other", path: "team/README.md", source: `${query} `.repeat(20) }),
+    ]);
+    expect(searchHq(index, query)[0]?.href).toBe("/target");
+  });
+
+  it.each(["LK-26-08-28-13.52", "LK-26-08-28-13.52.4", "MO-055"])("does not promote a partial filename ID for %s", (query) => {
+    const id = query === "MO-055" ? "MO-0550" : "LK-26-08-28-13.52.42";
+    const index = createHqSearchIndex([
+      markdownSearchDocument({ id: "partial", title: "Old task", href: "/partial", path: `product/roadmap/${id}-old-task.md`, source: "Historical record. ".repeat(100) }),
+      markdownSearchDocument({ id: "other", title: "Status", href: "/other", path: "team/README.md", source: `${query} `.repeat(20) }),
+    ]);
+    const ordinary = searchHq(index, query, { sourceWeight: (result) => result.path.includes("roadmap/") ? 0.35 : 1 });
+    expect(searchHq(index, query).map((result) => result.id)).toEqual(ordinary.map((result) => result.id));
+    expect(searchHq(index, query)[0]?.href).toBe("/other");
+  });
+
   it("builds honest snippets for text and filename-only PDFs", () => {
     expect(searchSnippet("", [])).toMatch(/no extractable text/i);
     expect(searchSnippet("A ".repeat(150) + "needle " + "B ".repeat(150), ["needle"])).toContain(
