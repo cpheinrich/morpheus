@@ -26,8 +26,8 @@ jobs and the 100-row incomplete-census boundary. Final focused suite: `pnpm exec
 `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm compile`,
 `pnpm morpheus pm index` and `git diff --check` passed. The compiled CLI against
 Evo PR734 returned green with six checks (five passed, one skipped) in four seconds.
-One full `pnpm test` is in progress, explicitly requested by this automation mandate;
-no repeat of the full local suite is planned.
+One full `pnpm test`, explicitly requested by this automation mandate, passed all 4,150
+tests across 138 files in 110 seconds. No repeat of the full local suite was needed.
 
 ## Investigation limits
 
@@ -35,3 +35,28 @@ Graph tools were absent from the session. The supported bootstrap repair refused
 because other active CBM sessions could not safely stop. Those sessions were left alone;
 source and direct tests were used, with no graph-completeness claim. The separate existing
 missing-required-check roadmap item MO-26-10-28-15.00.57 remains outside this fix.
+
+## Independent review
+
+The independent reviewer cleared the exact remote implementation head with no findings. The review verified same-workflow cancellation supersession, pending replacements, preserved failures and invalid-evidence refusal, final rollup confirmation, tests, generated output, documentation and roadmap changes. Its own focused run passed all 233 waiter tests. Graph tools were unavailable; the reviewer used direct source evidence without claiming graph completeness.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "ae147cb6a1c296c239a4d25098c3211d1f6c6f25",
+  "reviewed": "0c1ad383772909ab250b92200bac667acb8cc9cc",
+  "covered": "0c1ad383772909ab250b92200bac667acb8cc9cc",
+  "authorSession": "01a19dd8-f59d-7583-99cf-870ebd3ca0f9",
+  "reviewerSession": "/root/review_waiter",
+  "risk": "high",
+  "elapsedMinutes": 2.55,
+  "timing": {
+    "source": "clock",
+    "durationMs": 153000,
+    "evidence": "Author clock readings around /root/review_waiter invocation: 2026-11-02 21:12:02 UTC at dispatch and 2026-11-02 21:14:35 UTC on receipt of its completed result."
+  },
+  "outcome": "complete",
+  "summary": "The independent reviewer cleared the exact remote implementation head with no findings. The review verified same-workflow cancellation supersession, pending replacements, preserved failures and invalid-evidence refusal, final rollup confirmation, tests, generated output, documentation and roadmap changes. Its own focused run passed all 233 waiter tests. Graph tools were unavailable; the reviewer used direct source evidence without claiming graph completeness.",
+  "findings": []
+}
+```
