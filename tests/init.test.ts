@@ -695,6 +695,10 @@ describe("morpheus init", () => {
       expect(text).toContain("isolated pull request");
       expect(text).toContain("follow-up interpretation belong in separate pull requests");
       expect(text).toContain("backfills their ids into the note's `roadmap:` field as bookkeeping");
+      expect(text).toContain("note_format: priority-first-v1");
+      expect(text).toContain("## Executive summary");
+      expect(text).toContain("## Key decisions");
+      expect(text).toContain("## Key action items");
       // A pointer, not a copy — one document about what may be published, so
       // there is nothing to drift.
       expect(text).toContain("blob/main/hq/team/meeting-notes/README.md");

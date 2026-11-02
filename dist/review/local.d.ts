@@ -10,6 +10,11 @@ declare const FollowUp: z.ZodObject<{
         approvedAt: z.ZodISODateTime;
         reason: z.ZodString;
     }, z.core.$strict>>;
+    handoff: z.ZodOptional<z.ZodObject<{
+        reason: z.ZodString;
+        findings: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    blockedOn: z.ZodOptional<z.ZodArray<z.ZodString>>;
     verification: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
             "finding-fix": "finding-fix";
@@ -41,12 +46,19 @@ declare const FollowUp: z.ZodObject<{
 }, z.core.$strict>;
 export type ReviewFollowUp = z.infer<typeof FollowUp>;
 /**
- * Reviewer turns after the initial review. Three turns in total is the cap that stops an
- * author and a reviewer trading fixes and findings indefinitely: a turn is spent to resolve
- * what the previous one left blocked, or on a late correction after a clearance that names
- * its scope decision, and nothing after the last one is automatic.
+ * Ordinary review turns a pull request gets without anyone's approval, counting the initial review
+ * (Chris, 2026-10-30). Three proved too few: agents stalled waiting for a human to approve another
+ * round. The cap still exists, because an author and a reviewer trading fixes and findings
+ * indefinitely burns a session per turn; beyond it each ordinary turn carries `humanAuthorization`.
+ * Incomplete turns count. The one automatic finalization turn does not, as before.
  */
-export declare const MAX_FOLLOW_UPS = 2;
+export declare const MAX_REVIEW_TURNS = 5;
+export declare const MAX_FOLLOW_UPS: number;
+/**
+ * Where the three-turn contract put its one bounded `verification` turn: the fourth. Records that
+ * used it stay valid, so it stays checked there; under five automatic turns it is no longer needed.
+ */
+export declare const VERIFICATION_TURN_INDEX = 2;
 export declare const FINAL_VERIFICATION_CEILING_MINUTES = 5;
 export declare const FINAL_VERIFICATION_NON_TEST_LINES = 40;
 export declare const FINAL_VERIFICATION_TEST_LINES = 80;
@@ -105,6 +117,7 @@ export declare const ReviewRecord: z.ZodObject<{
     }, z.core.$strict>>>;
     findings: z.ZodArray<z.ZodObject<{
         id: z.ZodString;
+        turn: z.ZodOptional<z.ZodNumber>;
         severity: z.ZodEnum<{
             minor: "minor";
             substantive: "substantive";
@@ -113,8 +126,8 @@ export declare const ReviewRecord: z.ZodObject<{
         description: z.ZodString;
         paths: z.ZodArray<z.ZodString>;
         disposition: z.ZodEnum<{
-            open: "open";
             fixed: "fixed";
+            open: "open";
             deferred: "deferred";
             disputed: "disputed";
         }>;
@@ -136,6 +149,11 @@ export declare const ReviewRecord: z.ZodObject<{
             approvedAt: z.ZodISODateTime;
             reason: z.ZodString;
         }, z.core.$strict>>;
+        handoff: z.ZodOptional<z.ZodObject<{
+            reason: z.ZodString;
+            findings: z.ZodArray<z.ZodString>;
+        }, z.core.$strict>>;
+        blockedOn: z.ZodOptional<z.ZodArray<z.ZodString>>;
         verification: z.ZodOptional<z.ZodObject<{
             kind: z.ZodEnum<{
                 "finding-fix": "finding-fix";
@@ -175,6 +193,11 @@ export declare const ReviewRecord: z.ZodObject<{
             approvedAt: z.ZodISODateTime;
             reason: z.ZodString;
         }, z.core.$strict>>;
+        handoff: z.ZodOptional<z.ZodObject<{
+            reason: z.ZodString;
+            findings: z.ZodArray<z.ZodString>;
+        }, z.core.$strict>>;
+        blockedOn: z.ZodOptional<z.ZodArray<z.ZodString>>;
         verification: z.ZodOptional<z.ZodObject<{
             kind: z.ZodEnum<{
                 "finding-fix": "finding-fix";
@@ -208,6 +231,13 @@ export declare const ReviewRecord: z.ZodObject<{
 export type LocalReviewRecord = z.infer<typeof ReviewRecord>;
 /** Follow-up turns in order, whichever field the record used. */
 export declare function followUpTurns(record: LocalReviewRecord): ReviewFollowUp[];
+/**
+ * Whether two turns were taken by one reviewer session. A Codex task path is exact, because the
+ * runner issued that spelling; a global id ignores a provider prefix and case, as reuse checks do.
+ */
+export declare function sameReviewer(a: string, b: string): boolean;
+/** Every distinct reviewer session in the record, initial first. */
+export declare function reviewerSessions(record: LocalReviewRecord): string[];
 /** The trunk base the reviewer's clearance covered: the latest recorded integration, else the original. */
 export declare function coveredBase(record: LocalReviewRecord): string;
 /** Findings the reviewer pre-cleared and the author fixed under the stated condition. */
@@ -236,28 +266,46 @@ export declare const REVIEW_BUDGET_MINUTES: {
  */
 export declare const TRIVIAL_DIFF_MAX_LINES = 20;
 export declare const TRIVIAL_DIFF_MAX_TEST_LINES = 40;
+export interface TrivialDiff {
+    trivial: boolean;
+    reason: string;
+    /** Changed non-test lines counted so far: the whole range unless a binary file stopped the count. */
+    nonTestLines: number;
+    testLines: number;
+}
 /**
  * Whether `older..newer` is small enough to waive the floor, with the counts as a reason either
  * way. Binary or rename-ambiguous output is never trivial: what cannot be counted is not small.
  */
-export declare function trivialDiff(root: string, older: string, newer: string): {
-    trivial: boolean;
-    reason: string;
-};
+export declare function trivialDiff(root: string, older: string, newer: string): TrivialDiff;
+/**
+ * The rule a floor waiver is reported under. It is distinct from `agent-review`, whose `waived`
+ * level means the project opted out and no record was read; this one means a record was read and
+ * validated, with only the 30-second floor relaxed. Consumers that refuse an opt-out must not
+ * refuse this.
+ */
+export declare const REVIEW_FLOOR_RULE = "review-floor";
+/**
+ * The line `check pr` and `review validate` print when the floor is waived. The waiver used to be
+ * applied silently, so how often it fired could not be measured; `waived: review floor` is the
+ * stable text to search CI logs for. Nothing is added to the record: the size is computed from
+ * Git and never declared by the author, and the record and history it is computed from are
+ * committed, so it can be recomputed for any merged pull request.
+ */
+export declare function floorWaiver(size: Pick<TrivialDiff, "nonTestLines" | "testLines">): string;
 export declare function reviewRequired(config: unknown): boolean;
 export declare function git(root: string, args: string[]): string;
 export declare function isAncestor(root: string, older: string, newer: string): boolean;
 export declare function parseReviewRecord(markdown: string): LocalReviewRecord;
 /**
  * `trivialChange` is consulted only when a turn is under the floor, and only `verifyReviewRecord`
- * supplies it, from Git; without it the floor applies.
+ * supplies it, from Git; without it the floor applies. Returns the waivers applied — today only
+ * the floor's — so a valid record that relied on one is never indistinguishable from one that did
+ * not.
  */
 export declare function validateReviewRecord(record: LocalReviewRecord, opts?: {
-    trivialChange?: () => {
-        trivial: boolean;
-        reason: string;
-    };
-}): void;
+    trivialChange?: () => TrivialDiff;
+}): string[];
 export declare function changedPaths(root: string, older: string, newer: string): string[];
 /**
  * Walk the first-parent commits in a range that the reviewer did not clear. Merging trunk never
@@ -299,12 +347,15 @@ export declare function reviewRecordLine(body: string): string;
 /**
  * Everything the gate checks once it knows which worklog holds the record: the same function
  * `check pr` runs in CI and `review validate` runs before a push, so the two cannot disagree.
- * Throws the first problem found.
+ * Throws the first problem found; returns the record and any waiver its validation applied.
  */
 export declare function verifyReviewRecord(opts: {
     root: string;
     path: string;
     head: string;
     base: string;
-}): LocalReviewRecord;
+}): {
+    record: LocalReviewRecord;
+    waivers: string[];
+};
 export {};

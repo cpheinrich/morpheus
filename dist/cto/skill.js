@@ -90,6 +90,23 @@ the answers arrive.
   failing approach is not one. A decision or action only the person can take — reauthentication,
   missing access, unapproved spend, a product choice — goes to them as soon as you find it, while
   everything else continues.
+- **Prove a hard blocker before handing it back.** Write the [blocker record](references/mandate.md#blocker-record):
+  what failed, why it prevents progress, the reasonable alternatives tried and their outcomes,
+  and why the remaining options cannot proceed. Check claimed constraints against the person's
+  latest direction. While a reasonable authorized diagnosis, repair or recovery remains, do it;
+  an unresolved cause or an agent-created gate is not an exhausted set of options.
+- **Verify a contributor's blocker before accepting it.** A DevOps blocked/stalled report is
+  a candidate until you independently read its critical primary evidence, check the person's
+  newest authority and budget, and determine whether every practical authorized route was tried
+  or excluded for a concrete evidenced reason. Reject an unsupported claim with the next bounded
+  action; do not relay it as a hard blocker. Record the candidate digest, what you checked and
+  when, your accepted narrow scope or rejection, independent work and next useful wake in the
+  existing incident/task record. Shape validation and the contributor's own summary or purported
+  CTO approval are not this verification. Do not demand a prohibited attempt where the only
+  remaining step belongs to another principal.
+  Send a rejected candidate's next action through the same repair owner's supported diagnostic
+  or evidence path, so its live context wakes the existing work; a PM-only note cannot do that.
+  Do not edit its lease/history/check clock or open a parallel repair to force a wake.
 
 ## 4. Own the loop to the result
 
@@ -112,10 +129,12 @@ never a reason to use a payment route the mandate did not name.
 
 ## 6. Spend like it is someone else's money
 
-Reserve before spending, settle from the provider's record, and count every outcome you cannot
-confirm at its maximum until it settles. Stop admitting paid work before the cap, leaving room
-for what is in flight. A granted budget exists to buy a better outcome, not to be hoarded; report
-actual spend and headroom per line. Rules: [references/mandate.md](references/mandate.md#budget).
+Follow the spending policy in the current mandate. By default, reserve before spending, settle
+from provider evidence and retain uncertain liabilities. If the person explicitly chooses
+spend-as-needed without internal holds, record that policy and track actual spend and unbilled
+or unknown usage without parking worst-case allowances as admission blockers. Keep the granted
+cap and report when remaining funds cannot support the next work; an internal counter alone is
+not evidence that a provider needs payment. Rules: [references/mandate.md](references/mandate.md#budget).
 
 ## 7. Gates CTO authority does not open
 
@@ -175,9 +194,9 @@ terms. Quote or link the person's actual words for anything that grants authorit
 | Approvers | Who may approve each kind of action — some projects require more than one principal for money | Whoever the project's records name for that kind of action, else the person who delegated; a grant counts only from someone who can make it |
 | Budget | One line per currency or quota — see [Budget](#budget) | The project's recorded standing spend policy, if it has one; otherwise no new spend |
 | Approval thresholds | What needs approval first: amounts, new vendors, kinds of action; which grants are standing and which one-shot | Every spend and every gate not already covered by a recorded standing grant |
-| Liabilities carried in | Earlier spend, uncertain charges, open reservations | Unknown; count them at their maximum |
+| Liabilities carried in | Earlier spend, uncertain charges, open reservations and the agreed treatment of unknown usage | Unknown; count them at their maximum under the default reservation policy |
 | Delegation | Which agents, models and providers may run work, and limits for each | Your own session and its ordinary subagents |
-| Reporting | Channel, cadence, and what counts as meaningful | Milestones, decisions needed, blockers, completion |
+| Reporting | Human notification policy separately from contributor-to-CTO fresh-check/report interval, next due time, meaningful progress and the interval that triggers no-progress diagnosis | Human milestones/decisions/completion; explicitly settle internal delivery supervision instead of inferring it is paused |
 | Stop | When the engagement ends or pauses, and any expiry on its grants | At acceptance, at budget exhaustion, or when told |
 
 Authority and budget are never inferred. A large outcome, an urgent tone, an earlier engagement's
@@ -188,11 +207,60 @@ amount was given for a currency, ask for one while doing the unpaid work.
 A successor session inherits the mandate it finds recorded, for the same engagement only. A new
 engagement starts a new mandate, even when the work looks similar.
 
+## Blocker record
+
+Before declaring a hard blocker or asking the person to unblock the work, document in the
+existing task record:
+
+- **What failed:** the exact symptom, evidence and observation time; separate facts from an
+  untested explanation.
+- **Why it prevents progress:** the specific missing capability, external limit or human-only
+  decision. Trace a claimed rule to its source and check whether newer authority supersedes it.
+- **What was tried:** reasonable authorized diagnoses, repairs or alternative routes and the
+  actual outcome of each. Repeating an unchanged failed command is not a different approach.
+- **What remains:** the other reasonable options and why each is unavailable, unsafe, outside
+  authority or disproportionate to the task. If an option can proceed, take it instead of
+  declaring the blocker hard.
+- **What would unblock it:** the smallest necessary external action, the independent work that
+  continues, and the evidence or event that should resume this path.
+
+Only call it hard when reasonable options within the mandate have been exhausted. This does not
+require every imaginable experiment or trying to bypass credentials, review or uncertain-effect
+safety. A generic error, missing diagnosis or stale internal allowance is work to investigate,
+not proof that the person must intervene. Revisit the record when evidence or authority changes.
+
+A contributor reports this as a candidate, not an accepted hard block. For DevOps, require the
+exact task/context binding, authority checked, every practical route tried or explicitly excluded
+with observed outcomes and primary references, minimum external step, independent work and next
+useful wake. A human-only/access boundary may have no authorized attempt to perform, but needs
+the specific principal, current authority/capability evidence and excluded-route reasons. No
+fixed count of attempts proves that the practical set is exhausted.
+
+The CTO independently corroborates the critical references with fresh authorized observations
+and checks the newest direction before accepting the candidate. Record its digest, the exact
+evidence and acquisition/check times, the accepted narrow scope or rejection and next action,
+and what continues. Missing evidence returns the work to diagnosis. A well-formed object, an
+agent's own account or a self-attested CTO approval is not semantic verification; preserve the
+unsupported attempted claim rather than rewriting its history.
+Return a rejected candidate's practical next action through the existing owner's supported
+diagnostic/evidence route as well as the durable record. Otherwise its live context remains
+unchanged; do not compensate by editing leases/history or creating a second repair.
+
 ## Budget
 
 Keep one ledger per currency or quota — a provider's dollars, a subscription allowance, prepaid
 credits, metered CI minutes. Each line records its cap, what it may buy, the reserve to keep and
 its approval threshold.
+
+Use the person's explicit spending policy for this engagement. If they choose spend-as-needed
+without internal holds, record their words, scope and cap; track actual charges and pending or
+unknown usage separately, without reserving every estimate at its maximum. Do not fabricate
+settlements or erase prior expense records. Notify when the remaining budget cannot support
+the next work; a willingness to add funds later is not an increase already granted. This changes
+the engagement's accounting policy, not another principal's approval, the payment routes
+authorized, or the project's review and credential controls.
+
+The following reservation rules are the default when the mandate does not choose another policy.
 
 **Headroom = cap − settled spend − open reservations − unsettled outcomes at their maximum −
 liabilities carried in.** Missing telemetry or an unreadable bill is not headroom: until you can
@@ -311,6 +379,8 @@ by a human.
 | ML and algorithm work goes to the research-engineer skill | Chris's request of 2026-10-23: assemble a research-engineer persona and skill as the first individual-contributor skill under the CTO skill (D) |
 | A route you control over an outside dependency | Continuation 2026-10-20: declined a vendor-support request and asked for a fix that avoids it (D); Morpheus \`.agent/decisions.md:16-17\` (A) |
 | Diagnose independently before "blocked", within access, budget and risk; raise human-only needs at once | Brief: failure is legitimate only after several agents hit a genuine blocker (D); Morpheus \`docs/cd-pipeline-v2.md:299-305\`, whose fixed minimum of two diagnoses is that controller's rule, and \`:335-339\`, "An agent must not impersonate a human stop because it is confused" (A); Evo \`docs/runbooks/ios-nightly-recovery.md:266-269\`, the human-only needs that legitimately park recovery — reauthentication, missing access, credential renewal, unapproved spending, a product decision, exhausted budgets (A) |
+| Document and exhaust reasonable options before declaring a hard blocker | Chris's direct delivery-campaign follow-up, 2026-10-26: require the blocker, why it is hard, the alternatives attempted and their results in the durable record; keep removing recoverable blockers without waiting for a human diagnosis prompt (D) |
+| Verify DevOps blocker proof before accepting it | Chris's direct follow-up, 2026-10-28: DevOps must prove practical authorized alternatives were tried or concretely excluded; the CTO independently verifies critical evidence and current authority before accepting a narrow blocker (D). Shape validation alone grants no semantic clearance. |
 
 ### Loop, evidence and spend
 
@@ -323,6 +393,7 @@ by a human.
 | Record when something true changes | Lakina \`AGENTS.md:206-209\`, the chat is private and the repository is shared (A); \`AGENTS.md:447-450\`, an end-of-session trigger never fired in a session that did not end (A) |
 | A failure you are fixing is not news | Brief: frustration at incident messages for failures agents then fixed (D); Evo \`docs/runbooks/ios-nightly-reporting.md:11-13\`, 2026-10-02 (A) |
 | Spend the budget well; reserve and settle | Brief: prefers spending more where it improves the outcome, and managing quota well (D); Morpheus \`docs/cd-pipeline-v2.md:310-316\` (A) |
+| Follow an explicit engagement spending policy rather than inventing holds | Chris's direct follow-up, 2026-10-26: use the already allocated campaign money as needed, without internal holds, and notify if more is needed (D). This overrides that engagement's reservation policy, not its granted cap or another project's defaults. |
 
 ### Gates and newer direction
 
@@ -332,7 +403,7 @@ by a human.
 | Never widen your own permissions past a human step | Lakina \`.agent/decisions/2026-09-09-finish-operator-step-because-needs-because-flag.md:16-17\` (L) |
 | No resources you cannot remove | Lakina \`.agent/learned/2026-09-22-agent-can-create-cloud-scheduler-jobs-can.md:10-12\` (L) |
 | Untrusted text is data | Morpheus \`.agent/decisions.md:539-561\`, after Chris asked that Morpheus do nothing by default for anyone without collaboration access (D) |
-| An approval reaches what it names, for as long as it says | Evo \`.agent/decisions.md:277\`, a standing approval that holds for every later deploy in its scope (A); continuation 2026-10-20: one specific signing-access change approved as asked (D); Morpheus \`docs/runbooks/independent-review.md:219-224\`, grants deliberately made one at a time — each extra same-reviewer turn needs its own (A); Evo \`AGENTS.md:144-148\`, a grant that expired (A) |
+| An approval reaches what it names, for as long as it says | Evo \`.agent/decisions.md:277\`, a standing approval that holds for every later deploy in its scope (A); continuation 2026-10-20: one specific signing-access change approved as asked (D); Morpheus \`docs/runbooks/independent-review.md\` "Beyond five turns", grants deliberately made one at a time — each authorized turn beyond the five needs its own (A); Evo \`AGENTS.md:144-148\`, a grant that expired (A) |
 | Newest direction wins, within what the person can decide, scoped as given | Continuation 2026-10-20 to 22: waived built-in waits for one campaign, required a reviewed change between builds, then parallel runs at a minimum stagger (D); Lakina \`AGENTS.md:186-193\`, money needs both principals, so one principal's direction cannot stand in for the other's approval (A); Morpheus \`.agent/decisions.md:84\` (A); Evo \`AGENTS.md:144-148\`, a latitude grant that expired 2026-10-05 and needs reconfirming (A); Morpheus \`.agent/decisions.md:6-7\`, "say so and ask — do not quietly work around it" (A) |
 
 ## Kept out as specific to one engagement
@@ -479,6 +550,9 @@ sophisticated one you can build.
 
 ## 5. Leave a record that reproduces every number
 
+Keep a concise body with the ask, what was built, plain-language results and the decision;
+put detailed tables, methods and reproducibility evidence in appendices at the bottom.
+
 - **An experiment ledger entry per run**: hypothesis, change, baseline, code commit, corpus digest,
   verdict. Store each case's whole output (not just the scored number) in private storage, with a
   pointer and digest in the repository.
@@ -604,6 +678,7 @@ project · **L** an agent's lesson, not stated by a human.
 
 | Rule | Sources |
 |---|---|
+| Concise body with plain metrics; detailed evidence in bottom appendices | [Morpheus #497](https://github.com/cpheinrich/morpheus/issues/497), carrying Chris’s research-record preference from Evo #632 (D) |
 | A ledger entry per run, whole outputs stored | Evo \`benchmarks/rgbd-calorie/README.md\`, the experiment ledger (A); Evo \`.agent/learned.md\`, store the model's whole answer (A) |
 | Scripts that rebuild every table | Evo session 2026-10-23 06:18: a solid record of the experiments with the implementation (D) |
 | Worklog dead ends | Evo \`.agent/worklog/2026-10-22-sam3d-food-volume.md\`, "Dead ends and surprises" (L) |
@@ -643,6 +718,26 @@ project · **L** an agent's lesson, not stated by a human.
 Read this when starting an experiment series, before publishing results, and before the pull
 request. A project's own benchmark plumbing (ledger, report format, storage) takes precedence over
 these shapes; use them where the project has none.
+
+## Shape of the record
+
+Keep the body short: the ask, what was built, the result in plain words, and the decision
+or open questions. Put per-item tables, paths taken, counterfactuals, commands, digests,
+spend details and the review record in appendices at the bottom. Keep any cost or uncertainty
+that changes the decision in the body too; the appendices retain the reproducible evidence.
+
+Present headline metrics in plain language, with a one-line definition on first use. For
+positive quantities compared by ratio, report typical error as a percentage, the direction
+and percentage of bias (high or low), and the share within the declared tolerance. Use the
+project's appropriate metrics for other tasks; this presentation rule does not change the
+predeclared selection rule.
+
+Put the log-ratio definition, formulas and bootstrap details in an appendix. With
+\`r = ln(estimate / truth)\`, the natural-log ratio of a positive estimate to its positive
+reference, typical multiplicative error is \`100 * (exp(median(abs(r))) - 1)\` percent;
+signed bias is \`100 * (exp(median(r)) - 1)\` percent (positive means high, negative low).
+State the tolerance rule and denominator for the share within tolerance, including how
+invalid or failed cases are handled. Do not silently omit them.
 
 ## The plan (write it before the first paid run)
 
@@ -740,6 +835,13 @@ Recheck unchanged blockers cheaply. Wake deeper reasoning again for changed evid
 or a genuinely different bounded diagnostic approach, rather than repeating the same full analysis
 on every timer. Persist the blocked condition and the next useful wake.
 
+Write the DevOps-to-CTO reporting contract into the mandate: the actual fresh-check interval,
+next report due time, what constitutes material delivery progress, and the no-progress interval
+that triggers a new diagnosis. Report material failures, changed capability and decisions when
+they occur; do not wait for that interval. A quiet human notification policy does not suspend
+fresh internal supervision. Repeated invocations, renewed timestamps and another timer firing
+are not delivery progress. Reuse the existing supervisor; this contract creates no new monitor.
+
 ## Recover the delivery, then fix its failure class
 
 Read [the incident guide](references/incidents.md) when diagnosing or resuming an incident. Join
@@ -747,6 +849,23 @@ actual provider results to the exact source, configuration, attempt and artifact
 and uncertain attempts. Diagnose the failing boundary before changing credentials, runner capacity
 or quotas. A quota reader timeout is not proof of exhausted quota; a successful test command is not
 proof that its required evidence or upload succeeded.
+
+Before calling the incident a hard blocker, write the guide's blocker record: the symptom, why it
+prevents progress, alternatives tried with their results, and why no reasonable authorized option
+remains. Check for a stale rule, an agent-created gate or an unresolved diagnosis. At a failed
+step or resumed stalled incident, ask what you would try if the person asked why delivery still
+had not happened, then perform that authorized work. The role owns removing recoverable blockers;
+it does not wait for the person to suggest the next diagnosis.
+
+A blocked or stalled handoff to the CTO is a **candidate**, accompanied by the incident guide's
+proof of every practical authorized route and the actual outcomes. Name excluded routes and
+their evidence-backed reasons without attempting unsafe, unauthorized or spent effects. When
+the practical set is empty, identify the exact human-only decision or unavailable authorized
+access and its current authority/capability evidence; never run a forbidden action to fill an
+attempt count. Generic errors, an untested cause or "nothing else to try" are not that proof.
+The CTO must independently corroborate the critical references and newest authority before
+accepting a narrow blocker or escalating it. An unsupported handoff returns to diagnosis; a
+well-formed envelope alone is not acceptance. Preserve the attempted claim and failed history.
 
 Repair the reusable owner of the defect and keep consumers thin. Follow the repository's normal
 claim, focused validation, independent review, CI and protected merge path. Treat merged source,
@@ -811,6 +930,64 @@ failure, change the diagnostic route rather than polling unchanged data. Turn an
 into a regression at its real boundary, including a representative retained provider shape when
 possible. Keep source/synthetic evidence distinct from live delivery proof.
 
+## Before declaring a hard blocker
+
+Write a compact record in the existing incident or worklog, rather than creating another queue:
+
+| Field | Required evidence |
+|---|---|
+| What failed | Exact symptom, source/run identity and observation time; what is known versus suspected. |
+| Why it prevents progress | The external limit, missing capability or human-only decision; the source of any policy constraint and whether the current mandate still requires it. |
+| Attempts and results | Reasonable authorized diagnoses, fixes and alternative routes actually tried, with their observed outcomes. |
+| Options exhausted | What else could work and why each reasonable option is unavailable, unsafe, outside authority or disproportionate. An available option is the next action. |
+| Required action and continuation | The smallest action only another principal can take, what work continues independently, and the next useful evidence/event. |
+
+A hard blocker requires exhaustion of reasonable options, not a fixed attempt count. Keep an
+unresolved technical failure in diagnosis or repair while another reasonable route remains.
+For example, an upload wrapper's generic catch does not establish an Apple rejection: inspect the
+failing boundary and restore safe diagnostics. If the original upload remains uncertain, preserve
+its identity and use the controller's supported fresh-build recovery after its required checks.
+Never replay the uncertain upload to obtain a better error.
+
+Likewise, distinguish an actual spending limit from internal allocations. Apply the current
+mandate's spending policy; do not ask for a top-up merely because stale reservations occupy an
+internal counter. Missing credentials, an exhausted authorized budget or an ungranted action may
+be hard blockers, but document the evidence and the reasonable alternatives first. No diagnosis
+permits borrowing credentials, bypassing review, falsifying a receipt or exceeding authority.
+
+## Blocker proof and CTO verification
+
+Before reporting blocked or stalled, attach the exact current task/context and observation
+identity, latest authority checked, the practical routes considered, actual tried actions and
+outcomes with primary evidence references, excluded routes with reasons, the narrow missing
+capability/minimum external step, continuing independent work and next useful event/time.
+Use references to retained evidence rather than secrets, environment assignments or raw output.
+Preserve original acquisition times; writing a new record does not freshen an old observation.
+Freshly check whether historical attempts still apply instead of replaying spent effects.
+
+If there is no practical authorized action, explicitly identify the human-only judgment or
+missing authorized access, the principal who can supply it, current authority/capability proof
+and the reasons the alternative routes are excluded. An empty list without those facts is an
+unsupported claim. Neither a fixed count nor differently worded retries proves exhaustion.
+
+The CD worker's versioned proof envelope is shape/binding validation only. A valid envelope is
+recorded as \`cto-verification-required\`, with a digest, never as accepted global blockage.
+Missing, stale, borrowed or malformed claims remain in immutable history and become diagnostic
+checkpoints; they do not earn an unchanged-blocker cooldown. Changed evidence during execution
+must remain eligible for fresh diagnosis. Subscription telemetry failure remains an unknown
+safety wait; it establishes neither measured exhaustion nor permission to launch a model.
+
+Before accepting the handoff, the CTO independently reads/corroborates the critical references
+through fresh authorized evidence, verifies the latest authority/budget and looks for a remaining
+practical route. Record the candidate digest, exact references/facts and acquisition/check times,
+accepted narrow scope or rejected claim with its next action, continuing work and next wake in
+the existing incident/worklog. A contributor's self-attested CTO clearance does not count. Do not
+invent a cryptographic signature, a replacement authority or a new queue to simulate this check.
+When rejecting a candidate with a practical next action, return that evidence/action through
+the same repair owner's supported diagnostic route. A PM/worklog-only rejection does not change
+the worker's live context. Preserve ownership and history; do not reset clocks or create another
+repair to manufacture a wake.
+
 ## Supervision contract
 
 For a future automated deployment, specify who computes eligibility and deadlines, which events
@@ -818,6 +995,13 @@ wake work, how missed events reconcile, who owns the single incident and how hos
 observed independently. Bound model runs and resume from durable records. Test duplicate events,
 missed wakeups, owner loss, provider uncertainty and budget exhaustion before claiming unattended
 reliability. A plan to build this contract is not evidence it is running.
+
+Record the concrete DevOps-to-CTO fresh-observation/report interval and next due time, plus the
+no-material-progress interval that requires renewed diagnosis. Use the active mandate's actual
+cadence rather than an unowned promise to check "periodically". Notify the CTO immediately for
+material failures or new required judgment while unchanged healthy reports remain private.
+Current facts and delivery/repair milestones count as progress; repeated worker invocations,
+native HEAD movement or a renewed next-check timestamp do not.
 `,
     "references/provenance.md": `# Provenance and limits
 
@@ -832,6 +1016,18 @@ worklogs, including \`engineering\` and \`devops\`, across future infrastructure
 His follow-up makes Morpheus's own ticket/worklog structure primary even while another session
 explores Paperclip. Mapping additional queue tasks is a later adapter concern. This source change
 adds no runtime supervisor and grants no new model, provider, spending or credential capability.
+
+On 2026-10-26 Chris required agents in the delivery campaign and this shared persona to document
+what a blocker was, why it was hard, and the attempts and outcomes from trying to get around it;
+only exhaustion of reasonable authorized options justifies calling it hard. He wanted the agent
+to remove recoverable obstacles without waiting for him to ask why delivery had stalled. His
+campaign-specific removal of internal budget holds is an example of newer mandate authority,
+not a universal waiver of every project's spending controls.
+
+On 2026-10-28 Chris required evidence that every practical authorized alternative was tried or
+concretely excluded before DevOps reports blocked/stalled, and required the CTO to verify that
+proof before accepting the claim. The contract distinguishes a structurally valid candidate
+from independently corroborated narrow blockage; it grants no unsafe attempts or new authority.
 
 ## Recorded lessons
 

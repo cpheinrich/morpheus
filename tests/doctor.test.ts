@@ -9,6 +9,7 @@ import {
   marketingLaunchPlan,
   marketingSeoStrategy,
 } from "../src/init/templates.js";
+import { claudeSettingsFile, codexHooksFile } from "../src/session/install.js";
 
 let root: string;
 
@@ -96,6 +97,14 @@ describe("doctor", () => {
         },
       }),
     );
+    // Wired before read evidence existed: refresh there is a bare assertion.
+    const unrecorded = (await doctor({ root })).filter(
+      (x) => x.check === "context" && x.message.includes(rel),
+    );
+    expect(unrecorded).toHaveLength(1);
+    expect(unrecorded[0]!.message).toContain("has no read hook");
+
+    await writeFile(join(root, rel), rel.startsWith(".claude") ? claudeSettingsFile() : codexHooksFile());
     expect(
       (await doctor({ root })).filter((x) => x.check === "context" && x.message.includes(rel)),
     ).toEqual([]);

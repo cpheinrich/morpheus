@@ -1,4 +1,4 @@
-import { configurationDigest, hash, sourceAgeWaiverSchema } from "./schema.js";
+import { physicalDevicePolicySchema, physicalDeviceEvidenceSchema, physicalDeviceProofSchema, postResumeExecutionProofSchema, postResumeOriginSchema, postResumeQualificationSchema, budgetSpendingPolicySchema, configurationDigest, hash, sourceAgeWaiverSchema } from "./schema.js";
 import { CdWait } from "./errors.js";
 export const milliseconds = (minutes) => minutes * 60_000;
 export const after = (at, minutes) => new Date(Date.parse(at) + milliseconds(minutes)).toISOString();
@@ -9,8 +9,12 @@ export function newState(config, epoch, now) {
 }
 export function externalReviewKey(appId, buildId) { return hash({ appId, buildId }); }
 /** A committed claim authorizes one call; uncertainty never authorizes another. */
-export function claimExternalReview(state, intentId, now) {
+export function claimExternalReview(state, intentId, now, config) {
     const intent = intentAt(state, intentId), receipt = intent.receipt;
+    if (intent.postResumeKey) {
+        invariant(config, "Post-resume external claim needs current configuration");
+        assertPostResumeAdmission(state, config, intentId, now);
+    }
     invariant(intent.state === "delivered" && receipt && !intent.isolatedValidation, "External review requires its ordinary immutable internal receipt");
     invariant(receipt.configurationDigest === state.configurationDigest, "Historical receipts cannot acquire review under a later configuration");
     invariant(!intent.external?.terminal && intent.external?.status !== "available", "Completed external follow-up cannot submit review");
@@ -164,12 +168,40 @@ export function reserveBuild(state, appId, version, attemptId, providerMaximum, 
     sequence.reservations[attemptId] = { buildNumber, at: now, burned: true };
     return buildNumber;
 }
+/** A configured physical-device floor names the first main source that carries its test plan. */
+export function assertSourceAdmissible(state, config, source) {
+    const policy = config.tests.physicalDevice, floor = policy?.sourceFloor;
+    if (!policy || !floor)
+        return;
+    // An unknown floor is not "no floor": refusing keeps a typo or unobserved commit from admitting everything.
+    // Only a configuration migration can correct it, so it waits for the operator rather than starting repair agents.
+    const boundary = state.sources.find(item => item.sha === floor);
+    if (!boundary)
+        throw new CdWait(`Physical-device source floor ${floor} is not a verified first-parent main source; correct tests.physicalDevice.sourceFloor through a configuration migration`, "physical-source-floor");
+    invariant(source.order >= boundary.order, `Source ${source.sha} predates physical-device source floor ${floor}, so it cannot carry the configured physical test plan (profile ${policy.profile}, ${policy.testIds.length} tests); deliver a main source at or after the floor`);
+}
+/** Checks only; adoptRepair applies it before mutating, and the worker before its completion CAS. */
+export function assertRepairAdmissible(state, config, intentId, source) {
+    const intent = intentAt(state, intentId), previous = sourceAt(state, intent.source);
+    invariant(!intent.postResumeKey, "Post-resume acceptance source cannot be adopted or retargeted");
+    invariant(source.order >= previous.order, "Repair source must descend along configured main history");
+    // Re-adopting a source that already ran repeats its outcome and spends another build number.
+    const attempted = intent.attempts.map(attempt => sourceAt(state, attempt.sourceSha)).reduce((latest, item) => !latest || item.order > latest.order ? item : latest, undefined);
+    invariant(!attempted || source.order > attempted.order, `Repair source ${source.sha} does not descend past attempted source ${attempted?.sha}; return a newer reviewed main merge`);
+    assertSourceAdmissible(state, config, source);
+}
 export function planAttempt(state, config, intentId, controlSha, providerMaximum, now, lane = "local") {
     const intent = intentAt(state, intentId), source = sourceAt(state, intent.source);
     invariant(intent.state !== "delivered" && !intent.attempts.some(attempt => attempt.status === "active"), "Intent already has an active or delivered attempt");
+    // A plain error here routes the intent to repair with this message; no build number is reserved.
+    assertSourceAdmissible(state, config, source);
     const lineageAge = intent.lineage.find(item => item.inputDigest === source.inputDigest)?.mainEnteredAt ?? source.mainEnteredAt;
     invariant(intent.validation && intent.sourceAgeWaiver || Date.parse(lineageAge) + config.channels[intent.channel].minimumAgeHours * 3_600_000 <= Date.parse(now), "Production source is not old enough");
-    const occupied = Object.values(state.intents).flatMap(item => item.attempts).filter(item => item.status === "active" && !item.upload?.acceptedAt).length;
+    if (intent.postResumeKey) {
+        assertPostResumeAdmission(state, config, intentId, now, true);
+        invariant(intent.attempts.length === 0, "Post-resume acceptance cannot retry or replace an attempt");
+    }
+    const occupied = Object.values(state.intents).flatMap(item => item.attempts.filter(attempt => occupiesNative(state, item, attempt))).length;
     if (occupied >= (config.execution?.maxNativeJobs ?? 2))
         throw new CdWait("Native execution capacity is reserved", "native-capacity");
     const id = `${intent.id}-a${intent.attempts.length + 1}`, app = config.channels[intent.channel];
@@ -191,7 +223,48 @@ export function checkIdentity(state, identity) {
     attempt.runAttempt = identity.runAttempt;
     return found;
 }
+const physicalIdentityKeys = ["schemaVersion", "intentId", "attemptId", "dispatchEffectId", "sourceSha", "controlSha", "runId", "runAttempt", "appInputDigest", "configurationDigest"];
+function physicalDeviceBinding(config, aggregate, child) {
+    invariant(config.tests.physicalDevice, "Physical-device evidence needs an explicitly configured policy");
+    const policy = physicalDevicePolicySchema.parse(config.tests.physicalDevice);
+    invariant(aggregate.configurationDigest === configurationDigest(config), "Physical-device policy configuration differs from aggregate evidence");
+    for (const key of physicalIdentityKeys)
+        invariant(child[key] === aggregate[key], `Physical-device ${key} differs from aggregate evidence`);
+    for (const key of ["profile", "deviceId", "hostId"])
+        invariant(child[key] === policy[key], `Physical-device ${key} differs from configured policy`);
+    invariant(new Set(child.artifacts.map(artifact => artifact.name)).size === child.artifacts.length
+        && child.artifacts.every(artifact => aggregate.artifacts.filter(parent => parent.name === artifact.name && parent.sha256 === artifact.sha256).length === 1), "Physical-device payload references differ from verified aggregate artifacts");
+    return policy;
+}
+function compactPhysicalDevice(config, evidence) {
+    if (evidence.physicalDevice === undefined && config.tests.physicalDevice === undefined)
+        return undefined;
+    invariant(evidence.physicalDevice, "Required physical-device evidence is missing");
+    const child = physicalDeviceEvidenceSchema.parse(evidence.physicalDevice), policy = physicalDeviceBinding(config, evidence, child);
+    const inventoryHash = hash([...policy.testIds].sort()), ids = child.inventory.ids;
+    invariant(ids.length === policy.testIds.length && new Set(ids).size === ids.length
+        && child.inventory.sha256 === inventoryHash && hash([...ids].sort()) === inventoryHash, "Physical-device inventory differs from exact configured test plan");
+    invariant(child.results.length === ids.length && new Set(child.results.map(result => result.id)).size === ids.length
+        && child.results.every(result => ids.includes(result.id) && result.status === "passed" && result.attempts === 1), "Physical-device tests require every configured test to pass on its first attempt");
+    const { inventory: _inventory, results: _results, ...binding } = child;
+    return { ...binding, policyHash: hash(policy), evidenceHash: hash(child), inventoryHash, executedCount: child.results.length, firstAttemptPassed: true };
+}
+/** Rechecked inside upload CAS and before accepted-upload proof reuse. No new authority. */
+export function assertPhysicalDeviceProof(config, proof, expected) {
+    if (proof.physicalDevice === undefined && config.tests.physicalDevice === undefined)
+        return;
+    invariant(proof.physicalDevice, "Required physical-device proof is missing");
+    const child = physicalDeviceProofSchema.parse(proof.physicalDevice), policy = physicalDeviceBinding(config, proof, child);
+    if (expected)
+        for (const key of physicalIdentityKeys)
+            invariant(child[key] === expected[key], `Physical-device ${key} differs from current upload execution`);
+    invariant(child.policyHash === hash(policy) && child.inventoryHash === hash([...policy.testIds].sort())
+        && child.executedCount === policy.testIds.length, "Physical-device compact proof differs from required policy/inventory");
+}
 export function recordTests(state, config, evidence) {
+    const physicalDevice = compactPhysicalDevice(config, evidence);
+    const before = attemptAt(state, evidence.intentId, evidence.attemptId), optional = postResumeAcceptance(state, before.intent);
+    invariant(!optional?.yielded && (!optional?.releases[before.attempt.id] || before.attempt.tests), "Released/yielded acceptance cannot acquire new test authority");
     const { intent, attempt } = checkIdentity(state, evidence);
     invariant(evidence.scope === "full" && evidence.appInputDigest === attempt.appInputDigest && evidence.configurationDigest === attempt.configurationDigest, "Full-test/source/configuration evidence mismatch");
     const ids = evidence.inventory.ids;
@@ -201,15 +274,21 @@ export function recordTests(state, config, evidence) {
         invariant(ids.includes(result.id) && (result.status === "passed" || result.status === "skipped" && config.tests.allowedSkips.includes(result.id)), `Full test failed or unexpectedly skipped: ${result.id}`);
     invariant(evidence.artifacts.length > 0 && evidence.artifacts.every(artifact => /^[a-f0-9]{64}$/.test(artifact.sha256)) && /^[a-f0-9]{64}$/.test(evidence.validator.sha256), "Full tests need hashed artifacts and validator");
     const evidenceHash = hash(evidence);
-    if (attempt.tests)
+    if (attempt.tests) {
         invariant(attempt.tests.evidenceHash === evidenceHash, "Test evidence is immutable");
+        return; // An identical receipt cannot rewind upload/reconciliation progress.
+    }
     // Complete inventories/results stay in their downloaded, hashed Actions artifact.
     // The hot ledger retains the verified proof, not hundreds of repeated test rows.
-    attempt.tests = { schemaVersion: 1, intentId: evidence.intentId, attemptId: evidence.attemptId, dispatchEffectId: evidence.dispatchEffectId, sourceSha: evidence.sourceSha, controlSha: evidence.controlSha, runId: evidence.runId, runAttempt: evidence.runAttempt, scope: "full", appInputDigest: evidence.appInputDigest, configurationDigest: evidence.configurationDigest, evidenceHash, inventoryHash: evidence.inventory.sha256, executedCount: evidence.results.length, skippedIds: evidence.results.filter(result => result.status === "skipped").map(result => result.id), artifacts: evidence.artifacts, validator: evidence.validator };
+    attempt.tests = { schemaVersion: 1, intentId: evidence.intentId, attemptId: evidence.attemptId, dispatchEffectId: evidence.dispatchEffectId, sourceSha: evidence.sourceSha, controlSha: evidence.controlSha, runId: evidence.runId, runAttempt: evidence.runAttempt, scope: "full", appInputDigest: evidence.appInputDigest, configurationDigest: evidence.configurationDigest, evidenceHash, inventoryHash: evidence.inventory.sha256, executedCount: evidence.results.length, skippedIds: evidence.results.filter(result => result.status === "skipped").map(result => result.id), artifacts: evidence.artifacts, validator: evidence.validator, ...(physicalDevice ? { physicalDevice } : {}) };
     intent.state = "uploading";
     intent.nextAction = "await-upload-claim";
 }
 export function claimUpload(state, config, evidence, now) {
+    const before = attemptAt(state, evidence.intentId, evidence.attemptId);
+    assertPostResumeNewEffect(state, config, before.intent, before.attempt, now);
+    invariant(before.attempt.tests, "A complete passing full-test inventory is required before upload");
+    assertPhysicalDeviceProof(config, before.attempt.tests, { ...evidence, appInputDigest: before.attempt.appInputDigest, configurationDigest: before.attempt.configurationDigest });
     const { intent, attempt } = checkIdentity(state, evidence);
     invariant(attempt.tests, "A complete passing full-test inventory is required before upload");
     invariant(!attempt.upload, "Upload already claimed; reconcile the existing operation");
@@ -247,7 +326,13 @@ export function recordUpload(state, evidence, now) {
     if (retired)
         return; // A late resource is retained for observation, never promotion/credit.
     if (operation.outcome === "rejected") {
-        attempt.status = "failed";
+        if (!intent.postResumeKey)
+            attempt.status = "failed";
+        if (intent.postResumeKey) {
+            intent.state = "waiting";
+            intent.nextAction = "observe-rejected-acceptance";
+            return;
+        }
         repairWork(state, intent.id, [`Apple rejected ${attempt.appId}/${attempt.version}/${attempt.buildNumber}`, evidence.diagnostics ?? "No provider diagnostics"], now);
     }
     else {
@@ -262,11 +347,15 @@ export function validateObservation(intent, attempt, observation) {
     invariant(observation.group.id === intent.groupId && observation.group.appId === attempt.appId && observation.group.internal && !observation.group.automaticDistribution, "Internal group identity/type/automatic distribution mismatch");
     invariant(observation.group.buildIds.includes(observation.buildId) && observation.group.testerIds.length > 0, "Exact build is unavailable to internal group members");
 }
-export function deliver(state, intentId, attemptId, observation, now) {
+export function deliver(state, intentId, attemptId, observation, now, config) {
     const { intent, attempt } = attemptAt(state, intentId, attemptId);
     if (intent.receipt) {
         invariant(intent.receipt.attemptId === attemptId, "A sibling receipt cannot replace delivery");
         return intent.receipt;
+    }
+    if (intent.postResumeKey) {
+        invariant(config, "Post-resume receipt requires current configuration");
+        assertPostResumeAdmission(state, config, intentId, now);
     }
     invariant(!state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope)), "Delivery is explicitly paused");
     invariant(attempt.status === "active" && intent.attempts.at(-1)?.id === attemptId && attempt.tests && attempt.artifactsVerifiedAt && attempt.upload?.acceptedAt && attempt.runId && attempt.runAttempt, "Delivery lacks current accepted upload and downloaded full-test provenance");
@@ -275,6 +364,12 @@ export function deliver(state, intentId, attemptId, observation, now) {
     invariant(intent.isolatedValidation || (!cursor || source.order >= cursor.order) && (!promoted || source.order >= promoted.order), "Delivery would regress the live ordinary/group cursor");
     validateObservation(intent, attempt, observation);
     const receipt = { schemaVersion: 1, intentId, attemptId, dispatchEffectId: attempt.dispatchEffectId, sourceSha: attempt.sourceSha, controlSha: attempt.controlSha, runId: attempt.runId, runAttempt: attempt.runAttempt, appInputDigest: attempt.appInputDigest, configurationDigest: attempt.configurationDigest, ipaSha256: attempt.upload.identity.ipaSha256, uploadOperationId: attempt.upload.id, providerUploadId: attempt.upload.providerUploadId, testEvidenceHash: attempt.tests.evidenceHash, observation, deliveredAt: now };
+    const optional = postResumeAcceptance(state, intent);
+    if (optional) {
+        const key = postResumeGroupKey(optional, attemptId, intent.groupId, observation.buildId);
+        if (optional.groups[key])
+            optional.groups[key].observedAt ??= now;
+    }
     intent.receipt = receipt;
     intent.state = "delivered";
     intent.nextAction = "complete";
@@ -283,8 +378,10 @@ export function deliver(state, intentId, attemptId, observation, now) {
     attempt.observation = observation;
     if (!intent.validation)
         state.cursors[intent.channel] = { sourceSha: source.sha, order: source.order, receiptId: intent.id };
-    state.groupCursors ??= {};
-    state.groupCursors[intent.groupId] = { sourceSha: source.sha, order: source.order, receiptId: intent.id };
+    if (!optional) {
+        state.groupCursors ??= {};
+        state.groupCursors[intent.groupId] = { sourceSha: source.sha, order: source.order, receiptId: intent.id };
+    }
     if (!intent.validation)
         for (const slot of state.slots.filter(item => item.channel === intent.channel && item.decision === "missed" && !item.intentId)) {
             const selectedAtSlot = state.sources.filter(item => Date.parse(item.mainEnteredAt) <= Date.parse(slot.slot)).at(-1);
@@ -294,7 +391,7 @@ export function deliver(state, intentId, attemptId, observation, now) {
                     intent.coveredSlots.push(slot.slot);
             }
         }
-    if (state.groupOperations[intent.groupId]?.attemptId === attempt.id)
+    if (!optional && state.groupOperations[intent.groupId]?.attemptId === attempt.id)
         state.groupOperations[intent.groupId].completedAt = now;
     for (const work of Object.values(state.agents))
         if (work.intentId === intentId)
@@ -303,6 +400,7 @@ export function deliver(state, intentId, attemptId, observation, now) {
 }
 export function claimGroup(state, intentId, attemptId, now) {
     const { intent, attempt } = attemptAt(state, intentId, attemptId), cursor = state.cursors[intent.channel];
+    invariant(!intent.postResumeKey, "Post-resume membership uses its separate stable obligation");
     invariant(attempt.status === "active" && intent.attempts.at(-1)?.id === attemptId && attempt.upload?.acceptedAt, "Only a current accepted attempt may promote a group");
     invariant(!state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope)), "Delivery is explicitly paused");
     const source = sourceAt(state, attempt.sourceSha), promoted = state.groupCursors?.[intent.groupId];
@@ -314,7 +412,10 @@ export function claimGroup(state, intentId, attemptId, now) {
         state.groupOperations[intent.groupId] = { attemptId, claimedAt: now };
 }
 export function repairWork(state, intentId, evidence, now) {
-    const intent = intentAt(state, intentId), existing = Object.values(state.agents).find(work => work.intentId === intentId && work.state !== "complete");
+    const intent = intentAt(state, intentId);
+    if (intent.postResumeKey)
+        throw new CdWait("Post-resume acceptance retains its exact operation; no automatic repair/replacement", "post-resume-observation");
+    const existing = Object.values(state.agents).find(work => work.intentId === intentId && work.state !== "complete");
     if (existing) {
         existing.evidence = [...new Set([...existing.evidence, ...evidence])];
         return existing.id;
@@ -327,8 +428,8 @@ export function repairWork(state, intentId, evidence, now) {
     return id;
 }
 export function adoptRepair(state, config, intentId, source, evidence, now) {
-    const intent = intentAt(state, intentId), previous = sourceAt(state, intent.source);
-    invariant(source.order >= previous.order, "Repair source must descend along configured main history");
+    assertRepairAdmissible(state, config, intentId, source);
+    const intent = intentAt(state, intentId);
     intent.source = source.sha;
     intent.lineage.push({ source: source.sha, inputDigest: source.inputDigest, mainEnteredAt: source.mainEnteredAt, reason: "reviewed merged repair", evidence });
     for (const attempt of intent.attempts)
@@ -345,6 +446,7 @@ export function adoptRepair(state, config, intentId, source, evidence, now) {
 }
 export function completeOperationalRepair(state, intentId, evidence, now) {
     const intent = intentAt(state, intentId), attempt = intent.attempts.at(-1);
+    invariant(!intent.postResumeKey, "Post-resume acceptance cannot enter operational repair/retry");
     invariant(evidence.length > 0 && evidence.every(item => typeof item === "string" && item.length > 0), "Operational repair needs direct host/provider evidence");
     if (attempt?.upload && attempt.upload.outcome !== "rejected") {
         intent.state = attempt.upload.acceptedAt ? "processing" : "waiting";
@@ -361,6 +463,32 @@ export function completeOperationalRepair(state, intentId, evidence, now) {
     intent.nextCheckAt = now;
     intent.blocker = undefined;
 }
+/** Explicit opt-in for one ledger/campaign; never reinterpret old requests as settlements. */
+export function setBudgetSpendingPolicy(state, config, input, now) {
+    invariant(state.repository === config.repository && state.configurationDigest === configurationDigest(config), "Budget policy configuration differs from ledger");
+    const policy = budgetSpendingPolicySchema.parse({ mode: "spend-as-needed", ...input, adoptedAt: now });
+    budgetStatus(state, config);
+    const previous = state.budget.spendingPolicy;
+    invariant(!previous || previous.campaignId === policy.campaignId, "Budget policy belongs to another campaign");
+    if (previous?.capMicros === policy.capMicros && previous.authorizationRef === policy.authorizationRef)
+        return previous;
+    invariant(!previous || previous.authorizationRef !== policy.authorizationRef, "Changed budget cap requires a new human authorization reference");
+    state.budget.spendingPolicy = policy;
+    return policy;
+}
+/** Remaining is against recorded spend, not a provider balance or final invoice. */
+export function budgetStatus(state, config) {
+    const policy = state.budget.spendingPolicy === undefined ? undefined : budgetSpendingPolicySchema.parse(state.budget.spendingPolicy);
+    const spent = state.budget.spentMicros;
+    invariant(Number.isSafeInteger(spent) && spent >= 0, "Invalid recorded spend");
+    const unsettled = Object.values(state.budget.reservations).filter(row => row.status === "reserved");
+    const held = policy ? 0 : unsettled.reduce((sum, row) => sum + row.maximumMicros, 0);
+    const cap = policy?.capMicros ?? Math.floor(config.budget.togetherLimitUsd * 1_000_000);
+    invariant(Number.isSafeInteger(held) && Number.isSafeInteger(cap), "Budget accounting overflow");
+    return { mode: policy?.mode ?? "reserved-liability", campaignId: policy?.campaignId, capMicros: cap,
+        recordedSpentMicros: spent, internalHeldMicros: held, remainingMicros: Math.max(0, cap - spent - held),
+        recordedOverspendMicros: Math.max(0, spent - cap), unsettledOperationCount: unsettled.length, remainingIsProviderBalance: false };
+}
 export function reservePaid(state, config, id, request, maximumMicros) {
     invariant(Number.isSafeInteger(maximumMicros) && maximumMicros >= 0, "Paid request requires bounded maximum liability");
     const requestDigest = hash(request), existing = state.budget.reservations[id];
@@ -368,8 +496,9 @@ export function reservePaid(state, config, id, request, maximumMicros) {
         invariant(existing.digest === requestDigest && existing.maximumMicros === maximumMicros, "Paid reservation replay changed request/configuration");
         return;
     }
-    const liability = Object.values(state.budget.reservations).reduce((sum, reservation) => sum + (reservation.status === "reserved" ? reservation.maximumMicros : 0), state.budget.spentMicros);
-    invariant(liability + maximumMicros <= Math.floor(config.budget.togetherLimitUsd * 1_000_000), "Together budget exhausted; preserve durable budget wait");
+    const budget = budgetStatus(state, config);
+    const total = budget.recordedSpentMicros + budget.internalHeldMicros + maximumMicros;
+    invariant(Number.isSafeInteger(total) && total <= budget.capMicros, budget.mode === "spend-as-needed" ? "Campaign budget exhausted against recorded spend; notify the human" : "Together budget exhausted; preserve durable budget wait");
     state.budget.reservations[id] = { digest: requestDigest, maximumMicros, status: "reserved" };
 }
 export function settlePaid(state, id, actualMicros) {
@@ -389,5 +518,132 @@ export function quotaUsed(snapshot, now) {
     if (snapshot.windows.some(window => !Number.isFinite(window.usedPercent) || window.usedPercent < 0 || window.usedPercent > 100 || !(Date.parse(window.resetsAt) > Date.parse(now))))
         return undefined;
     return Math.max(...snapshot.windows.map(window => window.usedPercent));
+}
+/** Separate journal: deliberately no legacy campaign result.fenceBinding shape. */
+export function postResumeAcceptance(state, intent) {
+    if (!intent.postResumeKey)
+        return undefined;
+    const record = state.postResumeAcceptances?.[intent.postResumeKey];
+    invariant(record && record.intentId === intent.id && intent.validation && !intent.isolatedValidation && !intent.sourceAgeWaiver, "Invalid post-resume origin association");
+    postResumeOriginSchema.parse(record.origin);
+    invariant(intent.postResumeKey === hash({ campaignId: record.origin.campaignId, purpose: record.origin.purpose }) && record.origin.sourceSha === intent.originalSource && intent.source === intent.originalSource, "Post-resume purpose/source identity differs");
+    return record;
+}
+/** Ordinary eligibility includes due slots even before the evaluator commits them. */
+export function ordinaryDemand(state, config, now) {
+    invariant(Number.isFinite(Date.parse(now)), "Invalid admission clock");
+    if (Object.values(state.groupOperations).some(operation => !operation.completedAt) || Object.values(state.agents).some(work => work.state !== "complete" || work.lease))
+        return true;
+    if (Object.values(state.intents).some(intent => !intent.validation && intent.state !== "delivered" && (!intent.eligibleAt || Date.parse(intent.eligibleAt) <= Date.parse(now))))
+        return true;
+    return ["staging", "production"].some(channel => dueSlots(config, channel, state.evaluatedSlots[channel], now).some(slot => {
+        const candidate = state.sources.filter(source => eligible(source, config, channel, slot)).at(-1);
+        const cursor = state.cursors[channel], previous = cursor && state.sources.find(source => source.sha === cursor.sourceSha);
+        return Boolean(candidate && (channel === "production" || !previous || candidate.inputDigest !== previous.inputDigest));
+    }));
+}
+/** Fingerprints relevant external qualification, without treating budget maxima as holds. */
+export function postResumeFingerprint(state) {
+    return hash({ epoch: state.epoch, repository: state.repository, configurationDigest: state.configurationDigest, sources: state.sources, cursors: state.cursors, groupCursors: state.groupCursors, groupOperations: state.groupOperations, agents: state.agents, pauses: state.pauses, ordinary: Object.values(state.intents).filter(intent => !intent.validation) });
+}
+export function createPostResumeAcceptance(state, config, channel, raw, qualification, now) {
+    invariant(configurationDigest(config) === state.configurationDigest, "Post-resume configuration changed");
+    const origin = postResumeOriginSchema.parse(raw), q = postResumeQualificationSchema.parse(qualification), key = hash({ campaignId: origin.campaignId, purpose: origin.purpose });
+    invariant(!state.postResumeAcceptances?.[key], "Post-resume purpose already exists; no renamed replay");
+    invariant(Date.parse(origin.createdAt) <= Date.parse(now) && Date.parse(now) - Date.parse(origin.createdAt) <= 300_000 && origin.iosTreeSha !== origin.previousIosTreeSha && origin.iosTreeSha !== origin.receiptIosTreeSha, "Post-resume request needs a genuine newly qualified iOS tree");
+    const source = sourceAt(state, origin.sourceSha);
+    invariant(source.sha === state.sources.at(-1)?.sha, "Post-resume source must be current verified main");
+    const dispatched = Object.values(state.intents).flatMap(intent => intent.attempts).filter(attempt => attempt.dispatch.sentAt);
+    invariant(dispatched.every(attempt => source.order > sourceAt(state, attempt.sourceSha).order), "Post-resume source must be newer than every actual prior dispatch");
+    invariant(eligible(source, config, channel, now) && !ordinaryDemand(state, config, now), "Ordinary delivery/source age takes priority");
+    invariant(q.fingerprint === postResumeFingerprint(state) && Date.parse(q.qualifiedAt) <= Date.parse(now) && Date.parse(now) < Date.parse(q.expiresAt) && Date.parse(now) < Date.parse(q.executionDeadlineAt), "Post-resume qualification is expired or differs");
+    const intent = createIntent(state, config, channel, source, now, now, true, config.channels[channel].internalGroupId, `post-resume-${key}`);
+    intent.postResumeKey = key;
+    (state.postResumeAcceptances ??= {})[key] = { origin, intentId: intent.id, qualifications: [q], releases: {}, groups: {} };
+    return intent.id;
+}
+export function qualifyPostResumeAcceptance(state, intentId, raw, now) {
+    const intent = intentAt(state, intentId), record = postResumeAcceptance(state, intent);
+    invariant(record, "No post-resume origin");
+    const q = postResumeQualificationSchema.parse(raw);
+    invariant(q.fingerprint === postResumeFingerprint(state) && Date.parse(q.qualifiedAt) <= Date.parse(now) && Date.parse(now) < Date.parse(q.expiresAt) && Date.parse(now) < Date.parse(q.executionDeadlineAt), "Post-resume qualification is expired or differs");
+    if (hash(record.qualifications.at(-1)) !== hash(q))
+        record.qualifications.push(q);
+}
+export function assertPostResumeAdmission(state, config, intentId, now, initial = false) {
+    const intent = intentAt(state, intentId), record = postResumeAcceptance(state, intent);
+    if (!record)
+        return;
+    invariant(state.configurationDigest === configurationDigest(config), "Post-resume configuration changed");
+    const q = postResumeQualificationSchema.parse(record.qualifications.at(-1));
+    invariant(!record.yielded && !ordinaryDemand(state, config, now), "Ordinary delivery takes priority over acceptance");
+    invariant(q.fingerprint === postResumeFingerprint(state) && Date.parse(q.qualifiedAt) <= Date.parse(now) && Date.parse(now) < Date.parse(q.expiresAt) && Date.parse(now) < Date.parse(q.executionDeadlineAt), "Post-resume qualification is expired or differs");
+    const order = sourceAt(state, intent.source).order, cursor = state.cursors[intent.channel], group = state.groupCursors?.[intent.groupId];
+    invariant((!cursor || order >= cursor.order) && (!group || order >= group.order), "Post-resume source would regress an ordinary/group cursor");
+    if (initial) {
+        const dispatches = Object.values(state.intents).flatMap(item => item.attempts).filter(attempt => attempt.dispatch.sentAt && !intent.attempts.includes(attempt));
+        invariant(dispatches.every(attempt => Date.parse(now) - Date.parse(attempt.dispatch.sentAt) >= 15 * 60_000 && order > sourceAt(state, attempt.sourceSha).order), "Post-resume source/stagger no longer qualifies");
+    }
+}
+export function assertPostResumeNewEffect(state, config, intent, attempt, now, initial = false) {
+    const record = postResumeAcceptance(state, intent);
+    if (!record)
+        return;
+    invariant(!record.yielded && !record.releases[attempt.id], "Yielded/released acceptance cannot claim a new effect");
+    assertPostResumeAdmission(state, config, intent.id, now, initial);
+}
+export function occupiesNative(state, intent, attempt) {
+    const record = postResumeAcceptance(state, intent);
+    return (attempt.status === "active" || Boolean(record && attempt.upload?.outcome === "rejected")) && !attempt.upload?.acceptedAt && !record?.releases[attempt.id] && record?.yielded?.attemptId !== attempt.id;
+}
+export function protectedPostResumeUpload(state, intent, attempt) {
+    return Boolean(postResumeAcceptance(state, intent) && attempt.status === "active" && attempt.upload && !attempt.upload.acceptedAt && attempt.upload.outcome !== "rejected");
+}
+export function yieldPostResumeAttempt(state, intentId, attemptId, now) {
+    const { intent, attempt } = attemptAt(state, intentId, attemptId), record = postResumeAcceptance(state, intent);
+    invariant(record, "No post-resume origin");
+    invariant(!record.yielded && !record.releases[attemptId] && attempt.status === "active" && attempt.dispatch.state === "intended" && !attempt.dispatch.sentAt && !attempt.runId && !attempt.runAttempt && attempt.dispatch.runIds.length === 0 && !attempt.tests && !attempt.upload && !Object.keys(state.transitions).some(id => id.startsWith(`dispatch-call-${attemptId}-`)), "Possible dispatch/effect cannot be yielded as never-dispatched");
+    record.yielded = { attemptId, at: now };
+}
+export function postResumeExecutionFingerprint(state, identity) {
+    const { intent, attempt } = attemptAt(state, identity.intentId, identity.attemptId);
+    return hash({ identity, dispatch: attempt.dispatch, lease: attempt.lease, fence: state.fences[attempt.id], terminal: attempt.workflowTerminalAt, quiescence: attempt.quiescence, agents: Object.values(state.agents).filter(work => work.intentId === intent.id) });
+}
+export function releasePostResumeExecution(state, identity, raw, now) {
+    const proof = postResumeExecutionProofSchema.parse(raw), found = attemptAt(state, identity.intentId, identity.attemptId);
+    invariant(found.attempt.runId === identity.runId && found.attempt.runAttempt === identity.runAttempt, "Release requires already-bound exact run identity");
+    invariant(proof.fingerprint === postResumeExecutionFingerprint(state, identity) && Date.parse(proof.qualifiedAt) <= Date.parse(now) && Date.parse(now) < Date.parse(proof.expiresAt), "Execution release qualification expired or changed");
+    const { intent, attempt } = checkIdentity(state, identity), record = postResumeAcceptance(state, intent);
+    invariant(record, "No post-resume origin");
+    invariant(!record.yielded && !record.releases[attempt.id] && attempt.workflowTerminalAt && Number.isFinite(Date.parse(attempt.workflowTerminalAt)) && Date.parse(attempt.workflowTerminalAt) <= Date.parse(now) && attempt.quiescence && Number.isFinite(Date.parse(attempt.quiescence.observedAt)) && Date.parse(attempt.quiescence.observedAt) <= Date.parse(now) && attempt.lease && state.fences[attempt.id] === attempt.lease.fence && proof.quiescenceDigest === hash(attempt.quiescence), "Execution release needs exact authenticated quiescence/authority closure");
+    invariant(!Object.values(state.agents).some(work => work.intentId === intent.id && (work.state !== "complete" || work.lease)), "Execution authority still outstanding");
+    record.releases[attempt.id] = { identityDigest: hash(identity), leaseOwner: attempt.lease.owner, fence: attempt.lease.fence, ...proof, at: now };
+}
+export function postResumeGroupKey(record, attemptId, groupId, buildId) { return hash({ origin: record.origin, attemptId, groupId, buildId }); }
+export function claimPostResumeGroup(state, config, intentId, attemptId, buildId, now) {
+    const { intent, attempt } = attemptAt(state, intentId, attemptId), record = postResumeAcceptance(state, intent);
+    invariant(record, "No post-resume origin");
+    assertPostResumeAdmission(state, config, intentId, now);
+    invariant(attempt.status === "active" && intent.attempts.at(-1)?.id === attemptId && attempt.upload?.acceptedAt && buildId === attempt.observation?.buildId, "Optional group requires exact accepted observed build");
+    const cursor = state.cursors[intent.channel], group = state.groupCursors?.[intent.groupId], order = sourceAt(state, attempt.sourceSha).order;
+    invariant((!cursor || order >= cursor.order) && (!group || order >= group.order) && !state.pauses.some(pause => ["all", intent.channel, intentId].includes(pause.scope)), "Optional group would regress or override a pause");
+    const key = postResumeGroupKey(record, attemptId, intent.groupId, buildId);
+    invariant(!record.groups[key], "Optional membership claim is already UNKNOWN; readback only");
+    record.groups[key] = { attemptId, groupId: intent.groupId, buildId, claimedAt: now };
+    return key;
+}
+/** Supported normal Store entry; exact replay is observation, never an arm/dispatch. */
+export async function applyPostResumeAcceptance(store, config, channel, rawOrigin, rawQualification, clock = () => new Date().toISOString()) {
+    const origin = postResumeOriginSchema.parse(rawOrigin), qualification = postResumeQualificationSchema.parse(rawQualification);
+    const key = hash({ campaignId: origin.campaignId, purpose: origin.purpose }), intentId = `post-resume-${key}`;
+    const receipt = { kind: "post-resume-origin-v1", key, intentId, originDigest: hash(origin), qualificationDigest: hash(qualification) };
+    const transaction = await store.transact(`post-resume-origin-${key}`, "create-post-resume-acceptance", clock(), state => {
+        createPostResumeAcceptance(state, config, channel, origin, qualification, clock());
+        return receipt;
+    });
+    const final = await store.read(), record = final.state.postResumeAcceptances?.[key];
+    invariant(final.state.configurationDigest === configurationDigest(config) && hash(transaction.result) === hash(receipt) && record && hash(record.origin) === receipt.originDigest && hash(record.qualifications[0]) === receipt.qualificationDigest && record.intentId === intentId && final.state.intents[intentId]?.channel === channel, "Post-resume replay/readback differs from exact original payload");
+    postResumeAcceptance(final.state, final.state.intents[intentId]);
+    return { head: transaction.head, replayed: transaction.replayed, result: receipt, verifiedReadbackHead: final.head };
 }
 //# sourceMappingURL=state.js.map

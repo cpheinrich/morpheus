@@ -19,9 +19,9 @@ terms. Quote or link the person's actual words for anything that grants authorit
 | Approvers | Who may approve each kind of action — some projects require more than one principal for money | Whoever the project's records name for that kind of action, else the person who delegated; a grant counts only from someone who can make it |
 | Budget | One line per currency or quota — see [Budget](#budget) | The project's recorded standing spend policy, if it has one; otherwise no new spend |
 | Approval thresholds | What needs approval first: amounts, new vendors, kinds of action; which grants are standing and which one-shot | Every spend and every gate not already covered by a recorded standing grant |
-| Liabilities carried in | Earlier spend, uncertain charges, open reservations | Unknown; count them at their maximum |
+| Liabilities carried in | Earlier spend, uncertain charges, open reservations and the agreed treatment of unknown usage | Unknown; count them at their maximum under the default reservation policy |
 | Delegation | Which agents, models and providers may run work, and limits for each | Your own session and its ordinary subagents |
-| Reporting | Channel, cadence, and what counts as meaningful | Milestones, decisions needed, blockers, completion |
+| Reporting | Human notification policy separately from contributor-to-CTO fresh-check/report interval, next due time, meaningful progress and the interval that triggers no-progress diagnosis | Human milestones/decisions/completion; explicitly settle internal delivery supervision instead of inferring it is paused |
 | Stop | When the engagement ends or pauses, and any expiry on its grants | At acceptance, at budget exhaustion, or when told |
 
 Authority and budget are never inferred. A large outcome, an urgent tone, an earlier engagement's
@@ -32,11 +32,60 @@ amount was given for a currency, ask for one while doing the unpaid work.
 A successor session inherits the mandate it finds recorded, for the same engagement only. A new
 engagement starts a new mandate, even when the work looks similar.
 
+## Blocker record
+
+Before declaring a hard blocker or asking the person to unblock the work, document in the
+existing task record:
+
+- **What failed:** the exact symptom, evidence and observation time; separate facts from an
+  untested explanation.
+- **Why it prevents progress:** the specific missing capability, external limit or human-only
+  decision. Trace a claimed rule to its source and check whether newer authority supersedes it.
+- **What was tried:** reasonable authorized diagnoses, repairs or alternative routes and the
+  actual outcome of each. Repeating an unchanged failed command is not a different approach.
+- **What remains:** the other reasonable options and why each is unavailable, unsafe, outside
+  authority or disproportionate to the task. If an option can proceed, take it instead of
+  declaring the blocker hard.
+- **What would unblock it:** the smallest necessary external action, the independent work that
+  continues, and the evidence or event that should resume this path.
+
+Only call it hard when reasonable options within the mandate have been exhausted. This does not
+require every imaginable experiment or trying to bypass credentials, review or uncertain-effect
+safety. A generic error, missing diagnosis or stale internal allowance is work to investigate,
+not proof that the person must intervene. Revisit the record when evidence or authority changes.
+
+A contributor reports this as a candidate, not an accepted hard block. For DevOps, require the
+exact task/context binding, authority checked, every practical route tried or explicitly excluded
+with observed outcomes and primary references, minimum external step, independent work and next
+useful wake. A human-only/access boundary may have no authorized attempt to perform, but needs
+the specific principal, current authority/capability evidence and excluded-route reasons. No
+fixed count of attempts proves that the practical set is exhausted.
+
+The CTO independently corroborates the critical references with fresh authorized observations
+and checks the newest direction before accepting the candidate. Record its digest, the exact
+evidence and acquisition/check times, the accepted narrow scope or rejection and next action,
+and what continues. Missing evidence returns the work to diagnosis. A well-formed object, an
+agent's own account or a self-attested CTO approval is not semantic verification; preserve the
+unsupported attempted claim rather than rewriting its history.
+Return a rejected candidate's practical next action through the existing owner's supported
+diagnostic/evidence route as well as the durable record. Otherwise its live context remains
+unchanged; do not compensate by editing leases/history or creating a second repair.
+
 ## Budget
 
 Keep one ledger per currency or quota — a provider's dollars, a subscription allowance, prepaid
 credits, metered CI minutes. Each line records its cap, what it may buy, the reserve to keep and
 its approval threshold.
+
+Use the person's explicit spending policy for this engagement. If they choose spend-as-needed
+without internal holds, record their words, scope and cap; track actual charges and pending or
+unknown usage separately, without reserving every estimate at its maximum. Do not fabricate
+settlements or erase prior expense records. Notify when the remaining budget cannot support
+the next work; a willingness to add funds later is not an increase already granted. This changes
+the engagement's accounting policy, not another principal's approval, the payment routes
+authorized, or the project's review and credential controls.
+
+The following reservation rules are the default when the mandate does not choose another policy.
 
 **Headroom = cap − settled spend − open reservations − unsettled outcomes at their maximum −
 liabilities carried in.** Missing telemetry or an unreadable bill is not headroom: until you can

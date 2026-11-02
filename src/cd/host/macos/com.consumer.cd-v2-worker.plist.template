@@ -34,8 +34,13 @@
     <key>StandardErrorPath</key>
     <string>____/logs/cd-v2-worker.err.log</string>
 
+    <!-- Interactive, never Background or Adaptive: with no XPC client launchd runs
+         an Adaptive job as Background (priority 4, CPU and I/O throttled), and the
+         throttled executor misses its quota handshake deadline, so repair work
+         waits on failed telemetry while the account is healthy (#558). Repair is
+         work an operator is waiting on; most wakes still idle immediately. -->
     <key>ProcessType</key>
-    <string>Adaptive</string>
+    <string>Interactive</string>
     <key>ThrottleInterval</key>
     <integer>290</integer>
 </dict>

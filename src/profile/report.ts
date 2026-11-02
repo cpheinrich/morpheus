@@ -1,7 +1,20 @@
 import { markdownTable } from "../markdown.js";
 import { credible, MAX_CREDIBLE_SPAN_MS, percentile } from "./derive.js";
 import { displayCommand } from "./classify.js";
-import { PHASES, addTokens, emptyTokens, totalTokens, type Phase, type Role, type SessionRow, type SpanRow, type TokenTotals } from "./types.js";
+import {
+  PHASES,
+  SOURCES,
+  addTokens,
+  emptyTokens,
+  totalTokens,
+  type Phase,
+  type ProfileIssue,
+  type Role,
+  type SessionRow,
+  type SessionSource,
+  type SpanRow,
+  type TokenTotals,
+} from "./types.js";
 
 export interface PhaseLine {
   phase: Phase;
@@ -37,14 +50,25 @@ export interface CommandLine {
   phase: Phase;
 }
 
+export interface SourceLine {
+  source: SessionSource;
+  sessions: number;
+  mainSessions: number;
+}
+
 export interface Report {
   sessions: number;
   mainSessions: number;
+  /** Where the sessions were read from, every source listed even when empty. */
+  bySource: SourceLine[];
+  /** Codex sessions found in more than one file and counted once; see `Extraction.duplicates`. */
+  duplicates: number;
   activeMs: number;
   wallMs: number;
   tokens: TokenTotals;
   costUSD: number;
   byPhase: PhaseLine[];
+  byProvider: GroupLine[];
   byRepo: GroupLine[];
   byRole: GroupLine[];
   byModel: ModelLine[];
@@ -81,7 +105,7 @@ export function commandKey(command: string): string {
   return displayCommand(command.replace(/…$/, "")).slice(0, 80);
 }
 
-export function buildReport(sessions: SessionRow[], spans: SpanRow[]): Report {
+export function buildReport(sessions: SessionRow[], spans: SpanRow[], options: { duplicates?: number } = {}): Report {
   const tokens = emptyTokens();
   let activeMs = 0;
   let wallMs = 0;
@@ -162,14 +186,23 @@ export function buildReport(sessions: SessionRow[], spans: SpanRow[]): Report {
   const sideActive = side.reduce((n, s) => n + s.activeMs, 0);
   const sideTokens = side.reduce((n, s) => n + totalTokens(s.tokens), 0);
 
+  // Every source is listed, so an empty one reads as zero rather than as not having been looked at.
+  const bySource = SOURCES.map((source) => {
+    const from = sessions.filter((s) => s.source === source);
+    return { source, sessions: from.length, mainSessions: from.filter((s) => !s.isSidechain).length };
+  });
+
   return {
     sessions: sessions.length,
     mainSessions: sessions.length - side.length,
+    bySource,
+    duplicates: options.duplicates ?? 0,
     activeMs,
     wallMs,
     tokens,
     costUSD,
     byPhase: [...phases.values()].filter((p) => p.calls > 0).sort((a, b) => b.mainMs + b.sidechainMs - (a.mainMs + a.sidechainMs)),
+    byProvider: group(sessions, (s) => s.provider),
     byRepo: group(sessions, (s) => s.repo ?? "(unknown)"),
     byRole: group(sessions, (s) => s.role satisfies Role),
     byModel: [...models.values()].sort((a, b) => totalTokens(b.tokens) - totalTokens(a.tokens)),
@@ -235,6 +268,17 @@ export function renderReport(r: Report, heading: string): string {
     "",
   );
 
+  out.push("### Sources", "");
+  out.push(
+    markdownTable(
+      ["source", "sessions", "main", "subagent"],
+      r.bySource.map((s) => [s.source, String(s.sessions), String(s.mainSessions), String(s.sessions - s.mainSessions)]),
+      "_none_",
+    ),
+    "",
+  );
+  if (r.duplicates) out.push(`${r.duplicates} further cop${r.duplicates === 1 ? "y" : "ies"} of a Codex session found in a second file, counted once.`, "");
+
   out.push("### Time and tokens by phase", "");
   out.push(
     markdownTable(
@@ -261,6 +305,7 @@ export function renderReport(r: Report, heading: string): string {
     );
   }
 
+  out.push("### By provider", "", groupTable(r.byProvider, "provider"), "");
   out.push("### By repository", "", groupTable(r.byRepo, "repo"), "");
   out.push("### By role", "", groupTable(r.byRole, "role"), "");
   out.push(
@@ -320,4 +365,38 @@ export function renderReport(r: Report, heading: string): string {
     ),
   );
   return out.join("\n");
+}
+
+function lineList(lines: number[]): string {
+  const shown = lines.slice(0, 5).join(", ");
+  const more = lines.length > 5 ? `, +${lines.length - 5} more` : "";
+  return ` — line${lines.length === 1 ? "" : "s"} ${shown}${more}`;
+}
+
+/**
+ * The skipped lines and files, grouped by what was wrong, naming the files. A bare count such as
+ * "3 × unparseable JSON" cannot be acted on: which transcript, and which line, is the diagnosis.
+ * The home directory is shortened to `~`; at most `maxFiles` files are named per message.
+ */
+export function summarizeIssues(issues: ProfileIssue[], options: { home?: string; maxFiles?: number } = {}): string[] {
+  if (!issues.length) return [];
+  const maxFiles = options.maxFiles ?? 5;
+  const shorten = (file: string) =>
+    options.home && file.startsWith(`${options.home}/`) ? `~${file.slice(options.home.length)}` : file;
+  const byMessage = new Map<string, { count: number; files: Map<string, number[]> }>();
+  for (const issue of issues) {
+    let entry = byMessage.get(issue.message);
+    if (!entry) byMessage.set(issue.message, (entry = { count: 0, files: new Map() }));
+    entry.count++;
+    let lines = entry.files.get(issue.file);
+    if (!lines) entry.files.set(issue.file, (lines = []));
+    if (issue.line !== null) lines.push(issue.line);
+  }
+  const out = [`${issues.length} unreadable line(s) or file(s) skipped:`];
+  for (const [message, { count, files }] of byMessage) {
+    out.push(`  ${count} × ${message}`);
+    for (const [file, lines] of [...files].slice(0, maxFiles)) out.push(`      ${shorten(file)}${lines.length ? lineList(lines) : ""}`);
+    if (files.size > maxFiles) out.push(`      … and ${files.size - maxFiles} more file(s)`);
+  }
+  return out;
 }

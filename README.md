@@ -93,6 +93,8 @@ morpheus codebase-memory install --check     # verify operational mode without c
 
 Web projects can import the build-time, browser, optional PDF, and React pieces of private HQ
 search from `morpheus-kit/hq-search` subpaths. The source catalogue and auth gate stay project-owned.
+`morpheus-kit/section-links/react`, mounted once in the HQ layout, gives every section heading a
+copyable `#section` link on hover.
 Private-library catalog parsing and verified browser downloads are available from
 `morpheus-kit/research-library`; Babel remains the independent converter.
 

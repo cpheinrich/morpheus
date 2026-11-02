@@ -116,6 +116,23 @@ The CLI reads identity from `MORPHEUS_CD_INTENT_ID`, `ATTEMPT_ID`,
 `GITHUB_RUN_ID`/`GITHUB_RUN_ATTEMPT`. Optional dispatched digest environment
 variables use `MORPHEUS_CD_APP_INPUT_DIGEST` and `CONFIGURATION_DIGEST`.
 
+`verify-execution` (and the exported `verifyExecution`) grants **new native/archive
+authority**, not merely identity readback. For a post-resume origin, yield or
+execution release refuses both fresh and replayed verification. Admission is
+checked before source/provider validation, inside each new verification CAS, and
+again against current state after an optional replay/readback. A saved verification
+transition cannot restore released execution authority.
+
+Identity/provenance for existing evidence is a separate operation:
+`verifyExecutionProvenance` returns `verified: true`, never `authorized: true`, and
+writes no execution-verification claim. The optional full-test recorder uses it
+before the normal immutable `recordTests` transaction, allowing an identical
+previously verified proof after execution release. Ordinary full-test recording
+retains its existing execution verification path. Existing `record-upload` and
+upload-hook `resource`/`after` receipts retain their exact claim/identity checks;
+they do not invoke a new native/archive gate. Upload claims and the before hook
+still require native authorization and the separate current upload-effect claim.
+
 GitHub's dispatch API rejects a raw commit SHA as its `ref`. The adapter creates
 or reads `morpheus-cd-control-<controlSha>` as a lightweight tag, verifies its exact
 commit target, and dispatches that tag. It never overwrites an existing tag or
@@ -144,6 +161,79 @@ not invalidate already accepted bytes. Fresh Apple readback and all ordinary gro
 pause, cursor and receipt checks still determine delivery; this is not authority to
 reupload, manufacture raw results or count a workflow conclusion as availability.
 An artifact name, count or workflow conclusion never proves full tests.
+
+### Opt-in required physical-device evidence
+
+A consumer may add `tests.physicalDevice` to its trusted configuration:
+
+```json
+{
+  "schemaVersion": 1,
+  "profile": "device-regression-v1",
+  "deviceId": "synthetic-device",
+  "hostId": "synthetic-host",
+  "testIds": ["DeviceTests/testCamera", "DeviceTests/testHealth"],
+  "sourceFloor": "0123456789abcdef0123456789abcdef01234567"
+}
+```
+
+Presence requires the complete exact configured test inventory; reports cannot
+choose a smaller passing plan. Omission preserves the previous normalized
+configuration and digest. Adding or changing policy changes configuration identity
+and requires the existing explicit lossless migration; it does not rewrite old
+attempts, release holds or resume work.
+
+Optional `sourceFloor` is the full SHA of the first first-parent main commit whose
+source carries this test plan; older sources cannot pass it. When it is set,
+planning refuses an older selected source before reserving a build number, and
+that refusal routes the intent to repair with a message naming the floor. Repair
+adoption, and the worker's check of a merged repair, refuse an older source too.
+A floor that is not a verified first-parent main source refuses rather than
+admitting everything; planning then waits (`wait-physical-source-floor`) for a
+configuration migration instead of starting repair agents that cannot fix it. Omitting the field keeps an existing policy's configuration
+bytes and digest; adding it changes configuration identity like any other policy
+change. The runtime round-trip check below covers it: a runtime that predates the
+field rejects the strict policy object instead of dropping it.
+
+Before adopting the policy, consumers must import
+`CD_PHYSICAL_DEVICE_EVIDENCE_VERSION` from `morpheus-kit/cd`, require exactly
+`1`, and verify that the actual runtime's `configSchema.parse(config)`
+round-trips the expected physical policy. Older runtimes can strip unknown nested
+configuration fields, so writing JSON alone is not capability evidence. Source
+publication, reviewed consumer pins, full runtime import manifests, migration and
+installed-runtime qualification are separate steps.
+
+The existing `scope: "full"` `TestEvidence` gains an optional
+`physicalDevice` child. That child repeats every common identity plus
+`appInputDigest` and `configurationDigest`; it contains the configured
+`profile`, `deviceId`, `hostId`, literal `platform: "iOS"` and
+`simulated: false`, an `inventory: {ids, sha256}`, exact per-ID
+`results: [{id, status, attempts}]`, and hardware payload
+`artifacts: [{name, sha256}]`. IDs and their hash must exactly match the configured
+plan, each result must be `passed` with `attempts: 1`, and each hardware
+payload reference must match exactly one hashed aggregate sibling file.
+The existing payload verifier checks those real bytes. The pinned consumer
+qualifier remains responsible for deriving the actual device and runner identity,
+enumeration, results and service mode from its test tooling; a report's asserted
+device name is not independent hardware attestation.
+
+Record one aggregate only after simulator and hardware lanes finish. Recording
+simulator evidence first and later adding hardware changes its immutable hash and
+is refused. An identical replay is a no-op and cannot rewind upload progress.
+The ledger compacts the child into its execution/policy/inventory/evidence hashes,
+execution count, first-attempt result and payload references. Required compact
+proof is checked inside the normal upload-claim CAS before run identity, fence,
+lease or owner mutation, and before accepted-upload proof reuse can contact Apple.
+The existing receipt's aggregate `testEvidenceHash` therefore binds the hardware
+evidence without another receipt, command, scheduler or lease.
+
+Missing, stale, substituted, partial, duplicate, skipped or retried hardware proof
+refuses admission. A configured allowed simulator skip never permits a required
+hardware skip. Physical testing can use a development-signed app from the same
+source; this proof alone does not claim its binary/signing mode equals the uploaded
+IPA. The consumer must record and qualify that distinction. Existing unknown-upload,
+burned-build and typed post-resume provenance rules remain in force: evidence replay
+does not restore released native authority or authorize a second upload.
 
 `cd record --kind repair-diagnostic --config ABS --evidence FILE` appends
 untrusted diagnostic data to one existing repair after its latest execution
@@ -319,7 +409,7 @@ and [auto-notify update](https://developer.apple.com/documentation/appstoreconne
 
 ## Repair execution and capacity
 
-`cd worker --executor local|hosted --config ABS --source-dir ABS` owns a due repair
+`cd worker --executor local|hosted|claude --config ABS --source-dir ABS` owns a due repair
 task. Hosted dispatch supplies `--work-id`, `--invocation-id`, `--task-digest` from
 the immutable ledger task. The workflow inputs also include intent and strategy.
 Visibility sweeps precede bounded dispatch retry; duplicate invocations cannot
@@ -330,6 +420,108 @@ passes Morpheus's independent review validator and live checks. Infrastructure
 repairs may complete from direct evidence without inventing a code PR; pre-upload
 retry still requires executor quiescence. Accepted/uncertain binaries continue
 provider reconciliation under their original identity.
+
+A code repair's merged source is adopted only when it is at or after the intent's
+current source, strictly after every source already attempted for that intent (re-running
+a source repeats its outcome and spends another build number), and at or after any
+physical-device `sourceFloor`. The worker checks this after verifying the PR, so a
+refused source becomes a checkpoint whose summary says why; adoption re-checks inside
+the completion CAS. The prompt carries a separate `Repair source admissibility`
+line with `lastMain`, the attempted sources and the physical policy's profile, test IDs
+and floor, so the agent can see which sources are admissible.
+
+Without an explicit `--work-id`, selection considers only non-complete work whose
+next check is due (or whose capability context warrants a recheck below) and whose
+lease is absent or expired. Paused and post-resume
+work cannot hide another runnable ordinary repair. Among runnable candidates,
+the work whose latest recorded invocation `startedAt` is earliest wins;
+never-invoked work uses its `createdAt`, and equal timestamps use code-unit
+work-ID order on both hosts.
+Renewing `nextCheckAt` or accumulating checkpoints does not renew priority. The
+selector sorts only a derived array; it adds no persisted cursor or scheduling
+service. If no ordinary candidate can run, the same ordering retains an existing
+paused/post-resume/capability-wait diagnostic, or returns idle when none is due
+with no live lease. Explicit targets retain their existing validation and honor
+the same capability wait. Every runnable
+candidate still passes fresh quota admission, pause/post-resume checks and the
+normal fenced CAS/global-executor reservation before an invocation.
+
+After two independent strategies, a completed `blocked` invocation with a
+nonblank `missingCapability` and a validated, recorded CTO-pending blocker
+candidate waits for changed input or six hours after its
+completion. At exactly six hours it becomes eligible for another normal
+admission. Unchanged input returns `capability-wait` before quota, login or model
+execution; the hosted scheduler also skips its Actions lookup. Another runnable
+ordinary repair remains eligible. A genuine change to diagnostic evidence,
+the intent's source, or the latest delivery attempt's identity, source/control,
+run, status, terminal workflow timestamp or exact executor quiescence proof
+(`kind`, `ref`, `observedAt`) wakes the work immediately, even when `nextCheckAt`
+is later. Quiescence can therefore wake a pre-upload repair while its attempt
+still reports active.
+Provider or human changes that have not reached that context still receive the
+bounded eventual recheck. New evidence is analysis input; it grants no missing
+permission or review clearance.
+
+The immutable `worker-start` transition result records a versioned context
+digest associated with its exact work, task, invocation and fence. It covers the
+task and evidence plus delivery context actually frozen into the prompt before
+quota admission. The admissibility line is outside that digest, so main moving on
+its own does not wake a capability wait. CAS reloads preserve that original digest, so evidence arriving
+during admission remains new for the next invocation. Retry clocks, native
+HEADs, usage and self-generated checkpoints are not capability changes. Old or
+malformed receipts or unsupported historical blocked claims cannot suppress
+admission: one normal invocation can establish a validated candidate baseline.
+The saved proof is revalidated against its exact claim/fence/context and completion
+digest before it qualifies for cooldown; a status label alone cannot qualify.
+An unstarted hosted dispatch placeholder cannot replace the prior
+actual blocked invocation's baseline. This adds no ledger schema or mutable
+parking cursor; existing pause, lease, task-integrity and ownership guards still
+apply to both explicit and default execution paths.
+
+### Blocker candidates and CTO verification
+
+A repair's `blocked` result is a candidate, never accepted global blockage. It needs exactly
+one `evidence` entry beginning `morpheus-blocker-proof-v1:` followed by a JSON proof (at most
+32,768 UTF-8 bytes). The worker supplies the exact task/invocation/fence/frozen-context binding and
+actual accepted claim/deadline times in the prompt; a hosted dispatch placeholder's start is
+not the claimant clock. `deadlineAt` is the exact accepted lease expiry, an ownership bound;
+it never extends the stricter model timeout, launch headroom or quota requirements. The versioned
+strict schema requires:
+
+- Exact symptom/attempt identity, primary references and actual observation time.
+- Latest authority reference, its meaning and a check within this invocation.
+- Distinct practical routes tried: action, actual outcome, original observation, fresh check
+  and retained evidence references. Historical spent effects are checked, never replayed.
+- Explicit excluded routes with unavailable/unsafe/outside-authority/disproportionate reasons
+  and evidence. No fixed route count proves exhaustion.
+- Exhaustion rationale, narrow missing capability/minimum external step, continuing independent
+  work, and the next useful event/time.
+
+An empty practical set additionally needs `noPracticalAction`: a concrete human-only judgment
+or missing authorized access, named principal, matching current authority and capability refs,
+plus excluded-route reasons. It does not force an unsafe or unauthorized attempt. References
+are HTTPS URLs, absolute evidence paths, or `artifact:`, `record:`, `git:` or `sha256:` references;
+they are data to inspect through authorized paths, never commands or new permissions.
+
+Missing, malformed, borrowed or stale proof becomes a diagnostic checkpoint/continued diagnosis,
+with the original attempted claim retained in the immutable completion receipt. It does not earn
+the unchanged-blocker cooldown. Context that changes during admission/execution remains eligible
+immediately. A structurally valid candidate records its digest and `cto-verification-required`;
+the machine validates shape/binding, not truth, practical completeness or CTO acceptance.
+
+Before accepting/escalating the candidate, the CTO independently corroborates critical primary
+references with fresh observations, checks newest authority/budget and any remaining practical
+route, then records the digest, facts/acquisition times, accepted narrow scope or rejection/next
+action, continuing work and wake in the existing incident/worklog. A self-attested CTO approval
+cannot satisfy that check. Telemetry/authentication safety waits remain distinct from blocker
+proof and never grant a model launch. The operating mandate records actual internal reporting
+cadence and stall threshold separately from quiet user notifications; no new scheduler is added.
+The CTO returns a rejected candidate's practical next action to the same work through
+its supported evidence route: `repair-diagnostic` for the current failed attempt, or
+`record --kind failure` with the exact current, already-bound execution identity while
+the attempt remains active. Both append through the existing repair owner; a PM/worklog-only
+rejection does not change its live context. Do not alter attempt state, lease, history or
+clocks merely to make a route accept it.
 
 The repair check gate reads the exact head's paginated `filter=all` inventory.
 Failures, pending/unknown results and non-Actions cancellations still block. The
@@ -373,24 +565,78 @@ must retain the invocation owner and fence; a stale process cannot finish throug
 an error fallback. This supports recovery after quiescence, not concurrent unfenced
 work or proof of actual two-host failover.
 
+### Opt-in Claude subscription executor
+
+`agents.claude` (`command`, `model`, `account: { email, subscription: "pro" | "max" }`) and
+`cd worker --executor claude [--host-id ID]` run repair work on an operator's own native Claude
+Code sign-in on a registered Mac. Nothing selects it implicitly; Codex stays the default `local`
+executor with unchanged arguments, keys and digest. The full design, its evidence and the critique
+it answers are in [the Claude executor design](cd-v2-claude-executor.md). In short:
+
+- The worker refuses unless the ledger's configuration digest equals this configuration's, so the
+  executor is usable only after the consumer's reviewed migration.
+- Every Claude process starts with an `initialize` control request and continues only for a build
+  in `CLAUDE_CODE_ANALYSED_VERSIONS`, the bound email and plan, first-party, and no API-key or token
+  source. Processes run with `--strict-mcp-config --setting-sources ""` and an environment stripped
+  of `ANTHROPIC_*`, `CLAUDE_CODE_*` and `CCR_*`, with `DISABLE_AUTOUPDATER=1`.
+- Quota is the CLI's own `get_usage` reading (`cd quota --executor claude`), never a file. It must
+  be fresh by the analysed build's rules, list session, weekly and configured-family windows from the
+  server's `limits[]`, agree with the repeated window figures, and report paid extra usage disabled.
+  The existing 80/90 policy and 30-second meter apply.
+- The repair prompt is written only after the run's own `initialize` binds, and its structured result
+  counts only if `system/init` reports `apiKeySource: "none"`. A `rate_limit_event` that would allow
+  paid usage stops the run.
+- Claude admission waits are recorded under `admission-wait-claude-…` without moving the shared
+  work's schedule or overwriting a live owner's status. The Claude selector, including the
+  held-aware worker entry, treats work as due when a subscription admission wait is its latest event.
+  Reservations, telemetry (`budget.telemetry.claude`) and session resume are per executor.
+- `--permission-mode bypassPermissions` has no filesystem sandbox in this version; the design lists
+  what that leaves open for the consumer's authorization.
+
 Native capacity, provider outages and rate limits are durable retryable waits.
 They do not manufacture a repair defect. Real/unknown failures own durable agent
 work, and two independent strategies precede technical human escalation. Explicit
 operator pause records are honored by admission and promotion; issues are never
 an arbitrary command-execution surface.
 
-`cd quota --executor local|hosted` makes a no-model telemetry probe. Codex uses
+`cd quota --executor local|hosted|claude` makes a no-model telemetry probe. Codex uses
 `account/rateLimits/read`. A configured `MORPHEUS_CD_QUOTA_FILE` or executor
 `quotaFile` supplies actual `{observedAt, source, windows:[{id,usedPercent,resetsAt}]}`.
 The native account reader gives the configured shim up to 60 seconds total,
 including initialization and its config checks; the final rate-limit RPC gets
 at most 10 seconds within that remaining total. Stderr is drained without
-retaining provider text. Failures report only a fixed phase and elapsed time.
+retaining provider text. The reader recognizes only the configured Evo helper's
+exact `Evo CD worker: startup failed (phase=... kind=...)` line: phases are
+`pin`, `version`, `scope`, `inventory`, `policy`, `final-verify`, `exec`, or
+`config-`/`policy-` followed by `launch`, `initialize`, `read`, `drain`, `validate`
+or `cleanup`; kinds are `invalid`, `timeout`, `os-error`, `exit`, `protocol`,
+`bounds`, `eof` or `output`. Only `os-error` may add `errno=1..4095`, and only
+`exit` may add `code=-255..255`, using canonical decimal integers. Parsing is
+capped at 128 bytes per newline-terminated line and 4096 bytes per read; oversized
+lines, trailing text and all other stderr remain discarded. The first recognized
+line is included in the quota error when already available. If it arrives after
+failure, it is emitted once to the worker's private stderr with the reader PID,
+read phase and elapsed time. No failure waits for stderr or gains cleanup grace.
+The `cd quota` and `cd worker` executables set their exit status while the owned
+reader's existing stream and cleanup handles drain. Quota rejection and the
+worker's budget-wait result still happen immediately; process exit preserves
+late diagnostics and the existing three-second cleanup fuse. Other CLI commands,
+including the lightweight `context record-read` path, retain immediate exit.
+Failures report a fixed phase and elapsed time. A
+configured reader that cannot spawn or exits early also reports only its numeric
+OS error or exit code, rather than waiting for the initialization deadline.
 Every call still reads fresh telemetry and requires explicit ordinary allowance;
 there is no retry, cached-value or file fallback. Snapshot age and window expiry
 are checked at actual completion, after cleanup, against the existing five-minute
 freshness limit. The 30-second worker meter skips overlapping reads; missing
 telemetry checkpoints the owned invocation immediately at the read bound.
+Admission and metering distinguish `wait-subscription-telemetry` from actual
+`wait-measured-subscription-capacity`; an initialization timeout establishes no
+measured exhaustion. Failed admission login verification instead records
+`wait-subscription-authentication`, without copying the command's output. All
+three refuse invocation while their prerequisite is unavailable. The guarded
+`agent-budget-wait` journal kind remains compatible, with a separate failure
+class in each new admission event's identity and result.
 
 Only the no-model reader uses `quota-reader.py`. It creates a private foreground
 session with a live group leader retained unreaped through the final group
@@ -402,6 +648,10 @@ cleanup timeout or missing confirmation never grants quota. No process-name
 census or model-guardian change is involved. The trusted configured command and
 its children must stay in this foreground session; detached children are outside
 this bounded contract and require diagnosis, not broad signalling.
+The live leader sends fixed failure status through a private pipe to its
+supervisor; the configured reader cannot inherit that pipe or FD3. Only the
+supervisor writes the bounded status and final cleanup frames on FD3. Reporting
+an exited reader never releases the leader before the existing final signal.
 When its supervisor disappears, the still-live private leader kills its own
 group; it cannot leave an immortal reader group after the parent fuse fires.
 Post-reap Darwin permission responses are observed until the same cleanup bound.
@@ -457,6 +707,52 @@ responses do not establish working credentials.
 The initial repository metadata read uses GitHub's exact `/repos/{owner}/{repo}`
 route; a trailing slash can return 404 even when the token can read the repository.
 
+### Human-authorized spend-as-needed campaigns
+
+A campaign can explicitly opt out of internal reservation holds without changing its
+configuration identity or another ledger's defaults:
+
+```sh
+morpheus cd budget --operation spend-as-needed --config NATIVE_CONFIG \
+  --campaign CAMPAIGN_ID --cap-micros 350000000 --authorization-ref HUMAN_APPROVAL_REF
+```
+
+These are placeholders. This audited normal Store transaction records the campaign,
+cap, human authorization reference and adoption time in `budget.spendingPolicy`.
+Use this mode only when the human has authorized spending without internal holds.
+It is not a provider operation, account balance, new money or permission to change
+credentials, source-review protections, subscription limits or uncertain-effect rules.
+The policy remains attached to that campaign; changing its cap needs a new human
+reference and a new audited transaction.
+
+In this mode ordinary reserve admission checks **recorded spend plus the current
+bounded request** against the campaign cap. It does not add outstanding reservation
+maxima. All original request IDs/digests/statuses and real settlement tombstones remain
+unchanged. A reservation records an operation identity, not money held aside; it does
+not subtract from remaining budget until actual spend is recorded. Multiple outstanding
+operations can therefore overlap, and delayed/unknown provider charges can exceed the
+cap before accounting catches up. Monitor actual costs and notify the human when the
+budget is exhausted; do not infer zero charges or invent settlements. Recording a real
+late expense is allowed even if it reveals an overspend.
+
+`cd status` includes `budgetStatus`: mode/campaign, cap, recorded spend, zero internal
+holds, remaining against recorded spend, unsettled-operation count and any recorded
+overspend. Remaining is explicitly **not** provider credit, bank balance or final invoice.
+For example recorded spend44.232828 against cap350 reports305.767172 remaining even
+when historical request maxima total238.515115. Raw reservation history is still present.
+
+Without this opt-in, ordinary admission still uses recorded spend plus reserved maxima
+against the configured limit (at most250); subscription80/90 defaults remain unchanged.
+The explicit source-grant route is separate and retains its strict source-only contract.
+No financial grant/reviewer is needed merely to activate a human-authorized no-holds
+policy; normal source review/CI and operational authorization still apply.
+
+Older runtimes do not understand the new admission mode. A qualified updated CLI can
+activate it and reserve an exact original request/ID/maximum. The unchanged older CLI
+can replay that already-reserved identity without another liability; it will still apply
+its old cap to NEW IDs. Autonomous future new-request admission therefore needs normal
+updated-runtime adoption; the policy command does not install or restart services.
+
 `cd budget --operation reserve|settle` exposes replay-safe paid request reservations
 in integer microdollars. Request identity and maximum liability are immutable;
 timeouts retain liability and settled tombstones prevent duplicate charging.
@@ -469,7 +765,7 @@ only to budget reserve in the `source-ci-` namespace. It binds the actual reques
 supplied and stored configuration identities, epoch, finite source scope, amount,
 aggregate ceiling and short admission window, with normal CAS and complete receipt
 readback. Grant values come from that engagement's independently reviewed evidence.
-The ordinary `reservePaid`/`cd budget reserve` guard still refuses new paid reservations
+Without an opted-in spending policy, the ordinary `reservePaid`/`cd budget reserve` guard refuses new paid reservations
 that would exceed its configured ceiling, at most $250; exact old reserved paid identities
 still replay. This dollar guard does not gate local delivery intent creation, attempt
 planning or dispatch, whose other existing controls remain unchanged. The source grant

@@ -28,7 +28,8 @@ on:
       actions-ref:
         description: >
           The commit, tag or branch of cpheinrich/morpheus whose composite actions this run uses
-          (ios-simulator, swift-changed-files). A `uses:` line cannot take an expression and
+          (ios-simulator, swift-changed-files), and whose scripts/ios-test-retry.py runs and
+          retries the tests. A `uses:` line cannot take an expression and
           github.job_workflow_sha is empty inside a called workflow's steps (verified 2026-10-14),
           so a consumer that pins this workflow to a commit passes the same commit here and its
           actions stop floating on main (cpheinrich/morpheus#393). The default keeps today's
@@ -88,19 +89,31 @@ on:
         type: string
         default: "OS=26.5,name=iPhone 17 Pro Max"
       test-plan:
-        description: Optional shared Xcode test plan. Empty uses the scheme's default test action.
+        description: >
+          Optional shared Xcode test plan. Empty uses the scheme's default test action.
+          With only-testing and skip-testing this is how a caller scopes a run, for
+          example a smoke plan or selection for staging and the full suite for production.
         type: string
         default: ""
       test-iterations:
         description: >
-          Re-run only the tests that failed, up to this many attempts in total.
-          Zero disables retries. A test that fails every attempt still fails, so
-          eventual success does not establish first-attempt reliability.
-          Intermittent product defects can pass on retry; preserve the evidence.
+          Attempts in total for a failing test; 0 or 1 runs the tests once. After the
+          first attempt, only the tests that failed run again, each attempt in the job's
+          freshly erased simulator with a new xcodebuild (scripts/ios-test-retry.py). A
+          test that then passes is flaky: it warns, appears in the job summary and the
+          flaky-tests output, and does not fail the job. A test that fails every attempt
+          fails it. Tests.xcresult is the first attempt; test-attempts.json records every
+          attempt. When retries recovered every failure, tests.json and summary.json show
+          each recovered test as passed with its attempts as Repetition children, the shape
+          Xcode's in-process retry gave them, so existing result validators keep working.
         type: number
-        default: 0
+        default: 3
       only-testing:
-        description: Newline-separated xcodebuild test identifiers to include; empty preserves the complete scheme.
+        description: >
+          Newline-separated xcodebuild -only-testing identifiers
+          (TestTarget[/TestClass[/testMethod]]) to include; empty preserves the
+          complete scheme or test plan. A staging caller can name a smoke set here
+          while production leaves it empty.
         type: string
         default: ""
       test-selection:
@@ -151,7 +164,10 @@ on:
         type: string
         default: "auth,firestore"
       pre-test-script:
-        description: Optional repository-relative script run immediately before tests, inside emulators when enabled.
+        description: >
+          Optional repository-relative script run immediately before tests, inside emulators
+          when enabled. It runs again before each retry, on the erased simulator, with
+          RESULTS and LOGS pointing at that attempt's own attempt-<n> directories.
         type: string
         default: ""
       run-tests:
@@ -178,6 +194,12 @@ on:
           slow to render under test.
         type: boolean
         default: false
+    outputs:
+      flaky-tests:
+        description: >
+          JSON array of test identifiers that failed and then passed on a clean retry;
+          [] when none did, empty when tests did not run.
+        value: ${{ jobs.test.outputs.flaky-tests }}
 
 permissions:
   contents: read
@@ -227,6 +249,8 @@ jobs:
     concurrency:
       group: ios-ci-${{ github.repository }}-${{ github.workflow }}-${{ inputs.execution-id || github.ref }}-${{ inputs.scheme }}
       cancel-in-progress: ${{ inputs.execution-id == '' }}
+    outputs:
+      flaky-tests: ${{ steps.tests.outputs.flaky-tests }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -371,7 +395,7 @@ jobs:
       # branch name, which floats under a consumer's pin (cpheinrich/morpheus#393), or a checkout
       # of the repository at `inputs.actions-ref` used by local path. The checkout is read-only,
       # credential-free (the repository is public), sparse, and lives in its own directory inside
-      # the workspace; nothing else in this job reads that directory.
+      # the workspace; besides those actions, only the test step reads it, for its retry script.
       - name: Validate bounded artifact helper pin
         if: ${{ steps.scope.outputs.run == 'true' }}
         working-directory: .
@@ -419,6 +443,7 @@ jobs:
           SCHEME: ${{ inputs.scheme }}
           PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
           MAXIMUM_PARALLEL_TESTING_WORKERS: ${{ inputs.maximum-parallel-testing-workers }}
+          TEST_ITERATIONS: ${{ inputs.test-iterations }}
           FIREBASE_EMULATORS: ${{ inputs.firebase-emulators }}
           FIREBASE_CLI_VERSION: ${{ inputs.firebase-cli-version }}
           FIREBASE_CONFIG: ${{ inputs.firebase-config }}
@@ -450,6 +475,10 @@ jobs:
           fi
           if [ "$PARALLEL_TESTING" != "YES" ] && [ "$MAXIMUM_PARALLEL_TESTING_WORKERS" != "0" ]; then
             echo "maximum-parallel-testing-workers requires parallel-testing" >&2
+            exit 1
+          fi
+          if [[ ! "$TEST_ITERATIONS" =~ ^[0-9]+$ ]]; then
+            echo "test-iterations must be a non-negative whole number of attempts" >&2
             exit 1
           fi
 
@@ -768,7 +797,14 @@ jobs:
             fi
           fi
 
+      # Attempt 1 runs the caller's selection. Each retry erases this job's simulator and
+      # starts a new xcodebuild for only the tests still failing, so state an earlier test
+      # left behind cannot fail the retry too. Retrying inside one xcodebuild session did
+      # exactly that: Evo's leftover-state UI failures failed all three in-process
+      # iterations. A relaunch per in-process retry (tried 2026-10-04) re-ran the whole UI
+      # bundle instead of the failed cases. The logic and its tests live with the script.
       - name: Run unit and UI tests
+        id: tests
         if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}
         env:
           PROJECT: ${{ inputs.project }}
@@ -790,70 +826,22 @@ jobs:
           PRE_TEST_SCRIPT: ${{ inputs.pre-test-script }}
         run: |
           set -o pipefail
-          args=(
-            -project "$PROJECT"
-            -scheme "$SCHEME"
-            -configuration "$CONFIGURATION"
-            -sdk "$SDK"
-            -destination "platform=$PLATFORM,${MORPHEUS_IOS_DESTINATION:-$DESTINATION}"
-            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES"
-            -derivedDataPath "$DERIVED_DATA"
-            -resultBundlePath "$RESULTS/Tests.xcresult"
-            -onlyUsePackageVersionsFromResolvedFile
-            -disableAutomaticPackageResolution
-            -parallel-testing-enabled "$PARALLEL_TESTING"
-          )
-          if [ -n "$TEST_PLAN" ]; then
-            args+=(-testPlan "$TEST_PLAN")
+          retry="$GITHUB_WORKSPACE/.morpheus-ci/scripts/ios-test-retry.py"
+          if [ ! -f "$retry" ]; then
+            echo "::error::actions-ref has no scripts/ios-test-retry.py; pass the same Morpheus commit as this workflow's pin." >&2
+            exit 1
           fi
-          if [ -n "$ONLY_TESTING" ]; then
-            while IFS= read -r identifier; do
-              [ -z "$identifier" ] && continue
-              args+=(-only-testing:"$identifier")
-            done <<< "$ONLY_TESTING"
-          fi
-          if [ -n "$SKIP_TESTING" ]; then
-            while IFS= read -r identifier; do
-              [ -z "$identifier" ] && continue
-              args+=(-skip-testing:"$identifier")
-            done <<< "$SKIP_TESTING"
-          fi
-          if [ "$MAXIMUM_PARALLEL_TESTING_WORKERS" != "0" ]; then
-            args+=(-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS")
-          fi
-          # `-retry-tests-on-failure` re-runs only the tests that failed, so a
-          # flake costs seconds instead of the whole job. It does not weaken the
-          # gate: a test that fails every attempt still fails the run.
-          #
-          # Retries share the test host's process on purpose. Relaunching it
-          # (`-test-repetition-relaunch-enabled YES`, tried 2026-10-04 to
-          # 2026-10-05) made xcodebuild re-execute the whole UI test bundle for
-          # every retry rather than the failed cases: Evo's release lane ran
-          # its suite twice over, hit the job's three-hour limit, and produced
-          # no evidence at all. A flake that lives in the process is left to
-          # the next release instead.
-          if [ "${TEST_ITERATIONS:-0}" != "0" ]; then
-            args+=(-retry-tests-on-failure -test-iterations "$TEST_ITERATIONS")
-          fi
+          # The script runs the pre-test script and writes tests.log itself, once per attempt.
           if [ "$FIREBASE_EMULATORS" = "true" ]; then
-            printf -v test_command '%q ' xcodebuild test-without-building "${args[@]}"
-            test_command+=" 2>&1"
-            if [ -n "$PRE_TEST_SCRIPT" ]; then
-              printf -v pre_test_command 'bash %q' "$GITHUB_WORKSPACE/$PRE_TEST_SCRIPT"
-              test_command="$pre_test_command && $test_command"
-            fi
-
+            printf -v test_command 'python3 -I -S -B %q' "$retry"
             firebase emulators:exec \
               --config "$GITHUB_WORKSPACE/$FIREBASE_CONFIG" \
               --project "$FIREBASE_PROJECT" \
               --only "$FIREBASE_ONLY" \
               "$test_command" \
-              2>&1 | tee "$LOGS/tests.log"
+              2>&1 | tee "$LOGS/emulators.log"
           else
-            if [ -n "$PRE_TEST_SCRIPT" ]; then
-              bash "$GITHUB_WORKSPACE/$PRE_TEST_SCRIPT"
-            fi
-            xcodebuild test-without-building "${args[@]}" 2>&1 | tee "$LOGS/tests.log"
+            python3 -I -S -B "$retry"
           fi
 
       - name: Export complete test evidence
@@ -881,7 +869,9 @@ jobs:
           printf '%s\n' "$ONLY_TESTING" > "$RESULTS/only-testing.txt"
           printf '%s\n' "$SKIP_TESTING" > "$RESULTS/skip-testing.txt"
           result_bundle="$RESULTS/Tests.xcresult"
-          if [ -d "$result_bundle" ]; then
+          # A run that passed only after retries already has both, written by
+          # scripts/ios-test-retry.py in the shape Xcode's in-process retry gave them.
+          if [ -d "$result_bundle" ] && ! { [ -f "$RESULTS/tests.json" ] && [ -f "$RESULTS/summary.json" ]; }; then
             xcrun xcresulttool get test-results tests --path "$result_bundle" > "$RESULTS/tests.json"
             xcrun xcresulttool get test-results summary --path "$result_bundle" > "$RESULTS/summary.json"
           fi

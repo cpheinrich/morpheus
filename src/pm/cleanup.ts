@@ -1,4 +1,4 @@
-import { lstat, readdir, realpath } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath, rm } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -59,18 +59,25 @@ async function localData(path: string): Promise<string[]> {
     !/^!! (?:.*\/)?node_modules\/?$/.test(entry) && !(entry === "!! local/" && generatedLeaseOnly));
 }
 
-/** The one ignored local file Morpheus itself creates during context refresh. */
+/**
+ * The ignored local files Morpheus itself creates for context freshness: the
+ * lease `refresh` writes, the record snapshot beside it, and the read log the
+ * read hook appends. Nothing else under `local/` qualifies.
+ */
 async function onlyGeneratedLease(root: string): Promise<boolean> {
   const local = join(root, "local");
   const sessions = join(local, "sessions");
-  const name = `${sessionId(root)}.json`;
+  const lease = `${sessionId(root)}.json`;
+  const generated = new Set([lease, `${sessionId(root)}.records.json`, "reads.jsonl"]);
   try {
     if (!(await lstat(local)).isDirectory() || !(await lstat(sessions)).isDirectory()) return false;
     if ((await readdir(local)).join("\0") !== "sessions") return false;
-    if ((await readdir(sessions)).join("\0") !== name) return false;
-    if (!(await lstat(join(sessions, name))).isFile()) return false;
-    const { lease, issue } = await readLease(root, sessionId(root));
-    return !issue && lease?.receipt.worktree === root;
+    const names = await readdir(sessions);
+    if (!names.length || names.some((name) => !generated.has(name))) return false;
+    for (const name of names) if (!(await lstat(join(sessions, name))).isFile()) return false;
+    if (!names.includes(lease)) return true;
+    const { lease: read, issue } = await readLease(root, sessionId(root));
+    return !issue && read?.receipt.worktree === root;
   } catch { return false; }
 }
 
@@ -195,7 +202,37 @@ export async function worktreeStatus(cwd: string): Promise<string[]> {
   return lines;
 }
 
-/** Git alone prunes missing registrations; never delete branches or live directories. */
+/** Inspect registrations from the caller, never from a potentially broken checkout. */
 export async function pruneStaleWorktrees(cwd: string, dryRun = false): Promise<string> {
-  return git(cwd, ["worktree", "prune", "--verbose", "--expire", "now", ...(dryRun ? ["--dry-run"] : [])]);
+  const { common } = await checkoutIdentity(cwd);
+  const admin = join(common, "worktrees");
+  const entries = await readdir(admin, { withFileTypes: true }).catch(error => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  });
+  const lines: string[] = [];
+  for (const worktree of await listWorktrees(cwd)) {
+    if (worktree.locked !== undefined || !(await missingDirectory(worktree.path))) continue;
+    // Git's global prune also drops registrations for surviving directories with
+    // missing .git files. Locate only this absent checkout's administrative entry.
+    const matches: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const registration = join(admin, entry.name);
+      const pointer = await readFile(join(registration, "gitdir"), "utf8").catch(error => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw error;
+      });
+      if (pointer?.replace(/\n$/, "") === join(worktree.path, ".git")) matches.push(registration);
+    }
+    if (matches.length !== 1) throw new Error(`Cannot resolve exactly one registration for ${worktree.path}; retain and inspect manually.`);
+    const registration = matches[0]!;
+    if (!(await missingDirectory(join(registration, "locked"))) || !(await missingDirectory(worktree.path))) continue;
+    // Never use `git worktree remove`: a checkout restored after the absence
+    // check would be deleted, including ignored files. Only remove Git metadata;
+    // rm does not follow child symlinks and no path in the checkout is passed to it.
+    if (!dryRun) await rm(registration, { recursive: true });
+    lines.push(`${dryRun ? "Would prune" : "Pruned"}: ${worktree.path} (branch retained)`);
+  }
+  return lines.join("\n");
 }

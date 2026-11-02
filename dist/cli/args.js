@@ -43,6 +43,10 @@ const stringOptions = {
     "--since": (flags, value) => { flags.since = value; },
     "--repo": (flags, value) => { flags.repo = value; },
     "--timeout": (flags, value) => { flags.timeout = value; },
+    "--run": (flags, value) => { flags.run = value; },
+    "--workflow": (flags, value) => { flags.workflow = value; },
+    "--branch": (flags, value) => { flags.branch = value; },
+    "--sha": (flags, value) => { flags.sha = value; },
 };
 const booleanOptions = {
     "--check": (flags) => { flags.check = true; },

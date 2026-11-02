@@ -199,6 +199,8 @@ export declare const reviewMetadata: () => string;
  * (Claude) from this one function.
  */
 export declare const commentQaSkill: () => string;
+/** The shared Gemini meeting-intake procedure, distributed as a pointer to the installed guide. */
+export declare const meetingIntakeSkill: () => string;
 /**
  * The agentic-CTO skill as every other project carries it (MO-26-10-21-19.17.32): a pointer to
  * `morpheus cto guide`, written to `.agents/skills` and `.claude/skills`. Morpheus holds the one
@@ -216,3 +218,7 @@ export declare const agenticCtoPointerSkill: () => string;
 export declare const researchEngineerPointerSkill: () => string;
 /** The same canonical-guide distribution path as the other CTO contributor skills. */
 export declare const devopsEngineerPointerSkill: () => string;
+/** The product-leadership skill, distributed as a pointer to Morpheus's reviewed guide. */
+export declare const chiefProductOfficerPointerSkill: () => string;
+/** The VP of Design role under the CPO, using the same canonical-guide distribution path. */
+export declare const vpDesignPointerSkill: () => string;

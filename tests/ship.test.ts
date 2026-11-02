@@ -1,13 +1,15 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   didNoWork,
   formatReconcile,
   markShipped,
   type ReconcileResult,
 } from "../src/pm/ship.js";
+
+import { ship } from "../src/cli/pm.js";
 
 const plain = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
@@ -83,6 +85,46 @@ describe("markShipped", () => {
 
   it("names the item rather than throwing something opaque", async () => {
     await expect(markShipped(dir, "MO-999")).rejects.toThrow(/MO-999/);
+  });
+});
+
+describe("explicit pm ship", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "ship-check-"));
+    await mkdir(join(dir, "roadmap"), { recursive: true });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it.each([["MO-020"], ["MO-020", "MO-999"]])(
+    "rejects --check with explicit IDs before any write (%j)",
+    async (...ids) => {
+      const path = join(dir, "roadmap", "MO-020.md");
+      const before = item("MO-020", "prs: [12]\n");
+      await writeFile(path, before);
+
+      expect(await ship(dir, ids, dir, true)).toBe(1);
+      expect(await readFile(path, "utf8")).toBe(before);
+      expect(console.error).toHaveBeenCalledWith(
+        "pm ship --check cannot be combined with item IDs. Run pm ship --check without IDs to inspect merged-PR reconciliation.",
+      );
+      expect(console.log).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still explicitly ships an item when --check is absent", async () => {
+    const path = join(dir, "roadmap", "MO-020.md");
+    await writeFile(path, item("MO-020"));
+
+    expect(await ship(dir, ["MO-020"], dir)).toBe(0);
+    expect(await readFile(path, "utf8")).toMatch(/^status: shipped$/m);
+    expect(console.error).not.toHaveBeenCalled();
   });
 });
 

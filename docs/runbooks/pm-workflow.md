@@ -79,7 +79,14 @@ another session, confirm that session has ended before using `--release-stale-se
 the command still checks for open processes and preserves all other safety proofs.
 `morpheus pm worktrees` inventories legacy sibling worktrees;
 `morpheus pm worktrees prune` clears only Git registrations whose directories are
-already missing. Do not delete directories directly: Git registration and branches
+already missing and unlocked, preserving their branches. Pruning reads Git registrations
+from the caller checkout; it does not require a full inventory of other checkouts. Existing
+directories (including those missing their `.git` file), locked registrations, and all branch
+refs remain untouched. Removal touches only the matching Git administrative registration,
+never the checkout directory, so a concurrently restored checkout keeps its files (its
+registration may need repair). `--dry-run` lists eligible registrations without removing them.
+Branch-only cleanup after a worktree registration is gone still requires manual resolution.
+Do not delete directories directly: Git registration and branches
 must be reconciled together.
 
 ## Blocking
@@ -204,10 +211,27 @@ only when the next step depends on the result: it prints nothing while it waits,
 green or the failing step's log when not, and exits 0 green, 1 failed, 2 timeout, 3 error. Never
 poll `gh run view` or `gh pr checks` in a loop — each poll re-reads the whole session context.
 
+For a run no pull request owns — TestFlight, a release, a nightly — wait on the run itself:
+
+```sh
+morpheus wait-ci --run <id> [--repo owner/name] [--timeout 90m]
+morpheus wait-ci --workflow testflight.yml --branch main     # its latest run, following a newer one
+morpheus wait-ci --workflow ci.yml --sha <full-sha>          # exactly that push's run
+```
+
+After `gh workflow run`, prefer `--run <id>` once the run is listed. `--workflow` holds a latest run
+that had already finished for 20 seconds in case a newer one is about to appear, then reports it
+with a warning that it may be the previous run.
+
+The poll guard that `morpheus context install` wires refuses the third `gh run view`,
+`gh run watch` or `gh pr checks` of one target in a session and prints the matching command.
+Reading a log (`--log`, `--log-failed`) is never counted. A human can set `MORPHEUS_POLL_GUARD=off`.
+
 **Finish the author-managed independent review before enabling auto-merge.** Opening a PR,
 pushing commits, or changing labels never starts a reviewer session. Follow the
-[review contract](independent-review.md), return to the original reviewer for the
-permitted follow-up turns when required, and publish complete evidence before merging.
+[review contract](independent-review.md), resume the reviewer (or start a fresh one with the
+earlier findings when it cannot be resumed) for the permitted follow-up turns when required, and
+publish complete evidence before merging.
 
 **Legacy GitHub review is opt-in.** Only repositories explicitly enabling the old
 `agent-review.yml` run a model when a PR opens or a collaborator requests `@claude` re-review.
@@ -226,7 +250,10 @@ and a board that lags reality stops being read — thirteen items had drifted be
 Running it after a merge instead leaves the status change in a dirty working tree on protected
 `main` with nowhere to go, which is how a housekeeping step gets quietly dropped. `morpheus pm ship`
 still exists for running it deliberately, and `morpheus pm ship <ID>` for work that shipped without
-a PR it can see.
+a PR it can see. `morpheus pm ship --check` reports merged-PR reconciliation without
+writing roadmap files. It cannot be combined with
+explicit item IDs: that combination exits 1 before changing any item. It does not
+check whether manually selected work is ready to ship.
 
 It confirms against a merged PR rather than inferring from a missing branch, and writes nothing when
 `gh` is unavailable. It also reports merged branches that were never deleted — those read as live

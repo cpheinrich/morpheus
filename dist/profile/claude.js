@@ -250,6 +250,7 @@ export class ClaudeTranscript {
             byModel: [...byModel.values()],
             costUSD: this.cost,
             file,
+            source: "claude",
         };
         return { session, spans, issues: this.issues };
     }

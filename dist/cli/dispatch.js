@@ -30,8 +30,10 @@ import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
 import { autoUpdate as selfAutoUpdate, check as selfCheck, ensure as selfEnsure, install as selfInstall, update as selfUpdate, } from "./self.js";
 import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
 import { profileExtract, profileReport } from "./profile.js";
-import { waitCiCommand } from "./wait-ci.js";
+import { pollGuardCommand, waitCiCommand } from "./wait-ci.js";
 import { ctoGuide } from "../cto/guide.js";
+import { productGuide } from "../product/guide.js";
+import { listProjectSkills, syncProjectSkillEntrypoints } from "./skills.js";
 import { HELP } from "./help.js";
 async function dispatchSelf({ flags, command, rest }) {
     if (command === "check" || command === undefined)
@@ -380,6 +382,10 @@ async function dispatchContext({ flags, command }) {
     const off = offlineDeclared(flags.offline);
     if (command === "refresh")
         return contextRefresh(process.cwd(), off);
+    // The PostToolUse read hook. `index.ts` routes it before loading the CLI;
+    // this is the same entry for anything that calls `run` directly.
+    if (command === "record-read")
+        return (await import("../session/read-hook.js")).runReadHook();
     if (command === "check")
         return contextCheck(process.cwd(), off);
     if (command === "brief" || command === "start") {
@@ -420,6 +426,27 @@ async function dispatchCto({ command, rest }) {
         return 0;
     }
     console.error(`Unknown cto command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+}
+async function dispatchProduct({ command, rest }) {
+    if (command === "guide") {
+        const guide = productGuide(rest[0]);
+        if (!guide.ok) {
+            console.error(guide.message);
+            return 1;
+        }
+        console.log(guide.text.replace(/\n$/, ""));
+        return 0;
+    }
+    console.error(`Unknown product command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+}
+async function dispatchSkills({ flags, command }) {
+    if (command === "list" || command === undefined)
+        return listProjectSkills(flags.json);
+    if (command === "sync")
+        return syncProjectSkillEntrypoints(process.cwd(), flags.check);
+    console.error(`Unknown skills command "${command}".\n\n${HELP}`);
     return 1;
 }
 async function dispatchCheck({ flags, command, dir }) {
@@ -515,7 +542,24 @@ async function dispatchProfile({ flags, command }) {
     return 1;
 }
 async function dispatchWaitCi({ flags, command, rest }) {
-    return waitCiCommand({ target: command, extra: rest, repo: flags.repo, timeout: flags.timeout, requiredOnly: flags.requiredOnly });
+    return waitCiCommand({
+        target: command,
+        extra: rest,
+        repo: flags.repo,
+        timeout: flags.timeout,
+        requiredOnly: flags.requiredOnly,
+        run: flags.run,
+        workflow: flags.workflow,
+        branch: flags.branch,
+        sha: flags.sha,
+    });
+}
+async function dispatchPollGuard({ command }) {
+    if (command !== undefined) {
+        console.error(`poll-guard takes no arguments; it reads a PreToolUse hook payload on stdin.`);
+        return 0;
+    }
+    return pollGuardCommand();
 }
 const groups = {
     "self": dispatchSelf,
@@ -541,8 +585,11 @@ const groups = {
     "check": dispatchCheck,
     "qa": dispatchQa,
     "cto": dispatchCto,
+    "product": dispatchProduct,
+    "skills": dispatchSkills,
     "profile": dispatchProfile,
     "wait-ci": dispatchWaitCi,
+    "poll-guard": dispatchPollGuard,
     pm: dispatchPm,
 };
 export async function dispatch(flags) {

@@ -25,34 +25,73 @@ Xcode-rewritten `project.pbxproj`. So when HEAD is the trunk branch and tracked 
    tree — once before creating the branch and again immediately before resetting;
 2. resets trunk to its last commit. Nothing slow runs between the proof and the reset, so an
    editor saving during the push below lands on the reset tree instead of being lost;
-3. pushes the branch to `origin` and opens a **draft** PR titled *WIP: uncommitted changes rescued
-   from <repo> main (<date>)*, listing the files, the diffstat and how far behind trunk was (on a
-   fork, against the trunk remote's repository), then fast-forwards and prints one line with the
-   PR URL.
+3. **only on a private repository**, pushes the branch to `origin` and opens a **draft** PR titled
+   *WIP: uncommitted changes rescued from <repo> main (<date>)*, listing the files, the diffstat
+   and how far behind trunk was (on a fork, against the trunk remote's repository), then
+   fast-forwards and prints one line with the PR URL. The commit message and PR body name the
+   trunk branch and a short host label, never the checkout's absolute path or full hostname.
+
+**On a public repository the rescue stays local.** Pushing would publish whatever was lying in the
+checkout: morpheus #452 put an agent's private working document, a Tailscale hostname and local
+paths on the public web, and closing a PR unpublishes nothing. Before the proof, `brief` asks
+`gh repo view github.com/<owner/repo> --json visibility` for every repository the rescue would
+reach — the push remote's push and fetch URLs, where a `pushInsteadOf` rewrite actually sends the
+push and, on a fork, the trunk remote — and publishes only when every one reads exactly `PRIVATE`. Public, internal, a remote that is not on GitHub, a missing or failing
+`gh` and an answer it cannot parse all keep the branch local: **unknown is public**. Answers are
+cached for one hour in the primary checkout's ignored `local/sessions/repo-visibility.json`; a
+failed read is never cached. A local rescue gets the same commit, proofs and reset, and then
+nothing else — no push, no PR, and the branch is never deleted automatically, because it is the
+only copy. `brief` prints the branch, the diffstat, why it was not pushed, how to recover it
+(`git switch <branch>`, or `git cherry-pick <branch>` onto another branch) and how to publish it
+deliberately (`git push origin <branch>`, then `gh pr create --draft --head <branch>`).
+`morpheus doctor` and `doctor --all` list every `wip/trunk-*` branch with no remote-tracking ref,
+from any checkout of the repository, until someone deletes it with `git branch -D`. A
+`clone --single-branch` gets no tracking ref even for a pushed rescue, so there the list can
+include one that does have a remote copy.
 
 It refuses, and reports instead, when a file's staged content differs from both HEAD and the
-working tree (committing the tree would drop the staged version), and when anything under
-`hq/team/` is edited — those are inbox replies, which belong to the session starting there to read
-them, on an `inbox-<date>` branch.
+working tree (committing the tree would drop the staged version), when a file removed from the
+index is still on disk (`git rm --cached`: no commit would hold that file, and the reset would
+overwrite it), and when anything under `hq/team/` is edited — those are inbox replies, which belong
+to the session starting there to read them, on an `inbox-<date>` branch.
+
+**IDE churn is reset, not rescued.** When every tracked edit is churn — per-user IDE state
+(`xcuserdata/`, `.DS_Store`, JetBrains' `workspace.xml` and other per-user files), a `.pbxproj`
+changed only in whitespace, comments or dictionary key order, an `.xcscheme` or
+`.xcworkspacedata` re-serialised with the same elements and attributes, or content trunk already
+has — `brief` resets it after the same content proof, opens nothing, and prints one line naming
+the commit that held the edits (`git checkout <sha> -- <path>` recovers one until Git prunes it).
+One real edit among them and the whole set is rescued as above. The rule is deliberately narrow —
+`.vscode/`, added files and any value change trunk lacks are rescued; see
+`src/session/trunk-churn.ts`.
+
+**A repeat is not rescued twice.** When an open rescue PR's change, replayed onto the current HEAD,
+gives exactly these edits, the checkout is reset without another PR and the brief names the
+earlier one. A failed lookup, a closed PR or a branch missing from the remote falls back to an
+ordinary rescue. Where rescues stay local there is no PR to require: a recent local `wip/trunk-*`
+branch whose change replays to these edits is the match on its own, and no second branch is made.
 
 **Untracked files are never committed or deleted** — that is where secrets and build junk live.
-They are listed in the PR, and untracked build output whose source no longer exists
+They are listed in the PR (or the brief), and untracked build output whose source no longer exists
 (`dist/foo.js` with no `src/foo.ts`) is named as safe to delete. Git's own `--ff-only` refuses if
 the merge would overwrite one, and `brief` says so. Nothing happens mid-merge, -rebase,
 -cherry-pick, -revert or -bisect; the checkout is reported loudly instead. If the push fails the
 edits stay on the local branch and the reset still happens; if `gh` fails, the branch is pushed and
 the command to open the PR is printed.
 
-The draft is not a finished change: `check pr` conventions wait on drafts, and the GitHub Manager
-escalates an unadopted `wip/trunk-*` draft to a human once it passes the 48-hour draft quiet period
-— it never reviews, repairs or merges one. Adopt it onto a roadmap item's branch, or close it.
+The draft is not a finished change: `check pr` conventions wait on drafts. The GitHub Manager never
+reviews, repairs, merges, triages or escalates one; in a repository opted in to it, once the draft
+has gone 7 days without a push (`RESCUE_MAX_AGE_DAYS`) the manager closes it with a comment on
+recovering it, and the branch is kept. The PR body says so only where that policy exists. Adopt it
+onto a roadmap item's branch before then, or close it yourself.
 
 A checkout still behind after startup prints `!!! STALE CHECKOUT` past 20 commits or once the oldest
 missing commit is more than 3 days old (`STALE_BEHIND_*` in `src/session/trunk-rescue.ts`).
 
 **Fleet view.** `brief` only acts in the checkout a session starts in, which is exactly the one
 nobody opens. `morpheus doctor --all` reports every registered project whose trunk checkout is
-dirty or behind past those thresholds, and orphaned build output, without writing anything. It
+dirty or behind past those thresholds, orphaned build output, and never-pushed local rescue
+branches, without writing anything. It
 measures against the remote tip when that commit is already local, otherwise against the cached
 remote-tracking ref, and says when that cache may be stale.
 
@@ -83,6 +122,66 @@ pipe `refresh` output through `head` or `tail`: the delta it prints is what you 
 over August–October 2026, agents refreshed 738 times (median four per session), about half within
 five minutes of the previous refresh, while only 25 of 828 gated commands were ever refused.
 
+**Refresh is idempotent.** When the trunk and every required record are exactly as this
+worktree's receipt saw them, `refresh` extends that receipt and prints one line — *Context
+unchanged since …; nothing to re-read*. The October instruction to refresh less did not change
+behaviour (refreshes per session rose), so a redundant refresh is now simply free instead of
+being a reason to re-read 139 KB of decisions or pretend to.
+
+### Read evidence
+
+`refresh` used to be a bare assertion, and transcripts showed agents taking it without reading:
+`cat .agent/decisions.md … >/dev/null && morpheus context refresh`. Now a **read hook** records
+what each tool call actually showed the model, and where it is live, `refresh` certifies a record
+only where that log covers it **at the record's current content**.
+
+- **What counts.** A Read tool result, by its line range, after checking the returned text is what
+  is on disk. Shell output, by content: the record's lines that appear verbatim and in order in
+  what the command returned, in runs of at least 16 non-space characters. `>/dev/null`, `| wc` and
+  numbered output (`cat -n`, `grep -n`) leave nothing to match; `| head` earns only the lines it
+  let through. Shell output over 20,000 bytes (8,000 for Codex) earns nothing, because Claude Code
+  keeps ~30,000 characters in the hook payload while showing the model a 2 KB preview. Ranges from
+  several reads add up, so a large record can be read in pieces.
+- **What is required.** With no usable receipt (every new session — `brief` discards the last
+  one), every line of every required record. With a receipt that was itself recorded, only the
+  hunks that changed since it, from Git's own diff against the content snapshot taken with it.
+  An asserted receipt, or one taken before evidence existed, is never the baseline a recorded
+  one extends.
+- **What a refusal does.** It writes nothing, names each record and its unread line ranges, and
+  prints the changed lines raw (with enough context to count). Where the hook can see that
+  output it *is* the reading, so the next `refresh` certifies; otherwise read the ranges with the
+  Read tool (offset/limit) or `sed -n 'A,Bp' <path>` with nothing piped or redirected.
+- **Content-addressed, so checkouts share it.** Evidence is keyed by record and content
+  fingerprint, and `refresh` reads the logs of every worktree of the repository. Records read in
+  the primary checkout count in the task worktree `pm claim` prepares at the same trunk.
+- **Your own writes are not deltas.** `pm block` and other recorded writes move the receipt and
+  its snapshot together, so the next refresh does not ask you to read what you wrote.
+
+The log is `local/sessions/reads.jsonl` in each checkout (ignored, pruned past 256 KB to the last
+two days); entries carry a hash of the provider session id, never the raw id, and never content.
+The snapshot is `local/sessions/<lease>.records.json`. `pm cleanup` treats both, like the lease, as
+generated.
+
+**Where no hook is watching, refresh falls back to the assertion and says so** — `! Certified by
+assertion: …`. That is a human terminal, a tool without hooks, a project not yet wired, a Codex
+hook not yet trusted, or a Claude session that started before the hook was added (Claude snapshots
+hooks at session start). The hook only enforces after it has run in this session and understood a
+tool result, so an unrecognized payload shape degrades to the warning, never to a lockout.
+`MORPHEUS_READ_EVIDENCE=off` forces the assertion for a hook that runs but demonstrably cannot see
+a read; the receipt records `asserted` and `context status` shows it. It is not a way to skip
+reading.
+
+The hooks, both scaffolded by `init` and merged in by `context install`:
+
+| File | Events | Matcher |
+|---|---|---|
+| `.claude/settings.json` | `PostToolUse`, and `PostToolUseFailure` (a Bash that exits non-zero, which is how `refresh` prints a refusal) | `Read\|Bash`, `Bash` |
+| `.codex/hooks.json` | `PostToolUse` | none — Codex's shell tool name is undocumented, so every result is scanned |
+
+Each runs `morpheus context record-read` inline, silently, exiting 0 whatever happens — a hook
+error after every tool call would be noise, and missing evidence already fails safe. Codex needs
+the new hook trusted with `/hooks`, like the session-start one.
+
 ```sh
 morpheus context status    # what the current lease says, and how old it is
 morpheus context check     # exit non-zero unless fresh — for hooks and scripts
@@ -107,12 +206,70 @@ session certifies `fresh` having never opened the file a human replies in.
 **Codex will not run an untrusted hook, and says nothing when it declines.** Once per project, run
 `/hooks` in a Codex session and trust it. Trust is recorded against the hook's hash, so editing the
 file means trusting it again — and until then `.codex/hooks.json` exists and does nothing, which
-looks exactly like working.
+looks exactly like working. **`morpheus doctor` reports it**: every hook Codex will not run yet,
+whether it was never trusted or changed since, and the exact place to run `/hooks`. It reads
+`~/.codex/config.toml` (or `$CODEX_HOME`) and never writes it: trusting a hook is the user's
+security decision, and the desktop app rewrites that file itself.
+
+### How Codex hook trust works
+
+Read from Codex's source at `rust-v0.163.0`, `0.164.0-alpha.11.1` and `0.165.0` (identical in these
+parts) and confirmed against what the installed Codex reports through `codex app-server`'s
+`hooks/list`. `src/doctor/codex-trust.ts` reproduces it, and its tests pin hashes Codex computed.
+
+- **Trust is per hook, per file.** `/hooks` writes `[hooks.state."<key>"] trusted_hash = "sha256:…"`,
+  where the key is `<absolute path of hooks.json>:<event>:<group index>:<handler index>` and the
+  hash covers the event, matcher and normalized handler (command, timeout, async, status message).
+  Moving a hook to another index, or changing its command, needs trusting again. The path is the
+  one Codex was opened with, unresolved; `doctor` also accepts trust recorded under a symlinked
+  spelling of the same file.
+- **A linked worktree runs the main checkout's hooks.** When the session's checkout is a linked
+  worktree, Codex reads `.codex/hooks.json` from the main checkout, keyed by the main checkout's
+  path. So trusting once in the main checkout covers every task worktree — and a branch's own edits
+  to its hooks reach Codex only after they merge *and* the main checkout is fast-forwarded. `doctor`
+  run in a worktree says so, and warns when the worktree's file differs from the one Codex runs.
+  (The worktree still needs a `.codex/` directory of its own for Codex to load the project layer.)
+- **Parent directories are not searched.** Codex loads `.codex/` folders from the project root
+  (the nearest `.git`) down to the working directory, never above it, so a `~/code/.codex/hooks.json`
+  would not apply to `~/code/evo`. Project trust (`[projects."<path>"]`) is exact-path too, checked
+  for the checkout and then the main checkout; an untrusted project loads no project hooks at all.
+- **User-level hooks run everywhere with one trust.** Hooks in `~/.codex/config.toml` or
+  `~/.codex/hooks.json` run in every project and worktree, keyed by that file's path — the
+  codebase-memory `SessionStart` hook is one. Loading both files' hooks prints a "prefer a single
+  representation" warning at every session start.
+
+### Proposed: trust Morpheus's Codex hooks once per machine
+
+Not built yet. Per-repository trust costs one `/hooks` pass per project per machine, repeated
+whenever a hook's command changes. User-level hooks are trusted once per machine:
+
+- **An explicit device command** — `morpheus codex hooks install [--check]`, consented like
+  `codebase-memory install`: a person runs it, never a session hook or an agent on its own
+  initiative. It writes Morpheus's three Codex hooks (session shim, read hook, poll guard) as a
+  marked, replaceable block in `~/.codex/config.toml`, the representation already in use there, so
+  no new warning appears. Re-running replaces only the marked block; `--check` reports drift without
+  writing. Afterwards the person runs `/hooks` once to trust them.
+- **Stable commands, logic in the CLI.** Each hook calls a fixed entry point, e.g.
+  `morpheus codex-hook session-start`, that exits 0 at once outside a Morpheus checkout (no
+  `.morpheus/` at the Git toplevel) or when `morpheus` is absent. Because the hashed text never
+  changes, a Morpheus release never invalidates the trust.
+- **Run once even when both copies are trusted.** Keep the per-repository `.codex/hooks.json`: it
+  is the bootstrap bridge on a device with no Morpheus CLI, and how other machines and collaborators
+  get the hooks. When both are trusted, Codex runs both, which would print the brief twice and make
+  the poll guard count each poll twice. So both copies claim the event first — by `session_id` and
+  the tool call's `turn_id`/`tool_use_id`, with an exclusive create in `local/sessions/` — and the
+  second claimant exits 0.
+- **Risks to settle first.** The desktop app writes `[hooks.state]` and project trust into the same
+  file, so the writer must re-read immediately before an atomic replace and refuse while the file
+  is changing; the block sits after codebase-memory's own block, so reinstalling either shifts the
+  other's group index and asks for trust again. Writing `~/.codex/hooks.json` instead avoids both
+  but brings the every-session warning above.
 
 **When something has moved**, `context refresh` prints what landed on the trunk and which records
 changed. Re-read those and refresh again — the delta is the point, not the ceremony. **Do not
-refresh without reading.** The receipt is your assertion, and a receipt taken to clear a gate is
-the one failure mode the whole protocol cannot detect.
+refresh without reading.** Where the read hook is live it refuses to; elsewhere the receipt is
+still your assertion, and a receipt taken to clear a gate is the failure the assertion cannot
+detect.
 
 **Offline**, set `MORPHEUS_OFFLINE=1` — or pass `--offline`. Local work proceeds; anything that leaves the machine —
 pushing a claim, granting access — stays refused, because an unverified trunk is exactly when you

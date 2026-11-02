@@ -26,6 +26,8 @@
     "./hq-search/build": "./dist/hq-search/build.js",
     "./hq-search/pdf": "./dist/hq-search/pdf.js",
     "./hq-search/react": "./dist/hq-search/react.js",
+    "./section-links": "./dist/section-links/index.js",
+    "./section-links/react": "./dist/section-links/react.js",
     "./registry": "./dist/registry/index.js",
     "./profile": "./dist/profile/index.js",
     "./doctor": "./dist/doctor/index.js",
@@ -33,6 +35,7 @@
     "./self": "./dist/self.js",
     "./design": "./dist/design/index.js",
     "./team": "./dist/team/index.js",
+    "./meeting-intake": "./dist/meeting-intake/index.js",
     "./research-library": "./dist/research-library/index.js",
     "./research-library/client": "./dist/research-library/client.js",
     "./research-library/server": "./dist/research-library/server.js"
@@ -59,6 +62,7 @@
     "minisearch": "^7.2.0",
     "modern-screenshot": "4.7.0",
     "serve-sim": "0.1.47",
+    "smol-toml": "1.9.1",
     "zod": "^4.6.6"
   },
   "peerDependencies": {

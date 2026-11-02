@@ -72,6 +72,20 @@ Chris, plus a small number of family and friends. It is not a product. Three con
 10. **Extract on the second use, never the first.** Nothing enters the kit until a second project
     needs it. A wrong abstraction propagates into everything that adopts it.
 
+11. **Simplicity first; complexity is earned.** Every design, from a small feature to a delivery
+    pipeline, starts from the simplest version that meets the requirements and gets one more
+    simplification pass before it is built. A component, state, configuration option, check, gate
+    or approval step is added when the system's observed behaviour shows it is needed, not because
+    it might be. When two designs give the same result in the common case, the one with fewer parts
+    and fewer lines wins, because it is likelier to work and easier to repair. Principle 9 decides
+    how a necessary rule is enforced; this one decides whether the rule should exist. A requested
+    safeguard is read at its narrowest reasonable scope. Only a check that protects users, such as
+    tests, device gates, or signing and upload verification, may block; quota, approval and
+    bookkeeping checks warn. Agents ask before tightening a safeguard, and removing an existing one
+    is a recorded decision rather than a side effect. Reviewers hold changes to the same standard
+    (rung 2, §9). A simpler equivalent is a minor finding. A gate, approval step, state, option or
+    mechanism that the requirements do not need is a substantive one.
+
 ---
 
 # Part II — The shape of a project
@@ -504,11 +518,20 @@ needed.
   of discoverable procedure. `launch-company` owns the cross-provider greenfield path from an
   optional domain purchase through a verified public site and role-gated `/hq`; provider
   commands remain the deterministic implementation beneath it.
+- **The loaders' local `SKILL.md` frontmatter is the project skill index.** Morpheus does not add a
+  second `morpheus-skills.json` whose names and descriptions could drift. One typed registry in
+  `src/project-skills.ts` classifies each reusable skill's providers, project kinds and distribution
+  mode; it derives descriptions from the rendered frontmatter and drives `morpheus init`,
+  `morpheus skills list [--json]` and the idempotent `morpheus skills sync [--check]`. Sync adds
+  only missing entrypoints and reports malformed existing ones without overwriting project-owned
+  files. A test compares the registry with both canonical skill directories, so adding a canonical
+  skill without declaring it project-facing or Morpheus-only fails CI instead of disappearing from
+  older projects.
 - **`agentic-cto`** is how an agent runs an outcome delegated with authority and a budget: a
   written mandate, design before building, parallel delegation, a reserved spend ledger, evidence
   before claims, and the gates a mandate never opens. Its canonical files live only in Morpheus's
   two skill directories and `morpheus cto guide` prints them; `morpheus init` gives every project
-  kind a one-file pointer to that command, added to an existing project by re-running `init`.
+  kind a one-file pointer to that command, while `morpheus skills sync` adds it to an older project.
   Morpheus's `references/provenance.md` traces each rule to the direction it came from.
 - **`research-engineer`** is the first individual-contributor skill under the CTO: hands-on ML and
   algorithm research that frames the problem, benchmarks before building, iterates in rounds,
@@ -516,11 +539,24 @@ needed.
   and distributed the same way — canonical files beside `agentic-cto`, printed by
   `morpheus cto guide research-engineer` (a reference as `research-engineer/<reference>`), and a
   one-file pointer from `morpheus init` — and the CTO's mandate, budget and gates apply to it.
+  Its record puts the ask, plain-language results and decision in a concise body, with detailed
+  tables, metric formulas and reproducibility evidence in bottom appendices.
 - **`devops-engineer`** owns CI/CD delivery health and incident follow-through under the same
   mandate. It distinguishes eligible deadlines and actual availability from process health,
   resumes existing repair ownership and keeps memory in durable incident records. It uses the
   same provider mirrors, guide (`morpheus cto guide devops-engineer`) and scaffold pointers.
   The skill defines responsibility; it does not activate a second controller or a live supervisor.
+  DevOps-to-CTO blocker handoffs require proof of the practical authorized routes, and a concrete
+  internal reporting cadence. A versioned CD proof envelope validates only shape/current binding;
+  the CTO independently corroborates critical evidence before accepting narrow blockage. Missing
+  or stale proof remains diagnosis, with the attempted claim retained, rather than global blockage.
+- **`chief-product-officer`** owns a delegated product outcome: the customer and business problem,
+  evidence, priorities, product brief, acceptance and portfolio tradeoffs. **`vp-design`** works
+  under that role to own information architecture, interaction and visual-system quality. Their
+  canonical files live in Morpheus and `morpheus product guide` prints them; every project kind
+  receives one-file pointers through init/sync. A role grants no product, publishing or spending
+  authority by itself. The CPO coordinates technical feasibility with the CTO rather than silently
+  absorbing engineering ownership.
 
 ### 7.2 Conventions and how they are enforced
 
@@ -686,6 +722,30 @@ implementation, decision promotion, and every other follow-up belong in separate
 reviewers can distinguish what happened in the meeting from what an agent later inferred from it.
 A roadmap follow-up backfills filed ids into the note's `roadmap:` field; that link is bookkeeping,
 not interpretation.
+
+**Gemini meeting intake is shared machinery with project-owned topology.** On its second use,
+Morpheus owns the discovery extension, project-policy validation, immutable Git reader,
+deduplication, bounded search, optional catalog projection and completion-notice gate. A project's
+`.morpheus/meeting-intake.json` owns its collaborators, source account, topic vocabulary,
+canonical repository/directory, timezone, optional projection and notification authority. The
+canonical repository may be the project itself; a catalog is never mandatory merely because Evo
+projects Darwin-owned notes. Source interpretation, redaction, participant resolution and factual
+writing remain agent judgment under the shared guide. Historical imports are notes only and cannot
+promote actions or pass the notice gate.
+
+The public package and its tests use synthetic organizations, identities, domains and notification
+targets. Real collaborator addresses, repository topology, group aliases, scheduled watcher prompts
+and delivery journals stay in project-owned profiles or ignored local state. For a current note, an
+authorized completion notice waits for the factual record and required projection, not for the
+separate action-promotion change; the journal and notice say whether actions were recorded or remain
+unpromoted.
+
+**New Gemini records are priority-first.** Discovery version 2 declares
+`note_format: priority-first-v1` and leads with an executive summary, key decisions and key action
+items, in that order, before supporting detail. The bounded metadata summary still feeds catalogs
+and authorized notices; the body summary carries the fuller headline context. `team validate` and
+immutable canonical reads enforce the declared body shape. Version 1 and unversioned meeting notes
+remain readable history rather than being rewritten.
 
 Git rather than cloud storage because these are small, textual, appear in PR diffs, and are
 greppable with no authentication. Indexing markdown later is easy; migrating off a bespoke store is
@@ -921,7 +981,7 @@ effort, which is why they are the last layer rather than the first.
 |---|---|---|
 | The CLI gate | every project, agent and human | none — bump the dependency |
 | `check pr`'s `context-drift` | every PR | already centralised |
-| `.claude/settings.json` | Claude Code sessions | one scaffolded file, informational |
+| `.claude/settings.json` | Claude Code sessions | one scaffolded file: the session brief, and the read hook that turns `refresh` from assertion into evidence |
 | `.codex/hooks.json` | Codex sessions | the same, in Codex's own file |
 | `AGENTS.md` | anything that reads instructions | scaffolded |
 
@@ -972,19 +1032,63 @@ gated commands were ever refused, and 305 refreshes were piped through `head` or
 the delta that is the reason to run it. The instructions, not the lease, were producing the
 ritual.
 
+Changing the instructions on 2026-10-07 to "refresh once, then only on refusal" did not change the
+behaviour: refreshes per Claude session rose from 2.3 to 3.1–3.2 (up to 21 in one session), Codex
+ran 2.4–5.1, and some agents took receipts with `cat … >/dev/null && morpheus context refresh` —
+exactly the failure this section says the protocol cannot detect. So the protocol's intent moved
+into code:
+
+- **Refresh is idempotent.** When the trunk and every required record are exactly as this
+  worktree's receipt saw them, `refresh` extends the receipt and asks for nothing. A redundant
+  refresh is free rather than a reason to re-read 139 KB of decisions or pretend to.
+- **Reading is recorded, not asserted, where a hook can see it.** A provider `PostToolUse` hook
+  (`morpheus context record-read`) appends to `local/sessions/reads.jsonl` what each Read or
+  shell call actually showed the model: a Read by its line range once the returned text matches
+  the file, shell output by the record lines that appear verbatim in it. Credit is by content,
+  not by parsing commands, so a discarded or truncated read earns nothing without a rule for
+  `>/dev/null` or `| head`. Refresh certifies a record only where the session's evidence covers
+  it at its current fingerprint — the whole record without a recorded baseline, otherwise only
+  the hunks Git's diff finds against the snapshot taken with the last receipt — and on a shortfall
+  writes nothing and prints the unread ranges and changed lines.
+- **Evidence is keyed by content, not by checkout,** so records read in the primary checkout
+  count in the task worktree `pm claim` prepares at the same trunk; refresh reads every worktree's
+  log. An asserted receipt is never the baseline a recorded one extends.
+- **It degrades, it never locks out.** Enforcement starts only once the hook has run in this
+  provider session and understood a tool result. A human terminal, a tool without hooks, an
+  unwired project, an untrusted Codex hook or an unrecognized payload stays on the assertion with
+  a visible warning, and the receipt records `asserted`. `MORPHEUS_READ_EVIDENCE=off` is the
+  declared escape for a hook that runs and cannot see a read.
+
+What the hook still cannot prove is that the model *attended* to text it was shown, and a
+subagent's reads share its parent's session id. It closes the gap that was measured — receipts
+taken with nothing shown — not the one that cannot be.
+
 **Startup prepares source; explicit refresh certifies reading.** The existing standard shim
 continues to invoke `morpheus context brief`, now also available as `context start`. The shared CLI
 fetches the configured canonical trunk into an invocation-private ref so simultaneous fetches cannot
 exchange `FETCH_HEAD`. A local trunk behind that exact commit fast-forwards; feature branches and
 divergent trunks remain intact and report missing commits. Tracked edits on the trunk branch are
-first committed to a pushed `wip/trunk-*` draft PR and the trunk reset only once that commit is
-proven to hold them — a dirty trunk otherwise never advances, and one did not for three weeks.
-When an exact old/new blob, path and mode diff has a live pushed `wip/trunk-*`
-branch and an open PR, the checkout resets after the same content proof without
-creating another draft PR. Live remote and PR checks run before the proof/reset window;
+first committed to a `wip/trunk-*` branch and the trunk reset only once that commit is proven to
+hold them — a dirty trunk otherwise never advances, and one did not for three weeks. The branch is
+pushed and opened as a draft PR only when every repository it would reach reads `PRIVATE` from
+`gh repo view`; public, internal, non-GitHub or unreadable visibility keeps it a local branch,
+because pushing publishes whatever was in the checkout (#452 published an agent's private notes,
+a hostname and local paths, and closing a PR unpublishes nothing). Unknown is public. Answers are
+cached for an hour in the primary checkout's ignored `local/`; failures never are. A local rescue
+is never pushed or deleted automatically; the brief prints how to recover or publish it, and
+`doctor` lists every rescue branch with no remote-tracking ref until someone deletes it. Published text names the
+trunk branch and a short host label, never the checkout path or full hostname.
+Edits that are all IDE churn — per-user IDE state, a `.pbxproj` or Xcode XML file whose structure
+is unchanged, or content trunk already has — are reset after the same proof with a one-line report
+and no PR; one real edit and everything is rescued (`src/session/trunk-churn.ts`).
+When a live pushed `wip/trunk-*` branch with an open PR holds a change that, replayed onto the
+current HEAD, yields exactly the rescue commit's tree, the checkout resets after the same content
+proof without creating another draft PR. Live remote and PR checks run before the proof/reset window;
 cached tracking refs alone do not count. The brief names the earlier PR and likely generator
 loop. A failed comparison or lookup falls back to the ordinary rescue, so a branch with a
-failed push, failed PR creation or closed PR never suppresses a new attempt.
+failed push, failed PR creation or closed PR never suppresses a new attempt. Where rescues stay
+local, a recent local branch that replays to the same tree is the duplicate on its own. The GitHub Manager
+closes a rescue draft after seven days without a push, keeping its branch, and never escalates one.
 Untracked files are never committed; `doctor --all` reports stuck trunk checkouts fleet-wide. Offline or fetch
 failure is explicitly unverified, never a successful current-source report. A receipt is refused
 when the checkout does not contain the observed trunk. Checks repeat local source containment
@@ -1034,7 +1138,7 @@ branches: `pm claim` checks out the branch it stakes, and resuming blocked work 
 checkout`. Fixing either call site would leave the other.
 
 **Taking a receipt is a command, never a side effect.** `morpheus context refresh` is the agent
-asserting it has loaded current state. A hook that took one at session start would certify the
+asserting it has loaded current state — checked against its read log where a hook keeps one. A hook that took one at session start would certify the
 records were read by the act of not reading them, so the Claude hook prints `context brief` and
 takes nothing. The reporting helper takes no receipt; the startup command exits nonzero when source preparation
 fails and names the failure explicitly.
@@ -1429,7 +1533,7 @@ authority isolation and consumer delivery remain explicit qualification gates.
 
 Interactive remote delegation ([design](docs/paperclip-interactive-bridge.md)) lets the Codex
 desktop conversation coordinate remote Claude and Codex workers through the optional
-`codex-claude` bridge (§18.0). One Paperclip issue is one pool conversation and each provider
+`factory` bridge (§18.0). One Paperclip issue is one pool conversation and each provider
 turn is one Paperclip process-adapter run; the Paperclip-spawned runner on the controller host
 claims the journaled turn, reserves the account, and holds the SSH session whose stdin is the
 remote guardian's lease. The desktop bridge only journals, reads the Paperclip run log through a
@@ -1640,37 +1744,43 @@ Four of them, each catching what it can so the rung above only sees what genuine
 | Rung | Verifier | Catches | Blocks |
 |---|---|---|---|
 | 1 | **Automated checks** — tests, types, lint, build, `check pr` | Anything mechanically decidable | Merge |
-| 2 | **Agent review** — a fresh session, bounded follow-up | Wrong-but-clean: untested failure modes, widened scope, decisions quietly reversed | Merge by default |
+| 2 | **Agent review** — a fresh session, bounded follow-up | Wrong-but-clean: untested failure modes, widened scope, decisions quietly reversed, unneeded complexity | Merge by default |
 | 3 | **Conformance** — the change against `qa/acceptance/`, staging against the designs | Built the wrong thing correctly | Deploy |
 | 4 | **Human sign-off** | Taste, strategy, real risk | Deploy |
 
 **Rung 2 is a bounded, author-managed independent session, required by default.**
 `review.required` defaults to true; false is a project opt-out reported by conventions. The author
 runs `morpheus review prepare` to print a packet, then explicitly spawns a fresh reviewer
-subagent/session without author chat, responds once, and resumes the same reviewer
-if substantive findings were raised. Minor-only findings need no second pass. A review is capped
-at three ordinary turns; a follow-up resolves a blocked turn, or spends a remaining turn on a late
-correction after clearance, named by its scope reason. Unresolved substantive disagreements,
+subagent/session without author chat, responds once, and resumes the reviewer
+if substantive findings were raised. Minor-only findings need no second pass. A reviewer blocks
+only on substantive problems (correctness, missing or wrong tests for changed behaviour, security or
+data loss, a broken contract, documentation made untrue); wording, style, naming and optional
+refactors are non-blocking notes the author may decline in one line. A review has five ordinary
+turns without anyone's approval, counting the initial review and incomplete turns; a follow-up
+resolves a blocked turn, continues after an incomplete one, or spends a remaining turn on a late
+correction after clearance, named by its scope reason. Any follow-up may be taken by a fresh
+reviewer when the earlier session timed out or cannot be resumed; its `handoff` names every earlier
+finding it was given, and a handed-over blocked turn names its findings in `blockedOn`, so
+replacement cannot drop what an earlier reviewer found. Unresolved substantive disagreements,
 incomplete review, exhausted budgets and a correction needed after the last turn leave the PR
-open and flagged, with auto-merge disabled. One additional same-reviewer verification turn may
-cover a small fix to a recorded finding or a late test-only correction: at most four exact changed
-paths, 80 changed test lines, 40 changed non-test lines, five minutes, and cumulative ordinary
-review time at most twice the initial risk ceiling. It cannot follow an incomplete turn or
-finalization, change normative policy, reset the reviewer, or authorize a fifth implementation
-turn. New substantive concerns still block. One automatic
-finalization-only turn per PR is allowed, at five minutes, recorded as `finalization` with the
-reviewer's attested paths, evidence and scope. It must be the last automatic turn and cleared; every later same-reviewer turn requires explicit
-`humanAuthorization`. Its original scope and predecessor stay checked. It cannot resolve a
+open and flagged, with auto-merge disabled. Each ordinary turn after the fifth needs an explicit
+human exception, recorded as `humanAuthorization` (approver, ISO timestamp and reason),
+preserving the full history and all other checks; one authorization never permits subsequent
+turns. One automatic
+finalization-only turn per PR is allowed outside the count, at five minutes, recorded as `finalization` with the
+reviewer's attested paths, evidence and scope; an ordinary turn may follow it only as a late
+correction. Its original scope and predecessor stay checked. It cannot resolve a
 substantive finding, and is checked against the commits it covers: the worklog, already-conditioned
-paths, and explanatory Markdown only — never normative policy files. An explicit human exception is recorded per extra same-reviewer turn
-as `humanAuthorization` (approver, ISO timestamp and reason), preserving the full history and
-all other checks; one authorization never permits subsequent turns. An evidence-pending incomplete
-turn may resume only with explicit authorization on the next same-reviewer turn; the original
-verdict stays unchanged and every historical and new turn must satisfy its budget. Incidental pre-existing bugs are recorded
+paths, and explanatory Markdown only — never normative policy files. Records from the three-turn
+contract keep their bounded `verification` fourth turn valid. Every verdict, incomplete ones
+included, stays in the record; a cleared or blocked turn must satisfy its budget, while a turn
+that ran out of time is recorded incomplete with its real duration and the next turn continues. Incidental pre-existing bugs are recorded
 separately; related unchanged code is blocking only when causally relevant to the PR or acceptance.
 
-Initial risk-based ceilings are 10/15/30 minutes, with a one-minute floor at normal and high risk, with one justified initial extension of at most
-50%; the follow-up ceiling is half the initial budget. One reviewer, no reviewer subagents. The
+Initial risk-based ceilings are 10/15/30 minutes, with a 30-second floor at normal and high risk, with one justified initial extension of at most
+50%; the follow-up ceiling is half the initial budget, except that a fresh reviewer taking over
+gets the initial ceiling because it reads the change from scratch. One reviewer per turn, no
+reviewer subagents. The
 provider's authoring session owns enforcement and any available usage ceiling; CI validates the
 reported evidence without making a model call. The canonical provider-neutral prompt ships in
 `src/review/local-prompt.ts`. Project instructions and learned failures supply local context.
@@ -2229,6 +2339,10 @@ failure mode that check exists to close.
 themed by that project's brand with no per-project styling work. Dashboards want higher information
 density than marketing pages, so the kit defines a small set of `--hq-*` tokens (density, table row
 height, muted surface) that *derive from* brand colours rather than introducing a parallel palette.
+
+The [HQ product and design standard](docs/runbooks/hq-product-design.md) defines the presentation
+contract above those tokens: executive-first hierarchy, page-type templates, local navigation,
+appendices, accessible tables/charts, responsive validation and the shared/project ownership line.
 
 ## 12. Brand and design
 
@@ -3095,7 +3209,7 @@ improvement?* Yes → kit. No → template.
 
 ### 18.0 Optional personal agent plugins
 
-`plugins/codex-claude/` is a deliberate exception to the kit's single-package distribution:
+`plugins/factory/` is a deliberate exception to the kit's single-package distribution:
 it is a personal Codex/Claude Code integration, not a dependency of company repositories. It owns its
 manifest, skill, hooks, runtime, lockfile, tests and installation documentation. Neither
 `morpheus init` nor the CLI installer activates it. Explicit per-device installation copies
@@ -3103,15 +3217,18 @@ the package into a personal marketplace; execution remains off until enabled. Pe
 settings and session records stay outside the repository.
 
 The bridge works in both directions. Whichever agent holds the conversation is the
-coordinator; it routes at safe checkpoints using its *own* subscription allowance, keeps
-explicit task/operation overrides, and starts the other agent subscription-authenticated on
-the same host and worktree. Automatic mode defaults to delegating below 50% remaining in the
-coordinator's least remaining reported allowance window; explicit saved thresholds are
-preserved. The coordinator consumes its own allowance while supervising. Codex reports its
-windows through the app server; Claude Code exposes them only to its status line, so a
-recorder status line (chaining any existing one) writes them for routing, and missing or
-stale data never triggers a handoff. Claude permission modes map onto Codex's sandbox
-without widening (only an explicit bypass reaches full access). Delegated workers are marked
+coordinator, on this host's native login; it routes at safe checkpoints, keeps explicit
+task/operation overrides, and starts workers on the same host and worktree. A worker is the
+other agent on its native login, or either agent behind a pooled-subscription gateway
+(sub2api), reached as an API with its own key. A gateway of the coordinator's own provider
+is a valid delegate because it is a separate subscription; the coordinator's own native
+login never is, because that would be circular. Automatic mode picks the gateway with the
+most headroom below its threshold (90% used by default, read from the gateway's admin API)
+and otherwise keeps the work with the coordinator; missing or stale usage never triggers a
+handoff. The coordinator consumes its own allowance while supervising. A worker never
+widens permissions: Claude permission modes map onto Codex's sandbox (only an explicit
+bypass reaches full access), a same-provider worker inherits the coordinator's own mode or
+sandbox, and saved worker sessions are kept per gateway so routes never resume each other. Delegated workers are marked
 so neither side's hooks or tools delegate back. Native Claude session ids
 provide persistence; a leased process guardian bounds live workers. Permission metadata
 must be verified before delegation, and unknown/restricted confinement fails closed in the
@@ -3175,6 +3292,19 @@ bundle only as a lazy import, and the private index is fetched only when an auth
 search. At the current repository scale this avoids a service and operational state; consumers
 should revisit the architecture when the compressed index becomes materially large.
 
+#### Section links
+
+Every section of an HQ page is addressable and shareable without any page opting in.
+`morpheus-kit/section-links/react` is mounted once in the HQ layout. It gives each `h2`–`h4` that
+lacks an `id` GitHub's slug of its text, the same address the heading has in the repository's
+Markdown, and leaves authored ids alone. Hovering a heading or its left gutter shows a link icon.
+Clicking it copies `page#section` and replaces the address-bar URL without adding a history entry.
+The behaviour is a property of the layout rather than of each page: a component every page had
+to use would cover only the pages someone remembered to change. The icon floats beside the
+heading instead of being injected into it, because React owns heading children and an injected node
+is erased on re-render. A missing `id` is the only write. Adding one before a Suspense boundary
+hydrates logs a development-only attribute mismatch. See `src/section-links/README.md`.
+
 `morpheus web init` includes this path whenever it scaffolds `/hq`: the visible search control,
 private static index route, deployment-versioned URL, neutral styling, and a working overview
 document. The starter catalogue is intentionally explicit rather than a repository-wide scan.
@@ -3192,8 +3322,11 @@ separate best-effort discovery from content reads that propagate non-absence err
 #### Session profiling
 
 `morpheus profile extract|report` measures the workflow from transcripts both agent runtimes
-already write — `~/.claude/projects/**` (with subagent transcripts attributed to their parent) and
-`~/.codex/sessions/**`. Nothing is self-reported by an agent and nothing leaves the machine:
+already write — `~/.claude/projects/**` (with subagent transcripts attributed to their parent),
+`~/.codex/sessions/**` and `~/.codex/archived_sessions/`. Codex compresses older rollouts in place to
+`.jsonl.zst` and moves some to the archive, so both directories and both encodings are read, a session
+found in two files is counted once (the copy written last), and the report opens with how many
+sessions came from each source. Nothing is self-reported by an agent and nothing leaves the machine:
 self-reporting costs every session tokens and measures what an agent believes it did, and the
 transcripts already hold timestamps, model, effort, token usage and every tool call. `extract`
 emits one JSONL `session` row per transcript and one `span` row per tool call; `report` sums them
@@ -3205,7 +3338,8 @@ tool result arriving more than four hours late is reported as an outlier rather 
 work. Time blocked on a person — an `AskUserQuestion` or `ExitPlanMode` call, or a permission
 prompt the person refused (`toolDenialKind: "user-rejected"`) — is phase `human-wait` and never
 active time, however short. An *approved* permission prompt leaves no marker in the transcript, so
-its wait stays inside that tool call's duration. `--since` must be a real calendar date. Rows never carry prompt text, file contents read or written by a tool, or tool output. A command
+its wait stays inside that tool call's duration. `--since` must be a real calendar date. Skipped lines are reported by file and line number, never as
+a bare count. Rows never carry prompt text, file contents read or written by a tool, or tool output. A command
 is kept to its first 120 characters with credential-shaped values masked and any heredoc body cut;
 arguments typed on the command line itself can still appear within that prefix.
 
@@ -3221,7 +3355,38 @@ each failed Actions job's failing step — the lines between that step's echoed 
 2 timeout or no checks, 3 usage or `gh` error. The head SHA and checks come from the same response;
 a head that moves mid-wait is followed and named in the digest. A `conventions` failure whose only
 blocking line is the missing `agent-reviewed` label is labelled as that race, not as a code
-failure. Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
+failure. Before the default all-checks wait reports green, it also confirms that current-head
+Actions runs have finished and rereads the check rollup. A run can be queued before its job check
+appears; visible passing checks alone do not prove completion. `--required-only` retains its
+required-check scope. Check-run identity includes the stable Actions workflow ID and job name, so a
+metadata workflow cannot replace another workflow's failed required job. Only rerun attempts
+inside the same workflow supersede each other; missing suite identity refuses the receipt.
+Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
+
+`morpheus wait-ci --run <id>` and `--workflow <name|file> [--branch <b>] [--sha <s>]` wait the
+same way on one Actions run that no pull request owns — TestFlight, release, nightly — because the
+most repeated polls in the transcripts were `gh run view <id> --json status,conclusion,jobs`. The
+run's own conclusion decides the verdict (a `continue-on-error` job can fail inside a green run,
+and a run can fail before any job starts); the jobs supply the digest. By workflow, every poll
+re-selects the newest matching run, following and naming a newer one; with no match the
+no-checks grace applies. A latest run that had already finished when the wait began is held for
+20 seconds unless `--sha` pinned it, because a run just dispatched or pushed lists within
+seconds and the previous run's exit code would otherwise answer for it; if none appears, the
+digest flags it. `--sha` must be a full SHA, the only form `gh run list --commit` matches.
+
+Instructions alone did not stop the polling — sessions polled more after `wait-ci` existed — so
+`morpheus context install` (and `init`) also wires a **poll guard**: a PreToolUse hook on `Bash`
+in `.claude/settings.json` and `.codex/hooks.json`, running the checked-in
+`.morpheus/poll-guard.sh`. A shell prefilter keeps non-poll commands free of a Node start; a
+candidate goes to `morpheus poll-guard`, which counts `gh run view|run watch|pr checks` per
+target (run id or PR, with `--repo`) per session and exits 2 — both providers' "block" — on the
+third, printing the exact `wait-ci` command. `--log`/`--log-failed`/`--web` are diagnosis and never
+counted; a refused call is not recorded. State is `local/sessions/poll-guard-<session>.json` in the
+**primary** checkout, because `pm cleanup` refuses a task worktree holding any ignored file but its
+lease. Every failure path — no CLI, an older CLI, no repository, unreadable state — allows the call.
+`MORPHEUS_POLL_GUARD=off` disables it. `doctor` reports a project without the guard, and an
+`AGENTS.md` missing the template's key rules (`src/doctor/instructions.ts`), since the scaffold
+is written once and guidance added later reaches a project only by hand.
 
 ### 18.2 Reusable GitHub workflows
 
@@ -3398,7 +3563,34 @@ build-for-testing step compiles the whole scheme regardless of which subset will
 build-time exclusion would be a no-op. The intended use is a per-PR caller keeping an expensive
 `XCTMeasureOptions` performance test out of every pull request while a separate nightly caller
 (which never sets this input) runs the full scheme; empty by default, so an existing caller's
-selection is unchanged.
+selection is unchanged. `test-plan`, `only-testing` and `skip-testing` are the whole scope
+surface: a staging caller names a smoke plan or selection, and production leaves them empty to
+run the full suite.
+Failed tests are retried in a clean simulator, never in the session that failed them.
+`test-iterations` is the total number of attempts (default 3; 0 or 1 runs once). Attempt 1 runs
+the caller's selection unchanged. When it fails, `scripts/ios-test-retry.py` erases the job-owned
+simulator in place (`simctl shutdown`, then `erase`, same UDID, so the post hook still owns
+cleanup), runs the caller's `pre-test-script` again with `RESULTS` and `LOGS` pointing at
+`attempt-<n>/`, and starts a new serial `xcodebuild test-without-building` with `-only-testing`
+for the tests still failing and, where the selected Xcode has it, `-collect-test-diagnostics
+never`, without which Xcode 27 spends 600 seconds collecting diagnostics after each failure. A
+test that passes on a retry is flaky: a warning annotation, a job-summary line and the
+`flaky-tests` workflow output (a JSON array) report it, and the job does not fail. A test that
+fails every attempt fails the job. Only a test seen passing counts: one missing from a retry's
+results stays failing, and a nonzero exit that no named test failure explains (a crashed or
+unbootstrapped bundle, or an exit contradicting all-passing results) is never retried away. With
+no job-owned simulator to erase there is one attempt. Xcode's in-process
+`-retry-tests-on-failure` is gone: it kept the simulator and the app's data, so Evo's
+leftover-state UI failures failed all three iterations, and relaunching per repetition re-ran
+whole UI bundles (2026-10-05). `Tests.xcresult` stays the first attempt's bundle and each retry
+keeps its own under `attempt-<n>/`; `test-attempts.json` records each attempt's selection, exit
+status and failures, the flaky tests and the verdict. A caller's `test-evidence-script` still reads
+`tests.json` and `summary.json`: they are the first attempt's export, except that when the retries
+recovered every failure each recovered test reads as passed with its attempts as `Repetition`
+children and the summary passes, the shape Xcode's in-process retry gave them. Without that, Evo's
+validator would fail a run the retries had cleared; `xcresulttool merge` cannot produce it,
+because it reports a test that failed and then passed as failed. The script is reached through
+`actions-ref`, so a caller pinning this workflow pins that to the same commit.
 Rendered XCTest attachments are retained on every run; a failed run additionally keeps
 both result bundles and raw `xcodebuild` logs. Firebase-backed apps can opt into an exact
 `firebase-tools` version, a repository config, an explicit synthetic project id and emulator list,
@@ -3454,111 +3646,155 @@ sources still build, failed runs retry, and manual forced builds always run. An 
 screenshots is distinguishable from one that failed to capture them. This is bounded recovery,
 not an independent scheduler.
 
-**CD V2 design:** [Morpheus CD pipeline V2](docs/cd-pipeline-v2.md) defines the
-replacement delivery contract and migration for Evo: six-hour staging, daily aged
-production, durable recovery ownership and exact internal TestFlight receipts.
-The design is separate from rollout acceptance; existing consumers retain the
-legacy behavior below until explicitly migrated and verified. Shared controller,
-provider and agent code belongs in Morpheus; consumer repositories supply policy,
-identities and app/backend hooks. See the linked RCA, research and design probes.
+**Stateless iOS delivery (CD V3) — the target design, 2026-10-30.** CD V2 (`src/cd/`,
+[its design](docs/cd-pipeline-v2.md)) put a deterministic controller, a Git ledger and a repair
+queue between `main` and TestFlight. In its first ten days it failed 17 deliveries and stalled
+staging for four days. Most of its machinery existed only to serve its own ledger: configuration
+digests and their guarded migrations, reserved and burned build numbers, ownership fences and
+leases, per-file pins with import manifests, a validation campaign with fault drills, and quota
+gates on the repair worker. Chris's decisions of 2026-10-30 (`.agent/decisions.md`) remove the
+reasons for all of it. Delivery is therefore rebuilt as **one stateless run per slot** and V2 is
+deleted rather than slimmed. Until the stages below land, V2 keeps delivering and its code and
+documents remain. This paragraph is the specification; the V2 documents are history.
 
-The implementation is `src/cd/`, exported as `morpheus-kit/cd` and `morpheus cd`;
-its [operator contract](docs/cd-v2-controller.md) documents config, evidence and
-workflow inputs. GitHub Git commits store the authoritative state and events with
-single-parent nonforce updates and per-invocation ownership. Compact verified
-test proofs reference hashed native artifacts. A terminal, exactly bound workflow
-with a current accepted upload can reuse its immutable downloaded full-test proof
-after strict identity/input/configuration/claim validation and a fresh pinned Git
-validator check. Artifact service availability after acceptance is not an ongoing
-receipt dependency. Missing proof retains the download path; malformed reusable
-proof refuses. The proof is never treated as raw results or re-recorded, and fresh
-Apple readback still owns availability and receipt creation. Upload and group operations have
-durable claims; actual provider receipts complete the original obligation.
-A separate evidence-only repair-diagnostic recorder binds an existing unique
-latest repair/task to its already-bound latest failed attempt. It appends bounded
-canonical diagnostic JSON through the same CAS/event store without changing
-execution, ownership, source, policy, clocks or funding. Current-target checks
-guard each new append; a verified immutable note receipt survives later normal
-owner progression without granting applicability or restarting work.
-A **repair-only control** ([runbook](docs/runbooks/cd-repair-control.md)) can hold new repair-agent admission
-for one exact supplemental validation intent: a namespaced `repair:<intent>` pause that existing delivery
-gates ignore, enforced only by a worker-only entry around an injected unchanged `runWorker` and released
-only after the exact delivered receipt with all target work complete.
-Hosted scheduling (`cd tick` → `scheduleHosted`) is **not** held: a consumer must keep hosted scheduling off while any
-hold exists, and the unchanged `cd worker`/`cd tick` entry points ignore the hold.
-Bounded subscription workers retain immutable tasks, session checkpoints and
-actual quota telemetry. Hosted Claude admission joins shared and explicitly
-configured model-family windows; missing capacity remains a budget wait rather
-than silently treating an exhausted or unavailable model as healthy. Failed usage
-reads expose only fixed recognized diagnostics, never arbitrary provider text or
-credentials; actual scoped workflow authority and quota remain rollout proofs.
-The hosted repair route is optional: registered native Codex workers can share
-the same GitHub queue while preserving one global local-subscription reservation.
-Native account reads require explicit ordinary subscription eligibility before
-admission and during metering; missing or false allowance never admits prepaid
-credit fallback even when the reported usage windows are low.
-The native no-model quota reader has a 60-second total startup/read budget and
-a final RPC ceiling of 10 seconds within it. Its separate foreground-session
-supervisor retains a private group leader through cleanup, with a two-second
-cleanup bound and three-second parent fuse; failure remains fail-closed
-immediately, and success waits for confirmed cleanup and completion-time quota
-validation. This does not change the model guardian or the five-minute telemetry
-TTL. Frozen consumer workers adopt the source only through a separate reviewed
-quiet-host operation.
-If its supervisor disappears, the private reader leader kills its own live group;
-post-reap Darwin permission responses stay within the same cleanup polling bound.
-Worker leases and invocation start timestamps use a fresh clock after quota and
-login admission, recomputed inside each CAS claim attempt. Quota is revalidated
-at that attempt and after its acknowledgment before model launch; stale/reset
-telemetry never authorizes a launch or clears another owner's fence. The returned
-owned lease must still cover strictly more than the configured execution duration
-before launch, or the existing fenced unstarted cleanup refuses it. The lease
-duration remains `agentMinutes + 2`, and the guardian execution limit is unchanged.
-Transaction event timestamps remain request times; later write/acknowledgment,
-launch setup and guardian teardown still consume the existing margin.
-Native invocation identity names the host/user/session store; only its latest
-same-host local session can resume. Foreign or unidentified sessions restart from
-the immutable task and durable checkpoint evidence without copying native sessions
-or credentials. Owner and fence guard session, completion and error checkpoints.
-Existing configured hosted normalization is unchanged; removing that route is an
-explicit consumer configuration migration, not a silent ledger reset. Source-level
-tests do not establish actual two-Mac readiness or failover acceptance.
+**One run, one channel, fresh `main`.** Evo's `ios-delivery.yml` is the whole pipeline.
+Staging runs every six hours when watched inputs changed; production runs daily. Both are GitHub
+cron triggers, and the workflow can also be dispatched with a `channel` and an `upload` switch.
+Each run builds the current `main`, and the two channels differ only in how many automated tests
+they run: a smoke scope for staging, the full suite for production. There is no source-age wait and
+no intent or lineage that outlives a run. A failed run blocks nothing, and the next slot builds
+newer `main`. A per-channel concurrency group keeps one run per channel. It never cancels a run in
+progress, but GitHub replaces an already-pending run when a newer one queues, so at most one slot
+waits.
+Its jobs:
 
-Administrative source publication funding has one explicit, optional budget-reserve
-path in `src/cd/source-finance.ts`. A strict independently reviewed grant pins the
-exact source request, repository, existing epoch, supplied and stored native
-configuration digests, amount, finite source scope, aggregate ceiling and short
-admission window. Values belong to the engagement, never shared campaign constants.
-The existing owner-bound GitHub CAS and complete envelope receipt readback remain
-required; checks precede replay and repeat with fresh time/liability in every CAS
-callback. Native schema, ordinary paid reservation admission and controller behavior
-remain unchanged. The configured at-most-$250 guard in `reservePaid` and ordinary
-`cd budget reserve` refuses new paid reservations that would exceed it; exact old
-reserved paid identities still replay. Local delivery intent creation, attempt
-planning and dispatch are not gated by this dollar guard and retain their existing
-controls. A source grant itself authorizes no native operation. The
-[source finance contract](docs/cd-source-finance.md) defines the CLI,
-reserved `source-ci-` namespace and operator-attestation trust boundary.
+1. `plan` reads `.morpheus/cd.json` at the source commit. It records what the run uses: the source,
+   the Morpheus `main` SHA, a configuration digest and an input digest. A scheduled staging slot
+   skips only when no watched input changed since its last receipt tag.
+2. `preflight` calls Morpheus `release-preflight`. It confirms the source is a reviewed merge, and it
+   also requires the source to be the current head of `main`. A run that waited behind another, or
+   that raced a merge, would therefore fail on a process-only property and lose its slot. Before
+   scheduling starts, S4 replaces this with a plan check that the source is a reviewed merge
+   reachable from `main`.
+3. `tests` runs Morpheus `ios-ci`, with a fresh simulator per retry.
+4. Staging Firebase rules are deployed for this source. The phone gate exercises staging for
+   both channels, so this runs on every run.
+5. The physical-iPhone gate runs.
+6. Production rules are deployed for this source, on production runs only. A dry run checks them
+   instead of deploying.
+7. The app is signed and uploaded with the next App Store Connect build number.
+8. A readback confirms internal availability.
+9. External distribution and the receipt tag are handled; neither blocks.
+10. A summary lists stage results, warnings and flaky tests.
 
-App-only
-repairs reset production age; unchanged input
-digests retain their first lineage age through controller repairs. These are
-implementation properties, distinct from real consumer rollout acceptance.
-An explicitly human-authorized manual validation request may waive source age
-for its one immutable delivery lineage. It records the approval reference and
-request time, requires an exact verified main source, and retains full native,
-upload and internal-group evidence. This exception never changes automatic slot
-selection, ordinary production age, configuration identity or operational cursors.
+**What blocks and what warns.** A check that protects users blocks; a check that only protects the
+process warns or is deleted.
 
-Channels may explicitly opt into post-delivery external TestFlight distribution
-with `externalGroupIds`. Internal acceptance and its receipt remain independent;
-external status requires exact-build testing state, nonempty tester lists and all
-external memberships. A valid empty external tester list records an ordinary
-pending wait without a tick error or provider mutation; malformed evidence still
-refuses, and the core never adds or invites testers.
-Review claims are shared by app/build, durable before the provider call, and
-uncertain outcomes reconcile without blind resubmission. Consumers own explicit
-configuration migration and runtime adoption; absence of the opt-in is unchanged.
+| Check today (V2 location) | Target |
+|---|---|
+| Tests, and test integrity: every enumerated test ran, an undocumented skip fails (`ios-ci`, consumer verifier) | **Blocks** |
+| A test that failed then passed on retry | Warns. The steward or a person may add a quarantine entry in a reviewed PR (one test, a linked issue, expiry ≤ 14 days); a quarantined test runs outside the blocking suite and its failure warns until the entry expires, then blocks again. |
+| Physical-iPhone gate (collector evidence rules) | **Blocks** |
+| Firebase rules: V2 preflight required live rules to equal the client source; 7 of the 17 failures | Replaced by deploying the source's rules before upload. **Blocks** on what protects users: forward only (never roll back), refuse rules `main` never held, every index READY. |
+| Source is a reviewed merge on `main` | **Blocks**. Being the current head of `main`, which `release-preflight` also requires, is process-only; S4 relaxes it. |
+| Signing, entitlement/IPA verification, app validation script | **Blocks** |
+| Apple VALID, internally ready, held by the internal group | **Blocks**: this is delivery |
+| External groups, Beta App Review | **Warns** |
+| Sentry release configuration | **Warns** |
+| Receipt tag written; Morpheus SHA recorded | Tag **warns**. An unresolvable Morpheus SHA fails the plan, because ios-ci needs an exact commit. |
+| Ledger ownership, CAS, fences, leases, attempt immutability and invariants | Deleted: no ledger |
+| Configuration digest equality and guarded config migrations | Deleted: digest recorded, never enforced |
+| Build-number reservation and burning | Deleted: App Store Connect next number |
+| Slot admission, production source age, source floor, strict repair descent | Deleted: fresh `main` every run |
+| Quota admission/stop, usage readers, budget reservations, spending policy, source finance | Deleted. Running out of agent quota is a warning in the steward's log. |
+| Parking in `repairing`, repair holds, human-approved continuations | Deleted: a failure never holds the channel |
+| Pinned-runtime and import-manifest verification; trusted re-verification of test and device evidence in separate qualify jobs; artifact-root admission | Deleted. The producing job's own verdict stands; the bounded artifact helper inside Morpheus `ios-ci` stays. |
+| Post-resume, native-admission, fault drills, campaign holds, wake probes, reply-loss audit | Deleted |
+
+**The ledger is the run history plus one tag per delivered build.** GitHub keeps every attempt.
+A delivered build gets an annotated tag `testflight/<channel>/<version>-<build>` on its source
+commit, carrying the receipt JSON: source, Morpheus SHA, digests, run, build id and states. Staging
+change detection reads the latest tag. Nothing else is stored: no state file, CAS or polling, so
+nothing writes when nothing happens.
+
+Moving off V2 rewrites no history:
+
+1. Stop V2's writers. Unload the Pro tick and the Mini worker, disable the `cd-v2` workflows, and
+   wait for or cancel any V2 delivery or repair run in flight. Those runs also write the ledger and
+   can upload a reserved build number.
+2. Tag the `morpheus-cd-state` head as `archive/cd-v2-state-final` and lock the branch.
+3. Seed one receipt tag per channel from `state.json`'s last delivered receipt.
+4. Delete the branch only after the archive tag is verified.
+
+**Build numbers come from App Store Connect.** With no reserved number, Morpheus's
+`ios-testflight-upload` asks for the next number. Its host-local floor covers an upload Apple has
+not listed yet. A lost reply costs at most a skipped number. The only collision risk is with V2's
+ledger-reserved numbers, so V3 uploads begin at cutover, never alongside V2.
+
+**One Morpheus version: `main`.** Evo references Morpheus only at `@main`: no per-file pins and no
+import manifests. GitHub requires `uses:` lines to be literal, so the one value is `main` itself,
+and an Evo test asserts that no Morpheus reference is anything else. Each run resolves `main` to a
+SHA once in `plan` and uses it for ios-ci's composite actions and artifact helper. It records that
+SHA in the summary and the receipt. The reusable workflows called at `@main` resolve when the run
+is created. The upload action resolves when its job starts, possibly hours later, so S4 runs it
+from a checkout at the plan's SHA, as ios-ci does with its actions; until then the recorded SHA
+may not be the upload code that ran.
+
+Hosts run no Morpheus delivery runtime of their own. The Mac runners check Morpheus out per run.
+The global `morpheus` CLI on each machine follows `main` through `morpheus self update`. Xcode
+versions and runner images are Chris's separate pin; the workflow states them, and they are not
+delivery configuration.
+
+**Configuration is read from `main` and recorded, never enforced.** `.morpheus/cd.json` holds
+channels, app and group identities, watched inputs and native settings. The cron schedule lives in
+the workflow. A change merges like any
+other file, and the next run uses it. Its digest goes into the receipt, so every attempt says what
+it used, and there are no migrations.
+
+**One repair owner, one independent alarm.**
+
+- The **CD steward** is a cheap, credential-free health check on the always-on host, run every
+  few hours. It reads only the delivery runs. When a channel is failing, stuck or stale, it starts
+  one fresh, time-boxed agent session that diagnoses, repairs through the normal PR path, records
+  what it did and exits. Nothing carries over between sessions except the written record. If the
+  health check cannot read state three times in a row, it texts Chris.
+- **`ios-delivery-watchdog.yml`** is an independent GitHub cron. When an eligible change misses its
+  delivery SLO it opens one issue and texts Chris. It never repairs.
+
+Retired actors: the Pro controller tick, the Mini repair worker, the recovery watchdog, and
+long-lived supervising sessions. The GitHub Manager stays a PR backstop and has no delivery role.
+
+**Stages.** Each stage keeps real delivery working.
+
+| Stage | Repo | Goal | Group |
+|---|---|---|---|
+| A (MO-26-10-30-15.16.58) | Morpheus | `ios-ci` retries in a fresh simulator and reports flaky tests (`flaky-tests` output) | now |
+| B (EV-26-10-30-15.20.47) | Evo | CD steward plus a re-enabled delivery watchdog that measures V2 and V3 | now |
+| S1 (EV-26-10-30-15.28.38) | Evo | Staging smoke scope vs production full suite; quarantine list and verifier semantics | now |
+| S2 (EV-26-10-30-15.29.26) | Evo | Every non-CD Morpheus reference at `@main` | merged (evo#704) |
+| S3 (EV-26-10-30-15.25.08) | Evo | `ios-delivery.yml`, dispatch-only with dry runs until cutover; the phone gate admits it | now; merges after the rules contract and the Xcode pin |
+| Rules (EV-26-10-30-14.56.33) | Evo | `firebase-deploy.yml` delivery contract (`environment`, `source-sha`, `deploy`) | now |
+| S4 (EV-26-10-30-16.14.48) | Evo | Cutover: cron on, V2 workflows and host agents off, ledger archived, receipt tags seeded, Evo #702 closed | after S3, Rules, B |
+| S5 (EV-26-10-30-16.14.52) | Evo | Delete V2 and the legacy lanes from Evo | after S4 and its soak; parallel with M1 |
+| M1 (MO-26-10-30-16.06.29) | Morpheus | Delete `src/cd`, its tests and docs, the `morpheus cd` command and V2-only upload inputs, after moving the quota reader the Paperclip pilot still loads | after S4 and its soak; parallel with S5 |
+
+Acceptance for S4 is one scheduled staging and one scheduled production delivery through V3. S5 and
+M1 wait for two consecutive V3 deliveries per channel.
+
+Rollback before S5: re-enable V2's workflows and agents. V2's next reservation must first be
+raised past App Store Connect's latest build number, so forward fixes are preferred. After S5,
+rollback is a revert.
+
+The deletions remove about 150 files and 28,500 lines from Evo:
+
+- `ops/macos/evo-cd-v2/`: 95 files, 20,500 lines. Of these, 44 files and 8,200 lines are campaign,
+  fault, drill, proof, admission, post-resume and migration code, and 7,000 lines are runtime
+  manifests.
+- The `cd-v2` workflows and legacy lanes, `cd-v2-*`, the recovery and nightly scripts, their tests
+  and nine runbooks.
+
+They remove about 13,400 lines from Morpheus: `src/cd` (3,800), `tests/cd` (7,500), the CD
+documents (2,100), plus `dist/cd`.
 
 Apps whose nightly release is dispatched from the Mac mini share one admission core,
 `src/ios/nightly-core.ts`, extracted from Evo's controller (darwin-health/evo #307, #309). It

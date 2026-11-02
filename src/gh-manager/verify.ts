@@ -1,6 +1,6 @@
 import type { LiveState } from "./decision.js";
 import { GH_MANAGER_LOGIN, MANAGER_REVIEWED_LABEL } from "./policy.js";
-import { checkLocalReview, git, isAncestor, verifyUncoveredCommits } from "../review/local.js";
+import { checkLocalReview, git, isAncestor, REVIEW_FLOOR_RULE, verifyUncoveredCommits } from "../review/local.js";
 import { checkManagerReview } from "../review/manager.js";
 
 /**
@@ -49,7 +49,8 @@ export function authorRecordProblem(root: string, body: string, head: string, tr
   if (!isCommit(root, head) || !isCommit(root, trunk)) return "the pull request head or base could not be read in the apply checkout";
   const findings = checkLocalReview({ root, body, labels: ["agent-reviewed"], head, base: trunk });
   // An opt-out returns `waived` without reading a record. That cannot authorize recovery of a
-  // label which explicitly asserts a completed independent review.
-  if (findings.some(f => f.level === "waived")) return "independent review is waived, so no author record was validated";
+  // label which explicitly asserts a completed independent review. A review-floor waiver is
+  // different: the record was read and validated, with only the 30-second floor relaxed.
+  if (findings.some(f => f.level === "waived" && f.rule !== REVIEW_FLOOR_RULE)) return "independent review is waived, so no author record was validated";
   return findings.find(f => f.level === "error")?.message;
 }

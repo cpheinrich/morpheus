@@ -9,12 +9,16 @@ import { gitSubprocessEnv } from "../git-env.js";
 import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { projectPolicy } from "../session/policy.js";
 import { ABSENT, CANONICAL_INPUTS, UNREADABLE } from "../session/lease.js";
+import { READ_HOOK_MARKER } from "../session/install.js";
 import {
   BOOTSTRAP_MARKER,
   MORPHEUS_BOOTSTRAP,
   MORPHEUS_SESSION_START,
   SESSION_START_MARKER,
 } from "../session/bootstrap.js";
+import { POLL_GUARD_MARKER, POLL_GUARD_SCRIPT } from "../wait-ci/hook.js";
+import { missingInstructions } from "./instructions.js";
+import { codexTrustFindings, codexTrustReport } from "./codex-trust.js";
 import {
   ANALYTICS_SCHEMA_DIRECTORY,
   EMPTY_ANALYTICS_EVENT_MAP,
@@ -347,6 +351,8 @@ export interface DoctorOptions {
   root: string;
   /** Skip checks that need the network. */
   offline?: boolean;
+  /** Codex's home, for the hook-trust check. Defaults to `$CODEX_HOME` or `~/.codex`. */
+  codexHome?: string;
 }
 
 export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
@@ -513,6 +519,53 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
         "context",
         `${rel} has no Morpheus session shim — the file is present but a ${provider} session ` +
           "cannot bootstrap an absent or pre-self CLI. Run `morpheus context install`.",
+      );
+    } else if (!hook.includes(READ_HOOK_MARKER)) {
+      // Wired before read evidence existed: `refresh` there certifies by bare
+      // assertion, which is what agents were measured faking.
+      add(
+        "warning",
+        "context",
+        `${rel} has no read hook — \`context refresh\` in a ${provider} session certifies reading ` +
+          "by assertion instead of from a read log. Run `morpheus context install`.",
+      );
+    }
+    if (hook !== null && !hook.includes(POLL_GUARD_SCRIPT)) {
+      add(
+        "warning",
+        "instructions",
+        `${rel} has no CI poll guard — a ${provider} session can poll \`gh run view\` or ` +
+          "`gh pr checks` indefinitely instead of one `morpheus wait-ci`. Run `morpheus context install`.",
+      );
+    }
+  }
+  const guardScript = await readFile(join(root, POLL_GUARD_SCRIPT), "utf8").catch(() => null);
+  if (guardScript === null || !guardScript.includes(POLL_GUARD_MARKER)) {
+    add(
+      "warning",
+      "instructions",
+      `${POLL_GUARD_SCRIPT} is missing or not the generated Morpheus version, so the CI poll ` +
+        "guard cannot run. Run `morpheus context install`.",
+    );
+  }
+
+  // Wired is not running for Codex: it skips every hook nobody trusted with
+  // `/hooks`, silently. Read-only — trusting is the user's decision, and the
+  // desktop app rewrites ~/.codex/config.toml itself.
+  for (const finding of codexTrustFindings(await codexTrustReport(root, opts.codexHome))) {
+    add(finding.severity, finding.check, finding.message);
+  }
+
+  // The scaffold's AGENTS.md is written once; guidance added to the template
+  // later reaches a project only by hand. Name each rule that never arrived.
+  const instructions = await readFile(join(root, "AGENTS.md"), "utf8").catch(() => null);
+  if (instructions !== null) {
+    for (const anchor of missingInstructions(instructions)) {
+      add(
+        "warning",
+        "instructions",
+        `AGENTS.md lacks the template's "${anchor.name}" guidance — add ${anchor.add}. ` +
+          "Source: `agents()` in Morpheus's src/init/templates.ts.",
       );
     }
   }

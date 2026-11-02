@@ -23,18 +23,35 @@ const Timing = z.object({
   durationMs: z.number().int().nonnegative(),
   evidence: Text,
 }).strict();
+const FindingId = z.string().trim().min(3);
 const FollowUp = z.object({
   reviewerSession: ReviewerSession,
   commit: Sha,
   base: Sha.optional(),
   scopeReason: Text.optional(),
-  // A separate, explicit human decision is required for each turn beyond the default cap.
+  // A separate, explicit human decision is required for each ordinary turn beyond the automatic five.
   humanAuthorization: z.object({
     approvedBy: z.string().trim().min(1),
     approvedAt: z.iso.datetime({ offset: true }),
     reason: Text,
   }).strict().optional(),
-  /** One narrowly scoped fourth turn, attested by the original reviewer. */
+  /**
+   * Recorded when this turn's reviewer is a different session from the turn before it: why the
+   * earlier reviewer did not continue (timed out, crashed, session lost), and the ids of every
+   * finding recorded before this turn, all of which the fresh reviewer was given. A replacement
+   * is allowed without anyone's approval; dropping what the earlier reviewer found is not.
+   */
+  handoff: z.object({
+    reason: Text,
+    findings: z.array(FindingId).max(200),
+  }).strict().optional(),
+  /**
+   * The substantive findings a `blocked` turn rests on. Required when a fresh reviewer takes over
+   * from it, so the findings a replaced reviewer blocked on are named, kept in the record and
+   * handed over rather than lost with the session.
+   */
+  blockedOn: z.array(FindingId).min(1).max(50).optional(),
+  /** The narrow fourth-turn shape from the three-turn contract; still validated, no longer needed. */
   verification: z.object({
     kind: z.enum(["finding-fix", "late-test"]),
     paths: z.array(Path).min(1).max(4),
@@ -59,12 +76,19 @@ const FollowUp = z.object({
 export type ReviewFollowUp = z.infer<typeof FollowUp>;
 
 /**
- * Reviewer turns after the initial review. Three turns in total is the cap that stops an
- * author and a reviewer trading fixes and findings indefinitely: a turn is spent to resolve
- * what the previous one left blocked, or on a late correction after a clearance that names
- * its scope decision, and nothing after the last one is automatic.
+ * Ordinary review turns a pull request gets without anyone's approval, counting the initial review
+ * (Chris, 2026-10-30). Three proved too few: agents stalled waiting for a human to approve another
+ * round. The cap still exists, because an author and a reviewer trading fixes and findings
+ * indefinitely burns a session per turn; beyond it each ordinary turn carries `humanAuthorization`.
+ * Incomplete turns count. The one automatic finalization turn does not, as before.
  */
-export const MAX_FOLLOW_UPS = 2;
+export const MAX_REVIEW_TURNS = 5;
+export const MAX_FOLLOW_UPS = MAX_REVIEW_TURNS - 1;
+/**
+ * Where the three-turn contract put its one bounded `verification` turn: the fourth. Records that
+ * used it stay valid, so it stays checked there; under five automatic turns it is no longer needed.
+ */
+export const VERIFICATION_TURN_INDEX = 2;
 export const FINAL_VERIFICATION_CEILING_MINUTES = 5;
 export const FINAL_VERIFICATION_NON_TEST_LINES = 40;
 export const FINAL_VERIFICATION_TEST_LINES = 80;
@@ -95,9 +119,9 @@ export const ReviewRecord = z.object({
   extensionReason: Text.optional(),
   outcome: z.enum(["complete", "incomplete", "blocked"]),
   /**
-   * The initial turn's own verdict, when it was incomplete and an authorized same-reviewer turn
-   * later completed the review. `outcome` is the final verdict, so without this the incomplete
-   * initial verdict would have to be rewritten rather than preserved.
+   * The initial turn's own verdict, when it was incomplete and a later turn (the same reviewer
+   * resumed, or a fresh one) completed the review. `outcome` is the final verdict, so without this
+   * the incomplete initial verdict would have to be rewritten rather than preserved.
    */
   initialOutcome: z.literal("incomplete").optional(),
   summary: Text,
@@ -121,6 +145,11 @@ export const ReviewRecord = z.object({
   }).strict()).min(1).max(20).optional(),
   findings: z.array(z.object({
     id: Session,
+    /**
+     * The review turn that first raised it: 1 is the initial review, absent means 1. Only a handoff
+     * reads it, to know which findings existed before a fresh reviewer took over.
+     */
+    turn: z.number().int().min(1).optional(),
     severity: z.enum(["minor", "substantive", "incidental"]),
     description: Text,
     paths: z.array(Path).min(1),
@@ -139,18 +168,33 @@ export const ReviewRecord = z.object({
   followUp: FollowUp.optional(),
   /** Follow-up turns in order; the last one must clear `covered`. */
   followUps: z.array(FollowUp).min(1).max(20).optional(),
-}).strict().refine(record => !TaskSession.test(record.reviewerSession) || GlobalSession.test(record.authorSession), {
+}).strict().refine(record => [record, ...(record.followUps ?? []), ...(record.followUp ? [record.followUp] : [])]
+  .every(turn => !TaskSession.test(turn.reviewerSession)) || GlobalSession.test(record.authorSession), {
   message: "task-path reviewerSession requires the runner-issued parent session id in authorSession",
-}).refine(record => !(record.followUp && record.followUps), { message: "record follow-up turns as either followUp or followUps, not both" })
-  .refine(record => (record.followUps ?? []).every((turn, index) =>
-    index < MAX_FOLLOW_UPS || turn.humanAuthorization || turn.finalization || (index === MAX_FOLLOW_UPS && Boolean(turn.verification))), {
-    message: "each follow-up beyond the default three-turn cap requires explicit humanAuthorization, unless it is the one bounded verification or automatic finalization turn",
-  });
+}).refine(record => !(record.followUp && record.followUps), { message: "record follow-up turns as either followUp or followUps, not both" });
 export type LocalReviewRecord = z.infer<typeof ReviewRecord>;
 
 /** Follow-up turns in order, whichever field the record used. */
 export function followUpTurns(record: LocalReviewRecord): ReviewFollowUp[] {
   return record.followUps ?? (record.followUp ? [record.followUp] : []);
+}
+
+/**
+ * Whether two turns were taken by one reviewer session. A Codex task path is exact, because the
+ * runner issued that spelling; a global id ignores a provider prefix and case, as reuse checks do.
+ */
+export function sameReviewer(a: string, b: string): boolean {
+  if (TaskSession.test(a) || TaskSession.test(b)) return a.trim() === b.trim();
+  return bareSession(a) === bareSession(b);
+}
+
+/** Every distinct reviewer session in the record, initial first. */
+export function reviewerSessions(record: LocalReviewRecord): string[] {
+  const sessions: string[] = [];
+  for (const turn of [record, ...followUpTurns(record)]) {
+    if (!sessions.some(session => sameReviewer(session, turn.reviewerSession))) sessions.push(turn.reviewerSession);
+  }
+  return sessions;
 }
 
 /** The trunk base the reviewer's clearance covered: the latest recorded integration, else the original. */
@@ -216,24 +260,51 @@ const TRIVIAL_DIFF_TESTS = /\.(?:test|spec)\.[A-Za-z0-9]+$|(?:^|\/)test_[^/]+\.p
  */
 const TRIVIAL_DIFF_CONFIG = /\.(?:md|mdx|txt|ya?ml|json|jsonc|toml)$/i;
 
+export interface TrivialDiff {
+  trivial: boolean;
+  reason: string;
+  /** Changed non-test lines counted so far: the whole range unless a binary file stopped the count. */
+  nonTestLines: number;
+  testLines: number;
+}
+
 /**
  * Whether `older..newer` is small enough to waive the floor, with the counts as a reason either
  * way. Binary or rename-ambiguous output is never trivial: what cannot be counted is not small.
  */
-export function trivialDiff(root: string, older: string, newer: string): { trivial: boolean; reason: string } {
+export function trivialDiff(root: string, older: string, newer: string): TrivialDiff {
   let lines = 0, tests = 0;
   const logic: string[] = [];
   for (const row of git(root, ["diff", "--numstat", "-z", "--no-renames", older, newer, "--"]).split("\0").filter(Boolean)) {
     const [added, removed, file] = row.split("\t");
     if (!file || TRIVIAL_DIFF_RECORDS.test(file)) continue;
-    if (!/^\d+$/.test(added ?? "") || !/^\d+$/.test(removed ?? "")) return { trivial: false, reason: `${file} is binary and cannot be measured` };
+    if (!/^\d+$/.test(added ?? "") || !/^\d+$/.test(removed ?? "")) return { trivial: false, reason: `${file} is binary and cannot be measured`, nonTestLines: lines, testLines: tests };
     const count = Number(added) + Number(removed);
     if (TRIVIAL_DIFF_TESTS.test(file)) { tests += count; continue; }
     lines += count;
     if (!TRIVIAL_DIFF_CONFIG.test(file)) logic.push(file);
   }
   const reason = `${lines} changed non-test lines (max ${TRIVIAL_DIFF_MAX_LINES}), ${tests} test lines (max ${TRIVIAL_DIFF_MAX_TEST_LINES})${logic.length ? `, source outside configuration and docs: ${logic.slice(0, 3).join(", ")}` : ""}`;
-  return { trivial: lines <= TRIVIAL_DIFF_MAX_LINES && tests <= TRIVIAL_DIFF_MAX_TEST_LINES && !logic.length, reason };
+  return { trivial: lines <= TRIVIAL_DIFF_MAX_LINES && tests <= TRIVIAL_DIFF_MAX_TEST_LINES && !logic.length, reason, nonTestLines: lines, testLines: tests };
+}
+
+/**
+ * The rule a floor waiver is reported under. It is distinct from `agent-review`, whose `waived`
+ * level means the project opted out and no record was read; this one means a record was read and
+ * validated, with only the 30-second floor relaxed. Consumers that refuse an opt-out must not
+ * refuse this.
+ */
+export const REVIEW_FLOOR_RULE = "review-floor";
+
+/**
+ * The line `check pr` and `review validate` print when the floor is waived. The waiver used to be
+ * applied silently, so how often it fired could not be measured; `waived: review floor` is the
+ * stable text to search CI logs for. Nothing is added to the record: the size is computed from
+ * Git and never declared by the author, and the record and history it is computed from are
+ * committed, so it can be recomputed for any merged pull request.
+ */
+export function floorWaiver(size: Pick<TrivialDiff, "nonTestLines" | "testLines">): string {
+  return `waived: review floor (trivial diff: ${size.nonTestLines} non-test, ${size.testLines} test lines)`;
 }
 
 export function reviewRequired(config: unknown): boolean {
@@ -262,10 +333,15 @@ export function parseReviewRecord(markdown: string): LocalReviewRecord {
 
 /**
  * `trivialChange` is consulted only when a turn is under the floor, and only `verifyReviewRecord`
- * supplies it, from Git; without it the floor applies.
+ * supplies it, from Git; without it the floor applies. Returns the waivers applied — today only
+ * the floor's — so a valid record that relied on one is never indistinguishable from one that did
+ * not.
  */
-export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialChange?: () => { trivial: boolean; reason: string } } = {}): void {
-  if (bareSession(record.authorSession) === bareSession(record.reviewerSession)) throw new Error("reviewer must be a fresh independent session");
+export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialChange?: () => TrivialDiff } = {}): string[] {
+  const waivers: string[] = [];
+  const turns = followUpTurns(record);
+  // Never self-review, whichever turn: a fresh reviewer may replace another, never the author.
+  if ([record, ...turns].some(turn => bareSession(record.authorSession) === bareSession(turn.reviewerSession))) throw new Error("reviewer must be a fresh independent session");
   if (record.outcome !== "complete") throw new Error(`review is ${record.outcome}; leave the PR open and disable auto-merge`);
   if (new Set(record.findings.map(f => f.id)).size !== record.findings.length) throw new Error("finding IDs must be unique");
   if (record.findings.some(f => f.severity !== "incidental" && f.disposition === "open")) throw new Error("unresolved finding");
@@ -278,31 +354,49 @@ export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialC
   // A substantive finding the reviewer pre-cleared under a condition, and the author fixed
   // under it, needs no turn; any other substantive finding still does.
   const unconditional = record.findings.some(f => f.severity === "substantive" && !(f.condition && f.disposition === "fixed" && f.conditionMet));
-  const turns = followUpTurns(record);
   for (const turn of [record, ...turns]) {
     if (!turn.timing && record.version === 2) throw new Error("version 2 requires measured timing for the initial review and every follow-up");
     if (turn.timing && Math.abs(turn.elapsedMinutes - turn.timing.durationMs / 60000) > 1e-9) {
       throw new Error("elapsedMinutes must equal timing.durationMs / 60000 without rounding; use the measured duration, never a reviewer estimate");
     }
+    if (record.version === 2 && turn.timing?.durationMs === 0) {
+      throw new Error("version 2 requires a positive measured duration for every turn; zero is the template placeholder");
+    }
   }
-  if (unconditional && !turns.length) throw new Error("substantive findings require a follow-up from the original reviewer unless cleared under a recorded condition");
+  if (unconditional && !turns.length) throw new Error("substantive findings require a follow-up review turn unless cleared under a recorded condition");
   if (record.findings.some(f => f.severity === "substantive" && f.disposition !== "fixed" && f.disposition !== "disputed")) throw new Error("substantive findings cannot be deferred");
   const budget = REVIEW_BUDGET_MINUTES[record.risk];
   const multiplier = record.extensionReason ? 1.5 : 1;
-  if (record.elapsedMinutes > budget * multiplier) throw new Error("review exceeded its budget; record incomplete and escalate instead of claiming completion");
-  // An incomplete initial turn resumes only on explicit human authorization, exactly as an
-  // incomplete follow-up does; it is not a clearance, so it needs no late-correction scope reason.
+  // A ceiling binds a turn that renders a verdict. A turn that ran out of time is recorded
+  // incomplete with its honest measurement and gives no clearance, and the next turn (the same
+  // reviewer resumed, or a fresh one) continues; refusing the record for it would leave a timed-out
+  // review blocked for good, which is the stall this contract exists to prevent.
+  const overrun = (turn: { outcome: string; elapsedMinutes: number }, ceiling: number) => turn.outcome !== "incomplete" && turn.elapsedMinutes > ceiling;
+  if (overrun({ outcome: record.initialOutcome ?? record.outcome, elapsedMinutes: record.elapsedMinutes }, budget * multiplier)) throw new Error("review exceeded its budget; record incomplete and escalate instead of claiming completion");
+  // Five ordinary turns need nobody's approval, the initial review and incomplete turns included;
+  // each one after that carries its own humanAuthorization. Finalization stays outside the count.
+  let ordinal = 1;
+  for (const turn of turns) {
+    if (turn.finalization) continue;
+    ordinal += 1;
+    if (ordinal > MAX_REVIEW_TURNS && !turn.humanAuthorization) {
+      throw new Error(`review turn ${ordinal} is beyond the ${MAX_REVIEW_TURNS} automatic turns (the initial review counts); each ordinary turn after the fifth needs explicit humanAuthorization`);
+    }
+  }
+  // An incomplete initial turn (timeout, crash, lost session, missing evidence) is followed by
+  // another turn without anyone's approval: the same reviewer resumed, or a fresh one. It is not a
+  // clearance, so that turn needs no late-correction scope reason. The verdict stays recorded.
   const resumed = record.initialOutcome === "incomplete";
-  if (resumed && !turns[0]?.humanAuthorization) throw new Error("an incomplete initial review resumes only with explicit humanAuthorization on the next same-reviewer turn");
+  if (resumed && !turns.length) throw new Error("an incomplete initial review needs a later turn that clears; resume the reviewer or start a fresh one with the earlier findings");
   // Normal and high risk require a measured initial pass of at least 30 seconds.
   // Small risk keeps no floor: a one-line change can genuinely be read faster.
   // A pass under the floor is not a review, so it cannot count as one. It can only be preserved
-  // as incomplete, and the review is then the authorized same-reviewer turn, which must meet the
-  // floor itself and clear. Without this the authorized resumption the contract offers never lands.
+  // as incomplete, and the review is then a later ordinary turn, which must meet the floor itself
+  // and clear. Without this the resumption the contract offers never lands.
   // A trivially small change (TRIVIAL_DIFF_MAX_LINES) is waived: there the floor measures the diff.
   // The waiver relaxes the 30 seconds, not the measurement: a zero duration is the template's
   // placeholder, so a record with any zero-length turn never qualifies.
-  const rescuedByTurn = turns.some(turn => turn.humanAuthorization && !turn.finalization && turn.outcome === "cleared" && turn.elapsedMinutes >= 0.5);
+  const rescuedByTurn = turns.some(turn => !turn.finalization && turn.outcome === "cleared" && turn.elapsedMinutes >= 0.5);
   if (record.risk !== "small" && record.elapsedMinutes < 0.5 && !(resumed && rescuedByTurn)) {
     const measured = [record, ...turns].every(turn => turn.elapsedMinutes > 0);
     const size = measured ? opts.trivialChange?.() : undefined;
@@ -310,25 +404,26 @@ export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialC
       const why = size ? ` (not a trivial change: ${size.reason})` : "";
       // A finalization turn only closes out an existing clearance, so it is never the review that counts.
       if (!resumed) throw new Error(`an initial review under 30 seconds at normal or high risk is not a review; record it as initialOutcome incomplete, or record what was actually done${why}`);
-      throw new Error(`an initial review under 30 seconds at normal or high risk needs an authorized same-reviewer turn of at least 30 seconds that clears${why}`);
+      throw new Error(`an initial review under 30 seconds at normal or high risk needs a later turn of at least 30 seconds that clears${why}`);
     }
+    waivers.push(floorWaiver(size));
   }
   // A turn after a clearance is a late correction, such as a fix full CI asked for after the
   // reviewer cleared the code. It spends one of the remaining turns and must name the scope
   // decision in its scopeReason, so the record shows why a cleared review was reopened. A turn
-  // after blocked, or after substantive initial findings, is the ordinary fix follow-up and needs
-  // none. An incomplete turn may be missing evidence; only explicit human authorization can
-  // resume it. Per-turn budget checks still reject exhausted reviews, including historical turns.
+  // after blocked, after incomplete, or after substantive initial findings is an ordinary
+  // follow-up and needs none. Per-turn budget checks still reject exhausted turns, historical ones included.
   if (!substantive && !resumed && turns[0] && !turns[0].scopeReason) throw new Error("a follow-up after a clean initial review is a late correction and needs an explicit scope reason");
-  // One automatic finalization-only turn per pull request; later turns need human authorization. It finishes
+  checkHandoffs(record, turns);
+  // One automatic finalization-only turn per pull request, outside the five-turn count. It finishes
   // an approved change: it cannot resolve a substantive finding, run long, or be repeated, and a
   // reviewer that still has a concern records blocked or incomplete instead, which stays blocked.
+  // An ordinary turn may follow it within the automatic five, as a late correction with its scope reason.
   const finalizations = turns.filter(turn => turn.finalization);
-  if (finalizations.length > 1) throw new Error("a pull request gets one automatic finalization-only turn; a second needs explicit humanAuthorization as a substantive turn");
+  if (finalizations.length > 1) throw new Error("a pull request gets one automatic finalization-only turn; record a second as an ordinary turn");
   const finalization = finalizations[0];
   if (finalization) {
     const finalizationIndex = turns.indexOf(finalization);
-    if (turns.slice(finalizationIndex + 1).some(turn => !turn.humanAuthorization)) throw new Error("every turn after finalization requires explicit humanAuthorization; nothing follows it automatically");
     if (finalization.outcome !== "cleared") throw new Error(`a finalization turn that is ${finalization.outcome} leaves the pull request blocked; it cannot be recorded as finalization`);
     if (finalization.elapsedMinutes > FINALIZATION_CEILING_MINUTES) throw new Error(`a finalization turn is capped at ${FINALIZATION_CEILING_MINUTES} minutes; anything longer is a review and spends a turn`);
     if (!finalization.scopeReason) throw new Error("a finalization turn must name what it finalized in its scopeReason, so it cannot quietly become a new topic");
@@ -346,7 +441,7 @@ export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialC
   const verification = verifications[0];
   if (verification) {
     const index = turns.indexOf(verification);
-    if (index !== MAX_FOLLOW_UPS || verification.humanAuthorization || verification.finalization) {
+    if (index !== VERIFICATION_TURN_INDEX || verification.humanAuthorization || verification.finalization) {
       throw new Error("automatic final verification is only the fourth ordinary turn");
     }
     if (finalization && turns.indexOf(finalization) < index) {
@@ -368,17 +463,66 @@ export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialC
     }
   }
   turns.forEach((turn, index) => {
-    if (turn.reviewerSession !== record.reviewerSession) throw new Error("every follow-up must use the original reviewer session");
-    if (turn.elapsedMinutes > budget / 2) throw new Error("follow-up exceeded its budget; record incomplete and escalate instead of claiming completion");
+    // A follow-up is half the initial budget because its reviewer already holds the context. A fresh
+    // reviewer taking over does not, so its ordinary turn gets the initial ceiling (no extension).
+    const fresh = !sameReviewer(turn.reviewerSession, (turns[index - 1] ?? record).reviewerSession);
+    const ceiling = fresh && !turn.finalization && !turn.verification ? budget : budget / 2;
+    if (overrun(turn, ceiling)) throw new Error(fresh ? "a fresh reviewer's turn exceeded the initial-review budget; record it incomplete and continue with another turn" : "follow-up exceeded its budget; record it incomplete and continue with another turn instead of claiming a verdict");
     const next = turns[index + 1];
     if (!next) {
       // With a conditional clearance the author's fix may land after the final turn; the commit
       // check then happens in checkLocalReview, which can see the paths.
       const coversLast = turn.commit === record.covered || conditionallyCleared(record).length > 0;
-      if (turn.outcome !== "cleared" || !coversLast) throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
-    } else if ((turn.outcome === "incomplete" && !next.humanAuthorization) || (turn.outcome === "cleared" && !next.scopeReason)) {
-      throw new Error("a third turn is allowed only after the second turn returned blocked, after a cleared turn as a late correction with an explicit scope reason, or after an incomplete turn with explicit humanAuthorization");
+      if (turn.outcome !== "cleared" || !coversLast) throw new Error("the final follow-up must clear the covered commit");
+    } else if (turn.outcome === "cleared" && !next.scopeReason) {
+      throw new Error("a turn after a cleared turn is a late correction and needs an explicit scope reason; otherwise a turn follows only a blocked or incomplete one");
     }
+  });
+  return waivers;
+}
+
+/**
+ * A fresh reviewer may take over from any turn, with no human approval: the session timed out, was
+ * lost, or simply cannot be resumed. What stops that becoming reviewer shopping is that nothing the
+ * earlier reviewers found goes missing. The handoff names every finding recorded before the turn,
+ * each one stays in the record with its severity and disposition, and a `blocked` turn that is
+ * handed over names the substantive findings it blocked on, so they cannot quietly disappear.
+ */
+function checkHandoffs(record: LocalReviewRecord, turns: ReviewFollowUp[]): void {
+  const ids = new Map(record.findings.map(f => [f.id, f]));
+  const turnCount = turns.length + 1;
+  for (const f of record.findings) {
+    if ((f.turn ?? 1) > turnCount) throw new Error(`finding ${f.id} names turn ${f.turn}, but the record has ${turnCount} turn${turnCount === 1 ? "" : "s"}`);
+  }
+  turns.forEach((turn, index) => {
+    const number = index + 2;
+    const previous: { reviewerSession: string; outcome?: string; blockedOn?: string[] | undefined } = turns[index - 1] ?? record;
+    if (turn.blockedOn) {
+      if (turn.outcome !== "blocked") throw new Error(`turn ${number} records blockedOn but returned ${turn.outcome}`);
+      for (const id of turn.blockedOn) {
+        const finding = ids.get(id);
+        if (!finding) throw new Error(`turn ${number} blocked on finding ${id}, which is not in the record; a reviewer's blocking findings are never dropped`);
+        if (finding.severity !== "substantive") throw new Error(`turn ${number} blocked on ${id}, a ${finding.severity} finding; only substantive findings block`);
+        if ((finding.turn ?? 1) > number) throw new Error(`turn ${number} blocked on ${id}, which a later turn raised`);
+      }
+    }
+    if (sameReviewer(turn.reviewerSession, previous.reviewerSession)) {
+      if (turn.handoff) throw new Error(`turn ${number} records a handoff but uses the same reviewer session as the turn before it`);
+      return;
+    }
+    if (!turn.handoff) throw new Error(`turn ${number} is taken by a fresh reviewer session; record handoff { reason, findings } naming every earlier finding it was given`);
+    // Every blocked follow-up before a fresh reviewer, not only the one right before it: otherwise a
+    // resumed turn that times out in between would let what the blocked turn rested on go unnamed.
+    const unnamed = turns.slice(0, index).findIndex(earlier => earlier.outcome === "blocked" && !earlier.blockedOn?.length);
+    if (unnamed >= 0) {
+      throw new Error(`the blocked turn ${unnamed + 2} must name its substantive findings in blockedOn when a fresh reviewer takes over at turn ${number}`);
+    }
+    const earlier = record.findings.filter(f => (f.turn ?? 1) < number).map(f => f.id);
+    const given = new Set(turn.handoff.findings);
+    const dropped = earlier.filter(id => !given.has(id));
+    if (dropped.length) throw new Error(`the fresh reviewer at turn ${number} was not given earlier finding${dropped.length === 1 ? "" : "s"} ${dropped.join(", ")}; every earlier finding goes to the fresh reviewer`);
+    const unknown = [...given].filter(id => !earlier.includes(id));
+    if (unknown.length) throw new Error(`the handoff at turn ${number} names ${unknown.join(", ")}, which ${unknown.length === 1 ? "is not an earlier finding" : "are not earlier findings"} in this record; a finding given to a reviewer stays in the record`);
   });
 }
 
@@ -545,8 +689,8 @@ export function checkLocalReview(opts: { root: string; body: string; labels: str
     const config = committedConfig(opts.root, opts.head);
     if (!reviewRequired(config)) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
     if (!opts.labels.includes("agent-reviewed")) throw new Error(MISSING_LABEL);
-    verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
-    return [];
+    const { waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
+    return waivers.map(message => ({ level: "waived", rule: REVIEW_FLOOR_RULE, message }));
   } catch (error) {
     return [{ level: "error", rule: "agent-review", message: error instanceof Error ? error.message : String(error) }];
   }
@@ -562,9 +706,9 @@ export function reviewRecordLine(body: string): string {
 /**
  * Everything the gate checks once it knows which worklog holds the record: the same function
  * `check pr` runs in CI and `review validate` runs before a push, so the two cannot disagree.
- * Throws the first problem found.
+ * Throws the first problem found; returns the record and any waiver its validation applied.
  */
-export function verifyReviewRecord(opts: { root: string; path: string; head: string; base: string }): LocalReviewRecord {
+export function verifyReviewRecord(opts: { root: string; path: string; head: string; base: string }): { record: LocalReviewRecord; waivers: string[] } {
   const path = opts.path;
   if (!/^\.agent\/worklog\/[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(path)) throw new Error("review-record must name a worklog Markdown file");
   const mode = git(opts.root, ["ls-tree", opts.head, "--", path]).split(" ")[0];
@@ -572,8 +716,8 @@ export function verifyReviewRecord(opts: { root: string; path: string; head: str
   const record = parseReviewRecord(git(opts.root, ["show", `${opts.head}:${path}`]));
   // The whole reviewed change, base to covered. A trunk merge inside it only adds lines, which errs
   // toward keeping the floor; a range that cannot be measured keeps it too.
-  validateReviewRecord(record, { trivialChange: () => {
-    try { return trivialDiff(opts.root, record.base, record.covered); } catch { return { trivial: false, reason: "the reviewed range could not be measured" }; }
+  const waivers = validateReviewRecord(record, { trivialChange: () => {
+    try { return trivialDiff(opts.root, record.base, record.covered); } catch { return { trivial: false, reason: "the reviewed range could not be measured", nonTestLines: 0, testLines: 0 }; }
   } });
   checkFreshReviewer(opts.root, record, path, opts.head);
   checkTrackedDeferrals(opts.root, record, opts.head);
@@ -596,7 +740,7 @@ export function verifyReviewRecord(opts: { root: string; path: string; head: str
   const last = turns[turns.length - 1];
   if (last && last.commit !== record.covered) {
     // Only a conditional clearance lets `covered` run past the final turn, and only within its paths.
-    if (!isAncestor(opts.root, last.commit, record.covered)) throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
+    if (!isAncestor(opts.root, last.commit, record.covered)) throw new Error("the final follow-up must clear the covered commit");
     for (const commit of verifyUncoveredCommits(opts.root, record, last.commit, record.covered, opts.base, new Set([path, ...conditional, ...newlyFiledDeferralPaths(opts.root, record, last.commit, record.covered)]), "author fixes after the final follow-up exceed the reviewer's recorded conditions")) merges.add(commit);
   }
   // The attestation is checked against the diff it claims to cover, so an automatic turn cannot
@@ -619,33 +763,44 @@ export function verifyReviewRecord(opts: { root: string; path: string; head: str
   if (followUpTurns(record).length) for (const commit of trunkMerges(opts.root, record.reviewed, record.covered, opts.base)) merges.add(commit);
   const stray = (record.trunkIntegrations ?? []).find(entry => !merges.has(entry.commit));
   if (stray) throw new Error("trunkIntegrations names a commit that is not a trunk merge on this branch after review");
-  return record;
+  return { record, waivers };
 }
 
 /**
  * A reviewer session reviews one task. The same id in another worklog means the reviewer was
  * reused or the id was composed, and either way it is not the fresh session the contract requires.
+ * Every session in the record is checked: a fresh reviewer that took over a turn is held to the
+ * same rule as the one that started.
  */
 function checkFreshReviewer(root: string, record: LocalReviewRecord, worklog: string, head: string): void {
+  for (const session of reviewerSessions(record)) {
+    const other = reusedIn(root, record.authorSession, session, worklog, head);
+    if (other) throw new Error(`reviewer session ${session} already appears in ${other}; every review needs a fresh reviewer session`);
+  }
+}
+
+function reusedIn(root: string, authorSession: string, session: string, worklog: string, head: string): string | undefined {
   // Compare the bare id: a provider prefix or a change of case is the same session, not a new one.
-  const bare = bareSession(record.reviewerSession);
+  const bare = bareSession(session);
   let hits: string[] = [];
   try { hits = git(root, ["grep", "-l", "-i", "-F", bare, head, "--", ".agent/worklog"]).split("\n").filter(Boolean); } catch { hits = []; }
-  const other = hits.map(hit => hit.replace(/^[^:]*:/, "")).find(p => {
+  return hits.map(hit => hit.replace(/^[^:]*:/, "")).find(p => {
     if (p === worklog) return false;
-    if (!TaskSession.test(record.reviewerSession)) return true;
+    if (!TaskSession.test(session)) return true;
     // Task paths are local to a root runner session. Inspect structured identities rather
-    // than prose mentions (or prefixes such as /root/review versus /root/review_extra).
+    // than prose mentions (or prefixes such as /root/review versus /root/review_extra),
+    // including the sessions of an earlier record's follow-up turns.
     const markdown = git(root, ["show", `${head}:${p}`]);
     return [...markdown.matchAll(/^```morpheus-review\r?\n([\s\S]*?)^```[ \t]*$/gm)].some(block => {
       let previous: unknown;
       try { previous = JSON.parse(block[1]!); } catch { return false; }
-      const identity = z.object({ authorSession: z.string().trim(), reviewerSession: z.string().trim() }).safeParse(previous);
-      return identity.success && identity.data.reviewerSession === record.reviewerSession
-        && bareSession(identity.data.authorSession) === bareSession(record.authorSession);
+      const turn = z.object({ reviewerSession: z.string().trim() }).passthrough();
+      const identity = z.object({ authorSession: z.string().trim(), reviewerSession: z.string().trim(), followUp: turn.optional(), followUps: z.array(turn).optional() }).passthrough().safeParse(previous);
+      if (!identity.success || bareSession(identity.data.authorSession) !== bareSession(authorSession)) return false;
+      const sessions = [identity.data.reviewerSession, identity.data.followUp?.reviewerSession, ...(identity.data.followUps ?? []).map(t => t.reviewerSession)];
+      return sessions.some(s => s === session.trim());
     });
   });
-  if (other) throw new Error(`reviewer session ${record.reviewerSession} already appears in ${other}; every review needs a fresh reviewer session`);
 }
 
 /** A deferral is a ticket, not a sentence: the named roadmap item must exist on this branch. */

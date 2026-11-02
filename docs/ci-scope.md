@@ -9,7 +9,7 @@ behavior. An unlabelled draft still waits for review before reporting convention
 | Ordinary `docs/**/*.md`, `hq/**/*.md`, `qa/acceptance/**/*.md`, `.agent/worklog/**/*.md` | Skip | Skip | Skip | Skip |
 | `src/**`, `dist/**`, general `tests/**` | Run | Skip | Skip | Skip |
 | `src/qa/**`, `dist/qa/**`, `tests/browser/**` | Run | Run | Skip | Skip |
-| `plugins/codex-claude/**` | Run | Skip | Run | Skip |
+| `plugins/factory/**` | Run | Skip | Run | Skip |
 | `.github/actions/ios-testflight-upload/**`, `tests/artifacts/**` | Run | Run | Skip | Run |
 | `tests/artifact-workflows.test.ts` | Run | Skip | Skip | Run |
 | `docs/runbooks/**`, `docs/examples/**`, `.agents/**`, `.claude/**` | Run | Skip | Skip | Skip |

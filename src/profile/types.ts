@@ -7,6 +7,14 @@
 
 export type Provider = "claude" | "codex";
 
+/**
+ * Where a session's transcript was found. Codex moves older rollouts out of `sessions/` into a
+ * flat `archived_sessions/`, so a profile that reads only the first silently loses most Codex
+ * history; the source is kept on every row so a report can show what it read.
+ */
+export const SOURCES = ["claude", "codex-sessions", "codex-archived"] as const;
+export type SessionSource = (typeof SOURCES)[number];
+
 export const PHASES = [
   "context",
   "checks",
@@ -76,6 +84,7 @@ export interface SessionRow {
   /** Claude's own `cost-state` line, when present. Codex records none. */
   costUSD: number | null;
   file: string;
+  source: SessionSource;
 }
 
 export interface SpanRow {

@@ -626,3 +626,104 @@ calls; the full native transcript recorded spawn, interrupt and verified interru
 Configuration, inventory, recorded events and effective capability are different evidence.
 Qualify the real invocation path and child accounting before claiming containment. Keep a
 failed qualification visible in the result rather than repeating work for a favorable score.
+
+
+## A quota initialization timeout is failed measurement, not exhausted capacity
+
+2026-10-28, Evo CD recovery (MO-26-10-28-12.13.24). The configured policy shim
+can fail before the rate-limit RPC; a supervisor that hides reader startup/exit
+status makes that look like a60-second initialization hang. Catching telemetry,
+threshold and login errors together then labels all three as a capacity wait,
+leaving a repair with zero invocations despite no measured exhaustion. Preserve
+sanitized causes and distinct categories while refusing model launch against
+unknown usage. A healthy timer and an unchanged private checkpoint cannot prove
+that recovery or delivery progressed.
+
+## Codex compresses old rollouts in place, then archives some
+
+2026-10-28 (MO-26-10-28-14.11.57). Codex rewrites an older rollout under
+`~/.codex/sessions/YYYY/MM/DD/` from `.jsonl` to `.jsonl.zst` and moves some sessions to a flat
+`~/.codex/archived_sessions/`, also `.jsonl.zst`; the content is the same rollout format. On this
+machine at the time: 32 plain and 746 compressed files under `sessions/` (everything older than
+about a week compressed) and 317 archived, mostly July to September. A profiler that globbed
+`*.jsonl` found zero Evo Codex main sessions for 10-09 to 10-21 where a run a week earlier had found
+fourteen, and reported no error: the files had been compressed, not deleted. The archive alone
+would not have recovered them — only two October sessions were in it. A reader of a tool's local
+state should match every encoding the tool writes, and an unexpected zero is a reason to look at
+the directory before trusting the number.
+
+## A diff keyed on blob ids stops matching once trunk touches the file
+
+2026-10-28, trunk rescue cleanup (MO-26-10-28-14.08.53). The 2026-10-15 rescue dedupe compared
+exact diffs, including old/new blob ids. Evo's `project.pbxproj` changes on trunk almost daily, so
+Xcode's identical re-sort produced a new old-blob id each day and evo#654 and evo#675 opened a day
+apart with the same four hunks. When "the same change" matters, compare what applying it produces
+(replay the patch onto the current base in a private index and compare trees), not the patch
+text: the patch carries its base with it.
+
+An unadopted automatic PR is a cost, not a safety net. None of about nineteen rescue drafts was
+ever adopted, and each one in `manager:needs-human` hid a real decision from Chris. Automation
+that opens PRs needs an exit — classify before publishing, and age out what nobody claimed.
+
+## Claude Code's hook payload holds more Bash output than the model saw
+
+2026-10-28 (MO-26-10-28-14.08.05). When a Bash result passes roughly 30,000 characters, Claude Code
+shows the model a ~2 KB `<persisted-output>` preview but keeps ~30,000 characters in the tool's
+result object — what transcripts record as `toolUseResult` and what a `PostToolUse` hook receives
+as `tool_response`. Measured in local transcripts: `stdout` of 29,620–29,984 characters beside
+model-visible previews of 1,326–2,396. Anything that treats `tool_response.stdout` as "what the
+model read" must cap it well below that. Two related facts read from the 2.1.283 binary rather than
+observed live (a nested headless session could not authenticate): `tool_response` is the tool's own
+output object, and a failed call — which is how a non-zero Bash exit is shown — goes to
+`PostToolUseFailure` with the text in `error`, so a `PostToolUse` hook alone never sees what a
+refusing command printed.
+
+## Automation that pushes publishes, and closing the PR does not take it back
+
+2026-10-28 (MO-26-10-28-15.37.55). The trunk rescue pushed whatever tracked edits it found. On
+public morpheus that made #452 a public copy of an agent's private working document, with a
+Tailscale hostname and local paths. Untracked files had been excluded "because that is where
+secrets live", but a tracked file can be overwritten with anything. A closed PR's diff and commits
+stay readable through the pull request's own refs until GitHub Support purges them, and the branch
+stays until deleted. The rescue's own commit message and PR body also carried the absolute checkout
+path. **Before automation pushes content it did not author, ask whether the destination is public,
+and treat "could not tell" as yes.**
+
+## Codex trusts hooks per file path, and a worktree runs the main checkout's hooks
+
+2026-10-28 (MO-26-10-28-17.16.16). Read from Codex's source (0.163.0–0.165.0) and confirmed with
+`codex app-server`'s `hooks/list` against real checkouts and an isolated `CODEX_HOME`:
+
+- A `hooks.state` key is `<absolute hooks.json path>:<event>:<group>:<handler>`; the hash is
+  `sha256` over compact key-sorted JSON of the event label, matcher and the handler normalized with
+  its default timeout. Trust follows the file and the hook's position, not the repository.
+- In a linked worktree Codex reads `.codex/hooks.json` from the **main checkout**, keyed by the main
+  checkout's path. One trust covers every worktree; a branch's own hook edits do nothing in Codex
+  until the main checkout has them. A task worktree is the wrong place to test a Codex hook change.
+- `.codex/` folders are loaded from the project root down to the working directory, never above
+  the nearest `.git`, so a parent directory's hooks do not reach the repositories inside it.
+- Lakina's one trusted hook was recorded for `morpheus context brief`; the file had since changed to
+  the session shim, so Codex had silently stopped running it. Nothing reported that until `doctor`.
+
+## xcodebuild's in-process retry cannot clear state the failed run left behind
+
+2026-10-30 (MO-26-10-30-15.16.58), measured with a two-UI-test fixture on Xcode 27.0 and the iOS
+26.5 simulator: the first test launches the app, which leaves a marker in its container; the second
+asserts a first launch. In one session the second fails; rerun alone after `simctl erase` it passes.
+`-retry-tests-on-failure` repeats it in the same simulator and app container, so it fails every
+iteration, which is the shape of Evo's leftover-state UI failures. Related facts from the same runs:
+
+- `xcrun xcresulttool merge` of the failed attempt and its passing retry reports the test as
+  `Failed`, with two `Repetition` children (not in chronological order). Merging cannot turn a
+  recovered test into a pass, so the first attempt's bundle stays the evidence and the verdict lives
+  beside it.
+- `-only-testing:Target/Class/testMethod()` with the parentheses selects an XCTest method. The
+  target is the `name` of the `Unit test bundle`/`UI test bundle` node in
+  `xcresulttool get test-results tests`; a `Test Case` node's `nodeIdentifier` is `Class/method()`.
+  The summary's `testFailures` carries the same pair as `targetName` and `testIdentifierString`.
+- `xcodebuild test-without-building` shuts down a simulator it booted; `simctl shutdown` on an
+  already shut-down device exits 149, and `simctl erase` needs it shut down.
+- On Xcode 27, in one of two failing runs, xcodebuild waited the full 600 s after the tests and
+  logged `Failure collecting diagnostics from simulator: Timed out after 600.0 seconds`, collecting
+  nothing; the other finished promptly. Runs with `-collect-test-diagnostics never` never waited.
+- `xcodebuild -help` prints its usage to stderr, not stdout.

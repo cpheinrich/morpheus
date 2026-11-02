@@ -4,11 +4,11 @@ on:
     paths:
       - 'scripts/paperclip-hq/**'
       - 'tests/paperclip-hq*.test.ts'
-      - 'plugins/codex-claude/src/pool*.mjs'
-      - 'plugins/codex-claude/src/service.mjs'
-      - 'plugins/codex-claude/tests/pool-fixtures.mjs'
-      - 'plugins/codex-claude/package.json'
-      - 'plugins/codex-claude/pnpm-lock.yaml'
+      - 'plugins/factory/src/pool*.mjs'
+      - 'plugins/factory/src/service.mjs'
+      - 'plugins/factory/tests/pool-fixtures.mjs'
+      - 'plugins/factory/package.json'
+      - 'plugins/factory/pnpm-lock.yaml'
       - '.github/workflows/paperclip-hq.yml'
       - 'pnpm-lock.yaml'
   push:
@@ -16,11 +16,11 @@ on:
     paths:
       - 'scripts/paperclip-hq/**'
       - 'tests/paperclip-hq*.test.ts'
-      - 'plugins/codex-claude/src/pool*.mjs'
-      - 'plugins/codex-claude/src/service.mjs'
-      - 'plugins/codex-claude/tests/pool-fixtures.mjs'
-      - 'plugins/codex-claude/package.json'
-      - 'plugins/codex-claude/pnpm-lock.yaml'
+      - 'plugins/factory/src/pool*.mjs'
+      - 'plugins/factory/src/service.mjs'
+      - 'plugins/factory/tests/pool-fixtures.mjs'
+      - 'plugins/factory/package.json'
+      - 'plugins/factory/pnpm-lock.yaml'
       - '.github/workflows/paperclip-hq.yml'
       - 'pnpm-lock.yaml'
 permissions:
@@ -40,7 +40,7 @@ jobs:
       - run: pnpm --dir scripts/paperclip-hq run build
       - name: Verify standalone development and production package boundaries
         run: node scripts/paperclip-hq/check-package.mjs
-      - run: pnpm --dir plugins/codex-claude install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - run: pnpm --dir plugins/factory install --ignore-workspace --frozen-lockfile --ignore-scripts
       - run: node --test scripts/paperclip-hq/run-qualification.test.mjs
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:

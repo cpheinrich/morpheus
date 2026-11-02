@@ -39,6 +39,7 @@ const leaseSchema = z.strictObject({
         worktree: z.string(),
         inputs: z.array(contextInput),
         advisoryMemorySources: z.array(advisoryMemorySource).optional(),
+        evidence: z.enum(["recorded", "asserted"]).optional(),
     }),
     checkedAt: z.string(),
     status: z.enum(["fresh", "refresh_required", "unknown"]),

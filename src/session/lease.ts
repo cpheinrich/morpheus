@@ -30,6 +30,14 @@ export interface ContextReceipt {
   inputs: ContextInput[];
   /** Safe source labels only; never raw memory or conversation text. */
   advisoryMemorySources?: string[];
+  /**
+   * How reading was established: `recorded` when a read hook's log covered
+   * every record, `asserted` when no hook could be shown to be watching.
+   * Absent on receipts taken before read evidence existed — treated as
+   * `asserted`, so an old receipt never becomes the baseline a recorded one
+   * extends.
+   */
+  evidence?: "recorded" | "asserted";
 }
 
 export interface SessionLease {

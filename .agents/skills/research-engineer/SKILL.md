@@ -93,6 +93,9 @@ sophisticated one you can build.
 
 ## 5. Leave a record that reproduces every number
 
+Keep a concise body with the ask, what was built, plain-language results and the decision;
+put detailed tables, methods and reproducibility evidence in appendices at the bottom.
+
 - **An experiment ledger entry per run**: hypothesis, change, baseline, code commit, corpus digest,
   verdict. Store each case's whole output (not just the scored number) in private storage, with a
   pointer and digest in the repository.

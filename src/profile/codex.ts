@@ -9,6 +9,7 @@ import {
   type ProfileIssue,
   type Role,
   type SessionRow,
+  type SessionSource,
   type SpanRow,
   type TokenTotals,
 } from "./types.js";
@@ -17,6 +18,8 @@ export interface CodexParseOptions {
   file: string;
   roots?: string[];
   home?: string;
+  /** Which Codex directory the rollout came from; defaults to the live `sessions/`. */
+  source?: Extract<SessionSource, `codex-${string}`>;
 }
 
 type Json = Record<string, unknown>;
@@ -256,6 +259,7 @@ export class CodexTranscript {
       byModel: [...this.byModel.values()],
       costUSD: null,
       file,
+      source: this.options.source ?? "codex-sessions",
     };
     return { session, spans, issues: this.issues };
   }
