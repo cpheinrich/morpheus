@@ -38,7 +38,7 @@ function fakeGh(polls: GhResult[], logs: Record<string, GhResult> = {}, resolve:
       if (args[0] === "pr") return resolve;
       if (args[0] === "api") return polls[Math.min(i++, polls.length - 1)]!;
       if (args[0] === "run" && args[1] === "list") {
-        if (!runLists) return ok([{ headSha: args[args.indexOf("--commit") + 1], status: "completed", conclusion: "success", databaseId: 1 }]);
+        if (!runLists) return ok([{ headSha: args[args.indexOf("--commit") + 1], status: "completed", conclusion: "success", databaseId: 1, workflowDatabaseId: 22, createdAt: "2026-10-25T09:00:00Z" }]);
         return runLists[Math.min(runsIndex++, runLists.length - 1)]!;
       }
       if (args[0] === "run") return logs[args[args.indexOf("--job") + 1]!] ?? fail("no log scripted");
@@ -75,7 +75,7 @@ describe("waitCi", () => {
     expect(result).toEqual({ exitCode: 0, output: "✓ CI green — cpheinrich/morpheus#354 @ 59cb7d5 (2 checks: 2 passed) after 48s" });
     expect(sleeps).toEqual([10_000, 15_000, 10_000 * 1.5 * 1.5]);
     expect(calls[0]).toEqual(["pr", "view", "354", "--json", "number,url"]);
-    expect(calls.filter((c) => c[0] === "run")).toEqual([["run", "list", "--repo", "cpheinrich/morpheus", "--commit", SHA_A, "--limit", "100", "--json", "headSha,status,conclusion,databaseId"]]);
+    expect(calls.filter((c) => c[0] === "run")).toEqual([["run", "list", "--repo", "cpheinrich/morpheus", "--commit", SHA_A, "--limit", "100", "--json", "headSha,status,conclusion,databaseId,workflowDatabaseId,createdAt"]]);
   });
 
   it.each([false, true])("reports a failed sibling workflow with requiredOnly=%s", async (requiredOnly) => {
@@ -97,8 +97,8 @@ describe("waitCi", () => {
     const fullPending = ok(rollup(SHA_A, [run("pm", "COMPLETED", "SUCCESS"), run("conventions", "COMPLETED", "SUCCESS"), run("vercel", "COMPLETED", "SUCCESS"), run("preview", "COMPLETED", "SUCCESS"), run("lint", "IN_PROGRESS", null), run("build", "IN_PROGRESS", null), run("digest", "IN_PROGRESS", null)]));
     const fullGreen = ok(rollup(SHA_A, [run("pm", "COMPLETED", "SUCCESS"), run("conventions", "COMPLETED", "SUCCESS"), run("vercel", "COMPLETED", "SUCCESS"), run("preview", "COMPLETED", "SUCCESS"), run("lint", "COMPLETED", "SUCCESS"), run("build", "COMPLETED", "SUCCESS"), run("digest", "COMPLETED", "SUCCESS")]));
     const { deps, calls, sleeps } = fakeGh([early, fullPending, fullGreen], {}, PR, [
-      ok([{ headSha: SHA_A, status: "in_progress", conclusion: null, databaseId: 39741854466 }]),
-      ok([{ headSha: SHA_A, status: "completed", conclusion: "success", databaseId: 39741854466 }]),
+      ok([{ headSha: SHA_A, status: "in_progress", conclusion: null, databaseId: 39741854466, workflowDatabaseId: 22, createdAt: "2026-10-25T09:00:00Z" }]),
+      ok([{ headSha: SHA_A, status: "completed", conclusion: "success", databaseId: 39741854466, workflowDatabaseId: 22, createdAt: "2026-10-25T09:00:00Z" }]),
     ]);
     const result = await waitCi(deps, opts);
     expect(result.exitCode).toBe(0);
@@ -120,7 +120,7 @@ describe("waitCi", () => {
   });
 
   it("times out rather than reporting green when only the workflow run is pending", async () => {
-    const running = ok([{ headSha: SHA_A, status: "in_progress", conclusion: null, databaseId: 123 }]);
+    const running = ok([{ headSha: SHA_A, status: "in_progress", conclusion: null, databaseId: 123, workflowDatabaseId: 22, createdAt: "2026-10-25T09:00:00Z" }]);
     const result = await waitCi(fakeGh([green()], {}, PR, [running]).deps, { ...opts, timeoutMs: 30_000 });
     expect(result.exitCode).toBe(2);
     expect(result.output).toContain("CI still running at the deadline");
@@ -143,8 +143,8 @@ describe("waitCi", () => {
     const movedPending = ok(rollup(SHA_B, [run("pm", "COMPLETED", "SUCCESS"), run("build", "IN_PROGRESS", null)]));
     const movedDone = ok(rollup(SHA_B, [run("pm", "COMPLETED", "SUCCESS"), run("build", "COMPLETED", "SUCCESS")]));
     const { deps, calls } = fakeGh([pending(SHA_A), movedGreen, movedPending, movedDone], {}, PR, [
-      ok([{ headSha: SHA_B, status: "queued", conclusion: null, databaseId: 123 }]),
-      ok([{ headSha: SHA_B, status: "completed", conclusion: "success", databaseId: 123 }]),
+      ok([{ headSha: SHA_B, status: "queued", conclusion: null, databaseId: 123, workflowDatabaseId: 22, createdAt: "2026-10-25T09:00:00Z" }]),
+      ok([{ headSha: SHA_B, status: "completed", conclusion: "success", databaseId: 123, workflowDatabaseId: 22, createdAt: "2026-10-25T09:00:00Z" }]),
     ]);
     const result = await waitCi(deps, opts);
     expect(result.exitCode).toBe(0);
@@ -210,8 +210,8 @@ describe("waitCi", () => {
     const queued = (name: string, job: string) => ({ ...run(name, "QUEUED", null, { ...READY, job }), startedAt: null });
     const census = (ready: { status: string; conclusion: string | null }) =>
       ok([
-        { headSha: SHA_A, status: "completed", conclusion: "success", databaseId: 40179926816 },
-        { headSha: SHA_A, databaseId: 40179927140, ...ready },
+        { headSha: SHA_A, status: "completed", conclusion: "success", databaseId: 40179926816, workflowDatabaseId: 22, createdAt: "2026-10-25T09:00:00Z" },
+        { headSha: SHA_A, databaseId: 40179927140, workflowDatabaseId: 22, createdAt: "2026-10-25T09:00:30Z", ...ready },
       ]);
 
     it("keeps waiting while the second run is unregistered, then reports its failure", async () => {
@@ -247,6 +247,74 @@ describe("waitCi", () => {
       const result = await waitCi(fakeGh([rerunQueued], {}, PR, [census({ status: "queued", conclusion: null })]).deps, { ...opts, timeoutMs: 20_000 });
       expect(result.exitCode).toBe(2);
       expect(result.output).toContain("… qa-browser (CI)");
+    });
+  });
+
+  describe("cancelled runs superseded on the same head (#564, #577)", () => {
+    // Captured from evo#734: these two runs have exactly the same creation time,
+    // and GitHub lists the empty cancelled duplicate first (#577).
+    const cancelled = { headSha: SHA_A, status: "completed", conclusion: "cancelled", databaseId: 41350128338, workflowDatabaseId: 344863796, createdAt: "2026-11-01T21:05:01Z" };
+    const successor = { ...cancelled, conclusion: "success", databaseId: 41350128661 };
+
+    it.each([false, true])("uses the higher run id for equal creation times, reversed=%s", async reverse => {
+      const rows = [cancelled, successor];
+      if (reverse) rows.reverse();
+      const { deps, calls } = fakeGh([green()], {}, PR, [ok(rows)]);
+      expect((await waitCi(deps, opts)).exitCode).toBe(0);
+      expect(calls.filter(c => c[0] === "api")).toHaveLength(2);
+    });
+
+    it("uses creation time before run id for a draft-to-ready replacement (#564)", async () => {
+      const rows = [cancelled, { ...successor, databaseId: 1, createdAt: "2026-11-01T21:06:01Z" }];
+      expect((await waitCi(fakeGh([green()], {}, PR, [ok(rows)]).deps, opts)).exitCode).toBe(0);
+    });
+
+    it("waits for the successor before accepting the green rollup", async () => {
+      const queued = { ...successor, status: "queued", conclusion: null };
+      const { deps, sleeps } = fakeGh([green()], {}, PR, [ok([cancelled, queued]), ok([cancelled, successor])]);
+      expect((await waitCi(deps, opts)).exitCode).toBe(0);
+      expect(sleeps).toEqual([10_000]);
+      expect((await waitCi(fakeGh([green()], {}, PR, [ok([cancelled, queued])]).deps, { ...opts, timeoutMs: 1_000 })).exitCode).toBe(2);
+    });
+
+    it.each([
+      [cancelled],
+      [successor, { ...cancelled, databaseId: successor.databaseId + 1 }],
+      [cancelled, { ...successor, workflowDatabaseId: 999 }],
+      [cancelled, { ...successor, conclusion: "cancelled" }],
+      [cancelled, { ...successor, conclusion: "failure" }],
+      [cancelled, { ...successor, conclusion: "skipped" }],
+      [cancelled, { ...successor, conclusion: "neutral" }],
+      [{ ...cancelled, conclusion: "failure" }, successor],
+    ])("does not hide an unmatched cancellation or any genuine failure: %j", async (...rows) => {
+      const result = await waitCi(fakeGh([green()], {}, PR, [ok(rows)]).deps, opts);
+      expect(result.exitCode).toBe(3);
+      expect(result.output).toContain("without a matching failed check receipt");
+    });
+
+    it.each([
+      { headSha: SHA_B }, { workflowDatabaseId: undefined }, { workflowDatabaseId: 0 },
+      { createdAt: undefined }, { createdAt: "not-a-date" }, { databaseId: 0 },
+    ])("refuses incomplete or foreign supersession evidence: %j", async invalid => {
+      const result = await waitCi(fakeGh([green()], {}, PR, [ok([cancelled, { ...successor, ...invalid }])]).deps, opts);
+      expect(result.exitCode).toBe(3);
+      expect(result.output).toContain("invalid or foreign row");
+    });
+
+    it("validates the whole census before waiting on a pending row", async () => {
+      const rows = [{ ...successor, status: "queued", conclusion: null }, { ...cancelled, headSha: SHA_B }];
+      const result = await waitCi(fakeGh([green()], {}, PR, [ok(rows)]).deps, opts);
+      expect(result.exitCode).toBe(3);
+      expect(result.output).toContain("invalid or foreign row");
+    });
+
+    it("still reports a cancelled job that the successor did not replace", async () => {
+      const snapshot = ok(rollup(SHA_A, [run("native", "COMPLETED", "CANCELLED"), run("lint", "COMPLETED", "SUCCESS")]));
+      expect((await waitCi(fakeGh([snapshot], {}, PR, [ok([cancelled, successor])]).deps, opts)).exitCode).toBe(1);
+    });
+
+    it("still rejects truncated census evidence", async () => {
+      expect((await waitCi(fakeGh([green()], {}, PR, [ok(Array(100).fill(successor))]).deps, opts)).exitCode).toBe(3);
     });
   });
 

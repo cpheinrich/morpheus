@@ -2258,3 +2258,12 @@ Three decisions stand:
 
 No dependency: existing GitHub concurrency, Morpheus reusable workflows and the upload action's
 automatic build number.
+
+## Superseded workflow cancellations retain exact run identity — 2026-11-02
+
+Issues #564/#577: a complete current-head census can contain an empty cancelled duplicate
+beside its successful replacement. Compare stable workflow IDs and creation time/run ID,
+never display name or response order. Ignore only the older cancellation after a successful
+replacement, or wait while that replacement is pending. Preserve genuine failures, unmatched
+cancellations and the final job-rollup check. This corrects the existing GitHub-specific
+census with native Map/Date operations; no generic module or dependency is needed.
