@@ -81,8 +81,8 @@ export declare const QaWebContext: z.ZodObject<{
         tag: z.ZodString;
         attributes: z.ZodRecord<z.ZodEnum<{
             name: "name";
-            id: "id";
             type: "type";
+            id: "id";
             alt: "alt";
             role: "role";
             "data-testid": "data-testid";
@@ -115,8 +115,8 @@ export declare const QaWebContext: z.ZodObject<{
         tag: z.ZodString;
         attributes: z.ZodRecord<z.ZodEnum<{
             name: "name";
-            id: "id";
             type: "type";
+            id: "id";
             alt: "alt";
             role: "role";
             "data-testid": "data-testid";
@@ -156,8 +156,8 @@ export declare const QaWebContext: z.ZodObject<{
             tag: z.ZodString;
             attributes: z.ZodRecord<z.ZodEnum<{
                 name: "name";
-                id: "id";
                 type: "type";
+                id: "id";
                 alt: "alt";
                 role: "role";
                 "data-testid": "data-testid";
@@ -269,8 +269,8 @@ export declare const QaComment: z.ZodObject<{
             tag: z.ZodString;
             attributes: z.ZodRecord<z.ZodEnum<{
                 name: "name";
-                id: "id";
                 type: "type";
+                id: "id";
                 alt: "alt";
                 role: "role";
                 "data-testid": "data-testid";
@@ -303,8 +303,8 @@ export declare const QaComment: z.ZodObject<{
             tag: z.ZodString;
             attributes: z.ZodRecord<z.ZodEnum<{
                 name: "name";
-                id: "id";
                 type: "type";
+                id: "id";
                 alt: "alt";
                 role: "role";
                 "data-testid": "data-testid";
@@ -344,8 +344,8 @@ export declare const QaComment: z.ZodObject<{
                 tag: z.ZodString;
                 attributes: z.ZodRecord<z.ZodEnum<{
                     name: "name";
-                    id: "id";
                     type: "type";
+                    id: "id";
                     alt: "alt";
                     role: "role";
                     "data-testid": "data-testid";
@@ -500,8 +500,8 @@ export declare const QaCommentBatch: z.ZodObject<{
                 tag: z.ZodString;
                 attributes: z.ZodRecord<z.ZodEnum<{
                     name: "name";
-                    id: "id";
                     type: "type";
+                    id: "id";
                     alt: "alt";
                     role: "role";
                     "data-testid": "data-testid";
@@ -534,8 +534,8 @@ export declare const QaCommentBatch: z.ZodObject<{
                 tag: z.ZodString;
                 attributes: z.ZodRecord<z.ZodEnum<{
                     name: "name";
-                    id: "id";
                     type: "type";
+                    id: "id";
                     alt: "alt";
                     role: "role";
                     "data-testid": "data-testid";
@@ -575,8 +575,8 @@ export declare const QaCommentBatch: z.ZodObject<{
                     tag: z.ZodString;
                     attributes: z.ZodRecord<z.ZodEnum<{
                         name: "name";
-                        id: "id";
                         type: "type";
+                        id: "id";
                         alt: "alt";
                         role: "role";
                         "data-testid": "data-testid";

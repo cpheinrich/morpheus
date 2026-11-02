@@ -3,6 +3,7 @@ import matter from "@11ty/gray-matter";
 import { z } from "zod";
 import type { Finding } from "../check/pr.js";
 import { visibleProse, visibleText } from "../check/pr.js";
+import { isoDatetimeWithOptionalSeconds } from "../iso-datetime.js";
 import { ROADMAP_ID } from "../pm/id.js";
 import { RoadmapItem } from "../pm/schema.js";
 
@@ -32,7 +33,7 @@ const FollowUp = z.object({
   // A separate, explicit human decision is required for each ordinary turn beyond the automatic five.
   humanAuthorization: z.object({
     approvedBy: z.string().trim().min(1),
-    approvedAt: z.iso.datetime({ offset: true }),
+    approvedAt: isoDatetimeWithOptionalSeconds({ offset: true }),
     reason: Text,
   }).strict().optional(),
   /**

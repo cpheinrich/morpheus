@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { createHash } from "node:crypto";
+import { isoDatetimeWithOptionalSeconds } from "../iso-datetime.js";
 
 export const sha = z.string().regex(/^[a-f0-9]{40}$/);
 export const digest = z.string().regex(/^[a-f0-9]{64}$/);
 export const decimal = z.string().regex(/^[0-9]+$/);
-export const timestamp = z.iso.datetime();
+export const timestamp = isoDatetimeWithOptionalSeconds();
 export const sourceAgeWaiverSchema = z.object({ authorizationRef: z.string().trim().min(10), grantedAt: timestamp }).strict();
 export type SourceAgeWaiver = z.infer<typeof sourceAgeWaiverSchema>;
 const command = z.array(z.string().min(1)).min(1);
