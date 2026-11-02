@@ -136,6 +136,16 @@ describe("HQ search documents", () => {
     expect(searchHq(index, query)[0]?.href).toBe("/other");
   });
 
+  it("matches the original exact title while retaining EIN token normalization", () => {
+    const title = "Add EIN number lookup";
+    const index = createHqSearchIndex([
+      markdownSearchDocument({ id: "target", title, href: "/target", path: "product/roadmap/ein-lookup.md", source: "Historical record. ".repeat(100) }),
+      markdownSearchDocument({ id: "other", title: "Tax status", href: "/other", path: "team/README.md", source: "Add EIN lookup. ".repeat(20) }),
+    ]);
+    expect(searchHq(index, title)[0]?.href).toBe("/target");
+    expect(searchHq(index, "Add EIN lookup")[0]?.href).toBe("/other");
+  });
+
   it("builds honest snippets for text and filename-only PDFs", () => {
     expect(searchSnippet("", [])).toMatch(/no extractable text/i);
     expect(searchSnippet("A ".repeat(150) + "needle " + "B ".repeat(150), ["needle"])).toContain(

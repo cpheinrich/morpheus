@@ -109,7 +109,7 @@ export function searchHq(
 
   const resolved = typeof options === "number" ? { limit: options } : options;
   const sourceWeight = resolved.sourceWeight ?? defaultSourceWeight;
-  const identityQuery = normalized.toLocaleLowerCase();
+  const identityQuery = query.trim().toLocaleLowerCase();
   const roadmapId = ROADMAP_ID.test(normalized.toUpperCase());
 
   return (index.search(normalized, SEARCH_OPTIONS) as IndexedHqSearchResult[])
