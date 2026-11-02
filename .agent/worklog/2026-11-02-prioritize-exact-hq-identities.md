@@ -56,7 +56,7 @@ The independent reviewer conditionally cleared one substantive exact-title norma
   "summary": "The independent reviewer conditionally cleared one substantive exact-title normalization defect and found no other issues. R1 was fixed within the named paths: identity comparison uses the trimmed original query while MiniSearch retains EIN token normalization. The regression failed before correction; all 20 search tests, typecheck, compile and diff checks passed afterward.",
   "findings": [
     {
-      "id": "R1",
+      "id": "HQ-R1",
       "severity": "substantive",
       "description": "EIN number token normalization rewrote the identity query, so a complete Add EIN number lookup title lost to numeric/token relevance despite exact-title acceptance.",
       "paths": [
