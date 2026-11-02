@@ -41,3 +41,17 @@ outcome: review
 - Pull request #464 was created by Dependabot before this audit. Reusing it avoids a duplicate
   governed implementation vehicle; this refresh adds the audit evidence and independent-review
   record on that existing branch.
+
+## 2026-11-02 refresh
+
+- Merged current `origin/main` at `ae147cb6a1c296c239a4d25098c3211d1f6c6f25`, retaining
+  main's `smol-toml` dependency and Zod 4.6.6.
+- Regenerated the new meeting-intake declaration introduced since the prior audit; Zod 4.6.6
+  adds the same explicit `unknown` preprocess input already recorded above.
+- `pnpm audit --prod --audit-level high` passes: the Zod high advisory is gone. The remaining
+  root `minimatch` advisory is moderate and requires a separate major-version compatibility
+  review; it is not hidden or folded into this focused Zod remediation.
+- `pnpm typecheck`, `pnpm lint`, `pnpm compile`, and `pnpm morpheus pm index` pass.
+- `pnpm exec vitest run tests/pm.test.ts tests/team.test.ts
+  tests/team-declarations.test.ts tests/inbox.test.ts` passes 118 tests in four files.
+- The PR remains draft with auto-merge disabled pending fresh exact-head review and CI.
