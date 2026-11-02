@@ -82,8 +82,7 @@ deletion met the direct-consumer evidence bar.
   actionlint 1.7.12 is not installed on this host (`spawnSync actionlint ENOENT`). The failure is
   environmental and precedes expression evaluation; exact-head CI downloads the checksum-pinned
   binary and owns that verification. The suite was not repeated unchanged.
-- Exact-head CI and a fresh independent reviewer remain required before the main audit PR can be
-  non-draft.
+- Fresh independent review cleared the exact correction head; exact-head CI remains required.
 
 ## Remediation links
 
@@ -91,3 +90,66 @@ deletion met the direct-consumer evidence bar.
 - #464: https://github.com/cpheinrich/morpheus/pull/464
 - #513: https://github.com/cpheinrich/morpheus/pull/513
 - #570: https://github.com/cpheinrich/morpheus/pull/570
+
+## Independent review
+
+Fresh normal-risk independent review at commit 63c0845b cleared with no substantive findings. It raised two minor factual/process notes: AUD-COUNT corrected the exact baseline from 2,362 to 2,361 tracked files; AUD-TESTPLAN added the exact focused Vitest command and qualified the fifteenth, actionlint-dependent suite instead of implying every YAML consumer passed locally. Both notes were fixed in 729eebaa, and the same reviewer cleared the bounded follow-up with no regressions or new findings.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "ae147cb6a1c296c239a4d25098c3211d1f6c6f25",
+  "reviewed": "63c0845bf958f73fcc097b666999ef6788244cc5",
+  "covered": "729eebaae291a0dc312d18c8e27bd8e34b93e2fb",
+  "authorSession": "01a19d36-6284-7243-80d0-3e77f6a34d9e",
+  "reviewerSession": "/root/morpheus578_review",
+  "risk": "normal",
+  "elapsedMinutes": 2.896516666666667,
+  "timing": {
+    "source": "clock",
+    "durationMs": 173791,
+    "evidence": "Observed reviewer turn clock: start 1793643844049 ms, end 1793644017840 ms."
+  },
+  "outcome": "complete",
+  "summary": "Fresh normal-risk independent review at commit 63c0845b cleared with no substantive findings. It raised two minor factual/process notes: AUD-COUNT corrected the exact baseline from 2,362 to 2,361 tracked files; AUD-TESTPLAN added the exact focused Vitest command and qualified the fifteenth, actionlint-dependent suite instead of implying every YAML consumer passed locally. Both notes were fixed in 729eebaa, and the same reviewer cleared the bounded follow-up with no regressions or new findings.",
+  "findings": [
+    {
+      "id": "AUD-COUNT",
+      "severity": "minor",
+      "description": "The audit report and worklog said the ae147cb6 baseline contained 2,362 tracked files, while the exact git ls-tree count is 2,361.",
+      "paths": [
+        "qa/audits/2026-11-02-technical-health.md",
+        ".agent/worklog/2026-11-02-weekly-code-health-audit.md"
+      ],
+      "disposition": "fixed",
+      "response": "Corrected both durable records to the exact 2,361-file baseline in commit 729eebaa."
+    },
+    {
+      "id": "AUD-TESTPLAN",
+      "severity": "minor",
+      "description": "The report, worklog, and pull-request summary omitted the exact focused Vitest file list and implied all YAML-consuming suites passed locally even though the actionlint-dependent workflow-expressions suite could not start its six cases on this host.",
+      "paths": [
+        "qa/audits/2026-11-02-technical-health.md",
+        ".agent/worklog/2026-11-02-weekly-code-health-audit.md"
+      ],
+      "disposition": "fixed",
+      "response": "Commit 729eebaa records the exact 15-file command, states that 14 files and 429 tests passed, and identifies the six actionlint-backed cases as exact-head CI verification; the PR body carries the same qualification."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/morpheus578_review",
+      "commit": "729eebaae291a0dc312d18c8e27bd8e34b93e2fb",
+      "scopeReason": "late factual correction: exact tracked-file baseline and focused-test limitation",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.31033333333333335,
+      "timing": {
+        "source": "clock",
+        "durationMs": 18620,
+        "evidence": "Observed reviewer follow-up clock: start 1793644079912 ms, end 1793644098532 ms."
+      },
+      "summary": "The same reviewer confirmed AUD-COUNT and AUD-TESTPLAN were fixed at 729eebaa and found no regression or new finding."
+    }
+  ]
+}
+```
