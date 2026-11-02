@@ -1,4 +1,5 @@
 import MiniSearch from "minisearch";
+import { ROADMAP_ID } from "../pm/id.js";
 const STOP_WORDS = new Set([
     "a",
     "an",
@@ -45,6 +46,13 @@ function defaultSourceWeight(result) {
         return 1.75;
     return 1;
 }
+function exactIdentity(result, query, roadmapId) {
+    const path = result.path.toLocaleLowerCase();
+    const filename = path.slice(path.lastIndexOf("/") + 1);
+    const stem = filename.replace(/\.(?:mdx?|pdf)$/, "");
+    return [String(result.id).toLocaleLowerCase(), result.title.toLocaleLowerCase(), path, filename, stem]
+        .includes(query) || (roadmapId && stem.startsWith(`${query}-`));
+}
 export function createHqSearchIndex(documents) {
     const index = new MiniSearch(INDEX_OPTIONS);
     index.addAll(documents);
@@ -61,9 +69,13 @@ export function searchHq(index, query, options = {}) {
         return [];
     const resolved = typeof options === "number" ? { limit: options } : options;
     const sourceWeight = resolved.sourceWeight ?? defaultSourceWeight;
+    const identityQuery = query.trim().toLocaleLowerCase();
+    const roadmapId = ROADMAP_ID.test(normalized.toUpperCase());
     return index.search(normalized, SEARCH_OPTIONS)
         .map((result) => ({ ...result, score: result.score * sourceWeight(result) }))
-        .sort((left, right) => right.score - left.score)
+        // Token scores split punctuated IDs; an exact identity wins before applying the limit.
+        .sort((left, right) => (resolved.sourceWeight ? 0 : Number(exactIdentity(right, identityQuery, roadmapId)) -
+        Number(exactIdentity(left, identityQuery, roadmapId))) || right.score - left.score)
         .slice(0, resolved.limit ?? 12)
         .map((result) => ({
         ...result,
