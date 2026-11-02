@@ -51,7 +51,7 @@ async function poll(deps, repo, pr) {
 }
 /** Actions runs can exist before their jobs appear in the commit check rollup. */
 async function currentHeadRuns(deps, repo, headSha, hasActionsCheck) {
-    const res = await deps.gh(["run", "list", "--repo", repo, "--commit", headSha, "--limit", "100", "--json", "headSha,status,conclusion,databaseId"]);
+    const res = await deps.gh(["run", "list", "--repo", repo, "--commit", headSha, "--limit", "100", "--json", "headSha,status,conclusion,databaseId,workflowDatabaseId,createdAt"]);
     if (res.code !== 0)
         return { error: firstLine(res.stderr) || `gh exited ${res.code}` };
     try {
@@ -59,17 +59,44 @@ async function currentHeadRuns(deps, repo, headSha, hasActionsCheck) {
         if (!Array.isArray(runs) || runs.length >= 100 || (hasActionsCheck && runs.length === 0)) {
             return { error: "workflow run census is incomplete" };
         }
+        const rows = [];
         for (const run of runs) {
             const row = run;
-            if (row.headSha !== headSha || typeof row.status !== "string" || typeof row.databaseId !== "number") {
+            if (!row || row.headSha !== headSha || typeof row.status !== "string"
+                || !Number.isSafeInteger(row.databaseId) || row.databaseId <= 0
+                || !Number.isSafeInteger(row.workflowDatabaseId) || row.workflowDatabaseId <= 0
+                || typeof row.createdAt !== "string" || !Number.isFinite(Date.parse(row.createdAt))) {
                 return { error: "workflow run census returned an invalid or foreign row" };
             }
-            if (row.status !== "completed")
-                return "pending";
+            rows.push(row);
+        }
+        // Creation time, then ID, orders same-second duplicates independently of API order.
+        // Only cancellation is supersedable: a real failure remains evidence even if
+        // another run succeeded, and different workflow IDs never replace one another.
+        const newer = (a, b) => Date.parse(a.createdAt) > Date.parse(b.createdAt)
+            || (Date.parse(a.createdAt) === Date.parse(b.createdAt) && a.databaseId > b.databaseId);
+        const latest = new Map();
+        for (const row of rows) {
+            const prior = latest.get(row.workflowDatabaseId);
+            if (!prior || newer(row, prior))
+                latest.set(row.workflowDatabaseId, row);
+        }
+        let pending = false;
+        for (const row of rows) {
+            if (row.status !== "completed") {
+                pending = true;
+                continue;
+            }
+            const successor = latest.get(row.workflowDatabaseId);
+            if (row.conclusion === "cancelled" && newer(successor, row)
+                && (successor.status !== "completed" || successor.conclusion === "success"))
+                continue;
             if (!["success", "neutral", "skipped"].includes(String(row.conclusion))) {
                 return { error: `workflow run ${row.databaseId} ended ${String(row.conclusion)} without a matching failed check receipt` };
             }
         }
+        if (pending)
+            return "pending";
         return "complete";
     }
     catch {
