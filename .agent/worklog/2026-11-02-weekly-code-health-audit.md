@@ -56,7 +56,7 @@ deletion met the direct-consumer evidence bar.
 - Knip: no unused production dependency, unlisted dependency, or unresolved import. Firebase CLI
   and Firestore rules candidates are directly used. Multi-entry/generated-file findings were
   treated as candidates only.
-- Tracked tree: 2,362 files, no tracked junk/recovery artifacts, and one documented/referenced
+- Tracked tree: 2,361 files, no tracked junk/recovery artifacts, and one documented/referenced
   media asset.
 - Hosted evidence: exact-main CI and Paperclip workflows and the latest hourly schedule are green;
   strict main protection requires the four expected checks.
@@ -70,7 +70,14 @@ deletion met the direct-consumer evidence bar.
 - `pnpm typecheck`, `pnpm lint`, `pnpm compile`, `pnpm morpheus pm index`,
   `pnpm morpheus pm validate`, `pnpm morpheus team validate`,
   `pnpm morpheus inbox validate`, and `git diff --check` pass.
-- Fourteen focused YAML/workflow test files pass 429 tests after removing `@types/js-yaml`.
+- The exact focused command was `pnpm exec vitest run tests/workflows.test.ts
+  tests/ios-change-scope.test.ts tests/ios-runner-labels.test.ts tests/init.test.ts
+  tests/lint-contract.test.ts tests/workflow-expressions.test.ts
+  tests/ios-build-cache.test.ts tests/upload-configuration.test.ts tests/ci-scope.test.ts
+  tests/ios-nightly-recovery.test.ts tests/ios-evidence-workflow.test.ts
+  tests/firebase-release.test.ts tests/upload-receipt.test.ts tests/ios-test-retry.test.ts
+  tests/artifact-workflows.test.ts`. Fourteen files pass 429 tests after removing
+  `@types/js-yaml`.
   `tests/workflow-expressions.test.ts` could not run its six actionlint-backed cases because
   actionlint 1.7.12 is not installed on this host (`spawnSync actionlint ENOENT`). The failure is
   environmental and precedes expression evaluation; exact-head CI downloads the checksum-pinned
