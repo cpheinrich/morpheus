@@ -79,9 +79,9 @@ export const GhManagerPolicy = z.object({
    */
   quietHours: z.number().min(0).max(24 * 14).default(24),
   /**
-   * Hours a draft or WIP pull request must have sat untouched before it is triaged, and before a
-   * rescued `wip/trunk-*` draft is escalated to a human. Triage never merges a draft: at most it
-   * marks a plain draft ready, and the ordinary path then decides.
+   * Hours a draft or WIP pull request must have sat untouched before it is triaged. Triage never
+   * merges a draft: at most it marks a plain draft ready, and the ordinary path then decides. A
+   * rescued `wip/trunk-*` draft is not triaged; it ages out on `RESCUE_MAX_AGE_DAYS` (sweep.ts).
    */
   draftQuietHours: z.number().min(0).max(24 * 30).default(48),
   /** Model sessions per run. Each one spends subscription usage and runner minutes. */

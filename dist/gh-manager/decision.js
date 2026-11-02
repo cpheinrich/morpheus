@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { visibleProse } from "../check/pr.js";
 import { DORMANT_LABEL, humanGatedPaths, INCOMPLETE_LABEL, MANAGER_REVIEWED_LABEL, NEEDS_HUMAN_LABEL, STALE_LABEL, } from "./policy.js";
-import { hasWipName, isWorkInProgress, renderMarker } from "./sweep.js";
+import { hasWipName, isRescuedTrunkDraft, isWorkInProgress, renderMarker, RESCUE_AGED_OUT, RESCUE_MAX_AGE_DAYS, SAFE_REF } from "./sweep.js";
 /**
  * What a session asks for, and what is actually done about it.
  *
@@ -315,14 +315,47 @@ export function planTriageNoDecision(problem, live, ctx) {
 function updateIfBehind(live) {
     return live.behind ? [{ kind: "update-branch", expectedHead: live.headSha }] : [];
 }
+/**
+ * Close a rescued trunk draft that went unadopted, re-checked against live state first: the
+ * sweep's facts are minutes old, and anyone who pushed, queued it, reviewed it or took it out of
+ * draft in between has adopted it. The branch is never deleted, and the comment says how to get
+ * the edits back.
+ */
+function closeRescuedTrunk(routed, live, ctx, marker, run) {
+    if (routed.headSha !== live.headSha)
+        return { verdict: "wait", overridden: "the branch moved after the sweep", operations: [] };
+    if (!isRescuedTrunkDraft(live))
+        return holdWorkInProgress(live, marker, run);
+    if (!ctx.policy.actions.close)
+        return { verdict: "wait", overridden: "closing is disabled by policy", operations: [] };
+    const branch = SAFE_REF.test(live.headRefName) ? live.headRefName : undefined;
+    const recover = branch
+        ? `To recover the edits, reopen this pull request, or take the commit onto a roadmap item's branch: \`git fetch origin ${branch} && git cherry-pick ${live.headSha}\`.`
+        : `To recover the edits, reopen this pull request, or cherry-pick ${live.headSha} onto a roadmap item's branch.`;
+    const body = [
+        "### GitHub Manager — unadopted trunk rescue closed",
+        `These edits were moved off a dirty trunk checkout by \`morpheus context brief\`, and nobody adopted them in ${RESCUE_MAX_AGE_DAYS} days, so this draft is closed. Unadopted rescues are almost always an IDE rewriting a file, which is why they are closed rather than queued for a person.`,
+        `**Nothing is deleted.** The branch${branch ? ` \`${branch}\`` : ""} stays on the remote. ${recover} The manager does not close a reopened rescue again unless it gets a new push.`,
+        run,
+        renderMarker({ ...marker, verdict: "close" }),
+    ].join("\n\n");
+    // Close first, unlike every other plan. The comment's `close` marker is what tells the next sweep
+    // a person reopened this; posted ahead of a close that then failed, it would read as a reopen
+    // and leave the draft open for good. A close whose comment then fails is merely unexplained.
+    return {
+        verdict: "close",
+        operations: [{ kind: "close" }, { kind: "comment", body }, ...removeLabels(live, NEEDS_HUMAN_LABEL, STALE_LABEL)],
+    };
+}
 /** Operations for a route the sweep decided without a session. */
 export function planRoute(routed, live, ctx) {
     // No session ran, so the attempt count is carried, not incremented.
     const marker = { head: live.headSha, verdict: "wait", attempts: routed.attempts, at: ctx.now.toISOString() };
     const run = `Run: ${ctx.runUrl}`;
-    if (isWorkInProgress(live) && !(routed.route === "escalate" && routed.reason === "rescued-trunk-edits" && !live.autoMerge)) {
+    if (routed.route === "close" && routed.reason === RESCUE_AGED_OUT)
+        return closeRescuedTrunk(routed, live, ctx, marker, run);
+    if (isWorkInProgress(live))
         return holdWorkInProgress(live, marker, run);
-    }
     if (routed.headSha !== live.headSha)
         return { verdict: "wait", overridden: "the branch moved after the sweep", operations: [] };
     if (routed.route === "merge") {
@@ -337,7 +370,7 @@ export function planRoute(routed, live, ctx) {
         return { verdict: "merge", operations: [comment("merge", [`${routed.detail}. No session was needed: the review on record is complete and the checks pass.${live.behind ? " The branch is behind its base, so the base is being merged in." : ""}`, run], { ...marker, verdict: "merge", ...(live.behind ? { updated: live.headSha } : {}) }), ...rerun, { kind: "auto-merge" }, ...updateIfBehind(live)] };
     }
     if (routed.route === "close") {
-        return { verdict: "close", operations: [comment("close", [`${routed.detail}. Reopen this if it is still wanted; the branch is untouched.`, run], { ...marker, verdict: "close" }), ...removeLabels(live, STALE_LABEL), { kind: "close" }] };
+        return { verdict: "close", operations: [comment("close", [`${routed.detail}. Reopen this if it is still wanted; the branch is untouched.`, run], { ...marker, verdict: "close" }), ...removeLabels(live, STALE_LABEL, NEEDS_HUMAN_LABEL), { kind: "close" }] };
     }
     if (routed.route === "escalate") {
         if (routed.reason === "update-refused")

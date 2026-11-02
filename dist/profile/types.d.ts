@@ -5,6 +5,13 @@
  * field is self-reported by an agent.
  */
 export type Provider = "claude" | "codex";
+/**
+ * Where a session's transcript was found. Codex moves older rollouts out of `sessions/` into a
+ * flat `archived_sessions/`, so a profile that reads only the first silently loses most Codex
+ * history; the source is kept on every row so a report can show what it read.
+ */
+export declare const SOURCES: readonly ["claude", "codex-sessions", "codex-archived"];
+export type SessionSource = (typeof SOURCES)[number];
 export declare const PHASES: readonly ["context", "checks", "ci-wait", "wait", "human-wait", "review", "git", "gh", "build", "browser", "simulator", "subagent", "read/search", "edit", "other"];
 export type Phase = (typeof PHASES)[number];
 /** Who a session was working for. A reviewer is a subagent whose job is review. */
@@ -54,6 +61,7 @@ export interface SessionRow {
     /** Claude's own `cost-state` line, when present. Codex records none. */
     costUSD: number | null;
     file: string;
+    source: SessionSource;
 }
 export interface SpanRow {
     kind: "span";

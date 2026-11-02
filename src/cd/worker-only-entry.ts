@@ -1,9 +1,10 @@
 // Worker-only entry: runs an INJECTED, unchanged runWorker behind the repair-only control.
 // It never imports a worker module, so the caller binds the exact pinned runtime it runs.
-import type { CdState } from "./schema.js";
+import type { AgentExecutor, CdState } from "./schema.js";
 import { RepairControlInvalid, RepairHeld, guardStore, repairHeld, validateRepairControls, type LedgerStore } from "./repair-control.js";
+import { awaitingSubscriptionAdmission } from "./admission-wait.js";
 
-export interface WorkerOptions { executor: "local" | "hosted"; hostId?: string; workId?: string; invocationId?: string; taskDigest?: string }
+export interface WorkerOptions { executor: AgentExecutor; hostId?: string; workId?: string; invocationId?: string; taskDigest?: string }
 export type RunWorkerPort<C, S extends LedgerStore> = (config: C, store: S, sourceDir: string, options: WorkerOptions, environment?: NodeJS.ProcessEnv) => Promise<unknown>;
 export type HeldAwareResult = { state: "repair-held"; workId: string } | { state: "repair-control-invalid"; reason: string } | { state: "idle" } | unknown;
 
@@ -19,7 +20,10 @@ export async function runHeldAwareWorker<C, S extends LedgerStore>(d: { runWorke
   // A held target returns before quota/login; unheld work behind it is still selected (no starvation).
   if (target && repairHeld(snapshot.state, target.intentId)) return { state: "repair-held", workId: target.id };
   if (!d.options.workId) {
-    const candidates = Object.values(agents).filter(work => due(work, now));
+    // The Claude executor applies the worker's own rule: a latest-event subscription admission wait is due for it.
+    const claudeDue = (work: CdState["agents"][string]) => d.options.executor === "claude" && work.state !== "complete"
+      && (!work.lease || Date.parse(work.lease.expiresAt) <= Date.parse(now)) && awaitingSubscriptionAdmission(snapshot.state, work);
+    const candidates = Object.values(agents).filter(work => due(work, now) || claudeDue(work));
     if (!candidates.length) return { state: "idle" };
     target = candidates.find(work => !repairHeld(snapshot.state, work.intentId));
     if (!target) return { state: "repair-held", workId: candidates[0]!.id };

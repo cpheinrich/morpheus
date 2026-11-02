@@ -73,8 +73,8 @@ for (const selected of target.profiles) {
   assert.deepEqual(issues.filter(issue => issue.assigneeAgentId === p.agentId && !['done', 'cancelled'].includes(issue.status)).map(issue => issue.id), [], 'Existing unfinished work prevents test-agent resume');
 }
 // This is the only existing Pool home and account ledger; the staged source is private.
-process.env.CODEX_CLAUDE_HOME = poolHome;
-process.env.CODEX_CLAUDE_POOL = join(poolHome, 'pool.json');
+process.env.FACTORY_HOME = poolHome;
+process.env.FACTORY_POOL = join(poolHome, 'pool.json');
 const { call } = await import(pathToFileURL(join(runtime, 'src/client.mjs')));
 const actor = { uid: target.adminUid, role: 'admin', kind: 'user' };
 const scope = { connectorId: target.connectorId, companyId: target.companyId, actor };

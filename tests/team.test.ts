@@ -21,9 +21,29 @@ roadmap: []
 redacted: true
 ${over}created: 2026-08-03`;
 
-async function seedNote(frontmatter = NOTE(), name = "MO-26-08-03-09.30.00-a-meeting.md") {
+const PRIORITY_BODY = `## Executive summary
+
+The team selected the next release boundary.
+
+## Key decisions
+
+- Keep the release small because the dependency is still changing.
+
+## Key action items
+
+- @cpheinrich will publish the migration plan.
+
+## Detailed notes
+
+Supporting context follows the headline outcomes.`;
+
+async function seedNote(
+  frontmatter = NOTE(),
+  name = "MO-26-08-03-09.30.00-a-meeting.md",
+  body = "## Context\n\nBody.",
+) {
   await mkdir(join(root, MEETING_NOTES_DIR), { recursive: true });
-  await writeFile(join(root, MEETING_NOTES_DIR, name), `---\n${frontmatter}\n---\n\n## Context\n\nBody.\n`);
+  await writeFile(join(root, MEETING_NOTES_DIR, name), `---\n${frontmatter}\n---\n\n${body}\n`);
 }
 
 async function seedMembers(body = "members:\n  - github: cpheinrich\n    name: Christopher Heinrich") {
@@ -124,6 +144,56 @@ describe("validateTeam", () => {
     expect(r.issues).toEqual([]);
     expect(r.members).toHaveLength(1);
     expect(r.noteCount).toBe(1);
+  });
+
+  it("enforces the declared priority-first order without invalidating legacy notes", async () => {
+    await seedMembers();
+    await seedNote(NOTE("note_format: priority-first-v1\n"), undefined, PRIORITY_BODY);
+    expect((await validateTeam(root)).issues).toEqual([]);
+
+    await seedNote(
+      NOTE("note_format: priority-first-v1\n"),
+      undefined,
+      PRIORITY_BODY.replace("## Executive summary", "## Detailed notes"),
+    );
+    expect((await validateTeam(root)).issues[0]!.message).toContain(
+      'requires section 1 to be "Executive summary"',
+    );
+  });
+
+  it("requires content in every priority section and accepts an explicit none", async () => {
+    for (const empty of ["", "```text\n```", "<!--\nstill only a comment\n-->", "-"]) {
+      await seedNote(
+        NOTE("note_format: priority-first-v1\n"),
+        undefined,
+        PRIORITY_BODY.replace(
+          "- Keep the release small because the dependency is still changing.",
+          empty,
+        ),
+      );
+      expect((await validateTeam(root)).issues[0]!.message).toContain(
+        'section "Key decisions" must contain',
+      );
+    }
+
+    await seedNote(
+      NOTE("note_format: priority-first-v1\n"),
+      undefined,
+      PRIORITY_BODY.replace(
+        "- Keep the release small because the dependency is still changing.",
+        "None recorded.",
+      ),
+    );
+    expect((await validateTeam(root)).issues).toEqual([]);
+  });
+
+  it("ignores apparent headings inside fenced examples", async () => {
+    await seedNote(
+      NOTE("note_format: priority-first-v1\n"),
+      undefined,
+      `\`\`\`markdown\n## Not the note structure\n\`\`\`\n\n${PRIORITY_BODY}`,
+    );
+    expect((await validateTeam(root)).issues).toEqual([]);
   });
 
   // A roster nobody maintains is the failure mode; an attendee resolving to

@@ -1948,6 +1948,8 @@ export const hqLayout = (ctx, name) => {
     return `import type { Metadata } from "next";
 import Link from "next/link";
 
+import { SectionLinks } from "morpheus-kit/section-links/react";
+
 import { currentUser } from "${ctx.imp(self, "lib/auth/current-user")}";
 
 import { HqSearch } from "./HqSearch";
@@ -1991,6 +1993,8 @@ export default async function HqLayout({ children }: { children: React.ReactNode
       </header>
 
       <div className="mx-auto w-full max-w-[1320px] px-6 py-12">{children}</div>
+      {/* Every h2–h4 on an HQ page gets a copyable #section link on hover; no page opts in. */}
+      <SectionLinks />
     </div>
   );
 }
@@ -2191,25 +2195,4 @@ export const envExample = (facts) => `# Committed, with no values. The only reco
 # abandoned: the whole service-account JSON blob, on one line.
 FIREBASE_SERVICE_ACCOUNT=
 `;
-/** The `/hq` and waitlist rows a project's README should carry. */
-export const readmeSection = (name, hasHq, hasWaitlist) => {
-    const rows = [
-        hasWaitlist &&
-            "| `/api/waitlist` | Email capture. Server-side write; the client never holds Firestore credentials. |",
-        hasHq && "| `/sign-in` | Google sign-in for the team. |",
-        hasHq &&
-            "| `/hq` | Internal dashboard, gated on the `role` custom claim by `proxy.ts`. |",
-    ].filter(Boolean);
-    return `## Web surfaces
-
-| Route | What |
-|---|---|
-${rows.join("\n")}
-
-Access to \`/hq\` is the allowlist in \`morpheus.json\`. A verified Google account
-receives its role claim on first sign-in; run \`morpheus access sync\` after list
-changes to update existing accounts promptly. The same claim gates the route and the Firestore data —
-see [Morpheus §11](https://github.com/cpheinrich/morpheus/blob/main/architecture.md).
-`;
-};
 //# sourceMappingURL=templates.js.map

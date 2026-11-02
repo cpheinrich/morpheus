@@ -8,6 +8,16 @@ export declare const sourceAgeWaiverSchema: z.ZodObject<{
     grantedAt: z.ZodISODateTime;
 }, z.core.$strict>;
 export type SourceAgeWaiver = z.infer<typeof sourceAgeWaiverSchema>;
+/** Consumers must check this exported capability before adopting an opt-in policy. */
+export declare const CD_PHYSICAL_DEVICE_EVIDENCE_VERSION: 1;
+export declare const physicalDevicePolicySchema: z.ZodObject<{
+    schemaVersion: z.ZodLiteral<1>;
+    profile: z.ZodString;
+    deviceId: z.ZodString;
+    hostId: z.ZodString;
+    testIds: z.ZodArray<z.ZodString>;
+    sourceFloor: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>;
 export declare const configSchema: z.ZodObject<{
     schemaVersion: z.ZodLiteral<1>;
     repository: z.ZodString;
@@ -62,6 +72,14 @@ export declare const configSchema: z.ZodObject<{
     }, z.core.$strict>;
     tests: z.ZodDefault<z.ZodObject<{
         allowedSkips: z.ZodDefault<z.ZodArray<z.ZodString>>;
+        physicalDevice: z.ZodOptional<z.ZodObject<{
+            schemaVersion: z.ZodLiteral<1>;
+            profile: z.ZodString;
+            deviceId: z.ZodString;
+            hostId: z.ZodString;
+            testIds: z.ZodArray<z.ZodString>;
+            sourceFloor: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>>;
     }, z.core.$strip>>;
     native: z.ZodOptional<z.ZodObject<{
         workingDirectory: z.ZodString;
@@ -97,6 +115,17 @@ export declare const configSchema: z.ZodObject<{
             model: z.ZodOptional<z.ZodString>;
             quotaFile: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>>;
+        claude: z.ZodOptional<z.ZodObject<{
+            command: z.ZodDefault<z.ZodArray<z.ZodString>>;
+            model: z.ZodString;
+            account: z.ZodObject<{
+                email: z.ZodEmail;
+                subscription: z.ZodEnum<{
+                    max: "max";
+                    pro: "pro";
+                }>;
+            }, z.core.$strict>;
+        }, z.core.$strict>>;
     }, z.core.$strip>>;
     budget: z.ZodDefault<z.ZodObject<{
         togetherLimitUsd: z.ZodDefault<z.ZodNumber>;
@@ -114,6 +143,91 @@ export declare const configSchema: z.ZodObject<{
         deliveryHours: z.ZodDefault<z.ZodNumber>;
     }, z.core.$strip>>;
 }, z.core.$strict>;
+export declare const budgetSpendingPolicySchema: z.ZodObject<{
+    mode: z.ZodLiteral<"spend-as-needed">;
+    campaignId: z.ZodString;
+    capMicros: z.ZodNumber;
+    authorizationRef: z.ZodString;
+    adoptedAt: z.ZodISODateTime;
+}, z.core.$strict>;
+export type BudgetSpendingPolicy = z.infer<typeof budgetSpendingPolicySchema>;
+export declare const postResumeOriginSchema: z.ZodObject<{
+    kind: z.ZodLiteral<"post-resume-acceptance-v1">;
+    campaignId: z.ZodString;
+    purpose: z.ZodLiteral<"replyloss-and-wake-v1">;
+    historyDigest: z.ZodString;
+    resumeDigest: z.ZodString;
+    sourceSha: z.ZodString;
+    iosTreeSha: z.ZodString;
+    previousIosTreeSha: z.ZodString;
+    receiptIosTreeSha: z.ZodString;
+    sourceReviewRef: z.ZodString;
+    createdAt: z.ZodISODateTime;
+}, z.core.$strict>;
+export declare const postResumeQualificationSchema: z.ZodObject<{
+    fingerprint: z.ZodString;
+    qualifiedAt: z.ZodISODateTime;
+    expiresAt: z.ZodISODateTime;
+    executionDeadlineAt: z.ZodISODateTime;
+    evidenceRef: z.ZodString;
+}, z.core.$strict>;
+export type PostResumeOrigin = z.infer<typeof postResumeOriginSchema>;
+export type PostResumeQualification = z.infer<typeof postResumeQualificationSchema>;
+export declare const postResumeExecutionProofSchema: z.ZodObject<{
+    quiescenceDigest: z.ZodString;
+    authorityClosureDigest: z.ZodString;
+    evidenceRef: z.ZodString;
+    fingerprint: z.ZodString;
+    qualifiedAt: z.ZodISODateTime;
+    expiresAt: z.ZodISODateTime;
+}, z.core.$strict>;
+export declare const postResumeAcceptanceSchema: z.ZodObject<{
+    origin: z.ZodObject<{
+        kind: z.ZodLiteral<"post-resume-acceptance-v1">;
+        campaignId: z.ZodString;
+        purpose: z.ZodLiteral<"replyloss-and-wake-v1">;
+        historyDigest: z.ZodString;
+        resumeDigest: z.ZodString;
+        sourceSha: z.ZodString;
+        iosTreeSha: z.ZodString;
+        previousIosTreeSha: z.ZodString;
+        receiptIosTreeSha: z.ZodString;
+        sourceReviewRef: z.ZodString;
+        createdAt: z.ZodISODateTime;
+    }, z.core.$strict>;
+    intentId: z.ZodString;
+    qualifications: z.ZodArray<z.ZodObject<{
+        fingerprint: z.ZodString;
+        qualifiedAt: z.ZodISODateTime;
+        expiresAt: z.ZodISODateTime;
+        executionDeadlineAt: z.ZodISODateTime;
+        evidenceRef: z.ZodString;
+    }, z.core.$strict>>;
+    yielded: z.ZodOptional<z.ZodObject<{
+        attemptId: z.ZodString;
+        at: z.ZodISODateTime;
+    }, z.core.$strict>>;
+    releases: z.ZodRecord<z.ZodUnion<[z.ZodString, z.ZodString]>, z.ZodObject<{
+        quiescenceDigest: z.ZodString;
+        authorityClosureDigest: z.ZodString;
+        evidenceRef: z.ZodString;
+        fingerprint: z.ZodString;
+        qualifiedAt: z.ZodISODateTime;
+        expiresAt: z.ZodISODateTime;
+        identityDigest: z.ZodString;
+        leaseOwner: z.ZodString;
+        fence: z.ZodNumber;
+        at: z.ZodISODateTime;
+    }, z.core.$strict>>;
+    groups: z.ZodRecord<z.ZodString, z.ZodObject<{
+        attemptId: z.ZodString;
+        groupId: z.ZodString;
+        buildId: z.ZodString;
+        claimedAt: z.ZodISODateTime;
+        observedAt: z.ZodOptional<z.ZodISODateTime>;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+export type PostResumeAcceptance = z.infer<typeof postResumeAcceptanceSchema>;
 export type CdConfig = z.infer<typeof configSchema>;
 export type Channel = "staging" | "production";
 export interface SourceRevision {
@@ -147,6 +261,68 @@ export interface Artifact {
     id?: string;
     path?: string;
 }
+export declare const physicalDeviceEvidenceSchema: z.ZodObject<{
+    inventory: z.ZodObject<{
+        ids: z.ZodArray<z.ZodString>;
+        sha256: z.ZodString;
+    }, z.core.$strict>;
+    results: z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        status: z.ZodEnum<{
+            skipped: "skipped";
+            failed: "failed";
+            passed: "passed";
+        }>;
+        attempts: z.ZodNumber;
+    }, z.core.$strict>>;
+    schemaVersion: z.ZodLiteral<1>;
+    intentId: z.ZodString;
+    attemptId: z.ZodString;
+    dispatchEffectId: z.ZodString;
+    sourceSha: z.ZodString;
+    controlSha: z.ZodString;
+    runId: z.ZodString;
+    runAttempt: z.ZodString;
+    appInputDigest: z.ZodString;
+    configurationDigest: z.ZodString;
+    profile: z.ZodString;
+    deviceId: z.ZodString;
+    hostId: z.ZodString;
+    platform: z.ZodLiteral<"iOS">;
+    simulated: z.ZodLiteral<false>;
+    artifacts: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        sha256: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+export declare const physicalDeviceProofSchema: z.ZodObject<{
+    policyHash: z.ZodString;
+    evidenceHash: z.ZodString;
+    inventoryHash: z.ZodString;
+    executedCount: z.ZodNumber;
+    firstAttemptPassed: z.ZodLiteral<true>;
+    schemaVersion: z.ZodLiteral<1>;
+    intentId: z.ZodString;
+    attemptId: z.ZodString;
+    dispatchEffectId: z.ZodString;
+    sourceSha: z.ZodString;
+    controlSha: z.ZodString;
+    runId: z.ZodString;
+    runAttempt: z.ZodString;
+    appInputDigest: z.ZodString;
+    configurationDigest: z.ZodString;
+    profile: z.ZodString;
+    deviceId: z.ZodString;
+    hostId: z.ZodString;
+    platform: z.ZodLiteral<"iOS">;
+    simulated: z.ZodLiteral<false>;
+    artifacts: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        sha256: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+export type PhysicalDeviceEvidence = z.infer<typeof physicalDeviceEvidenceSchema>;
+export type PhysicalDeviceProof = z.infer<typeof physicalDeviceProofSchema>;
 export interface TestEvidence extends Identity {
     scope: "full";
     appInputDigest: string;
@@ -165,6 +341,7 @@ export interface TestEvidence extends Identity {
         sha256: string;
         revision?: "control" | "source";
     };
+    physicalDevice?: PhysicalDeviceEvidence;
 }
 export interface TestProof extends Identity {
     scope: "full";
@@ -176,6 +353,7 @@ export interface TestProof extends Identity {
     skippedIds: string[];
     artifacts: Artifact[];
     validator: TestEvidence["validator"];
+    physicalDevice?: PhysicalDeviceProof;
 }
 export interface UploadEvidence extends Identity {
     appId: string;
@@ -323,6 +501,7 @@ export interface DeliveryIntent {
     createdAt: string;
     deadlineAt: string;
     sourceAgeWaiver?: SourceAgeWaiver;
+    postResumeKey?: string;
     state: "pending" | "testing" | "uploading" | "processing" | "delivered" | "repairing" | "waiting" | "paused";
     nextAction: string;
     nextCheckAt: string;
@@ -332,6 +511,8 @@ export interface DeliveryIntent {
     eligibleAt?: string;
     external?: ExternalStatus;
 }
+/** `local` is the native Codex executor; `claude` the opt-in native Claude subscription; `hosted` the GitHub workflow. */
+export type AgentExecutor = "local" | "hosted" | "claude";
 export interface AgentWork {
     id: string;
     intentId: string;
@@ -345,7 +526,7 @@ export interface AgentWork {
     lease?: Lease;
     invocations: {
         id: string;
-        executor: "local" | "hosted";
+        executor: AgentExecutor;
         hostId?: string;
         startedAt: string;
         endedAt?: string;
@@ -373,6 +554,7 @@ export interface CdState {
     repository: string;
     configurationDigest: string;
     initializedAt: string;
+    postResumeAcceptances?: Record<string, PostResumeAcceptance>;
     transitions: Record<string, {
         at: string;
         result: unknown;
@@ -423,6 +605,7 @@ export interface CdState {
         human: boolean;
     }[];
     budget: {
+        spendingPolicy?: BudgetSpendingPolicy;
         spentMicros: number;
         reservations: Record<string, {
             digest: string;

@@ -4,6 +4,26 @@ Read this when starting an experiment series, before publishing results, and bef
 request. A project's own benchmark plumbing (ledger, report format, storage) takes precedence over
 these shapes; use them where the project has none.
 
+## Shape of the record
+
+Keep the body short: the ask, what was built, the result in plain words, and the decision
+or open questions. Put per-item tables, paths taken, counterfactuals, commands, digests,
+spend details and the review record in appendices at the bottom. Keep any cost or uncertainty
+that changes the decision in the body too; the appendices retain the reproducible evidence.
+
+Present headline metrics in plain language, with a one-line definition on first use. For
+positive quantities compared by ratio, report typical error as a percentage, the direction
+and percentage of bias (high or low), and the share within the declared tolerance. Use the
+project's appropriate metrics for other tasks; this presentation rule does not change the
+predeclared selection rule.
+
+Put the log-ratio definition, formulas and bootstrap details in an appendix. With
+`r = ln(estimate / truth)`, the natural-log ratio of a positive estimate to its positive
+reference, typical multiplicative error is `100 * (exp(median(abs(r))) - 1)` percent;
+signed bias is `100 * (exp(median(r)) - 1)` percent (positive means high, negative low).
+State the tolerance rule and denominator for the share within tolerance, including how
+invalid or failed cases are handled. Do not silently omit them.
+
 ## The plan (write it before the first paid run)
 
 | Field | Content |

@@ -23,7 +23,8 @@ Usage
   morpheus pm block <MO-051> --needs "<what would unblock this>" [--owner <handle>]
                             [--context "<where it stopped>"]
   morpheus pm unblock <MO-051>
-  morpheus pm ship [<MO-020> ...]  [--check]
+  morpheus pm ship [--check]  — reconcile merged PRs; --check reports without writing
+  morpheus pm ship <MO-020> ...  — mark explicit items shipped; cannot use --check
   morpheus pm migrate-ids   [--check] — integer roadmap ids to the dated scheme (MO-057)
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus review prepare   independent local review handoff and worklog template [--base <ref>]
@@ -78,12 +79,26 @@ Usage
   morpheus init             [--name <Acme>] [--prefix XX] [--kind company|personal|internal]
   morpheus init status      [--offline]
   morpheus init done | doing | todo <task-id>
+  morpheus skills list      [--json] — discover reusable Morpheus project skills
+  morpheus skills sync      [--check] — add missing loader-native skill entrypoints;
+                            existing project-owned skill files are never overwritten
+  morpheus meeting-intake guide
+                            shared Gemini note-intake procedure and delivery boundaries
+  morpheus meeting-intake index --source <absolute-repo> --revision <ref> [--check]
+                            project an exact canonical Git revision when the profile declares one
+  morpheus meeting-intake search [--query <text>] [--topic <slug>] [--limit 1-20]
+                            bounded metadata search; same-repo profiles need no projection
+  morpheus meeting-intake notification --state <journal> --meeting <source-id>
+                            format, but never send, a fully verified current-intake notice
   morpheus tokens build     [--source hq/brand/tokens.json] [--css <path>] [--ts <path>]
                             [--prefix brand] [--check]
-  morpheus context refresh  take a receipt — run it after reading the canonical records
+  morpheus context refresh  take a receipt — after reading the records; idempotent, and where
+                            the read hook is wired it certifies only what the read log covers
   morpheus context check    exit non-zero unless context is fresh; for hooks and scripts
   morpheus context status   what the current lease says, and how old it is
   morpheus context brief    session start: fetches trunk, updates clean trunk, identifies task
+  morpheus context record-read
+                            the read hook: logs a tool result's record lines (stdin JSON)
   morpheus context install  [--check] [--handle <github-handle>]
                             wire .claude/settings.json, .codex/hooks.json and context.handle
                             — the repair path for a project scaffolded before they existed
@@ -120,13 +135,21 @@ Usage
                             see docs/runbooks/gh-manager.md
   morpheus profile extract  [--since YYYY-MM-DD] [--repo <substring>] [--out <file>]
                             session and tool-call rows from local Claude Code and Codex
-                            transcripts, as JSONL; read-only, nothing leaves the machine
+                            transcripts (live, archived and .zst), as JSONL; read-only,
+                            nothing leaves the machine
   morpheus profile report   [--since YYYY-MM-DD] [--repo <substring>] [--json]
-                            where time and tokens went: by phase, repo, role, model×effort
+                            where time and tokens went: by source, phase, provider, repo,
+                            role, model×effort
   morpheus wait-ci [<pr|branch>] [--repo owner/name] [--timeout 45m] [--required-only]
                             block once until the PR head's checks finish, then print a
                             digest with failing-step logs; exit 0 green, 1 failed,
                             2 timeout, 3 usage or gh error. Never poll gh in a loop
+  morpheus wait-ci --run <id> [--repo owner/name] [--timeout 45m]
+  morpheus wait-ci --workflow <name|file> [--branch <b>] [--sha <commit>] [--repo owner/name]
+                            the same, for one Actions run (TestFlight, release, nightly):
+                            by id, or the latest run of a workflow, following a newer one
+  morpheus poll-guard       PreToolUse hook (wired by context install): refuses the 3rd
+                            gh run view|run watch|pr checks of one target in a session
   morpheus voice knowledge  the standing explainer, to upload once as project knowledge
   morpheus voice brief ["<topic>"] [--slug x] [--notes "..."] [--full]
                             today's state, to paste into a voice session
@@ -154,6 +177,8 @@ Usage
   morpheus cto guide [<topic>]  How an agent runs a delegated outcome under a written
                          mandate and budget; topics print its references (mandate, provenance)
                          and the skills under it (research-engineer, research-engineer/<reference>)
+  morpheus product guide [<topic>]  Product leadership and design guidance; topics print the
+                         CPO references and VP Design skill (vp-design, vp-design/<reference>)
 
 Options
   --dir <path>   Product directory (default: hq/product)
@@ -173,6 +198,7 @@ Options
   --no-hq        Skip /hq and Google sign-in
   --no-browser   Do not open browser-backed login or Firebase-console recovery
   --check        Verify indexes are current without writing; exits non-zero if stale
+  --json         Print machine-readable output where the command supports it
   --offline      Declare the context-freshness offline exception (same as
                  MORPHEUS_OFFLINE=1), and skip the network checks in "init status",
                  "doctor" and "context refresh|check|status" that it would answer

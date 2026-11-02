@@ -9,6 +9,7 @@ import { CdWait } from "../../src/cd/errors.js";
 import { configurationDigest, hash, type Attempt, type CdState } from "../../src/cd/schema.js";
 import { FakeGitHub } from "./fake-github.js";
 import { config, now, observation, prepared, source } from "./fixtures.js";
+import { physicalPolicy } from "./physical-device-fixtures.js";
 
 vi.mock("../../src/cd/source.js", async original => ({ ...await original<typeof import("../../src/cd/source.js")>(), loadSources: vi.fn(), verifyValidator: vi.fn() }));
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(loadSources).mockResolvedValue([source()]); vi.mocked(verifyValidator).mockImplementation(() => {}); });
@@ -380,6 +381,37 @@ const cancelledCompanionCensus: Record<string, unknown>[] = [
     "steps": []
   }
 ];
+describe("physical-device source floor at planning", () => {
+  // The source predates the floor: refuse before any build number, and tell repair why.
+  it.each([["b", true], ["a", false]])("routes planning against floor %s to repair before reserving a build (refused: %s)", async (floor, refused) => {
+    const h = await harness();
+    h.cfg.tests.physicalDevice = { ...physicalPolicy(), sourceFloor: floor.repeat(40) };
+    vi.mocked(loadSources).mockResolvedValue([source(), source("b", 1)]);
+    await h.store.transact("floor-config", "fixture", now, state => {
+      const intent = state.intents[h.intentId]!; state.configurationDigest = configurationDigest(h.cfg);
+      intent.attempts[0]!.status = "failed"; intent.state = "pending"; intent.nextAction = "dispatch-full-tests"; intent.nextCheckAt = now; return null;
+    });
+    const result = await h.controller.tick(after(now, 5)), state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    if (!refused) { expect(result.errors).toEqual([]); expect(intent.attempts.map(item => item.sourceSha)).toEqual(["a".repeat(40), "a".repeat(40)]); expect(h.dispatch).toHaveBeenCalledTimes(1); return; }
+    const message = `Source ${"a".repeat(40)} predates physical-device source floor ${"b".repeat(40)}, so it cannot carry the configured physical test plan (profile regression-v1, 2 tests); deliver a main source at or after the floor`;
+    expect(result.errors).toEqual([{ intentId: h.intentId, message }]);
+    expect(intent.state).toBe("repairing"); expect(intent.nextAction).toBe("run-repair-agent"); expect(intent.attempts).toHaveLength(1);
+    expect(Object.values(state.agents).map(work => work.evidence)).toEqual([[message]]);
+    expect(state.builds["123/1.0"]!.reservations).toEqual({ [h.attemptId]: { buildNumber: "8", at: now, burned: true } }); expect(h.dispatch).not.toHaveBeenCalled();
+  });
+  it("waits for an operator on an unknown floor without starting a repair agent", async () => {
+    const h = await harness();
+    h.cfg.tests.physicalDevice = { ...physicalPolicy(), sourceFloor: "f".repeat(40) };
+    await h.store.transact("unknown-floor-config", "fixture", now, state => {
+      const intent = state.intents[h.intentId]!; state.configurationDigest = configurationDigest(h.cfg);
+      intent.attempts[0]!.status = "failed"; intent.state = "pending"; intent.nextAction = "dispatch-full-tests"; intent.nextCheckAt = now; return null;
+    });
+    await h.controller.tick(after(now, 5));
+    const state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(intent.state).toBe("waiting"); expect(intent.nextAction).toBe("wait-physical-source-floor"); expect(intent.blocker).toContain(`Physical-device source floor ${"f".repeat(40)}`);
+    expect(state.agents).toEqual({}); expect(intent.attempts).toHaveLength(1); expect(h.dispatch).not.toHaveBeenCalled();
+  });
+});
 describe("terminal job placeholders", () => {
   async function expectRepair(h: Awaited<ReturnType<typeof admissionHarness>>) {
     const state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
@@ -680,8 +712,9 @@ describe("controller failure sequences", () => {
   });
 });
 
-async function acceptedHarness(change?: (attempt: Attempt, state: CdState) => void, allowedSkips: string[] = []) {
+async function acceptedHarness(change?: (attempt: Attempt, state: CdState) => void, allowedSkips: string[] = [], physical = false) {
   const cfg = config(); cfg.tests.allowedSkips = allowedSkips;
+  if (physical) cfg.tests.physicalDevice = physicalPolicy();
   const fixture = prepared("staging", cfg), intent = fixture.state.intents[fixture.intentId]!, attempt = intent.attempts[0]!;
   if (allowedSkips.includes(fixture.tests.results[0]!.id)) { fixture.tests.results[0]!.status = "skipped"; delete attempt.tests; recordTests(fixture.state, cfg, fixture.tests); }
   claimUpload(fixture.state, cfg, fixture.upload, now); recordUpload(fixture.state, { ...fixture.upload, outcome: "accepted", providerUploadId: "resource" }, now);
@@ -699,6 +732,33 @@ async function acceptedHarness(change?: (attempt: Attempt, state: CdState) => vo
 }
 
 describe("durable accepted-upload test proof", () => {
+  it("reuses a required physical-device proof through exact Apple receipt without redownloading or rewriting it", async () => {
+    const h = await acceptedHarness(undefined, [], true), before = (await h.store.read()).state;
+    const result = await h.controller.tick(after(now, 2)), state = (await h.store.read()).state;
+    expect(result.errors).toEqual([]); expect(h.evidence).not.toHaveBeenCalled(); expect(h.observe).toHaveBeenCalledTimes(1);
+    expect(state.intents[h.intentId]!.attempts[0]!.tests).toEqual(before.intents[h.intentId]!.attempts[0]!.tests);
+    expect(state.intents[h.intentId]!.receipt!.testEvidenceHash).toBe(before.intents[h.intentId]!.attempts[0]!.tests!.evidenceHash);
+    for (const key of ["builds", "budget", "fences", "pauses", "sources", "slots"] as const) expect(state[key]).toEqual(before[key]);
+  });
+  it.each(["missing", "device", "host", "inventory", "source", "retry", "payload"] as const)("refuses conflicting required physical %s before Apple or artifact access", async kind => {
+    const h = await acceptedHarness(attempt => {
+      if (kind === "missing") delete attempt.tests!.physicalDevice;
+      else {
+        const proof = attempt.tests!.physicalDevice!;
+        if (kind === "device") proof.deviceId = "other";
+        if (kind === "host") proof.hostId = "other";
+        if (kind === "inventory") proof.inventoryHash = hash("partial");
+        if (kind === "source") proof.sourceSha = "d".repeat(40);
+        if (kind === "retry") proof.firstAttemptPassed = false as true;
+        if (kind === "payload") proof.artifacts = [{ name: "absent.json", sha256: hash("absent") }];
+      }
+    }, [], true);
+    const before = (await h.store.read()).state, result = await h.controller.tick(after(now, 2)), state = (await h.store.read()).state;
+    expect(result.errors).toHaveLength(1); expect(h.evidence).not.toHaveBeenCalled(); expect(h.observe).not.toHaveBeenCalled();
+    expect(h.assign).not.toHaveBeenCalled(); expect(h.dispatch).not.toHaveBeenCalled();
+    expect(state.intents[h.intentId]!.receipt).toBeUndefined();
+    for (const key of ["builds", "budget", "fences", "pauses", "sources", "slots"] as const) expect(state[key]).toEqual(before[key]);
+  });
   it("delivers through ordinary Apple readback without redownloading or rewriting the proof", async () => {
     const h = await acceptedHarness(), before = (await h.store.read()).state, proof = before.intents[h.intentId]!.attempts[0]!.tests!;
     const result = await h.controller.tick(after(now, 2)), state = (await h.store.read()).state, intent = state.intents[h.intentId]!;

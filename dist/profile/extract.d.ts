@@ -11,7 +11,10 @@ export interface ExtractOptions {
      */
     repo?: string;
     claudeDir?: string;
+    /** Live Codex rollouts, `~/.codex/sessions/YYYY/MM/DD/`. */
     codexDir?: string;
+    /** Archived Codex rollouts, `~/.codex/archived_sessions/`, a flat directory. */
+    codexArchivedDir?: string;
     roots?: string[];
     home?: string;
 }
@@ -20,6 +23,8 @@ export interface Extraction {
     spans: SpanRow[];
     issues: ProfileIssue[];
     files: number;
+    /** Extra copies of a kept Codex session found in a second file, each counted once. */
+    duplicates: number;
 }
 /** Parse `--since`. Returns null for a malformed date so the caller can refuse it. */
 export declare function sinceMs(since: string | undefined): number | null | undefined;

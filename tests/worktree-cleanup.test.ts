@@ -1,14 +1,21 @@
+import * as fs from "node:fs/promises";
+import * as sessionStart from "../src/session/start.js";
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, rmdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanupTask } from "../src/pm/cleanup.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanupTask, pruneStaleWorktrees } from "../src/pm/cleanup.js";
+import { worktrees } from "../src/cli/pm.js";
 import { bindTask, prepareTask } from "../src/session/tasks.js";
 import { sessionId } from "../src/session/policy.js";
 import { writeLease } from "../src/session/store.js";
+
+vi.mock("node:fs/promises", async importOriginal => ({
+  ...await importOriginal<typeof import("node:fs/promises")>(),
+}));
 
 const exec = promisify(execFile);
 const git = async (cwd: string, ...args: string[]) => (await exec("git", args, { cwd })).stdout.trim();
@@ -92,6 +99,7 @@ afterEach(async () => {
   const listing = await git(root, "worktree", "list", "--porcelain");
   for (const path of listing.split("\n").filter(line => line.startsWith("worktree ")).map(line => line.slice(9))) {
     if (path === root) continue;
+    await rm(path, { recursive: true, force: true });
     await git(root, "worktree", "remove", "--force", "--", path);
     await rmdir(dirname(path)).catch(() => undefined);
   }
@@ -134,6 +142,22 @@ describe("completed task worktree cleanup", () => {
     await generatedReceipt();
     await cleanupTask(root, join(root, "hq/product"), id);
     await expect(readFile(join(target, "local/sessions", `${sessionId(target)}.json`))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("removes the read log and record snapshot that context freshness generates", async () => {
+    await generatedReceipt();
+    await writeFile(join(target, "local/sessions", "reads.jsonl"), "{}\n");
+    await writeFile(join(target, "local/sessions", `${sessionId(target)}.records.json`), "{}\n");
+    await cleanupTask(root, join(root, "hq/product"), id);
+    await expect(readFile(join(target, "local/sessions", "reads.jsonl"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("retains an unrecognized file beside the generated session files", async () => {
+    await generatedReceipt();
+    await writeFile(join(target, "local/sessions", "reads.jsonl"), "{}\n");
+    await writeFile(join(target, "local/sessions", "notes.json"), "{}\n");
+    await expect(cleanupTask(root, join(root, "hq/product"), id)).rejects.toThrow("Dirty worktree");
+    expect(await readFile(join(target, "local/sessions", "notes.json"), "utf8")).toBe("{}\n");
   });
 
   it("retains unrelated local data beside a valid receipt", async () => {
@@ -208,5 +232,107 @@ describe("completed task worktree cleanup", () => {
     expect(prepared.startsWith(join(await realpath(tmpdir()), "morpheus-worktrees"))).toBe(true);
     expect((await cleanupTask(root, join(root, "hq/product"), id)).path).toBe(prepared);
     await expect(readFile(join(prepared, "implementation.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("missing worktree registration pruning", () => {
+  it("prunes a missing directory through the CLI while retaining its branch", async () => {
+    await rm(target, { recursive: true });
+    expect(await worktrees(root, "prune")).toBe(0);
+    expect(await git(root, "worktree", "list", "--porcelain")).not.toContain(target);
+    expect(await git(root, "rev-parse", `refs/heads/${branch}`)).toBe(head);
+    expect(await git(root, "ls-remote", "--heads", "origin", `refs/heads/${branch}`)).toBe(`${head}\trefs/heads/${branch}`);
+  });
+
+  it("prunes missing registrations even when another registered directory is no longer a checkout", async () => {
+    const broken = join(dir, "surviving-directory");
+    await git(root, "worktree", "add", "-b", "surviving-branch", broken);
+    await rm(join(broken, ".git"));
+    await writeFile(join(broken, "notes.txt"), "preserve surviving data\n");
+    await rm(target, { recursive: true });
+    expect(await worktrees(root, "prune")).toBe(0);
+    const listing = await git(root, "worktree", "list", "--porcelain");
+    expect(listing).not.toContain(target);
+    expect(listing).toContain(broken);
+    expect(await readFile(join(broken, "notes.txt"), "utf8")).toBe("preserve surviving data\n");
+    expect(await git(root, "rev-parse", `refs/heads/${branch}`)).toBe(head);
+    expect(await git(root, "rev-parse", "refs/heads/surviving-branch")).toBe(merge);
+  });
+
+  it("preserves a live dirty checkout while pruning a different missing registration", async () => {
+    const live = join(dir, "live-checkout");
+    await git(root, "worktree", "add", "-b", "live-branch", live);
+    await writeFile(join(live, "notes.txt"), "unfinished work\n");
+    await rm(target, { recursive: true });
+    expect(await pruneStaleWorktrees(root)).toBe(`Pruned: ${target} (branch retained)`);
+    const listing = await git(root, "worktree", "list", "--porcelain");
+    expect(listing).not.toContain(target);
+    expect(listing).toContain(live);
+    expect(await readFile(join(live, "notes.txt"), "utf8")).toBe("unfinished work\n");
+    expect(await git(root, "rev-parse", "refs/heads/live-branch")).toBe(merge);
+    expect(await git(root, "rev-parse", `refs/heads/${branch}`)).toBe(head);
+  });
+
+  it("does not prune an existing directory with a missing .git file", async () => {
+    await rm(join(target, ".git"));
+    expect(await pruneStaleWorktrees(root)).toBe("");
+    expect(await git(root, "worktree", "list", "--porcelain")).toContain(target);
+    expect(await readFile(join(target, "implementation.txt"), "utf8")).toBe("implemented\n");
+    expect(await git(root, "rev-parse", `refs/heads/${branch}`)).toBe(head);
+  });
+
+  it("dry-runs missing registrations without changing registrations or refs", async () => {
+    await rm(target, { recursive: true });
+    const before = await git(root, "worktree", "list", "--porcelain");
+    expect(await worktrees(root, "prune", true)).toBe(0);
+    expect(await git(root, "worktree", "list", "--porcelain")).toBe(before);
+    expect(await git(root, "rev-parse", `refs/heads/${branch}`)).toBe(head);
+  });
+
+  it("never deletes a checkout restored immediately before the pruning mutation", async () => {
+    await writeFile(join(root, ".git/info/exclude"), "private.txt\n");
+    await writeFile(join(target, "private.txt"), "irreplaceable ignored data\n");
+    const parked = `${target}-parked`;
+    await fs.rename(target, parked);
+    let restored = false;
+    const restore = async () => {
+      if (!restored) { await fs.rename(parked, target); restored = true; }
+    };
+    const originalGit = sessionStart.sessionGit;
+    const originalRm = fs.rm;
+    // Cover both the old directory-removing primitive and metadata-only pruning,
+    // restoring AFTER all absence checks, immediately before mutation executes.
+    const gitSpy = vi.spyOn(sessionStart, "sessionGit").mockImplementation(async (cwd, args, trim) => {
+      if (args[0] === "worktree" && args[1] === "remove") await restore();
+      return originalGit(cwd, args, trim);
+    });
+    const rmSpy = vi.spyOn(fs, "rm").mockImplementation(async (path, options) => {
+      await restore();
+      return originalRm(path, options);
+    });
+    try {
+      await pruneStaleWorktrees(root);
+      expect(restored).toBe(true);
+      expect(await readFile(join(target, "private.txt"), "utf8")).toBe("irreplaceable ignored data\n");
+      expect(await readFile(join(target, "implementation.txt"), "utf8")).toBe("implemented\n");
+      expect(await git(root, "rev-parse", `refs/heads/${branch}`)).toBe(head);
+      expect(await git(root, "ls-remote", "--heads", "origin", `refs/heads/${branch}`)).toBe(`${head}\trefs/heads/${branch}`);
+    } finally {
+      gitSpy.mockRestore();
+      rmSpy.mockRestore();
+      if (!restored) await restore();
+    }
+  });
+
+  it("preserves locked missing registrations", async () => {
+    await git(root, "worktree", "lock", "--reason", "offline disk", target);
+    await rm(target, { recursive: true });
+    try {
+      expect(await pruneStaleWorktrees(root)).toBe("");
+      expect(await git(root, "worktree", "list", "--porcelain")).toContain("locked offline disk");
+      expect(await git(root, "rev-parse", `refs/heads/${branch}`)).toBe(head);
+    } finally {
+      await git(root, "worktree", "unlock", target);
+    }
   });
 });

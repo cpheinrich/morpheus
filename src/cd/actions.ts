@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { type Attempt, type CdConfig, type TestEvidence, type UploadEvidence } from "./schema.js";
 import { invariant } from "./state.js";
-import { isMissing, pages, type GitHubApi } from "./store.js";
+import { boundedGitHubReadApi, type GitHubReadLimit, isMissing, pages, type GitHubApi } from "./store.js";
 import { validatePayloadFiles } from "./evidence.js";
 
 const exec = promisify(execFile);
@@ -14,12 +14,13 @@ export interface WorkflowRun { id: number; run_attempt: number; status: string; 
 export function matchesEffect(title: string, effect: string): boolean { return new RegExp(`(?:^|[^A-Za-z0-9_.-])${effect.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:$|[^A-Za-z0-9_.-])`).test(title); }
 export class ActionsAdapter {
   constructor(readonly api: GitHubApi, readonly config: CdConfig) {}
-  async runs(effectId: string, workflow = this.config.deliveryWorkflow): Promise<WorkflowRun[]> {
-    const runs = await pages<WorkflowRun>(this.api, `repos/${this.config.repository}/actions/workflows/${encodeURIComponent(workflow)}/runs`, "workflow_runs");
+  async runs(effectId: string, workflow = this.config.deliveryWorkflow, limits?: GitHubReadLimit): Promise<WorkflowRun[]> {
+    const api = limits ? boundedGitHubReadApi(this.api, limits) : this.api;
+    const runs = await pages<WorkflowRun>(api, `repos/${this.config.repository}/actions/workflows/${encodeURIComponent(workflow)}/runs`, "workflow_runs");
     return runs.filter(run => matchesEffect(run.display_title, effectId));
   }
   async run(id: string): Promise<WorkflowRun> { return this.api.request("GET", `repos/${this.config.repository}/actions/runs/${id}`); }
-  async runAttempt(id: string, attempt: string): Promise<WorkflowRun> { return this.api.request("GET", `repos/${this.config.repository}/actions/runs/${id}/attempts/${attempt}`); }
+  async runAttempt(id: string, attempt: string, limits?: GitHubReadLimit): Promise<WorkflowRun> { return (limits ? boundedGitHubReadApi(this.api, limits) : this.api).request("GET", `repos/${this.config.repository}/actions/runs/${id}/attempts/${attempt}`); }
   async executionRef(controlSha: string): Promise<string> {
     invariant(/^[a-f0-9]{40}$/.test(controlSha), "Execution control requires an exact SHA");
     const tag = `morpheus-cd-control-${controlSha}`, path = `repos/${this.config.repository}/git/ref/tags/${tag}`;
@@ -46,19 +47,23 @@ export class ActionsAdapter {
     invariant(run.head_sha === attempt.controlSha && run.event === "workflow_dispatch" && run.path.split("@")[0] === `.github/workflows/${this.config.deliveryWorkflow}` && matchesEffect(run.display_title, attempt.dispatchEffectId), "Workflow run is not the trusted exact control/effect execution");
     invariant(!attempt.runAttempt || attempt.runAttempt === String(run.run_attempt), "Workflow rerun cannot reuse an upload attempt");
   }
-  async evidence(run: WorkflowRun, attempt: Attempt): Promise<{ tests: TestEvidence[]; uploads: UploadEvidence[]; failures: unknown[] }> {
+  async evidence(run: WorkflowRun, attempt: Attempt, limits?: GitHubReadLimit): Promise<{ tests: TestEvidence[]; uploads: UploadEvidence[]; failures: unknown[] }> {
     this.verifyRun(run, attempt);
-    const artifacts = await pages<{ id: number; name: string; expired: boolean }>(this.api, `repos/${this.config.repository}/actions/runs/${run.id}/artifacts`, "artifacts");
+    const signal = limits ? AbortSignal.timeout(limits.timeoutMs) : undefined, api = limits ? boundedGitHubReadApi(this.api, limits, signal) : this.api;
+    const artifacts = await pages<{ id: number; name: string; expired: boolean }>(api, `repos/${this.config.repository}/actions/runs/${run.id}/artifacts`, "artifacts");
     const found: { tests: TestEvidence[]; uploads: UploadEvidence[]; failures: unknown[] } = { tests: [], uploads: [], failures: [] };
     const relevant = artifacts.filter(artifact => !artifact.expired && (artifact.name.startsWith("cd-v2-") || artifact.name.includes(attempt.dispatchEffectId) || artifact.name.startsWith("testflight-upload-") || artifact.name.startsWith("ios-upload-acceptance-")));
+    invariant(!limits || relevant.length <= 4, "Optional artifact census exceeds four downloads; outcome is unknown");
     for (const artifact of relevant) {
+      invariant(!signal?.aborted, "Optional artifact evidence deadline reached; outcome is unknown");
       const directory = await mkdtemp(join(tmpdir(), "morpheus-cd-artifact-"));
       try {
-        await exec("gh", ["run", "download", String(run.id), "--repo", this.config.repository, "--name", artifact.name, "--dir", directory], { timeout: 120_000, maxBuffer: 1_048_576 });
+        await exec("gh", ["run", "download", String(run.id), "--repo", this.config.repository, "--name", artifact.name, "--dir", directory], { timeout: limits?.timeoutMs ?? 120_000, maxBuffer: 1_048_576, ...(signal ? { signal } : {}) });
         const entries = await readdir(directory, { recursive: true, withFileTypes: true });
         for (const entry of entries) {
+          invariant(!signal?.aborted, "Optional artifact evidence deadline reached; outcome is unknown");
           if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-          const path = join(entry.parentPath, entry.name), bytes = await readFile(path), sha256 = createHash("sha256").update(bytes).digest("hex");
+          const path = join(entry.parentPath, entry.name), bytes = await readFile(path, signal ? { signal } : undefined), sha256 = createHash("sha256").update(bytes).digest("hex");
           let evidence: Record<string, unknown>; try { evidence = JSON.parse(bytes.toString("utf8")); } catch { continue; }
           if (evidence.intentId !== undefined) invariant(evidence.intentId === attempt.id.replace(/-a[0-9]+$/, "") && evidence.attemptId === attempt.id && evidence.dispatchEffectId === attempt.dispatchEffectId && evidence.sourceSha === attempt.sourceSha && evidence.controlSha === attempt.controlSha && String(evidence.runId) === String(run.id) && String(evidence.runAttempt) === String(run.run_attempt), "Artifact substitutes sibling source/control/run identity");
           if (evidence.scope === "full" && evidence.inventory && evidence.results) { await validatePayloadFiles(evidence as unknown as TestEvidence, path); found.tests.push(evidence as unknown as TestEvidence); }
@@ -67,6 +72,7 @@ export class ActionsAdapter {
         }
       } finally { await rm(directory, { recursive: true, force: true }); }
     }
+    invariant(!signal?.aborted, "Optional artifact evidence deadline reached; outcome is unknown");
     return found;
   }
 }

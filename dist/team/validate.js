@@ -3,6 +3,7 @@ import { join } from "node:path";
 import matter from "@11ty/gray-matter";
 import { MEETING_NOTES_DIR, MEMBERS_FILE } from "../paths.js";
 import { parseDir } from "../pm/parse.js";
+import { validateMeetingNoteBody } from "./note-structure.js";
 import { MeetingNote, Members } from "./schema.js";
 async function readMembers(root) {
     const path = join(root, MEMBERS_FILE);
@@ -58,6 +59,9 @@ export async function validateTeam(root) {
     const { items, issues: noteIssues } = await parseDir(join(root, MEETING_NOTES_DIR), MeetingNote);
     const all = [...issues, ...noteIssues];
     for (const note of items) {
+        for (const message of validateMeetingNoteBody(note.data, note.body)) {
+            all.push({ path: note.path, message });
+        }
         // Only cross-check attendees when a roster exists. With none, an attendee
         // list is still useful and refusing it would make notes unusable before the
         // roster is written — the wrong order to demand.

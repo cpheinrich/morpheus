@@ -22,7 +22,7 @@
  * `hq/team/cpheinrich.md`. A person is the primary thing in this folder, and
  * `hq/team/inbox/cpheinrich.md` would put a medium above a person.
  */
-export const TEAM_DIR = "hq/team";
+const TEAM_DIR = "hq/team";
 
 /** Inboxes are files directly under `hq/team/`, one per GitHub handle. */
 export const INBOX_DIR = TEAM_DIR;

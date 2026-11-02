@@ -7,9 +7,9 @@ import { assertTransition } from "./invariants.js";
 import { CdWait } from "./errors.js";
 const exec = promisify(execFile);
 export class GhApi {
-    async request(method, path, body) {
+    async request(method, path, body, signal) {
         const args = ["api", "--method", method, path, "-H", "Accept: application/vnd.github+json"];
-        const child = exec("gh", body === undefined ? args : [...args, "--input", "-"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 120_000 });
+        const child = exec("gh", body === undefined ? args : [...args, "--input", "-"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 120_000, ...(signal ? { signal } : {}) });
         if (body !== undefined) {
             child.child.stdin?.on("error", () => { });
             child.child.stdin?.end(JSON.stringify(body));
@@ -24,6 +24,22 @@ export class GhApi {
             throw error;
         }
     }
+}
+/** An optional read sweep must finish completely within its finite budget or refuse. */
+export function boundedGitHubReadApi(api, limits, signal = AbortSignal.timeout(limits.timeoutMs)) {
+    invariant(Number.isSafeInteger(limits.maximumRequests) && limits.maximumRequests > 0 && limits.maximumRequests <= 8 && Number.isFinite(limits.timeoutMs) && limits.timeoutMs > 0 && limits.timeoutMs <= 30_000, "Invalid optional GitHub read limit");
+    let calls = 0;
+    return { async request(method, path, body) {
+            invariant(method === "GET" && body === undefined && ++calls <= limits.maximumRequests && !signal.aborted, "Optional GitHub read budget exhausted");
+            let abort;
+            const unavailable = new Promise((_resolve, reject) => { abort = () => reject(new CdWait("Optional GitHub observation deadline reached", "github-provider")); signal.addEventListener("abort", abort, { once: true }); });
+            try {
+                return await Promise.race([api.request(method, path, undefined, signal), unavailable]);
+            }
+            finally {
+                signal.removeEventListener("abort", abort);
+            }
+        } };
 }
 export function errorText(error) { const value = error; return String(value.stderr ?? value.message ?? error); }
 export function isMissing(error) { return /HTTP 404|\b404\b/.test(errorText(error)); }

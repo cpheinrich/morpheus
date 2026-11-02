@@ -16,6 +16,8 @@ import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
 import { STATIC_ROADMAP_README } from "../pm/index-gen.js";
 import { ctoSkillDescription } from "../cto/guide.js";
 import { AGENTIC_CTO_SKILL, RESEARCH_ENGINEER_SKILL, DEVOPS_ENGINEER_SKILL } from "../cto/skill.js";
+import { productSkillDescription } from "../product/guide.js";
+import { CHIEF_PRODUCT_OFFICER_SKILL, VP_DESIGN_SKILL } from "../product/skill.js";
 export const manifest = (s) => JSON.stringify({
     name: s.name,
     prefix: s.prefix,
@@ -782,6 +784,12 @@ ${credentialsInstructions()}
 ${codebaseMemoryBootstrap()}
 ## Working conventions
 
+**Simplicity first.** Plan the simplest design that meets the requirements, then take one pass
+before building to strip what it does not need; for the same result, fewer parts and fewer lines
+win. Add a state, option, gate or approval step only when observed behaviour proves the need. Read
+a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
+tightening one; removing one is a recorded decision.
+
 **Claim work before starting it:**
 
 \`\`\`sh
@@ -804,51 +812,45 @@ requested user-visible result. Release jobs must depend on
 \`cpheinrich/morpheus/.github/workflows/release-preflight.yml@main\` and check out its \`sha\` output.
 Do not extract a recurring production probe until a second project needs the same one.
 
-**Build vs. borrow — check before writing a generic module.** Before implementing any capability
-that is not specific to this product's domain — parsing, diffing, scheduling, retries, rate
-limiting, fuzzy search, date handling, CLI plumbing — make one quick search of the ecosystem's
-registry for a maintained package that already solves it. If a credible candidate appears, check
-its last publish and dependency footprint before deciding.
-
-**Propose, don't decide silently — in either direction.** If a credible package exists, say so
-before building: an open (❗) inbox item when the choice shapes the architecture, a line in the PR body
-("considered X, built instead because Y" / "adopted X, N deps, maintained") when it is small.
-Silently building what a package solves and silently adopting a heavy dependency are the same
-mistake. **Prefer lightweight** — zero-to-few dependencies beats featureful; a framework pulled
-in to save 60 lines is worse than the 60 lines. Build when the need is small — roughly under 100
-lines — genuinely domain-specific, or every candidate is unmaintained. Record the outcome in \`.agent/decisions.md\`
-so the choice is not relitigated next session.
+**Build vs. borrow — check before writing a generic module.** Before implementing anything not
+specific to this product's domain — parsing, diffing, scheduling, retries, rate limiting, fuzzy
+search, date handling, CLI plumbing — make one quick search of the registry for a maintained
+package; check its last publish and dependency footprint. **Propose, don't decide silently — in
+either direction:** an open (❗) inbox item when the choice shapes the architecture, a PR-body line
+("considered X, built instead because Y") when small. **Prefer lightweight:**
+a framework pulled in to save 60 lines is worse than the 60 lines; build when the need is under
+~100 lines, domain-specific, or every candidate is unmaintained. Record the outcome in
+\`.agent/decisions.md\`.
 
 **When you hit real ambiguity, block — do not guess:** \`morpheus pm block <ID> --needs "<what
 would unblock you>"\`. Escalating is cheap; shipping half-baked is expensive.
 
 **Break loops.** If the same command fails the same way twice, or you have polled the same thing
-three times, stop: change approach, or \`pm block\` with what you learned. Never idle-loop
-(\`sleep\`/\`true\`/\`echo\` loops, repeated status checks). To wait on CI prefer \`gh pr merge --auto\`;
-when the next step depends on the result, run \`morpheus wait-ci <n>\` once — never poll
-\`gh run view\` or \`gh pr checks\` in a loop.
+three times, stop: change approach, or \`pm block\` with what you learned. Never idle-loop or poll
+\`gh\`: prefer \`gh pr merge --auto\`, and when the next step needs the CI result run
+\`morpheus wait-ci <n>\` once, or \`wait-ci --run <id>\` for one Actions run (TestFlight, release).
 
 **The authoring agent owns the entire review loop.** Finish the relevant focused tests and inspect
 results before the reviewer's first turn; send the full packet and available UI evidence. If a test
 cannot run, document why and keep the PR draft until validation finishes. Aim for one review and
-one response; the third turn is a ceiling for genuine late corrections or unresolved findings.
-After committing implementation/tests,
+one response; five turns run without anyone's approval, a ceiling, not a plan. A reviewer blocks
+only on substantive problems; style and wording notes never block. When a reviewer times out or
+cannot be resumed, start a fresh one with the earlier findings. After committing implementation/tests,
 run \`morpheus review prepare --base origin/main\`; this prints a review packet and does not
 launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
 repository access and that packet, without inheriting the author's conversation history.
-The reviewer returns findings to the author; the author manages fixes, any allowed follow-up,
-the review record, CI, and merge. Do not wait for a PR monitor, another standing agent, or
-GitHub Actions to start this review. CI checks the evidence; it does not perform the review.
+The author handles findings, follow-ups, the record, CI and merge. Do not wait for a PR monitor
+or GitHub Actions to start this review; CI checks the evidence and does not perform it.
 The author measures each turn from runner duration metadata or actual clock readings, never a
 reviewer's workload estimate. New version 2 records require timing source, milliseconds and
 evidence for every turn; compute elapsedMinutes as durationMs / 60000 without rounding.
-If the runner cannot start an independent session, report that concrete limitation and keep
-the PR open with auto-merge disabled; never substitute self-review or assume a monitor will act.
+If no independent session can start, say so and keep the PR open with auto-merge disabled;
+never self-review.
 
 **Independent review is required before merge.** Before spawning the reviewer, read the
-[review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md): three
-ordinary turns plus one narrow verification, budgets, finalization, \`humanAuthorization\`,
-deferrals naming a roadmap item, and the record fields. Record the review in the task worklog, commit
+[review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md): the turn
+cap, fresh-reviewer handoffs, budgets, finalization, \`humanAuthorization\`, deferrals naming a
+roadmap item, and the record fields. Record the review in the task worklog, commit
 it, and run \`morpheus review validate\`. Then label the PR and mark it ready, or create it labelled
 with a visible \`review-record:\` line. For CI or PR evidence, open an unlabelled draft before
 review; drafts wait instead of failing. Merge trunk rather
@@ -1087,6 +1089,11 @@ reasoning that a decision can be argued with later.
 record.** Roadmap changes, strategy refinement, implementation work, decision promotion, and every
 other follow-up interpretation belong in separate pull requests. When a follow-up pull request
 files roadmap items, it backfills their ids into the note's \`roadmap:\` field as bookkeeping.
+
+New notes declare \`note_format: priority-first-v1\` and put \`## Executive summary\`,
+\`## Key decisions\`, and \`## Key action items\` first, in that order. Supporting context and
+detailed discussion follow those headline sections. \`morpheus team validate\` enforces the
+declared layout while leaving historical notes readable.
 
 **\`redacted: true\` is a claim you are making**, and \`morpheus team validate\` refuses a note without
 it. It means you have stripped everything not about this project, and checked that the note is
@@ -1631,7 +1638,7 @@ export const contextFreshness = () => `## Context freshness
 
 Run \`morpheus context brief\` at session start if the standard hook did not run. It fetches
 canonical trunk and fast-forwards local trunk, first moving tracked trunk edits to a \`wip/trunk-*\`
-draft PR. Follow its absolute \`WORK IN\` path. A stale checkout cannot certify fresh context;
+branch (a draft PR only on a private repo). Follow its absolute \`WORK IN\` path. A stale checkout cannot certify fresh context;
 integrate trunk explicitly and re-read records before refreshing.
 
 Use **one worktree per implementation task**, not per conversation. \`pm claim <ID>\` from a shared
@@ -1641,13 +1648,15 @@ reuses a task's existing worktree. Pass \`--session-id\` to claim/resume when st
 (Codex defaults to \`CODEX_THREAD_ID\`). Never infer that an unrelated request belongs to the
 checked-out task, and do not run concurrent authors in one worktree.
 
-**Read \`.agent/decisions.md\`, \`.agent/learned.md\` and your inbox once at session start, then run
-\`morpheus context refresh\` once.** After that, just run the gated command — \`pm claim\`,
-\`pm new\`, \`pm link-issue\`, \`pm block\`, \`access sync\`, \`firebase auth setup\`, \`web init\` (provisioning;
-\`--no-provision\` is not gated). Read-only and mechanical commands are not gated. Past the five-minute term the gate re-checks trunk and the records itself and re-certifies when
-nothing moved. **Refresh again only when a gated command refuses**, and then re-read only what the
-refusal or the refresh names. Never pipe \`refresh\` output through \`head\`/\`tail\` — the delta it
-prints is the point. Do not refresh without reading: the receipt is your assertion.
+**Read \`AGENTS.md\` (an injected copy leaves no read evidence), \`.agent/decisions.md\`,
+\`.agent/learned.md\` and your inbox once at session start, then run \`morpheus context refresh\` once.**
+Then just run the gated command — \`pm claim\`, \`pm new\`, \`pm link-issue\`, \`pm block\`,
+\`access sync\`, \`firebase auth setup\`, \`web init\` (provisioning); past five minutes the gate
+re-checks by itself. **Refresh again only when a gated command refuses.**
+Refresh is idempotent. **A read hook records
+what you read** (Read ranges, shell output you saw); refresh certifies only that, so a discarded
+\`cat\` counts for nothing. Read what a refusal names, then refresh.
+Never pipe \`refresh\` output through \`head\`/\`tail\`. No hook? Never refresh without reading.
 
 Offline, set \`MORPHEUS_OFFLINE=1\`; local work and \`pm block\` proceed, anything that leaves the
 machine is refused. Forks, hooks (\`morpheus context install\`, Codex \`/hooks\` trust) and receipts:
@@ -1706,6 +1715,26 @@ or navigating their overlay tab.
 
 If \`morpheus qa preview\` is unknown, or has no \`web\`, the installed CLI predates it: run
 \`morpheus self update\`.
+`;
+/** The shared Gemini meeting-intake procedure, distributed as a pointer to the installed guide. */
+export const meetingIntakeSkill = () => `---
+name: meeting-intake
+description: Distill Gemini-generated meeting notes into reviewed repository records, deduplicate Gmail, Calendar and Docs sources, regenerate an optional discovery catalog, and gate any authorized completion notice. Use for Gemini notes, meeting-note intake, meeting catalogs, historical meeting backfills, or finding prior meeting context.
+---
+
+# Meeting intake
+
+Run \`morpheus meeting-intake guide\` and follow it. Morpheus owns the deterministic schema,
+immutable Git reader, deduplication, bounded search, optional projection and notice gate. The
+project's \`.morpheus/meeting-intake.json\` owns its people, topics, canonical repository,
+destinations, timezone and notification authority.
+
+Historical imports are notes only: never create or replay actions or send completion notices from
+them. A factual note gets its own pull request; interpretation and action promotion stay separate.
+An authorized current-note completion notice may be sent once the note and required projection are
+verified; record \`not-promoted\` when separate action promotion has not happened yet.
+
+If \`morpheus meeting-intake\` is unknown, run \`morpheus self update\`.
 `;
 /**
  * The agentic-CTO skill as every other project carries it (MO-26-10-21-19.17.32): a pointer to
@@ -1786,5 +1815,42 @@ Keep normal delivery ahead of optional hardening. A skill or installed guide is 
 supervisor. Morpheus holds the reviewed copy and this installed CLI prints it.
 
 If \`morpheus cto guide devops-engineer\` is unknown, run \`morpheus self update\`.
+`;
+/** The product-leadership skill, distributed as a pointer to Morpheus's reviewed guide. */
+export const chiefProductOfficerPointerSkill = () => `---
+name: ${CHIEF_PRODUCT_OFFICER_SKILL}
+description: ${productSkillDescription()}
+---
+
+# Chief Product Officer
+
+Run \`morpheus product guide\` and follow it. Read the references it names with
+\`morpheus product guide <topic>\`, starting with \`morpheus product guide product-brief\` when
+framing an outcome. The role grants no publishing, spending, data or delivery authority.
+
+Until you have read it, record the audience/problem, evidence, outcome, scope/non-goals, success
+and guardrails; distinguish delivery, usability, adoption and outcome; and coordinate design and
+engineering against the same product brief. Morpheus holds the reviewed copy and this installed
+CLI prints it.
+
+If \`morpheus product guide\` is unknown, run \`morpheus self update\`.
+`;
+/** The VP of Design role under the CPO, using the same canonical-guide distribution path. */
+export const vpDesignPointerSkill = () => `---
+name: ${VP_DESIGN_SKILL}
+description: ${productSkillDescription(VP_DESIGN_SKILL)}
+---
+
+# VP of Design
+
+Run \`morpheus product guide vp-design\` and follow it. Read the references it names with
+\`morpheus product guide vp-design/<topic>\`. The Chief Product Officer owns the product outcome;
+this role owns experience quality and design-system coherence. It grants no additional authority.
+
+Until you have read it, audit the real integrated experience, establish hierarchy before styling,
+reuse the shared owner, validate responsive/accessibility states, and inspect final-build pixels.
+Morpheus holds the reviewed copy and this installed CLI prints it.
+
+If \`morpheus product guide vp-design\` is unknown, run \`morpheus self update\`.
 `;
 //# sourceMappingURL=templates.js.map

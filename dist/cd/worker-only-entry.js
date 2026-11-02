@@ -1,4 +1,5 @@
 import { RepairControlInvalid, RepairHeld, guardStore, repairHeld, validateRepairControls } from "./repair-control.js";
+import { awaitingSubscriptionAdmission } from "./admission-wait.js";
 /** The worker's own first-due predicate (not complete, due, lease absent or expired). */
 export const due = (work, now) => work.state !== "complete" && Date.parse(work.nextCheckAt) <= Date.parse(now) && (!work.lease || Date.parse(work.lease.expiresAt) <= Date.parse(now));
 export async function runHeldAwareWorker(d) {
@@ -17,7 +18,10 @@ export async function runHeldAwareWorker(d) {
     if (target && repairHeld(snapshot.state, target.intentId))
         return { state: "repair-held", workId: target.id };
     if (!d.options.workId) {
-        const candidates = Object.values(agents).filter(work => due(work, now));
+        // The Claude executor applies the worker's own rule: a latest-event subscription admission wait is due for it.
+        const claudeDue = (work) => d.options.executor === "claude" && work.state !== "complete"
+            && (!work.lease || Date.parse(work.lease.expiresAt) <= Date.parse(now)) && awaitingSubscriptionAdmission(snapshot.state, work);
+        const candidates = Object.values(agents).filter(work => due(work, now) || claudeDue(work));
         if (!candidates.length)
             return { state: "idle" };
         target = candidates.find(work => !repairHeld(snapshot.state, work.intentId));

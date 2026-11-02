@@ -11,7 +11,7 @@ const integration = fileURLToPath(new URL("./host-integration.sh", import.meta.u
 describe("macOS CD V2 host templates", () => {
   it("renders and executes the tick and worker with pinned inputs and safe credential isolation", () => {
     const output = execFileSync("/bin/bash", [integration], { encoding: "utf8", timeout: 30_000 });
-    expect(output).toContain("Results: PASS=59 FAIL=0");
+    expect(output).toContain("Results: PASS=61 FAIL=0");
   });
 
   it("loads the installed real runtime and validates configuration without provider calls", () => {

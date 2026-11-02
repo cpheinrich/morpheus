@@ -108,6 +108,22 @@ export declare const SAFE_REF: RegExp;
 /** Branches `context brief` creates for tracked edits rescued from a dirty trunk checkout. */
 export declare const RESCUED_TRUNK_PREFIX = "wip/trunk-";
 /**
+ * Days a rescued trunk draft may go without a push before the sweep closes it, keeping the branch.
+ *
+ * Rescue drafts used to be escalated to a human after `draftQuietHours`. Of about nineteen opened
+ * in their first three weeks, none was adopted, and each one sat in the `manager:needs-human`
+ * queue beside decisions that did need a person — the queue went from 4 to 16. Unadopted edits
+ * are almost always incidental, and the branch keeps them recoverable, so the default became
+ * closing them. A week is long enough for whoever left the edits to notice the draft in the
+ * session that made it, and short enough that the drafts stop accumulating. The rescue PR body
+ * names this number; a test holds the two equal.
+ */
+export declare const RESCUE_MAX_AGE_DAYS = 7;
+/** The route reason for that close, which the apply step re-checks against live state. */
+export declare const RESCUE_AGED_OUT = "rescued-trunk-aged-out";
+/** A rescued trunk draft nobody has taken up: still a draft, nothing queued, no review on it. */
+export declare function isRescuedTrunkDraft(pr: Pick<PullRequestFacts, "isDraft" | "autoMerge" | "labels" | "headRefName">): boolean;
+/**
  * An explicit WIP signal. The manager never merges or repairs such a pull request; once it has
  * been quiet for `draftQuietHours` it is only triaged, read-only (see `routeWorkInProgress`).
  */

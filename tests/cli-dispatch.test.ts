@@ -1,7 +1,7 @@
 vi.mock("../src/cli/session-start.js", () => ({ sessionHookInput: vi.fn(async () => ({})), startSession: vi.fn(async () => 73) }));
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/cli/run.js";
-import { create, tagged } from "../src/cli/pm.js";
+import { create, ship, tagged } from "../src/cli/pm.js";
 import { HELP } from "../src/cli/help.js";
 import { guard } from "../src/cli/context.js";
 import { webInit } from "../src/cli/web.js";
@@ -50,6 +50,10 @@ describe("CLI invocation contract", () => {
   });
   it.each(["self", "self check", "self update", "self install", "self ensure", "self auto-update enable", "doctor", "codebase-memory", "codebase-memory install", "heartbeat", "voice knowledge", "voice brief a topic", "tokens", "tokens build", "research-library init", "research-library bundle", "research-library publish book --author A", "init", "init status", "init done task", "init doing task", "init todo task", "web", "web status", "web init", "web add-consumer-auth", "registry list", "registry add", "registry remove item", "hq rules", "hq rules --print", "access sync", "firebase auth setup", "firebase auth check", "brand", "brand status", "brand build", "brand explore", "brand refresh", "brand finalize", "brand migrate", "brand check", "brand init", "inbox validate", "review prepare", "review prompt", "review needed", "review delivery", "team validate", "context", "context refresh", "context check", "context brief", "context start", "context install", "context status", "check pr", "ios changed-swift apps/ios", "pm validate", "pm index", "pm claim MO-001", "pm claims", "pm tagged engineering devops --json", "pm resume MO-001", "pm cleanup MO-001", "pm worktrees", "pm link-issue MO-001 1", "pm block MO-001 --needs approval", "pm unblock MO-001", "pm ship MO-001", "pm migrate-ids", "pm new roadmap title", "profile", "profile report --since 2026-09-01 --json", "profile extract --repo evo --out x.jsonl"])("routes %s to its handler", async (line) => {
     expect(await run(line.split(" "))).toBe(73);
+  });
+  it.each([["pm", "ship", "MO-020", "--check"], ["pm", "ship", "--check", "MO-020"]])("forwards explicit IDs and --check together for validation", async (...argv) => {
+    expect(await run(argv)).toBe(73);
+    expect(ship).toHaveBeenCalledWith(expect.any(String), ["MO-020"], process.cwd(), true);
   });
   it("forwards repeated intake tags and read-only AND queries", async () => {
     expect(await run(["pm", "new", "roadmap", "Recover release", "--tag", "engineering", "--tag", "devops"])).toBe(73);

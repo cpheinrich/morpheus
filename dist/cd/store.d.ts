@@ -1,10 +1,16 @@
 import { type CdConfig, type CdState } from "./schema.js";
 export interface GitHubApi {
-    request<T>(method: string, path: string, body?: unknown): Promise<T>;
+    request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T>;
 }
 export declare class GhApi implements GitHubApi {
-    request<T>(method: string, path: string, body?: unknown): Promise<T>;
+    request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T>;
 }
+export interface GitHubReadLimit {
+    maximumRequests: number;
+    timeoutMs: number;
+}
+/** An optional read sweep must finish completely within its finite budget or refuse. */
+export declare function boundedGitHubReadApi(api: GitHubApi, limits: GitHubReadLimit, signal?: AbortSignal): GitHubApi;
 export declare function errorText(error: unknown): string;
 export declare function isMissing(error: unknown): boolean;
 export declare function pages<T>(api: GitHubApi, path: string, key?: string): Promise<T[]>;

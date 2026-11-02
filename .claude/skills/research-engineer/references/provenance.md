@@ -71,6 +71,7 @@ project · **L** an agent's lesson, not stated by a human.
 
 | Rule | Sources |
 |---|---|
+| Concise body with plain metrics; detailed evidence in bottom appendices | [Morpheus #497](https://github.com/cpheinrich/morpheus/issues/497), carrying Chris’s research-record preference from Evo #632 (D) |
 | A ledger entry per run, whole outputs stored | Evo `benchmarks/rgbd-calorie/README.md`, the experiment ledger (A); Evo `.agent/learned.md`, store the model's whole answer (A) |
 | Scripts that rebuild every table | Evo session 2026-10-23 06:18: a solid record of the experiments with the implementation (D) |
 | Worklog dead ends | Evo `.agent/worklog/2026-10-22-sam3d-food-volume.md`, "Dead ends and surprises" (L) |

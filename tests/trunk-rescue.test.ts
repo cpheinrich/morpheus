@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -10,24 +11,29 @@ import {
   buildSourceCandidates,
   divergentStaged,
   formatLag,
+  formatRescue,
   githubRepo,
   lagSeverity,
   orphanBuildOutputs,
   pacificDate,
   parsePorcelain,
   rescueDirtyTrunk,
+  runCommand,
   shortHost,
   wipBranchName,
+  type CommandResult,
   type CommandRunner,
+  type RescueDeps,
 } from "../src/session/trunk-rescue.js";
-import { inspectTrunkCheckout, trunkCheckoutFindings, type TrunkCheckoutReport } from "../src/session/trunk-health.js";
+import { inspectTrunkCheckout, localRescueFinding, trunkCheckoutFindings, type TrunkCheckoutReport } from "../src/session/trunk-health.js";
 import { prepareRepository } from "../src/session/start.js";
 import { startSession } from "../src/cli/session-start.js";
 import { describeLocalChanges } from "../src/self.js";
-import { RESCUED_TRUNK_PREFIX } from "../src/gh-manager/sweep.js";
+import { RESCUE_MAX_AGE_DAYS, RESCUED_TRUNK_PREFIX } from "../src/gh-manager/sweep.js";
 import type { MorpheusInstallStatus } from "../src/self.js";
 
 const exec = promisify(execFile);
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures/trunk-churn");
 const git = async (cwd: string, ...args: string[]) => (await exec("git", args, { cwd })).stdout.trim();
 const NOW = new Date("2026-10-08T18:00:00Z"); // 11:00 Pacific, 2026-10-08
 const DAY = 86_400_000;
@@ -68,7 +74,7 @@ describe("orphan build output", () => {
     const message = await describeLocalChanges("/src", " M package.json\n?? dist/gone.js\n?? dist/kept.js\n?? scratch.txt\n", async (p) => p === "src/kept.ts");
     expect(message).toBe([
       "The source checkout /src has local changes; install from clean main.",
-      "  Tracked edits (1) — on trunk, `morpheus context brief` there moves them to a wip/trunk-* draft PR:",
+      "  Tracked edits (1) — on trunk, `morpheus context brief` there moves them to a wip/trunk-* branch:",
       "    package.json",
       "  Untracked build output whose source no longer exists (1) — safe to delete:",
       "    rm dist/gone.js",
@@ -110,6 +116,12 @@ describe("index states and remotes", () => {
     const raw = ["MM both.ts", "AM added.ts", "AD gone.ts", "M  staged-only.ts", " M tree-only.ts", " A intent.ts", "RM new.ts", "old.ts", "?? u.txt", ""].join("\0");
     expect(divergentStaged(raw)).toEqual(["both.ts", "added.ts", "gone.ts", "new.ts"]);
   });
+  it("reports a command that cannot start by its error, not a bare exit code", async () => {
+    const result = await runCommand("morpheus-no-such-command-153755", ["repo", "view"], tmpdir());
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("spawn morpheus-no-such-command-153755 ENOENT");
+  });
   it("reads owner/repo from GitHub remote URLs only", () => {
     expect(githubRepo("https://github.com/cpheinrich/morpheus.git")).toBe("cpheinrich/morpheus");
     expect(githubRepo("git@github.com:cpheinrich/morpheus.git")).toBe("cpheinrich/morpheus");
@@ -135,8 +147,24 @@ describe("WIP branch naming", () => {
 describe("rescuing a dirty trunk checkout", () => {
   let dir: string, remote: string, source: string, local: string;
   let gh: ReturnType<typeof vi.fn<CommandRunner>>;
-  const deps = () => ({ runner: gh, hostname: "Box.local", now: NOW });
+  /** What `gh repo view <repo> --json visibility` answers. */
+  let visibility: CommandResult;
+  /** Every other `gh` call: `pr list` and `pr create`. */
+  let prGh: CommandRunner;
+  const deps = (): RescueDeps => ({ runner: gh, hostname: "Box.local", now: NOW, visibilityCache: false });
   const branchBase = "wip/trunk-2026-10-08-box";
+  const prCalls = () => gh.mock.calls.filter((call) => call[1][0] === "pr");
+  const visibilityCalls = () => gh.mock.calls.filter((call) => call[1][0] === "repo");
+  const answer = (value: string): CommandResult => ({ code: 0, stdout: JSON.stringify({ visibility: value }), stderr: "" });
+  /**
+   * Point a remote at a GitHub URL that Git rewrites to a local bare repository, so the rescue
+   * identifies a GitHub repository from config while fetch and push stay on this machine.
+   */
+  async function githubUrl(cwd: string, slug: string, path: string, key: "insteadOf" | "pushInsteadOf" = "insteadOf") {
+    const url = `https://github.com/${slug}.git`;
+    await git(cwd, "config", `url.${path}.${key}`, url);
+    return url;
+  }
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "trunk-rescue-"));
@@ -157,14 +185,19 @@ describe("rescuing a dirty trunk checkout", () => {
     await git(source, "remote", "add", "origin", remote); await git(source, "push", "origin", "main");
     await git(dir, "clone", "--branch", "main", remote, local);
     await git(local, "config", "user.email", "test@example.com"); await git(local, "config", "user.name", "Test");
-    gh = vi.fn<CommandRunner>(async (_command, args) => {
+    await git(local, "remote", "set-url", "origin", await githubUrl(local, "o/r", remote));
+    // Private unless a test says otherwise, so the publishing path below is what it was before #452.
+    visibility = answer("PRIVATE");
+    prGh = async (_command, args) => {
       if (args[1] === "list") {
         if (args[args.indexOf("--state") + 1] !== "open") return { code: 1, stdout: "", stderr: "only open PRs can stand in for a rescue" };
         const head = args[args.indexOf("--head") + 1]!.split(":").pop()!;
         return { code: 0, stdout: JSON.stringify([{ url: "https://github.com/o/r/pull/42", headRefName: head }]), stderr: "" };
       }
       return { code: 0, stdout: "https://github.com/o/r/pull/42\n", stderr: "" };
-    });
+    };
+    gh = vi.fn<CommandRunner>(async (command, args, cwd) =>
+      args[0] === "repo" && args[1] === "view" ? visibility : prGh(command, args, cwd));
   });
   afterEach(async () => { vi.restoreAllMocks(); await rm(dir, { recursive: true, force: true }); });
 
@@ -188,6 +221,10 @@ describe("rescuing a dirty trunk checkout", () => {
 
   it("moves tracked edits to a pushed draft PR, leaves untracked files, then fast-forwards", async () => {
     await dirty();
+    // Opted in to the GitHub Manager on trunk, so the body may promise the age-out.
+    await mkdir(join(source, ".github"), { recursive: true });
+    await writeFile(join(source, ".github/morpheus-gh-manager.json"), '{"version":1}\n');
+    await git(source, "add", ".github");
     const latest = await advance(2);
     const result = await prepareRepository(local, false, deps());
 
@@ -217,8 +254,10 @@ describe("rescuing a dirty trunk checkout", () => {
     expect(await git(remote, "ls-tree", "--name-only", pushed)).not.toMatch(/doomed\.txt|secret\.env|dist/);
     expect(await git(remote, "log", "-1", "--format=%s", pushed)).toBe("WIP: uncommitted changes rescued from dirty main");
 
-    expect(gh).toHaveBeenCalledTimes(1);
-    const [command, args, cwd] = gh.mock.calls[0]!;
+    // Visibility is read first, for the one repository the remote names, then the draft is opened.
+    expect(visibilityCalls().map((call) => call[1])).toEqual([["repo", "view", "github.com/o/r", "--json", "visibility"]]);
+    expect(prCalls()).toHaveLength(1);
+    const [command, args, cwd] = prCalls()[0]!;
     expect(command).toBe("gh");
     expect(cwd).toBe(await realpath(local));
     expect(args.slice(0, 7)).toEqual(["pr", "create", "--draft", "--base", "main", "--head", branchBase]);
@@ -230,12 +269,29 @@ describe("rescuing a dirty trunk checkout", () => {
     expect(body).toContain("- `secret.env`");
     expect(body).toContain("safe to delete:\n\n- `dist/gone.js`");
     expect(body).toContain("`check pr` conventions");
+    // The PR body states the manager's age-out without importing it; this holds the two equal.
+    expect(body).toContain(`once it has gone ${RESCUE_MAX_AGE_DAYS} days without a push, the GitHub Manager closes it`);
     expect(body).not.toContain("never-commit");
+  });
+
+  it("promises the age-out only where trunk's GitHub Manager policy will close the draft", async () => {
+    const body = () => { const args = gh.mock.calls.filter((c) => c[1][1] === "create").at(-1)![1]; return args[args.indexOf("--body") + 1]!; };
+    await writeFile(join(local, "project.pbxproj"), "first\n");
+    await prepareRepository(local, false, deps());
+    expect(body()).not.toContain("GitHub Manager closes it");
+
+    await mkdir(join(source, ".github"), { recursive: true });
+    await writeFile(join(source, ".github/morpheus-gh-manager.json"), '{"version":1,"actions":{"close":false}}\n');
+    await git(source, "add", ".github"); await git(source, "commit", "-m", "manager, closing off"); await git(source, "push", "origin", "main");
+    await writeFile(join(local, "project.pbxproj"), "second\n");
+    await prepareRepository(local, false, deps());
+    expect(body()).not.toContain("GitHub Manager closes it");
+    expect(gh.mock.calls.filter((c) => c[1][1] === "create")).toHaveLength(2);
   });
 
   it("keeps a write that lands while the branch is pushed and the PR opened", async () => {
     await writeFile(join(local, "project.pbxproj"), "edit1\n");
-    gh.mockImplementation(async () => {
+    prGh = (async () => {
       // An IDE autosave, or Xcode regenerating the project, during the network calls.
       await writeFile(join(local, "project.pbxproj"), "edit2-concurrent\n");
       return { code: 0, stdout: "https://github.com/o/r/pull/43\n", stderr: "" };
@@ -271,34 +327,51 @@ describe("rescuing a dirty trunk checkout", () => {
     expect(await readFile(join(local, "project.pbxproj"), "utf8")).toBe("mine\n");
   });
 
-  it("on a fork, opens the PR against the trunk remote's repository with an owner-qualified head", async () => {
-    await git(local, "remote", "set-url", "origin", "https://github.com/fork-owner/project.git");
-    await git(local, "remote", "set-url", "--push", "origin", remote);
+  /** A fork: `origin` names the fork (pushes land in the local bare repository), `upstream` the base. */
+  async function forkRemotes() {
+    await git(local, "remote", "set-url", "origin", await githubUrl(local, "fork-owner/project", remote, "pushInsteadOf"));
     await git(local, "remote", "add", "upstream", "git@github.com:up-owner/project.git");
+  }
+
+  it("on a fork, opens the PR against the trunk remote's repository with an owner-qualified head", async () => {
+    await forkRemotes();
     await writeFile(join(local, "project.pbxproj"), "mine\n");
     const sha = await git(local, "rev-parse", "HEAD");
     const result = await rescueDirtyTrunk(local, { trunk: "upstream/main", branch: "main", sha }, deps());
     expect(result.outcome).toBe("rescued");
-    const args = gh.mock.calls[0]![1];
+    // Both the fork and the base repository were confirmed private before anything was published.
+    expect(visibilityCalls().map((call) => call[1][2])).toEqual(["github.com/fork-owner/project", "github.com/up-owner/project"]);
+    const args = prCalls()[0]![1];
     expect(args.slice(0, 9)).toEqual(["pr", "create", "--draft", "--repo", "up-owner/project", "--base", "main", "--head", `fork-owner:${branchBase}`]);
   });
 
+  it("on a fork, keeps the rescue local when the base repository is public even though the fork is private", async () => {
+    await forkRemotes();
+    gh.mockImplementation(async (_command, args) => args[0] === "repo"
+      ? answer(args[2] === "github.com/up-owner/project" ? "PUBLIC" : "PRIVATE")
+      : { code: 0, stdout: "https://github.com/up-owner/project/pull/42\n", stderr: "" });
+    await writeFile(join(local, "project.pbxproj"), "mine\n");
+    const sha = await git(local, "rev-parse", "HEAD");
+    const result = await rescueDirtyTrunk(local, { trunk: "upstream/main", branch: "main", sha }, deps());
+    expect(result).toMatchObject({ outcome: "rescued", pushed: false, keptLocal: "up-owner/project is public" });
+    expect(prCalls()).toEqual([]);
+    expect(await git(remote, "for-each-ref", "refs/heads/wip")).toBe("");
+  });
+
   it("on a fork, only dedupes a PR from the push remote's owner", async () => {
-    await git(local, "remote", "set-url", "origin", "https://github.com/fork-owner/project.git");
-    await git(local, "remote", "set-url", "--push", "origin", remote);
-    await git(local, "remote", "add", "upstream", "git@github.com:up-owner/project.git");
-    gh.mockImplementation(async (_command, args) => args[1] === "list"
+    await forkRemotes();
+    prGh = async (_command, args) => args[1] === "list"
       ? args[args.indexOf("--head") + 1] === branchBase
         ? { code: 0, stdout: JSON.stringify([{ url: "https://github.com/up-owner/project/pull/42", headRefName: branchBase, headRepositoryOwner: { login: "fork-owner" } }]), stderr: "" }
         : { code: 1, stdout: "", stderr: "owner:branch syntax not supported" }
-      : { code: 0, stdout: "https://github.com/up-owner/project/pull/42\n", stderr: "" });
+      : { code: 0, stdout: "https://github.com/up-owner/project/pull/42\n", stderr: "" };
     await writeFile(join(local, "project.pbxproj"), "same edit\n");
     const sha = await git(local, "rev-parse", "HEAD");
     await rescueDirtyTrunk(local, { trunk: "upstream/main", branch: "main", sha }, deps());
     await writeFile(join(local, "project.pbxproj"), "same edit\n");
     const second = await rescueDirtyTrunk(local, { trunk: "upstream/main", branch: "main", sha }, deps());
     expect(second).toMatchObject({ outcome: "duplicate", prUrl: "https://github.com/up-owner/project/pull/42" });
-    const listArgs = gh.mock.calls[1]![1];
+    const listArgs = prCalls()[1]![1];
     expect(listArgs).toContain("up-owner/project");
     expect(listArgs[listArgs.indexOf("--head") + 1]).toBe(branchBase);
   });
@@ -326,7 +399,7 @@ describe("rescuing a dirty trunk checkout", () => {
     expect(await readFile(join(local, "project.pbxproj"), "utf8")).toBe("generated v1\n");
     expect(await git(local, "status", "--porcelain")).toBe("");
     expect(await git(local, "for-each-ref", "--format=%(refname:short)", "refs/heads/wip/trunk-*")).toBe(branchBase);
-    expect(gh.mock.calls.map((call) => call[1].slice(0, 2))).toEqual([["pr", "create"], ["pr", "list"]]);
+    expect(prCalls().map((call) => call[1].slice(0, 2))).toEqual([["pr", "create"], ["pr", "list"]]);
   });
 
   it("does not trust a stale remote-tracking ref after the branch is deleted remotely", async () => {
@@ -338,15 +411,15 @@ describe("rescuing a dirty trunk checkout", () => {
     await writeFile(join(local, "project.pbxproj"), "same edit\n");
     const second = (await prepareRepository(local, false, deps())).rescue!;
     expect(second.outcome === "rescued" && second.wipBranch).toBe(`${branchBase}-2`);
-    expect(gh.mock.calls.map((call) => call[1].slice(0, 2))).toEqual([["pr", "create"], ["pr", "create"]]);
+    expect(prCalls().map((call) => call[1].slice(0, 2))).toEqual([["pr", "create"], ["pr", "create"]]);
   });
 
   it("retries a draft PR when an earlier push succeeded but PR creation failed", async () => {
-    gh.mockImplementation(async (_command, args) => args[1] === "list"
+    prGh = async (_command, args) => args[1] === "list"
       ? { code: 0, stdout: "[]", stderr: "" }
-      : gh.mock.calls.length === 1
+      : prCalls().length === 1
         ? { code: 1, stdout: "", stderr: "GitHub unavailable" }
-        : { code: 0, stdout: "https://github.com/o/r/pull/43\n", stderr: "" });
+        : { code: 0, stdout: "https://github.com/o/r/pull/43\n", stderr: "" };
     await writeFile(join(local, "project.pbxproj"), "same edit\n");
     const first = (await prepareRepository(local, false, deps())).rescue!;
     expect(first.outcome === "rescued" && first.pushed).toBe(true);
@@ -354,31 +427,37 @@ describe("rescuing a dirty trunk checkout", () => {
     await writeFile(join(local, "project.pbxproj"), "same edit\n");
     const second = (await prepareRepository(local, false, deps())).rescue!;
     expect(second.outcome === "rescued" && second.wipBranch).toBe(`${branchBase}-2`);
-    expect(gh.mock.calls.map((call) => call[1].slice(0, 2))).toEqual([["pr", "create"], ["pr", "list"], ["pr", "create"]]);
+    expect(prCalls().map((call) => call[1].slice(0, 2))).toEqual([["pr", "create"], ["pr", "list"], ["pr", "create"]]);
   });
 
   it("does not dedupe against a closed PR even when its remote branch remains", async () => {
-    gh.mockImplementation(async (_command, args) => args[1] === "list"
+    prGh = async (_command, args) => args[1] === "list"
       ? { code: 0, stdout: "[]", stderr: "" }
-      : { code: 0, stdout: "https://github.com/o/r/pull/42\n", stderr: "" });
+      : { code: 0, stdout: "https://github.com/o/r/pull/42\n", stderr: "" };
     await writeFile(join(local, "project.pbxproj"), "same edit\n");
     await prepareRepository(local, false, deps());
     await writeFile(join(local, "project.pbxproj"), "same edit\n");
     const second = (await prepareRepository(local, false, deps())).rescue!;
     expect(second.outcome === "rescued" && second.wipBranch).toBe(`${branchBase}-2`);
-    expect(gh.mock.calls[1]![1]).toContain("open");
+    expect(prCalls()[1]![1]).toContain("open");
   });
+
+  /** A private repository whose push fails: the push URL names GitHub but leads nowhere. */
+  async function unreachablePush() {
+    await git(local, "remote", "set-url", "--push", "origin", await githubUrl(local, "o/r-push", join(dir, "missing.git")));
+  }
 
   it("does not dedupe against a rescue that was never pushed", async () => {
     await writeFile(join(local, "project.pbxproj"), "same edit\n");
-    await git(local, "remote", "set-url", "--push", "origin", join(dir, "missing.git"));
+    await unreachablePush();
     const first = (await prepareRepository(local, false, deps())).rescue!;
     expect(first.outcome === "rescued" && first.pushed).toBe(false);
-    await git(local, "remote", "set-url", "--push", "origin", remote);
+    expect(first.outcome === "rescued" && first.keptLocal).toBeUndefined();
+    await git(local, "config", "--unset", "remote.origin.pushurl");
     await writeFile(join(local, "project.pbxproj"), "same edit\n");
     const second = (await prepareRepository(local, false, deps())).rescue!;
     expect(second.outcome === "rescued" && second.wipBranch).toBe(`${branchBase}-2`);
-    expect(gh).toHaveBeenCalledTimes(1);
+    expect(prCalls().map((call) => call[1].slice(0, 2))).toEqual([["pr", "create"]]);
   });
 
   it("preserves a distinct whitespace edit instead of using Git's whitespace-insensitive patch-id", async () => {
@@ -390,16 +469,301 @@ describe("rescuing a dirty trunk checkout", () => {
     expect(await git(remote, "show", `refs/heads/${branchBase}-2:project.pbxproj`)).toBe("setting  = one space");
   });
 
+  it("dedupes the same edit after trunk changed that file elsewhere, and still rescues a different one", async () => {
+    const lines = Array.from({ length: 12 }, (_, i) => `line ${i + 1}`);
+    const notes = (edit: (l: string[]) => void) => { const copy = [...lines]; edit(copy); return `${copy.join("\n")}\n`; };
+    await writeFile(join(source, "notes.md"), notes(() => {}));
+    await git(source, "add", "notes.md"); await git(source, "commit", "-m", "notes"); await git(source, "push", "origin", "main");
+    await git(local, "pull", "--quiet", "--ff-only");
+
+    await writeFile(join(local, "notes.md"), notes((l) => { l[1] = "line 2, edited"; }));
+    expect((await prepareRepository(local, false, deps())).rescue?.outcome).toBe("rescued");
+    // Trunk then edits the same file far from the rescued hunk, so every blob id the old rescue
+    // recorded is now stale: the exact-diff comparison this replaced missed exactly this.
+    lines[10] = "line 11, from trunk";
+    await writeFile(join(source, "notes.md"), notes(() => {}));
+    await git(source, "commit", "-am", "trunk edits notes"); await git(source, "push", "origin", "main");
+    expect((await prepareRepository(local, false, deps())).advanced).toBe(true);
+
+    await writeFile(join(local, "notes.md"), notes((l) => { l[1] = "line 2, edited"; }));
+    const repeated = await prepareRepository(local, false, deps());
+    expect(repeated.rescue).toMatchObject({ outcome: "duplicate", existingBranch: branchBase, prUrl: "https://github.com/o/r/pull/42" });
+    expect(await readFile(join(local, "notes.md"), "utf8")).toBe(notes(() => {}));
+
+    await writeFile(join(local, "notes.md"), notes((l) => { l[1] = "line 2, edited differently"; }));
+    const distinct = (await prepareRepository(local, false, deps())).rescue!;
+    expect(distinct.outcome === "rescued" && distinct.wipBranch).toBe(`${branchBase}-2`);
+    expect(prCalls().map((call) => call[1].slice(0, 2))).toEqual([["pr", "create"], ["pr", "list"], ["pr", "create"]]);
+  });
+
+  describe("IDE churn", () => {
+    const PROJECT = "App.xcodeproj/project.pbxproj";
+    const SCHEME = "App.xcodeproj/xcshareddata/xcschemes/App.xcscheme";
+    const USER_STATE = "App.xcodeproj/project.xcworkspace/xcuserdata/c.xcuserdatad/UserInterfaceState.xcuserstate";
+    const pbxproj = () => readFile(join(FIXTURES, "project.pbxproj"), "utf8");
+    // What Xcode does to Evo's project on every open: re-sorts one build-settings dictionary.
+    const resorted = async () => (await pbxproj()).replaceAll(
+      "\t\t\t\tEVO_TELEMETRY_DISTRIBUTION = NO;\n\t\t\t\tEVO_DISPLAY_NAME = Evo;\n",
+      "\t\t\t\tEVO_DISPLAY_NAME = Evo;\n\t\t\t\tEVO_TELEMETRY_DISTRIBUTION = NO;\n",
+    );
+
+    beforeEach(async () => {
+      await mkdir(join(source, dirname(SCHEME)), { recursive: true });
+      await mkdir(join(source, dirname(USER_STATE)), { recursive: true });
+      await writeFile(join(source, PROJECT), await pbxproj());
+      await writeFile(join(source, SCHEME), await readFile(join(FIXTURES, "compact.xcscheme"), "utf8"));
+      await writeFile(join(source, USER_STATE), "window layout v1\n");
+      await git(source, "add", "."); await git(source, "commit", "-m", "xcode project"); await git(source, "push", "origin", "main");
+      await git(local, "pull", "--quiet", "--ff-only");
+    });
+
+    it("resets edits that are only churn, publishes nothing, fast-forwards and says so in one line", async () => {
+      await writeFile(join(local, PROJECT), await resorted());
+      await writeFile(join(local, SCHEME), await readFile(join(FIXTURES, "xcode.xcscheme"), "utf8"));
+      await writeFile(join(local, USER_STATE), "window layout v2\n");
+      await writeFile(join(local, "secret.env"), "TOKEN=never-commit\n");
+      const latest = await advance(1);
+
+      const result = await prepareRepository(local, false, deps());
+      const rescue = result.rescue!;
+      expect(rescue.outcome).toBe("churn");
+      if (rescue.outcome !== "churn") return;
+      expect(rescue.churn).toEqual([
+        { path: PROJECT, kind: "format-only" },
+        { path: USER_STATE, kind: "user-state" },
+        { path: SCHEME, kind: "format-only" },
+      ]);
+      expect(gh).not.toHaveBeenCalled();
+      expect(await git(local, "for-each-ref", "refs/heads/wip")).toBe("");
+      expect(await git(remote, "for-each-ref", "refs/heads/wip")).toBe("");
+      expect(result.advanced).toBe(true);
+      expect(await git(local, "rev-parse", "HEAD")).toBe(latest);
+      expect(await readFile(join(local, PROJECT), "utf8")).toBe(await pbxproj());
+      expect(await git(local, "status", "--porcelain", "--untracked-files=no")).toBe("");
+      // Untracked files are still never touched.
+      expect(await readFile(join(local, "secret.env"), "utf8")).toBe("TOKEN=never-commit\n");
+      // The reset edits stay reachable by the commit the report names.
+      expect(await git(local, "show", `${rescue.commit}:${USER_STATE}`)).toBe("window layout v2");
+
+      const lines = formatRescue(rescue, "origin/main");
+      expect(lines[0]).toBe(`Reset 3 tracked file(s) of IDE churn on trunk instead of opening a rescue PR (2 formatting only, 1 IDE user state: ${PROJECT}, ${USER_STATE}, ${SCHEME}); recoverable with git checkout ${rescue.commit.slice(0, 12)} -- <path> until Git prunes it.`);
+    });
+
+    it("still rescues a real pbxproj edit, with the churn beside it, as before", async () => {
+      await writeFile(join(local, PROJECT), (await resorted()).replace("EVO_APP_ENVIRONMENT = development;", "EVO_APP_ENVIRONMENT = staging;"));
+      await writeFile(join(local, USER_STATE), "window layout v2\n");
+      const rescue = (await prepareRepository(local, false, deps())).rescue!;
+      expect(rescue.outcome).toBe("rescued");
+      expect(rescue.dirt.tracked.sort()).toEqual([PROJECT, USER_STATE]);
+      expect(await git(remote, "show", `refs/heads/${branchBase}:${PROJECT}`)).toContain("EVO_APP_ENVIRONMENT = staging;");
+      expect(await git(remote, "show", `refs/heads/${branchBase}:${USER_STATE}`)).toBe("window layout v2");
+      expect(prCalls()[0]![1].slice(0, 3)).toEqual(["pr", "create", "--draft"]);
+    });
+
+    it("still rescues a reordered build-phase array, which is behaviour rather than formatting", async () => {
+      await writeFile(join(local, PROJECT), (await pbxproj()).replace(
+        "\t\t\t\tB2000021 /* Sources */,\n\t\t\t\tB2000022 /* Run Script */,\n",
+        "\t\t\t\tB2000022 /* Run Script */,\n\t\t\t\tB2000021 /* Sources */,\n",
+      ));
+      expect((await prepareRepository(local, false, deps())).rescue?.outcome).toBe("rescued");
+    });
+
+    it("refuses a file removed from the index but kept on disk, rather than resetting over it", async () => {
+      // Untracking per-user state is the right thing to do, and the newer local file is the point.
+      await git(local, "rm", "-r", "--cached", "--quiet", "App.xcodeproj/project.xcworkspace/xcuserdata");
+      await writeFile(join(local, USER_STATE), "breakpoints I set today\n");
+      const first = await prepareRepository(local, false, deps());
+      expect(first.rescue).toMatchObject({ outcome: "skipped" });
+      expect(first.rescue?.outcome === "skipped" && first.rescue.reason).toContain(`${USER_STATE} removed from the index but still on disk`);
+      expect(await readFile(join(local, USER_STATE), "utf8")).toBe("breakpoints I set today\n");
+
+      // Trunk stops tracking it too: the removal is now "on trunk", and still nothing is reset.
+      await git(source, "rm", "-r", "--cached", "--quiet", "App.xcodeproj/project.xcworkspace/xcuserdata");
+      await git(source, "commit", "-m", "untrack user state"); await git(source, "push", "origin", "main");
+      const second = await prepareRepository(local, false, deps());
+      expect(second.rescue?.outcome).toBe("skipped");
+      expect(await readFile(join(local, USER_STATE), "utf8")).toBe("breakpoints I set today\n");
+      expect(gh).not.toHaveBeenCalled();
+      expect(await git(local, "for-each-ref", "refs/heads/wip")).toBe("");
+    });
+
+    it("does not call an edit 'on trunk' when local trunk commits stop the fast-forward", async () => {
+      await writeFile(join(local, "CLAUDE.md"), "local trunk commit\n");
+      await git(local, "commit", "-qam", "unpushed");
+      await writeFile(join(source, "project.pbxproj"), "generated v2\n");
+      await git(source, "commit", "-am", "trunk edit"); await git(source, "push", "origin", "main");
+      await writeFile(join(local, "project.pbxproj"), "generated v2\n");
+      const result = await prepareRepository(local, false, deps());
+      expect(result.rescue?.outcome).toBe("rescued");
+      expect(result.advanced).toBe(false);
+      expect(await git(remote, "show", `refs/heads/${branchBase}:project.pbxproj`)).toBe("generated v2");
+    });
+
+    it("resets an edit trunk has since landed, and the fast-forward brings it back", async () => {
+      await writeFile(join(source, PROJECT), await resorted());
+      await git(source, "commit", "-am", "commit Xcode's ordering"); await git(source, "push", "origin", "main");
+      await writeFile(join(local, "project.pbxproj"), "generated v2\n");
+      await writeFile(join(source, "project.pbxproj"), "generated v2\n");
+      await git(source, "commit", "-am", "same edit on trunk"); await git(source, "push", "origin", "main");
+      await writeFile(join(local, PROJECT), await resorted());
+
+      const result = await prepareRepository(local, false, deps());
+      expect(result.rescue).toMatchObject({ outcome: "churn", churn: [{ path: PROJECT, kind: "on-trunk" }, { path: "project.pbxproj", kind: "on-trunk" }] });
+      expect(result.advanced).toBe(true);
+      expect(await readFile(join(local, "project.pbxproj"), "utf8")).toBe("generated v2\n");
+      expect(await readFile(join(local, PROJECT), "utf8")).toBe(await resorted());
+      expect(gh).not.toHaveBeenCalled();
+    });
+  });
+
   it("keeps the edits on a local branch when the push fails, still resetting and fast-forwarding", async () => {
     await writeFile(join(local, "project.pbxproj"), "mine\n");
     const latest = await advance(1);
-    await git(local, "remote", "set-url", "--push", "origin", join(dir, "missing.git"));
+    await unreachablePush();
     const result = await prepareRepository(local, false, deps());
     const rescue = result.rescue!;
     expect(rescue.outcome === "rescued" && rescue.pushed).toBe(false);
-    expect(gh).not.toHaveBeenCalled();
+    expect(prCalls()).toEqual([]);
     expect(await git(local, "show", `refs/heads/${branchBase}:project.pbxproj`)).toBe("mine");
     expect(await git(local, "rev-parse", "HEAD")).toBe(latest);
+  });
+
+  describe("on a repository that is not known to be private", () => {
+    /** What every local-only rescue must leave: the edits on a local branch, nothing on the remote, no PR, trunk advanced. */
+    async function expectLocalOnly(result: Awaited<ReturnType<typeof prepareRepository>>, latest: string, keptLocal: string) {
+      expect(result.rescue).toMatchObject({ outcome: "rescued", wipBranch: branchBase, pushed: false, keptLocal });
+      expect(await git(local, "show", `refs/heads/${branchBase}:project.pbxproj`)).toBe("mine");
+      expect(await git(remote, "for-each-ref", "refs/heads/wip")).toBe("");
+      expect(await git(local, "for-each-ref", "refs/remotes/origin/wip")).toBe("");
+      expect(prCalls()).toEqual([]);
+      expect(result.advanced).toBe(true);
+      expect(await git(local, "rev-parse", "HEAD")).toBe(latest);
+      expect(await readFile(join(local, "project.pbxproj"), "utf8")).toBe("generated v1\n");
+    }
+
+    it("keeps a public repository's rescue on a local branch: never pushed, no PR, trunk still reset", async () => {
+      visibility = answer("PUBLIC");
+      await writeFile(join(local, "project.pbxproj"), "mine\n");
+      const latest = await advance(1);
+      const result = await prepareRepository(local, false, deps());
+      await expectLocalOnly(result, latest, "o/r is public");
+      expect(visibilityCalls()).toHaveLength(1);
+
+      const lines = formatRescue(result.rescue!, "origin/main");
+      expect(lines).toEqual([
+        `Moved 1 uncommitted tracked file(s) from dirty trunk to local branch ${branchBase}; trunk reset to its last commit.`,
+        "  Not pushed, and no PR opened: o/r is public. The edits exist only in this clone.",
+        "    project.pbxproj | 2 +-",
+        "    1 file changed, 1 insertion(+), 1 deletion(-)",
+        `  Recover them with git switch ${branchBase}, or git cherry-pick ${branchBase} onto another branch.`,
+        `  To publish deliberately: git push origin ${branchBase}, then gh pr create --draft --head ${branchBase}.`,
+      ]);
+    });
+
+    it("treats a visibility read that fails as public", async () => {
+      visibility = { code: 1, stdout: "", stderr: "gh: To get started with GitHub CLI, please run:  gh auth login\nmore" };
+      await writeFile(join(local, "project.pbxproj"), "mine\n");
+      const latest = await advance(1);
+      await expectLocalOnly(await prepareRepository(local, false, deps()), latest,
+        "the visibility of o/r could not be read (gh: To get started with GitHub CLI, please run:  gh auth login)");
+    });
+
+    it("treats an unparseable answer, an internal repository and a runner that throws as not private", async () => {
+      await writeFile(join(local, "project.pbxproj"), "mine\n");
+      visibility = { code: 0, stdout: "https://github.com/o/r/pull/42\n", stderr: "" };
+      expect((await prepareRepository(local, false, deps())).rescue).toMatchObject({ pushed: false, keptLocal: "the visibility of o/r could not be read (gh returned no visibility)" });
+      await writeFile(join(local, "project.pbxproj"), "mine, again\n");
+      visibility = answer("INTERNAL");
+      expect((await prepareRepository(local, false, deps())).rescue).toMatchObject({ pushed: false, keptLocal: "o/r is internal" });
+      await writeFile(join(local, "project.pbxproj"), "mine, a third time\n");
+      gh.mockImplementation(async (_command, args) => { if (args[0] === "repo") throw new Error("spawn gh ENOENT"); return prGh(_command, args, ""); });
+      expect((await prepareRepository(local, false, deps())).rescue).toMatchObject({ pushed: false, keptLocal: "the visibility of o/r could not be read (Error: spawn gh ENOENT)" });
+      expect(prCalls()).toEqual([]);
+      expect(await git(remote, "for-each-ref", "refs/heads/wip")).toBe("");
+    });
+
+    it("treats a remote that is not on GitHub as unknown, without asking gh", async () => {
+      await git(local, "remote", "set-url", "origin", "https://user:s3cret@git.example.com/o/r.git");
+      await git(local, "config", `url.${remote}.insteadOf`, "https://user:s3cret@git.example.com/o/r.git");
+      await writeFile(join(local, "project.pbxproj"), "mine\n");
+      const latest = await advance(1);
+      await expectLocalOnly(await prepareRepository(local, false, deps()), latest,
+        "the repository's visibility cannot be read: https://git.example.com/o/r.git is not a GitHub repository");
+      expect(visibilityCalls()).toEqual([]);
+    });
+
+    it("reports a repeat of a local rescue as a duplicate of the local branch, creating no second branch", async () => {
+      visibility = answer("PUBLIC");
+      await writeFile(join(local, "project.pbxproj"), "mine\n");
+      await prepareRepository(local, false, deps());
+      await writeFile(join(local, "project.pbxproj"), "mine\n");
+      const repeated = await prepareRepository(local, false, deps());
+      expect(repeated.rescue).toMatchObject({ outcome: "duplicate", existingBranch: branchBase });
+      expect(repeated.rescue?.outcome === "duplicate" && repeated.rescue.prUrl).toBeUndefined();
+      expect(await git(local, "for-each-ref", "--format=%(refname:short)", "refs/heads/wip/trunk-*")).toBe(branchBase);
+      expect(await readFile(join(local, "project.pbxproj"), "utf8")).toBe("generated v1\n");
+      expect(formatRescue(repeated.rescue!, "origin/main")[0]).toBe(`Same tracked edits are already on local branch ${branchBase}; trunk reset without another branch.`);
+
+      // A different edit is still a new rescue.
+      await writeFile(join(local, "project.pbxproj"), "mine, but different\n");
+      expect((await prepareRepository(local, false, deps())).rescue).toMatchObject({ outcome: "rescued", wipBranch: `${branchBase}-2`, pushed: false });
+      expect(prCalls()).toEqual([]);
+    });
+
+    it("lists the never-pushed branch in doctor, from any checkout, and not a pushed one", async () => {
+      // A private rescue first: pushed, so not listed.
+      await writeFile(join(local, "project.pbxproj"), "published\n");
+      await prepareRepository(local, false, deps());
+      visibility = answer("PUBLIC");
+      await writeFile(join(local, "project.pbxproj"), "mine\n");
+      await writeFile(join(local, "doomed.txt"), "changed too\n");
+      await prepareRepository(local, false, deps());
+
+      const report = (await inspectTrunkCheckout(local, { remote: "origin", branch: "main" }, null))!;
+      expect(report.localRescues).toEqual([{ branch: `${branchBase}-2`, date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), files: 2 }]);
+      const message = `1 trunk rescue branch(es) have no remote-tracking ref, so they are likely only in this clone and no pull request will surface them: ${branchBase}-2 (2 file(s), ${report.localRescues[0]!.date}). Inspect with git show --stat <branch>; recover with git switch <branch> or git cherry-pick <branch>; publish deliberately with git push origin <branch>; once handled, delete with git branch -D <branch>.`;
+      expect(trunkCheckoutFindings(report, NOW)).toEqual([{ severity: "warning", message }]);
+
+      // Branches belong to the repository: a task branch still reports them, and nothing else.
+      await git(local, "checkout", "-q", "-b", "task");
+      const onTask = (await inspectTrunkCheckout(local, { remote: "origin", branch: "main" }, null))!;
+      expect(trunkCheckoutFindings(onTask, NOW)).toEqual([{ severity: "warning", message }]);
+    });
+  });
+
+  it("names the trunk branch and a short host label in what it publishes, never the checkout path or full hostname", async () => {
+    await writeFile(join(local, "project.pbxproj"), "mine\n");
+    const result = await rescueDirtyTrunk(local, { trunk: "origin/main", branch: "main", sha: await git(local, "rev-parse", "HEAD") },
+      { ...deps(), hostname: "Chris-Mini.tail1234.ts.net" });
+    expect(result).toMatchObject({ outcome: "rescued", wipBranch: "wip/trunk-2026-10-08-chris-mini", pushed: true });
+    const message = await git(remote, "log", "-1", "--format=%B", "refs/heads/wip/trunk-2026-10-08-chris-mini");
+    expect(message).toBe([
+      "WIP: uncommitted changes rescued from dirty main",
+      "",
+      "Auto-moved by morpheus context brief on 2026-10-08 from a main",
+      "checkout on chris-mini. The edits blocked fast-forwarding origin/main;",
+      "the checkout was reset to trunk only after this commit held them.",
+    ].join("\n"));
+    const args = prCalls()[0]![1];
+    const body = args[args.indexOf("--body") + 1]!;
+    expect(body.split("\n")[0]).toBe("Uncommitted tracked edits were found on a `main` checkout on host `chris-mini` by `morpheus context brief` on 2026-10-08. A dirty trunk cannot fast-forward, so they were moved here and the checkout was reset to trunk. Nothing was discarded.");
+    for (const text of [message, body, args[args.indexOf("--title") + 1]!]) {
+      for (const secret of [dir, await realpath(dir), "tail1234", "ts.net", "Chris-Mini"]) expect(text).not.toContain(secret);
+    }
+  });
+
+  it("caches a visibility answer in the primary checkout's ignored local/ and reuses it", async () => {
+    const cachePath = join(local, "local/sessions/repo-visibility.json");
+    const withCache = (): RescueDeps => ({ ...deps(), visibilityCache: undefined });
+    await writeFile(join(local, "project.pbxproj"), "first\n");
+    await prepareRepository(local, false, withCache());
+    await writeFile(join(local, "project.pbxproj"), "second\n");
+    await prepareRepository(local, false, withCache());
+    expect(visibilityCalls()).toHaveLength(1);
+    expect(JSON.parse(await readFile(cachePath, "utf8"))).toEqual({ version: 1, repos: { "o/r": { visibility: "PRIVATE", checkedAt: NOW.toISOString() } } });
+    expect(prCalls().filter((call) => call[1][1] === "create")).toHaveLength(2);
+    // The cache file is ignored, so the checkout is clean.
+    expect(await git(local, "status", "--porcelain")).toBe("");
   });
 
   it("does nothing mid-merge, and the stuck checkout is reported, not fast-forwarded", async () => {
@@ -491,8 +855,16 @@ describe("rescuing a dirty trunk checkout", () => {
 describe("trunk checkout findings", () => {
   const base: TrunkCheckoutReport = {
     branch: "main", trunk: "origin/main", onTrunk: true, dirt: { tracked: [], untracked: [] }, orphans: [],
-    lag: { behind: 0, oldest: null }, measuredAgainst: "remote-tip", cachedAt: null, remoteTipUnfetched: false,
+    lag: { behind: 0, oldest: null }, measuredAgainst: "remote-tip", cachedAt: null, remoteTipUnfetched: false, localRescues: [],
   };
+  it("names ten local rescue branches, then counts the rest", () => {
+    const rescues = Array.from({ length: 12 }, (_, i) => ({ branch: `wip/trunk-2026-10-${String(i + 1).padStart(2, "0")}-box`, date: null, files: i === 0 ? null : i }));
+    const { message } = localRescueFinding(rescues);
+    expect(message).toMatch(/^12 trunk rescue branch\(es\) have no remote-tracking ref, so they are likely only in this clone/);
+    expect(message).toContain("wip/trunk-2026-10-01-box (files unknown), wip/trunk-2026-10-02-box (1 file(s)),");
+    expect(message).toContain("wip/trunk-2026-10-10-box (9 file(s)) and 2 more.");
+    expect(message).not.toContain("2026-10-11");
+  });
   it("says nothing about a clean, current trunk checkout or a task branch", () => {
     expect(trunkCheckoutFindings(base, NOW)).toEqual([]);
     expect(trunkCheckoutFindings({ ...base, onTrunk: false, branch: "task", dirt: { tracked: ["a"], untracked: [] }, lag: { behind: 500, oldest: "2026-01-01T00:00:00Z" } }, NOW)).toEqual([]);

@@ -1,5 +1,6 @@
 import { configSchema, hash, type CdConfig, type CdState, type ExternalObservation, type SourceRevision, type TestEvidence, type UploadEvidence } from "../../src/cd/schema.js";
 import { createIntent, newState, planAttempt, recordTests } from "../../src/cd/state.js";
+import { addPhysicalEvidence } from "./physical-device-fixtures.js";
 export const now = "2026-10-18T18:00:00.000Z";
 export const config = () => configSchema.parse({ schemaVersion: 1, repository: "example/app", mode: "active", inputs: ["app"], channels: { staging: { appId: "123", bundleId: "example.staging", version: "1.0", internalGroupId: "staging", environment: "signing", schedule: { kind: "six-hour" }, validationGroupId: "historical" }, production: { appId: "456", bundleId: "example.production", version: "1.0", internalGroupId: "production", environment: "signing", schedule: { kind: "daily", hourUtc: 18 }, minimumAgeHours: 24, validationGroupId: "historical" } }, apple: { issuerIdEnv: "ISSUER", keyIdEnv: "KEY", privateKeyPathEnv: "P8" } });
 export const source = (digit = "a", order = 0, entered = "2026-10-16T18:00:00.000Z", input = digit): SourceRevision => ({ sha: digit.repeat(40), inputDigest: hash(input), order, mainEnteredAt: entered, evidence: { kind: "merged-pr", ref: `https://github.com/example/app/pull/${order + 1}` } });
@@ -8,6 +9,7 @@ export function prepared(channel: "staging" | "production" = "staging", cfg: CdC
   const intent = createIntent(state, cfg, channel, state.sources[0]!, now, now), attempt = planAttempt(state, cfg, intent.id, "c".repeat(40), "7", now);
   const identity = { schemaVersion: 1 as const, intentId: intent.id, attemptId: attempt.id, dispatchEffectId: attempt.dispatchEffectId, sourceSha: attempt.sourceSha, controlSha: attempt.controlSha, runId: "100", runAttempt: "1" };
   const tests: TestEvidence = { ...identity, scope: "full", appInputDigest: attempt.appInputDigest, configurationDigest: attempt.configurationDigest, inventory: { ids: ["AppTests/testFull"], sha256: hash(["AppTests/testFull"]) }, results: [{ id: "AppTests/testFull", status: "passed" }], artifacts: [{ name: "results.json", sha256: hash("results") }], validator: { path: "scripts/verify.mjs", sha256: hash("validator") } };
+  if (cfg.tests.physicalDevice) addPhysicalEvidence(tests, cfg.tests.physicalDevice);
   recordTests(state, cfg, tests);
   return { state, tests, upload: { ...identity, appId: attempt.appId, version: attempt.version, buildNumber: attempt.buildNumber, ipaSha256: hash("ipa") }, intentId: intent.id, attemptId: attempt.id };
 }

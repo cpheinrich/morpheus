@@ -1,0 +1,56 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B2000001 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002 /* App.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		B2000002 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
+		B2000003 /* Evo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Evo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXNativeTarget section */
+		B2000020 /* Evo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B2000040 /* Build configuration list for PBXNativeTarget "Evo" */;
+			buildPhases = (
+				B2000021 /* Sources */,
+				B2000022 /* Run Script */,
+			);
+			name = Evo;
+			productReference = B2000003 /* Evo.app */;
+		};
+/* End PBXNativeTarget section */
+
+/* Begin XCBuildConfiguration section */
+		B2000010 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEVELOPMENT_TEAM = ABCDE12345;
+				EVO_APP_ENVIRONMENT = development;
+				EVO_TELEMETRY_DISTRIBUTION = NO;
+				EVO_DISPLAY_NAME = Evo;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.example.evo";
+			};
+			name = Debug;
+		};
+		B2000011 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				EVO_APP_ENVIRONMENT = production;
+				EVO_TELEMETRY_DISTRIBUTION = NO;
+				EVO_DISPLAY_NAME = Evo;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.example.evo";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+	};
+	rootObject = B2000030 /* Project object */;
+}
