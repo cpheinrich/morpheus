@@ -367,7 +367,7 @@ describe("waitCi", () => {
   });
 
   it("--required-only ignores a failing optional check", async () => {
-    const mixed = ok(rollup(SHA_A, [run("node / check", "COMPLETED", "SUCCESS", { required: true }), run("codex-claude", "COMPLETED", "FAILURE", { job: "3" })]));
+    const mixed = ok(rollup(SHA_A, [run("node / check", "COMPLETED", "SUCCESS", { required: true }), run("factory", "COMPLETED", "FAILURE", { job: "3" })]));
     expect((await waitCi(fakeGh([mixed]).deps, opts)).exitCode).toBe(1);
     expect(await waitCi(fakeGh([mixed]).deps, { ...opts, requiredOnly: true })).toEqual({
       exitCode: 0,
@@ -376,7 +376,7 @@ describe("waitCi", () => {
   });
 
   it("--required-only with no required checks says so instead of waiting forever", async () => {
-    const optional = ok(rollup(SHA_A, [run("codex-claude", "COMPLETED", "SUCCESS")]));
+    const optional = ok(rollup(SHA_A, [run("factory", "COMPLETED", "SUCCESS")]));
     const result = await waitCi(fakeGh([optional]).deps, { ...opts, requiredOnly: true });
     expect(result.exitCode).toBe(2);
     expect(result.output).toMatch(/^\? No required checks on cpheinrich\/morpheus#354 @ 59cb7d5 after 3m\d\ds \(1 non-required ignored by --required-only\)$/);

@@ -95,7 +95,7 @@ describe("reading runs", () => {
       "agent-review / delivery=skipped",
       "artifact-abi=pass",
       "qa-browser=pass",
-      "codex-claude=pass",
+      "factory=pass",
       "node / check=pass",
     ]);
     expect(run.jobs![1]!.jobId).toBe("123056649367");

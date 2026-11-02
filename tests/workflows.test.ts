@@ -983,7 +983,7 @@ describe("ci.yml", () => {
         expect(job.if).toBe("${{ !cancelled() }}");
         continue;
       }
-      if (["codex-claude", "qa-browser", "artifact-abi"].includes(name)) {
+      if (["factory", "qa-browser", "artifact-abi"].includes(name)) {
         expect(job.if).toContain("needs.changes.result != 'success'");
         expect(job.if).toContain("!cancelled()");
         continue;

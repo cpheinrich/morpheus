@@ -1533,7 +1533,7 @@ authority isolation and consumer delivery remain explicit qualification gates.
 
 Interactive remote delegation ([design](docs/paperclip-interactive-bridge.md)) lets the Codex
 desktop conversation coordinate remote Claude and Codex workers through the optional
-`codex-claude` bridge (§18.0). One Paperclip issue is one pool conversation and each provider
+`factory` bridge (§18.0). One Paperclip issue is one pool conversation and each provider
 turn is one Paperclip process-adapter run; the Paperclip-spawned runner on the controller host
 claims the journaled turn, reserves the account, and holds the SSH session whose stdin is the
 remote guardian's lease. The desktop bridge only journals, reads the Paperclip run log through a
@@ -3209,7 +3209,7 @@ improvement?* Yes → kit. No → template.
 
 ### 18.0 Optional personal agent plugins
 
-`plugins/codex-claude/` is a deliberate exception to the kit's single-package distribution:
+`plugins/factory/` is a deliberate exception to the kit's single-package distribution:
 it is a personal Codex/Claude Code integration, not a dependency of company repositories. It owns its
 manifest, skill, hooks, runtime, lockfile, tests and installation documentation. Neither
 `morpheus init` nor the CLI installer activates it. Explicit per-device installation copies
@@ -3217,15 +3217,18 @@ the package into a personal marketplace; execution remains off until enabled. Pe
 settings and session records stay outside the repository.
 
 The bridge works in both directions. Whichever agent holds the conversation is the
-coordinator; it routes at safe checkpoints using its *own* subscription allowance, keeps
-explicit task/operation overrides, and starts the other agent subscription-authenticated on
-the same host and worktree. Automatic mode defaults to delegating below 50% remaining in the
-coordinator's least remaining reported allowance window; explicit saved thresholds are
-preserved. The coordinator consumes its own allowance while supervising. Codex reports its
-windows through the app server; Claude Code exposes them only to its status line, so a
-recorder status line (chaining any existing one) writes them for routing, and missing or
-stale data never triggers a handoff. Claude permission modes map onto Codex's sandbox
-without widening (only an explicit bypass reaches full access). Delegated workers are marked
+coordinator, on this host's native login; it routes at safe checkpoints, keeps explicit
+task/operation overrides, and starts workers on the same host and worktree. A worker is the
+other agent on its native login, or either agent behind a pooled-subscription gateway
+(sub2api), reached as an API with its own key. A gateway of the coordinator's own provider
+is a valid delegate because it is a separate subscription; the coordinator's own native
+login never is, because that would be circular. Automatic mode picks the gateway with the
+most headroom below its threshold (90% used by default, read from the gateway's admin API)
+and otherwise keeps the work with the coordinator; missing or stale usage never triggers a
+handoff. The coordinator consumes its own allowance while supervising. A worker never
+widens permissions: Claude permission modes map onto Codex's sandbox (only an explicit
+bypass reaches full access), a same-provider worker inherits the coordinator's own mode or
+sandbox, and saved worker sessions are kept per gateway so routes never resume each other. Delegated workers are marked
 so neither side's hooks or tools delegate back. Native Claude session ids
 provide persistence; a leased process guardian bounds live workers. Permission metadata
 must be verified before delegation, and unknown/restricted confinement fails closed in the
