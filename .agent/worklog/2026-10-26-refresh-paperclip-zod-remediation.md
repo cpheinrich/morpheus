@@ -39,3 +39,18 @@ tags: [engineering, security, devops]
   plugin's direct Zod dependency to 4.4.3 and still reports the high advisory.
 - Reusing Dependabot pull request #513 avoids a duplicate governed remediation vehicle. The
   moderate transitive UUID advisory is not hidden or represented as fixed here.
+
+## 2026-11-02 refresh
+
+- Merged current `origin/main` at `ae147cb6a1c296c239a4d25098c3211d1f6c6f25`; the focused
+  Paperclip manifest and lockfile continue to resolve direct Zod to 4.6.6.
+- `pnpm --dir scripts/paperclip-hq install --frozen-lockfile --ignore-workspace` completed with
+  the expected Node 26 versus declared Node 22 warning and the existing pnpm ignored-build notice
+  for `@firebase/util` and `protobufjs`.
+- `pnpm --dir scripts/paperclip-hq build` and
+  `node scripts/paperclip-hq/check-package.mjs` pass.
+- `pnpm --dir scripts/paperclip-hq audit --prod --audit-level high --ignore-workspace` passes:
+  the Zod high advisory is gone. Three moderate transitive advisories remain in UUID and the
+  Firestore/Google-auth `glob`/`minimatch` chain; they require upstream-major compatibility work
+  and are not represented as fixed here.
+- The PR remains draft with auto-merge disabled pending fresh exact-head review and CI.
