@@ -1,7 +1,7 @@
 import WebSocket from "ws";
 import net from "node:net";
 import { open } from "node:fs/promises";
-import { createZstdDecompress } from "node:zlib";
+import zlib from "node:zlib";
 import { createInterface } from "node:readline";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -122,8 +122,12 @@ export async function recordedSnapshot(thread) {
       throw new Error("Codex task metadata is unavailable; reopen this task and send a message. No worker was started.");
     }
   }
+  if (path.endsWith(".zst") && typeof zlib.createZstdDecompress !== "function") {
+    await file.close();
+    throw new Error("Compressed Codex task metadata requires Node 22.15 or newer; no worker was started.");
+  }
   const stream = file.createReadStream();
-  const input = path.endsWith(".zst") ? createZstdDecompress() : stream;
+  const input = path.endsWith(".zst") ? zlib.createZstdDecompress() : stream;
   if (input !== stream) {
     stream.on("error", (error) => input.destroy(error));
     stream.pipe(input);

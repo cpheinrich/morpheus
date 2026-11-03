@@ -419,7 +419,8 @@ read-only loopback viewer can display streamed text in the Codex browser panel. 
 own transcript retention still applies: a session deleted by Claude cannot be resumed.
 
 For an unloaded Codex desktop task, the bridge validates active turn metadata from its
-rollout, including `.jsonl.zst` compression (Node 22.15+). Completed, stale or restricted
+rollout, including `.jsonl.zst` compression on Node 22.15+. Earlier Node 22 releases can
+read plain rollouts and report a clear runtime requirement for compressed ones. Completed, stale or restricted
 turns still refuse. An unavailable rollout reports a task-metadata error; reopen that task
 and send a message rather than substituting another session. `bridge.mjs doctor` reads
 gateway quota independently, so healthy quota does not prove a task can delegate.

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
-import { zstdCompressSync } from "node:zlib";
+import zlib from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { recordedSnapshot } from "../src/codex.mjs";
@@ -61,12 +61,22 @@ test("desktop adapter accepts active full access metadata by contract", async (t
     },
   ]);
   await assert.rejects(recordedSnapshot(thread), /restricted/);
+  const decompress = zlib.createZstdDecompress;
+  try {
+    zlib.createZstdDecompress = undefined;
+    await write([start, context]);
+    assert.equal((await recordedSnapshot(thread)).model, "gpt-6-astra");
+    await writeFile(path + ".zst", "compressed bytes are not read without support");
+    await rm(path);
+    await assert.rejects(recordedSnapshot(thread), /requires Node 22.15/);
+  } finally {
+    zlib.createZstdDecompress = decompress;
+  }
   // The same validation must run after Codex compresses the rollout in place.
-  await writeFile(path + ".zst", zstdCompressSync(Buffer.from([start, context].map(JSON.stringify).join("\n"))));
-  await rm(path);
+  await writeFile(path + ".zst", zlib.zstdCompressSync(Buffer.from([start, context].map(JSON.stringify).join("\n"))));
   assert.equal((await recordedSnapshot(thread)).model, "gpt-6-astra");
   assert.equal((await recordedSnapshot({ ...thread, path: path + ".zst" })).reasoningEffort, "medium");
-  await writeFile(path + ".zst", zstdCompressSync(Buffer.from([start, context,
+  await writeFile(path + ".zst", zlib.zstdCompressSync(Buffer.from([start, context,
     { type: "event_msg", payload: { type: "task_complete", turn_id: "turn" } },
   ].map(JSON.stringify).join("\n"))));
   await assert.rejects(recordedSnapshot(thread), /No active/);
