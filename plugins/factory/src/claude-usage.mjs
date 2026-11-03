@@ -59,3 +59,30 @@ export async function transcriptModel(path, tailBytes = 262144) {
   }
   return null;
 }
+
+// Claude's SessionStart/UserPromptSubmit payload may omit permission_mode even though the
+// transcript records the live mode. Read only the recognized top-level field and fail closed
+// for unknown values; transcript prose can never manufacture authority.
+export async function transcriptPermissionMode(path, tailBytes = 262144) {
+  if (typeof path !== "string" || !path.endsWith(".jsonl")) return null;
+  const allowed = new Set(["default", "plan", "acceptEdits", "bypassPermissions", "dontAsk", "auto"]);
+  let file;
+  try {
+    file = await open(path, "r");
+    const { size } = await file.stat();
+    const start = Math.max(0, size - tailBytes);
+    const buffer = Buffer.alloc(size - start);
+    await file.read(buffer, 0, buffer.length, start);
+    for (const line of buffer.toString("utf8").split("\n").reverse()) {
+      if (!line.includes('"permissionMode"')) continue;
+      try {
+        const mode = JSON.parse(line).permissionMode;
+        if (allowed.has(mode)) return mode;
+      } catch {}
+    }
+  } catch {
+  } finally {
+    await file?.close();
+  }
+  return null;
+}

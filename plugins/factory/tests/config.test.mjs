@@ -23,9 +23,9 @@ test("off overrides automatic, project and manual choices", () => {
   c.projects[task.project] = "automatic";
   assert.equal(route(c, task, [], "claude").executor, "codex");
   c.mode = "automatic";
-  assert.equal(route(c, task, []).executor, "codex");
+  assert.equal(route(c, task, []).executor, "claude");
   assert.equal(route(c, task, [gw("claude", "claude", 5)]).executor, "claude");
-  assert.equal(route(c, task, [gw("claude", "claude", null)]).executor, "codex");
+  assert.equal(route(c, task, [gw("claude", "claude", null)]).executor, "claude");
   assert.equal(route(c, task, [], "codex").executor, "codex");
   assert.equal(route(c, task, [], "claude").executor, "claude");
   assert.equal(
@@ -33,7 +33,7 @@ test("off overrides automatic, project and manual choices", () => {
     "codex",
   );
   c.projects[task.project] = "manual";
-  assert.equal(route(c, task, [gw("claude", "claude", 5)]).executor, "codex");
+  assert.equal(route(c, task, [gw("claude", "claude", 5)]).executor, "claude");
   assert.equal(route(c, task, [], "claude").executor, "claude");
 });
 test("fresh settings default to 90 percent and preserve saved thresholds", async (t) => {
@@ -49,15 +49,15 @@ test("fresh settings default to 90 percent and preserve saved thresholds", async
   assert.equal(fresh.threshold, 90);
   assert.equal(fresh.mode, "off");
   fresh.mode = "automatic";
-  assert.equal(route(fresh, task, [gw("claude", "claude", 90)]).executor, "codex");
+  assert.equal(route(fresh, task, [gw("claude", "claude", 90)]).executor, "claude");
   assert.equal(route(fresh, task, [gw("claude", "claude", 89.99)]).executor, "claude");
   // The same threshold applies when Claude coordinates and Codex is the delegate.
-  assert.equal(route(fresh, task, [gw("codex", "codex", 90)], undefined, "claude").executor, "claude");
+  assert.equal(route(fresh, task, [gw("codex", "codex", 90)], undefined, "claude").executor, "codex");
   assert.equal(route(fresh, task, [gw("codex", "codex", 89.99)], undefined, "claude").executor, "codex");
   await configWrite({ ...fresh, threshold: 30 });
   const saved = await configRead();
   assert.equal(saved.threshold, 30);
-  assert.equal(route(saved, task, [gw("claude", "claude", 30)]).executor, "codex");
+  assert.equal(route(saved, task, [gw("claude", "claude", 30)]).executor, "claude");
   assert.equal(route(saved, task, [gw("claude", "claude", 29.99)]).executor, "claude");
 });
 test("model and effort are mapped independently, with provenance", () => {
@@ -413,10 +413,11 @@ test("placement picks the most-headroom gateway below the threshold", () => {
   const r = route(c, task, gateways);
   assert.equal(r.executor, "claude");
   assert.equal(r.gateway.name, "claude");
-  // At or above the threshold, or unknown, the gateway is skipped and the work stays here.
+  // At or above the threshold, or unknown, the gateway is skipped and the other native
+  // provider is used; calling the Factory tool has already made the delegation decision.
   const stay = route(c, task, [gw("claude", "claude", 90)]);
-  assert.deepEqual([stay.executor, stay.gateway, delegates(stay, "codex")], ["codex", undefined, false]);
-  assert.equal(route(c, task, [gw("claude", "claude", null)]).executor, "codex");
+  assert.deepEqual([stay.executor, stay.gateway, delegates(stay, "codex")], ["claude", undefined, true]);
+  assert.equal(route(c, task, [gw("claude", "claude", null)]).executor, "claude");
   // A gateway of the coordinator's own provider is a separate subscription, so it is a
   // delegate like any other: with more headroom it wins when Codex coordinates.
   const own = route(c, task, [gw("claude", "claude", 80), gw("codex", "codex", 10)]);
