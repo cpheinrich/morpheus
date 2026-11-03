@@ -4,6 +4,7 @@ import {
   createHqSearchIndex,
   loadHqSearchIndex,
   searchHq,
+  searchExcerpt,
   searchSnippet,
   type HqSearchDocument,
 } from "../src/hq-search/index.js";
@@ -70,6 +71,104 @@ describe("HQ search documents", () => {
     });
     expect(index.documentCount).toBe(3);
     expect(searchHq(index, "Darwin EIN number")[0]?.href).toBe("/hq/ops/legal");
+  });
+
+  it("keeps full-text matches while storing only a bounded build-time excerpt", async () => {
+    const deepTerm = "deepcoverageanchor";
+    const document = markdownSearchDocument({
+      id: "deep",
+      title: "Deep content",
+      href: "/hq/deep",
+      path: "docs/deep.md",
+      source: `${"opening context ".repeat(40)}${deepTerm} final evidence`,
+    });
+    const payload = createHqSearchPayload([document]);
+    const stored = Object.values(payload.index.storedFields)[0] as Record<string, unknown>;
+
+    expect(stored).toMatchObject({ excerpt: document.excerpt });
+    expect(stored).not.toHaveProperty("text");
+    expect(document.excerpt!).toHaveLength(191);
+    expect(document.excerpt).not.toContain(deepTerm);
+
+    const [result] = searchHq(await loadHqSearchIndex(payload), deepTerm);
+    expect(result?.href).toBe("/hq/deep");
+    expect(result?.snippet).toBe(document.excerpt);
+    expect(result).not.toHaveProperty("text");
+  });
+
+  it("normalizes and bounds caller-supplied excerpts at the index boundary", async () => {
+    const suppliedExcerpt = `  ${"caller supplied preview   ".repeat(30)}tail  `;
+    const document: HqSearchDocument = {
+      id: "custom-excerpt",
+      title: "Custom excerpt",
+      href: "/hq/custom-excerpt",
+      path: "docs/custom-excerpt.md",
+      kind: "markdown",
+      headings: "",
+      metadata: "",
+      aliases: "",
+      text: "customexcerptanchor remains fully searchable",
+      excerpt: suppliedExcerpt,
+    };
+
+    const payload = createHqSearchPayload([document]);
+    const stored = Object.values(payload.index.storedFields)[0] as Record<string, unknown>;
+    const expectedExcerpt = searchExcerpt(suppliedExcerpt);
+
+    expect(stored.excerpt).toBe(expectedExcerpt);
+    expect(expectedExcerpt).toHaveLength(191);
+    expect(expectedExcerpt).not.toContain("   ");
+    expect(expectedExcerpt).not.toContain("tail");
+
+    const [result] = searchHq(await loadHqSearchIndex(payload), "customexcerptanchor");
+    expect(result?.snippet).toBe(expectedExcerpt);
+  });
+
+  it("materially reduces representative serialized payloads without raw-text result fields", () => {
+    const representative = Array.from({ length: 3 }, (_, document) =>
+      markdownSearchDocument({
+        id: `representative-${document}`,
+        title: `Representative document ${document}`,
+        href: `/hq/docs/${document}`,
+        path: `docs/representative-${document}.md`,
+        source: Array.from(
+          { length: 120 },
+          (_, section) =>
+            `Section ${document}-${section} records the representative operational decision, dependency, acceptance evidence, and follow-up owner for this repository-backed HQ document.`,
+        ).join("\n\n"),
+      }),
+    );
+    const payload = createHqSearchPayload(representative);
+    const legacy = structuredClone(payload);
+    const ids = legacy.index.documentIds as Record<string, string>;
+    const stored = legacy.index.storedFields as Record<string, Record<string, unknown>>;
+    const byId = new Map(representative.map((document) => [document.id, document]));
+    for (const [internalId, fields] of Object.entries(stored)) {
+      fields.text = byId.get(ids[internalId]!)!.text;
+      delete fields.excerpt;
+    }
+
+    const payloadBytes = Buffer.byteLength(JSON.stringify(payload));
+    const legacyBytes = Buffer.byteLength(JSON.stringify(legacy));
+    expect({ payloadBytes, legacyBytes }).toEqual({ payloadBytes: 6309, legacyBytes: 61548 });
+    expect(payloadBytes).toBeLessThan(legacyBytes * 0.2);
+  });
+
+  it("loads earlier version-1 payloads whose result field was raw text", async () => {
+    const document = markdownSearchDocument({
+      id: "legacy",
+      title: "Legacy payload",
+      href: "/hq/legacy",
+      path: "docs/legacy.md",
+      source: `${"opening context ".repeat(40)}legacyanchor final evidence`,
+    });
+    const payload = structuredClone(createHqSearchPayload([document]));
+    const stored = Object.values(payload.index.storedFields)[0] as Record<string, unknown>;
+    stored.text = document.text;
+    delete stored.excerpt;
+
+    const [result] = searchHq(await loadHqSearchIndex(payload), "legacyanchor");
+    expect(result?.snippet).toContain("legacyanchor");
   });
 
   it("prefers canonical READMEs to matching roadmap history", () => {
@@ -147,6 +246,7 @@ describe("HQ search documents", () => {
   });
 
   it("builds honest snippets for text and filename-only PDFs", () => {
+    expect(searchExcerpt("longword".repeat(100))).toHaveLength(191);
     expect(searchSnippet("", [])).toMatch(/no extractable text/i);
     expect(searchSnippet("A ".repeat(150) + "needle " + "B ".repeat(150), ["needle"])).toContain(
       "needle",
