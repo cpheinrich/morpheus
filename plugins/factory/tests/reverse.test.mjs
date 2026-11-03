@@ -130,8 +130,10 @@ test("Claude model and effort map to approved Codex selections only", () => {
     model: "gpt-5.5",
     effort: "low",
   });
+  assert.equal(codexSelection(c, {}, { effort: "minimal" }).effort, "low");
+  assert.equal(codexSelection(c, {}, { effort: "ultra" }).effort, "max");
   assert.throws(() => codexSelection(c, {}, { model: "o3-pro" }), /approved Codex model/);
-  assert.throws(() => codexSelection(c, {}, { effort: "ultra" }), /effort/);
+  assert.throws(() => codexSelection(c, {}, { effort: "unknown" }), /effort/);
 });
 
 test("Codex worker environment drops API credentials and marks delegation", () => {
