@@ -71,6 +71,8 @@ follows merge.
 
 ## Independent review
 
+Independent review found one substantive Node 22 compatibility regression and conditionally cleared its precise fix. The author replaced the static zstd import with feature detection, verified plain metadata without zstd and compressed refusal, passed the nine focused MCP/snapshot tests and syntax checks, and imported the corrected module on Node 22.14. No other findings. A follow-up independently verified the late test portability correction on Node26 and Node22.14 and cleared with no remaining findings.
+
 Independent review found one substantive Node 22 compatibility regression and conditionally cleared its precise fix. The author replaced the static zstd import with feature detection, verified plain metadata without zstd and compressed refusal, passed the nine focused MCP/snapshot tests and syntax checks, and imported the corrected module on Node 22.14. No other findings.
 
 ```morpheus-review
