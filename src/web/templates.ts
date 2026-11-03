@@ -2114,6 +2114,109 @@ export default function HqPage() {
 `;
 };
 
+export const hqBuildContract = (): string => `import path from "node:path";
+
+/**
+ * Extend these lists when the HQ grows. A dynamic route needs a live-data or
+ * action rationale in the project's architecture/worklog; repository content
+ * belongs in EXPECTED_STATIC_HQ_ROUTES after generateStaticParams emits it.
+ */
+export const EXPECTED_STATIC_HQ_ROUTES = [
+  "/hq",
+  "/hq/no-access",
+  "/hq/search-index",
+];
+
+export const EXPECTED_DYNAMIC_HQ_ROUTES = [];
+
+export function routeFromAppManifestKey(key) {
+  return key.replace(/\\\/(?:page|route)$/, "") || "/";
+}
+
+export function classifyDynamicHqRoutes(appPaths, prerenderManifest) {
+  const exact = new Set(Object.keys(prerenderManifest.routes ?? {}));
+  const generated = prerenderManifest.dynamicRoutes ?? {};
+
+  return Object.keys(appPaths)
+    .filter((key) => key.startsWith("/hq/") || key === "/hq/page")
+    .map(routeFromAppManifestKey)
+    .filter((route) => !exact.has(route))
+    .filter((route) => generated[route]?.fallback !== false)
+    .sort();
+}
+
+export function markdownTraceEntries(files) {
+  return files.filter((file) => /(?:^|[/\\\\])[^/\\\\]+\\.md$/i.test(file));
+}
+
+export function nftPath(nextDirectory, compiledPath) {
+  return path.join(nextDirectory, "server", \`\${compiledPath}.nft.json\`);
+}
+`;
+
+export const hqBuildCheck = (): string => `import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import {
+  classifyDynamicHqRoutes,
+  EXPECTED_DYNAMIC_HQ_ROUTES,
+  EXPECTED_STATIC_HQ_ROUTES,
+  markdownTraceEntries,
+  nftPath,
+  routeFromAppManifestKey,
+} from "./hq-build-contract.mjs";
+
+const webRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const nextDirectory = path.join(webRoot, ".next");
+
+async function readJson(file) {
+  return JSON.parse(await readFile(file, "utf8"));
+}
+
+function sameMembers(actual, expected) {
+  return actual.length === expected.length && actual.every((value, index) => value === expected[index]);
+}
+
+const [appPaths, prerender] = await Promise.all([
+  readJson(path.join(nextDirectory, "server/app-paths-manifest.json")),
+  readJson(path.join(nextDirectory, "prerender-manifest.json")),
+]);
+
+const expectedDynamic = [...EXPECTED_DYNAMIC_HQ_ROUTES].sort();
+const actualDynamic = classifyDynamicHqRoutes(appPaths, prerender);
+if (!sameMembers(actualDynamic, expectedDynamic)) {
+  throw new Error(
+    "HQ route contract changed.\\nExpected dynamic: " + expectedDynamic.join(", ") +
+    "\\nActual dynamic: " + actualDynamic.join(", "),
+  );
+}
+
+const prerendered = new Set(Object.keys(prerender.routes ?? {}));
+const missingStatic = EXPECTED_STATIC_HQ_ROUTES.filter((route) => !prerendered.has(route));
+if (missingStatic.length) {
+  throw new Error("Expected static HQ routes were not prerendered:\\n" + missingStatic.join("\\n"));
+}
+
+const appPathByRoute = new Map(
+  Object.entries(appPaths).map(([key, value]) => [routeFromAppManifestKey(key), value]),
+);
+for (const route of expectedDynamic) {
+  const compiledPath = appPathByRoute.get(route);
+  if (!compiledPath) throw new Error("Declared dynamic HQ route is absent: " + route);
+  const trace = await readJson(nftPath(nextDirectory, compiledPath));
+  const markdown = markdownTraceEntries(trace.files ?? []);
+  if (markdown.length) {
+    throw new Error("Dynamic HQ route " + route + " traces repository Markdown:\\n" + markdown.join("\\n"));
+  }
+}
+
+console.log(
+  "[hq-content] verified " + EXPECTED_STATIC_HQ_ROUTES.length + " required static routes, " +
+  expectedDynamic.length + " declared dynamic routes, and no dynamic Markdown traces",
+);
+`;
+
 export const noAccessPage = (): string => `import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -2149,6 +2252,7 @@ export const appPackageJson = (scope: string, sharedName?: string): string =>
       scripts: {
         dev: "next dev",
         build: "next build",
+        postbuild: "node scripts/check-hq-build.mjs",
         start: "next start",
         lint: "eslint",
         typecheck: "tsc --noEmit",

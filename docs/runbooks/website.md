@@ -65,6 +65,11 @@ traces repository Markdown. Also verify that a Markdown-only commit triggers dep
 pages and the search index report one source commit. Set response-size budgets separately: a large
 static page is still expensive for the browser.
 
+New Morpheus web apps run `scripts/check-hq-build.mjs` from `postbuild` with `/hq`, no-access and
+the protected search index declared static and no dynamic HQ routes. Extend its contract as routes
+are added. On an existing app, `morpheus web init` writes the checker but deliberately does not
+change an established `postbuild`; classify the current routes first, then add the checker command.
+
 Lakina's production migration established that the authenticated proxy and Vercel's prerender cache
 compose correctly: protected static pages returned `x-vercel-cache: HIT` after the proxy admitted a
 valid session. Median response time fell from 328–453 ms to 85–113 ms across Product, Research,

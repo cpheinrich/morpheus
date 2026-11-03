@@ -19,6 +19,10 @@ and framework manifests plus function traces—not source inference—decide whe
 
 - New HQ scaffolds no longer call `currentUser()` in the shared layout or overview. The overview is
   explicitly `force-static`; search was already built once per deployment and keyed by commit.
+- New apps run a generated manifest/trace checker from `postbuild`. It requires declared static
+  routes, refuses unclassified dynamic HQ routes, and rejects Markdown in declared dynamic traces.
+  Existing apps receive the scripts and an activation note so their current route set is classified
+  before the checker becomes blocking.
 - Architecture §11 and the website runbook now define route classes, the proxy/data-boundary split,
   narrow generated fragments, static route enumeration, deployment freshness and size budgets.
 - The migration checklist covers inventory, shell cleanup, compilation, live routes, postbuild
@@ -39,7 +43,10 @@ local `.next/server/app/*.html` path.
 
 ## Verification
 
-- `npm test -- tests/web-scaffold.test.ts`: 30 passed.
+- `npm test -- tests/web-scaffold.test.ts`: 31 passed, including executable pass, undeclared-dynamic
+  failure, and dynamic-Markdown-trace failure cases.
+- `npm run typecheck`; `npm run lint`; `npm run compile`; `git diff --check`: passed. Compile
+  regenerated the committed distribution used by installed Morpheus.
 - Lakina production: authenticated seven-sample route profile, representative content checks,
   theme endpoint removal, exact deployment SHA, and four unauthenticated/spoof probes all passed.
 
@@ -47,3 +54,11 @@ local `.next/server/app/*.html` path.
 
 Independent Morpheus review, CI and merge; then separate Darwin, Evo, morpheus-enterprises and
 Kairos migrations with their own repository records and deployments.
+
+## Independent review response
+
+The first review found two substantive delivery gaps: the committed `dist` still emitted the old
+identity-bearing dynamic scaffold, and no executable generated-project guard backed the written
+contract. `npm run compile` now regenerates the distribution. New scaffolds now carry an active
+postbuild manifest/trace guard, with an executable regression covering both drift and Markdown
+traces. A same-reviewer follow-up covers these fixes before merge.

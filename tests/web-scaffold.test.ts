@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { renderFirestoreRules } from "../src/hq/rules.js";
 import { addWaitlistRules, mergeDependencies, scaffoldWeb } from "../src/web/scaffold.js";
@@ -13,6 +15,7 @@ import {
 import type { FirebaseFacts } from "../src/web/templates.js";
 
 const roots: string[] = [];
+const execFileAsync = promisify(execFile);
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -123,6 +126,8 @@ describe("scaffoldWeb", () => {
     expect(result.written).toContain("apps/web/app/hq/HqSearch.tsx");
     expect(result.written).toContain("apps/web/app/hq/search-index/route.ts");
     expect(result.written).toContain("apps/web/lib/hq/search.ts");
+    expect(result.written).toContain("apps/web/scripts/hq-build-contract.mjs");
+    expect(result.written).toContain("apps/web/scripts/check-hq-build.mjs");
     expect(result.written).toContain("apps/web/proxy.ts");
     expect(result.written).toContain("packages/shared/schema/waitlist.ts");
     // The live home page is the thing a project most needs kept.
@@ -149,8 +154,65 @@ describe("scaffoldWeb", () => {
 
     const manifest = JSON.parse(
       await readFile(join(root, "apps/web/package.json"), "utf8"),
-    ) as { dependencies: Record<string, string> };
+    ) as { dependencies: Record<string, string>; scripts: Record<string, string> };
     expect(manifest.dependencies["morpheus-kit"]).toBe("github:cpheinrich/morpheus#main");
+    expect(manifest.scripts.postbuild).toBeUndefined();
+    expect(result.notes.some((note) => note.includes("After classifying its existing HQ routes"))).toBe(true);
+  });
+
+  it("generates an executable postbuild contract for new HQ apps", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-web-"));
+    roots.push(root);
+    await scaffoldWeb(options(root, await surveyWeb(root)));
+    const webRoot = join(root, "apps/web");
+
+    const manifest = JSON.parse(await readFile(join(webRoot, "package.json"), "utf8"));
+    expect(manifest.scripts.postbuild).toBe("node scripts/check-hq-build.mjs");
+
+    const appPaths = {
+      "/hq/page": "app/hq/page.js",
+      "/hq/no-access/page": "app/hq/no-access/page.js",
+      "/hq/search-index/route": "app/hq/search-index/route.js",
+    };
+    const prerender = {
+      routes: {
+        "/hq": {},
+        "/hq/no-access": {},
+        "/hq/search-index": {},
+      },
+      dynamicRoutes: {},
+    };
+    await write(root, "apps/web/.next/server/app-paths-manifest.json", JSON.stringify(appPaths));
+    await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(prerender));
+
+    await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).resolves.toMatchObject({
+      stdout: expect.stringContaining("verified 3 required static routes"),
+    });
+
+    const withUndeclaredDynamic = {
+      ...appPaths,
+      "/hq/live/page": "app/hq/live/page.js",
+    };
+    await write(root, "apps/web/.next/server/app-paths-manifest.json", JSON.stringify(withUndeclaredDynamic));
+    await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).rejects.toThrow(
+      /Actual dynamic: \/hq\/live/,
+    );
+
+    const contractPath = join(webRoot, "scripts/hq-build-contract.mjs");
+    const contract = await readFile(contractPath, "utf8");
+    await writeFile(
+      contractPath,
+      contract.replace("EXPECTED_DYNAMIC_HQ_ROUTES = [];", 'EXPECTED_DYNAMIC_HQ_ROUTES = ["/hq/live"];'),
+      "utf8",
+    );
+    await write(
+      root,
+      "apps/web/.next/server/app/hq/live/page.js.nft.json",
+      JSON.stringify({ files: ["../../../../../../hq/private.md"] }),
+    );
+    await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).rejects.toThrow(
+      /traces repository Markdown/,
+    );
   });
 
   it("is safe to run twice", async () => {
