@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import net from "node:net";
-import { createReadStream } from "node:fs";
+import { open } from "node:fs/promises";
+import zlib from "node:zlib";
 import { createInterface } from "node:readline";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -106,8 +107,32 @@ export async function recordedSnapshot(thread) {
     );
   let context = null,
     active = null;
-  const stream = createReadStream(thread.path, { encoding: "utf8" });
-  const lines = createInterface({ input: stream, crlfDelay: Infinity });
+  // Codex compresses rollouts in place; thread/read can still name the plain file.
+  // Never search for a different session or revive an archived turn's authority.
+  let path = thread.path, file;
+  try {
+    file = await open(path);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    path += ".zst";
+    try {
+      file = await open(path);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      throw new Error("Codex task metadata is unavailable; reopen this task and send a message. No worker was started.");
+    }
+  }
+  if (path.endsWith(".zst") && typeof zlib.createZstdDecompress !== "function") {
+    await file.close();
+    throw new Error("Compressed Codex task metadata requires Node 22.15 or newer; no worker was started.");
+  }
+  const stream = file.createReadStream();
+  const input = path.endsWith(".zst") ? zlib.createZstdDecompress() : stream;
+  if (input !== stream) {
+    stream.on("error", (error) => input.destroy(error));
+    stream.pipe(input);
+  }
+  const lines = createInterface({ input, crlfDelay: Infinity });
   try {
     for await (const line of lines) {
       let r;
@@ -128,6 +153,7 @@ export async function recordedSnapshot(thread) {
     }
   } finally {
     lines.close();
+    input.destroy();
     stream.destroy();
   }
   const p = context?.payload;
