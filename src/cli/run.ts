@@ -4,6 +4,7 @@ import { parseArgs } from "./args.js";
 import { dispatch } from "./dispatch.js";
 import { cd } from "../cd/cli.js";
 import { runMeetingIntake } from "../meeting-intake/cli.js";
+import { runScheduler } from "../scheduler/cli.js";
 
 /** Importable invocation seam; only the executable owns process exit. */
 export async function run(argv: string[]): Promise<number> {
@@ -14,6 +15,7 @@ export async function run(argv: string[]): Promise<number> {
   if (argv[0] === "credentials") return credentials(argv.slice(1));
   if (argv[0] === "cd") return cd(argv.slice(1));
   if (argv[0] === "meeting-intake") return runMeetingIntake(argv.slice(1));
+  if (argv[0] === "scheduler") return runScheduler(argv.slice(1));
   if (argv.length === 0 || argv.includes("-h") || argv.includes("--help")) {
     console.log(HELP);
     return 0;

@@ -17,6 +17,7 @@ pnpm morpheus pm migrate-ids --check   # integer roadmap ids → the dated schem
 pnpm morpheus pm block MO-051 --needs "what would unblock this"
 pnpm morpheus pm unblock MO-051
 pnpm morpheus heartbeat            # what should happen next, and whether anything should
+pnpm morpheus scheduler tick --config <host.json> [--backup] [--dry-run]  # repository-owned schedules; see scheduler.md
 pnpm morpheus gh-manager sweep <owner/repo>  # how the GitHub Manager would route each open PR
 pnpm morpheus review prompt        # the rung-2 reviewer prompt for this branch
 pnpm morpheus voice knowledge      # standing explainer, uploaded once as project knowledge

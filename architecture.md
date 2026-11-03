@@ -847,7 +847,9 @@ triggered the run:
 ```
 
 `morpheus heartbeat` runs a beat by hand; `.github/workflows/heartbeat.yml` is the reusable
-workflow and the calling repo owns the cron, since cadence is a project's own business. Exit codes
+workflow and the calling repo owns the cadence, since that is a project's own business. Morpheus's
+own `schedule.yml` is manual-only since 2026-11-03: Chris removed its hourly cron, and recurring runs
+now come from repository-owned schedules (§7.15). Exit codes
 separate the three outcomes that matter: **0** the beat ran (pick or no pick), **1** it could not
 read state, **2** dispatch was asked for and refused. A beat that could not reach origin refuses
 rather than proceeding — an unreadable queue is not an empty one, and reading it as empty would
@@ -1560,6 +1562,36 @@ The local [HQ admission facade](docs/paperclip-hq-actor.md) preserves profile/co
 pins, while [versioned closeout snapshots](docs/paperclip-closeout.md) preserve frozen input and
 verified attachment bytes without changing PM status. These prototypes are not extracted into
 the kit or installed in consumer HQs yet.
+
+### 7.15 Repository-owned schedules
+
+A recurring run belongs to the repository whose workflow it runs, so each repository declares its
+schedules in `.morpheus/schedules.json` on its default branch, and one shared, stateless tick
+dispatches them. GitHub's own `on.schedule` is best-effort — runs arrive late or not at all under
+load — and gives no record of which occurrence a run was for.
+
+- **Two invocations of one tick.** A host timer runs `morpheus scheduler tick` every minute; a
+  GitHub-hosted backup runs `tick --backup` every 15 minutes and dispatches only a slot that is 30
+  minutes overdue with nothing accepted since. Neither reads the other's state.
+- **Enrollment is a private list of repository names.** The host config holds names, an instance
+  id, a status path and optionally a GitHub CLI account — never a job definition, and no
+  hostname.
+- **History is the ledger.** An occurrence's identity is the run-name suffix
+  ` [schedule:<id>:<UTC instant>]`; any run carrying it means the slot was accepted, whatever its
+  conclusion. No database or queue: a history read that is unreadable or truncated is an error,
+  never "not yet dispatched". The only slot ever submitted is the latest due one, and never one
+  from before the registry file's commit.
+- **Receivers guard themselves.** `morpheus scheduler admit`, packaged as
+  `.github/actions/scheduler-admit`, turns away a run when another run of the same occurrence has a
+  successful `Scheduler admission` step, under whole-workflow `concurrency`. This narrows
+  duplicates; it does not make an external effect exactly-once, and existing domain receipts stay.
+- **A dispatch is not a delivery.** The scheduler's status file (atomic JSON: tick times,
+  per-schedule due slot, outcome, run id) reports whether the scheduler is running and submitting;
+  whether the work succeeded remains the receiver's evidence.
+
+Cron and timezone evaluation is Croner 11.0.0 (no dependencies), not hand-rolled. Morpheus itself
+registers no schedules: its hourly heartbeat cron was removed deliberately (§7.8). Contract,
+receiver template and health semantics: [`scheduler.md`](docs/runbooks/scheduler.md).
 
 ## 8. Project management as files
 

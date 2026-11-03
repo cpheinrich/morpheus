@@ -1,5 +1,18 @@
 # Decisions
 
+**Recurring runs are repository-owned schedules dispatched by one portable tick** — 2026-11-03.
+MO-26-11-03-12.57.01. Chris accepted the design: each repository declares `.morpheus/schedules.json`;
+a host timer runs `morpheus scheduler tick` every minute and one GitHub-hosted backup runs the same
+tick every 15 minutes with a 30-minute grace. The host config lists repository names only. Run
+history, keyed by the ` [schedule:<id>:<instant>]` run-name suffix, is the only ledger: no database,
+queue, controller, agent or dashboard. Only the latest due slot is ever submitted, never one before
+the registry file's commit; any run spends its slot; unreadable history is an error. Receivers run
+`scheduler admit` under whole-workflow concurrency, and a successful `Scheduler admission` step is
+the only thing that consumes an occurrence. This narrows duplicates and claims no exactly-once
+effect. Morpheus's hourly heartbeat cron is deliberately removed, per Chris; the workflow stays
+manual. Cron/timezone evaluation uses Croner 11.0.0 (registry modified 2026-11-01, no dependencies)
+rather than hand-rolled DST handling; GitHub access is Node `fetch` with a timeout and Zod.
+
 **Factory reads Codex ownership per MCP request** — 2026-11-03.
 MO-26-11-03-12.41.12. Desktop MCP processes can outlive their launching chat, so use
 host-injected `_meta.threadId` before the legacy `CODEX_THREAD_ID` environment fallback.

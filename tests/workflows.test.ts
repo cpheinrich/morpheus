@@ -376,10 +376,9 @@ describe("pm-check.yml", () => {
 });
 
 describe("schedule.yml", () => {
-  it("runs on a cron and can be triggered by hand", async () => {
+  it("runs only by hand: the hourly cron was deliberately removed", async () => {
     const wf = await read("schedule.yml");
-    expect(wf.on).toHaveProperty("schedule");
-    expect(wf.on).toHaveProperty("workflow_dispatch");
+    expect(Object.keys(wf.on as object)).toEqual(["workflow_dispatch"]);
   });
 
   it("calls the heartbeat", async () => {
@@ -1218,15 +1217,6 @@ describe("agent-review cost controls", () => {
   it("says so when it skips, rather than passing silently", async () => {
     const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
     expect(raw).toContain("Green here means skipped, not passed.");
-  });
-});
-
-describe("schedule.yml cadence", () => {
-  it("beats hourly, every day", async () => {
-    const wf = (await read("schedule.yml")) as {
-      on?: { schedule?: Array<{ cron?: string }> };
-    };
-    expect(wf.on?.schedule?.[0]?.cron).toBe("0 * * * *");
   });
 });
 
