@@ -2173,14 +2173,15 @@ export function markdownTraceEntries(files, repositoryRoot, traceDirectory) {
       return file;
     }
   };
-  const hqRoot = canonical(path.resolve(repositoryRoot, "hq"));
+  const canonicalRepositoryRoot = canonical(path.resolve(repositoryRoot));
   return files.filter((file) => {
     const absolute = canonical(path.isAbsolute(file)
       ? path.resolve(file)
       : path.resolve(traceDirectory, file));
-    const relative = path.relative(hqRoot, absolute);
+    const relative = path.relative(canonicalRepositoryRoot, absolute);
     return relative !== "" && !relative.startsWith(".." + path.sep) &&
-      !path.isAbsolute(relative) && /\\.md$/i.test(relative);
+      !path.isAbsolute(relative) && !relative.split(path.sep).includes("node_modules") &&
+      /\\.md$/i.test(relative);
   });
 }
 
