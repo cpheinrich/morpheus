@@ -67,9 +67,7 @@ canonicalize existing paths and check containment under the repository root's `h
 the regression now uses that exact dependency shape. The same reviewer verified the fix, the
 generated mirror and the focused test, and cleared the change with no remaining findings.
 
-Independent review found one substantive dependency-path containment gap. The author anchored
-trace entries to the canonical repository HQ root and added the exact node_modules/hq regression.
-The same reviewer verified the fix and cleared the change with no remaining findings.
+Independent review found one substantive dependency-path containment gap. The author anchored trace entries to the canonical repository HQ root and added the exact node_modules/hq regression. The same reviewer verified the fix and cleared the change with no remaining findings.
 
 ```morpheus-review
 {
