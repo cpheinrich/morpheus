@@ -392,6 +392,10 @@ test("launch failures are explicit, and one credential serves several sessions u
   // A checkout keeps one writer, whichever session asks.
   const same = await claudePrompt(m, a, "Paint A again", "claude:a2", sessions[2]);
   assert.match(same.systemMessage, new RegExp(`could not delegate this turn: Run ${ids[0]} already owns this working directory`));
+  // The owner may be another chat's run: the manager is sent to its own worktree, not told to
+  // stop someone else's work.
+  assert.match(same.additionalContext, /If another run already owns the checkout, it may belong to another chat: never stop it without the user's explicit direction; use or create this task's own isolated worktree and start there with codex_start and that cwd\./);
+  assert.doesNotMatch(same.additionalContext, /wait for or stop that run/);
   for (const id of ids) {
     await m.cancel(id);
     await settle(m, id);

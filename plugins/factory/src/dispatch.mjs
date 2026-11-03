@@ -80,7 +80,7 @@ export function renderDispatch(outcome, { tools, first }) {
     status = `Factory could not delegate this turn: ${outcome.reason}`;
     guidance = [
       `Tell the user plainly that this turn was not delegated and why; do not quietly do the work here instead.`,
-      `Next steps: if another delegation was starting or a run was still stopping, retry with ${tools}_start; if a limit or another run's checkout is named, wait for or stop that run first; otherwise ask the user whether to fix the cause or handle the turn in this session.`,
+      `Next steps: if another delegation was starting, this session's own run was still stopping, or the concurrency limit was reached, wait and retry with ${tools}_start. If another run already owns the checkout, it may belong to another chat: never stop it without the user's explicit direction; use or create this task's own isolated worktree and start there with ${tools}_start and that cwd. Otherwise ask the user whether to fix the cause or handle the turn in this session.`,
     ].join(" ");
   } else if (outcome.kind === "unknown") {
     status = `Factory did not start a worker for this turn: ${outcome.reason}.`;

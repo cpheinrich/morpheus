@@ -164,7 +164,8 @@ per credential.
 - **Staying here.** Only the existing routes keep a turn with the coordinator: no gateway
   below the threshold, an override, `off`, or a prompt starting with `local:` (that turn
   only). A launch or preflight error is reported as a failure with next steps; it is not
-  quietly done here instead.
+  quietly done here instead. A checkout owned by another run may be another chat's, so the
+  next step is this task's own isolated worktree, never stopping that run unasked.
 - **What the user sees.** Every dispatched, held, failed or kept turn prints a one-line
   `systemMessage`. The first prompt of an active session (automatic or manual) also asks the
   coordinator to open its reply with that line; it says which worker, run and credential when
