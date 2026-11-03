@@ -47,6 +47,12 @@ export interface TickOptions {
     now?: () => Date;
 }
 export declare function tick(options: TickOptions): Promise<SchedulerStatus>;
+/**
+ * The top-level `run-name` value, including a folded (`>-`) or literal (`|`) block's indented
+ * lines. Only a containment heuristic for the suffix, so no YAML parser: a flow scalar is its one
+ * line, a block scalar runs until the next unindented line.
+ */
+export declare function runNameOf(source: string): string | null;
 export declare function readStatus(path: string): Promise<SchedulerStatus | null>;
 /** Write-then-rename, so a reader never sees half a status file. */
 export declare function writeStatus(path: string, status: SchedulerStatus): Promise<void>;

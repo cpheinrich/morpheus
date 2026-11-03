@@ -9,7 +9,11 @@ queue, controller, agent or dashboard. Only the latest due slot is ever submitte
 the registry file's commit; any run spends its slot; unreadable history is an error. Receivers run
 `scheduler admit` (a step named `Scheduler admission`) under whole-workflow concurrency, and a
 successful gated `Scheduler occurrence admitted` marker step is the only thing that consumes an
-occurrence. The tick's lock is taken over only from a dead owner PID, never for age alone. This narrows duplicates and claims no exactly-once
+occurrence. The tick's lock is taken over only from a dead owner PID, never for age alone. The
+shared iOS nightly's change baseline becomes the newest successful run with a successful upload job
+(`upload`, `Upload TestFlight build`, or `… / Upload TestFlight build`), refining the 2026-09-01
+cursor decision: an admission-only duplicate also succeeds, and its head must not stand in for an
+upload. This narrows duplicates and claims no exactly-once
 effect. Morpheus's hourly heartbeat cron is deliberately removed, per Chris; the workflow stays
 manual. Cron/timezone evaluation uses Croner 11.0.0 (registry modified 2026-11-01, no dependencies)
 rather than hand-rolled DST handling; GitHub access is Node `fetch` with a timeout and Zod.

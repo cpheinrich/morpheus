@@ -1495,76 +1495,151 @@ describe("ios-nightly-build.yml", () => {
 
     expect(checkout?.with).toEqual({ "fetch-depth": 0, "persist-credentials": false });
     expect(decision?.env?.GH_TOKEN).toBe("${{ github.token }}");
-    expect(script).toContain("/actions/workflows/${WORKFLOW_FILE}/runs?branch=main&status=success");
+    expect(script).toContain("/actions/workflows/${WORKFLOW_FILE}/runs?branch=main&status=success&per_page=20&page=${page}");
+    expect(script).toContain("/actions/runs/${id}/jobs?filter=all&per_page=100");
     expect(script).toContain('git diff --quiet "$baseline" "$CURRENT_SHA" -- "${paths[@]}"');
     expect(script).toContain("building conservatively");
   });
 
-  it("skips an unchanged app and builds after a watched-path change", async () => {
+  /**
+   * Runs the real decision step against a git repository and a fake `gh` that answers from
+   * fixture files with the real `jq`, so the step's own queries and filters are what decide.
+   */
+  async function nightlyDecision() {
     const root = await mkdtemp(join(tmpdir(), "morpheus-nightly-ios-"));
     const repo = join(root, "repo");
     const bin = join(root, "bin");
+    const fixtures = join(root, "fixtures");
     const output = join(root, "output");
     const summary = join(root, "summary");
+    await mkdir(join(repo, "apps/ios"), { recursive: true });
+    await mkdir(join(repo, "docs"), { recursive: true });
+    await mkdir(bin, { recursive: true });
+    await mkdir(fixtures, { recursive: true });
+    const git = (...args: string[]) => execFileAsync("git", args, { cwd: repo }).then((r) => r.stdout.trim());
+    await git("init", "--quiet", "--initial-branch=main");
+    await git("config", "user.name", "Morpheus Test");
+    await git("config", "user.email", "test@example.com");
+    const commit = async (file: string, text: string) => {
+      await writeFile(join(repo, file), text, "utf8");
+      await git("add", ".");
+      await git("commit", "--quiet", "-m", file);
+      return git("rev-parse", "HEAD");
+    };
+    // Every `gh api` call: find the route and its --jq, answer from a fixture, fail when absent.
+    await writeFile(join(bin, "gh"), `#!/usr/bin/env bash
+set -euo pipefail
+route=""; expr="."
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --jq) expr="$2"; shift 2 ;;
+    -H) shift 2 ;;
+    /repos/*) route="$1"; shift ;;
+    *) shift ;;
+  esac
+done
+case "$route" in
+  */actions/runs/*/jobs*) id="\${route#*/actions/runs/}"; file="jobs-\${id%%/*}.json" ;;
+  */workflows/*/runs*) file="runs-\${route##*page=}.json" ;;
+  *) echo "unexpected route $route" >&2; exit 1 ;;
+esac
+[ -f "$FIXTURES/$file" ] || { echo "HTTP 502" >&2; exit 1; }
+jq -r "$expr" "$FIXTURES/$file"
+`, "utf8");
+    await chmod(join(bin, "gh"), 0o755);
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const script = wf.jobs?.changes?.steps?.find((step) => step.name === "Compare with the last successful upload")?.run;
+    expect(script).toBeTruthy();
+    type Fixture = { id: number; sha: string; jobs: Array<{ name: string; conclusion: string | null; run_attempt?: number }> | null };
+    /** Newest first, as GitHub lists them. `jobs: null` makes that run's jobs unreadable. */
+    const history = async (runs: Fixture[]) => {
+      await rm(fixtures, { recursive: true, force: true });
+      await mkdir(fixtures, { recursive: true });
+      await writeFile(join(fixtures, "runs-1.json"), JSON.stringify({ workflow_runs: runs.map((r) => ({ id: r.id, head_sha: r.sha })) }));
+      await writeFile(join(fixtures, "runs-2.json"), JSON.stringify({ workflow_runs: [] }));
+      for (const run of runs) {
+        if (run.jobs) await writeFile(join(fixtures, `jobs-${run.id}.json`), JSON.stringify({ total_count: run.jobs.length, jobs: run.jobs }));
+      }
+    };
+    const decide = async () => {
+      await writeFile(output, "", "utf8");
+      await writeFile(summary, "", "utf8");
+      await execFileAsync("bash", ["-euo", "pipefail", "-c", script!], {
+        cwd: repo,
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          FIXTURES: fixtures,
+          CURRENT_SHA: await git("rev-parse", "HEAD"),
+          FORCE_BUILD: "false",
+          GH_TOKEN: "fixture",
+          GITHUB_OUTPUT: output,
+          GITHUB_REPOSITORY: "example-org/example-app",
+          GITHUB_STEP_SUMMARY: summary,
+          WATCH_PATHS: "apps/ios\npackages/shared",
+          WORKFLOW_FILE: "testflight.yml",
+        },
+      });
+      return Object.fromEntries((await readFile(output, "utf8")).trim().split("\n").map((line) => line.split(/=(.*)/s).slice(0, 2)));
+    };
+    const cleanup = () => rm(root, { recursive: true, force: true });
+    return { commit, history, decide, cleanup };
+  }
 
+  const admissionOnly = [
+    { name: "Scheduler admission", conclusion: "success" },
+    { name: "release / Check iOS changes", conclusion: "skipped" },
+    { name: "Upload TestFlight build", conclusion: "skipped" },
+  ];
+
+  it("skips an unchanged app and builds after a watched-path change", async () => {
+    const t = await nightlyDecision();
     try {
-      await mkdir(join(repo, "apps/ios"), { recursive: true });
-      await mkdir(join(repo, "docs"), { recursive: true });
-      await mkdir(bin, { recursive: true });
-      await execFileAsync("git", ["init", "--quiet", "--initial-branch=main"], { cwd: repo });
-      await execFileAsync("git", ["config", "user.name", "Morpheus Test"], { cwd: repo });
-      await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: repo });
-      await writeFile(join(repo, "apps/ios/app.txt"), "one\n", "utf8");
-      await writeFile(join(repo, "docs/readme.md"), "one\n", "utf8");
-      await execFileAsync("git", ["add", "."], { cwd: repo });
-      await execFileAsync("git", ["commit", "--quiet", "-m", "baseline"], { cwd: repo });
-      const baseline = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: repo })).stdout.trim();
-
-      await writeFile(join(repo, "docs/readme.md"), "two\n", "utf8");
-      await execFileAsync("git", ["add", "."], { cwd: repo });
-      await execFileAsync("git", ["commit", "--quiet", "-m", "docs"], { cwd: repo });
-
-      const fakeGh = join(bin, "gh");
-      await writeFile(fakeGh, "#!/usr/bin/env bash\nprintf '%s\\n' \"$BASELINE_SHA\"\n", "utf8");
-      await chmod(fakeGh, 0o755);
-
-      const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
-      const script = wf.jobs?.changes?.steps?.find(
-        (step) => step.name === "Compare with the last successful upload",
-      )?.run;
-      expect(script).toBeTruthy();
-
-      const run = async () => {
-        const current = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: repo })).stdout.trim();
-        await writeFile(output, "", "utf8");
-        await writeFile(summary, "", "utf8");
-        await execFileAsync("bash", ["-c", script!], {
-          cwd: repo,
-          env: {
-            ...process.env,
-            PATH: `${bin}:${process.env.PATH}`,
-            BASELINE_SHA: baseline,
-            CURRENT_SHA: current,
-            FORCE_BUILD: "false",
-            GH_TOKEN: "fixture",
-            GITHUB_OUTPUT: output,
-            GITHUB_REPOSITORY: "cpheinrich/example",
-            GITHUB_STEP_SUMMARY: summary,
-            WATCH_PATHS: "apps/ios\npackages/shared",
-            WORKFLOW_FILE: "testflight.yml",
-          },
-        });
-        return readFile(output, "utf8");
-      };
-
-      expect(await run()).toContain("build=false");
-
-      await writeFile(join(repo, "apps/ios/app.txt"), "two\n", "utf8");
-      await execFileAsync("git", ["add", "."], { cwd: repo });
-      await execFileAsync("git", ["commit", "--quiet", "-m", "ios"], { cwd: repo });
-      expect(await run()).toContain("build=true");
+      await t.commit("apps/ios/app.txt", "one\n");
+      const a = await t.commit("docs/readme.md", "one\n");
+      await t.history([{ id: 1, sha: a, jobs: [{ name: "release / Upload TestFlight build", conclusion: "success" }] }]);
+      await t.commit("docs/readme.md", "two\n");
+      expect(await t.decide()).toMatchObject({ build: "false", baseline: a });
+      await t.commit("apps/ios/app.txt", "two\n");
+      expect(await t.decide()).toMatchObject({ build: "true", baseline: a });
     } finally {
-      await rm(root, { recursive: true, force: true });
+      await t.cleanup();
+    }
+  });
+
+  it("baselines on the last actual upload, never a newer admission-only or no-op success", async () => {
+    const t = await nightlyDecision();
+    try {
+      const a = await t.commit("apps/ios/app.txt", "one\n");
+      const b = await t.commit("apps/ios/app.txt", "two\n");
+      // A uploaded through a caller-owned job; B's newer runs succeeded without uploading:
+      // a duplicate turned away by admission, and an unchanged-night no-op whose upload was skipped.
+      await t.history([
+        { id: 3, sha: b, jobs: admissionOnly },
+        { id: 2, sha: b, jobs: [{ name: "release / Check iOS changes", conclusion: "success" }, { name: "Upload TestFlight build", conclusion: "skipped" }] },
+        { id: 1, sha: a, jobs: [{ name: "Scheduler admission", conclusion: "success" }, { name: "Upload TestFlight build", conclusion: "success" }] },
+      ]);
+      expect(await t.decide()).toMatchObject({ build: "true", baseline: a });
+    } finally {
+      await t.cleanup();
+    }
+  });
+
+  it("recognizes each upload job shape and earlier attempts, and stays conservative when unreadable", async () => {
+    const t = await nightlyDecision();
+    try {
+      const a = await t.commit("apps/ios/app.txt", "one\n");
+      await t.commit("docs/readme.md", "unwatched\n");
+      for (const name of ["upload", "Upload TestFlight build", "release / Upload TestFlight build"]) {
+        await t.history([{ id: 1, sha: a, jobs: [{ name, conclusion: "success", run_attempt: 1 }, { name, conclusion: "failure", run_attempt: 2 }] }]);
+        expect(await t.decide(), name).toMatchObject({ build: "false", baseline: a });
+      }
+      await t.history([{ id: 1, sha: a, jobs: [{ name: "Test before release / test", conclusion: "success" }] }]);
+      expect(await t.decide()).toEqual({ build: "true", baseline: "", reason: "no successful upload found among the latest 100 successful runs" });
+      await t.history([{ id: 2, sha: a, jobs: null }, { id: 1, sha: a, jobs: [{ name: "upload", conclusion: "success" }] }]);
+      expect(await t.decide()).toEqual({ build: "true", baseline: "", reason: "the upload baseline could not be read; building conservatively" });
+    } finally {
+      await t.cleanup();
     }
   });
 

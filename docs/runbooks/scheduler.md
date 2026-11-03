@@ -55,6 +55,7 @@ on:
 concurrency:
   group: nightly           # one channel; whole runs, never cancelled in progress
   cancel-in-progress: false
+  queue: max               # keep up to 100 pending runs instead of replacing the pending one
 permissions:
   contents: read
   actions: read            # the guard reads this workflow's run history
@@ -79,9 +80,13 @@ jobs:
     # ... the existing jobs, with their existing eligibility and receipt checks ...
 ```
 
-The tick refuses to dispatch to a workflow whose file lacks a `run-name:` line containing
-`[schedule:` or either input name: without the suffix its runs are invisible to history and every
-tick would dispatch again.
+The tick refuses to dispatch to a workflow whose top-level `run-name` (a one-line value, or a
+folded `>-` / literal `|` block) does not contain `[schedule:`, or whose file lacks either input
+name: without the suffix its runs are invisible to history and every tick would dispatch again.
+Without `queue: max`, GitHub keeps one pending run per group and cancels the older pending one;
+that is harmless for duplicates (never admitted) but can drop an intermediate occurrence while a
+long run holds the group ([changelog](https://github.blog/changelog/2026-05-07-github-actions-concurrency-groups-now-allow-larger-queues/)).
+actionlint 1.7.12 does not know the key yet.
 
 ### What `morpheus scheduler admit` decides
 

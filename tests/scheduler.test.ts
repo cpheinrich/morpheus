@@ -8,7 +8,7 @@ import { runScheduler, resolveToken } from "../src/scheduler/cli.js";
 import { instant, parseInstant, parseRunIdentity, runNameSuffix, slotAtOrBefore } from "../src/scheduler/core.js";
 import { createGitHub, GitHubError, type GitHubApi, type Job, type Run } from "../src/scheduler/github.js";
 import { hostConfigSchema, schedulesFileSchema, type HostConfig } from "../src/scheduler/schema.js";
-import { health, processAlive, tick, withLock, type SchedulerStatus } from "../src/scheduler/tick.js";
+import { health, processAlive, runNameOf, tick, withLock, type SchedulerStatus } from "../src/scheduler/tick.js";
 
 const RECEIVER = `name: Nightly
 run-name: "Nightly\${{ inputs.scheduler-id && format(' [schedule:{0}:{1}]', inputs.scheduler-id, inputs.scheduled-for) || '' }}"
@@ -139,6 +139,46 @@ describe("schemas", () => {
     expect(bad({ repository: "example-org/app" })).toBe(false);
     expect(schedulesFileSchema.safeParse({ schemaVersion: 1, schedules: [nightly, nightly] }).success).toBe(false);
     expect(hostConfigSchema.safeParse({ ...config, schedules: [] }).success).toBe(false);
+  });
+});
+
+// The shape every consumer uses: a folded run-name whose expression spans lines.
+const FOLDED_RECEIVER = `name: iOS nightly TestFlight build
+run-name: >-
+  \${{ inputs.scheduler-id != '' && inputs.scheduled-for != ''
+  && format('iOS nightly TestFlight build [schedule:{0}:{1}]', inputs.scheduler-id, inputs.scheduled-for)
+  || 'iOS nightly TestFlight build' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      scheduler-id: { type: string, default: "" }
+      scheduled-for: { type: string, default: "" }
+`;
+
+describe("receiver contract check", () => {
+  it("reads flow, folded and literal run-name declarations", () => {
+    expect(runNameOf(RECEIVER)).toContain("[schedule:{0}:{1}]");
+    expect(runNameOf(FOLDED_RECEIVER)).toContain("format('iOS nightly TestFlight build [schedule:{0}:{1}]'");
+    expect(runNameOf("run-name: |\n  a [schedule:x]\non:\n")).toBe("a [schedule:x]");
+    // The block ends at the next top-level key; a suffix elsewhere in the file is not the run-name's.
+    expect(runNameOf("run-name: >-\n  Nightly\non:\n  # [schedule:\n")).toBe("Nightly");
+    expect(runNameOf("name: x\non: workflow_dispatch\n")).toBeNull();
+  });
+
+  it("dispatches to a consumer-shaped folded run-name and refuses a broken contract", async () => {
+    const shapes: Record<string, string> = {
+      "example-org/folded": FOLDED_RECEIVER,
+      "example-org/no-suffix": FOLDED_RECEIVER.replace(" [schedule:{0}:{1}]", ""),
+      "example-org/no-inputs": FOLDED_RECEIVER.replace(/scheduled-for/g, "slot"),
+      "example-org/suffix-outside": "run-name: Nightly\n# [schedule:\non:\n  workflow_dispatch:\n    inputs:\n      scheduler-id: {}\n      scheduled-for: {}\n",
+    };
+    const gh = fakeGitHub(Object.fromEntries(Object.entries(shapes).map(([repo, workflowSource]) => [
+      repo, { schedules: { schemaVersion: 1, schedules: [nightly] }, workflowSource },
+    ])));
+    const status = await tick({ config: { ...config, repositories: Object.keys(shapes) }, github: gh.api, mode: "primary", dryRun: false, now: at("2026-11-03T08:00:10Z") });
+    expect(gh.dispatches.map(d => d.repo)).toEqual(["example-org/folded"]);
+    expect(status.repositories.map(r => r.schedules[0]!.outcome)).toEqual(["dispatched", "error", "error", "error"]);
   });
 });
 

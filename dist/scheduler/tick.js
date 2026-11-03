@@ -107,7 +107,7 @@ async function submit(repository, branch, schedule, result, options, now) {
         return Object.assign(result, { outcome: "skipped", reason: `workflow is ${workflow.state}` });
     const source = await options.github.file(repository, `.github/workflows/${schedule.workflow}`, branch);
     // Without the run-name suffix its runs are invisible to history, and every tick would dispatch again.
-    if (!source || !/^run-name:.*\[schedule:/m.test(source) || !source.includes("scheduler-id") || !source.includes("scheduled-for")) {
+    if (!source || !runNameOf(source)?.includes("[schedule:") || !source.includes("scheduler-id") || !source.includes("scheduled-for")) {
         throw new Error(`workflow ${schedule.workflow} does not declare the scheduler inputs and run-name suffix`);
     }
     const scheduledFor = result.dueAt;
@@ -133,6 +133,27 @@ async function submit(repository, branch, schedule, result, options, now) {
         }
         throw error;
     }
+}
+/**
+ * The top-level `run-name` value, including a folded (`>-`) or literal (`|`) block's indented
+ * lines. Only a containment heuristic for the suffix, so no YAML parser: a flow scalar is its one
+ * line, a block scalar runs until the next unindented line.
+ */
+export function runNameOf(source) {
+    const lines = source.split(/\r?\n/);
+    const start = lines.findIndex(line => /^run-name:/.test(line));
+    if (start < 0)
+        return null;
+    const head = lines[start].slice("run-name:".length).trim();
+    if (!/^[>|][-+0-9]*(\s+#.*)?$/.test(head))
+        return head;
+    const body = [];
+    for (const line of lines.slice(start + 1)) {
+        if (line.trim() !== "" && !/^\s/.test(line))
+            break;
+        body.push(line.trim());
+    }
+    return body.join(" ").trim();
 }
 function message(error) {
     return error instanceof Error ? error.message : String(error);
