@@ -30,4 +30,6 @@ read directly as the documented fallback.
 - `pnpm lint` — passed.
 - `pnpm compile` — passed and refreshed committed `dist/`.
 - `pnpm morpheus pm index` — indexes were current.
-
+- Merged `origin/main` after repository-wide Markdown guard PR #597 landed; `pnpm compile` resolved
+  only the generated source-map conflict, and the 33 focused tests, typecheck, and lint passed
+  again on the integrated source.
