@@ -2114,7 +2114,8 @@ export default function HqPage() {
 `;
 };
 
-export const hqBuildContract = (): string => `import path from "node:path";
+export const hqBuildContract = (): string => `import { realpathSync } from "node:fs";
+import path from "node:path";
 
 /**
  * Extend these lists when the HQ grows. A dynamic route needs a live-data or
@@ -2156,8 +2157,23 @@ export function classifyDynamicHqRoutes(appPaths, prerenderManifest) {
     .sort();
 }
 
-export function markdownTraceEntries(files) {
-  return files.filter((file) => /(?:^|[/\\\\])hq[/\\\\].*\\.md$/i.test(file));
+export function markdownTraceEntries(files, repositoryRoot, traceDirectory) {
+  const canonical = (file) => {
+    try {
+      return realpathSync(file);
+    } catch {
+      return file;
+    }
+  };
+  const hqRoot = canonical(path.resolve(repositoryRoot, "hq"));
+  return files.filter((file) => {
+    const absolute = canonical(path.isAbsolute(file)
+      ? path.resolve(file)
+      : path.resolve(traceDirectory, file));
+    const relative = path.relative(hqRoot, absolute);
+    return relative !== "" && !relative.startsWith(".." + path.sep) &&
+      !path.isAbsolute(relative) && /\\.md$/i.test(relative);
+  });
 }
 
 export function nftPath(nextDirectory, compiledPath) {
@@ -2179,6 +2195,7 @@ import {
 } from "./hq-build-contract.mjs";
 
 const webRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const repositoryRoot = path.resolve(webRoot, "../..");
 const nextDirectory = path.join(webRoot, ".next");
 
 async function readJson(file) {
@@ -2215,8 +2232,9 @@ const appPathByRoute = new Map(
 for (const route of expectedDynamic) {
   const compiledPath = appPathByRoute.get(route);
   if (!compiledPath) throw new Error("Declared dynamic HQ route is absent: " + route);
-  const trace = await readJson(nftPath(nextDirectory, compiledPath));
-  const markdown = markdownTraceEntries(trace.files ?? []);
+  const tracePath = nftPath(nextDirectory, compiledPath);
+  const trace = await readJson(tracePath);
+  const markdown = markdownTraceEntries(trace.files ?? [], repositoryRoot, path.dirname(tracePath));
   if (markdown.length) {
     throw new Error("Dynamic HQ route " + route + " traces repository Markdown:\\n" + markdown.join("\\n"));
   }

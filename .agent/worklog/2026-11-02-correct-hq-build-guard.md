@@ -32,7 +32,8 @@ matched every `.md` file in a dynamic trace, including dependency README files.
 The generated classifier now attributes each concrete route to its `srcRoute`, while retaining
 compatibility with manifests whose explicit static entry omits that field. It derives fully
 emitted catch-all patterns from concrete entries when Next omits the `dynamicRoutes` row. The trace
-predicate now reports repository `hq/**/*.md` source rather than all Markdown.
+guard resolves relative entries from their NFT file, canonicalizes existing paths, and reports
+only Markdown physically under the repository root's `hq/` tree.
 
 The executable scaffold test reproduces the catch-all collision, the omitted dynamic-pattern row,
 the dependency README false positive, and both relative and absolute repository HQ source paths.

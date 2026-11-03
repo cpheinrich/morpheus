@@ -218,18 +218,20 @@ describe("scaffoldWeb", () => {
     await write(
       root,
       "apps/web/.next/server/app/hq/live/page.js.nft.json",
-      JSON.stringify({ files: ["../../node_modules/fetch-blob/README.md"] }),
+      JSON.stringify({ files: ["../../../../../../../node_modules/hq/README.md"] }),
     );
     await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).resolves.toMatchObject({
       stdout: expect.stringContaining("1 declared dynamic routes"),
     });
+    await write(root, "hq/private.md", "# Private\n");
+    await write(root, "hq/product/roadmap/MO-001.md", "# Roadmap item\n");
     await write(
       root,
       "apps/web/.next/server/app/hq/live/page.js.nft.json",
       JSON.stringify({
         files: [
-          "../../../../../../hq/private.md",
-          "/workspace/project/hq/product/roadmap/MO-001.md",
+          "../../../../../../../hq/private.md",
+          join(root, "hq/product/roadmap/MO-001.md"),
         ],
       }),
     );
