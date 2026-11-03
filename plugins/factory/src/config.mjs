@@ -478,15 +478,29 @@ export function codexSelection(config, session = {}, override = {}) {
     String(session.model || "").replace(/[-_]/g, " "),
   )?.[1];
   const model = override.model ?? config.codexModelMap[family];
-  const effort = override.effort ?? config.codexEffortMap[session.effort];
+  const effort = codexWorkerEffort(config, override.effort ?? session.effort);
   if (model && !config.codexModels.includes(model))
     throw new Error(
       "No approved Codex model mapping. Configure codexModelMap/codexModels explicitly.",
     );
-  if (override.effort && !Object.values(config.codexEffortMap).includes(effort))
+  if (override.effort && !effort)
     throw new Error("Unsupported Codex effort override.");
   // An unknown Claude model or effort defers to Codex's own configured default.
   return { model: model ?? null, effort: effort ?? null };
+}
+const codexEfforts = new Set(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
+export function codexWorkerEffort(config, effort) {
+  if (!effort) return null;
+  if (!codexEfforts.has(effort)) return null;
+  // The provider-neutral contract includes the cross-provider edge values. Current Codex
+  // models use low/max at those edges, including saved configs created before these aliases.
+  return config.codexEffortMap[effort] ?? { minimal: "low", ultra: "max" }[effort] ?? effort;
+}
+export function codexRootEffort(effort) {
+  if (!effort || !codexEfforts.has(effort)) return null;
+  // A Codex root already speaks native Codex effort. Only translate the two neutral edge aliases;
+  // codexEffortMap belongs to the Claude-to-Codex boundary and must not rewrite native choices.
+  return { minimal: "low", ultra: "max" }[effort] ?? effort;
 }
 // Claude permission modes map onto Codex's sandbox. Nothing is widened: only an
 // explicit bypass reaches full access, and unknown modes refuse.
