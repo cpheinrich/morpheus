@@ -2157,14 +2157,14 @@ export default function NoAccessPage() {
 }
 `;
 // ------------------------------------------------------------- a new app ---
-export const appPackageJson = (scope, sharedName) => `${JSON.stringify({
+export const appPackageJson = (scope, sharedName, hqBuildGuard = false) => `${JSON.stringify({
     name: `${scope}/web`,
     version: "0.1.0",
     private: true,
     scripts: {
         dev: "next dev",
         build: "next build",
-        postbuild: "node scripts/check-hq-build.mjs",
+        ...(hqBuildGuard ? { postbuild: "node scripts/check-hq-build.mjs" } : {}),
         start: "next start",
         lint: "eslint",
         typecheck: "tsc --noEmit",

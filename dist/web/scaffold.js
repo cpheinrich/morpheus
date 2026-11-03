@@ -36,7 +36,7 @@ export async function scaffoldWeb(opts) {
     const app = (rel, content) => put(survey.webRoot === "." ? rel : `${survey.webRoot}/${rel}`, content);
     // --- a new app, only when there is not one already ------------------------
     if (!survey.webAppExists) {
-        await app("package.json", t.appPackageJson(opts.scope, survey.shared?.name));
+        await app("package.json", t.appPackageJson(opts.scope, survey.shared?.name, Boolean(opts.hq && opts.firebase)));
         await app("tsconfig.json", t.appTsconfig());
         await app("next.config.ts", t.nextConfig());
         await app("postcss.config.mjs", t.postcssConfig());

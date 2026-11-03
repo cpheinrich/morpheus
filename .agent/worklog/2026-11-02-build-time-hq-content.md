@@ -43,8 +43,8 @@ local `.next/server/app/*.html` path.
 
 ## Verification
 
-- `npm test -- tests/web-scaffold.test.ts`: 31 passed, including executable pass, undeclared-dynamic
-  failure, and dynamic-Markdown-trace failure cases.
+- `npm test -- tests/web-scaffold.test.ts`: 33 passed, including executable pass, undeclared-dynamic
+  failure, dynamic-Markdown-trace failure, and both dangling-postbuild negative cases.
 - `npm run typecheck`; `npm run lint`; `npm run compile`; `git diff --check`: passed. Compile
   regenerated the committed distribution used by installed Morpheus.
 - Lakina production: authenticated seven-sample route profile, representative content checks,
@@ -61,4 +61,7 @@ The first review found two substantive delivery gaps: the committed `dist` still
 identity-bearing dynamic scaffold, and no executable generated-project guard backed the written
 contract. `npm run compile` now regenerates the distribution. New scaffolds now carry an active
 postbuild manifest/trace guard, with an executable regression covering both drift and Markdown
-traces. A same-reviewer follow-up covers these fixes before merge.
+traces. The follow-up cleared both and found that the package hook was also emitted for `--no-hq`
+and missing-Firebase runs that could not emit its script. The conditionally cleared correction now
+adds `postbuild` only when HQ and Firebase are both present, with explicit negative tests for both
+supported flows.

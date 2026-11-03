@@ -215,6 +215,21 @@ describe("scaffoldWeb", () => {
     );
   });
 
+  it.each([
+    ["HQ is disabled", { hq: false }],
+    ["Firebase is unavailable", { firebase: undefined }],
+  ])("does not install a dangling HQ postbuild when %s", async (_label, override) => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-web-"));
+    roots.push(root);
+    const survey = await surveyWeb(root);
+    await scaffoldWeb({ ...options(root, survey), ...override });
+
+    const manifest = JSON.parse(await readFile(join(root, "apps/web/package.json"), "utf8"));
+    expect(manifest.scripts.postbuild).toBeUndefined();
+    await expect(readFile(join(root, "apps/web/scripts/check-hq-build.mjs"), "utf8")).rejects.toThrow();
+    await expect(readFile(join(root, "apps/web/scripts/hq-build-contract.mjs"), "utf8")).rejects.toThrow();
+  });
+
   it("is safe to run twice", async () => {
     const root = await establishedProject();
     await scaffoldWeb(options(root, await surveyWeb(root)));
