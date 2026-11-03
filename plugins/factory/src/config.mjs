@@ -496,6 +496,12 @@ export function codexWorkerEffort(config, effort) {
   // models use low/max at those edges, including saved configs created before these aliases.
   return config.codexEffortMap[effort] ?? { minimal: "low", ultra: "max" }[effort] ?? effort;
 }
+export function codexRootEffort(effort) {
+  if (!effort || !codexEfforts.has(effort)) return null;
+  // A Codex root already speaks native Codex effort. Only translate the two neutral edge aliases;
+  // codexEffortMap belongs to the Claude-to-Codex boundary and must not rewrite native choices.
+  return { minimal: "low", ultra: "max" }[effort] ?? effort;
+}
 // Claude permission modes map onto Codex's sandbox. Nothing is widened: only an
 // explicit bypass reaches full access, and unknown modes refuse.
 export function codexPermission(mode, writableRoots = []) {

@@ -19,7 +19,7 @@ import {
   modelSelection,
   permissionMode,
   codexSelection,
-  codexWorkerEffort,
+  codexRootEffort,
   codexPermission,
   assertPoolAuthority,
   readGatewayQuota,
@@ -336,10 +336,7 @@ export class Manager {
           ? modelSelection(config, snapshot, { model: args.model, effort: args.effort })
           : {
               model: args.model ?? snapshot.model,
-              effort: codexWorkerEffort(
-                config,
-                args.effort ?? snapshot.reasoningEffort,
-              ),
+              effort: codexRootEffort(args.effort ?? snapshot.reasoningEffort),
             };
       const codexSandbox = worker === "codex" ? codexPermission(permissions) : null;
       const env = withoutReferencedSecrets(
