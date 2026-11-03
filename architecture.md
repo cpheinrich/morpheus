@@ -2126,6 +2126,43 @@ inherits the domain, auth, and deploy pipeline. Shipped as `morpheus-kit/hq`.
 
 Public counterpart: `<domain>/brand` — see §12.4.
 
+### 11.0 Repository content is a deployment input
+
+An HQ is **static by default**. Markdown and other repository-owned records are read, validated and
+compiled during the deployment build; request-serving code never walks the repository or parses
+those source files. Repository-backed dynamic segments declare their complete route inventory with
+`generateStaticParams`. The generated HTML, search index and route inventory name the same source
+commit, so a deployment and a rollback always move them together.
+
+The verified session-cookie proxy remains the gate in front of shared static HQ material. That
+material must be visible to every role admitted by the gate and must contain no email, uid, role,
+account reference, portfolio value or other viewer-specific field. Static generation changes when
+the content is computed, not who may receive it: unauthenticated HTML, RSC and prefetch requests are
+still redirected before filesystem routing or cached content is served.
+
+Identity, accounts, portfolios, writes and other genuinely live data use an explicit dynamic page
+or a small client island backed by a narrow endpoint. Each such boundary verifies the session and
+its own authorization again and returns personalized responses as private, non-cacheable data. The
+static HQ layout never calls `cookies()`, `headers()`, Firestore or a repository filesystem API just
+to render shared chrome. A person's email is not sufficiently valuable in the rail to make every
+content page dynamic.
+
+Immutable external artifacts are not silently promoted to build inputs. A result stored in a
+private bucket stays behind its independently authorized, digest-verified loader unless its exact
+bytes and identity are declared reproducible deployment inputs. Builds and previews must not gain
+production data access merely to make a route static.
+
+Projects keep generated content split by use: a small metadata/link/search index, per-document
+compiled payloads, a static route inventory, and only the narrow fragments required by an explicit
+dynamic page. One manifest containing every document body recreates the server-bundle problem in a
+different file. CI derives the actual static/dynamic route inventory from the framework build,
+refuses undeclared dynamic HQ routes, and inspects runtime traces for repository Markdown.
+
+Build-only content also makes deployment freshness part of correctness. A repository-content-only
+change must trigger the web deployment, and the deployed source commit must be observable in both
+pages and search. Large prerendered HTML still has a transfer and parsing cost; static generation is
+not permission to render an unbounded archive into one response.
+
 ### 11.1 Access control: Firebase Auth with custom claims
 
 **Canonical: Firebase Auth + custom claims. Not Auth.js, not Cloudflare Zero Trust.**

@@ -43,6 +43,60 @@ sign-in; the client refreshes its ID token before the session cookie is created.
 including users who will not sign in again. A removed account's stale claim is also cleared
 on its next sign-in.
 
+### HQ rendering contract
+
+Treat repository content as a deployment input. Read and parse `hq/`, `docs/`, and other approved
+content roots only while building; use `generateStaticParams` for repository-backed dynamic paths.
+Do not put `cookies()`, `headers()`, Firestore reads, or repository filesystem calls in shared HQ
+layouts. The generated starter follows this rule: the proxy protects its static overview and
+search index, while sign-in and action routes remain dynamic.
+
+Shared static HTML may contain only material available to every role the proxy admits. Identity,
+account and portfolio data belong in an explicit dynamic route or client island whose endpoint
+re-verifies the session and authorization and returns `Cache-Control: private, no-store`. Keep
+private immutable artifacts behind their existing authorized, digest-verified loader unless their
+exact bytes become declared reproducible build inputs; do not give builds production bucket access
+to chase a static-route label.
+
+Before release, inspect the framework's built route inventory and runtime trace files rather than
+inferring static behavior from source. Assert that every expected content slug was prerendered,
+ordinary HQ routes are static, dynamic routes are declared with a rationale, and no runtime bundle
+traces repository Markdown. Also verify that a Markdown-only commit triggers deployment and that
+pages and the search index report one source commit. Set response-size budgets separately: a large
+static page is still expensive for the browser.
+
+New Morpheus web apps run `scripts/check-hq-build.mjs` from `postbuild` with `/hq`, no-access and
+the protected search index declared static and no dynamic HQ routes. Extend its contract as routes
+are added. On an existing app, `morpheus web init` writes the checker but deliberately does not
+change an established `postbuild`; classify the current routes first, then add the checker command.
+
+Lakina's production migration established that the authenticated proxy and Vercel's prerender cache
+compose correctly: protected static pages returned `x-vercel-cache: HIT` after the proxy admitted a
+valid session. Median response time fell from 328–453 ms to 85–113 ms across Product, Research,
+Library and Inbox. The overview and Portfolio routes deliberately remained live cache misses because
+they include current portfolio data; their smaller 40% and 23% improvements are the expected
+separate optimization surface. Do not make an otherwise static page dynamic merely because one
+small panel is live—prefer a client island or a narrow endpoint when the UX permits it.
+
+#### Migrating an existing HQ
+
+1. Inventory every `/hq` route and classify it as repository content, shared shell, identity/live
+   data, an action, or an immutable external artifact. Record the reason for each dynamic route.
+2. Remove identity and preference reads from shared layouts. Keep the proxy as the HTML gate and
+   make presentation preferences local (a cookie is sufficient when cross-device synchronization
+   is not a product requirement).
+3. Build one validated catalogue during deployment. Enumerate repository routes with
+   `generateStaticParams`; emit only the small metadata, per-route payload, and narrow dynamic
+   fragments each consumer needs.
+4. Keep live routes and private artifact loaders dynamic. Re-authorize at their data boundary and
+   return private, non-cacheable responses.
+5. Add a postbuild contract over the framework manifests and function traces: expected static
+   slugs, an allowlist of dynamic routes with rationales, zero repository Markdown in dynamic
+   traces, and response-size budgets for large indexes and archive pages.
+6. Deploy one project normally, verify the exact source SHA, signed-in and signed-out behavior,
+   cookie preference, live fields and representative content, then compare repeated production
+   samples before applying the same contract to the next repository.
+
 **When a project wants people to sign themselves up, run `morpheus web add-consumer-auth`** — do
 not hand-build Firebase auth. It extends `web init` with what Evo shipped and hardened
 (cpheinrich/morpheus#135): a second Firebase project for staging with **staging as the default**

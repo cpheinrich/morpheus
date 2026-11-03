@@ -87,7 +87,10 @@ export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult
 
   // --- a new app, only when there is not one already ------------------------
   if (!survey.webAppExists) {
-    await app("package.json", t.appPackageJson(opts.scope, survey.shared?.name));
+    await app(
+      "package.json",
+      t.appPackageJson(opts.scope, survey.shared?.name, Boolean(opts.hq && opts.firebase)),
+    );
     await app("tsconfig.json", t.appTsconfig());
     await app("next.config.ts", t.nextConfig());
     await app("postcss.config.mjs", t.postcssConfig());
@@ -232,6 +235,17 @@ export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult
       await app("app/hq/SignOutButton.tsx", t.signOutButton(ctx));
       await app("app/hq/no-access/page.tsx", t.noAccessPage());
       await app("lib/hq/search.ts", t.hqSearchBuild(name));
+      await app("scripts/hq-build-contract.mjs", t.hqBuildContract());
+      await app("scripts/check-hq-build.mjs", t.hqBuildCheck());
+
+      if (survey.webAppExists) {
+        notes.push(
+          "Generated the HQ build contract and checker without changing this existing app's " +
+            "package scripts. After classifying its existing HQ routes, add " +
+            "`node scripts/check-hq-build.mjs` to postbuild; new Morpheus web apps wire it " +
+            "automatically.",
+        );
+      }
 
       if (survey.hasRouteGate) {
         notes.push(
