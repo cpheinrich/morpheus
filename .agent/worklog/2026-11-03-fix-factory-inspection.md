@@ -78,7 +78,7 @@ Independent review found one substantive Node 22 compatibility regression and co
   "version": 2,
   "base": "4a52a0e6f76fd334453ac7a95feed67d411344e1",
   "reviewed": "c896cc5ed1a0edc0d1521fc81adb84d3e8b3d95d",
-  "covered": "8f95a3811006697abe11c86407662d8e6940877a",
+  "covered": "3f16b8262abe5438d9cfe03912e04e47484d635d",
   "authorSession": "01a1a323-9ec6-7bd0-b4de-60f94f19ef54",
   "reviewerSession": "/root/factory_inspection_review",
   "risk": "high",
@@ -89,7 +89,7 @@ Independent review found one substantive Node 22 compatibility regression and co
     "evidence": "Author clock around reviewer invocation /root/factory_inspection_review: 2026-11-03T20:46:10.637Z to 2026-11-03T20:48:01.820Z."
   },
   "outcome": "complete",
-  "summary": "Independent review found one substantive Node 22 compatibility regression and conditionally cleared its precise fix. The author replaced the static zstd import with feature detection, verified plain metadata without zstd and compressed refusal, passed the nine focused MCP/snapshot tests and syntax checks, and imported the corrected module on Node 22.14. No other findings.",
+  "summary": "Independent review found one substantive Node 22 compatibility regression and conditionally cleared its precise fix. The author replaced the static zstd import with feature detection, verified plain metadata without zstd and compressed refusal, passed the nine focused MCP/snapshot tests and syntax checks, and imported the corrected module on Node 22.14. No other findings. A follow-up independently verified the late test portability correction on Node26 and Node22.14 and cleared with no remaining findings.",
   "findings": [
     {
       "id": "R1-Node22",
@@ -114,7 +114,25 @@ Independent review found one substantive Node 22 compatibility regression and co
       },
       "conditionMet": "Commits e16d7962 and 8f95a381 touch only permitted paths. node scripts/check.mjs passed; node --test tests/mcp.test.mjs tests/snapshot.test.mjs passed 9/9 with the unavailable-zstd regression. npx --yes --package=node@22.14.0 node --input-type=module -e import('./src/codex.mjs') loaded successfully. README states Node 22.15+ for compression while earlier Node 22 retains plain reads. Research comparison was added only to the permitted task worklog."
     }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/factory_inspection_review",
+      "commit": "3f16b8262abe5438d9cfe03912e04e47484d635d",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.55205,
+      "timing": {
+        "source": "clock",
+        "durationMs": 33123,
+        "evidence": "Author clock around same-reviewer follow-up: 2026-11-03T20:51:00.266Z to 2026-11-03T20:51:33.389Z."
+      },
+      "scopeReason": "Verify R1 condition and a late test portability correction after initial coverage: earlier Node22 has no zstd descriptor; skip only the compression-specific child while exercising plain reads and unsupported-compression refusal.",
+      "summary": "R1 condition satisfied. Reviewer independently passed snapshot tests on Node26 and Node22.14, with only the compressed child skipped on Node22.14. No remaining findings."
+    }
   ]
 }
 ```
 
+
+Final focused evidence: Node26 passed 10/10; Node22.14 passed 9 with only the
+compression-specific child skipped. The unsupported-zstd guard ran on both.
