@@ -23,9 +23,7 @@ again after their revalidation interval, violating the deploy-time-only content 
 
 ## Independent review
 
-The independent reviewer cleared the normal-risk change with no findings after independently
-verifying the ISR boundary, generated-route coverage, compiled output, documentation, and the
-33-test focused suite.
+The independent reviewer cleared the normal-risk change with no findings after independently verifying the ISR boundary, generated-route coverage, compiled output, documentation, and the 33-test focused suite.
 
 ```morpheus-review
 {
