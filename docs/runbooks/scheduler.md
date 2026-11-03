@@ -184,9 +184,14 @@ Per enrolled repository, in order, each failure isolated to that repository (or 
    `return_run_details` and records the run id and URL.
 
 A lock beside the status file stops a manual tick overlapping the timer's. It records the owner's
-PID and is taken over only when that process is gone, never for age alone, because a tick has no
-overall time bound. A lock with no readable PID (a crash between creating and writing it) is
-recovered after ten minutes.
+PID, the host's boot instant (`now − os.uptime()`) and the process's start instant, and is taken
+over only when that owner is gone: another boot, a dead PID, or a PID whose current process (read
+with POSIX `ps -o etime=`) started at another time — so a lock left by a shutdown or crash recovers
+even after the PID is reused. Never for age alone, because a tick has no overall time bound. Limits:
+boot and start instants agree within two minutes, so stepping the clock by more than that while a
+tick runs can let a second tick start; where `ps` cannot be read, a live PID keeps the lock (a
+reused PID then needs the lock deleted by hand). A lock with no readable owner (a crash between
+creating and writing it) is recovered after ten minutes.
 
 ## Status and health
 

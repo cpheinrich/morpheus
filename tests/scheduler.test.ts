@@ -8,7 +8,7 @@ import { runScheduler, resolveToken } from "../src/scheduler/cli.js";
 import { instant, parseInstant, parseRunIdentity, runNameSuffix, slotAtOrBefore } from "../src/scheduler/core.js";
 import { createGitHub, GitHubError, type GitHubApi, type Job, type Run } from "../src/scheduler/github.js";
 import { hostConfigSchema, schedulesFileSchema, type HostConfig } from "../src/scheduler/schema.js";
-import { health, processAlive, runNameOf, tick, withLock, type SchedulerStatus } from "../src/scheduler/tick.js";
+import { health, ownerRunning, parseElapsed, processAlive, runNameOf, systemProbe, tick, withLock, type OwnerProbe, type SchedulerStatus } from "../src/scheduler/tick.js";
 
 const RECEIVER = `name: Nightly
 run-name: "Nightly\${{ inputs.scheduler-id && format(' [schedule:{0}:{1}]', inputs.scheduler-id, inputs.scheduled-for) || '' }}"
@@ -478,37 +478,69 @@ describe("status and lock", () => {
     expect(await withLock(path, async () => "after")).toBe("after");
   });
 
-  it("never takes over a live owner's lock however old, and recovers a dead owner's", async () => {
+  // A deterministic host: boot at BOOT, PIDs mapped to the start instant of the process now holding them.
+  const BOOT = Date.parse("2026-11-03T06:00:00Z");
+  const host = (processes: Record<number, number | null>, bootAt = BOOT): OwnerProbe => ({
+    bootAt: () => bootAt,
+    alive: pid => pid in processes,
+    startedAt: pid => processes[pid] ?? null,
+  });
+  const lockWith = async (owner: unknown, ageMs = 0) => {
     const dir = await mkdtemp(join(tmpdir(), "scheduler-lock-"));
     const path = join(dir, "status.json");
-    const hourAgo = new Date(Date.now() - 60 * 60_000);
-    await writeFile(`${path}.lock`, "4242\n");
-    await utimes(`${path}.lock`, hourAgo, hourAgo);
-    await expect(withLock(path, async () => "ran", pid => pid === 4242)).rejects.toThrow("another tick (pid 4242)");
-    expect(await readFile(`${path}.lock`, "utf8")).toBe("4242\n");
-    // Same lock, owner gone: taken over at once, without waiting for any age.
-    await utimes(`${path}.lock`, new Date(), new Date());
-    expect(await withLock(path, async () => readFile(`${path}.lock`, "utf8"), () => false)).toBe(`${process.pid}\n`);
+    await writeFile(`${path}.lock`, typeof owner === "string" ? owner : JSON.stringify(owner));
+    const when = new Date(Date.now() - ageMs);
+    await utimes(`${path}.lock`, when, when);
+    return path;
+  };
+  const started = BOOT + 60_000;
+  const owner = { pid: 4242, bootAt: BOOT, startedAt: started };
+
+  it("never takes over a genuinely running owner, however old its lock", async () => {
+    const path = await lockWith(owner, 6 * 60 * 60_000);
+    await expect(withLock(path, async () => "ran", host({ 4242: started + 1_000 }))).rejects.toThrow("another tick (pid 4242)");
+    // Start time unreadable (no ps): the live PID alone keeps it, never an overlap.
+    await expect(withLock(path, async () => "ran", host({ 4242: null }))).rejects.toThrow("another tick (pid 4242)");
+    expect(JSON.parse(await readFile(`${path}.lock`, "utf8"))).toEqual(owner);
+  });
+
+  it("recovers a lock left by an earlier boot even when its PID is alive again", async () => {
+    const path = await lockWith(owner);
+    const afterReboot = host({ 4242: BOOT + 3 * 60 * 60_000 }, BOOT + 3 * 60 * 60_000);
+    expect(await withLock(path, async () => JSON.parse(await readFile(`${path}.lock`, "utf8")).pid, afterReboot)).toBe(process.pid);
     await expect(readFile(`${path}.lock`, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("waits out an unowned lock only until it is ten minutes old", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "scheduler-lock-"));
-    const path = join(dir, "status.json");
-    await writeFile(`${path}.lock`, "");
-    const justUnder = new Date(Date.now() - 9 * 60_000 - 50_000);
-    await utimes(`${path}.lock`, justUnder, justUnder);
-    await expect(withLock(path, async () => "ran", () => true)).rejects.toThrow(`another tick holds ${path}.lock`);
-    const over = new Date(Date.now() - 10 * 60_000 - 1_000);
-    await utimes(`${path}.lock`, over, over);
-    expect(await withLock(path, async () => "ran", () => true)).toBe("ran");
+  it("recovers a lock whose PID now belongs to a different process, and one whose owner died", async () => {
+    expect(await withLock(await lockWith(owner), async () => "reused", host({ 4242: started + 10 * 60_000 }))).toBe("reused");
+    expect(await withLock(await lockWith(owner), async () => "dead", host({}))).toBe("dead");
   });
 
-  it("reads a real process's liveness", async () => {
-    expect(processAlive(process.pid)).toBe(true);
+  it("judges identity at the tolerance boundary", () => {
+    expect(ownerRunning(owner, host({ 4242: started + 120_000 }))).toBe(true);
+    expect(ownerRunning(owner, host({ 4242: started + 120_001 }))).toBe(false);
+    expect(ownerRunning(owner, host({ 4242: started }, BOOT + 120_000))).toBe(true);
+    expect(ownerRunning(owner, host({ 4242: started }, BOOT + 120_001))).toBe(false);
+  });
+
+  it("waits out an unowned lock only until it is ten minutes old", async () => {
+    const live = host({ [process.pid]: Date.now() });
+    const fresh = await lockWith("", 9 * 60_000 + 50_000);
+    await expect(withLock(fresh, async () => "ran", live)).rejects.toThrow(`another tick holds ${fresh}.lock`);
+    expect(await withLock(await lockWith("4242\n", 10 * 60_000 + 1_000), async () => "ran", live)).toBe("ran");
+  });
+
+  it("reads this host's real boot, liveness and process start", async () => {
+    expect(systemProbe.alive(process.pid)).toBe(true);
+    const myStart = Date.now() - process.uptime() * 1000;
+    expect(Math.abs(systemProbe.startedAt(process.pid)! - myStart)).toBeLessThan(5_000);
+    expect(ownerRunning({ pid: process.pid, bootAt: systemProbe.bootAt(), startedAt: myStart }, systemProbe)).toBe(true);
     const child = spawn(process.execPath, ["-e", ""]);
     await new Promise(resolve => child.on("exit", resolve));
     expect(processAlive(child.pid!)).toBe(false);
+    expect(parseElapsed("1-02:03:04")).toBe(((26 * 60 + 3) * 60 + 4) * 1000);
+    expect(parseElapsed("03:04")).toBe(184_000);
+    expect(parseElapsed("garbage")).toBeNull();
   });
 
   it("tick writes an atomic status file that the next tick reads back", async () => {

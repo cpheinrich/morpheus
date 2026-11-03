@@ -1,4 +1,6 @@
+import { execFileSync } from "node:child_process";
 import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import { dirname } from "node:path";
 import { decide, HISTORY_SKEW_MS, instant, parseRunIdentity, slotAtOrBefore, window, } from "./core.js";
 import { GitHubError } from "./github.js";
@@ -175,8 +177,10 @@ export async function writeStatus(path, status) {
     await writeFile(temporary, `${JSON.stringify(status, null, 2)}\n`, { mode: 0o600 });
     await rename(temporary, path);
 }
-/** Only for a lock with no readable owner: a crash between creating it and writing the PID. */
+/** Only for a lock with no readable owner: a crash between creating it and writing its identity. */
 const UNOWNED_LOCK_MS = 10 * 60_000;
+/** Boot and start instants are derived from clocks and uptimes; within this they are the same one. */
+const IDENTITY_TOLERANCE_MS = 120_000;
 /** True unless the OS says no such process; EPERM means it exists under another user. */
 export function processAlive(pid) {
     try {
@@ -187,14 +191,62 @@ export function processAlive(pid) {
         return error.code !== "ESRCH";
     }
 }
+/** POSIX `ps -o etime` elapsed time, `[[dd-]hh:]mm:ss`, in milliseconds. */
+export function parseElapsed(text) {
+    const match = /^(?:(?:(\d+)-)?(\d+):)?(\d+):(\d+)$/.exec(text.trim());
+    if (!match)
+        return null;
+    const [, days, hours, minutes, seconds] = match.map(part => Number(part ?? 0));
+    return (((days * 24 + hours) * 60 + minutes) * 60 + seconds) * 1000;
+}
+export const systemProbe = {
+    bootAt: () => Date.now() - os.uptime() * 1000,
+    alive: processAlive,
+    startedAt(pid) {
+        try {
+            const elapsed = parseElapsed(execFileSync("ps", ["-o", "etime=", "-p", String(pid)], { encoding: "utf8", timeout: 5_000 }));
+            return elapsed === null ? null : Date.now() - elapsed;
+        }
+        catch {
+            return null;
+        }
+    },
+};
+function currentOwner(probe) {
+    return { pid: process.pid, bootAt: probe.bootAt(), startedAt: Date.now() - process.uptime() * 1000 };
+}
+function parseOwner(text) {
+    try {
+        const owner = JSON.parse(text);
+        return [owner.pid, owner.bootAt, owner.startedAt].every(n => Number.isFinite(n)) && owner.pid > 0 ? owner : null;
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * Whether the lock's recorded owner is still running. A different boot, a dead PID, or a PID now
+ * held by a process that started at another time are all a gone owner, so a lock left by a
+ * shutdown is recovered even when the PID has been reused. When the start time cannot be read the
+ * PID alone decides, which can only refuse a stale lock, never overlap a live one.
+ */
+export function ownerRunning(owner, probe) {
+    if (Math.abs(owner.bootAt - probe.bootAt()) > IDENTITY_TOLERANCE_MS)
+        return false;
+    if (!probe.alive(owner.pid))
+        return false;
+    const started = probe.startedAt(owner.pid);
+    return started === null || Math.abs(started - owner.startedAt) <= IDENTITY_TOLERANCE_MS;
+}
 /**
  * One tick per status file. launchd never overlaps its own job, but a manual tick could, and two
  * ticks racing would both read an empty history and dispatch twice. A tick has no overall time
- * bound (paginated reads, per-request timeouts), so age alone never frees a lock: it is taken over
- * only when its recorded owner process is gone. The lock is local to one host, so a PID is enough;
- * a reused PID can only make a dead owner look alive, which refuses rather than overlaps.
+ * bound (paginated reads, per-request timeouts), so age never frees an owned lock: it is taken
+ * over only when its recorded owner is gone (see `ownerRunning`). Two contenders recovering the
+ * same dead lock at the same instant can both proceed; that narrow race is accepted, and the
+ * receivers' admission guard absorbs a duplicate it causes.
  */
-export async function withLock(statusPath, body, alive = processAlive) {
+export async function withLock(statusPath, body, probe = systemProbe) {
     const path = `${statusPath}.lock`;
     await mkdir(dirname(path), { recursive: true });
     let handle;
@@ -204,10 +256,10 @@ export async function withLock(statusPath, body, alive = processAlive) {
     catch (error) {
         if (error.code !== "EEXIST")
             throw error;
-        const owner = Number.parseInt(await readFile(path, "utf8").catch(() => ""), 10);
-        if (Number.isSafeInteger(owner) && owner > 0) {
-            if (alive(owner))
-                throw new Error(`another tick (pid ${owner}) holds ${path}`);
+        const owner = parseOwner(await readFile(path, "utf8").catch(() => ""));
+        if (owner) {
+            if (ownerRunning(owner, probe))
+                throw new Error(`another tick (pid ${owner.pid}) holds ${path}`);
         }
         else if (Date.now() - (await stat(path)).mtimeMs < UNOWNED_LOCK_MS) {
             throw new Error(`another tick holds ${path}`);
@@ -216,7 +268,7 @@ export async function withLock(statusPath, body, alive = processAlive) {
         handle = await open(path, "wx");
     }
     try {
-        await handle.writeFile(`${process.pid}\n`);
+        await handle.writeFile(`${JSON.stringify(currentOwner(probe))}\n`);
         return await body();
     }
     finally {

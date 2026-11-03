@@ -56,16 +56,39 @@ export declare function runNameOf(source: string): string | null;
 export declare function readStatus(path: string): Promise<SchedulerStatus | null>;
 /** Write-then-rename, so a reader never sees half a status file. */
 export declare function writeStatus(path: string, status: SchedulerStatus): Promise<void>;
+/** Who holds a lock: a PID is only an owner within one boot and one process incarnation. */
+export interface LockOwner {
+    pid: number;
+    bootAt: number;
+    startedAt: number;
+}
+export interface OwnerProbe {
+    bootAt(): number;
+    alive(pid: number): boolean;
+    /** When the process now holding `pid` started, or null when that cannot be read. */
+    startedAt(pid: number): number | null;
+}
 /** True unless the OS says no such process; EPERM means it exists under another user. */
 export declare function processAlive(pid: number): boolean;
+/** POSIX `ps -o etime` elapsed time, `[[dd-]hh:]mm:ss`, in milliseconds. */
+export declare function parseElapsed(text: string): number | null;
+export declare const systemProbe: OwnerProbe;
+/**
+ * Whether the lock's recorded owner is still running. A different boot, a dead PID, or a PID now
+ * held by a process that started at another time are all a gone owner, so a lock left by a
+ * shutdown is recovered even when the PID has been reused. When the start time cannot be read the
+ * PID alone decides, which can only refuse a stale lock, never overlap a live one.
+ */
+export declare function ownerRunning(owner: LockOwner, probe: OwnerProbe): boolean;
 /**
  * One tick per status file. launchd never overlaps its own job, but a manual tick could, and two
  * ticks racing would both read an empty history and dispatch twice. A tick has no overall time
- * bound (paginated reads, per-request timeouts), so age alone never frees a lock: it is taken over
- * only when its recorded owner process is gone. The lock is local to one host, so a PID is enough;
- * a reused PID can only make a dead owner look alive, which refuses rather than overlaps.
+ * bound (paginated reads, per-request timeouts), so age never frees an owned lock: it is taken
+ * over only when its recorded owner is gone (see `ownerRunning`). Two contenders recovering the
+ * same dead lock at the same instant can both proceed; that narrow race is accepted, and the
+ * receivers' admission guard absorbs a duplicate it causes.
  */
-export declare function withLock<T>(statusPath: string, body: () => Promise<T>, alive?: (pid: number) => boolean): Promise<T>;
+export declare function withLock<T>(statusPath: string, body: () => Promise<T>, probe?: OwnerProbe): Promise<T>;
 export interface Health {
     healthy: boolean;
     reasons: string[];
