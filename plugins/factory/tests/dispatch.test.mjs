@@ -271,6 +271,34 @@ for (const d of DIRECTIONS)
     assert.equal((await h.launches()).length, 0);
   });
 
+for (const d of DIRECTIONS)
+  test(`a prompt over the limit is refused without a worker, and one at the limit is sent whole (${d.name})`, async (t) => {
+    const h = await harness(t);
+    const repo = await h.repo("repo");
+    const m = manager(t);
+    const restriction = " Do not commit, push, publish, send messages, or make external changes.";
+    const body = "Implement the change. ";
+    const exact = `${body.repeat(Math.ceil(32000 / body.length)).slice(0, 32000 - restriction.length)}${restriction}`;
+    assert.equal(exact.length, 32000);
+    const over = await d.prompt(m, repo, `${exact} Thanks.`, "turn-over");
+    assert.equal(
+      over.systemMessage,
+      "Factory could not delegate this turn: the prompt is 32008 characters, over the 32000-character dispatch limit; it is not truncated, because a cut could drop the user's instructions",
+    );
+    assert.match(over.additionalContext, /Tell the user plainly that this turn was not delegated and why; do not quietly do the work here instead/);
+    assert.equal((await h.launches()).length, 0);
+    const sent = await d.prompt(m, repo, exact, "turn-exact");
+    const id = runIdOf(sent);
+    assert.ok(id, sent.systemMessage);
+    await settle(m, id);
+    const launched = await h.launches();
+    assert.equal(launched.length, 1);
+    // The worker's stdin is a stream-json line, so the prompt arrives JSON-encoded.
+    assert.ok(launched[0].stdin.includes(JSON.stringify(exact).slice(1, -1)));
+    assert.ok(launched[0].stdin.includes("make external changes."));
+    assert.doesNotMatch(launched[0].stdin, /truncated at/);
+  });
+
 test("off is inert, and quota, overrides and the local: prefix keep turns here", async (t) => {
   const h = await harness(t);
   const repo = await h.repo("repo");
@@ -469,9 +497,18 @@ test("turn identity and the handoff are bounded and conservative", async (t) => 
   assert.equal(await claudeTurnKey("same words", join(root, "missing.jsonl"), ""), null);
   assert.equal(await claudeTurnKey("same words", undefined), null);
   assert.equal(codexTurnKey(""), null);
-  const long = dispatchHandoff("x".repeat(40000), { id: "r", state: "completed", result: { summary: "y".repeat(5000) } });
-  assert.match(long, /truncated at 32000 characters/);
-  assert.match(long, /truncated at 2000 characters/);
+  // A prompt at the limit passes whole, end included; one character more is refused, never
+  // cut. The previous result summary is still clipped.
+  const exact = `${"x".repeat(31950)}${"Do not push.".padStart(50, " ")}`;
+  assert.equal(exact.length, 32000);
+  const handoff = dispatchHandoff(exact, { id: "r", state: "completed", result: { summary: "y".repeat(5000) } });
+  assert.ok(handoff.includes(`User prompt (verbatim):\n${exact}\n`));
+  assert.doesNotMatch(handoff, /truncated at 32000/);
+  assert.match(handoff, /truncated at 2000 characters/);
+  assert.throws(
+    () => dispatchHandoff(`${exact}.`),
+    /^Error: the prompt is 32001 characters, over the 32000-character dispatch limit; it is not truncated/,
+  );
 });
 
 // ---- Installed hook scripts, through a separate bridge process ----
@@ -544,7 +581,8 @@ test("Claude Code hooks dispatch a fresh session's first turn through the bridge
   assert.match(output.hookSpecificOutput.additionalContext, /first reply in a session where Factory is active: open it with one short sentence/);
   // The hook retried for the same prompt: same run, no second launch.
   assert.equal(runIdOf(JSON.parse((await hook("claude-hook.mjs", prompt("prompt-1"))).stdout)), id);
-  for (let i = 0; i < 100 && (await h.launches()).length < 1; i++) await new Promise((r) => setTimeout(r, 100));
+  // The fake worker creates its launch directory before it has read its stdin.
+  for (let i = 0; i < 100 && !(await h.launches())[0]?.stdin; i++) await new Promise((r) => setTimeout(r, 100));
   const launched = await h.launches();
   assert.equal(launched.length, 1);
   assert.match(launched[0].stdin, /Paint the fence/);
@@ -624,7 +662,8 @@ test("Codex hooks dispatch through the bridge service using the app server's tur
   assert.match(output.systemMessage, /^Using Factory to delegate this turn to a claude worker session .* "pool" gateway credential/);
   assert.match(output.hookSpecificOutput.additionalContext, /Call claude_wait with runId/);
   assert.equal(runIdOf(JSON.parse((await hook("hook.mjs", input)).stdout)), id);
-  for (let i = 0; i < 100 && (await h.launches()).length < 1; i++) await new Promise((r) => setTimeout(r, 100));
+  // The fake worker creates its launch directory before it has read its stdin.
+  for (let i = 0; i < 100 && !(await h.launches())[0]?.stdin; i++) await new Promise((r) => setTimeout(r, 100));
   const launched = await h.launches();
   assert.equal(launched.length, 1);
   assert.equal(launched[0].argv[launched[0].argv.indexOf("--permission-mode") + 1], "bypassPermissions");

@@ -9,7 +9,8 @@ entry below.
 
 The design is held to these limits:
 
-- **Bounded handoff.** The worker gets the prompt, the previous bridge result for the checkout,
+- **Bounded handoff.** The worker gets the whole prompt (one over 32,000 characters is refused,
+  never truncated, since its end can carry the user's restrictions), the previous bridge result for the checkout,
   and its own saved session. It gets no transcript; missing context comes from the clarification
   loop.
 - **One launch per turn.** Codex's `turn_id` or Claude's `prompt_id` (transcript metadata only

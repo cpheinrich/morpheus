@@ -134,9 +134,10 @@ any number of worker sessions may share one, while host capacity (`maxConcurrent
 per checkout) and subscription quota are separate limits. There is no scheduler and no lock
 per credential.
 
-- **What the worker gets.** The user's prompt verbatim (capped at 32,000 characters), the
-  previous bridge result summary for the same checkout (2,000 characters), and its own saved
-  session for that checkout and route. Never the coordinator's transcript, instructions or
+- **What the worker gets.** The user's prompt verbatim, the previous bridge result summary for
+  the same checkout (clipped to 2,000 characters), and its own saved session for that checkout
+  and route. A prompt over 32,000 characters is refused as a dispatch failure and no worker is
+  started; it is never truncated, because a cut could drop restrictions at its end. Never the coordinator's transcript, instructions or
   memory beyond the existing opt-in memory excerpts. A prompt that depends on earlier
   conversation makes the worker ask; the coordinator answers with the missing context.
 - **Where it runs.** The coordinator's current checkout (the hook's `cwd`). The hook runs

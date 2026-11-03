@@ -16,8 +16,15 @@ const clip = (text, limit) =>
 
 // The worker gets the user's own words and the bridge's last result for this checkout, never
 // the coordinator's transcript or instructions; its saved session for the same checkout and
-// route carries its own earlier turns. Anything else it needs comes from asking.
+// route carries its own earlier turns. Anything else it needs comes from asking. An oversized
+// prompt is refused rather than cut: its end can hold the user's restrictions ("do not push"),
+// and a worker given only the beginning would act without them.
 export function dispatchHandoff(prompt, previous) {
+  const text = String(prompt ?? "");
+  if (text.length > PROMPT_LIMIT)
+    throw new Error(
+      `the prompt is ${text.length} characters, over the ${PROMPT_LIMIT}-character dispatch limit; it is not truncated, because a cut could drop the user's instructions`,
+    );
   const lines = [
     "Automatic Factory dispatch of one user turn. You are the implementer for this turn; the",
     "coordinating session manages you and verifies your result. You did not see the coordinator's",
@@ -25,7 +32,7 @@ export function dispatchHandoff(prompt, previous) {
     "earlier turns, ask (AskUserQuestion) or return outcome needs_input with the question instead of guessing.",
     "",
     "User prompt (verbatim):",
-    clip(String(prompt ?? ""), PROMPT_LIMIT),
+    text,
   ];
   const summary = previous?.result?.summary;
   if (typeof summary === "string" && summary.trim())
