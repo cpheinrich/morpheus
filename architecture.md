@@ -3216,8 +3216,9 @@ manifest, skill, hooks, runtime, lockfile, tests and installation documentation.
 the package into a personal marketplace; execution remains off until enabled. Personal
 settings and session records stay outside the repository. The release status (`experimental`,
 default `off`) is repository-owned; the only per-machine switch is the private settings
-file's `mode`, which reinstalling never overwrites. Hooks advise and the coordinator starts
-every handoff; automatic dispatch is not implemented.
+file's `mode`, which reinstalling never overwrites. In `manual` mode hooks advise and the
+coordinator starts every handoff; in `automatic` mode the prompt hook dispatches each turn to
+the routed worker and the coordinator manages it (the package README's "Automatic dispatch").
 
 The bridge works in both directions. Whichever agent holds the conversation is the
 coordinator, on this host's native login; it routes at safe checkpoints, keeps explicit
