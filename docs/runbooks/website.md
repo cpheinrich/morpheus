@@ -61,8 +61,10 @@ to chase a static-route label.
 Before release, inspect the framework's built route inventory and runtime trace files rather than
 inferring static behavior from source. Assert that every expected content slug was prerendered,
 ordinary HQ routes are static, dynamic routes are declared with a rationale, and no runtime bundle
-traces repository Markdown. Also verify that a Markdown-only commit triggers deployment and that
-pages and the search index report one source commit. Set response-size budgets separately: a large
+traces repository `hq/**/*.md` source. Attribute a concrete prerender entry to its `srcRoute`: a
+catch-all can emit the same URL as an explicit live page without making that live page static. Also
+verify that a Markdown-only commit triggers deployment and that pages and the search index report
+one source commit. Set response-size budgets separately: a large
 static page is still expensive for the browser.
 
 New Morpheus web apps run `scripts/check-hq-build.mjs` from `postbuild` with `/hq`, no-access and
@@ -91,8 +93,8 @@ small panel is live—prefer a client island or a narrow endpoint when the UX pe
 4. Keep live routes and private artifact loaders dynamic. Re-authorize at their data boundary and
    return private, non-cacheable responses.
 5. Add a postbuild contract over the framework manifests and function traces: expected static
-   slugs, an allowlist of dynamic routes with rationales, zero repository Markdown in dynamic
-   traces, and response-size budgets for large indexes and archive pages.
+   slugs, an allowlist of dynamic routes with rationales, zero repository `hq/**/*.md` source in
+   dynamic traces, and response-size budgets for large indexes and archive pages.
 6. Deploy one project normally, verify the exact source SHA, signed-in and signed-out behavior,
    cookie preference, live fields and representative content, then compare repeated production
    samples before applying the same contract to the next repository.

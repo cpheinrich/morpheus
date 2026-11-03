@@ -2052,19 +2052,30 @@ export function routeFromAppManifestKey(key) {
 }
 
 export function classifyDynamicHqRoutes(appPaths, prerenderManifest) {
-  const exact = new Set(Object.keys(prerenderManifest.routes ?? {}));
+  const exact = prerenderManifest.routes ?? {};
   const generated = prerenderManifest.dynamicRoutes ?? {};
+  const generatedSources = new Set(
+    Object.values(exact).map((entry) => entry.srcRoute).filter(Boolean),
+  );
 
   return Object.keys(appPaths)
     .filter((key) => key.startsWith("/hq/") || key === "/hq/page")
     .map(routeFromAppManifestKey)
-    .filter((route) => !exact.has(route))
+    // A concrete URL may have been emitted by a different catch-all route.
+    // That does not make the explicit page at this app-manifest key static.
+    .filter((route) => {
+      const entry = exact[route];
+      return !entry || (entry.srcRoute != null && entry.srcRoute !== route);
+    })
     .filter((route) => generated[route]?.fallback !== false)
+    // Next may omit a dynamicRoutes entry for a catch-all whose static params
+    // were fully emitted. Its concrete entries still identify the pattern.
+    .filter((route) => !generatedSources.has(route))
     .sort();
 }
 
 export function markdownTraceEntries(files) {
-  return files.filter((file) => /(?:^|[/\\\\])[^/\\\\]+\\.md$/i.test(file));
+  return files.filter((file) => /(?:^|[/\\\\])hq[/\\\\].*\\.md$/i.test(file));
 }
 
 export function nftPath(nextDirectory, compiledPath) {

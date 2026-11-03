@@ -173,12 +173,14 @@ describe("scaffoldWeb", () => {
       "/hq/page": "app/hq/page.js",
       "/hq/no-access/page": "app/hq/no-access/page.js",
       "/hq/search-index/route": "app/hq/search-index/route.js",
+      "/hq/[...slug]/page": "app/hq/[...slug]/page.js",
     };
     const prerender = {
       routes: {
         "/hq": {},
         "/hq/no-access": {},
         "/hq/search-index": {},
+        "/hq/example": { srcRoute: "/hq/[...slug]" },
       },
       dynamicRoutes: {},
     };
@@ -193,7 +195,15 @@ describe("scaffoldWeb", () => {
       ...appPaths,
       "/hq/live/page": "app/hq/live/page.js",
     };
+    const withCatchAllCollision = {
+      ...prerender,
+      routes: {
+        ...prerender.routes,
+        "/hq/live": { srcRoute: "/hq/[...slug]" },
+      },
+    };
     await write(root, "apps/web/.next/server/app-paths-manifest.json", JSON.stringify(withUndeclaredDynamic));
+    await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(withCatchAllCollision));
     await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).rejects.toThrow(
       /Actual dynamic: \/hq\/live/,
     );
@@ -208,10 +218,23 @@ describe("scaffoldWeb", () => {
     await write(
       root,
       "apps/web/.next/server/app/hq/live/page.js.nft.json",
-      JSON.stringify({ files: ["../../../../../../hq/private.md"] }),
+      JSON.stringify({ files: ["../../node_modules/fetch-blob/README.md"] }),
+    );
+    await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).resolves.toMatchObject({
+      stdout: expect.stringContaining("1 declared dynamic routes"),
+    });
+    await write(
+      root,
+      "apps/web/.next/server/app/hq/live/page.js.nft.json",
+      JSON.stringify({
+        files: [
+          "../../../../../../hq/private.md",
+          "/workspace/project/hq/product/roadmap/MO-001.md",
+        ],
+      }),
     );
     await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).rejects.toThrow(
-      /traces repository Markdown/,
+      /hq\/private\.md[\s\S]*hq\/product\/roadmap\/MO-001\.md/,
     );
   });
 
