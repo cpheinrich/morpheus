@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { renderFirestoreRules } from "../src/hq/rules.js";
@@ -173,14 +174,12 @@ describe("scaffoldWeb", () => {
       "/hq/page": "app/hq/page.js",
       "/hq/no-access/page": "app/hq/no-access/page.js",
       "/hq/search-index/route": "app/hq/search-index/route.js",
-      "/hq/[...slug]/page": "app/hq/[...slug]/page.js",
     };
     const prerender = {
       routes: {
         "/hq": { initialRevalidateSeconds: false },
         "/hq/no-access": { initialRevalidateSeconds: false },
         "/hq/search-index": { initialRevalidateSeconds: false },
-        "/hq/example": { srcRoute: "/hq/[...slug]", initialRevalidateSeconds: false },
       },
       dynamicRoutes: {},
     };
@@ -204,6 +203,39 @@ describe("scaffoldWeb", () => {
     );
     await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(prerender));
 
+    const contractPath = join(webRoot, "scripts/hq-build-contract.mjs");
+    const generatedContract = await import(pathToFileURL(contractPath).href) as {
+      classifyDynamicHqRoutes: (
+        paths: Record<string, string>,
+        manifest: Record<string, unknown>,
+      ) => string[];
+    };
+    const catchAllPaths = {
+      "/hq/[...slug]/page": "app/hq/[...slug]/page.js",
+    };
+    const emittedCatchAll = {
+      routes: { "/hq/example": { srcRoute: "/hq/[...slug]", initialRevalidateSeconds: false } },
+      dynamicRoutes: { "/hq/[...slug]": { fallback: false } },
+    };
+    expect(generatedContract.classifyDynamicHqRoutes(catchAllPaths, emittedCatchAll)).toEqual([]);
+    emittedCatchAll.dynamicRoutes["/hq/[...slug]"].fallback = true;
+    expect(generatedContract.classifyDynamicHqRoutes(catchAllPaths, emittedCatchAll)).toEqual([
+      "/hq/[...slug]",
+    ]);
+
+    const withExtraStatic = {
+      ...prerender,
+      routes: {
+        ...prerender.routes,
+        "/hq/extra": { initialRevalidateSeconds: 60 },
+      },
+    };
+    await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(withExtraStatic));
+    await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).rejects.toThrow(
+      /Static HQ route contract changed[\s\S]*Actual static:[\s\S]*\/hq\/extra/,
+    );
+    await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(prerender));
+
     const withUndeclaredDynamic = {
       ...appPaths,
       "/hq/live/page": "app/hq/live/page.js",
@@ -220,8 +252,8 @@ describe("scaffoldWeb", () => {
     await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).rejects.toThrow(
       /Actual dynamic: \/hq\/live/,
     );
+    await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(prerender));
 
-    const contractPath = join(webRoot, "scripts/hq-build-contract.mjs");
     const contract = await readFile(contractPath, "utf8");
     await writeFile(
       contractPath,

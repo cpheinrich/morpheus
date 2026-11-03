@@ -2056,7 +2056,9 @@ export function classifyDynamicHqRoutes(appPaths, prerenderManifest) {
   const exact = prerenderManifest.routes ?? {};
   const generated = prerenderManifest.dynamicRoutes ?? {};
   const generatedSources = new Set(
-    Object.values(exact).map((entry) => entry.srcRoute).filter(Boolean),
+    Object.values(exact)
+      .map((entry) => entry.srcRoute)
+      .filter((source) => source && generated[source]?.fallback === false),
   );
 
   return Object.keys(appPaths)
@@ -2069,9 +2071,15 @@ export function classifyDynamicHqRoutes(appPaths, prerenderManifest) {
       return !entry || (entry.srcRoute != null && entry.srcRoute !== route);
     })
     .filter((route) => generated[route]?.fallback !== false)
-    // Next may omit a dynamicRoutes entry for a catch-all whose static params
-    // were fully emitted. Its concrete entries still identify the pattern.
+    // Emitted concrete entries close a pattern only when the manifest also
+    // proves there is no request-time fallback.
     .filter((route) => !generatedSources.has(route))
+    .sort();
+}
+
+export function staticHqRoutes(prerenderManifest) {
+  return Object.keys(prerenderManifest.routes ?? {})
+    .filter((route) => route === "/hq" || route.startsWith("/hq/"))
     .sort();
 }
 
@@ -2118,6 +2126,7 @@ import {
   nftPath,
   revalidatedStaticRoutes,
   routeFromAppManifestKey,
+  staticHqRoutes,
 } from "./hq-build-contract.mjs";
 
 const webRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -2146,12 +2155,15 @@ if (!sameMembers(actualDynamic, expectedDynamic)) {
   );
 }
 
-const prerendered = new Set(Object.keys(prerender.routes ?? {}));
-const missingStatic = EXPECTED_STATIC_HQ_ROUTES.filter((route) => !prerendered.has(route));
-if (missingStatic.length) {
-  throw new Error("Expected static HQ routes were not prerendered:\\n" + missingStatic.join("\\n"));
+const expectedStatic = [...EXPECTED_STATIC_HQ_ROUTES].sort();
+const actualStatic = staticHqRoutes(prerender);
+if (!sameMembers(actualStatic, expectedStatic)) {
+  throw new Error(
+    "Static HQ route contract changed.\\nExpected static: " + expectedStatic.join(", ") +
+    "\\nActual static: " + actualStatic.join(", "),
+  );
 }
-const revalidatedStatic = revalidatedStaticRoutes(EXPECTED_STATIC_HQ_ROUTES, prerender);
+const revalidatedStatic = revalidatedStaticRoutes(actualStatic, prerender);
 if (revalidatedStatic.length) {
   throw new Error(
     "Repository-backed HQ routes must be immutable build artifacts, not ISR:\\n" +
