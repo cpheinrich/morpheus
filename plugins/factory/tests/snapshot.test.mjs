@@ -70,9 +70,11 @@ test("desktop adapter accepts active full access metadata by contract", async (t
     await rm(path);
     await assert.rejects(recordedSnapshot(thread), /requires Node 22.15/);
   } finally {
-    Object.defineProperty(zlib, "createZstdDecompress", decompress);
+    if (decompress) Object.defineProperty(zlib, "createZstdDecompress", decompress);
+    else delete zlib.createZstdDecompress;
   }
   // The same validation must run after Codex compresses the rollout in place.
+  await t.test("compressed metadata", { skip: typeof zlib.zstdCompressSync !== "function" }, async () => {
   await writeFile(path + ".zst", zlib.zstdCompressSync(Buffer.from([start, context].map(JSON.stringify).join("\n"))));
   assert.equal((await recordedSnapshot(thread)).model, "gpt-6-astra");
   assert.equal((await recordedSnapshot({ ...thread, path: path + ".zst" })).reasoningEffort, "medium");
@@ -82,6 +84,7 @@ test("desktop adapter accepts active full access metadata by contract", async (t
   await assert.rejects(recordedSnapshot(thread), /No active/);
   await writeFile(path + ".zst", "corrupt compressed rollout");
   await assert.rejects(recordedSnapshot(thread));
+  });
   await rm(path + ".zst");
   await assert.rejects(recordedSnapshot(thread), /metadata is unavailable/);
 });
