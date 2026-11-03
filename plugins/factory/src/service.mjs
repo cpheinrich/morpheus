@@ -56,6 +56,16 @@ import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
 import { installationId } from "./installation.mjs";
 import { Pool } from "./pool.mjs";
 import { HQPool } from "./pool-hq.mjs";
+import {
+  OPT_OUT,
+  optedOut,
+  dispatchHandoff,
+  editTargets,
+  canonical,
+  within,
+  renderDispatch,
+  readiness,
+} from "./dispatch.mjs";
 
 export function previewSelection(config, snapshot) {
   try {
@@ -86,6 +96,10 @@ export class Manager {
       this.poolControl(threadId, conversation),
   });
   hq = new HQPool(this.pool, { draining: () => this.draining });
+  // Automatic dispatch: one in-flight decision per task turn, and launches queued behind each
+  // other rather than refused by the single-start guard.
+  dispatching = new Map();
+  dispatchChain = Promise.resolve();
   async client() {
     if (!this.codex) {
       this.codex = await new Codex().connect();
@@ -299,6 +313,7 @@ export class Manager {
         codexSession,
         replySource: args.replySource,
         replyReason: args.replyReason,
+        dispatch: args.dispatch ?? null,
       };
       await this.launch(
         record,
@@ -572,6 +587,7 @@ export class Manager {
       sequence,
       replySource,
       replyReason,
+      dispatch,
     } = run;
     return {
       id,
@@ -596,6 +612,7 @@ export class Manager {
       sequence,
       replySource,
       replyReason,
+      dispatch: dispatch ?? null,
     };
   }
   async status(id) {
@@ -922,6 +939,7 @@ export class Manager {
         claudeSession,
         replySource: args.replySource,
         replyReason: args.replyReason,
+        dispatch: args.dispatch ?? null,
       };
       await this.launch(
         record,
@@ -956,10 +974,176 @@ export class Manager {
       this.busy = false;
     }
   }
+  // A UserPromptSubmit in automatic mode launches the routed worker through the same start
+  // path the tools use, so routing, quota, ownership, concurrency and permissions are
+  // unchanged. The coordinator stays the manager; it is told what happened and what to do.
+  async autoDispatch(primary, s, args) {
+    const key = args.turnKey;
+    const memo = key && `${s.task.id}\n${key}`;
+    if (memo && this.dispatching.has(memo)) return this.dispatching.get(memo);
+    const pending = (async () => {
+      // A turn already handled answers the same way, including a retried hook.
+      const recorded = key && (await taskRead(s.task.id)).dispatches?.[key];
+      if (recorded) return recorded.outcome ?? this.reconcileDispatch(s.task, key);
+      // A live run or an unanswered question is the manager's before anything else, whatever
+      // the route says now: a changed or unreadable quota never moves an in-flight writer.
+      const held = await this.heldRuns(s.task);
+      if (held) return held;
+      if (optedOut(args.prompt))
+        return { kind: "local", reason: `the prompt starts with "${OPT_OUT}"` };
+      if (!key)
+        return {
+          kind: "unknown",
+          reason: "this turn has no readable identity, so it could not be dispatched without risking a duplicate worker",
+        };
+      // Reserved durably before launch, so a restart after launching can only find the run
+      // again or report that it cannot tell; it never launches a second worker for the turn.
+      let earlier;
+      await this.taskTransaction(s.task.id, async (task) => {
+        earlier = task.dispatches?.[key];
+        if (earlier) return false;
+        const entries = Object.entries(task.dispatches ?? {});
+        entries.push([key, { at: Date.now() }]);
+        task.dispatches = Object.fromEntries(entries.slice(-20));
+        return true;
+      });
+      if (earlier) return earlier.outcome ?? this.reconcileDispatch(s.task, key);
+      const outcome = await this.dispatchTurn(primary, s, args);
+      await this.recordDispatch(s.task.id, key, outcome);
+      return outcome;
+    })();
+    if (!memo) return pending;
+    const shared = pending.finally(() => this.dispatching.delete(memo));
+    this.dispatching.set(memo, shared);
+    return shared;
+  }
+  async recordDispatch(taskId, key, outcome) {
+    await this.mutateTask(taskId, (task) => {
+      task.dispatches = { ...task.dispatches, [key]: { ...task.dispatches?.[key], outcome } };
+    });
+  }
+  // A reservation without an outcome: the service stopped, or lost the result, between
+  // reserving the turn and recording what happened. Every run record names its turn.
+  async reconcileDispatch(task, key) {
+    for (const id of (await readdir(join(home(), "runs"))).filter((id) =>
+      /^[0-9a-f-]{36}$/.test(id),
+    )) {
+      const record = await readJSON(join(runDir(id), "run.json"), null);
+      if (record?.threadId !== task.id || record.dispatch !== key) continue;
+      const outcome = { kind: "dispatched", run: briefRun(await this.status(id)) };
+      await this.mutateTask(task.id, (current) => {
+        current.runIds = [...new Set([...(current.runIds ?? []), id])];
+      });
+      await this.recordDispatch(task.id, key, outcome);
+      return outcome;
+    }
+    return {
+      kind: "unknown",
+      reason: "an earlier attempt to dispatch this turn stopped before recording its result, and no worker for it was found",
+    };
+  }
+  async heldRuns(task) {
+    const runs = await this.taskRuns(task);
+    // A live run is the manager's to supervise; a new prompt is never steered into it.
+    if (runs.active.length) return { kind: "active", runs: runs.active.map(briefRun) };
+    // A finished question is answered by the manager, never by the next prompt.
+    const all = [...runs.active, ...runs.recent];
+    const waiting = runs.recent.filter(
+      (run) =>
+        run.state === "needs_input" &&
+        !all.some((other) => other.cwd === run.cwd && other.createdAt > run.createdAt),
+    );
+    return waiting.length ? { kind: "waiting", runs: waiting.map(briefRun) } : null;
+  }
+  async dispatchTurn(primary, s, args) {
+    const { task, route: decision } = s;
+    if (!delegates(decision, primary)) return { kind: "local", reason: decision.reason };
+    try {
+      const cwd = (await projectIdentity(args.cwd || task.cwd)).cwd;
+      const previous = (await this.taskRuns(task)).recent.find(
+        (run) => run.cwd === cwd && typeof run.result?.summary === "string",
+      );
+      const prompt = dispatchHandoff(args.prompt, previous);
+      const dispatch = args.turnKey;
+      const launch = this.dispatchChain.then(() =>
+        primary === "claude"
+          ? this.codexStart({ sessionId: args.sessionId, prompt, cwd, dispatch })
+          : this.start({ threadId: task.id, prompt, cwd, dispatch }),
+      );
+      this.dispatchChain = launch.catch(() => {});
+      return { kind: "dispatched", run: briefRun(await launch) };
+    } catch (e) {
+      return { kind: "failed", reason: e.message };
+    }
+  }
+  // Hook output: advice alone unless Factory is active for this task (`active` names its
+  // mode). SessionStart then adds readiness; in automatic mode UserPromptSubmit dispatches.
+  // The first prompt of an active session also asks for a one-line notice in the reply.
+  async automaticHook(primary, args, advice, active) {
+    if (!active || !["SessionStart", "UserPromptSubmit"].includes(args.event)) return advice;
+    if (args.event === "SessionStart")
+      return {
+        ...advice,
+        systemMessage: readiness(active.mode, active.inspected?.route, primary, active.failure),
+      };
+    const id = primary === "claude" ? claudeTaskId(args.sessionId) : args.threadId;
+    let outcome;
+    if (active.mode === "manual") outcome = { kind: "manual" };
+    else if (active.failure)
+      outcome = (await this.heldRuns(await taskRead(id))) ?? {
+        kind: "failed",
+        reason: active.failure,
+      };
+    else outcome = await this.autoDispatch(primary, active.inspected, args);
+    // A retried hook of the first turn repeats the notice; no later turn does.
+    const turn = args.turnKey ?? `unidentified:${randomUUID()}`;
+    let first = false;
+    await this.taskTransaction(id, async (task) => {
+      if (task.noticeTurn) {
+        first = task.noticeTurn === turn;
+        return false;
+      }
+      task.noticeTurn = turn;
+      first = true;
+      return true;
+    });
+    // Manual mode says so once; after that its turns carry the advice alone.
+    if (outcome.kind === "manual" && !first) return advice;
+    const rendered = renderDispatch(outcome, {
+      tools: primary === "claude" ? "codex" : "claude",
+      first,
+    });
+    return {
+      systemMessage: rendered.systemMessage,
+      additionalContext: `${advice.additionalContext}\n\n${rendered.additionalContext}`,
+    };
+  }
+  // Refuses the coordinator's native edits inside a checkout its own worker is writing. It
+  // prevents an accidental race; shell commands and unknown tools are not inspected.
+  async guard(taskId, args) {
+    const targets = editTargets(args.tool, args.toolInput, args.cwd);
+    if (!targets) return {};
+    const { active } = await this.taskRuns(await taskRead(taskId));
+    for (const run of active) {
+      for (const target of targets)
+        if (within(await canonical(target), run.cwd))
+          return {
+            deny: `Factory run ${run.id} (${run.executor}) is writing in ${run.cwd}. Wait for it, or stop it and wait until it is terminal, before editing files there.`,
+          };
+    }
+    return {};
+  }
+  // Factory's mode for this task, or null when it is off.
+  active(config, task, detail) {
+    if (config.mode === "off") return null;
+    const mode = config.projects[task.project] ?? config.mode;
+    return mode === "off" ? null : { mode, ...detail };
+  }
   async codexHook(args) {
     const config = await configRead();
     if (config.mode === "off") return {};
     const taskId = claudeTaskId(args.sessionId);
+    if (args.event === "PreToolUse") return this.guard(taskId, args);
     const task = await taskRead(taskId);
     if (args.event === "SessionEnd") {
       for (const run of (await this.taskRuns(task)).active)
@@ -977,16 +1161,23 @@ export class Manager {
         updatedAt: Date.now(),
       };
     });
+    let s;
     try {
-      const s = await this.claudeInspect(args.sessionId);
-      return {
-        additionalContext: `Factory delegation routing (sessionId ${args.sessionId}): ${JSON.stringify(s.route)}. A gateway route runs a worker on that pooled subscription, Claude included; only this session's own native login is never a delegate. Use the factory delegate-to-codex skill and codex_* tools. Inspect active runs before starting another run. Explicit user instructions override automatic routing.`,
-      };
+      s = await this.claudeInspect(args.sessionId);
     } catch (e) {
-      return {
-        additionalContext: `Codex delegation unavailable: ${e.message}. Do not infer permissions or allowance.`,
-      };
+      return this.automaticHook(
+        "claude",
+        args,
+        { additionalContext: `Codex delegation unavailable: ${e.message}. Do not infer permissions or allowance.` },
+        this.active(config, await taskRead(taskId), { failure: e.message }),
+      );
     }
+    return this.automaticHook(
+      "claude",
+      args,
+      { additionalContext: `Factory delegation routing (sessionId ${args.sessionId}): ${JSON.stringify(s.route)}. A gateway route runs a worker through that gateway credential, Claude included; only this session's own native login is never a delegate. Use the factory delegate-to-codex skill and codex_* tools. Inspect active runs before starting another run. Explicit user instructions override automatic routing.` },
+      this.active(config, s.task, { inspected: s }),
+    );
   }
   async dispatch(method, args = {}) {
     if (method === "config") {
@@ -1092,6 +1283,7 @@ export class Manager {
     if (method === "hook") {
       const config = await configRead();
       if (config.mode === "off") return {};
+      if (args.event === "PreToolUse") return this.guard(args.threadId, args);
       const task = await taskRead(args.threadId);
       if (["Interrupt", "SessionEnd"].includes(args.event)) {
         if (task.runId) {
@@ -1101,20 +1293,35 @@ export class Manager {
         }
         return {};
       }
+      let s;
       try {
-        const s = await this.inspect(args.threadId);
-        return {
-          additionalContext: `Claude delegation routing: ${JSON.stringify(s.route)}. Use the factory skill/tools. Read current run status before starting another run. Explicit user instructions override automatic routing.`,
-        };
+        s = await this.inspect(args.threadId);
       } catch (e) {
-        return {
-          additionalContext: `Claude delegation unavailable: ${e.message}. Do not infer permissions or allowance.`,
-        };
+        return this.automaticHook(
+          "codex",
+          args,
+          { additionalContext: `Claude delegation unavailable: ${e.message}. Do not infer permissions or allowance.` },
+          this.active(config, task, { failure: e.message }),
+        );
       }
+      return this.automaticHook(
+        "codex",
+        args,
+        { additionalContext: `Claude delegation routing: ${JSON.stringify(s.route)}. Use the factory skill/tools. Read current run status before starting another run. Explicit user instructions override automatic routing.` },
+        this.active(config, s.task, { inspected: s }),
+      );
     }
     throw new Error("Unknown bridge operation");
   }
 }
+const briefRun = (run) => ({
+  id: run.id,
+  executor: run.executor,
+  gateway: run.gateway ?? null,
+  cwd: run.cwd,
+  state: run.state,
+  question: run.result?.question || run.result?.summary || null,
+});
 export function claudeTaskId(sessionId) {
   if (!/^[a-zA-Z0-9-]{1,90}$/.test(sessionId ?? ""))
     throw new Error("Invalid Claude session id");

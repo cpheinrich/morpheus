@@ -66,5 +66,21 @@ MCP server and CLI; never submit a local task to a different machine by guessing
    excerpts; Codex receives selected Claude excerpts in its handoff. Each agent writes only its
    own memory store.
 
+## Automatic dispatch
+
+In `automatic` mode the prompt hook has already acted on each user prompt before you read it,
+and its context says what happened. You remain the manager either way.
+
+- **Delegated:** a worker has the user's prompt. Do not do the work or edit its checkout
+  yourself. Call `codex_wait` with the named run id until it ends or asks; answer as above,
+  supplying context from this conversation the worker lacks; verify before reporting.
+- **Held:** a run is still active or waiting for input. The prompt was not sent to it and is
+  not an answer to a permission or approval request unless the user plainly answered it.
+- **Failed or unknown:** say so to the user; do not quietly do the work here. Follow the
+  next steps the hook gave.
+- **Stays here:** only an existing route (quota, override, `off`) or a prompt starting with
+  `local:`; handle it and do not claim delegation.
+- On the first reply of the session, open with the one-line notice the hook asks for.
+
 Installation, enable/disable, the status-line recorder, cleanup and recovery are in the
 package `README.md` (`plugins/factory/` in Morpheus).

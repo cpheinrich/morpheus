@@ -84,6 +84,22 @@ working directories. `codex_inspect` lists them; wait, view, status and stop by 
 Pass the originating `runId` when replying to `needs_input`. The bridge refuses a second
 writer in one worktree and names the owning run.
 
+## Automatic dispatch
+
+In `automatic` mode the prompt hook has already acted on each user prompt before you read it,
+and its context says what happened. You remain the manager either way.
+
+- **Delegated:** a worker has the user's prompt. Do not do the work or edit its checkout
+  yourself. Call `claude_wait` with the named run id until it ends or asks; answer as above,
+  supplying context from this conversation the worker lacks; verify before reporting.
+- **Held:** a run is still active or waiting for input. The prompt was not sent to it and is
+  not an answer to a permission or approval request unless the user plainly answered it.
+- **Failed or unknown:** say so to the user; do not quietly do the work here. Follow the
+  next steps the hook gave.
+- **Stays here:** only an existing route (quota, override, `off`) or a prompt starting with
+  `local:`; handle it and do not claim delegation.
+- On the first reply of the session, open with the one-line notice the hook asks for.
+
 ## Remote pool workers
 
 When the user asks for a remote Claude or Codex worker, use the `pool_*` tools (or

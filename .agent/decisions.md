@@ -1,5 +1,31 @@
 # Decisions
 
+**Factory's prompt hook dispatches automatic turns; the coordinator stays the manager** —
+2026-11-02. MO-26-11-02-16.48.03. Chris authorized automatic dispatch with whichever agent holds
+the conversation remaining the manager, and asked that an activated session's first reply say
+Factory is delegating. In `automatic` mode `UserPromptSubmit` launches the routed worker through
+the existing start path. This supersedes "automatic dispatch is not part of this change" in the
+entry below.
+
+The design is held to these limits:
+
+- **Bounded handoff.** The worker gets the whole prompt (one over 32,000 characters is refused,
+  never truncated, since its end can carry the user's restrictions), the previous bridge result for the checkout,
+  and its own saved session. It gets no transcript; missing context comes from the clarification
+  loop.
+- **One launch per turn.** Codex's `turn_id` or Claude's `prompt_id` (transcript metadata only
+  as a fallback) identifies the turn, which is reserved durably before launch and run records name their
+  turn, so retries and restarts reconcile by run identity or report unknown.
+- **The manager first.** Active and waiting runs are returned to the manager before routing.
+- **Narrow local fallback.** Only existing routes and a `local:` prefix keep a turn local.
+  Errors and missing identity are explicit.
+
+A gateway is a shared credential, so there is no per-credential lock or scheduler. Lease, grace,
+`maxConcurrent` and per-checkout ownership are unchanged. The edit guard prevents races and is
+not a boundary. The notice is a deterministic `systemMessage`, plus a once-only first-reply
+instruction that is model-written and so not guaranteed. No dependency: the existing bridge,
+guardian, `ws` and Zod.
+
 **Factory is experimental; a machine opts in only through its saved `mode`** — 2026-11-02.
 MO-26-11-02-16.09.00. Chris approved a repository-owned experimental, default-off status with a
 private per-machine override. The override is the existing `config.json` `mode`, not a second

@@ -26,9 +26,10 @@ or activate it.
   `codex-claude` install's settings to a machine that has none, so a saved choice, on or off,
   survives.
 - **The coordinator stays the manager.** Codex in the usual setup, or Claude Code when it holds
-  the conversation, decides when to hand work off. In `automatic` mode the hooks add routing
-  advice and a start tool picks the route; nothing starts a worker on its own. Automatic
-  dispatch, a handoff the coordinator did not start, is not implemented.
+  the conversation, supervises every worker. In `manual` mode it decides when to hand work off
+  and the hooks only advise. In `automatic` mode each user prompt is dispatched to the routed
+  worker by the prompt hook itself (see [Automatic dispatch](#automatic-dispatch)); the
+  coordinator then waits on, answers and verifies that worker.
 
 ## Where things live
 
@@ -121,8 +122,66 @@ login; asking for the coordinator's own provider with no such gateway keeps the 
 The coordinator still consumes its own allowance while supervising. Missing/stale usage is
 reported as unknown and never treated as headroom. Existing saved thresholds are preserved
 when updating the plugin; change one with `bridge.mjs config`.
-Routing hooks advise the coordinating agent; they do not replace the desktop's model
-engine or forcibly preempt a running generation.
+Routing hooks do not replace the desktop's model engine or forcibly preempt a running
+generation.
+
+## Automatic dispatch
+
+In `automatic` mode, `UserPromptSubmit` starts the routed worker for that prompt through the
+same start path the tools use, so routing, quota, the threshold, overrides, per-checkout
+ownership, `maxConcurrent` and permission mapping are unchanged. A gateway is a credential:
+any number of worker sessions may share one, while host capacity (`maxConcurrent`, one writer
+per checkout) and subscription quota are separate limits. There is no scheduler and no lock
+per credential.
+
+- **What the worker gets.** The user's prompt verbatim, the previous bridge result summary for
+  the same checkout (clipped to 2,000 characters), and its own saved session for that checkout
+  and route. A prompt over 32,000 characters is refused as a dispatch failure and no worker is
+  started; it is never truncated, because a cut could drop restrictions at its end. Never the coordinator's transcript, instructions or
+  memory beyond the existing opt-in memory excerpts. A prompt that depends on earlier
+  conversation makes the worker ask; the coordinator answers with the missing context.
+- **Where it runs.** The coordinator's current checkout (the hook's `cwd`). The hook runs
+  before the coordinator could choose a different worktree, so work that needs one should be
+  stopped and restarted there with the start tool.
+- **The coordinator manages it.** The hook tells it the run id and to wait on it, answer only
+  routine clarifications, send permission, approval, spending, sending and material product
+  questions to the user, and verify the result. The existing owner lease
+  (`disconnectGraceSeconds`) is unchanged: a worker nobody waits on is stopped.
+- **One launch per turn.** Codex names the turn (`turn_id`) and current Claude Code names the
+  prompt (`prompt_id`, hashed into its own domain). A live probe of a fresh `claude --print`
+  session found `prompt_id` on the first prompt while its transcript file did not exist yet and
+  no model was reported, so the id is what makes a first turn dispatchable; the worker then
+  takes the existing defaults (`modelFallback`, effort `high`) and the session's own
+  `permission_mode`. Older Claude Code without `prompt_id` falls back to the prompt plus the
+  transcript's path, size and modification time; a turn with no readable identity is not
+  dispatched and is reported as such. The turn is reserved in the
+  task record before launch and each run record names its turn, so a retried hook, a
+  concurrent duplicate or a bridge restart after launch finds the same run. A reservation
+  with no run found is reported as unknown and nothing is launched.
+- **A live run or an open question comes first.** While a run of this session is active, or
+  its last result asks a question, a new prompt starts nothing and is not sent to that run;
+  the coordinator is told to manage the run, whatever the route now says.
+- **Staying here.** Only the existing routes keep a turn with the coordinator: no gateway
+  below the threshold, an override, `off`, or a prompt starting with `local:` (that turn
+  only). A launch or preflight error is reported as a failure with next steps; it is not
+  quietly done here instead. A checkout owned by another run may be another chat's, so the
+  next step is this task's own isolated worktree, never stopping that run unasked.
+- **What the user sees.** Every dispatched, held, failed or kept turn prints a one-line
+  `systemMessage`. The first prompt of an active session (automatic or manual) also asks the
+  coordinator to open its reply with that line; it says which worker, run and credential when
+  the turn was delegated, and never claims delegation otherwise. That reply is model-written
+  prose, so its wording is not guaranteed; the `systemMessage` is. `SessionStart` reports
+  readiness only.
+- **Edit guard.** While a worker of this session is active, `PreToolUse` refuses the
+  coordinator's native edits inside that worker's checkout (Claude Code `Edit`, `Write`,
+  `MultiEdit`, `NotebookEdit`; Codex `apply_patch`). It prevents an accidental race. It is
+  not a security boundary: shell commands are not inspected, and Codex's `PreToolUse`
+  coverage of `apply_patch` has not been verified against a live Codex build.
+- **Timeouts.** The prompt hook's 60-second timeout covers the client's 10-second bridge
+  start and its 40-second request deadline. A hook killed after launch loses only its output:
+  the retried hook, or the coordinator's inspect, finds the run.
+- **No recursion.** Workers run with `FACTORY_DELEGATED=1`, and every hook exits at once
+  under it.
 
 ## Gateway mode
 
