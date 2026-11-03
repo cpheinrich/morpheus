@@ -12,7 +12,8 @@ The design is held to these limits:
 - **Bounded handoff.** The worker gets the prompt, the previous bridge result for the checkout,
   and its own saved session. It gets no transcript; missing context comes from the clarification
   loop.
-- **One launch per turn.** The turn is reserved durably before launch and run records name their
+- **One launch per turn.** Codex's `turn_id` or Claude's `prompt_id` (transcript metadata only
+  as a fallback) identifies the turn, which is reserved durably before launch and run records name their
   turn, so retries and restarts reconcile by run identity or report unknown.
 - **The manager first.** Active and waiting runs are returned to the manager before routing.
 - **Narrow local fallback.** Only existing routes and a `local:` prefix keep a turn local.

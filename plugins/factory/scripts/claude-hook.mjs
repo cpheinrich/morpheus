@@ -46,7 +46,7 @@ try {
     ...(event === "UserPromptSubmit"
       ? {
           prompt: input.prompt,
-          turnKey: await claudeTurnKey(input.prompt, input.transcript_path),
+          turnKey: await claudeTurnKey(input.prompt, input.transcript_path, input.prompt_id),
         }
       : {}),
   });

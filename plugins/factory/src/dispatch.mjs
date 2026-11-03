@@ -89,7 +89,7 @@ export function renderDispatch(outcome, { tools, first }) {
     guidance = `Handle this turn here, and do not say it was delegated.`;
   }
   const notice = first
-    ? ` This is the first reply in a session where Factory automatic dispatch is on: open it with one short sentence telling the user this: ${status}`
+    ? ` This is the first reply in a session where Factory is active: open it with one short sentence telling the user this: ${status}`
     : "";
   return { systemMessage: status, additionalContext: `${status} ${guidance}${notice}` };
 }
@@ -105,11 +105,18 @@ export function readiness(mode, route, primary, failure) {
     : `Factory automatic dispatch is on (experimental): new turns stay in this session for now (${route?.reason ?? "no route"}).`;
 }
 
-// Codex names the turn. Claude does not, so its identity is the prompt plus the transcript's
-// size and modification time: a retried or duplicated hook of one turn sees the same file, and
-// a later turn with the same words sees a longer one. Unreadable metadata is no identity, and
-// no identity means no automatic launch.
-export async function claudeTurnKey(prompt, transcriptPath) {
+// Codex names the turn (`turn_id`); current Claude Code names the prompt (`prompt_id`). A live
+// probe of a fresh Claude session found `prompt_id` on the first UserPromptSubmit while its
+// transcript file did not exist yet, so the id comes first and is hashed into its own domain.
+// Older hosts without it fall back to the prompt plus the transcript's size and modification
+// time: a retried hook of one turn sees the same file, a later turn with the same words a longer
+// one. Unreadable metadata is no identity, and no identity means no automatic launch.
+export async function claudeTurnKey(prompt, transcriptPath, promptId) {
+  if (typeof promptId === "string" && promptId)
+    return `claude-prompt:${createHash("sha256")
+      .update(`factory/claude-prompt-id\0${promptId}`)
+      .digest("hex")
+      .slice(0, 32)}`;
   if (typeof prompt !== "string" || typeof transcriptPath !== "string" || !transcriptPath)
     return null;
   let info;

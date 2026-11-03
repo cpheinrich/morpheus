@@ -158,7 +158,7 @@ test("a Claude session's turn is dispatched once, with only the prompt and the l
   );
   assert.deepEqual(again, first);
   // The first reply of the session announces it, and the manager is told how to supervise.
-  assert.match(first.additionalContext, /first reply in a session where Factory automatic dispatch is on: open it with one short sentence telling the user this: Using Factory to delegate/);
+  assert.match(first.additionalContext, /first reply in a session where Factory is active: open it with one short sentence telling the user this: Using Factory to delegate/);
   assert.match(first.additionalContext, new RegExp(`Call codex_wait with runId ${id}`));
   assert.match(first.additionalContext, /permission, approval, spending, sending or material product question goes to the user/);
   const done = await settle(m, id);
@@ -459,6 +459,14 @@ test("turn identity and the handoff are bounded and conservative", async (t) => 
   await appendFile(transcript, '{"type":"assistant"}\n');
   assert.notEqual(await claudeTurnKey("same words", transcript), one);
   assert.equal(await claudeTurnKey("same words", join(root, "missing.jsonl")), null);
+  // Current Claude Code names the prompt. A fresh session has no transcript file yet, so the
+  // id alone identifies the turn: the same id is one turn, a new id with the same words another.
+  const byId = await claudeTurnKey("same words", join(root, "missing.jsonl"), "prompt-1");
+  assert.match(byId, /^claude-prompt:[0-9a-f]{32}$/);
+  assert.equal(await claudeTurnKey("other words", transcript, "prompt-1"), byId);
+  assert.notEqual(await claudeTurnKey("same words", join(root, "missing.jsonl"), "prompt-2"), byId);
+  assert.doesNotMatch(byId, /prompt-1/);
+  assert.equal(await claudeTurnKey("same words", join(root, "missing.jsonl"), ""), null);
   assert.equal(await claudeTurnKey("same words", undefined), null);
   assert.equal(codexTurnKey(""), null);
   const long = dispatchHandoff("x".repeat(40000), { id: "r", state: "completed", result: { summary: "y".repeat(5000) } });
@@ -470,8 +478,12 @@ test("turn identity and the handoff are bounded and conservative", async (t) => 
 
 function hook(script, input, env) {
   return new Promise((resolve, reject) => {
+    // The probe saw no effort in a fresh session's hook environment either; this session's own
+    // CLAUDE_EFFORT must not leak into the fixture.
+    const merged = { ...process.env, ...env };
+    if (!env?.CLAUDE_EFFORT) delete merged.CLAUDE_EFFORT;
     const child = spawn(process.execPath, [new URL(`../scripts/${script}`, import.meta.url).pathname, input.hook_event_name], {
-      env: { ...process.env, ...env },
+      env: merged,
     });
     let stdout = "";
     let stderr = "";
@@ -496,53 +508,76 @@ function bridgeShutdown(h, runIds) {
   });
 }
 
-test("Claude Code hooks dispatch through the bridge service and guard the worker's checkout", async (t) => {
+test("Claude Code hooks dispatch a fresh session's first turn through the bridge service", async (t) => {
   const h = await harness(t);
   const repo = await h.repo("repo");
   const started = [];
   bridgeShutdown(h, () => started);
-  const transcript = join(h.root, "transcript.jsonl");
-  await writeFile(transcript, '{"type":"user"}\n');
-  const base = { session_id: SESSION, cwd: repo, permission_mode: "acceptEdits", model: "claude-opus-5-5", transcript_path: transcript };
-  const session = await hook("claude-hook.mjs", { ...base, hook_event_name: "SessionStart" });
+  // The payloads a live probe of native `claude --print` recorded for a fresh session: no model,
+  // no transcript file yet, permission_mode only on the prompt, and a prompt_id.
+  const transcript = join(h.root, "projects", "fresh-session.jsonl");
+  const session = await hook("claude-hook.mjs", {
+    cwd: repo,
+    hook_event_name: "SessionStart",
+    session_id: SESSION,
+    source: "startup",
+    transcript_path: transcript,
+  });
   assert.equal(session.code, 0, session.stderr);
   assert.match(JSON.parse(session.stdout).systemMessage, /^Factory automatic dispatch is on \(experimental\)/);
-  const input = { ...base, hook_event_name: "UserPromptSubmit", prompt: "Paint the fence" };
-  const first = await hook("claude-hook.mjs", input);
+  const prompt = (prompt_id) => ({
+    cwd: repo,
+    hook_event_name: "UserPromptSubmit",
+    permission_mode: "acceptEdits",
+    prompt: "Paint the fence",
+    prompt_id,
+    session_id: SESSION,
+    transcript_path: transcript,
+  });
+  const first = await hook("claude-hook.mjs", prompt("prompt-1"));
   assert.equal(first.code, 0, first.stderr);
   const output = JSON.parse(first.stdout);
   const id = runIdOf(output);
   started.push(id);
   assert.match(output.systemMessage, /^Using Factory to delegate this turn to a claude worker session/);
   assert.equal(output.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-  assert.match(output.hookSpecificOutput.additionalContext, /open it with one short sentence/);
-  // The hook retried for the same turn: same run, no second launch.
-  assert.equal(runIdOf(JSON.parse((await hook("claude-hook.mjs", input)).stdout)), id);
+  assert.match(output.hookSpecificOutput.additionalContext, /first reply in a session where Factory is active: open it with one short sentence/);
+  // The hook retried for the same prompt: same run, no second launch.
+  assert.equal(runIdOf(JSON.parse((await hook("claude-hook.mjs", prompt("prompt-1"))).stdout)), id);
   for (let i = 0; i < 100 && (await h.launches()).length < 1; i++) await new Promise((r) => setTimeout(r, 100));
-  assert.equal((await h.launches()).length, 1);
-  assert.match((await h.launches())[0].stdin, /Paint the fence/);
-  // While a later turn's worker runs, the coordinator's own edits there are refused.
+  const launched = await h.launches();
+  assert.equal(launched.length, 1);
+  assert.match(launched[0].stdin, /Paint the fence/);
+  // With no model or effort reported, the existing defaults apply and permissions do not widen.
+  const argv = launched[0].argv;
+  assert.equal(argv[argv.indexOf("--model") + 1], "opus");
+  assert.equal(argv[argv.indexOf("--effort") + 1], "high");
+  assert.equal(argv[argv.indexOf("--permission-mode") + 1], "acceptEdits");
+  // The same words under a new prompt_id are a new turn. While its worker runs, the
+  // coordinator's own edits in that checkout are refused.
   await h.mode("sleep");
-  await appendFile(transcript, '{"type":"assistant"}\n');
   for (let i = 0; i < 100; i++) {
     const r = await useRunning("status", { runId: id });
     if (r.result.terminal) break;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  const busy = JSON.parse((await hook("claude-hook.mjs", input)).stdout);
+  const busy = JSON.parse((await hook("claude-hook.mjs", prompt("prompt-2"))).stdout);
   const second = runIdOf(busy);
   started.push(second);
   assert.ok(second && second !== id, busy.systemMessage);
+  assert.doesNotMatch(busy.hookSpecificOutput.additionalContext, /first reply/);
   const edit = await hook("claude-hook.mjs", {
-    ...base,
+    cwd: repo,
     hook_event_name: "PreToolUse",
+    session_id: SESSION,
+    transcript_path: transcript,
     tool_name: "Edit",
     tool_input: { file_path: join(repo, "fence.txt") },
   });
   assert.equal(edit.code, 2);
   assert.match(edit.stderr, new RegExp(`Factory run ${second} \\(claude\\) is writing in`));
   // A worker session's own hooks never dispatch: no recursion.
-  const nested = await hook("claude-hook.mjs", { ...input, prompt: "nested" }, { FACTORY_DELEGATED: "1" });
+  const nested = await hook("claude-hook.mjs", { ...prompt("prompt-3"), prompt: "nested" }, { FACTORY_DELEGATED: "1" });
   assert.deepEqual(nested, { code: 0, stdout: "", stderr: "" });
 });
 

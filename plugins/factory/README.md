@@ -146,9 +146,14 @@ per credential.
   routine clarifications, send permission, approval, spending, sending and material product
   questions to the user, and verify the result. The existing owner lease
   (`disconnectGraceSeconds`) is unchanged: a worker nobody waits on is stopped.
-- **One launch per turn.** Codex names the turn (`turn_id`). Claude Code does not, so its
-  identity is the prompt plus the transcript's path, size and modification time; a turn with
-  no readable identity is not dispatched and is reported as such. The turn is reserved in the
+- **One launch per turn.** Codex names the turn (`turn_id`) and current Claude Code names the
+  prompt (`prompt_id`, hashed into its own domain). A live probe of a fresh `claude --print`
+  session found `prompt_id` on the first prompt while its transcript file did not exist yet and
+  no model was reported, so the id is what makes a first turn dispatchable; the worker then
+  takes the existing defaults (`modelFallback`, effort `high`) and the session's own
+  `permission_mode`. Older Claude Code without `prompt_id` falls back to the prompt plus the
+  transcript's path, size and modification time; a turn with no readable identity is not
+  dispatched and is reported as such. The turn is reserved in the
   task record before launch and each run record names its turn, so a retried hook, a
   concurrent duplicate or a bridge restart after launch finds the same run. A reservation
   with no run found is reported as unknown and nothing is launched.
