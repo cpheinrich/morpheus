@@ -3,15 +3,10 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { call } from "../src/client.mjs";
 import { delegatedMarker } from "../src/config.mjs";
+import { codexRootId } from "./codex-root.mjs";
 import { claudeMethods, poolMethods, factoryMethods, factorySpecs } from "./tool-contract.mjs";
 const server = new McpServer({ name: "factory", version: "0.1.0" });
-const rootId = () => {
-  const id = process.env.CODEX_THREAD_ID;
-  if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id ?? ""))
-    throw new Error("Factory could not verify this Codex root task id; delegation refused.");
-  return id;
-};
-const factoryArgs = (args) => ({ ...args, rootKind: "codex", rootId: rootId() });
+const factoryArgs = (args, extra) => ({ ...args, rootKind: "codex", rootId: codexRootId(extra) });
 const task = {
   threadId: z.string().describe("Current Codex task id; never an invented id."),
 };
@@ -104,7 +99,7 @@ const poolSpecs = {
 };
 for (const method of factoryMethods) {
   const [description, inputSchema] = factorySpecs[method];
-  server.registerTool(`factory_${method}`, { description, inputSchema }, async (args) => {
+  server.registerTool(`factory_${method}`, { description, inputSchema }, async (args, extra) => {
     try {
       if (process.env[delegatedMarker] && method === "delegate")
         throw new Error("Delegated workers cannot delegate again.");
@@ -112,7 +107,7 @@ for (const method of factoryMethods) {
         content: [
           {
             type: "text",
-            text: JSON.stringify(await call(`factory.${method}`, factoryArgs(args))),
+            text: JSON.stringify(await call(`factory.${method}`, factoryArgs(args, extra))),
           },
         ],
       };
@@ -138,22 +133,22 @@ for (const method of claudeMethods) {
   server.registerTool(
     `claude_${method}`,
     { description, inputSchema },
-    async (args) => {
+    async (args, extra) => {
       try {
         // A worker launched by this bridge must never hand its task back.
         if (process.env[delegatedMarker] && method === "start")
           throw new Error("Delegated workers cannot delegate again.");
-        const scoped = { ...args, threadId: rootId() };
+        const scoped = { ...args, threadId: codexRootId(extra) };
         if (["status", "wait", "answer", "stop"].includes(method)) {
           const canonical = {
             ...scoped,
             ...(method === "answer" ? { source: scoped.source === "codex" ? "root" : scoped.source } : {}),
           };
-          const result = await call(`factory.${method}`, factoryArgs(canonical));
+          const result = await call(`factory.${method}`, factoryArgs(canonical, extra));
           return { content: [{ type: "text", text: JSON.stringify(result) }] };
         }
         if (method === "view")
-          await call("factory.status", factoryArgs({ runId: scoped.runId }));
+          await call("factory.status", factoryArgs({ runId: scoped.runId }, extra));
         return {
           content: [
             { type: "text", text: JSON.stringify(await call(method, scoped)) },

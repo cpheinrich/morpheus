@@ -131,7 +131,10 @@ generation.
 
 Both root agents discover the same six tools: `factory_inspect`, `factory_delegate`,
 `factory_status`, `factory_wait`, `factory_answer` and `factory_stop`. Root identity is injected
-by the MCP process, so a model cannot invent another chat's identity. Every run-control operation
+by the MCP host, so a model cannot invent another chat's identity. Codex's per-request
+`_meta.threadId` takes precedence over the legacy `CODEX_THREAD_ID` environment fallback:
+desktop MCP connections may be shared or outlive the chat that launched them. A missing or
+malformed identity still refuses delegation. Every run-control operation
 also verifies that the run belongs to that root session.
 
 - **Judgment and user precedence.** An explicit request to use the Factory requires delegation;
@@ -414,6 +417,12 @@ It does not create a native Claude model choice inside Codex or import Claude me
 native assistant turns. Progress and results arrive as tools and Codex commentary; a
 read-only loopback viewer can display streamed text in the Codex browser panel. Claude's
 own transcript retention still applies: a session deleted by Claude cannot be resumed.
+
+For an unloaded Codex desktop task, the bridge validates active turn metadata from its
+rollout, including `.jsonl.zst` compression (Node 22.15+). Completed, stale or restricted
+turns still refuse. An unavailable rollout reports a task-metadata error; reopen that task
+and send a message rather than substituting another session. `bridge.mjs doctor` reads
+gateway quota independently, so healthy quota does not prove a task can delegate.
 
 The working directory defaults to the Codex turn's actual directory. An explicit alternate
 worktree must share the same canonical Git repository. Changing worktrees selects that

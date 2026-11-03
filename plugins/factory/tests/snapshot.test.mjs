@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { zstdCompressSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { recordedSnapshot } from "../src/codex.mjs";
@@ -60,4 +61,17 @@ test("desktop adapter accepts active full access metadata by contract", async (t
     },
   ]);
   await assert.rejects(recordedSnapshot(thread), /restricted/);
+  // The same validation must run after Codex compresses the rollout in place.
+  await writeFile(path + ".zst", zstdCompressSync(Buffer.from([start, context].map(JSON.stringify).join("\n"))));
+  await rm(path);
+  assert.equal((await recordedSnapshot(thread)).model, "gpt-6-astra");
+  assert.equal((await recordedSnapshot({ ...thread, path: path + ".zst" })).reasoningEffort, "medium");
+  await writeFile(path + ".zst", zstdCompressSync(Buffer.from([start, context,
+    { type: "event_msg", payload: { type: "task_complete", turn_id: "turn" } },
+  ].map(JSON.stringify).join("\n"))));
+  await assert.rejects(recordedSnapshot(thread), /No active/);
+  await writeFile(path + ".zst", "corrupt compressed rollout");
+  await assert.rejects(recordedSnapshot(thread));
+  await rm(path + ".zst");
+  await assert.rejects(recordedSnapshot(thread), /metadata is unavailable/);
 });

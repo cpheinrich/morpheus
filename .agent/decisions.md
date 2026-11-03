@@ -1,5 +1,15 @@
 # Decisions
 
+**Factory reads Codex ownership per MCP request** — 2026-11-03.
+MO-26-11-03-12.41.12. Desktop MCP processes can outlive their launching chat, so use
+host-injected `_meta.threadId` before the legacy `CODEX_THREAD_ID` environment fallback.
+Never take ownership from model arguments or fall back from malformed supplied metadata
+to an old process identity. This preserves the existing provider-neutral ownership contract.
+The unloaded-task reader accepts Codex's in-place zstd rollout compression and retains
+the active-turn, freshness and permission checks; missing files remain unavailable rather
+than triggering another session's settings. Reuse Node's built-in zstd as the profiler
+already does; this is a provider-specific correction with no generic module or dependency.
+
 **Factory delegation is a provider-neutral root tool with one sticky primary worker** —
 2026-11-02. MO-26-11-02-19.27.44. This supersedes the automatic prompt-hook dispatch decision
 immediately below. Neither Codex nor Claude hooks dispatch a user prompt. Both roots discover the
