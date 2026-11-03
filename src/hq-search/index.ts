@@ -96,10 +96,11 @@ export function createHqSearchIndex(documents: HqSearchDocument[]) {
   const index = new MiniSearch<HqSearchDocument>(INDEX_OPTIONS);
   // Custom catalogues built against the original document type may not carry
   // an excerpt yet. Derive it here, still during the build, without weakening
-  // the public source-document contract.
+  // the public source-document contract. Normalize supplied excerpts through
+  // the same boundary so a custom catalogue cannot expand stored result data.
   index.addAll(documents.map((document) => ({
     ...document,
-    excerpt: document.excerpt ?? searchExcerpt(document.text),
+    excerpt: searchExcerpt(document.excerpt ?? document.text),
   })));
   return index;
 }

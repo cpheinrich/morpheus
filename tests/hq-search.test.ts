@@ -96,6 +96,34 @@ describe("HQ search documents", () => {
     expect(result).not.toHaveProperty("text");
   });
 
+  it("normalizes and bounds caller-supplied excerpts at the index boundary", async () => {
+    const suppliedExcerpt = `  ${"caller supplied preview   ".repeat(30)}tail  `;
+    const document: HqSearchDocument = {
+      id: "custom-excerpt",
+      title: "Custom excerpt",
+      href: "/hq/custom-excerpt",
+      path: "docs/custom-excerpt.md",
+      kind: "markdown",
+      headings: "",
+      metadata: "",
+      aliases: "",
+      text: "customexcerptanchor remains fully searchable",
+      excerpt: suppliedExcerpt,
+    };
+
+    const payload = createHqSearchPayload([document]);
+    const stored = Object.values(payload.index.storedFields)[0] as Record<string, unknown>;
+    const expectedExcerpt = searchExcerpt(suppliedExcerpt);
+
+    expect(stored.excerpt).toBe(expectedExcerpt);
+    expect(expectedExcerpt).toHaveLength(191);
+    expect(expectedExcerpt).not.toContain("   ");
+    expect(expectedExcerpt).not.toContain("tail");
+
+    const [result] = searchHq(await loadHqSearchIndex(payload), "customexcerptanchor");
+    expect(result?.snippet).toBe(expectedExcerpt);
+  });
+
   it("materially reduces representative serialized payloads without raw-text result fields", () => {
     const representative = Array.from({ length: 3 }, (_, document) =>
       markdownSearchDocument({
