@@ -23,10 +23,9 @@ again after their revalidation interval, violating the deploy-time-only content 
 
 ## Independent review
 
-The independent reviewer cleared the normal-risk change with no findings. They independently
-reran the focused scaffold test (33/33 passed), confirmed the `60`/`false` boundary, verified that
-declared generated URLs receive the same check, compared source and compiled guards, and confirmed
-the architecture and runbook carry the same rule.
+The independent reviewer cleared the normal-risk change with no findings after independently
+verifying the ISR boundary, generated-route coverage, compiled output, documentation, and the
+33-test focused suite.
 
 ```morpheus-review
 {
