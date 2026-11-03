@@ -135,6 +135,13 @@ describe("scaffoldWeb", () => {
     expect(layout).toContain("VERCEL_GIT_COMMIT_SHA");
     expect(layout).toContain('from "morpheus-kit/section-links/react"');
     expect(layout).toContain("<SectionLinks />");
+    expect(layout).toContain("Shared HQ chrome is static");
+    expect(layout).not.toContain("currentUser");
+    expect(layout).not.toContain("cookies(");
+
+    const hqPage = await readFile(join(root, "apps/web/app/hq/page.tsx"), "utf8");
+    expect(hqPage).toContain('export const dynamic = "force-static"');
+    expect(hqPage).not.toContain("currentUser");
 
     const route = await readFile(join(root, "apps/web/app/hq/search-index/route.ts"), "utf8");
     expect(route).toContain("hqSearchResponseHeaders");

@@ -2023,14 +2023,11 @@ export function GET() {
 `;
 };
 
-export const hqLayout = (ctx: TemplateContext, name: string): string => {
-  const self = "app/hq/layout.tsx";
+export const hqLayout = (_ctx: TemplateContext, name: string): string => {
   return `import type { Metadata } from "next";
 import Link from "next/link";
 
 import { SectionLinks } from "morpheus-kit/section-links/react";
-
-import { currentUser } from "${ctx.imp(self, "lib/auth/current-user")}";
 
 import { HqSearch } from "./HqSearch";
 import { SignOutButton } from "./SignOutButton";
@@ -2044,8 +2041,11 @@ export const metadata: Metadata = {
 
 const NAV = [{ href: "/hq", label: "Overview" }];
 
-export default async function HqLayout({ children }: { children: React.ReactNode }) {
-  const user = await currentUser();
+/**
+ * Shared HQ chrome is static. The proxy authenticates shared repository content;
+ * pages or endpoints that expose identity or live data re-authorise themselves.
+ */
+export default function HqLayout({ children }: { children: React.ReactNode }) {
   const searchVersion = process.env.VERCEL_GIT_COMMIT_SHA ?? "dev";
 
   return (
@@ -2066,7 +2066,6 @@ export default async function HqLayout({ children }: { children: React.ReactNode
           </div>
           <div className="flex items-center gap-4">
             <HqSearch indexUrl={\`/hq/search-index?v=\${encodeURIComponent(searchVersion)}\`} />
-            {user?.email && <span className="hidden text-xs opacity-60 md:block">{user.email}</span>}
             <SignOutButton />
           </div>
         </div>
@@ -2081,11 +2080,8 @@ export default async function HqLayout({ children }: { children: React.ReactNode
 `;
 };
 
-export const hqPage = (ctx: TemplateContext, name: string): string => {
-  const self = "app/hq/page.tsx";
-  return `import { currentUser } from "${ctx.imp(self, "lib/auth/current-user")}";
-
-/**
+export const hqPage = (_ctx: TemplateContext, name: string): string => {
+  return `/**
  * The first HQ page. It exists to prove the whole chain works end to end —
  * Google sign-in, a session cookie, a verified \`role\` claim — and says so
  * plainly rather than rendering an empty dashboard that cannot be distinguished
@@ -2094,16 +2090,15 @@ export const hqPage = (ctx: TemplateContext, name: string): string => {
  * Everything in §11 of Morpheus's architecture hangs off this route. Add pages
  * beside it; the gate already covers them.
  */
-export default async function HqPage() {
-  const user = await currentUser();
+export const dynamic = "force-static";
 
+export default function HqPage() {
   return (
     <main className="space-y-6">
       <div className="space-y-2">
         <h1 className="text-2xl font-medium tracking-tight">${name} HQ</h1>
         <p className="text-sm opacity-80">
-          Signed in as <strong>{user?.email ?? "unknown"}</strong> · role{" "}
-          <strong>{user?.role ?? "none"}</strong>
+          Private operating workspace
         </p>
       </div>
 
