@@ -20,3 +20,31 @@ again after their revalidation interval, violating the deploy-time-only content 
 - `pnpm typecheck` — passed.
 - `pnpm lint` — passed.
 - `pnpm compile` — passed and regenerated the committed distribution.
+
+## Independent review
+
+The independent reviewer cleared the normal-risk change with no findings. They independently
+reran the focused scaffold test (33/33 passed), confirmed the `60`/`false` boundary, verified that
+declared generated URLs receive the same check, compared source and compiled guards, and confirmed
+the architecture and runbook carry the same rule.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "a5933ad38a92f8ae16d02468545c161d898532ab",
+  "reviewed": "653826375fe47d67a361e43db4bbb94d4888800a",
+  "covered": "653826375fe47d67a361e43db4bbb94d4888800a",
+  "authorSession": "01a19f40-6bee-7aa1-bf04-dd2abaaf6991",
+  "reviewerSession": "/root/morpheus_hq_isr_review",
+  "risk": "normal",
+  "elapsedMinutes": 0.6696166666666667,
+  "timing": {
+    "source": "clock",
+    "durationMs": 40177,
+    "evidence": "Clock readings around reviewer turn /root/morpheus_hq_isr_review: 1793684438212 ms to 1793684478389 ms."
+  },
+  "outcome": "complete",
+  "summary": "The independent reviewer cleared the normal-risk change with no findings after independently verifying the ISR boundary, generated-route coverage, compiled output, documentation, and the 33-test focused suite.",
+  "findings": []
+}
+```
