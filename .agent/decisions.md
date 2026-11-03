@@ -1,5 +1,25 @@
 # Decisions
 
+**Factory delegation is a provider-neutral root tool with one sticky primary worker** —
+2026-11-02. MO-26-11-02-19.27.44. This supersedes the automatic prompt-hook dispatch decision
+immediately below. Neither Codex nor Claude hooks dispatch a user prompt. Both roots discover the
+same `factory_inspect`, `factory_delegate`, `factory_status`, `factory_wait`, `factory_answer` and
+`factory_stop` contract, with root identity injected by the MCP host and verified on every run
+control. An explicit user request to use the Factory binds; an explicit request to stay local
+does not; otherwise the root applies its ordinary sub-agent judgment and remains manager and
+verifier.
+
+The first successful primary launch pins provider and gateway for that root session. A failed
+preflight does not pin. Quota, gateway ordering or availability never silently changes an existing
+binding; an unavailable pinned gateway refuses, and changing provider requires a new root session.
+The primary provider conversation is scoped to its canonical checkout and never resumes across
+worktrees. `fresh:true` creates an isolated conversation on the same binding, may write only in a
+different isolated worktree, and never replaces the primary conversation; a clarification resumes
+the fresh conversation that asked it. Existing permission, quota, one-writer, concurrency,
+recursion and native-edit guards remain. `manual` and the saved `automatic` value are compatibility
+labels for the same model-directed behavior; global/project/task `off` remains authoritative. No
+new dependency.
+
 **Factory's prompt hook dispatches automatic turns; the coordinator stays the manager** —
 2026-11-02. MO-26-11-02-16.48.03. Chris authorized automatic dispatch with whichever agent holds
 the conversation remaining the manager, and asked that an activated session's first reply say

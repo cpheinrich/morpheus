@@ -1,9 +1,8 @@
-// Codex hook: injects the routing advice and, in automatic mode, dispatches the turn.
-// PreToolUse refuses edits racing this task's worker.
+// Codex hook: records lifecycle state and refuses edits racing this task's worker. User turns
+// are never dispatched by a hook; the root model chooses whether to call factory_delegate.
 import { configRead } from "../src/store.mjs";
 import { call, useRunning } from "../src/client.mjs";
 import { delegatedMarker } from "../src/config.mjs";
-import { codexTurnKey } from "../src/dispatch.mjs";
 import { hookOutput } from "./hook-output.mjs";
 try {
   if (process.env[delegatedMarker]) process.exit(0);
@@ -36,9 +35,6 @@ try {
   const result = await call("hook", {
     threadId,
     event,
-    ...(event === "UserPromptSubmit"
-      ? { prompt: input.prompt, turnKey: codexTurnKey(input.turn_id), cwd: input.cwd }
-      : {}),
   });
   hookOutput(event, result);
 } catch (e) {

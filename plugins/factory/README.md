@@ -26,10 +26,10 @@ or activate it.
   `codex-claude` install's settings to a machine that has none, so a saved choice, on or off,
   survives.
 - **The coordinator stays the manager.** Codex in the usual setup, or Claude Code when it holds
-  the conversation, supervises every worker. In `manual` mode it decides when to hand work off
-  and the hooks only advise. In `automatic` mode each user prompt is dispatched to the routed
-  worker by the prompt hook itself (see [Automatic dispatch](#automatic-dispatch)); the
-  coordinator then waits on, answers and verifies that worker.
+  the conversation, decides when to call the provider-neutral `factory_*` tools, writes a
+  self-contained brief, supervises the run and verifies the result. Hooks never dispatch user
+  prompts. `manual` and the legacy `automatic` value both mean model-directed delegation; the
+  latter remains accepted so an installed machine does not need a settings migration.
 
 ## Where things live
 
@@ -58,7 +58,8 @@ node scripts/install.mjs
 ```
 
 The installer copies the package, installs its locked dependencies, tests it, verifies the
-installed MCP servers against their exact shared tool-name contracts, and uses Codex's
+installed MCP servers against their exact tool-name contracts and identical provider-neutral
+Factory schemas, checks that neither hook manifest dispatches prompts, and uses Codex's
 bundled plugin-creator helper to register it in the personal marketplace. A contract error
 lists the missing, unexpected, and observed tool names. It
 preserves other marketplace entries. The helper is looked for under
@@ -86,10 +87,10 @@ start the local Codex service if needed:
 ```sh
 codex app-server daemon start
 node ~/plugins/factory/scripts/bridge.mjs doctor
-node ~/plugins/factory/scripts/bridge.mjs enable automatic
+node ~/plugins/factory/scripts/bridge.mjs enable manual
 ```
 
-Use `enable manual` for delegation only on request. `disable` is a master off switch and
+`enable automatic` is a compatibility alias for the same model-directed behavior. `disable` is a master off switch and
 stops active delegated runs, retaining conversations. Disabling/uninstalling the plugin
 in Codex removes its tools/hooks; existing normal workers expire when their owner lease
 stops. Explicit background workers must be stopped before uninstalling.
@@ -105,83 +106,54 @@ Ask Codex naturally:
 
 - “Use Claude for this task.”
 - “Use Codex for this task.”
-- “Return this task to automatic routing.”
-- “Use Codex just to generate this image, then resume automatic routing.”
+- “Use the Factory for this larger implementation.”
+- “Keep this quick answer local.”
 - “Stop Claude.”
 - “Show Claude's live output.”
 
-Automatic mode delegates to a pooled gateway while its account is below the threshold
+When the root calls `factory_delegate`, Factory selects a pooled gateway while its account is below the threshold
 (**90% used** by default), picking the gateway with the most headroom; once every gateway
-is at or above the threshold the work stays with the coordinator. **A gateway of the
+is at or above the threshold the other provider's native subscription is used. **A gateway of the
 coordinator's own provider counts:** it is a separate subscription reached as an API, so a
 Claude session can hand work to the Claude behind a gateway and a Codex task to the Codex
 behind one. The only route never taken is the coordinator's own native login, which would
 be circular. An explicit executor request (“use Claude”, `operation`) prefers that
-provider's gateway when one is below the threshold, then the other provider's native
-login; asking for the coordinator's own provider with no such gateway keeps the work here. This is subscription usage, not a token count for a single chat.
+provider's gateway when one is below the threshold. With no eligible gateway, the other
+provider's native subscription is used; asking for the coordinator's own provider with no such
+gateway is refused because handing work to the root's own native login would be circular. This is subscription usage, not a token count for a single chat.
 The coordinator still consumes its own allowance while supervising. Missing/stale usage is
 reported as unknown and never treated as headroom. Existing saved thresholds are preserved
 when updating the plugin; change one with `bridge.mjs config`.
 Routing hooks do not replace the desktop's model engine or forcibly preempt a running
 generation.
 
-## Automatic dispatch
+## Model-directed delegation
 
-In `automatic` mode, `UserPromptSubmit` starts the routed worker for that prompt through the
-same start path the tools use, so routing, quota, the threshold, overrides, per-checkout
-ownership, `maxConcurrent` and permission mapping are unchanged. A gateway is a credential:
-any number of worker sessions may share one, while host capacity (`maxConcurrent`, one writer
-per checkout) and subscription quota are separate limits. There is no scheduler and no lock
-per credential.
+Both root agents discover the same six tools: `factory_inspect`, `factory_delegate`,
+`factory_status`, `factory_wait`, `factory_answer` and `factory_stop`. Root identity is injected
+by the MCP process, so a model cannot invent another chat's identity. Every run-control operation
+also verifies that the run belongs to that root session.
 
-- **What the worker gets.** The user's prompt verbatim, the previous bridge result summary for
-  the same checkout (clipped to 2,000 characters), and its own saved session for that checkout
-  and route. A prompt over 32,000 characters is refused as a dispatch failure and no worker is
-  started; it is never truncated, because a cut could drop restrictions at its end. Never the coordinator's transcript, instructions or
-  memory beyond the existing opt-in memory excerpts. A prompt that depends on earlier
-  conversation makes the worker ask; the coordinator answers with the missing context.
-- **Where it runs.** The coordinator's current checkout (the hook's `cwd`). The hook runs
-  before the coordinator could choose a different worktree, so work that needs one should be
-  stopped and restarted there with the start tool.
-- **The coordinator manages it.** The hook tells it the run id and to wait on it, answer only
-  routine clarifications, send permission, approval, spending, sending and material product
-  questions to the user, and verify the result. The existing owner lease
-  (`disconnectGraceSeconds`) is unchanged: a worker nobody waits on is stopped.
-- **One launch per turn.** Codex names the turn (`turn_id`) and current Claude Code names the
-  prompt (`prompt_id`, hashed into its own domain). A live probe of a fresh `claude --print`
-  session found `prompt_id` on the first prompt while its transcript file did not exist yet and
-  no model was reported, so the id is what makes a first turn dispatchable; the worker then
-  takes the existing defaults (`modelFallback`, effort `high`) and the session's own
-  `permission_mode`. Older Claude Code without `prompt_id` falls back to the prompt plus the
-  transcript's path, size and modification time; a turn with no readable identity is not
-  dispatched and is reported as such. The turn is reserved in the
-  task record before launch and each run record names its turn, so a retried hook, a
-  concurrent duplicate or a bridge restart after launch finds the same run. A reservation
-  with no run found is reported as unknown and nothing is launched.
-- **A live run or an open question comes first.** While a run of this session is active, or
-  its last result asks a question, a new prompt starts nothing and is not sent to that run;
-  the coordinator is told to manage the run, whatever the route now says.
-- **Staying here.** Only the existing routes keep a turn with the coordinator: no gateway
-  below the threshold, an override, `off`, or a prompt starting with `local:` (that turn
-  only). A launch or preflight error is reported as a failure with next steps; it is not
-  quietly done here instead. A checkout owned by another run may be another chat's, so the
-  next step is this task's own isolated worktree, never stopping that run unasked.
-- **What the user sees.** Every dispatched, held, failed or kept turn prints a one-line
-  `systemMessage`. The first prompt of an active session (automatic or manual) also asks the
-  coordinator to open its reply with that line; it says which worker, run and credential when
-  the turn was delegated, and never claims delegation otherwise. That reply is model-written
-  prose, so its wording is not guaranteed; the `systemMessage` is. `SessionStart` reports
-  readiness only.
-- **Edit guard.** While a worker of this session is active, `PreToolUse` refuses the
-  coordinator's native edits inside that worker's checkout (Claude Code `Edit`, `Write`,
-  `MultiEdit`, `NotebookEdit`; Codex `apply_patch`). It prevents an accidental race. It is
-  not a security boundary: shell commands are not inspected, and Codex's `PreToolUse`
-  coverage of `apply_patch` has not been verified against a live Codex build.
-- **Timeouts.** The prompt hook's 60-second timeout covers the client's 10-second bridge
-  start and its 40-second request deadline. A hook killed after launch loses only its output:
-  the retried hook, or the coordinator's inspect, finds the run.
-- **No recursion.** Workers run with `FACTORY_DELEGATED=1`, and every hook exits at once
-  under it.
+- **Judgment and user precedence.** An explicit request to use the Factory requires delegation;
+  an explicit request to keep work local prohibits it. Otherwise the root uses its normal
+  sub-agent judgment: quick interactive work stays local, while a bounded larger chunk may be
+  delegated. There is no separate classifier.
+- **Sticky primary worker.** The first successful primary launch pins executor and gateway for
+  the root session. Later gateway order or quota changes never silently switch it. An unavailable,
+  removed, changed-provider or over-threshold pinned gateway refuses until it is eligible again;
+  a different provider requires a new root session. Provider conversations remain scoped to one
+  canonical checkout so repository instructions never leak across worktrees.
+- **Fresh work.** `fresh:true` starts a separate conversation on the pinned route and never
+  replaces the primary saved session. It can run concurrently only in another isolated worktree;
+  one writer per checkout and `maxConcurrent` still apply.
+- **Manager contract.** The root sends a self-contained brief, waits, handles only routine
+  reversible clarification itself, sends authorization/spending/publishing/material decisions to
+  the user, and independently verifies the result. Codex `needs_input` resumes through
+  `factory_delegate` with the originating `runId`; a live Claude question uses `factory_answer`.
+- **Edit guard and recursion.** While an owned worker is active, `PreToolUse` refuses the root's
+  native edit tools in that checkout (Claude Code `Edit`, `Write`, `MultiEdit`, `NotebookEdit`;
+  Codex `apply_patch`). Shell commands are not inspected, so this is an accidental-race guard,
+  not a sandbox. Workers run with `FACTORY_DELEGATED=1`; hooks exit and MCP delegation refuses.
 
 ## Gateway mode
 
@@ -276,7 +248,8 @@ Do not edit settings while a second writer is updating them. Unknown settings ar
 ## Claude coordinating Codex
 
 The installer also registers a Claude Code plugin (`claude-plugin/`, marketplace
-`factory-local`) with a `delegate-to-codex` skill, `codex_*` tools and hooks, and sets a
+`factory-local`) with a `delegate-to-codex` skill, the same `factory_*` contract (plus legacy
+`codex_*` compatibility tools) and hooks, and sets a
 recorder status line. Skip that half with `node scripts/install.mjs --codex-only`. The same
 `mode`, `threshold` and `projects` settings govern both directions; `bridge.mjs disable` stops
 both. Start a new Claude session after installing, and review its hooks.
@@ -304,14 +277,13 @@ both. Start a new Claude session after installing, and review its hooks.
 - **Execution.** Each handoff runs `codex exec --json` under the same guardian lease, output
   cap and run limit as Claude workers, with the prompt on stdin. The saved Codex session id is
   resumed per working directory with `codex exec resume`. Codex cannot ask mid-run, so a
-  question arrives as a `needs_input` result and is answered by starting again with
-  that result's `runId`, `replySource` (`claude` or `user`) and `replyReason`, within the
+  question arrives as a `needs_input` result and is answered with `factory_delegate` and
+  that result's `runId`, `replySource` (`root` or `user`) and `replyReason`, within the
   same supervision budget.
   One Claude session may run multiple Codex delegations concurrently when each uses a
   different worktree. A second writer in the same working directory is refused with the
-  owning run id; the global `maxConcurrent` limit still applies. `codex_inspect` lists all
-  active runs and the five most recent terminal runs. Pass `runId` to wait, view, status or
-  stop when more than one run is active; a single run remains the default.
+  owning run id; the global `maxConcurrent` limit still applies. `factory_inspect` lists all
+  active runs and the five most recent terminal runs. Pass `runId` to wait, status or stop.
 - **Subscription only.** The bridge requires `codex login status` to report a ChatGPT
   sign-in and strips `OPENAI_*`/`CODEX_API_KEY` from the worker. Paid Codex credits cannot be
   detected from `exec` output; manage that in your ChatGPT account.
@@ -320,21 +292,22 @@ both. Start a new Claude session after installing, and review its hooks.
 
 ### Same-provider workers behind a gateway
 
-When routing picks the coordinator's own provider behind a gateway, the same start tool
-launches that worker (`codex_start` from Claude, `claude_start` from Codex); the run's
+When routing picks the coordinator's own provider behind a gateway, `factory_delegate`
+launches that worker; the run's
 `executor` and `gateway` fields say what ran.
 
 - **A Claude worker for a Claude session** runs `claude -p` with the gateway's base URL and
   token, the session's own model and effort, and the session's own permission mode, so it is
   never wider than the coordinator. It can ask live questions; the coordinator answers them
-  with `codex_answer` (`source: claude` for a routine clarification, `user` to attest a real
-  answer), under the same rules as `claude_answer`.
+  with `factory_answer` (`source: root` for a routine clarification, `user` to attest a real
+  answer).
 - **A Codex worker for a Codex task** runs `codex exec` against the gateway with the task's own
   model and effort. Its sandbox follows the task's approval policy: never-approve full access
   maps to full access, on-request to read-only.
-- **Sessions are kept per route.** A worker's saved conversation is keyed by worktree and
-  gateway (`<cwd>#gateway:<name>`), so a gateway conversation never resumes a native one or
-  another gateway's. A `needs_input` reply must use the route the question came from.
+- **Sessions are kept per checkout on the pinned route.** A root session pins executor and
+  gateway once; its primary provider conversation is keyed by canonical checkout. It never
+  resumes across worktrees, another gateway, or native login. A `needs_input` reply must use the
+  route and run it came from.
 - **Credentials stay out of the worker.** It gets only the provider's own variables; every
   variable a configured `keyRef`, `emailRef` or `passwordRef` names is removed from its
   environment, along with `FACTORY_ADMIN_*`.

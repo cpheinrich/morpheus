@@ -151,9 +151,12 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"done","str
   const reply = JSON.parse(await readFile(join(root, "stdin2"), "utf8"));
   assert.equal(reply.response.request_id, "q1");
   assert.deepEqual(reply.response.response.updatedInput.answers, { "Color?": "Blue" });
-  // The gateway conversation is saved under its own route, never as the native session.
+  // The sticky primary conversation is keyed by the root checkout; its route is stored
+  // separately so gateway reorder cannot change worker identity.
   const task = await taskRead(claudeTaskId(sessionId));
-  assert.deepEqual(task.sessions, { [`${repo}#gateway:pool`]: "sess-gateway-1" });
+  assert.deepEqual(task.sessions, { [`primary:${repo}`]: "sess-gateway-1" });
+  assert.deepEqual(task.workerBinding, { executor: "claude", gateway: "pool" });
+  assert.equal(task.primaryCwd, repo);
   // Another Claude session cannot answer this run.
   await assert.rejects(
     m.dispatch("codex.answer", {
@@ -215,8 +218,10 @@ echo '{"type":"turn.completed","usage":{}}'
   assert.match(await readFile(join(root, "stdin"), "utf8"), /delegated by Codex\./);
   const task = await taskRead(threadId);
   assert.deepEqual(task.codexSessions, {
-    [`${repo}#gateway:pool`]: "0199bbbb-cccc-7ddd-8eee-ffff00001111",
+    [`primary:${repo}`]: "0199bbbb-cccc-7ddd-8eee-ffff00001111",
   });
+  assert.deepEqual(task.workerBinding, { executor: "codex", gateway: "pool" });
+  assert.equal(task.primaryCwd, repo);
   // An on-request task maps to a read-only sandbox: delegation never widens permissions.
   m.snapshot = async () => ({
     cwd: repo,
@@ -251,6 +256,16 @@ echo '{"type":"turn.completed","usage":{}}'
   });
   await assert.rejects(
     m.start({ threadId, prompt: "Blue", replySource: "codex", replyReason: "routine default" }),
-    /asked its question on native claude, but routing now chooses: .*pool gateway \(codex\)/,
+    /asked its question on native claude, but routing now chooses: Pinned primary worker: codex through gateway "pool"/,
+  );
+  // A pinned gateway is identity, not a fresh placement recommendation. Removing it fails
+  // closed instead of switching this root to native Claude or another gateway.
+  await configWrite({ ...defaults(), mode: "automatic", gateways: [] });
+  const unavailable = await m.inspect(threadId);
+  assert.equal(unavailable.route.unavailable, true);
+  assert.match(unavailable.route.reason, /Pinned gateway "pool" is missing/);
+  await assert.rejects(
+    m.start({ threadId, prompt: "do not reroute" }),
+    /Pinned gateway "pool" is missing/,
   );
 });
