@@ -7,8 +7,9 @@ tick every 15 minutes with a 30-minute grace. The host config lists repository n
 history, keyed by the ` [schedule:<id>:<instant>]` run-name suffix, is the only ledger: no database,
 queue, controller, agent or dashboard. Only the latest due slot is ever submitted, never one before
 the registry file's commit; any run spends its slot; unreadable history is an error. Receivers run
-`scheduler admit` under whole-workflow concurrency, and a successful `Scheduler admission` step is
-the only thing that consumes an occurrence. This narrows duplicates and claims no exactly-once
+`scheduler admit` (a step named `Scheduler admission`) under whole-workflow concurrency, and a
+successful gated `Scheduler occurrence admitted` marker step is the only thing that consumes an
+occurrence. The tick's lock is taken over only from a dead owner PID, never for age alone. This narrows duplicates and claims no exactly-once
 effect. Morpheus's hourly heartbeat cron is deliberately removed, per Chris; the workflow stays
 manual. Cron/timezone evaluation uses Croner 11.0.0 (registry modified 2026-11-01, no dependencies)
 rather than hand-rolled DST handling; GitHub access is Node `fetch` with a timeout and Zod.

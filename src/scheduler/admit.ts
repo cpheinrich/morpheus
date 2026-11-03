@@ -2,13 +2,15 @@ import { HISTORY_SKEW_MS, parseInstant, runNameSuffix } from "./core.js";
 import type { GitHubApi, Job } from "./github.js";
 import { scheduleId } from "./schema.js";
 
+/** The receiver's conventional name for the step that runs this guard. It succeeds for duplicates too. */
+export const GUARD_STEP = "Scheduler admission";
 /**
- * The step name a receiver gives the no-op step that runs only when this guard admits. A
- * successful step of this name in another run, or an earlier attempt of this one, is what consumes
- * an occurrence: a duplicate that was queued and cancelled, or that the guard turned away, never
- * produced one.
+ * The no-op step a receiver runs only when this guard admits. A successful step of this name in
+ * another run, or an earlier attempt of this one, is what consumes an occurrence: a duplicate that
+ * was queued and cancelled, or that the guard turned away (its marker skipped), never produced one.
+ * The guard step's own success proves nothing, so it is never read.
  */
-export const ADMISSION_STEP = "Scheduler admission";
+export const ADMISSION_STEP = "Scheduler occurrence admitted";
 
 export interface AdmitInput {
   schedulerId: string;
@@ -44,7 +46,7 @@ export async function admit(input: AdmitInput, github: GitHubApi | null): Promis
     const attempt = job.run_attempt ?? 1;
     // The step running now is this guard. Named like the marker, every duplicate would mint one.
     if (attempt === input.runAttempt && job.steps?.some(s => s.name === ADMISSION_STEP && s.status === "in_progress")) {
-      throw new Error(`the guard step must not be named "${ADMISSION_STEP}"; that name is reserved for the step it gates`);
+      throw new Error(`name the guard step "${GUARD_STEP}"; "${ADMISSION_STEP}" is reserved for the step it gates`);
     }
     if (attempt < input.runAttempt && admitted(job)) {
       return { admitted: false, reason: "an earlier attempt of this run was admitted", duplicateOf: input.runId };

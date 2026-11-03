@@ -50,12 +50,16 @@ export declare function tick(options: TickOptions): Promise<SchedulerStatus>;
 export declare function readStatus(path: string): Promise<SchedulerStatus | null>;
 /** Write-then-rename, so a reader never sees half a status file. */
 export declare function writeStatus(path: string, status: SchedulerStatus): Promise<void>;
+/** True unless the OS says no such process; EPERM means it exists under another user. */
+export declare function processAlive(pid: number): boolean;
 /**
  * One tick per status file. launchd never overlaps its own job, but a manual tick could, and two
- * ticks racing would both read an empty history and dispatch twice. A lock older than any tick
- * can run is left by a crash and is taken over.
+ * ticks racing would both read an empty history and dispatch twice. A tick has no overall time
+ * bound (paginated reads, per-request timeouts), so age alone never frees a lock: it is taken over
+ * only when its recorded owner process is gone. The lock is local to one host, so a PID is enough;
+ * a reused PID can only make a dead owner look alive, which refuses rather than overlaps.
  */
-export declare function withLock<T>(statusPath: string, body: () => Promise<T>): Promise<T>;
+export declare function withLock<T>(statusPath: string, body: () => Promise<T>, alive?: (pid: number) => boolean): Promise<T>;
 export interface Health {
     healthy: boolean;
     reasons: string[];

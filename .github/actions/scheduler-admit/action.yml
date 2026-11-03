@@ -1,8 +1,8 @@
 name: Scheduler admission guard
 description: >-
   Decide whether this run is the first admitted run of its scheduled occurrence. Name this step
-  anything except "Scheduler admission", and follow it with a step of exactly that name gated on
-  the output; see docs/runbooks/scheduler.md.
+  "Scheduler admission" and follow it with a no-op step named exactly "Scheduler occurrence
+  admitted" gated on the output; see docs/runbooks/scheduler.md.
 inputs:
   scheduler-id:
     description: The workflow's scheduler-id input; empty for a manual run.

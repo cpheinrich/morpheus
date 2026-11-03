@@ -1,5 +1,6 @@
 # Scheduler admission guard
 
-The receiver half of repository-owned schedules: run it in a workflow's first job, then gate the
-rest on a step named exactly `Scheduler admission`. Contract and template:
+The receiver half of repository-owned schedules: run it as a step named `Scheduler admission` in a
+workflow's first job, follow it with a gated no-op step named exactly `Scheduler occurrence
+admitted` (the marker history reads), and gate the rest on the output. Contract and template:
 [`docs/runbooks/scheduler.md`](../../../docs/runbooks/scheduler.md).

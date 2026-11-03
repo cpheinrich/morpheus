@@ -65,12 +65,12 @@ jobs:
       admitted: ${{ steps.guard.outputs.admitted }}
     steps:
       - id: guard
-        name: Scheduler guard  # anything except "Scheduler admission"
+        name: Scheduler admission  # the guard; it succeeds for duplicates too
         uses: cpheinrich/morpheus/.github/actions/scheduler-admit@main
         with:
           scheduler-id: ${{ inputs.scheduler-id }}
           scheduled-for: ${{ inputs.scheduled-for }}
-      - name: Scheduler admission  # the marker: exactly this name
+      - name: Scheduler occurrence admitted  # the marker: exactly this name
         if: steps.guard.outputs.admitted == 'true'
         run: echo admitted
   work:
@@ -91,14 +91,15 @@ for either answer. It exits non-zero — and admits nothing — when:
 
 - only one of the two inputs is present, the id is malformed, or the instant is not canonical;
 - this run's name does not end with the suffix for those inputs;
-- the guard step itself is named `Scheduler admission`;
+- the guard step itself is named `Scheduler occurrence admitted`;
 - any history page is unreadable or truncated.
 
 Both inputs empty is a manual run: admitted, with no history read. The workflow's own eligibility
 rules still apply to it.
 
 Otherwise the run is turned away when an earlier attempt of this run, or any other run of this
-workflow with the same suffix, has a **successful `Scheduler admission` step**. Only an admission
+workflow with the same suffix, has a **successful `Scheduler occurrence admitted` step**. The guard
+step's own success is never read: a duplicate's guard succeeds too, with `admitted=false`. Only an admission
 consumes an occurrence: a duplicate cancelled while queued, or one the guard turned away (its marker
 is skipped), consumes nothing, and an admitted run whose later work failed has still spent it.
 
@@ -167,14 +168,20 @@ Per enrolled repository, in order, each failure isolated to that repository (or 
    5xx, no run details) waits five minutes for the run to appear, then resubmits — the guard
    absorbs a duplicate.
 5. **Backup** finds the newest slot at least 30 minutes old. If neither it nor any later slot was
-   accepted, the primary is not running, and the backup dispatches the *latest* slot. Looking back
+   accepted, the primary is not running, and the backup dispatches the *latest* slot. An
+   acceptance of that slot itself counts: for a 15-minute schedule with 13:22 accepted and 13:37
+   missed, the 13:52 backup waits, and the 14:07 one dispatches 14:07 — one missed slot is a full
+   30 minutes overdue before the backup acts. Looking back
    from the past-grace slot is what lets it notice a dead primary for a schedule that runs more
    often than every 30 minutes. It does not read the primary's status file.
 6. Before submitting: a missing workflow is an error, a disabled one is `skipped`, and a workflow
    without the scheduler inputs and suffix is an error. The submission requests
    `return_run_details` and records the run id and URL.
 
-A lock beside the status file stops a manual tick overlapping the timer's.
+A lock beside the status file stops a manual tick overlapping the timer's. It records the owner's
+PID and is taken over only when that process is gone, never for age alone, because a tick has no
+overall time bound. A lock with no readable PID (a crash between creating and writing it) is
+recovered after ten minutes.
 
 ## Status and health
 

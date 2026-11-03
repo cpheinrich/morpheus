@@ -154,13 +154,26 @@ export async function writeStatus(path, status) {
     await writeFile(temporary, `${JSON.stringify(status, null, 2)}\n`, { mode: 0o600 });
     await rename(temporary, path);
 }
-const STALE_LOCK_MS = 10 * 60_000;
+/** Only for a lock with no readable owner: a crash between creating it and writing the PID. */
+const UNOWNED_LOCK_MS = 10 * 60_000;
+/** True unless the OS says no such process; EPERM means it exists under another user. */
+export function processAlive(pid) {
+    try {
+        process.kill(pid, 0);
+        return true;
+    }
+    catch (error) {
+        return error.code !== "ESRCH";
+    }
+}
 /**
  * One tick per status file. launchd never overlaps its own job, but a manual tick could, and two
- * ticks racing would both read an empty history and dispatch twice. A lock older than any tick
- * can run is left by a crash and is taken over.
+ * ticks racing would both read an empty history and dispatch twice. A tick has no overall time
+ * bound (paginated reads, per-request timeouts), so age alone never frees a lock: it is taken over
+ * only when its recorded owner process is gone. The lock is local to one host, so a PID is enough;
+ * a reused PID can only make a dead owner look alive, which refuses rather than overlaps.
  */
-export async function withLock(statusPath, body) {
+export async function withLock(statusPath, body, alive = processAlive) {
     const path = `${statusPath}.lock`;
     await mkdir(dirname(path), { recursive: true });
     let handle;
@@ -170,9 +183,14 @@ export async function withLock(statusPath, body) {
     catch (error) {
         if (error.code !== "EEXIST")
             throw error;
-        const age = Date.now() - (await stat(path)).mtimeMs;
-        if (age < STALE_LOCK_MS)
+        const owner = Number.parseInt(await readFile(path, "utf8").catch(() => ""), 10);
+        if (Number.isSafeInteger(owner) && owner > 0) {
+            if (alive(owner))
+                throw new Error(`another tick (pid ${owner}) holds ${path}`);
+        }
+        else if (Date.now() - (await stat(path)).mtimeMs < UNOWNED_LOCK_MS) {
             throw new Error(`another tick holds ${path}`);
+        }
         await rm(path, { force: true });
         handle = await open(path, "wx");
     }

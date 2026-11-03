@@ -1583,7 +1583,8 @@ load — and gives no record of which occurrence a run was for.
   from before the registry file's commit.
 - **Receivers guard themselves.** `morpheus scheduler admit`, packaged as
   `.github/actions/scheduler-admit`, turns away a run when another run of the same occurrence has a
-  successful `Scheduler admission` step, under whole-workflow `concurrency`. This narrows
+  successful `Scheduler occurrence admitted` marker step (the guard step itself is `Scheduler
+  admission` and succeeds for duplicates too), under whole-workflow `concurrency`. This narrows
   duplicates; it does not make an external effect exactly-once, and existing domain receipts stay.
 - **A dispatch is not a delivery.** The scheduler's status file (atomic JSON: tick times,
   per-schedule due slot, outcome, run id) reports whether the scheduler is running and submitting;

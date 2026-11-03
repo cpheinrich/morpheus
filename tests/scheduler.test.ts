@@ -1,13 +1,14 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdtemp, readFile, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { admit, ADMISSION_STEP } from "../src/scheduler/admit.js";
+import { admit, ADMISSION_STEP, GUARD_STEP } from "../src/scheduler/admit.js";
 import { runScheduler, resolveToken } from "../src/scheduler/cli.js";
 import { instant, parseInstant, parseRunIdentity, runNameSuffix, slotAtOrBefore } from "../src/scheduler/core.js";
 import { createGitHub, GitHubError, type GitHubApi, type Job, type Run } from "../src/scheduler/github.js";
 import { hostConfigSchema, schedulesFileSchema, type HostConfig } from "../src/scheduler/schema.js";
-import { health, tick, withLock, type SchedulerStatus } from "../src/scheduler/tick.js";
+import { health, processAlive, tick, withLock, type SchedulerStatus } from "../src/scheduler/tick.js";
 
 const RECEIVER = `name: Nightly
 run-name: "Nightly\${{ inputs.scheduler-id && format(' [schedule:{0}:{1}]', inputs.scheduler-id, inputs.scheduled-for) || '' }}"
@@ -317,6 +318,19 @@ describe("backup tick", () => {
     expect(dead.dispatches.map(d => d.inputs["scheduled-for"])).toEqual(["2026-11-03T08:00:00Z"]);
   });
 
+  it("counts an acceptance at exactly the probe slot, so one late slot waits a full grace", async () => {
+    const quarter = { id: "quarter", workflow: "nightly.yml", cron: "7,22,37,52 * * * *", timezone: "UTC" };
+    const repo: FakeRepo = { schedules: { schemaVersion: 1, schedules: [quarter] }, runs: [run(1, "quarter", "2026-11-03T13:22:00Z")] };
+    const gh = fakeGitHub({ "example-org/app": repo });
+    // 13:52: probe 13:22 was accepted; 13:37 is only 15 minutes late.
+    const early = await tick({ config, github: gh.api, mode: "backup", dryRun: false, now: at("2026-11-03T13:52:00Z") });
+    expect(gh.dispatches).toHaveLength(0);
+    expect(early.repositories[0]!.schedules[0]).toMatchObject({ outcome: "waiting", dueAt: "2026-11-03T13:52:00Z" });
+    // 14:07: probe 13:37 is 30 minutes overdue with nothing accepted since — dispatch the latest slot.
+    await tick({ config, github: gh.api, mode: "backup", dryRun: false, now: at("2026-11-03T14:07:00Z") });
+    expect(gh.dispatches.map(d => d.inputs["scheduled-for"])).toEqual(["2026-11-03T14:07:00Z"]);
+  });
+
   it("coalesces an older miss when a newer occurrence was accepted", async () => {
     const healthy = fakeGitHub({
       "example-org/app": {
@@ -420,8 +434,41 @@ describe("status and lock", () => {
     await withLock(path, async () => {
       inner = await withLock(path, async () => "ran").catch(e => (e as Error).message);
     });
-    expect(inner).toBe(`another tick holds ${path}.lock`);
+    expect(inner).toBe(`another tick (pid ${process.pid}) holds ${path}.lock`);
     expect(await withLock(path, async () => "after")).toBe("after");
+  });
+
+  it("never takes over a live owner's lock however old, and recovers a dead owner's", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "scheduler-lock-"));
+    const path = join(dir, "status.json");
+    const hourAgo = new Date(Date.now() - 60 * 60_000);
+    await writeFile(`${path}.lock`, "4242\n");
+    await utimes(`${path}.lock`, hourAgo, hourAgo);
+    await expect(withLock(path, async () => "ran", pid => pid === 4242)).rejects.toThrow("another tick (pid 4242)");
+    expect(await readFile(`${path}.lock`, "utf8")).toBe("4242\n");
+    // Same lock, owner gone: taken over at once, without waiting for any age.
+    await utimes(`${path}.lock`, new Date(), new Date());
+    expect(await withLock(path, async () => readFile(`${path}.lock`, "utf8"), () => false)).toBe(`${process.pid}\n`);
+    await expect(readFile(`${path}.lock`, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("waits out an unowned lock only until it is ten minutes old", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "scheduler-lock-"));
+    const path = join(dir, "status.json");
+    await writeFile(`${path}.lock`, "");
+    const justUnder = new Date(Date.now() - 9 * 60_000 - 50_000);
+    await utimes(`${path}.lock`, justUnder, justUnder);
+    await expect(withLock(path, async () => "ran", () => true)).rejects.toThrow(`another tick holds ${path}.lock`);
+    const over = new Date(Date.now() - 10 * 60_000 - 1_000);
+    await utimes(`${path}.lock`, over, over);
+    expect(await withLock(path, async () => "ran", () => true)).toBe("ran");
+  });
+
+  it("reads a real process's liveness", async () => {
+    expect(processAlive(process.pid)).toBe(true);
+    const child = spawn(process.execPath, ["-e", ""]);
+    await new Promise(resolve => child.on("exit", resolve));
+    expect(processAlive(child.pid!)).toBe(false);
   });
 
   it("tick writes an atomic status file that the next tick reads back", async () => {
@@ -458,7 +505,7 @@ describe("receiver admission", () => {
     } as unknown as GitHubApi;
     return api;
   }
-  const current = (jobs: Job[] = [{ id: 1, run_attempt: 1, steps: [step("Scheduler guard", null, "in_progress")] }]) => ({
+  const current = (jobs: Job[] = [{ id: 1, run_attempt: 1, steps: [step(GUARD_STEP, null, "in_progress")] }]) => ({
     id: 100,
     display_title: `Nightly${suffix}`,
     html_url: "",
@@ -466,6 +513,15 @@ describe("receiver admission", () => {
     workflow_id: 77,
     jobs,
   });
+  // A receiver's jobs as the jobs API lists them: the admission job, then the gated work job.
+  const admittedJobs = (attempt = 1): Job[] => [
+    { id: 1, run_attempt: attempt, steps: [step("Set up job", "success"), step(GUARD_STEP, "success"), step(ADMISSION_STEP, "success")] },
+    { id: 2, run_attempt: attempt, steps: [step("Set up job", "success"), step("Deploy", "failure")] },
+  ];
+  const turnedAwayJobs = (attempt = 1): Job[] => [
+    { id: 3, run_attempt: attempt, steps: [step("Set up job", "success"), step(GUARD_STEP, "success"), step(ADMISSION_STEP, "skipped")] },
+    { id: 4, run_attempt: attempt, steps: [] },
+  ];
   const input = { schedulerId: "nightly", scheduledFor: "2026-11-03T08:00:00Z", repository: "example-org/app", runId: 100, runAttempt: 1 };
   const other = (id: number, steps: Job["steps"], title = `Nightly${suffix}`) => ({
     id,
@@ -486,7 +542,7 @@ describe("receiver admission", () => {
   it("admits the first run and only runs whose earlier duplicates never passed admission", async () => {
     expect(await admit(input, receiver([], current()))).toMatchObject({ admitted: true });
     const neverStarted = other(90, []);
-    const turnedAway = other(91, [step("Scheduler guard", "success"), step(ADMISSION_STEP, "skipped")]);
+    const turnedAway = other(91, [step(GUARD_STEP, "success"), step(ADMISSION_STEP, "skipped")]);
     const otherSlot = other(92, [step(ADMISSION_STEP, "success")], `Nightly${runNameSuffix("nightly", "2026-11-02T08:00:00Z")}`);
     expect(await admit(input, receiver([neverStarted, turnedAway, otherSlot], current()))).toMatchObject({ admitted: true });
   });
@@ -501,16 +557,24 @@ describe("receiver admission", () => {
   });
 
   it("turns away a re-run of an attempt that was admitted", async () => {
-    const jobs = [
-      { id: 1, run_attempt: 1, steps: [step(ADMISSION_STEP, "success")] },
-      { id: 2, run_attempt: 2, steps: [step("Scheduler guard", null, "in_progress")] },
-    ];
+    const jobs = [...admittedJobs(1), { id: 5, run_attempt: 2, steps: [step("Set up job", "success"), step(GUARD_STEP, null, "in_progress")] }];
     expect(await admit({ ...input, runAttempt: 2 }, receiver([], current(jobs)))).toMatchObject({ admitted: false, duplicateOf: 100 });
+  });
+
+  it("reads only the marker: a duplicate's successful guard step consumes nothing", async () => {
+    const withRuns = (...runs: Array<Run & { jobs: Job[] }>) => admit(input, receiver(runs, current()));
+    const run = (id: number, jobs: Job[]) => ({ ...other(id, []), jobs });
+    // First admission, then a duplicate of it, then a third arrival after the duplicate was turned away.
+    expect(await withRuns()).toMatchObject({ admitted: true });
+    expect(await withRuns(run(93, admittedJobs()))).toMatchObject({ admitted: false, duplicateOf: 93 });
+    expect(await withRuns(run(93, admittedJobs()), run(94, turnedAwayJobs()))).toMatchObject({ admitted: false, duplicateOf: 93 });
+    // If the admitted run never existed (cancelled while queued), the turned-away one is no proof.
+    expect(await withRuns(run(94, turnedAwayJobs()))).toMatchObject({ admitted: true });
   });
 
   it("refuses a guard step that carries the marker's name", async () => {
     const jobs = [{ id: 1, run_attempt: 1, steps: [step(ADMISSION_STEP, null, "in_progress")] }];
-    await expect(admit(input, receiver([], current(jobs)))).rejects.toThrow("must not be named");
+    await expect(admit(input, receiver([], current(jobs)))).rejects.toThrow(`name the guard step "${GUARD_STEP}"`);
   });
 
   it("writes the decision to GITHUB_OUTPUT and exits successfully when not admitted", async () => {
