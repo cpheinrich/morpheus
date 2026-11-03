@@ -61,16 +61,16 @@ test("desktop adapter accepts active full access metadata by contract", async (t
     },
   ]);
   await assert.rejects(recordedSnapshot(thread), /restricted/);
-  const decompress = zlib.createZstdDecompress;
+  const decompress = Object.getOwnPropertyDescriptor(zlib, "createZstdDecompress");
   try {
-    zlib.createZstdDecompress = undefined;
+    Object.defineProperty(zlib, "createZstdDecompress", { value: undefined, configurable: true });
     await write([start, context]);
     assert.equal((await recordedSnapshot(thread)).model, "gpt-6-astra");
     await writeFile(path + ".zst", "compressed bytes are not read without support");
     await rm(path);
     await assert.rejects(recordedSnapshot(thread), /requires Node 22.15/);
   } finally {
-    zlib.createZstdDecompress = decompress;
+    Object.defineProperty(zlib, "createZstdDecompress", decompress);
   }
   // The same validation must run after Codex compresses the rollout in place.
   await writeFile(path + ".zst", zlib.zstdCompressSync(Buffer.from([start, context].map(JSON.stringify).join("\n"))));
