@@ -627,6 +627,16 @@ test("Codex-root fresh runs require a binding, persist together, and resume thei
   assert.equal(resumed.cwd, await realpath(other));
   assert.equal(resumed.claudeSession, "fresh-claude-session");
   assert.equal((await taskRead(threadId)).primaryCwd, await realpath(repo));
+
+  Object.assign(m.runs.get(resumed.id), { terminal: true, state: "completed" });
+  await atomic(join(runDir(resumed.id), "run.json"), m.public(m.runs.get(resumed.id)));
+  const withPrimarySession = await taskRead(threadId);
+  withPrimarySession.sessions = { [`primary:${await realpath(repo)}`]: "primary-claude-session" };
+  await taskWrite(withPrimarySession);
+  const backToPrimary = await m.start({ threadId, prompt: "ordinary next step" });
+  assert.equal(backToPrimary.fresh, false);
+  assert.equal(backToPrimary.cwd, await realpath(repo));
+  assert.equal(backToPrimary.claudeSession, "primary-claude-session");
 });
 
 test("provider-neutral run controls reject a run owned by another root", async (t) => {

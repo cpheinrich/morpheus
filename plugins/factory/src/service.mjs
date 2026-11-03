@@ -253,6 +253,9 @@ export class Manager {
         : !args.fresh && task.runId
           ? await this.status(task.runId)
           : null;
+      // runId is a compatibility pointer to the latest run of either slot. An ordinary
+      // delegation must not inherit a fresh run unless the coordinator selected it explicitly.
+      if (!args.runId && previous?.fresh) previous = null;
       const continuation =
         previous?.state === "needs_input" || !!previous?.question;
       // A reply to an isolated run inherits its checkout and provider conversation. The
