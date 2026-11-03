@@ -268,21 +268,38 @@ describe("scaffoldWeb", () => {
     await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).resolves.toMatchObject({
       stdout: expect.stringContaining("1 declared dynamic routes"),
     });
+    await write(root, "README.md", "# Repository\n");
+    await write(root, ".agent/decisions.md", "# Decisions\n");
+    await write(root, "docs/runbook.md", "# Runbook\n");
     await write(root, "hq/private.md", "# Private\n");
-    await write(root, "hq/product/roadmap/MO-001.md", "# Roadmap item\n");
+    const outsideRoot = await mkdtemp(join(tmpdir(), "morpheus-outside-"));
+    roots.push(outsideRoot);
+    await write(outsideRoot, "outside.md", "# Outside\n");
     await write(
       root,
       "apps/web/.next/server/app/hq/live/page.js.nft.json",
       JSON.stringify({
         files: [
+          "../../../../../../../README.md",
+          "../../../../../../../.agent/decisions.md",
+          "../../../../../../../docs/runbook.md",
           "../../../../../../../hq/private.md",
-          join(root, "hq/product/roadmap/MO-001.md"),
+          "../../../../../../../node_modules/example/README.md",
+          join(outsideRoot, "outside.md"),
         ],
       }),
     );
-    await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).rejects.toThrow(
-      /hq\/private\.md[\s\S]*hq\/product\/roadmap\/MO-001\.md/,
+    const dynamicError = await execFileAsync(
+      process.execPath,
+      ["scripts/check-hq-build.mjs"],
+      { cwd: webRoot },
+    ).catch((error: Error) => error);
+    expect(dynamicError).toBeInstanceOf(Error);
+    expect(String(dynamicError)).toMatch(
+      /README\.md[\s\S]*\.agent\/decisions\.md[\s\S]*docs\/runbook\.md[\s\S]*hq\/private\.md/,
     );
+    expect(String(dynamicError)).not.toContain("node_modules/example/README.md");
+    expect(String(dynamicError)).not.toContain(join(outsideRoot, "outside.md"));
   });
 
   it.each([
