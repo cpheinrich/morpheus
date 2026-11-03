@@ -4,8 +4,15 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { call } from "../src/client.mjs";
 import { delegatedMarker } from "../src/config.mjs";
-import { codexMethods } from "./tool-contract.mjs";
+import { codexMethods, factoryMethods, factorySpecs } from "./tool-contract.mjs";
 const server = new McpServer({ name: "claude-codex", version: "0.1.0" });
+const rootId = () => {
+  const id = process.env.CLAUDE_CODE_SESSION_ID;
+  if (!/^[a-zA-Z0-9-]{1,90}$/.test(id ?? ""))
+    throw new Error("Factory could not verify this Claude root session id; delegation refused.");
+  return id;
+};
+const factoryArgs = (args) => ({ ...args, rootKind: "claude", rootId: rootId() });
 const session = {
   sessionId: z
     .string()
@@ -87,6 +94,25 @@ const specs = {
     { ...session, owner: z.enum(["claude", "codex"]) },
   ],
 };
+for (const method of factoryMethods) {
+  const [description, inputSchema] = factorySpecs[method];
+  server.registerTool(`factory_${method}`, { description, inputSchema }, async (args) => {
+    try {
+      if (process.env[delegatedMarker] && method === "delegate")
+        throw new Error("Delegated workers cannot delegate again.");
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(await call(`factory.${method}`, factoryArgs(args))),
+          },
+        ],
+      };
+    } catch (e) {
+      return { isError: true, content: [{ type: "text", text: e.message }] };
+    }
+  });
+}
 for (const name of codexMethods) {
   const [method, description, inputSchema] = specs[name];
   server.registerTool(
@@ -97,11 +123,20 @@ for (const name of codexMethods) {
         // A worker launched by this bridge must never hand its task back.
         if (process.env[delegatedMarker] && name === "start")
           throw new Error("Delegated workers cannot delegate again.");
-        if ("sessionId" in inputSchema && !args.sessionId)
-          args.sessionId = process.env.CLAUDE_CODE_SESSION_ID;
+        const scoped = { ...args, sessionId: rootId() };
+        if (["status", "wait", "answer", "stop"].includes(name)) {
+          const canonical = {
+            ...scoped,
+            ...(name === "answer" ? { source: scoped.source === "claude" ? "root" : scoped.source } : {}),
+          };
+          const result = await call(`factory.${name}`, factoryArgs(canonical));
+          return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        }
+        if (name === "view")
+          await call("factory.status", factoryArgs({ runId: scoped.runId }));
         return {
           content: [
-            { type: "text", text: JSON.stringify(await call(method, args)) },
+            { type: "text", text: JSON.stringify(await call(method, scoped)) },
           ],
         };
       } catch (e) {

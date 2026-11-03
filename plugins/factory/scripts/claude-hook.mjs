@@ -1,10 +1,9 @@
-// Claude Code hook: records the session's own settings, injects the routing advice and, in
-// automatic mode, dispatches the turn. PreToolUse refuses edits racing this session's worker.
+// Claude Code hook: records the session's own settings and refuses edits racing this session's
+// worker. User turns are never dispatched by a hook; the root model chooses factory_delegate.
 import { configRead } from "../src/store.mjs";
 import { call, useRunning } from "../src/client.mjs";
 import { delegatedMarker } from "../src/config.mjs";
-import { transcriptModel } from "../src/claude-usage.mjs";
-import { claudeTurnKey } from "../src/dispatch.mjs";
+import { transcriptModel, transcriptPermissionMode } from "../src/claude-usage.mjs";
 import { hookOutput } from "./hook-output.mjs";
 try {
   if (process.env[delegatedMarker]) process.exit(0);
@@ -37,18 +36,15 @@ try {
     sessionId: input.session_id,
     event,
     cwd: input.cwd,
-    permissionMode: input.permission_mode,
+    permissionMode:
+      input.permission_mode ??
+      (await transcriptPermissionMode(input.transcript_path)) ??
+      undefined,
     model:
       (typeof input.model === "string" ? input.model : input.model?.id) ??
       (await transcriptModel(input.transcript_path)) ??
       undefined,
     effort: process.env.CLAUDE_EFFORT,
-    ...(event === "UserPromptSubmit"
-      ? {
-          prompt: input.prompt,
-          turnKey: await claudeTurnKey(input.prompt, input.transcript_path, input.prompt_id),
-        }
-      : {}),
   });
   hookOutput(event, result);
 } catch (e) {

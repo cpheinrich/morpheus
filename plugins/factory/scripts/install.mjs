@@ -127,8 +127,17 @@ async function migrateLegacySettings() {
 async function removeLegacy(catalogName) {
   if (withClaude) {
     await step("Claude plugin", () => {
-      quiet("claude", ["plugin", "uninstall", LEGACY.claudePlugin]);
-      quiet("claude", ["plugin", "marketplace", "remove", LEGACY.claudeMarketplace]);
+      for (const args of [
+        ["plugin", "uninstall", LEGACY.claudePlugin],
+        ["plugin", "marketplace", "remove", LEGACY.claudeMarketplace],
+      ]) {
+        try {
+          quiet("claude", args);
+        } catch (e) {
+          if (!/not installed|not found|unknown|does not exist/i.test(String(e.stderr ?? e.message)))
+            throw e;
+        }
+      }
       return `uninstalled ${LEGACY.claudePlugin} and its marketplace`;
     });
   }
@@ -269,7 +278,7 @@ try {
   // Only now, with factory committed, is the old plugin removed.
   if (migrating) await removeLegacy(catalogName);
   console.log(
-    `Installed a standalone copy at ${destination}. Factory is experimental; routing remains at this machine's saved setting (off on first install). Start a new Codex task (and Claude session) to load the plugin and review/trust its hooks. Then run doctor and explicitly enable manual or automatic mode.`,
+    `Installed a standalone copy at ${destination}. Factory is experimental; routing remains at this machine's saved setting (off on first install). Start a new Codex task (and Claude session) to load the plugin and review/trust its hooks. Then run doctor and explicitly enable model-directed mode with \`enable manual\` (\`automatic\` remains a compatibility alias).`,
   );
 } catch (e) {
   console.error(e.message);

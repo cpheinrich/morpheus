@@ -17,7 +17,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/plugins/factory/scripts/claude-hook.mjs\" UserPromptSubmit",
-            "timeout": 60
+            "timeout": 20
           }
         ]
       }
