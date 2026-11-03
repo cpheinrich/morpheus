@@ -62,7 +62,9 @@ Before release, inspect the framework's built route inventory and runtime trace 
 inferring static behavior from source. Assert that every expected content slug was prerendered,
 ordinary HQ routes are static, dynamic routes are declared with a rationale, and no runtime bundle
 traces repository `hq/**/*.md` source. Attribute a concrete prerender entry to its `srcRoute`: a
-catch-all can emit the same URL as an explicit live page without making that live page static. Also
+catch-all can emit the same URL as an explicit live page without making that live page static.
+require every repository-backed route's prerender entry to set `initialRevalidateSeconds: false`;
+an ISR entry is present in the same manifest but may re-run its repository loader after expiry. Then
 verify that a Markdown-only commit triggers deployment and that pages and the search index report
 one source commit. Set response-size budgets separately: a large
 static page is still expensive for the browser.
