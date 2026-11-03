@@ -2157,6 +2157,14 @@ export function classifyDynamicHqRoutes(appPaths, prerenderManifest) {
     .sort();
 }
 
+export function revalidatedStaticRoutes(routes, prerenderManifest) {
+  const exact = prerenderManifest.routes ?? {};
+  return routes.filter((route) => {
+    const entry = exact[route];
+    return entry && entry.initialRevalidateSeconds !== false;
+  });
+}
+
 export function markdownTraceEntries(files, repositoryRoot, traceDirectory) {
   const canonical = (file) => {
     try {
@@ -2191,6 +2199,7 @@ import {
   EXPECTED_STATIC_HQ_ROUTES,
   markdownTraceEntries,
   nftPath,
+  revalidatedStaticRoutes,
   routeFromAppManifestKey,
 } from "./hq-build-contract.mjs";
 
@@ -2224,6 +2233,13 @@ const prerendered = new Set(Object.keys(prerender.routes ?? {}));
 const missingStatic = EXPECTED_STATIC_HQ_ROUTES.filter((route) => !prerendered.has(route));
 if (missingStatic.length) {
   throw new Error("Expected static HQ routes were not prerendered:\\n" + missingStatic.join("\\n"));
+}
+const revalidatedStatic = revalidatedStaticRoutes(EXPECTED_STATIC_HQ_ROUTES, prerender);
+if (revalidatedStatic.length) {
+  throw new Error(
+    "Repository-backed HQ routes must be immutable build artifacts, not ISR:\\n" +
+    revalidatedStatic.join("\\n"),
+  );
 }
 
 const appPathByRoute = new Map(

@@ -2158,7 +2158,9 @@ dynamic page. One manifest containing every document body recreates the server-b
 different file. CI derives the actual static/dynamic route inventory from the framework build,
 refuses undeclared dynamic HQ routes, and inspects runtime traces for repository `hq/**/*.md`
 source. A concrete URL emitted by a catch-all does not prove an overlapping explicit page static;
-the route inventory attributes each prerender entry to its source route.
+the route inventory attributes each prerender entry to its source route. A prerender entry is not
+enough by itself: repository-backed routes must record `initialRevalidateSeconds: false`, because
+ISR may execute the repository loader again after the revalidation interval.
 
 Build-only content also makes deployment freshness part of correctness. A repository-content-only
 change must trigger the web deployment, and the deployed source commit must be observable in both

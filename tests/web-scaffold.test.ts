@@ -177,10 +177,10 @@ describe("scaffoldWeb", () => {
     };
     const prerender = {
       routes: {
-        "/hq": {},
-        "/hq/no-access": {},
-        "/hq/search-index": {},
-        "/hq/example": { srcRoute: "/hq/[...slug]" },
+        "/hq": { initialRevalidateSeconds: false },
+        "/hq/no-access": { initialRevalidateSeconds: false },
+        "/hq/search-index": { initialRevalidateSeconds: false },
+        "/hq/example": { srcRoute: "/hq/[...slug]", initialRevalidateSeconds: false },
       },
       dynamicRoutes: {},
     };
@@ -190,6 +190,19 @@ describe("scaffoldWeb", () => {
     await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).resolves.toMatchObject({
       stdout: expect.stringContaining("verified 3 required static routes"),
     });
+
+    const withIsr = {
+      ...prerender,
+      routes: {
+        ...prerender.routes,
+        "/hq/search-index": { initialRevalidateSeconds: 60 },
+      },
+    };
+    await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(withIsr));
+    await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).rejects.toThrow(
+      /immutable build artifacts, not ISR:[\s\S]*\/hq\/search-index/,
+    );
+    await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(prerender));
 
     const withUndeclaredDynamic = {
       ...appPaths,
