@@ -2156,8 +2156,9 @@ Projects keep generated content split by use: a small metadata/link/search index
 compiled payloads, a static route inventory, and only the narrow fragments required by an explicit
 dynamic page. One manifest containing every document body recreates the server-bundle problem in a
 different file. CI derives the actual static/dynamic route inventory from the framework build,
-refuses undeclared dynamic HQ routes, and inspects runtime traces for repository `hq/**/*.md`
-source. A concrete URL emitted by a catch-all does not prove an overlapping explicit page static;
+refuses undeclared dynamic HQ routes, and inspects runtime traces for Markdown anywhere under the
+canonical repository root outside dependency trees. A concrete URL emitted by a catch-all does not
+prove an overlapping explicit page static;
 the route inventory attributes each prerender entry to its source route. A prerender entry is not
 enough by itself: repository-backed routes must record `initialRevalidateSeconds: false`, because
 ISR may execute the repository loader again after the revalidation interval.
