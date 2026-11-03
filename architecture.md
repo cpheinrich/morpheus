@@ -2156,7 +2156,9 @@ Projects keep generated content split by use: a small metadata/link/search index
 compiled payloads, a static route inventory, and only the narrow fragments required by an explicit
 dynamic page. One manifest containing every document body recreates the server-bundle problem in a
 different file. CI derives the actual static/dynamic route inventory from the framework build,
-refuses undeclared dynamic HQ routes, and inspects runtime traces for repository Markdown.
+refuses undeclared dynamic HQ routes, and inspects runtime traces for repository `hq/**/*.md`
+source. A concrete URL emitted by a catch-all does not prove an overlapping explicit page static;
+the route inventory attributes each prerender entry to its source route.
 
 Build-only content also makes deployment freshness part of correctness. A repository-content-only
 change must trigger the web deployment, and the deployed source commit must be observable in both

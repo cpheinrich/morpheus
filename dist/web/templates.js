@@ -2032,7 +2032,8 @@ export default function HqPage() {
 }
 `;
 };
-export const hqBuildContract = () => `import path from "node:path";
+export const hqBuildContract = () => `import { realpathSync } from "node:fs";
+import path from "node:path";
 
 /**
  * Extend these lists when the HQ grows. A dynamic route needs a live-data or
@@ -2052,19 +2053,45 @@ export function routeFromAppManifestKey(key) {
 }
 
 export function classifyDynamicHqRoutes(appPaths, prerenderManifest) {
-  const exact = new Set(Object.keys(prerenderManifest.routes ?? {}));
+  const exact = prerenderManifest.routes ?? {};
   const generated = prerenderManifest.dynamicRoutes ?? {};
+  const generatedSources = new Set(
+    Object.values(exact).map((entry) => entry.srcRoute).filter(Boolean),
+  );
 
   return Object.keys(appPaths)
     .filter((key) => key.startsWith("/hq/") || key === "/hq/page")
     .map(routeFromAppManifestKey)
-    .filter((route) => !exact.has(route))
+    // A concrete URL may have been emitted by a different catch-all route.
+    // That does not make the explicit page at this app-manifest key static.
+    .filter((route) => {
+      const entry = exact[route];
+      return !entry || (entry.srcRoute != null && entry.srcRoute !== route);
+    })
     .filter((route) => generated[route]?.fallback !== false)
+    // Next may omit a dynamicRoutes entry for a catch-all whose static params
+    // were fully emitted. Its concrete entries still identify the pattern.
+    .filter((route) => !generatedSources.has(route))
     .sort();
 }
 
-export function markdownTraceEntries(files) {
-  return files.filter((file) => /(?:^|[/\\\\])[^/\\\\]+\\.md$/i.test(file));
+export function markdownTraceEntries(files, repositoryRoot, traceDirectory) {
+  const canonical = (file) => {
+    try {
+      return realpathSync(file);
+    } catch {
+      return file;
+    }
+  };
+  const hqRoot = canonical(path.resolve(repositoryRoot, "hq"));
+  return files.filter((file) => {
+    const absolute = canonical(path.isAbsolute(file)
+      ? path.resolve(file)
+      : path.resolve(traceDirectory, file));
+    const relative = path.relative(hqRoot, absolute);
+    return relative !== "" && !relative.startsWith(".." + path.sep) &&
+      !path.isAbsolute(relative) && /\\.md$/i.test(relative);
+  });
 }
 
 export function nftPath(nextDirectory, compiledPath) {
@@ -2085,6 +2112,7 @@ import {
 } from "./hq-build-contract.mjs";
 
 const webRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const repositoryRoot = path.resolve(webRoot, "../..");
 const nextDirectory = path.join(webRoot, ".next");
 
 async function readJson(file) {
@@ -2121,8 +2149,9 @@ const appPathByRoute = new Map(
 for (const route of expectedDynamic) {
   const compiledPath = appPathByRoute.get(route);
   if (!compiledPath) throw new Error("Declared dynamic HQ route is absent: " + route);
-  const trace = await readJson(nftPath(nextDirectory, compiledPath));
-  const markdown = markdownTraceEntries(trace.files ?? []);
+  const tracePath = nftPath(nextDirectory, compiledPath);
+  const trace = await readJson(tracePath);
+  const markdown = markdownTraceEntries(trace.files ?? [], repositoryRoot, path.dirname(tracePath));
   if (markdown.length) {
     throw new Error("Dynamic HQ route " + route + " traces repository Markdown:\\n" + markdown.join("\\n"));
   }
