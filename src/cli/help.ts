@@ -90,6 +90,12 @@ Usage
                             bounded metadata search; same-repo profiles need no projection
   morpheus meeting-intake notification --state <journal> --meeting <source-id>
                             format, but never send, a fully verified current-intake notice
+  morpheus scheduler tick --config <host.json> [--backup] [--dry-run]
+                            dispatch due repository-owned schedules (.morpheus/schedules.json)
+  morpheus scheduler status --config <host.json>
+                            last tick's status and health; exits 1 when stale or failing
+  morpheus scheduler admit --scheduler-id <id> --scheduled-for <instant>
+                            receiver guard: admitted=true|false to GITHUB_OUTPUT
   morpheus tokens build     [--source hq/brand/tokens.json] [--css <path>] [--ts <path>]
                             [--prefix brand] [--check]
   morpheus context refresh  take a receipt — after reading the records; idempotent, and where

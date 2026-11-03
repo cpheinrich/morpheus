@@ -52,6 +52,7 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | [`hq-product-design.md`](docs/runbooks/hq-product-design.md) | Changing an HQ page, its information hierarchy, or a component that renders HQ content |
 | [`gh-manager.md`](docs/runbooks/gh-manager.md) | A PR may sit unattended, or the manager has touched yours |
 | [`folder-readmes.md`](docs/runbooks/folder-readmes.md) | Creating a directory, or deciding whether it needs a README |
+| [`scheduler.md`](docs/runbooks/scheduler.md) | Adding, enrolling or debugging a recurring scheduled run |
 | [`cli-commands.md`](docs/runbooks/cli-commands.md) | You need a command not listed below |
 
 ## Commands
