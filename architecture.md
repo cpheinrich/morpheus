@@ -3210,11 +3210,14 @@ improvement?* Yes → kit. No → template.
 ### 18.0 Optional personal agent plugins
 
 `plugins/factory/` is a deliberate exception to the kit's single-package distribution:
-it is a personal Codex/Claude Code integration, not a dependency of company repositories. It owns its
+it is an experimental personal Codex/Claude Code integration, not a dependency of company repositories. It owns its
 manifest, skill, hooks, runtime, lockfile, tests and installation documentation. Neither
 `morpheus init` nor the CLI installer activates it. Explicit per-device installation copies
 the package into a personal marketplace; execution remains off until enabled. Personal
-settings and session records stay outside the repository.
+settings and session records stay outside the repository. The release status (`experimental`,
+default `off`) is repository-owned; the only per-machine switch is the private settings
+file's `mode`, which reinstalling never overwrites. Hooks advise and the coordinator starts
+every handoff; automatic dispatch is not implemented.
 
 The bridge works in both directions. Whichever agent holds the conversation is the
 coordinator, on this host's native login; it routes at safe checkpoints, keeps explicit

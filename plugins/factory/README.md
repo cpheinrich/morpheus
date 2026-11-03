@@ -7,6 +7,29 @@ coordinate Codex (see [Claude coordinating Codex](#claude-coordinating-codex)). 
 by default**. Cloning Morpheus, installing its CLI, and scaffolding projects do not install
 or activate it.
 
+## Status: experimental, off unless this machine opts in
+
+- **Repository-owned status.** `release` in `src/config.mjs` marks Factory `experimental`
+  with default mode `off`. The plugin manifests say so, and `bridge.mjs doctor` reports
+  `factory: { status, mode, enabled }` for this machine.
+- **Personal installs only.** `node scripts/install.mjs` is the only installer. On the machine
+  it runs on, it registers `factory@personal` in your own Codex personal marketplace and
+  `factory@factory-local` at Claude Code user scope. Nothing distributes it: `morpheus init`,
+  the device bootstrap, `self install`/`self update`/`self ensure`, session start and cloning
+  a repository never install, register or enable it (Morpheus's
+  `tests/factory-distribution.test.ts` holds this). An install on one machine does nothing
+  for another machine or person.
+- **Installing is not enabling.** The one switch is `mode` in this machine's private
+  `~/.local/share/factory/config.json`. With no file it is `off`, and the hooks exit without
+  output or starting the service. `bridge.mjs enable manual|automatic` opts in and `disable`
+  opts out. A reinstall or update never writes that file, except to carry an old
+  `codex-claude` install's settings to a machine that has none, so a saved choice, on or off,
+  survives.
+- **The coordinator stays the manager.** Codex in the usual setup, or Claude Code when it holds
+  the conversation, decides when to hand work off. In `automatic` mode the hooks add routing
+  advice and a start tool picks the route; nothing starts a worker on its own. Automatic
+  dispatch, a handoff the coordinator did not start, is not implemented.
+
 ## Where things live
 
 - **Source, instructions, tests:** `plugins/factory/` in Morpheus. Edit this package
