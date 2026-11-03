@@ -544,6 +544,91 @@ test("a worker binding is committed only after launch and then rejects provider 
   );
 });
 
+test("Codex-root fresh runs require a binding, persist together, and resume their own question", async (t) => {
+  const root = await isolatedHome(t);
+  const repo = join(root, "repo");
+  const other = join(root, "other");
+  await mkdir(repo);
+  execFileSync("git", ["init", "-q", repo]);
+  execFileSync("git", ["-C", repo, "config", "user.email", "test@example.com"]);
+  execFileSync("git", ["-C", repo, "config", "user.name", "Test"]);
+  await writeFile(join(repo, "README.md"), "test\n");
+  execFileSync("git", ["-C", repo, "add", "README.md"]);
+  execFileSync("git", ["-C", repo, "commit", "-qm", "fixture"]);
+  execFileSync("git", ["-C", repo, "worktree", "add", "-q", "-b", "other", other]);
+  const bin = join(root, "bin");
+  await mkdir(bin, { recursive: true });
+  await writeFile(
+    join(bin, "claude"),
+    '#!/bin/sh\nprintf \'%s\\n\' \'{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","subscriptionType":"max"}\'\n',
+  );
+  await chmod(join(bin, "claude"), 0o755);
+  const oldPath = process.env.PATH;
+  process.env.PATH = `${bin}:${oldPath}`;
+  t.after(() => { process.env.PATH = oldPath; });
+  await configWrite({ ...defaults(), mode: "manual", maxConcurrent: 2 });
+  const threadId = "codex-fresh-root";
+  const m = new Manager();
+  t.after(() => m.viewer.close());
+  m.snapshot = async () => ({
+    cwd: repo,
+    model: "gpt-6-astra",
+    reasoningEffort: "high",
+    sandbox: { type: "dangerFullAccess" },
+    approvalPolicy: "never",
+  });
+  m.launch = async (record) => {
+    const live = { ...record, state: "running", lastLease: 0, sequence: 0, progress: "" };
+    m.runs.set(record.id, live);
+    await mkdir(runDir(record.id), { recursive: true });
+    await atomic(join(runDir(record.id), "run.json"), m.public(live));
+  };
+  m.begin = (id) => m.public(m.runs.get(id));
+
+  await assert.rejects(
+    m.start({ threadId, cwd: other, prompt: "too early", fresh: true }),
+    /fresh worker requires an established primary worker binding/i,
+  );
+  const primary = await m.start({ threadId, prompt: "primary" });
+  const fresh = await m.start({ threadId, cwd: other, prompt: "isolated", fresh: true });
+  const stored = await taskRead(threadId);
+  assert.deepEqual(new Set(stored.runIds), new Set([primary.id, fresh.id]));
+
+  // A restarted bridge discovers and guards both writers from persisted task/run records.
+  const restarted = new Manager();
+  t.after(() => restarted.viewer.close());
+  const active = await restarted.taskRuns(await taskRead(threadId));
+  assert.deepEqual(new Set(active.active.map((run) => run.id)), new Set([primary.id, fresh.id]));
+  for (const [cwd, file] of [[repo, "README.md"], [other, "README.md"]]) {
+    const guarded = await restarted.guard(threadId, {
+      cwd,
+      tool: "apply_patch",
+      toolInput: `*** Begin Patch\n*** Update File: ${join(cwd, file)}\n*** End Patch`,
+    });
+    assert.match(guarded.deny, /Factory run/);
+  }
+
+  Object.assign(m.runs.get(primary.id), { terminal: true, state: "completed" });
+  await atomic(join(runDir(primary.id), "run.json"), m.public(m.runs.get(primary.id)));
+  Object.assign(m.runs.get(fresh.id), {
+    terminal: true,
+    state: "needs_input",
+    claudeSession: "fresh-claude-session",
+  });
+  await atomic(join(runDir(fresh.id), "run.json"), m.public(m.runs.get(fresh.id)));
+  const resumed = await m.start({
+    threadId,
+    runId: fresh.id,
+    prompt: "answer",
+    replySource: "user",
+    replyReason: "User answered",
+  });
+  assert.equal(resumed.fresh, true);
+  assert.equal(resumed.cwd, await realpath(other));
+  assert.equal(resumed.claudeSession, "fresh-claude-session");
+  assert.equal((await taskRead(threadId)).primaryCwd, await realpath(repo));
+});
+
 test("provider-neutral run controls reject a run owned by another root", async (t) => {
   await isolatedHome(t);
   const runId = "50000000-0000-4000-8000-000000000001";

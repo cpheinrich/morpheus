@@ -248,38 +248,53 @@ export class Manager {
       if (!delegates(decision, "codex")) throw new Error(decision.reason);
       // A Codex task delegates to Claude (native or gateway) or to Codex behind a gateway.
       const worker = decision.executor;
+      let previous = args.runId
+        ? await this.statusFor(task.id, args.runId)
+        : !args.fresh && task.runId
+          ? await this.status(task.runId)
+          : null;
+      const continuation =
+        previous?.state === "needs_input" || !!previous?.question;
+      // A reply to an isolated run inherits its checkout and provider conversation. The
+      // coordinator need not repeat fresh=true, and omitting it must never promote the reply.
+      const fresh = args.fresh === true || previous?.fresh === true;
+      if (fresh && !task.workerBinding)
+        throw new Error(
+          "A fresh worker requires an established primary worker binding; delegate once without fresh=true first.",
+        );
       // Worktree correction is explicit because Morpheus can move work after the turn starts.
-      const identity = await projectIdentity(args.cwd || snapshot.cwd);
+      const identity = await projectIdentity(
+        args.cwd || previous?.cwd || snapshot.cwd,
+      );
       if (identity.project !== task.project)
         throw new Error(
           "Delegation directory must belong to the Codex task repository.",
         );
       task.cwd = identity.cwd;
-      if (!args.fresh && task.primaryCwd && task.primaryCwd !== task.cwd)
+      if (!fresh && task.primaryCwd && task.primaryCwd !== task.cwd)
         throw new Error(
           `This root session's primary worker is bound to ${task.primaryCwd}. Use fresh=true for a different isolated worktree, or start a new root session.`,
         );
-      const sessionKey = args.fresh ? null : sessionKeyFor(task.cwd);
+      const sessionKey = fresh ? null : sessionKeyFor(task.cwd);
       const legacySessionKey = legacySessionKeyFor(task.cwd, decision.gateway);
       task.claudeSession =
-        worker === "claude" && !args.fresh
-          ? task.sessions?.[sessionKey] || task.sessions?.[legacySessionKey] || null
+        worker === "claude"
+          ? previous?.claudeSession ??
+            (!fresh
+              ? task.sessions?.[sessionKey] || task.sessions?.[legacySessionKey] || null
+              : null)
           : null;
       const codexSession =
-        worker === "codex" && !args.fresh
-          ? task.codexSessions?.[sessionKey] || task.codexSessions?.[legacySessionKey] || null
-          : null;
-      const previous = args.runId
-        ? await this.statusFor(task.id, args.runId)
-        : !args.fresh && task.runId
-          ? await this.status(task.runId)
+        worker === "codex"
+          ? previous?.codexSession ??
+            (!fresh
+              ? task.codexSessions?.[sessionKey] || task.codexSessions?.[legacySessionKey] || null
+              : null)
           : null;
       if (previous && !previous.terminal)
         throw new Error(
           "This task already has an active run. Resume monitoring it instead.",
         );
-      const continuation =
-        previous?.state === "needs_input" || !!previous?.question;
       // A reply resumes the conversation that asked, so it must take the same route.
       if (
         continuation &&
@@ -356,8 +371,8 @@ export class Manager {
         threadId: task.id,
         cwd: task.cwd,
         sessionKey,
-        workerSlot: args.fresh ? "fresh" : "primary",
-        fresh: args.fresh === true,
+        workerSlot: fresh ? "fresh" : "primary",
+        fresh,
         gateway: decision.gateway?.name ?? null,
         host: hostname(),
         selection,
@@ -394,8 +409,9 @@ export class Manager {
       );
       await this.mutateTask(task.id, (current) => {
         current.runId = id;
+        current.runIds = [...new Set([...(current.runIds ?? []), id])];
         current.supervisionReplies = replies;
-        if (!args.fresh) {
+        if (!fresh) {
           current.workerBinding ??= bindingFor(decision);
           current.primaryCwd ??= task.cwd;
         }
@@ -907,6 +923,10 @@ export class Manager {
       // It may resume that run's provider conversation, but never promote it into or replace
       // the root session's primary worker conversation.
       const fresh = args.fresh === true || previous?.fresh === true;
+      if (fresh && !task.workerBinding)
+        throw new Error(
+          "A fresh worker requires an established primary worker binding; delegate once without fresh=true first.",
+        );
       const identity = await projectIdentity(
         args.cwd || previous?.cwd || session.cwd,
       );
