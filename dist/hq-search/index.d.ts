@@ -9,6 +9,7 @@ export type HqSearchDocument = {
     metadata: string;
     aliases: string;
     text: string;
+    excerpt?: string;
 };
 export type HqSearchPayload = {
     version: 1;
@@ -17,7 +18,7 @@ export type HqSearchPayload = {
     pdfTextDocumentCount: number;
     index: ReturnType<MiniSearch<HqSearchDocument>["toJSON"]>;
 };
-type IndexedHqSearchResult = SearchResult & Pick<HqSearchDocument, "title" | "href" | "path" | "kind" | "text">;
+type IndexedHqSearchResult = SearchResult & Pick<HqSearchDocument, "title" | "href" | "path" | "kind"> & Partial<Pick<HqSearchDocument, "excerpt" | "text">>;
 export type HqSearchResult = IndexedHqSearchResult & {
     snippet: string;
 };
@@ -36,10 +37,13 @@ export declare function searchHq(index: MiniSearch<HqSearchDocument>, query: str
     queryTerms: string[];
     match: import("minisearch").MatchInfo;
     kind: "markdown" | "pdf";
-    text: string;
     path: string;
     title: string;
     href: string;
+    text?: string | undefined;
+    excerpt?: string | undefined;
 }[];
 export declare function searchSnippet(text: string, matchedTerms: string[], length?: number): string;
+/** Build-time result preview with a hard bound independent of token length. */
+export declare function searchExcerpt(text: string, length?: number): string;
 export {};

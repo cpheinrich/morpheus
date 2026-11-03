@@ -3329,6 +3329,10 @@ a hosted search service. `morpheus-kit/hq-search` owns the MiniSearch document c
 snippets and browser loader; `/build`, `/pdf` and `/react` subpaths isolate build-time conversion,
 optional embedded-PDF-text extraction, and the interaction shell. OCR and image search are outside
 the first version. A PDF with no embedded text is indexed honestly by filename and path.
+The full normalized document text feeds MiniSearch's term postings but is not duplicated in stored
+result fields. Each build adapter stores one bounded precomputed excerpt for display, preserving
+full-text match coverage while keeping the private browser payload proportional to the index rather
+than the index plus another raw copy of every source document.
 Default ranking prioritizes exact record identities (complete title, path, filename or roadmap ID)
 before token scores and the result limit; ordinary topic searches retain source weighting.
 An explicit project `sourceWeight` callback replaces that default ranking policy.
