@@ -1,5 +1,18 @@
 # Decisions
 
+**Factory is experimental; a machine opts in only through its saved `mode`** — 2026-11-02.
+MO-26-11-02-16.09.00. Chris approved a repository-owned experimental, default-off status with a
+private per-machine override. The override is the existing `config.json` `mode`, not a second
+`enabled` switch: a separate flag would add a state that can disagree with `mode`, and `off`
+already beats every project and task choice. `release` in `src/config.mjs` supplies the schema
+default and `doctor`'s report; the manifests say "Experimental". Installing stays separate from
+enabling: the installer writes settings only to carry an old `codex-claude` install's choice to
+a machine with none, never over a saved factory config. Install and activation stay personal to
+the machine (`factory@personal`, `factory@factory-local`); a test keeps every reference to the
+package, its settings directory and its variables out of `src/` and `.morpheus/`, so init,
+bootstrap, session start and self install/update cannot install or enable it. The coordinator
+remains the manager; automatic dispatch is not part of this change. No dependency.
+
 **Exact HQ record lookups precede token relevance by default** — 2026-11-02.
 MO-26-11-02-13.16.08, #478. Numeric token frequency must not displace the requested record.
 Use existing stored identity fields and the canonical roadmap-ID grammar, with filename

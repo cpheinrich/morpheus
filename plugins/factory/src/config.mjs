@@ -11,6 +11,18 @@ export const home = () =>
   join(homedir(), ".local", "share", "factory");
 export const modeSchema = z.enum(["off", "manual", "automatic"]);
 /**
+ * Repository-owned release status. Factory is experimental and ships off: installing or
+ * updating it enables nothing. A machine opts in only through its own private
+ * `config.json` `mode` (`bridge.mjs enable manual|automatic`), which every reinstall keeps.
+ */
+export const release = Object.freeze({ status: "experimental", defaultMode: "off" });
+// Whether this machine has opted in. A global `off` beats every project or task choice.
+export const activation = (config) => ({
+  status: release.status,
+  mode: config.mode,
+  enabled: config.mode !== "off",
+});
+/**
  * A Claude model id or family alias as the CLI's --model accepts it, optionally with the
  * bracketed context suffix the CLI understands (`sonnet[1m]`). The first character may
  * not be a dash, so a value can never be read by the CLI as another flag.
@@ -45,7 +57,7 @@ export const secretRef = z
 export const configSchema = z
   .object({
     version: z.literal(1).default(1),
-    mode: modeSchema.default("off"),
+    mode: modeSchema.default(release.defaultMode),
     // A pooled gateway is used while its account is below this share of usage; at or
     // above it the coordinator falls back to native. 90 leaves a little headroom.
     threshold: z.number().min(1).max(100).default(90),

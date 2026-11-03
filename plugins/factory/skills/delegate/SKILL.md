@@ -5,8 +5,8 @@ description: Coordinate delegated work within a persistent Codex task — to Cla
 
 # Claude delegation
 
-This is an opt-in execution bridge. Its configuration is OFF by default. Installing this
-plugin does not enable automatic routing. It runs on the host of its MCP server and CLI;
+This is an experimental, opt-in execution bridge. Its configuration is OFF by default.
+Installing this plugin does not enable routing; only this machine's saved `mode` does. It runs on the host of its MCP server and CLI;
 never submit a local task to a different machine by guessing its project path.
 
 1. Use `claude_inspect` with the actual current Codex task id (CODEX_THREAD_ID from this

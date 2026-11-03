@@ -5,7 +5,7 @@ description: Coordinate delegated work from a Claude Code session — to Codex n
 
 # Codex delegation
 
-This is the Claude-coordinated half of the opt-in `factory` bridge; Codex-coordinated
+This is the Claude-coordinated half of the experimental, opt-in `factory` bridge; Codex-coordinated
 tasks use its `delegate` skill. Configuration is OFF by default. It runs on the host of its
 MCP server and CLI; never submit a local task to a different machine by guessing its path.
 

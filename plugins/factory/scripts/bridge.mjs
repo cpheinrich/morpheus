@@ -6,6 +6,7 @@ import { checkClaude } from "../src/claude.mjs";
 import { checkCodex } from "../src/codex-exec.mjs";
 import { readClaudeUsage } from "../src/claude-usage.mjs";
 import {
+  activation,
   claudeRemaining,
   home,
   delegatedMarker,
@@ -23,9 +24,12 @@ const [command = "help", ...rest] = process.argv.slice(2);
 try {
   if (command === "help") {
     console.log(
-      "factory: doctor | config | enable manual|automatic | disable | statusline install|uninstall | inspect | start | wait | status | answer | stop | override | memories | codex.inspect | codex.start | codex.wait | codex.status | codex.stop | codex.view | codex.override | codex.memories | pool.profiles | pool.start | pool.status | pool.wait | pool.logs | pool.answer | pool.followup | pool.stop | pool.reattach | pool.recover | pool.reconcile | pool-host-entry PROFILE | pool-agent-config PROFILE\nRPC commands take a JSON object as their argument, or read JSON from stdin with -. Delegation is off until enabled.",
+      "factory: doctor | config | enable manual|automatic | disable | statusline install|uninstall | inspect | start | wait | status | answer | stop | override | memories | codex.inspect | codex.start | codex.wait | codex.status | codex.stop | codex.view | codex.override | codex.memories | pool.profiles | pool.start | pool.status | pool.wait | pool.logs | pool.answer | pool.followup | pool.stop | pool.reattach | pool.recover | pool.reconcile | pool-host-entry PROFILE | pool-agent-config PROFILE\nRPC commands take a JSON object as their argument, or read JSON from stdin with -. Factory is experimental: delegation is off until this machine runs enable.",
     );
   } else if (command === "enable" || command === "disable") {
+    // An omitted mode would parse as the schema's default, `off`, and report success.
+    if (command === "enable" && !["manual", "automatic"].includes(rest[0]))
+      throw new Error("Use enable manual or enable automatic");
     await initStore();
     const config = await configRead();
     config.mode = command === "disable" ? "off" : rest[0];
@@ -118,6 +122,7 @@ try {
       recordedAt: usage?.recordedAt ?? null,
     };
     result.config = await configRead();
+    result.factory = activation(result.config);
     if (result.config.gateways.length) {
       // What routing will see: each gateway's quota through the configured admin
       // credentials, and whether each key reference resolves. Values never appear;
