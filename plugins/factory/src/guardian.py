@@ -5,6 +5,7 @@ import json, os, selectors, signal, subprocess, sys, time, fcntl
 from pathlib import Path
 from datetime import datetime, timezone
 from owned_processes import OwnedProcesses, MARKER
+import termination_proof
 
 job_path = Path(sys.argv[1])
 job = json.loads(job_path.read_text())
@@ -32,7 +33,10 @@ if job.get('admission'):
             previous = json.loads(current_path.read_text())
             prior = json.loads((Path(previous['directory']) / 'process.json').read_text())
             safe = (prior.get('runId') == previous['runId'] and prior.get('state') == 'exited'
-                    and prior.get('cleanupVerified') is True and not prior.get('admissionRejected'))
+                    and not prior.get('admissionRejected')
+                    and (prior.get('cleanupVerified') is True
+                         # Cleanup proven later by an explicit reconciliation of this exact record.
+                         or termination_proof.valid(previous['directory'], previous['runId'])))
         except Exception: safe = False
         if not safe: refuse('Previous workspace admission has unverified termination')
     tmp = current_path.with_suffix('.tmp')

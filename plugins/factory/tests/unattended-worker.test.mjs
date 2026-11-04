@@ -1,5 +1,5 @@
 import { test } from 'node:test';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, realpath, readdir, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -441,4 +441,183 @@ test('unreadable descendant census retains admission instead of certifying an em
   assert.equal(first.terminationVerified,false);
   assert.equal(first.result.outcome,'needs_input');
   assert.match((await gatewayWorker(f.configPath,'must hold')).result.summary,/unverified termination/);
+});
+const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+test('an exited admission with unverified cleanup is re-proven by --reconcile only after its owned tool exits, then resumes', async t => {
+  // The guardian's pre-signal identity lookup fails, so it never signals the detached tool and
+  // records cleanupVerified false with complete owned identities: a real latched record.
+  const tool = `import signal,time,pathlib,os
+signal.signal(signal.SIGTERM,signal.SIG_IGN)
+pathlib.Path('held-ready').write_text(str(os.getpid()))
+while True:
+ pathlib.Path('held-heartbeat').write_text(str(time.time_ns()))
+ time.sleep(.02)
+`;
+  const provider = `import sys,subprocess,pathlib,time,json
+sys.stdin.read()
+subprocess.Popen(['python3','-c',${JSON.stringify(tool)}],start_new_session=True,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+while not pathlib.Path('held-ready').exists(): time.sleep(.01)
+print(json.dumps({'type':'thread.started','thread_id':'session-held'}),flush=True)
+print(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':json.dumps({'outcome':'completed','summary':'tool left running','evidence':[],'question':''})}}),flush=True)
+print(json.dumps({'type':'turn.completed'}),flush=True)
+`;
+  const f = await setup(t, provider);
+  const gate = join(f.root, 'identity-lookup-fails');
+  await writeFile(gate, 'on');
+  await writeFile(join(f.root, 'bin', 'ps'), `#!/bin/sh\ncase "$*" in *"-o uid= -o lstart="*) [ -e '${gate}' ] && exit 1;; esac\nexec /bin/ps "$@"\n`, { mode: 0o700 });
+  let toolPid;
+  t.after(() => { if (toolPid) try { process.kill(toolPid, 'SIGKILL'); } catch {} });
+  const id = randomUUID();
+  const first = await invoke(['--config', f.configPath, '--admission-id', id], 'leave a tool');
+  toolPid = Number(await readFile(join(f.cwd, 'held-ready'), 'utf8'));
+  const directory = join(f.state, id);
+  const recordBytes = await readFile(join(directory, 'process.json'));
+  const record = JSON.parse(recordBytes);
+  assert.equal(first.output.terminationVerified, false);
+  assert.equal(record.state, 'exited'); assert.equal(record.cleanupVerified, false);
+  assert.ok(record.ownedProcesses.some(p => p.pid === toolPid));
+  assert.equal(alive(toolPid), true, 'the tool was never signalled');
+  // Before reconciliation the retained session cannot continue.
+  const refused = await invoke(['--config', f.configPath, '--admission-id', randomUUID(), '--resume', id], 'too early');
+  assert.match(refused.output.result.summary, /terminated session/);
+  await rm(gate);
+
+  // Still alive under its recorded identity: held, nothing written, nothing signalled.
+  const held = await invoke(['--reconcile', id]);
+  assert.equal(held.code, 1);
+  assert.deepEqual(held.output.reconciliation, { proven: false, reason: 'owned processes remain' });
+  assert.equal(held.output.terminationVerified, false);
+  await assert.rejects(readFile(join(directory, 'reconciliation.json')), { code: 'ENOENT' });
+  const beat = await readFile(join(f.cwd, 'held-heartbeat'), 'utf8');
+  await waitFor(() => readFile(join(f.cwd, 'held-heartbeat'), 'utf8'), v => v && v !== beat);
+  assert.equal(alive(toolPid), true);
+
+  process.kill(toolPid, 'SIGKILL');
+  await waitFor(async () => alive(toolPid), v => v === false);
+  const proven = await invoke(['--reconcile', id]);
+  assert.equal(proven.code, 0);
+  assert.deepEqual(proven.output.reconciliation, { proven: true, reason: 'fresh owned-process census found none' });
+  assert.equal(proven.output.terminationVerified, true);
+  assert.equal(proven.output.sessionId, 'session-held');
+  assert.deepEqual(proven.output.timing, { source: 'runner', ...record.timing, evidence:
+    `Guardian process.json for admission ${id}; monotonic duration includes owned cleanup. Cleanup was proven later by a fresh owned-process census (reconciliation.json).` });
+  assert.deepEqual(await readFile(join(directory, 'process.json')), recordBytes, 'the guardian record is never rewritten');
+  const proofBytes = await readFile(join(directory, 'reconciliation.json'));
+  const proof = JSON.parse(proofBytes);
+  assert.deepEqual({ ...proof, reconciledAt: undefined }, { version: 1, admissionId: id, method: 'fresh owned-process census',
+    processSha256: sha256(recordBytes), admissionSha256: sha256(await readFile(join(directory, 'admission.json'))),
+    recordedIdentities: record.ownedProcesses.length, reconciledAt: undefined });
+  const again = await invoke(['--reconcile', id]);
+  assert.equal(again.code, 0); assert.equal(again.output.reconciliation.reason, 'already reconciled');
+  assert.deepEqual(await readFile(join(directory, 'reconciliation.json')), proofBytes, 'repeating is idempotent');
+
+  // A proof bound to other bytes is stale: status and the guardian's admission gate both refuse.
+  await writeFile(join(directory, 'process.json'), Buffer.concat([recordBytes, Buffer.from('\n')]));
+  assert.equal((await invoke(['--status', id])).output.terminationVerified, false);
+  assert.match((await gatewayWorker(f.configPath, 'must not admit')).result.summary, /unverified termination/);
+  await writeFile(join(directory, 'process.json'), recordBytes);
+  assert.equal((await invoke(['--status', id])).output.terminationVerified, true);
+
+  // The guardian's gate accepts the same proof: the retained session resumes on its binding.
+  await writeFile(join(f.root, 'bin', 'codex'), '#!/usr/bin/env python3\n' + doneScript, { mode: 0o700 });
+  const continuationId = randomUUID();
+  const resumed = await invoke(['--config', f.configPath, '--admission-id', continuationId, '--resume', id], 'continue');
+  assert.equal(resumed.code, 0);
+  assert.equal(resumed.output.admissionId, continuationId);
+  assert.equal(resumed.output.result.outcome, 'completed');
+  assert.deepEqual(resumed.output.binding, first.output.binding);
+  assert.ok((await json(join(f.cwd, 'observed.json'))).argv.includes('session-held'));
+  assert.equal((await json(join(f.state, continuationId, 'process.json'))).cleanupVerified, true);
+  assert.deepEqual(await readFile(join(directory, 'process.json')), recordBytes);
+});
+test('--reconcile fails closed on incomplete, unproven or ambiguous evidence, and never treats a reused PID as owned', async t => {
+  const f = await setup(t);
+  const live = [];
+  t.after(() => { for (const c of live) try { c.kill('SIGKILL'); } catch {} });
+  const start = (env = {}) => { const c = spawn('python3', ['-c', 'import time;time.sleep(60)'], { env: { ...process.env, ...env }, stdio: 'ignore' }); live.push(c); return c.pid; };
+  const lstart = pid => execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8' }).trim().split(/\s+/);
+  const guardianIdentity = pid => execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart=', '-o', 'pgid=', '-o', 'uid='], { encoding: 'utf8' }).trim();
+  const exited = spawn('python3', ['-c', 'pass']); await once(exited, 'close');
+  const gone = exited.pid;
+  const uid = process.getuid();
+  const oldStamp = [uid, 'Mon', 'Jan', '5', '01:02:03', '2026'];
+  const base = id => ({ runId: id, state: 'exited', exitCode: 0, interrupted: false, cleanupVerified: false, guardianPid: gone,
+    guardianIdentity: 'Mon Jan  5 01:02:03 2026 1 ' + uid, ownedProcesses: [{ pid: gone, identity: oldStamp }],
+    timing: { startedAt: '2026-01-05T01:02:03.000Z', endedAt: '2026-01-05T01:02:04.000Z', durationMs: 1000 } });
+  await mkdir(f.state, { recursive: true, mode: 0o700 });
+  const make = async (edit, { admission = true, proof } = {}) => {
+    const id = randomUUID(); const dir = join(f.state, id); await mkdir(dir);
+    if (admission) await writeFile(join(dir, 'admission.json'), JSON.stringify({ admissionId: id, binding: {}, sessionId: 'session-old', state: 'admitted' }));
+    const record = edit(base(id), id);
+    if (record) await writeFile(join(dir, 'process.json'), JSON.stringify(record));
+    if (proof) await writeFile(join(dir, 'reconciliation.json'), proof);
+    return { id, dir, bytes: record ? await readFile(join(dir, 'process.json')) : null };
+  };
+  const refuse = async (label, edit, reason, options) => {
+    const c = await make(edit, options);
+    const result = await invoke(['--reconcile', c.id]);
+    // A rejected or already-verified record was terminal before; reconcile adds nothing to it.
+    const verified = options?.alreadyVerified === true;
+    assert.equal(result.code, verified ? 0 : 1, label);
+    assert.deepEqual(result.output.reconciliation, { proven: false, reason }, label);
+    assert.equal(result.output.terminationVerified, verified, label);
+    if (!options?.proof) await assert.rejects(readFile(join(c.dir, 'reconciliation.json')), { code: 'ENOENT' }, label);
+    if (c.bytes) assert.deepEqual(await readFile(join(c.dir, 'process.json')), c.bytes, label);
+  };
+  const recordedAlive = start();
+  await refuse('a recorded identity still alive', r => ({ ...r, ownedProcesses: [{ pid: recordedAlive, identity: [uid, ...lstart(recordedAlive)] }] }), 'owned processes remain');
+  // An unrecorded process that still carries this run's marker is owned too.
+  const markedCase = await make(r => r);
+  start({ FACTORY_WORKER_RUN_ID: markedCase.id });
+  const markedResult = await invoke(['--reconcile', markedCase.id]);
+  assert.equal(markedResult.code, 1);
+  assert.deepEqual(markedResult.output.reconciliation, { proven: false, reason: 'owned processes remain' }, 'an unrecorded marked process');
+  await assert.rejects(readFile(join(markedCase.dir, 'reconciliation.json')), { code: 'ENOENT' });
+  const guardian = start();
+  await refuse('the recorded guardian still alive', r => ({ ...r, guardianPid: guardian, guardianIdentity: guardianIdentity(guardian) }), 'guardian may still be running');
+  await refuse('malformed identity', r => ({ ...r, ownedProcesses: [{ pid: gone, identity: oldStamp.slice(0, 5) }] }), 'original ownership evidence is incomplete');
+  // Only the guardian's TZ-less C-format lstart can be compared; any other format proves nothing.
+  await refuse('a non-C recorded start', r => ({ ...r, ownedProcesses: [{ pid: gone, identity: [uid, 'Wed', '4', 'Nov', '15:27:35', '2026'] }] }), 'original ownership evidence is incomplete');
+  await refuse('a guardian identity without pgid and uid', r => ({ ...r, guardianIdentity: 'Mon Jan  5 01:02:03 2026' }), 'original ownership evidence is incomplete');
+  await refuse('no ownership record', r => { delete r.ownedProcesses; return r; }, 'original ownership evidence is incomplete');
+  await refuse('empty ownership record', r => ({ ...r, ownedProcesses: [] }), 'original ownership evidence is incomplete');
+  await refuse('no guardian identity', r => { delete r.guardianIdentity; return r; }, 'original ownership evidence is incomplete');
+  const notEligible = 'not an exited admission with unverified cleanup';
+  await refuse('another run', r => ({ ...r, runId: randomUUID() }), notEligible);
+  await refuse('still running', r => ({ ...r, state: 'running' }), notEligible);
+  await refuse('rejected', r => ({ ...r, admissionRejected: true, reason: 'Workspace already has an active guardian', cleanupVerified: true }), notEligible, { alreadyVerified: true });
+  await refuse('cleanup already verified', r => ({ ...r, cleanupVerified: true }), notEligible, { alreadyVerified: true });
+  await refuse('never launched', () => null, notEligible);
+  await refuse('a proof for other bytes', r => r, 'existing reconciliation does not match this admission', { proof: JSON.stringify({ version: 1, admissionId: 'x' }) });
+  // The caller's TZ or locale changes how ps prints a start time. Identities recorded in this
+  // environment must still match when the reconcile runs under another one (review F1).
+  const helper = fileURLToPath(new URL('../src/termination_proof.py', import.meta.url));
+  const shown = (pid, env) => execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', env: { ...process.env, ...env } }).trim();
+  const ownedAlive = start(), guardianAlive = start();
+  const zone = ['Pacific/Kiritimati', 'Etc/GMT+12'].find(tz => shown(ownedAlive, { TZ: tz }) !== shown(ownedAlive, {}));
+  for (const [label, env] of [[`TZ=${zone}`, { TZ: zone }], ['LC_ALL=en_GB.UTF-8', { LC_ALL: 'en_GB.UTF-8' }]]) {
+    assert.notEqual(shown(ownedAlive, env), shown(ownedAlive, {}), `${label} prints a different start time`);
+    for (const [guardianLive, reason] of [[true, 'guardian may still be running'], [false, 'owned processes remain']]) {
+      const c = await make(r => ({ ...r, ownedProcesses: [{ pid: ownedAlive, identity: [uid, ...lstart(ownedAlive)] }],
+        ...(guardianLive ? { guardianPid: guardianAlive, guardianIdentity: guardianIdentity(guardianAlive) } : {}) }));
+      const out = JSON.parse(execFileSync('python3', [helper, 'reconcile', c.dir, c.id], { encoding: 'utf8', env: { ...process.env, ...env } }));
+      assert.deepEqual(out, { proven: false, reason }, `${label}, guardian ${guardianLive ? 'alive' : 'gone'}`);
+      await assert.rejects(readFile(join(c.dir, 'reconciliation.json')), { code: 'ENOENT' });
+      assert.equal(alive(ownedAlive), true); assert.equal(alive(guardianAlive), true);
+    }
+  }
+  // An unreadable census holds even when every recorded process is gone.
+  await writeFile(join(f.root, 'bin', 'ps'), '#!/bin/sh\nexit 1\n', { mode: 0o700 });
+  await refuse('an unreadable census', r => r, 'process census unreadable');
+  await rm(join(f.root, 'bin', 'ps'));
+  // A recorded PID or guardian PID now held by an unrelated process is not the original: proven,
+  // and the unrelated processes are left running.
+  const reusedOwned = start(), reusedGuardian = start();
+  const reused = await make(r => ({ ...r, guardianPid: reusedGuardian, ownedProcesses: [{ pid: reusedOwned, identity: oldStamp }] }));
+  const result = await invoke(['--reconcile', reused.id]);
+  assert.equal(result.code, 0);
+  assert.deepEqual(result.output.reconciliation, { proven: true, reason: 'fresh owned-process census found none' });
+  assert.equal(result.output.terminationVerified, true);
+  assert.equal(alive(reusedOwned), true); assert.equal(alive(reusedGuardian), true);
 });
