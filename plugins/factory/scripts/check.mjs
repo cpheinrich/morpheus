@@ -10,6 +10,6 @@ for (const dir of ["src", "scripts", "tests"])
       );
 execFileSync(
   "python3",
-  ["-c", 'import ast; ast.parse(open("src/guardian.py").read()); ast.parse(open("src/owned_processes.py").read())'],
+  ["-c", 'import ast; ast.parse(open("src/guardian.py").read()); ast.parse(open("src/owned_processes.py").read()); ast.parse(open("src/termination_proof.py").read())'],
   { cwd: new URL("..", import.meta.url), stdio: "inherit" },
 );

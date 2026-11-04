@@ -1,14 +1,18 @@
 #!/usr/bin/env node
-import { gatewayWorker, workerResult } from '../src/gateway-worker.mjs';
+import { gatewayWorker, reconcileWorker, workerResult } from '../src/gateway-worker.mjs';
 const args = process.argv.slice(2);
 if (args.length === 1 && args[0] === '--help') {
-  console.log('Usage: node scripts/gateway-worker.mjs --config /private/job.json [--admission-id UUID] [--resume ADMISSION_ID] < prompt.txt; --status ADMISSION_ID');
+  console.log('Usage: node scripts/gateway-worker.mjs --config /private/job.json [--admission-id UUID] [--resume ADMISSION_ID] < prompt.txt; --status ADMISSION_ID; --reconcile ADMISSION_ID');
 } else {
   try {
     if (args[0] === '--status' && args.length === 2) {
       const result = await workerResult(args[1]);
       console.log(JSON.stringify(result));
       process.exitCode = result.result.outcome === 'failed' ? 1 : 0;
+    } else if (args[0] === '--reconcile' && args.length === 2) {
+      const result = await reconcileWorker(args[1]);
+      console.log(JSON.stringify(result));
+      process.exitCode = result.terminationVerified ? 0 : 1;
     } else {
     const options = {};
     if (args.length % 2) throw new Error('Expected --config FILE [--admission-id UUID] [--resume ADMISSION_ID]');

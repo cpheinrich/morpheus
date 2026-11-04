@@ -1,5 +1,17 @@
 # Decisions
 
+**An exited unattended admission's cleanup may be re-proven explicitly, never assumed** — 2026-11-04.
+MO-26-11-04-15.07.12. The guardian proves cleanup once, at exit, and a latched census failure or a
+slow tool left a real exited admission held for good with no supported recovery. An explicit
+`gateway-worker --reconcile` re-runs the existing owned-process tracker read-only, at the guardian's
+standard: marker, recorded identities and descendants, plus the recorded guardian identity. It
+sends no signals and launches nothing. On positive proof only, it writes one `reconciliation.json`
+bound by SHA-256 to that admission's `process.json` and `admission.json`. One Python check serves
+the guardian's admission gate and `--status`. Missing, ambiguous, unreadable or stale evidence keeps
+the hold, and `process.json` is never rewritten. A reconcile daemon, an auto-reconciling `--status`
+and a flag reset were rejected: the observed defect needs one explicit, evidence-bound recovery.
+Standard library and the existing tracker; no dependency.
+
 **Release preflight accepts a pinned reviewed source only for a caller that opts in** — 2026-11-04.
 MO-26-11-04-00.19.43. Chris accepted the Evo release-controller design, whose reviewed amendment lets
 a pinned release keep its source while `main` advances. Removing current-head equality for every

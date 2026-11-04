@@ -576,6 +576,33 @@ does not guess termination or kill a possibly unrelated reused PID. Normal verif
 cleanup admits the next invocation. Logs, prompt and native session/checkpoint files
 remain private for consumer investigation; apply the service's retention policy there.
 
+An exited admission whose guardian could not verify cleanup at exit (`cleanupVerified: false`, for
+example after a census error or a tool that outlived the window) can be re-proven explicitly:
+
+```sh
+node plugins/factory/scripts/gateway-worker.mjs --reconcile ADMISSION_ID
+```
+
+It runs one fresh, read-only census with the same tracker and standard as the guardian and sends
+no signals. The census covers:
+- the run marker;
+- the owned identities the guardian recorded, and their descendants;
+- the guardian's own recorded identity.
+
+Only when that census finds nothing does it write `reconciliation.json`, which is bound by SHA-256
+to that admission's `process.json` and `admission.json`. `process.json`, with its original timing
+and provenance, is never changed.
+
+It refuses and writes nothing when any of the following holds:
+- a recorded process or the guardian is still alive;
+- the census is unreadable or an identity is missing or malformed;
+- the record is for another run, or is running, rejected or never launched;
+- cleanup was already verified.
+
+`--status` and the guardian's admission gate accept a valid proof through one shared check, so
+`--resume` then continues normally. A later change to either bound file invalidates the proof.
+Repeating `--reconcile` is idempotent, and exits 0 only when termination is verified.
+
 JSON is the CLI's only non-help output. A worker failure exits 1; completed and
 `needs_input` reports exit 0, so consumers **must inspect the result**, not the exit code
 alone. Pre-admission errors use `{ outcome, summary, evidence, question }`; admitted

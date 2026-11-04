@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { mkdir, readFile, realpath, stat } from 'node:fs/promises';
 import { join, dirname, isAbsolute, relative } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
 import { home, modelIdPattern, MOVING_MODEL_ALIASES, secretRef, codexPermission, withoutReferencedSecrets } from './config.mjs';
@@ -145,6 +145,22 @@ export async function gatewayWorker(configPath, prompt, resume = null, admission
   finally { clearInterval(heartbeat); child.stdin.destroy(); process.off('SIGTERM', cancel); process.off('SIGINT', cancel); }
   return workerResult(admissionId);
 }
+const terminationProof = fileURLToPath(new URL('./termination_proof.py', import.meta.url));
+// The guardian's admission gate uses the same Python check, so status and resume agree.
+const proofValid = (directory, admissionId) =>
+  spawnSync('python3', [terminationProof, 'valid', directory, admissionId], { stdio: 'ignore', timeout: 10000 }).status === 0;
+// Explicit late proof for an exited admission whose guardian could not verify cleanup at exit:
+// a fresh read-only owned-process census, never a signal, never a launch. Status stays read-only.
+export async function reconcileWorker(admissionId) {
+  if (!/^[0-9a-f-]{36}$/.test(admissionId)) throw new Error('Invalid admission ID');
+  const directory = join(home(), 'unattended', admissionId);
+  const record = await readJSON(join(directory, 'admission.json'), null);
+  if (!record || record.admissionId !== admissionId) throw new Error('Unknown admission ID');
+  const run = spawnSync('python3', [terminationProof, 'reconcile', directory, admissionId], { encoding: 'utf8', timeout: 30000 });
+  let reconciliation;
+  try { reconciliation = JSON.parse(run.stdout); } catch { reconciliation = { proven: false, reason: 'Reconciliation produced no readable result' }; }
+  return { ...(await workerResult(admissionId)), reconciliation };
+}
 // Reconstruct checkpoints from guardian-owned evidence after the service process dies.
 // Reading status never relaunches a model or clears a workspace admission.
 export async function workerResult(admissionId) {
@@ -167,7 +183,9 @@ export async function workerResult(admissionId) {
     if (!line.trim()) continue;
     try { applyCodexEvent(run, JSON.parse(line)); } catch { /* Incomplete bounded event is checkpoint evidence. */ }
   }
-  const terminationVerified = state?.runId === admissionId && state?.state === 'exited' && state?.cleanupVerified === true;
+  const reconciled = state?.runId === admissionId && state?.state === 'exited' && state?.cleanupVerified === false
+    && !state.admissionRejected && proofValid(directory, admissionId);
+  const terminationVerified = state?.runId === admissionId && state?.state === 'exited' && (state?.cleanupVerified === true || reconciled);
   const result = state?.admissionRejected
     ? { outcome: 'needs_input', summary: state.reason, evidence: [], question: 'Reconcile the existing workspace admission before retrying.' }
     : !terminationVerified
@@ -183,7 +201,8 @@ export async function workerResult(admissionId) {
       && [timing.startedAt, timing.endedAt].every(value => typeof value === 'string'
         && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && Number.isFinite(Date.parse(value))))
     output.timing = { source: 'runner', startedAt: timing.startedAt, endedAt: timing.endedAt, durationMs: timing.durationMs,
-      evidence: `Guardian process.json for admission ${admissionId}; monotonic duration includes owned cleanup.` };
+      evidence: `Guardian process.json for admission ${admissionId}; monotonic duration includes owned cleanup.`
+        + (reconciled ? ' Cleanup was proven later by a fresh owned-process census (reconciliation.json).' : '') };
   if (terminationVerified || state?.admissionRejected) await atomic(join(directory, 'result.json'), output);
   return output;
 }
