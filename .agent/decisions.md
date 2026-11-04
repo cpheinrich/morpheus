@@ -1,5 +1,18 @@
 # Decisions
 
+**Release preflight accepts a reviewed source that main contains, not only main's head** — 2026-11-04.
+MO-26-11-04-00.19.43. Chris accepted the Evo release-controller design, whose reviewed amendment
+replaces unconditional current-main equality with ancestry plus the existing merged-PR evidence, so
+a pinned release keeps its source while `main` advances. `release-preflight.yml` still requires
+`refs/heads/main`, a clean exact checkout of `github.sha` and a merged PR into `main` whose merge
+commit is that SHA; it now also accepts the SHA when GitHub's compare reports current `main`
+strictly `ahead` of it. Diverged, behind, identical-but-different, unreadable or failed comparisons
+refuse. No input was added: every caller (Evo `ios-delivery`, `ios-full-verification`, Morpheus
+`ios-nightly-build`) verifies `github.sha`, and a caller-selected source would widen the gate. Which
+source should ship is the caller's scheduling decision, not a user protection. This supersedes
+"current" in the 2026-08-28 external-actions entry. The Firebase release action's own current-main
+check is unchanged. Native `gh api` and Bash; no dependency.
+
 **Factory agent discovery uses gateway workers only** — 2026-11-03.
 MO-26-11-03-22.16.36. Chris confirmed Paperclip is unconfigured and unused and requested
 removal of its Factory guidance. Remove pool MCP tools, pool CLI commands and operator
@@ -556,7 +569,7 @@ request received in Messages, Slack, email, voice or browser chat is authorizati
 roadmap; it is not permission to skip the item, claim, branch, tests or PR. Manual mutations prefer
 one-shot commands with explicit targets and always carry a caller-perspective verification probe.
 Release workflows first prove that the source is a clean, current `main` commit associated with a
-merged PR, then the release job checks out that exact SHA. An upload receipt is delivery; completion
+merged PR (*refined 2026-11-04: contained in `main`, not necessarily its head — see the top entry*), then the release job checks out that exact SHA. An upload receipt is delivery; completion
 needs evidence of the requested user-visible behavior. A recurring production probe remains local
 until a second project needs the same shape.
 

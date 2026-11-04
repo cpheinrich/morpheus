@@ -3775,11 +3775,11 @@ Its jobs:
 1. `plan` reads `.morpheus/cd.json` at the source commit. It records what the run uses: the source,
    the Morpheus `main` SHA, a configuration digest and an input digest. A scheduled staging slot
    skips only when no watched input changed since its last receipt tag.
-2. `preflight` calls Morpheus `release-preflight`. It confirms the source is a reviewed merge, and it
-   also requires the source to be the current head of `main`. A run that waited behind another, or
-   that raced a merge, would therefore fail on a process-only property and lose its slot. Before
-   scheduling starts, S4 replaces this with a plan check that the source is a reviewed merge
-   reachable from `main`.
+2. `preflight` calls Morpheus `release-preflight`. It confirms the source is a reviewed merge
+   contained in `main` — the current head or an ancestor of it — so a run that waited behind
+   another, or raced a merge, still ships the commit it pinned (MO-26-11-04-00.19.43). Earlier the
+   preflight also required the current head, a process-only property that cost such runs their
+   slot.
 3. `tests` runs Morpheus `ios-ci`, with a fresh simulator per retry.
 4. Staging Firebase rules are deployed for this source. The phone gate exercises staging for
    both channels, so this runs on every run.
@@ -3800,7 +3800,7 @@ process warns or is deleted.
 | A test that failed then passed on retry | Warns. The steward or a person may add a quarantine entry in a reviewed PR (one test, a linked issue, expiry ≤ 14 days); a quarantined test runs outside the blocking suite and its failure warns until the entry expires, then blocks again. |
 | Physical-iPhone gate (collector evidence rules) | **Blocks** |
 | Firebase rules: V2 preflight required live rules to equal the client source; 7 of the 17 failures | Replaced by deploying the source's rules before upload. **Blocks** on what protects users: forward only (never roll back), refuse rules `main` never held, every index READY. |
-| Source is a reviewed merge on `main` | **Blocks**. Being the current head of `main`, which `release-preflight` also requires, is process-only; S4 relaxes it. |
+| Source is a reviewed merge on `main` | **Blocks**. `release-preflight` requires an exact merged-PR commit contained in `main`; being its current head is process-only and no longer required (MO-26-11-04-00.19.43). |
 | Signing, entitlement/IPA verification, app validation script | **Blocks** |
 | Apple VALID, internally ready, held by the internal group | **Blocks**: this is delivery |
 | External groups, Beta App Review | **Warns** |
@@ -4027,11 +4027,14 @@ does not hold Security's write token. See [the execution contract](docs/runbooks
 
 `release-preflight` is the secret-free gate before any job that publishes outside GitHub. It accepts
 no caller-selected source: the workflow requires `refs/heads/main`, checks out `github.sha`, refuses
-a dirty tree, confirms the SHA is still the repository's current `main`, and requires GitHub to
-associate that exact commit with a merged pull request into `main`. It returns the verified SHA;
-the release job depends on the preflight and checks out that output rather than resolving a branch
-again. A direct push, stale main run, branch run or modified checkout therefore cannot reach a
-properly wired release job.
+a dirty tree, confirms the repository's current `main` contains the SHA (it is the head, or GitHub's
+compare reports `main` strictly ahead of it), and requires GitHub to associate that exact commit
+with a merged pull request into `main`. It returns the verified SHA; the release job depends on the
+preflight and checks out that output rather than resolving a branch again. A direct push, branch
+run, commit main does not contain, or modified checkout therefore cannot reach a properly wired
+release job. A release pinned to a reviewed source keeps that source while `main` moves on: being
+the current head protects the process, not users, so it is not required (MO-26-11-04-00.19.43).
+Freshness — whether a newer source should ship instead — is the caller's scheduling decision.
 
 The workflow is only the middle of the external-action contract:
 
