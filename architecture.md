@@ -3775,11 +3775,12 @@ Its jobs:
 1. `plan` reads `.morpheus/cd.json` at the source commit. It records what the run uses: the source,
    the Morpheus `main` SHA, a configuration digest and an input digest. A scheduled staging slot
    skips only when no watched input changed since its last receipt tag.
-2. `preflight` calls Morpheus `release-preflight`. It confirms the source is a reviewed merge, and it
-   also requires the source to be the current head of `main`. A run that waited behind another, or
-   that raced a merge, would therefore fail on a process-only property and lose its slot. Before
-   scheduling starts, S4 replaces this with a plan check that the source is a reviewed merge
-   reachable from `main`.
+2. `preflight` calls Morpheus `release-preflight`. It confirms the source is a reviewed merge, and by
+   default also requires it to be the current head of `main`, so a run that waited behind another
+   or raced a merge fails and loses its slot. The preflight's `allow-pinned-source: true` opt-in
+   (MO-26-11-04-00.19.43) accepts a reviewed merge `main` contains instead. That suits a caller
+   whose own controller pins the source and refuses older ones. Evo's release controller adopts
+   it in its own change.
 3. `tests` runs Morpheus `ios-ci`, with a fresh simulator per retry.
 4. Staging Firebase rules are deployed for this source. The phone gate exercises staging for
    both channels, so this runs on every run.
@@ -3800,7 +3801,7 @@ process warns or is deleted.
 | A test that failed then passed on retry | Warns. The steward or a person may add a quarantine entry in a reviewed PR (one test, a linked issue, expiry ≤ 14 days); a quarantined test runs outside the blocking suite and its failure warns until the entry expires, then blocks again. |
 | Physical-iPhone gate (collector evidence rules) | **Blocks** |
 | Firebase rules: V2 preflight required live rules to equal the client source; 7 of the 17 failures | Replaced by deploying the source's rules before upload. **Blocks** on what protects users: forward only (never roll back), refuse rules `main` never held, every index READY. |
-| Source is a reviewed merge on `main` | **Blocks**. Being the current head of `main`, which `release-preflight` also requires, is process-only; S4 relaxes it. |
+| Source is a reviewed merge on `main` | **Blocks**. Being the current head of `main`, which `release-preflight` requires by default, is relaxed only for a caller that opts in with `allow-pinned-source` and owns source ordering itself (MO-26-11-04-00.19.43). |
 | Signing, entitlement/IPA verification, app validation script | **Blocks** |
 | Apple VALID, internally ready, held by the internal group | **Blocks**: this is delivery |
 | External groups, Beta App Review | **Warns** |
@@ -4032,6 +4033,16 @@ associate that exact commit with a merged pull request into `main`. It returns t
 the release job depends on the preflight and checks out that output rather than resolving a branch
 again. A direct push, stale main run, branch run or modified checkout therefore cannot reach a
 properly wired release job.
+
+Current-head equality is the default for every invocation and every re-run. A re-run keeps its
+original SHA, and re-running failed jobs reuses earlier jobs' outputs, such as a change detector's
+`build=true` computed before a newer build shipped. Equality at preflight time is therefore what
+stops an older source from reaching a release after a newer one. A caller whose own controller
+pins a source and refuses older ones may pass `allow-pinned-source: true` (MO-26-11-04-00.19.43).
+The preflight then also accepts a reviewed merge that current `main` strictly contains: GitHub's
+compare must report `ahead`, and anything else, including an unreadable `main`, refuses. The
+exact checkout, merged-PR binding and read-only permissions are the same in both modes, and there
+is still no caller-selected source. A manual dispatch has no inputs, so it keeps the default.
 
 The workflow is only the middle of the external-action contract:
 

@@ -1,5 +1,25 @@
 # Decisions
 
+**Release preflight accepts a pinned reviewed source only for a caller that opts in** — 2026-11-04.
+MO-26-11-04-00.19.43. Chris accepted the Evo release-controller design, whose reviewed amendment lets
+a pinned release keep its source while `main` advances. Removing current-head equality for every
+caller was tried first, and independent review found that three successive guards in
+`ios-nightly-build` still left a path for an older source:
+- a re-run of an older night;
+- that re-run during an Actions API outage;
+- "re-run failed jobs" reusing a cached `build=true` decision after the preflight itself failed.
+
+Equality at preflight time is what closes all of them. So `release-preflight.yml` gains one
+`workflow_call` boolean, `allow-pinned-source`, defaulting to false. Every existing caller, every
+re-run and every manual dispatch keeps the original equality unchanged. A caller that passes `true`
+also accepts a reviewed merge that current `main` strictly contains (GitHub compare `ahead`;
+anything else, including an unreadable `main`, refuses). That suits a caller whose own controller
+pins the source and refuses older ones. Evo's release controller opts in within its own change; no
+other caller does. The `refs/heads/main` requirement, the exact clean `github.sha` checkout, the
+merged-PR binding and the read-only permissions are unchanged in both modes, and there is no
+caller-selected source. The nightly changes were removed rather than layered. Native `gh api` and
+Bash; no dependency.
+
 **Factory agent discovery uses gateway workers only** — 2026-11-03.
 MO-26-11-03-22.16.36. Chris confirmed Paperclip is unconfigured and unused and requested
 removal of its Factory guidance. Remove pool MCP tools, pool CLI commands and operator
@@ -556,7 +576,7 @@ request received in Messages, Slack, email, voice or browser chat is authorizati
 roadmap; it is not permission to skip the item, claim, branch, tests or PR. Manual mutations prefer
 one-shot commands with explicit targets and always carry a caller-perspective verification probe.
 Release workflows first prove that the source is a clean, current `main` commit associated with a
-merged PR, then the release job checks out that exact SHA. An upload receipt is delivery; completion
+merged PR (*refined 2026-11-04: a caller may opt in to a reviewed source `main` contains — see the top entry*), then the release job checks out that exact SHA. An upload receipt is delivery; completion
 needs evidence of the requested user-visible behavior. A recurring production probe remains local
 until a second project needs the same shape.
 

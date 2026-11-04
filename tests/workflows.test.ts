@@ -158,7 +158,11 @@ describe("release-preflight.yml", () => {
 
     expect(call).toBeDefined();
     expect(wf.on).toHaveProperty("workflow_dispatch");
-    expect(call?.inputs).toBeUndefined();
+    // One opt-in and no caller-selected source: the source is always github.sha.
+    expect(call?.inputs).toEqual({
+      "allow-pinned-source": expect.objectContaining({ type: "boolean", default: false }),
+    });
+    expect((wf.on as { workflow_dispatch?: unknown }).workflow_dispatch ?? null).toBeNull();
     expect(call?.secrets).toBeUndefined();
     expect(call?.outputs?.sha?.value).toBe("${{ jobs.verify.outputs.sha }}");
     expect(wf.permissions).toEqual({ contents: "read", "pull-requests": "read" });
@@ -176,17 +180,21 @@ describe("release-preflight.yml", () => {
     });
   });
 
-  it("pins clean current main to an exact merged pull request", async () => {
+  it("pins a clean source contained in main to an exact merged pull request", async () => {
     const steps = ((await read("release-preflight.yml")) as ReleasePreflight).jobs?.verify
       ?.steps ?? [];
     const verify = steps.find((step) => step.name === "Verify reviewed release source");
     const script = String(verify?.run);
 
     expect(verify?.env?.GH_TOKEN).toBe("${{ github.token }}");
+    expect(verify?.env?.ALLOW_PINNED_SOURCE).toBe("${{ inputs.allow-pinned-source }}");
     expect(script).toContain('GITHUB_REF" != "refs/heads/main');
     expect(script).toContain("git rev-parse HEAD");
     expect(script).toContain("git status --porcelain --untracked-files=all");
     expect(script).toContain("/git/ref/heads/main");
+    expect(script).toContain("/compare/${EXPECTED_SHA}...${main_sha}?per_page=1");
+    expect(script).toContain('"$ancestry" != "ahead"');
+    expect(script).toContain('"${ALLOW_PINNED_SOURCE:-}" != "true"');
     expect(script).toContain("/commits/${EXPECTED_SHA}/pulls");
     expect(script).toContain("[.number, .base.ref, .merge_commit_sha] | @tsv");
     expect(script).toContain('candidate_base" = "main');
@@ -194,75 +202,210 @@ describe("release-preflight.yml", () => {
     expect(script).toContain('echo "sha=$EXPECTED_SHA"');
   });
 
-  it("rejects dirty and direct-push fixtures before a release can run", async () => {
-    const root = await mkdtemp(join(tmpdir(), "morpheus-release-preflight-"));
-    const repo = join(root, "repo");
-    const bin = join(root, "bin");
-    const output = join(root, "output");
+  describe("executes the verification script against a fake GitHub API", () => {
+    type Fixture = {
+      main?: string;
+      compare?: string;
+      prSha?: string | null;
+      dirty?: boolean;
+      ref?: string;
+      /** The requested source when it is not the checked-out commit. */
+      expected?: string;
+      /** ALLOW_PINNED_SOURCE as GitHub renders the input; undefined is a dispatch (no inputs). */
+      allow?: string;
+    };
 
-    try {
-      await mkdir(repo, { recursive: true });
-      await mkdir(bin, { recursive: true });
-      await execFileAsync("git", ["init", "--quiet", "--initial-branch=main"], { cwd: repo });
-      await execFileAsync("git", ["config", "user.name", "Morpheus Test"], { cwd: repo });
-      await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: repo });
-      await writeFile(join(repo, "source.txt"), "reviewed\n", "utf8");
-      await execFileAsync("git", ["add", "source.txt"], { cwd: repo });
-      await execFileAsync("git", ["commit", "--quiet", "-m", "reviewed"], { cwd: repo });
-      const { stdout } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: repo });
-      const sha = stdout.trim();
+    async function runPreflight(fixture: (shas: { source: string; later: string }) => Fixture) {
+      const root = await mkdtemp(join(tmpdir(), "morpheus-release-preflight-"));
+      const repo = join(root, "repo");
+      const bin = join(root, "bin");
+      const output = join(root, "output");
+      const calls = join(root, "gh-calls");
+      const git = (...args: string[]) => execFileAsync("git", args, { cwd: repo });
+      try {
+        await mkdir(repo, { recursive: true });
+        await mkdir(bin, { recursive: true });
+        await git("init", "--quiet", "--initial-branch=main");
+        await git("config", "user.name", "Morpheus Test");
+        await git("config", "user.email", "test@example.com");
+        await writeFile(join(repo, "source.txt"), "reviewed\n", "utf8");
+        await git("add", "source.txt");
+        await git("commit", "--quiet", "-m", "reviewed");
+        const source = (await git("rev-parse", "HEAD")).stdout.trim();
+        // A later main commit exists only as an identity the fake API reports; the checkout
+        // stays at the pinned source, as the workflow's own checkout does.
+        const later = "f".repeat(40);
+        const f = fixture({ source, later });
+        if (f.dirty) await writeFile(join(repo, "dirty.txt"), "unreviewed\n", "utf8");
 
-      const fakeGh = join(bin, "gh");
-      await writeFile(
-        fakeGh,
-        `#!/usr/bin/env bash
+        const fakeGh = join(bin, "gh");
+        // Answers only the exact routes the workflow should ask for. The compare route answers
+        // `ahead` only in the base=source, head=main order; the reversed order reads `behind`,
+        // so swapping the operands refuses rather than passing.
+        await writeFile(
+          fakeGh,
+          `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$PREFLIGHT_CALLS"
 case "$*" in
-  *"/git/ref/heads/main"*) printf '%s\\n' "$EXPECTED_SHA" ;;
-  *"/commits/"*"/pulls"*)
-    if [ "$PREFLIGHT_ASSOCIATED_PR" = "true" ]; then
-      printf '42\\tmain\\t%s\\n' "$EXPECTED_SHA"
-    fi
-    ;;
+  *"/git/ref/heads/main "*) printf '%s\\n' "$PREFLIGHT_MAIN" ;;
+  *"/compare/$EXPECTED_SHA...$PREFLIGHT_MAIN?per_page=1 "*)
+    [ "$PREFLIGHT_COMPARE" = "fail" ] && exit 1
+    printf '%s\\n' "$PREFLIGHT_COMPARE" ;;
+  *"/compare/$PREFLIGHT_MAIN...$EXPECTED_SHA"*) printf 'behind\\n' ;;
+  *"/commits/$EXPECTED_SHA/pulls "*)
+    if [ -n "$PREFLIGHT_PR_SHA" ]; then printf '42\\tmain\\t%s\\n' "$PREFLIGHT_PR_SHA"; fi ;;
   *) exit 2 ;;
 esac
 `,
-        "utf8",
-      );
-      await chmod(fakeGh, 0o755);
+          "utf8",
+        );
+        await chmod(fakeGh, 0o755);
 
-      const steps = ((await read("release-preflight.yml")) as ReleasePreflight).jobs?.verify
-        ?.steps ?? [];
-      const script = steps.find((step) => step.name === "Verify reviewed release source")?.run;
-      expect(script).toBeTruthy();
+        const steps = ((await read("release-preflight.yml")) as ReleasePreflight).jobs?.verify
+          ?.steps ?? [];
+        const script = steps.find((step) => step.name === "Verify reviewed release source")?.run;
+        expect(script).toBeTruthy();
 
-      const run = (associated: boolean) =>
-        execFileAsync("bash", ["-c", script!], {
+        const result = await execFileAsync("bash", ["-c", script!], {
           cwd: repo,
           env: {
             ...process.env,
             PATH: `${bin}:${process.env.PATH}`,
-            GITHUB_REF: "refs/heads/main",
+            GITHUB_REF: f.ref ?? "refs/heads/main",
             GITHUB_REPOSITORY: "cpheinrich/example",
             GITHUB_OUTPUT: output,
-            EXPECTED_SHA: sha,
+            EXPECTED_SHA: f.expected ?? source,
+            ...(f.allow === undefined ? {} : { ALLOW_PINNED_SOURCE: f.allow }),
             GH_TOKEN: "fixture",
-            PREFLIGHT_ASSOCIATED_PR: String(associated),
+            PREFLIGHT_CALLS: calls,
+            PREFLIGHT_MAIN: f.main ?? source,
+            PREFLIGHT_COMPARE: f.compare ?? "",
+            PREFLIGHT_PR_SHA: f.prSha === null ? "" : (f.prSha ?? source),
           },
-        });
-
-      await expect(run(true)).resolves.toBeDefined();
-      expect(await readFile(output, "utf8")).toContain(`sha=${sha}`);
-
-      await writeFile(join(repo, "dirty.txt"), "unreviewed\n", "utf8");
-      await expect(run(true)).rejects.toMatchObject({ stderr: expect.stringContaining("not clean") });
-      await rm(join(repo, "dirty.txt"));
-
-      await expect(run(false)).rejects.toMatchObject({
-        stderr: expect.stringContaining("not associated with a merged pull request"),
-      });
-    } finally {
-      await rm(root, { recursive: true, force: true });
+        }).then(
+          () => ({ ok: true as const, stderr: "" }),
+          (error: { stderr?: string }) => ({ ok: false as const, stderr: String(error.stderr) }),
+        );
+        const outputText = await readFile(output, "utf8").catch(() => "");
+        const ghCalls = (await readFile(calls, "utf8").catch(() => "")).trim().split("\n").filter(Boolean);
+        return { ...result, source, later, output: outputText, ghCalls };
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
     }
+
+    it("releases the current head of main without asking for ancestry, opted in or not", async () => {
+      for (const allow of [undefined, "false", "true"]) {
+        const run = await runPreflight(() => ({ allow }));
+        expect(run, String(allow)).toMatchObject({ ok: true });
+        expect(run.output).toBe(`sha=${run.source}\npr=42\n`);
+        expect(run.ghCalls.some((call) => call.includes("/compare/"))).toBe(false);
+      }
+    });
+
+    it("by default refuses a source main has moved past, without asking for ancestry", async () => {
+      // A dispatch (no inputs), the default false, and anything but the exact string "true".
+      for (const allow of [undefined, "", "false", "TRUE", "1"]) {
+        const run = await runPreflight(({ later }) => ({ main: later, compare: "ahead", allow }));
+        expect(run.ok, String(allow)).toBe(false);
+        expect(run.stderr).toContain(`Release source ${run.source} is not current origin/main (${run.later})`);
+        expect(run.ghCalls.some((call) => call.includes("/compare/") || call.includes("/pulls"))).toBe(false);
+        expect(run.output).toBe("");
+      }
+    });
+
+    it("releases a pinned reviewed source after main has moved past it only when opted in", async () => {
+      const run = await runPreflight(({ later }) => ({ main: later, compare: "ahead", allow: "true" }));
+      expect(run).toMatchObject({ ok: true });
+      // The pinned source, never the newer head, is what the release job checks out.
+      expect(run.output).toBe(`sha=${run.source}\npr=42\n`);
+      expect(run.ghCalls).toContainEqual(expect.stringContaining(`/compare/${run.source}...${run.later}?per_page=1`));
+    });
+
+    it.each(["behind", "diverged", "identical", ""])(
+      "refuses an opted-in source main does not contain (compare status %j)",
+      async (status) => {
+        const run = await runPreflight(({ later }) => ({ main: later, compare: status, allow: "true" }));
+        expect(run.ok).toBe(false);
+        expect(run.stderr).toContain("is not contained in current main");
+        expect(run.output).toBe("");
+      },
+    );
+
+    it("refuses an opted-in source when the ancestry comparison itself fails", async () => {
+      const run = await runPreflight(({ later }) => ({ main: later, compare: "fail", allow: "true" }));
+      expect(run.ok).toBe(false);
+      expect(run.output).toBe("");
+      expect(run.ghCalls.some((call) => call.includes("/pulls"))).toBe(false);
+    });
+
+    it.each(["", "not-a-sha", "F".repeat(40)])("refuses an unreadable main head %j, opted in or not", async (main) => {
+      for (const allow of [undefined, "true"]) {
+        const run = await runPreflight(() => ({ main, allow }));
+        expect(run.ok, String(allow)).toBe(false);
+        expect(run.stderr).toContain("Could not read current main");
+        expect(run.output).toBe("");
+      }
+    });
+
+    it("still requires the pinned source itself to be a merged pull request", async () => {
+      // An ancestor commit from a merged branch (not its merge commit) is reachable from main,
+      // and main's head has its own merged PR; neither makes the ancestor a reviewed release.
+      const unassociated = await runPreflight(({ later }) => ({ main: later, compare: "ahead", prSha: null, allow: "true" }));
+      expect(unassociated.ok).toBe(false);
+      expect(unassociated.stderr).toContain("not associated with a merged pull request");
+
+      const headsPr = await runPreflight(({ later }) => ({ main: later, compare: "ahead", prSha: later, allow: "true" }));
+      expect(headsPr.ok).toBe(false);
+      expect(headsPr.stderr).toContain("not associated with a merged pull request");
+      expect(headsPr.output).toBe("");
+
+      const headWithoutPr = await runPreflight(() => ({ prSha: null }));
+      expect(headWithoutPr.ok).toBe(false);
+      expect(headWithoutPr.stderr).toContain("not associated with a merged pull request");
+    });
+
+    it("keeps every in-repository caller on the default, so a cached build decision cannot re-ship an older source", async () => {
+      // Re-running failed jobs reuses a successful `changes` job's build=true. The preflight that then
+      // runs gets the caller's inputs, and ios-nightly-build passes none: the rendered input is the
+      // default, and main having moved past the run's SHA refuses (night A re-run after B uploaded).
+      const nightly = (await read("ios-nightly-build.yml")) as { jobs?: Record<string, { uses?: string; with?: Record<string, unknown> }> };
+      const call = Object.values(nightly.jobs ?? {}).find((job) => job.uses === "./.github/workflows/release-preflight.yml");
+      expect(call).toBeDefined();
+      const preflight = (await read("release-preflight.yml")) as ReleasePreflight;
+      const declared = preflight.on?.workflow_call?.inputs?.["allow-pinned-source"] as { default?: boolean };
+      const rendered = String(call?.with?.["allow-pinned-source"] ?? declared.default);
+      expect(rendered).toBe("false");
+      const rerun = await runPreflight(({ later }) => ({ main: later, compare: "ahead", allow: rendered }));
+      expect(rerun.ok).toBe(false);
+      expect(rerun.stderr).toContain("is not current origin/main");
+      expect(rerun.output).toBe("");
+      // No other workflow here opts in either; the Evo controller is the first, in its own PR.
+      for (const file of (await readdir(DIR)).filter((f) => f.endsWith(".yml") && f !== "release-preflight.yml")) {
+        expect(await readFile(join(DIR, file), "utf8"), file).not.toMatch(/allow-pinned-source:\s*true/);
+      }
+    });
+
+    it("rejects a non-main ref and a mismatched checkout before asking GitHub anything", async () => {
+      const branch = await runPreflight(() => ({ ref: "refs/heads/feature" }));
+      expect(branch.ok).toBe(false);
+      expect(branch.stderr).toContain("Release source must be refs/heads/main; got refs/heads/feature");
+      expect(branch.ghCalls).toEqual([]);
+      expect(branch.output).toBe("");
+
+      const mismatched = await runPreflight(({ later }) => ({ expected: later }));
+      expect(mismatched.ok).toBe(false);
+      expect(mismatched.stderr).toContain(`does not equal requested source ${mismatched.later}`);
+      expect(mismatched.ghCalls).toEqual([]);
+      expect(mismatched.output).toBe("");
+    });
+
+    it("rejects a dirty checkout before asking GitHub anything", async () => {
+      const run = await runPreflight(() => ({ dirty: true }));
+      expect(run.ok).toBe(false);
+      expect(run.stderr).toContain("not clean");
+      expect(run.ghCalls).toEqual([]);
+    });
   });
 });
 
