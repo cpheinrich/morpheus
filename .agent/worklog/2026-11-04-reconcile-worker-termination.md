@@ -142,3 +142,72 @@ Mutations, each run as the two reconcile tests in a temp copy; every one makes t
 | E: the census is skipped | 2 |
 | F: a 5-word identity is accepted | 1 |
 | G: already-verified records are reconciled | 1 |
+
+## Review record
+
+Independent high-risk review of b1d000a5 by one fresh reviewer session (008a3afc), cleared on condition C1. The reviewer found the design minimal and matching the ticket: one Python validator shared by the guardian gate and workerResult, a read-only census through the existing tracker, an exclusive proof bound to both record digests, process.json and timing untouched, status observational, and no signals or credential calls. Substantive F1: ps lstart is printed in the caller's TZ and locale, so under another TZ or LC_ALL a live owned process and the live guardian read as reused PIDs and a false proof was written. C1 is met in 010e77a within its paths: reconcile drops TZ and sets LC_ALL=C before any ps and refuses recorded identities not in that format. The new TZ, locale and non-C cases failed against b1d000a5 and pass now. Minor F2 (no fsync, temp name) and F3 (census under another uid) are declined: both already fail closed and fixing them would widen C1. Tests at 010e77a: reconcile tests 2/2, plugin suite 180/180, check.mjs exit 0.
+
+Finding ids carry an `SR-` prefix in the record (the checker requires at least three characters): `SR-F1` is the reviewer's F1, and so on.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "771a53b25b6f79c561056b26e061c0c4e3644aa0",
+  "reviewed": "b1d000a5b59f847ea5d84e594d2afc6136ae1cc7",
+  "covered": "010e77a02984a8a30523e23a072ef3c930cab676",
+  "authorSession": "93ba1c48-35b5-4d4e-89c0-eede755327ce",
+  "reviewerSession": "008a3afc-d883-4335-b7f2-9a1f1a2323d0",
+  "risk": "high",
+  "elapsedMinutes": 4.567833333333334,
+  "timing": {
+    "source": "runner",
+    "durationMs": 274070,
+    "evidence": "Factory run aad63b61-9c68-4fa3-b597-39084da2c792: top-level type=result duration_ms=274070 in its events.jsonl, measured by root."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk review of b1d000a5 by one fresh reviewer session (008a3afc), cleared on condition C1. The reviewer found the design minimal and matching the ticket: one Python validator shared by the guardian gate and workerResult, a read-only census through the existing tracker, an exclusive proof bound to both record digests, process.json and timing untouched, status observational, and no signals or credential calls. Substantive F1: ps lstart is printed in the caller's TZ and locale, so under another TZ or LC_ALL a live owned process and the live guardian read as reused PIDs and a false proof was written. C1 is met in 010e77a within its paths: reconcile drops TZ and sets LC_ALL=C before any ps and refuses recorded identities not in that format. The new TZ, locale and non-C cases failed against b1d000a5 and pass now. Minor F2 (no fsync, temp name) and F3 (census under another uid) are declined: both already fail closed and fixing them would widen C1. Tests at 010e77a: reconcile tests 2/2, plugin suite 180/180, check.mjs exit 0.",
+  "findings": [
+    {
+      "id": "SR-F1",
+      "severity": "substantive",
+      "description": "Identity comparison depended on the caller's TZ and locale: ps lstart is local time in the caller's format, so under a different TZ or LC_ALL a live owned process (marker cleared) and a live recorded guardian both read as reused PIDs and reconcile wrote a positive proof.",
+      "paths": [
+        "plugins/factory/src/termination_proof.py"
+      ],
+      "disposition": "fixed",
+      "response": "reconcile drops TZ and sets LC_ALL=C before any ps, and refuses unless every recorded owned identity's five start words and the first five words of guardianIdentity parse as '%a %b %d %H:%M:%S %Y' and guardianIdentity has exactly seven words ending in two integers. No tracker, guardian or Node change.",
+      "condition": {
+        "paths": [
+          "plugins/factory/src/termination_proof.py",
+          "plugins/factory/tests/unattended-worker.test.mjs",
+          "plugins/factory/README.md",
+          ".agent/worklog/2026-11-04-reconcile-worker-termination.md",
+          ".agent/decisions.md"
+        ],
+        "evidence": "A focused test recording a live unmarked owned identity and a live guardian identity in the test's env, then reconciling under a different TZ and separately LC_ALL=en_GB.UTF-8: both refuse, no reconciliation.json, both processes alive. A recorded non-C start (e.g. Wed 4 Nov 15:27:35 2026) for a gone PID is refused with no proof. The new tests fail on b1d000a5 and pass after the fix. cd plugins/factory && node --test --test-name-pattern reconcile tests/unattended-worker.test.mjs passes and node scripts/check.mjs exits 0."
+      },
+      "conditionMet": "010e77a changes only the condition's five paths. Under TZ=Pacific/Kiritimati and LC_ALL=en_GB.UTF-8, the reconcile refuses with the guardian alive ('guardian may still be running') and with only the owned process alive ('owned processes remain'); no proof is written and both processes stay alive. A recorded start of 'Wed 4 Nov 15:27:35 2026' and a 5-word guardian identity are refused. Against b1d000a5's helper, the non-C case failed, and with it removed the TZ case returned proven:true and wrote the proof. After the fix: reconcile tests 2/2, check.mjs exit 0, plugin suite 180/180."
+    },
+    {
+      "id": "SR-F2",
+      "severity": "minor",
+      "description": "Proof bytes are not fsynced before the exclusive link, and a stale temp file from a crashed run with a reused PID makes O_EXCL raise.",
+      "paths": [
+        "plugins/factory/src/termination_proof.py"
+      ],
+      "disposition": "disputed",
+      "response": "Declined to keep C1 narrow: both outcomes fail closed (a truncated or missing proof is invalid and the admission stays held; the temp collision reports no readable result) and never yield a false approval. Recovery is an operator inspecting the admission directory."
+    },
+    {
+      "id": "SR-F3",
+      "severity": "minor",
+      "description": "A census run under a different uid sees none of the worker's processes; this is not refused explicitly.",
+      "paths": [
+        "plugins/factory/src/termination_proof.py"
+      ],
+      "disposition": "disputed",
+      "response": "Declined to keep C1 narrow: the owner-only Factory home and 0600 records keep the proof with the real owner, so another user's run fails closed in practice, as the reviewer notes; the supported caller is the admission's owner."
+    }
+  ]
+}
+```
