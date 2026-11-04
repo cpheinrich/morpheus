@@ -11,6 +11,18 @@ export const home = () =>
   join(homedir(), ".local", "share", "factory");
 export const modeSchema = z.enum(["off", "manual", "automatic"]);
 /**
+ * Repository-owned release status. Factory is experimental and ships off: installing or
+ * updating it enables nothing. A machine opts in only through its own private
+ * `config.json` `mode` (`bridge.mjs enable manual|automatic`), which every reinstall keeps.
+ */
+export const release = Object.freeze({ status: "experimental", defaultMode: "off" });
+// Whether this machine has opted in. A global `off` beats every project or task choice.
+export const activation = (config) => ({
+  status: release.status,
+  mode: config.mode,
+  enabled: config.mode !== "off",
+});
+/**
  * A Claude model id or family alias as the CLI's --model accepts it, optionally with the
  * bracketed context suffix the CLI understands (`sonnet[1m]`). The first character may
  * not be a dash, so a value can never be read by the CLI as another flag.
@@ -45,7 +57,7 @@ export const secretRef = z
 export const configSchema = z
   .object({
     version: z.literal(1).default(1),
-    mode: modeSchema.default("off"),
+    mode: modeSchema.default(release.defaultMode),
     // A pooled gateway is used while its account is below this share of usage; at or
     // above it the coordinator falls back to native. 90 leaves a little headroom.
     threshold: z.number().min(1).max(100).default(90),
@@ -147,9 +159,12 @@ export const defaults = () => configSchema.parse({});
 // The primary is the agent coordinating the conversation, running on this host's native
 // login. A gateway is a separate pooled subscription reached as an API, so any gateway is a
 // delegate, including one of the coordinator's own provider: only the coordinator's own
-// native login is excluded, because handing work to it would be circular. Automatic routing
-// picks the gateway with the most headroom below the threshold and otherwise keeps the work
-// here. A result delegates when it names a gateway or another provider (see `delegates`).
+// native login is excluded, because handing work to it would be circular. Calling the Factory
+// delegation tool is itself the delegation decision: it picks the gateway with the most
+// headroom below the threshold, then falls back to the other provider's native subscription.
+// `manual` and the legacy `automatic` value therefore differ only as saved compatibility labels;
+// neither value dispatches a user prompt by itself. A result delegates when it names a gateway
+// or another provider (see `delegates`).
 export function route(config, task, gateways, operation, primary = "codex") {
   const mode = config.projects[task.project] ?? config.mode;
   if (config.mode === "off" || mode === "off" || task.disabled)
@@ -172,10 +187,13 @@ export function route(config, task, gateways, operation, primary = "codex") {
       ? { executor: primary, reason: `Explicit override; no ${override} gateway below ${config.threshold}%, so it stays here` }
       : { executor: override, reason: `Explicit override; native ${override} on this host` };
   }
-  if (mode === "manual")
-    return { executor: primary, reason: "Manual delegation only" };
-  if (below.length === 0)
-    return { executor: primary, reason: `No gateway below ${config.threshold}% used; work stays here` };
+  if (below.length === 0) {
+    const other = primary === "codex" ? "claude" : "codex";
+    return {
+      executor: other,
+      reason: `Factory delegation requested; no gateway is below ${config.threshold}% used, so use native ${other} on this host`,
+    };
+  }
   const best = roomiest(below);
   return { executor: best.provider, reason: `${describe(best)}; most headroom`, gateway: best };
 }
@@ -460,15 +478,29 @@ export function codexSelection(config, session = {}, override = {}) {
     String(session.model || "").replace(/[-_]/g, " "),
   )?.[1];
   const model = override.model ?? config.codexModelMap[family];
-  const effort = override.effort ?? config.codexEffortMap[session.effort];
+  const effort = codexWorkerEffort(config, override.effort ?? session.effort);
   if (model && !config.codexModels.includes(model))
     throw new Error(
       "No approved Codex model mapping. Configure codexModelMap/codexModels explicitly.",
     );
-  if (override.effort && !Object.values(config.codexEffortMap).includes(effort))
+  if (override.effort && !effort)
     throw new Error("Unsupported Codex effort override.");
   // An unknown Claude model or effort defers to Codex's own configured default.
   return { model: model ?? null, effort: effort ?? null };
+}
+const codexEfforts = new Set(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
+export function codexWorkerEffort(config, effort) {
+  if (!effort) return null;
+  if (!codexEfforts.has(effort)) return null;
+  // The provider-neutral contract includes the cross-provider edge values. Current Codex
+  // models use low/max at those edges, including saved configs created before these aliases.
+  return config.codexEffortMap[effort] ?? { minimal: "low", ultra: "max" }[effort] ?? effort;
+}
+export function codexRootEffort(effort) {
+  if (!effort || !codexEfforts.has(effort)) return null;
+  // A Codex root already speaks native Codex effort. Only translate the two neutral edge aliases;
+  // codexEffortMap belongs to the Claude-to-Codex boundary and must not rewrite native choices.
+  return { minimal: "low", ultra: "max" }[effort] ?? effort;
 }
 // Claude permission modes map onto Codex's sandbox. Nothing is widened: only an
 // explicit bypass reaches full access, and unknown modes refuse.

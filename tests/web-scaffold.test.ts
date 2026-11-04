@@ -1,6 +1,9 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { renderFirestoreRules } from "../src/hq/rules.js";
 import { addWaitlistRules, mergeDependencies, scaffoldWeb } from "../src/web/scaffold.js";
@@ -13,6 +16,7 @@ import {
 import type { FirebaseFacts } from "../src/web/templates.js";
 
 const roots: string[] = [];
+const execFileAsync = promisify(execFile);
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -123,6 +127,8 @@ describe("scaffoldWeb", () => {
     expect(result.written).toContain("apps/web/app/hq/HqSearch.tsx");
     expect(result.written).toContain("apps/web/app/hq/search-index/route.ts");
     expect(result.written).toContain("apps/web/lib/hq/search.ts");
+    expect(result.written).toContain("apps/web/scripts/hq-build-contract.mjs");
+    expect(result.written).toContain("apps/web/scripts/check-hq-build.mjs");
     expect(result.written).toContain("apps/web/proxy.ts");
     expect(result.written).toContain("packages/shared/schema/waitlist.ts");
     // The live home page is the thing a project most needs kept.
@@ -135,6 +141,13 @@ describe("scaffoldWeb", () => {
     expect(layout).toContain("VERCEL_GIT_COMMIT_SHA");
     expect(layout).toContain('from "morpheus-kit/section-links/react"');
     expect(layout).toContain("<SectionLinks />");
+    expect(layout).toContain("Shared HQ chrome is static");
+    expect(layout).not.toContain("currentUser");
+    expect(layout).not.toContain("cookies(");
+
+    const hqPage = await readFile(join(root, "apps/web/app/hq/page.tsx"), "utf8");
+    expect(hqPage).toContain('export const dynamic = "force-static"');
+    expect(hqPage).not.toContain("currentUser");
 
     const route = await readFile(join(root, "apps/web/app/hq/search-index/route.ts"), "utf8");
     expect(route).toContain("hqSearchResponseHeaders");
@@ -142,8 +155,166 @@ describe("scaffoldWeb", () => {
 
     const manifest = JSON.parse(
       await readFile(join(root, "apps/web/package.json"), "utf8"),
-    ) as { dependencies: Record<string, string> };
+    ) as { dependencies: Record<string, string>; scripts: Record<string, string> };
     expect(manifest.dependencies["morpheus-kit"]).toBe("github:cpheinrich/morpheus#main");
+    expect(manifest.scripts.postbuild).toBeUndefined();
+    expect(result.notes.some((note) => note.includes("After classifying its existing HQ routes"))).toBe(true);
+  });
+
+  it("generates an executable postbuild contract for new HQ apps", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-web-"));
+    roots.push(root);
+    await scaffoldWeb(options(root, await surveyWeb(root)));
+    const webRoot = join(root, "apps/web");
+
+    const manifest = JSON.parse(await readFile(join(webRoot, "package.json"), "utf8"));
+    expect(manifest.scripts.postbuild).toBe("node scripts/check-hq-build.mjs");
+
+    const appPaths = {
+      "/hq/page": "app/hq/page.js",
+      "/hq/no-access/page": "app/hq/no-access/page.js",
+      "/hq/search-index/route": "app/hq/search-index/route.js",
+    };
+    const prerender = {
+      routes: {
+        "/hq": { initialRevalidateSeconds: false },
+        "/hq/no-access": { initialRevalidateSeconds: false },
+        "/hq/search-index": { initialRevalidateSeconds: false },
+      },
+      dynamicRoutes: {},
+    };
+    await write(root, "apps/web/.next/server/app-paths-manifest.json", JSON.stringify(appPaths));
+    await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(prerender));
+
+    await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).resolves.toMatchObject({
+      stdout: expect.stringContaining("verified 3 required static routes"),
+    });
+
+    const withIsr = {
+      ...prerender,
+      routes: {
+        ...prerender.routes,
+        "/hq/search-index": { initialRevalidateSeconds: 60 },
+      },
+    };
+    await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(withIsr));
+    await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).rejects.toThrow(
+      /immutable build artifacts, not ISR:[\s\S]*\/hq\/search-index/,
+    );
+    await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(prerender));
+
+    const contractPath = join(webRoot, "scripts/hq-build-contract.mjs");
+    const generatedContract = await import(pathToFileURL(contractPath).href) as {
+      classifyDynamicHqRoutes: (
+        paths: Record<string, string>,
+        manifest: Record<string, unknown>,
+      ) => string[];
+    };
+    const catchAllPaths = {
+      "/hq/[...slug]/page": "app/hq/[...slug]/page.js",
+    };
+    const emittedCatchAll = {
+      routes: { "/hq/example": { srcRoute: "/hq/[...slug]", initialRevalidateSeconds: false } },
+      dynamicRoutes: { "/hq/[...slug]": { fallback: false } },
+    };
+    expect(generatedContract.classifyDynamicHqRoutes(catchAllPaths, emittedCatchAll)).toEqual([]);
+    emittedCatchAll.dynamicRoutes["/hq/[...slug]"].fallback = true;
+    expect(generatedContract.classifyDynamicHqRoutes(catchAllPaths, emittedCatchAll)).toEqual([
+      "/hq/[...slug]",
+    ]);
+
+    const withExtraStatic = {
+      ...prerender,
+      routes: {
+        ...prerender.routes,
+        "/hq/extra": { initialRevalidateSeconds: 60 },
+      },
+    };
+    await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(withExtraStatic));
+    await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).rejects.toThrow(
+      /Static HQ route contract changed[\s\S]*Actual static:[\s\S]*\/hq\/extra/,
+    );
+    await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(prerender));
+
+    const withUndeclaredDynamic = {
+      ...appPaths,
+      "/hq/live/page": "app/hq/live/page.js",
+    };
+    const withCatchAllCollision = {
+      ...prerender,
+      routes: {
+        ...prerender.routes,
+        "/hq/live": { srcRoute: "/hq/[...slug]" },
+      },
+    };
+    await write(root, "apps/web/.next/server/app-paths-manifest.json", JSON.stringify(withUndeclaredDynamic));
+    await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(withCatchAllCollision));
+    await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).rejects.toThrow(
+      /Actual dynamic: \/hq\/live/,
+    );
+    await write(root, "apps/web/.next/prerender-manifest.json", JSON.stringify(prerender));
+
+    const contract = await readFile(contractPath, "utf8");
+    await writeFile(
+      contractPath,
+      contract.replace("EXPECTED_DYNAMIC_HQ_ROUTES = [];", 'EXPECTED_DYNAMIC_HQ_ROUTES = ["/hq/live"];'),
+      "utf8",
+    );
+    await write(
+      root,
+      "apps/web/.next/server/app/hq/live/page.js.nft.json",
+      JSON.stringify({ files: ["../../../../../../../node_modules/hq/README.md"] }),
+    );
+    await expect(execFileAsync(process.execPath, ["scripts/check-hq-build.mjs"], { cwd: webRoot })).resolves.toMatchObject({
+      stdout: expect.stringContaining("1 declared dynamic routes"),
+    });
+    await write(root, "README.md", "# Repository\n");
+    await write(root, ".agent/decisions.md", "# Decisions\n");
+    await write(root, "docs/runbook.md", "# Runbook\n");
+    await write(root, "hq/private.md", "# Private\n");
+    const outsideRoot = await mkdtemp(join(tmpdir(), "morpheus-outside-"));
+    roots.push(outsideRoot);
+    await write(outsideRoot, "outside.md", "# Outside\n");
+    await write(
+      root,
+      "apps/web/.next/server/app/hq/live/page.js.nft.json",
+      JSON.stringify({
+        files: [
+          "../../../../../../../README.md",
+          "../../../../../../../.agent/decisions.md",
+          "../../../../../../../docs/runbook.md",
+          "../../../../../../../hq/private.md",
+          "../../../../../../../node_modules/example/README.md",
+          join(outsideRoot, "outside.md"),
+        ],
+      }),
+    );
+    const dynamicError = await execFileAsync(
+      process.execPath,
+      ["scripts/check-hq-build.mjs"],
+      { cwd: webRoot },
+    ).catch((error: Error) => error);
+    expect(dynamicError).toBeInstanceOf(Error);
+    expect(String(dynamicError)).toMatch(
+      /README\.md[\s\S]*\.agent\/decisions\.md[\s\S]*docs\/runbook\.md[\s\S]*hq\/private\.md/,
+    );
+    expect(String(dynamicError)).not.toContain("node_modules/example/README.md");
+    expect(String(dynamicError)).not.toContain(join(outsideRoot, "outside.md"));
+  });
+
+  it.each([
+    ["HQ is disabled", { hq: false }],
+    ["Firebase is unavailable", { firebase: undefined }],
+  ])("does not install a dangling HQ postbuild when %s", async (_label, override) => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-web-"));
+    roots.push(root);
+    const survey = await surveyWeb(root);
+    await scaffoldWeb({ ...options(root, survey), ...override });
+
+    const manifest = JSON.parse(await readFile(join(root, "apps/web/package.json"), "utf8"));
+    expect(manifest.scripts.postbuild).toBeUndefined();
+    await expect(readFile(join(root, "apps/web/scripts/check-hq-build.mjs"), "utf8")).rejects.toThrow();
+    await expect(readFile(join(root, "apps/web/scripts/hq-build-contract.mjs"), "utf8")).rejects.toThrow();
   });
 
   it("is safe to run twice", async () => {

@@ -1,3 +1,4 @@
+import { searchExcerpt } from "./index.js";
 import { hqSearchAliases, plainText } from "./build.js";
 /**
  * Extracts text when the PDF contains it. Scans and image-only PDFs remain
@@ -30,6 +31,7 @@ export async function pdfSearchDocument(input) {
         metadata: input.metadata ?? "PDF",
         aliases: [input.aliases, discoveredAliases].filter(Boolean).join(" "),
         text: cleanText,
+        excerpt: searchExcerpt(cleanText),
     };
 }
 //# sourceMappingURL=pdf.js.map

@@ -80,6 +80,16 @@ export function migrateConfig(legacy) {
   return { config: next, dropped };
 }
 
+// Whether an install writes settings at all. It never replaces a factory config.json, whose
+// `mode` is this machine's own opt-in choice, and with no old install it writes nothing, so
+// Factory stays at its default `off`. Only an old install's saved settings carry over.
+export function settingsMigration(hasFactoryConfig, legacy) {
+  if (!legacy) return { skip: "no old config.json" };
+  if (hasFactoryConfig)
+    return { skip: "factory already has a config.json; the old one was left alone" };
+  return migrateConfig(legacy);
+}
+
 // What the Claude status line should be once the old recorder is gone: whatever it
 // had chained, or nothing. Returns undefined when the old recorder is not installed.
 export function legacyStatusLine(settings, chain) {

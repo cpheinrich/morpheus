@@ -19,6 +19,7 @@ import {
   modelSelection,
   permissionMode,
   codexSelection,
+  codexRootEffort,
   codexPermission,
   assertPoolAuthority,
   readGatewayQuota,
@@ -56,6 +57,12 @@ import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
 import { installationId } from "./installation.mjs";
 import { Pool } from "./pool.mjs";
 import { HQPool } from "./pool-hq.mjs";
+import {
+  editTargets,
+  canonical,
+  within,
+  readiness,
+} from "./dispatch.mjs";
 
 export function previewSelection(config, snapshot) {
   try {
@@ -65,10 +72,61 @@ export function previewSelection(config, snapshot) {
   }
 }
 const RECENT_RUN_LIMIT = 5;
-// Saved worker sessions are keyed by worktree and route: a gateway's conversation lives in
-// a different account from the native login's, so neither may resume the other.
-export const sessionKeyFor = (cwd, gateway) =>
+// The route is pinned once per root session, while provider conversations remain scoped to a
+// canonical checkout. Reusing one native conversation after changing worktrees can carry stale
+// repository instructions and tool context into the wrong checkout. A fresh run deliberately
+// gets no reusable key and never replaces the primary conversation.
+export const sessionKeyFor = (cwd) => `primary:${cwd}`;
+const legacySessionKeyFor = (cwd, gateway) =>
   gateway ? `${cwd}#gateway:${gateway.name}` : cwd;
+const bindingFor = (decision) => ({
+  executor: decision.executor,
+  gateway: decision.gateway?.name ?? null,
+});
+const sameBinding = (a, b) =>
+  a?.executor === b?.executor && (a?.gateway ?? null) === (b?.gateway ?? null);
+const describeBinding = (binding) =>
+  binding.gateway
+    ? `${binding.executor} through gateway "${binding.gateway}"`
+    : `native ${binding.executor}`;
+function pinnedRoute(config, task, gateways, operation, primary) {
+  if (!task.workerBinding) return route(config, task, gateways, operation, primary);
+  if (operation && operation !== task.workerBinding.executor)
+    throw new Error(
+      `This root session is already pinned to ${describeBinding(task.workerBinding)}; start a new root session to choose ${operation}.`,
+    );
+  if (!task.workerBinding.gateway)
+    return {
+      executor: task.workerBinding.executor,
+      reason: `Pinned primary worker: ${describeBinding(task.workerBinding)}`,
+      pinned: true,
+    };
+  const gateway = gateways.find((candidate) => candidate.name === task.workerBinding.gateway);
+  if (!gateway || gateway.provider !== task.workerBinding.executor)
+    return {
+      executor: task.workerBinding.executor,
+      reason: `Pinned gateway "${task.workerBinding.gateway}" is missing or changed provider; no silent reroute is allowed`,
+      pinned: true,
+      unavailable: true,
+    };
+  if (gateway.usedPercent == null || gateway.usedPercent >= config.threshold)
+    return {
+      executor: task.workerBinding.executor,
+      gateway,
+      reason:
+        gateway.usedPercent == null
+          ? `Pinned gateway "${gateway.name}" quota is unreadable; no silent reroute is allowed`
+          : `Pinned gateway "${gateway.name}" is at ${gateway.usedPercent}% used, at or above the ${config.threshold}% reserve threshold; no silent reroute is allowed`,
+      pinned: true,
+      unavailable: true,
+    };
+  return {
+    executor: task.workerBinding.executor,
+    gateway,
+    reason: `Pinned primary worker: ${describeBinding(task.workerBinding)}`,
+    pinned: true,
+  };
+}
 const routeChanged = (previous, decision) =>
   `Run ${previous.id} asked its question on ${previous.gateway ? `the ${previous.gateway} gateway (${previous.executor})` : `native ${previous.executor}`}, but routing now chooses: ${decision.reason}. Reply once that route is chosen again, or start a new handoff without replySource.`;
 export class Manager {
@@ -167,7 +225,8 @@ export class Manager {
       task,
       snapshot,
       gateways,
-      route: route(config, task, gateways, operation),
+      binding: task.workerBinding ?? null,
+      route: pinnedRoute(config, task, gateways, operation, "codex"),
       // What a start without overrides would run, including fallback provenance, so the
       // coordinator can report it before launching; a refusal is reported, not thrown.
       selection: previewSelection(config, snapshot),
@@ -186,34 +245,65 @@ export class Manager {
         snapshot,
         route: decision,
       } = await this.inspect(args.threadId, args.operation);
+      if (decision.unavailable) throw new Error(decision.reason);
       if (!delegates(decision, "codex")) throw new Error(decision.reason);
       // A Codex task delegates to Claude (native or gateway) or to Codex behind a gateway.
       const worker = decision.executor;
+      let previous = args.runId
+        ? await this.statusFor(task.id, args.runId)
+        : !args.fresh && task.runId
+          ? await this.status(task.runId)
+          : null;
+      // runId is a compatibility pointer to the latest run of either slot. An ordinary
+      // delegation must not inherit a fresh run unless the coordinator selected it explicitly.
+      if (!args.runId && previous?.fresh) previous = null;
+      const continuation =
+        previous?.state === "needs_input" || !!previous?.question;
+      // A reply to an isolated run inherits its checkout and provider conversation. The
+      // coordinator need not repeat fresh=true, and omitting it must never promote the reply.
+      const fresh = args.fresh === true || previous?.fresh === true;
+      if (fresh && !task.workerBinding)
+        throw new Error(
+          "A fresh worker requires an established primary worker binding; delegate once without fresh=true first.",
+        );
       // Worktree correction is explicit because Morpheus can move work after the turn starts.
-      const identity = await projectIdentity(args.cwd || snapshot.cwd);
+      const identity = await projectIdentity(
+        args.cwd || previous?.cwd || snapshot.cwd,
+      );
       if (identity.project !== task.project)
         throw new Error(
           "Delegation directory must belong to the Codex task repository.",
         );
       task.cwd = identity.cwd;
-      // Saved worker sessions are kept per route, so a gateway conversation never resumes a
-      // native one (or another gateway's) in the same worktree.
-      const sessionKey = sessionKeyFor(task.cwd, decision.gateway);
+      if (!fresh && task.primaryCwd && task.primaryCwd !== task.cwd)
+        throw new Error(
+          `This root session's primary worker is bound to ${task.primaryCwd}. Use fresh=true for a different isolated worktree, or start a new root session.`,
+        );
+      const sessionKey = fresh ? null : sessionKeyFor(task.cwd);
+      const legacySessionKey = legacySessionKeyFor(task.cwd, decision.gateway);
       task.claudeSession =
-        worker === "claude" ? task.sessions?.[sessionKey] || null : null;
+        worker === "claude"
+          ? previous?.claudeSession ??
+            (!fresh
+              ? task.sessions?.[sessionKey] || task.sessions?.[legacySessionKey] || null
+              : null)
+          : null;
       const codexSession =
-        worker === "codex" ? task.codexSessions?.[sessionKey] || null : null;
-      const previous = task.runId ? await this.status(task.runId) : null;
+        worker === "codex"
+          ? previous?.codexSession ??
+            (!fresh
+              ? task.codexSessions?.[sessionKey] || task.codexSessions?.[legacySessionKey] || null
+              : null)
+          : null;
       if (previous && !previous.terminal)
         throw new Error(
           "This task already has an active run. Resume monitoring it instead.",
         );
-      const continuation =
-        previous?.state === "needs_input" || !!previous?.question;
       // A reply resumes the conversation that asked, so it must take the same route.
       if (
         continuation &&
-        (previous.executor !== worker || (previous.sessionKey ?? previous.cwd) !== sessionKey)
+        (previous.executor !== worker ||
+          (previous.gateway ?? null) !== (decision.gateway?.name ?? null))
       )
         throw new Error(routeChanged(previous, decision));
       if (
@@ -246,7 +336,7 @@ export class Manager {
           ? modelSelection(config, snapshot, { model: args.model, effort: args.effort })
           : {
               model: args.model ?? snapshot.model,
-              effort: args.effort ?? snapshot.reasoningEffort ?? null,
+              effort: codexRootEffort(args.effort ?? snapshot.reasoningEffort),
             };
       const codexSandbox = worker === "codex" ? codexPermission(permissions) : null;
       const env = withoutReferencedSecrets(
@@ -285,6 +375,8 @@ export class Manager {
         threadId: task.id,
         cwd: task.cwd,
         sessionKey,
+        workerSlot: fresh ? "fresh" : "primary",
+        fresh,
         gateway: decision.gateway?.name ?? null,
         host: hostname(),
         selection,
@@ -299,6 +391,7 @@ export class Manager {
         codexSession,
         replySource: args.replySource,
         replyReason: args.replyReason,
+        dispatch: args.dispatch ?? null,
       };
       await this.launch(
         record,
@@ -320,7 +413,12 @@ export class Manager {
       );
       await this.mutateTask(task.id, (current) => {
         current.runId = id;
+        current.runIds = [...new Set([...(current.runIds ?? []), id])];
         current.supervisionReplies = replies;
+        if (!fresh) {
+          current.workerBinding ??= bindingFor(decision);
+          current.primaryCwd ??= task.cwd;
+        }
       });
       return this.begin(id);
     } finally {
@@ -522,11 +620,14 @@ export class Manager {
     if (effects.overage) await this.cancel(run.id);
     if (effects.session) {
       await this.mutateTask(run.threadId, (task) => {
-        task.claudeSession = effects.session;
-        task.sessions = {
-          ...task.sessions,
-          [run.sessionKey ?? run.cwd]: effects.session,
-        };
+        if (!run.fresh) {
+          const key = run.sessionKey ?? sessionKeyFor(run.cwd);
+          task.claudeSession = effects.session;
+          task.sessions = {
+            ...task.sessions,
+            [key]: effects.session,
+          };
+        }
       });
     }
     if (effects.ended) this.send(run, { type: "close" });
@@ -538,10 +639,13 @@ export class Manager {
     if (run.newSession && !run.codexSession) {
       run.codexSession = run.newSession;
       await this.mutateTask(run.threadId, (task) => {
-        task.codexSessions = {
-          ...task.codexSessions,
-          [run.sessionKey ?? run.cwd]: run.newSession,
-        };
+        if (!run.fresh) {
+          const key = run.sessionKey ?? sessionKeyFor(run.cwd);
+          task.codexSessions = {
+            ...task.codexSessions,
+            [key]: run.newSession,
+          };
+        }
       });
     }
     if (ended) this.send(run, { type: "close" });
@@ -556,6 +660,8 @@ export class Manager {
       threadId,
       cwd,
       sessionKey,
+      workerSlot,
+      fresh,
       gateway,
       host,
       selection,
@@ -572,6 +678,7 @@ export class Manager {
       sequence,
       replySource,
       replyReason,
+      dispatch,
     } = run;
     return {
       id,
@@ -580,6 +687,8 @@ export class Manager {
       threadId,
       cwd,
       sessionKey,
+      workerSlot: workerSlot ?? "primary",
+      fresh: fresh === true,
       gateway: gateway ?? null,
       host,
       selection,
@@ -596,6 +705,7 @@ export class Manager {
       sequence,
       replySource,
       replyReason,
+      dispatch: dispatch ?? null,
     };
   }
   async status(id) {
@@ -632,6 +742,12 @@ export class Manager {
       return recovered;
     }
     return record;
+  }
+  async statusFor(taskId, id) {
+    const run = await this.status(id);
+    if (run.threadId !== taskId)
+      throw new Error("The requested run belongs to another root session.");
+    return run;
   }
   async wait(id, seconds = 25) {
     const run = this.runs.get(id);
@@ -759,7 +875,8 @@ export class Manager {
       session: task.session ?? null,
       runs,
       gateways,
-      route: route(config, task, gateways, operation, "claude"),
+      binding: task.workerBinding ?? null,
+      route: pinnedRoute(config, task, gateways, operation, "claude"),
     };
   }
   async codexStart(args) {
@@ -774,6 +891,7 @@ export class Manager {
         args.sessionId,
         args.operation,
       );
+      if (decision.unavailable) throw new Error(decision.reason);
       if (!delegates(decision, "claude")) throw new Error(decision.reason);
       // A Claude session delegates to Codex (native or gateway) or to Claude behind a gateway.
       const worker = decision.executor;
@@ -805,6 +923,14 @@ export class Manager {
           );
         previous ??= awaiting[0];
       }
+      // A reply to an isolated run stays isolated even when the caller omits fresh=true.
+      // It may resume that run's provider conversation, but never promote it into or replace
+      // the root session's primary worker conversation.
+      const fresh = args.fresh === true || previous?.fresh === true;
+      if (fresh && !task.workerBinding)
+        throw new Error(
+          "A fresh worker requires an established primary worker binding; delegate once without fresh=true first.",
+        );
       const identity = await projectIdentity(
         args.cwd || previous?.cwd || session.cwd,
       );
@@ -813,19 +939,34 @@ export class Manager {
           "Delegation directory must belong to the Claude session repository.",
         );
       task.cwd = identity.cwd;
-      const sessionKey = sessionKeyFor(task.cwd, decision.gateway);
+      if (!fresh && task.primaryCwd && task.primaryCwd !== task.cwd)
+        throw new Error(
+          `This root session's primary worker is bound to ${task.primaryCwd}. Use fresh=true for a different isolated worktree, or start a new root session.`,
+        );
+      const sessionKey = fresh ? null : sessionKeyFor(task.cwd);
+      const legacySessionKey = legacySessionKeyFor(task.cwd, decision.gateway);
       const sameRoute = (run) =>
-        run.executor === worker && (run.sessionKey ?? run.cwd) === sessionKey;
+        run.executor === worker &&
+        (run.gateway ?? null) === (decision.gateway?.name ?? null) &&
+        run.cwd === task.cwd &&
+        run.fresh === fresh;
       if (previous && previous.state === "needs_input" && !sameRoute(previous))
         throw new Error(routeChanged(previous, decision));
-      previous ??= [...runs.active, ...runs.recent].find(sameRoute);
+      if (!fresh)
+        previous ??= [...runs.active, ...runs.recent].find(sameRoute);
       const codexSession =
-        worker === "codex"
-          ? (previous?.codexSession ?? task.codexSessions?.[sessionKey] ?? null)
+        worker === "codex" && (previous?.fresh === true || !fresh)
+          ? (previous?.codexSession ??
+            task.codexSessions?.[sessionKey] ??
+            task.codexSessions?.[legacySessionKey] ??
+            null)
           : null;
       const claudeSession =
-        worker === "claude"
-          ? (previous?.claudeSession ?? task.sessions?.[sessionKey] ?? null)
+        worker === "claude" && (previous?.fresh === true || !fresh)
+          ? (previous?.claudeSession ??
+            task.sessions?.[sessionKey] ??
+            task.sessions?.[legacySessionKey] ??
+            null)
           : null;
       // Codex exec cannot ask mid-run, so its every question arrives as needs_input; a
       // Claude worker can also ask live, answered through codex.answer.
@@ -908,6 +1049,8 @@ export class Manager {
         sessionId: args.sessionId,
         cwd: task.cwd,
         sessionKey,
+        workerSlot: fresh ? "fresh" : "primary",
+        fresh,
         gateway: decision.gateway?.name ?? null,
         host: hostname(),
         selection,
@@ -922,6 +1065,7 @@ export class Manager {
         claudeSession,
         replySource: args.replySource,
         replyReason: args.replyReason,
+        dispatch: args.dispatch ?? null,
       };
       await this.launch(
         record,
@@ -950,16 +1094,51 @@ export class Manager {
           ...current.supervisionRepliesByCwd,
           [task.cwd]: replies,
         };
+        if (!fresh) {
+          current.workerBinding ??= bindingFor(decision);
+          current.primaryCwd ??= task.cwd;
+        }
       });
       return this.begin(id);
     } finally {
       this.busy = false;
     }
   }
+  // Hooks never decide whether a user turn should be delegated. They only expose the active
+  // tool contract and preserve verified session metadata and edit-race protection.
+  sessionHook(primary, args, advice, active) {
+    if (!active || args.event !== "SessionStart") return advice;
+    return {
+      ...advice,
+      systemMessage: readiness(active.mode, active.inspected?.route, primary, active.failure),
+    };
+  }
+  // Refuses the coordinator's native edits inside a checkout its own worker is writing. It
+  // prevents an accidental race; shell commands and unknown tools are not inspected.
+  async guard(taskId, args) {
+    const targets = editTargets(args.tool, args.toolInput, args.cwd);
+    if (!targets) return {};
+    const { active } = await this.taskRuns(await taskRead(taskId));
+    for (const run of active) {
+      for (const target of targets)
+        if (within(await canonical(target), run.cwd))
+          return {
+            deny: `Factory run ${run.id} (${run.executor}) is writing in ${run.cwd}. Wait for it, or stop it and wait until it is terminal, before editing files there.`,
+          };
+    }
+    return {};
+  }
+  // Factory's mode for this task, or null when it is off.
+  active(config, task, detail) {
+    if (config.mode === "off") return null;
+    const mode = config.projects[task.project] ?? config.mode;
+    return mode === "off" ? null : { mode, ...detail };
+  }
   async codexHook(args) {
     const config = await configRead();
     if (config.mode === "off") return {};
     const taskId = claudeTaskId(args.sessionId);
+    if (args.event === "PreToolUse") return this.guard(taskId, args);
     const task = await taskRead(taskId);
     if (args.event === "SessionEnd") {
       for (const run of (await this.taskRuns(task)).active)
@@ -977,16 +1156,91 @@ export class Manager {
         updatedAt: Date.now(),
       };
     });
+    // Claude's SessionStart payload can omit permission_mode (notably in the CLI).
+    // UserPromptSubmit reports the live mode before a model can call Factory, so use it only
+    // to refresh verified settings. It never dispatches work or adds per-turn model context.
+    if (args.event === "UserPromptSubmit") return {};
+    let s;
     try {
-      const s = await this.claudeInspect(args.sessionId);
-      return {
-        additionalContext: `Factory delegation routing (sessionId ${args.sessionId}): ${JSON.stringify(s.route)}. A gateway route runs a worker on that pooled subscription, Claude included; only this session's own native login is never a delegate. Use the factory delegate-to-codex skill and codex_* tools. Inspect active runs before starting another run. Explicit user instructions override automatic routing.`,
-      };
+      s = await this.claudeInspect(args.sessionId);
     } catch (e) {
-      return {
-        additionalContext: `Codex delegation unavailable: ${e.message}. Do not infer permissions or allowance.`,
-      };
+      return this.sessionHook(
+        "claude",
+        args,
+        { additionalContext: `Codex delegation unavailable: ${e.message}. Do not infer permissions or allowance.` },
+        this.active(config, await taskRead(taskId), { failure: e.message }),
+      );
     }
+    return this.sessionHook(
+      "claude",
+      args,
+      { additionalContext: `Factory tools are available for this Claude root session. Use factory_inspect and factory_delegate when delegation is useful or the user requests it; do not call them when the user requests local work. The root remains responsible for the brief, supervision and verification. Current binding/availability: ${JSON.stringify({ binding: s.binding, route: s.route })}.` },
+      this.active(config, s.task, { inspected: s }),
+    );
+  }
+  rootTaskId(rootKind, rootId) {
+    if (rootKind === "codex") return rootId;
+    if (rootKind === "claude") return claudeTaskId(rootId);
+    throw new Error("Unknown Factory root kind.");
+  }
+  async factoryInspect(args) {
+    if (args.rootKind === "codex")
+      return this.inspect(args.rootId, args.provider);
+    return this.claudeInspect(args.rootId, args.provider);
+  }
+  async factoryDelegate(args) {
+    const common = {
+      prompt: args.prompt,
+      runId: args.runId,
+      cwd: args.cwd,
+      operation: args.provider,
+      model: args.model,
+      effort: args.effort,
+      background: args.background,
+      fresh: args.fresh,
+      replySource:
+        args.replySource === "root"
+          ? args.rootKind
+          : args.replySource,
+      replyReason: args.replyReason,
+    };
+    return args.rootKind === "codex"
+      ? this.start({ ...common, threadId: args.rootId })
+      : this.codexStart({ ...common, sessionId: args.rootId });
+  }
+  async factoryRun(args) {
+    return this.statusFor(this.rootTaskId(args.rootKind, args.rootId), args.runId);
+  }
+  async factoryWait(args) {
+    await this.factoryRun(args);
+    return this.wait(args.runId, args.seconds);
+  }
+  async factoryAnswer(args) {
+    await this.factoryRun(args);
+    return this.answer({
+      ...args,
+      source: args.source === "root" ? args.rootKind : args.source,
+    });
+  }
+  async factoryStop(args) {
+    await this.factoryRun(args);
+    return this.cancel(args.runId);
+  }
+  async setOverride(taskId, executor) {
+    if (!["auto", "codex", "claude", "off"].includes(executor))
+      throw new Error("Invalid override");
+    return this.mutateTask(taskId, (task) => {
+      if (
+        task.workerBinding &&
+        !["auto", "off", task.workerBinding.executor].includes(executor)
+      )
+        throw new Error(
+          `This root session is pinned to ${describeBinding(task.workerBinding)}; start a new root session to choose ${executor}.`,
+        );
+      task.disabled = executor === "off";
+      if (!task.workerBinding)
+        task.override = executor === "off" ? "auto" : executor;
+    });
   }
   async dispatch(method, args = {}) {
     if (method === "config") {
@@ -1044,6 +1298,12 @@ export class Manager {
     // Remote pool turns are owned by Paperclip's runner, not this service.
     if (method.startsWith("hq.")) return this.hq.dispatch(method.slice(3), args);
     if (method.startsWith("pool.")) return this.pool.dispatch(method.slice(5), args);
+    if (method === "factory.inspect") return this.factoryInspect(args);
+    if (method === "factory.delegate") return this.factoryDelegate(args);
+    if (method === "factory.status") return this.factoryRun(args);
+    if (method === "factory.wait") return this.factoryWait(args);
+    if (method === "factory.answer") return this.factoryAnswer(args);
+    if (method === "factory.stop") return this.factoryStop(args);
     if (method === "inspect")
       return this.inspect(args.threadId, args.operation);
     if (method === "start") return this.start(args);
@@ -1052,12 +1312,7 @@ export class Manager {
     if (method === "answer") return this.answer(args);
     if (method === "stop") return this.cancel(args.runId);
     if (method === "override") {
-      if (!["auto", "codex", "claude", "off"].includes(args.executor))
-        throw new Error("Invalid override");
-      return this.mutateTask(args.threadId, (task) => {
-        task.disabled = args.executor === "off";
-        task.override = args.executor === "off" ? "auto" : args.executor;
-      });
+      return this.setOverride(args.threadId, args.executor);
     }
     if (method === "codex.inspect")
       return this.claudeInspect(args.sessionId, args.operation);
@@ -1072,12 +1327,7 @@ export class Manager {
     }
     if (method === "codex.hook") return this.codexHook(args);
     if (method === "codex.override") {
-      if (!["auto", "codex", "claude", "off"].includes(args.executor))
-        throw new Error("Invalid override");
-      return this.mutateTask(claudeTaskId(args.sessionId), (task) => {
-        task.disabled = args.executor === "off";
-        task.override = args.executor === "off" ? "auto" : args.executor;
-      });
+      return this.setOverride(claudeTaskId(args.sessionId), args.executor);
     }
     if (method === "codex.memories") {
       const { task } = await this.claudeInspect(args.sessionId);
@@ -1092,6 +1342,7 @@ export class Manager {
     if (method === "hook") {
       const config = await configRead();
       if (config.mode === "off") return {};
+      if (args.event === "PreToolUse") return this.guard(args.threadId, args);
       const task = await taskRead(args.threadId);
       if (["Interrupt", "SessionEnd"].includes(args.event)) {
         if (task.runId) {
@@ -1101,20 +1352,35 @@ export class Manager {
         }
         return {};
       }
+      let s;
       try {
-        const s = await this.inspect(args.threadId);
-        return {
-          additionalContext: `Claude delegation routing: ${JSON.stringify(s.route)}. Use the factory skill/tools. Read current run status before starting another run. Explicit user instructions override automatic routing.`,
-        };
+        s = await this.inspect(args.threadId);
       } catch (e) {
-        return {
-          additionalContext: `Claude delegation unavailable: ${e.message}. Do not infer permissions or allowance.`,
-        };
+        return this.sessionHook(
+          "codex",
+          args,
+          { additionalContext: `Factory tools are unavailable: ${e.message}. Do not infer permissions or allowance.` },
+          this.active(config, task, { failure: e.message }),
+        );
       }
+      return this.sessionHook(
+        "codex",
+        args,
+        { additionalContext: `Factory tools are available for this Codex root task. Use factory_inspect and factory_delegate when delegation is useful or the user requests it; do not call them when the user requests local work. The root remains responsible for the brief, supervision and verification. Current binding/availability: ${JSON.stringify({ binding: s.binding, route: s.route })}.` },
+        this.active(config, s.task, { inspected: s }),
+      );
     }
     throw new Error("Unknown bridge operation");
   }
 }
+const briefRun = (run) => ({
+  id: run.id,
+  executor: run.executor,
+  gateway: run.gateway ?? null,
+  cwd: run.cwd,
+  state: run.state,
+  question: run.result?.question || run.result?.summary || null,
+});
 export function claudeTaskId(sessionId) {
   if (!/^[a-zA-Z0-9-]{1,90}$/.test(sessionId ?? ""))
     throw new Error("Invalid Claude session id");

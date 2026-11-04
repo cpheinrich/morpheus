@@ -7,6 +7,30 @@ coordinate Codex (see [Claude coordinating Codex](#claude-coordinating-codex)). 
 by default**. Cloning Morpheus, installing its CLI, and scaffolding projects do not install
 or activate it.
 
+## Status: experimental, off unless this machine opts in
+
+- **Repository-owned status.** `release` in `src/config.mjs` marks Factory `experimental`
+  with default mode `off`. The plugin manifests say so, and `bridge.mjs doctor` reports
+  `factory: { status, mode, enabled }` for this machine.
+- **Personal installs only.** `node scripts/install.mjs` is the only installer. On the machine
+  it runs on, it registers `factory@personal` in your own Codex personal marketplace and
+  `factory@factory-local` at Claude Code user scope. Nothing distributes it: `morpheus init`,
+  the device bootstrap, `self install`/`self update`/`self ensure`, session start and cloning
+  a repository never install, register or enable it (Morpheus's
+  `tests/factory-distribution.test.ts` holds this). An install on one machine does nothing
+  for another machine or person.
+- **Installing is not enabling.** The one switch is `mode` in this machine's private
+  `~/.local/share/factory/config.json`. With no file it is `off`, and the hooks exit without
+  output or starting the service. `bridge.mjs enable manual|automatic` opts in and `disable`
+  opts out. A reinstall or update never writes that file, except to carry an old
+  `codex-claude` install's settings to a machine that has none, so a saved choice, on or off,
+  survives.
+- **The coordinator stays the manager.** Codex in the usual setup, or Claude Code when it holds
+  the conversation, decides when to call the provider-neutral `factory_*` tools, writes a
+  self-contained brief, supervises the run and verifies the result. Hooks never dispatch user
+  prompts. `manual` and the legacy `automatic` value both mean model-directed delegation; the
+  latter remains accepted so an installed machine does not need a settings migration.
+
 ## Where things live
 
 - **Source, instructions, tests:** `plugins/factory/` in Morpheus. Edit this package
@@ -34,7 +58,8 @@ node scripts/install.mjs
 ```
 
 The installer copies the package, installs its locked dependencies, tests it, verifies the
-installed MCP servers against their exact shared tool-name contracts, and uses Codex's
+installed MCP servers against their exact tool-name contracts and identical provider-neutral
+Factory schemas, checks that neither hook manifest dispatches prompts, and uses Codex's
 bundled plugin-creator helper to register it in the personal marketplace. A contract error
 lists the missing, unexpected, and observed tool names. It
 preserves other marketplace entries. The helper is looked for under
@@ -62,10 +87,10 @@ start the local Codex service if needed:
 ```sh
 codex app-server daemon start
 node ~/plugins/factory/scripts/bridge.mjs doctor
-node ~/plugins/factory/scripts/bridge.mjs enable automatic
+node ~/plugins/factory/scripts/bridge.mjs enable manual
 ```
 
-Use `enable manual` for delegation only on request. `disable` is a master off switch and
+`enable automatic` is a compatibility alias for the same model-directed behavior. `disable` is a master off switch and
 stops active delegated runs, retaining conversations. Disabling/uninstalling the plugin
 in Codex removes its tools/hooks; existing normal workers expire when their owner lease
 stops. Explicit background workers must be stopped before uninstalling.
@@ -81,25 +106,57 @@ Ask Codex naturally:
 
 - “Use Claude for this task.”
 - “Use Codex for this task.”
-- “Return this task to automatic routing.”
-- “Use Codex just to generate this image, then resume automatic routing.”
+- “Use the Factory for this larger implementation.”
+- “Keep this quick answer local.”
 - “Stop Claude.”
 - “Show Claude's live output.”
 
-Automatic mode delegates to a pooled gateway while its account is below the threshold
+When the root calls `factory_delegate`, Factory selects a pooled gateway while its account is below the threshold
 (**90% used** by default), picking the gateway with the most headroom; once every gateway
-is at or above the threshold the work stays with the coordinator. **A gateway of the
+is at or above the threshold the other provider's native subscription is used. **A gateway of the
 coordinator's own provider counts:** it is a separate subscription reached as an API, so a
 Claude session can hand work to the Claude behind a gateway and a Codex task to the Codex
 behind one. The only route never taken is the coordinator's own native login, which would
 be circular. An explicit executor request (“use Claude”, `operation`) prefers that
-provider's gateway when one is below the threshold, then the other provider's native
-login; asking for the coordinator's own provider with no such gateway keeps the work here. This is subscription usage, not a token count for a single chat.
+provider's gateway when one is below the threshold. With no eligible gateway, the other
+provider's native subscription is used; asking for the coordinator's own provider with no such
+gateway is refused because handing work to the root's own native login would be circular. This is subscription usage, not a token count for a single chat.
 The coordinator still consumes its own allowance while supervising. Missing/stale usage is
 reported as unknown and never treated as headroom. Existing saved thresholds are preserved
 when updating the plugin; change one with `bridge.mjs config`.
-Routing hooks advise the coordinating agent; they do not replace the desktop's model
-engine or forcibly preempt a running generation.
+Routing hooks do not replace the desktop's model engine or forcibly preempt a running
+generation.
+
+## Model-directed delegation
+
+Both root agents discover the same six tools: `factory_inspect`, `factory_delegate`,
+`factory_status`, `factory_wait`, `factory_answer` and `factory_stop`. Root identity is injected
+by the MCP host, so a model cannot invent another chat's identity. Codex's per-request
+`_meta.threadId` takes precedence over the legacy `CODEX_THREAD_ID` environment fallback:
+desktop MCP connections may be shared or outlive the chat that launched them. A missing or
+malformed identity still refuses delegation. Every run-control operation
+also verifies that the run belongs to that root session.
+
+- **Judgment and user precedence.** An explicit request to use the Factory requires delegation;
+  an explicit request to keep work local prohibits it. Otherwise the root uses its normal
+  sub-agent judgment: quick interactive work stays local, while a bounded larger chunk may be
+  delegated. There is no separate classifier.
+- **Sticky primary worker.** The first successful primary launch pins executor and gateway for
+  the root session. Later gateway order or quota changes never silently switch it. An unavailable,
+  removed, changed-provider or over-threshold pinned gateway refuses until it is eligible again;
+  a different provider requires a new root session. Provider conversations remain scoped to one
+  canonical checkout so repository instructions never leak across worktrees.
+- **Fresh work.** `fresh:true` starts a separate conversation on the pinned route and never
+  replaces the primary saved session. It can run concurrently only in another isolated worktree;
+  one writer per checkout and `maxConcurrent` still apply.
+- **Manager contract.** The root sends a self-contained brief, waits, handles only routine
+  reversible clarification itself, sends authorization/spending/publishing/material decisions to
+  the user, and independently verifies the result. Codex `needs_input` resumes through
+  `factory_delegate` with the originating `runId`; a live Claude question uses `factory_answer`.
+- **Edit guard and recursion.** While an owned worker is active, `PreToolUse` refuses the root's
+  native edit tools in that checkout (Claude Code `Edit`, `Write`, `MultiEdit`, `NotebookEdit`;
+  Codex `apply_patch`). Shell commands are not inspected, so this is an accidental-race guard,
+  not a sandbox. Workers run with `FACTORY_DELEGATED=1`; hooks exit and MCP delegation refuses.
 
 ## Gateway mode
 
@@ -194,7 +251,8 @@ Do not edit settings while a second writer is updating them. Unknown settings ar
 ## Claude coordinating Codex
 
 The installer also registers a Claude Code plugin (`claude-plugin/`, marketplace
-`factory-local`) with a `delegate-to-codex` skill, `codex_*` tools and hooks, and sets a
+`factory-local`) with a `delegate-to-codex` skill, the same `factory_*` contract (plus legacy
+`codex_*` compatibility tools) and hooks, and sets a
 recorder status line. Skip that half with `node scripts/install.mjs --codex-only`. The same
 `mode`, `threshold` and `projects` settings govern both directions; `bridge.mjs disable` stops
 both. Start a new Claude session after installing, and review its hooks.
@@ -222,14 +280,13 @@ both. Start a new Claude session after installing, and review its hooks.
 - **Execution.** Each handoff runs `codex exec --json` under the same guardian lease, output
   cap and run limit as Claude workers, with the prompt on stdin. The saved Codex session id is
   resumed per working directory with `codex exec resume`. Codex cannot ask mid-run, so a
-  question arrives as a `needs_input` result and is answered by starting again with
-  that result's `runId`, `replySource` (`claude` or `user`) and `replyReason`, within the
+  question arrives as a `needs_input` result and is answered with `factory_delegate` and
+  that result's `runId`, `replySource` (`root` or `user`) and `replyReason`, within the
   same supervision budget.
   One Claude session may run multiple Codex delegations concurrently when each uses a
   different worktree. A second writer in the same working directory is refused with the
-  owning run id; the global `maxConcurrent` limit still applies. `codex_inspect` lists all
-  active runs and the five most recent terminal runs. Pass `runId` to wait, view, status or
-  stop when more than one run is active; a single run remains the default.
+  owning run id; the global `maxConcurrent` limit still applies. `factory_inspect` lists all
+  active runs and the five most recent terminal runs. Pass `runId` to wait, status or stop.
 - **Subscription only.** The bridge requires `codex login status` to report a ChatGPT
   sign-in and strips `OPENAI_*`/`CODEX_API_KEY` from the worker. Paid Codex credits cannot be
   detected from `exec` output; manage that in your ChatGPT account.
@@ -238,21 +295,22 @@ both. Start a new Claude session after installing, and review its hooks.
 
 ### Same-provider workers behind a gateway
 
-When routing picks the coordinator's own provider behind a gateway, the same start tool
-launches that worker (`codex_start` from Claude, `claude_start` from Codex); the run's
+When routing picks the coordinator's own provider behind a gateway, `factory_delegate`
+launches that worker; the run's
 `executor` and `gateway` fields say what ran.
 
 - **A Claude worker for a Claude session** runs `claude -p` with the gateway's base URL and
   token, the session's own model and effort, and the session's own permission mode, so it is
   never wider than the coordinator. It can ask live questions; the coordinator answers them
-  with `codex_answer` (`source: claude` for a routine clarification, `user` to attest a real
-  answer), under the same rules as `claude_answer`.
+  with `factory_answer` (`source: root` for a routine clarification, `user` to attest a real
+  answer).
 - **A Codex worker for a Codex task** runs `codex exec` against the gateway with the task's own
   model and effort. Its sandbox follows the task's approval policy: never-approve full access
   maps to full access, on-request to read-only.
-- **Sessions are kept per route.** A worker's saved conversation is keyed by worktree and
-  gateway (`<cwd>#gateway:<name>`), so a gateway conversation never resumes a native one or
-  another gateway's. A `needs_input` reply must use the route the question came from.
+- **Sessions are kept per checkout on the pinned route.** A root session pins executor and
+  gateway once; its primary provider conversation is keyed by canonical checkout. It never
+  resumes across worktrees, another gateway, or native login. A `needs_input` reply must use the
+  route and run it came from.
 - **Credentials stay out of the worker.** It gets only the provider's own variables; every
   variable a configured `keyRef`, `emailRef` or `passwordRef` names is removed from its
   environment, along with `FACTORY_ADMIN_*`.
@@ -359,6 +417,13 @@ It does not create a native Claude model choice inside Codex or import Claude me
 native assistant turns. Progress and results arrive as tools and Codex commentary; a
 read-only loopback viewer can display streamed text in the Codex browser panel. Claude's
 own transcript retention still applies: a session deleted by Claude cannot be resumed.
+
+For an unloaded Codex desktop task, the bridge validates active turn metadata from its
+rollout, including `.jsonl.zst` compression on Node 22.15+. Earlier Node 22 releases can
+read plain rollouts and report a clear runtime requirement for compressed ones. Completed, stale or restricted
+turns still refuse. An unavailable rollout reports a task-metadata error; reopen that task
+and send a message rather than substituting another session. `bridge.mjs doctor` reads
+gateway quota independently, so healthy quota does not prove a task can delegate.
 
 The working directory defaults to the Codex turn's actual directory. An explicit alternate
 worktree must share the same canonical Git repository. Changing worktrees selects that
@@ -471,3 +536,143 @@ Protocol references: [Codex hooks](https://learn.chatgpt.com/docs/hooks),
 [Codex memories](https://learn.chatgpt.com/docs/customization/memories),
 [Claude headless mode](https://code.claude.com/docs/en/headless), and
 [Claude memory](https://code.claude.com/docs/en/memory).
+
+### Explicit unattended Codex gateway worker
+
+A trusted host service can invoke a bounded worker without a desktop conversation:
+
+```sh
+node plugins/factory/scripts/gateway-worker.mjs --config /private/service/job.json --admission-id CALLER_UUID < /private/service/prompt.txt
+node plugins/factory/scripts/gateway-worker.mjs --status ADMISSION_ID
+node plugins/factory/scripts/gateway-worker.mjs --config /private/service/job.json --admission-id NEW_CALLER_UUID --resume ADMISSION_ID < /private/service/continuation.txt
+```
+
+This separate opt-in entry point currently supports **Codex through one explicitly
+configured gateway**. It does not inspect a desktop identity, native account, quota or
+Paperclip. Desktop permission admission and routing remain separate. No installer,
+launchd job or consumer policy is added. The operator must authorize the service job
+and its permissions; possession of a private configuration is its local authority.
+
+Create an owner-only (`0600`) JSON file **outside every checkout**, in a trusted
+operator-controlled directory. All fields are required; unknown fields are refused:
+
+```json
+{
+  "version": 1,
+  "jobId": "repair-worker",
+  "cwd": "/absolute/claimed-worktree",
+  "gateway": {
+    "name": "existing-pool",
+    "provider": "codex",
+    "baseUrl": "https://gateway.example.invalid",
+    "keyRef": "env:SERVICE_GATEWAY_KEY"
+  },
+  "model": "gpt-6.1-sol",
+  "effort": "medium",
+  "sandbox": "workspace-write",
+  "approvalPolicy": "never",
+  "maxRunSeconds": 3600,
+  "maxLogBytes": 1048576
+}
+```
+
+`cwd` must name the already claimed isolated checkout. The runner canonicalizes it;
+claim lifecycle and independent review are the consumer's responsibility. Independent
+review jobs need a distinct `jobId`, isolated checkout and native session. Sandbox is
+exactly `read-only`, `workspace-write` or explicitly authorized `danger-full-access`.
+Only `never` approval is supported; other modes refuse rather than widen. Prompts arrive
+on stdin (up to 1 MiB), and the existing noninteractive handoff preserves repository
+requirements, review gates and the prohibition on recursive Factory delegation.
+
+The key resolver supports the existing `env:`, `secret:` and `exec:` references. The
+key is passed only in the provider environment, never argv or the job record. A minimal
+child environment and per-binding isolated `CODEX_HOME` prevent inherited desktop
+identity, native login or provider configuration from selecting another billing path.
+Provider, URL, API-key environment source, model and effort are pinned on every turn;
+credential or gateway failure produces evidence without native or paid-vendor fallback.
+Known key values are redacted from guardian stdout/stderr across read boundaries before
+writing logs. Operator-controlled credential commands and agent commands still run as
+the authorized OS user; this is process ownership, not a security boundary against that
+user or a full-access worker. Keep service config/state out of agent-editable paths.
+
+State is under `$FACTORY_HOME/unattended` (default `~/.local/share/factory/unattended`),
+which must be private and outside the checkout. All callers on the host must use the
+same Factory home. Do not point desktop, Paperclip or other author processes at this
+service-owned claimed checkout while it is in use: this lock serializes unattended
+jobs, not independent tools or desktop processes. The result contains `admissionId`,
+`binding.jobId`, canonical checkout/gateway/model/permission binding, native `sessionId`,
+`resultPath`, `terminationVerified`, exit code and the provider's structured `result`.
+The consumer must generate and durably save a fresh UUID for each intended invocation
+**before calling the CLI**, passing it as `--admission-id`. If the consumer dies before
+receiving stdout, that saved ID is sufficient for `--status` or a same-ID retry; no
+filesystem discovery is needed. The runner exclusively reserves the admission directory
+before credentials or worker launch. Repeating an ID returns its existing evidence for
+the same binding and never spawns again; a different binding refuses. If a crash left
+incomplete reservation evidence, replay refuses rather than reclaiming the ID. Do not
+invent a replacement ID for an operation whose effect is unknown. Omitting the flag
+keeps an autogenerated ID for interactive callers that can retain the returned report;
+unattended consumers must provide their own durable ID. A continuation uses a **new**
+caller UUID and `--resume` with the earlier admission ID.
+
+A caught preparation failure before guardian spawn, or an OS `ENOENT` refusal of
+the guardian executable before it starts, retains `prelaunchFailure` in admission
+evidence: `phase` (`preparation` or `guardian-spawn`), `proof: "never-launched"` and
+a fixed sanitized summary. The result is terminal `failed`, with `sessionId: null`,
+`terminationVerified: true` and `exitCode: null` (no worker exited). Status and same-ID
+replay return that retained failure, including after credentials or setup are repaired;
+they never repurpose the failed UUID. After correcting setup, the consumer saves a
+**fresh UUID without `--resume`**, because this invocation created no native session.
+Missing proof or a possibly started guardian remains unverified; an error or absent
+PID alone is insufficient evidence. Old unknown admissions are not retroactively cleared.
+
+Verified terminal results with a native session also expose optional `timing`:
+`source: "runner"`, UTC `startedAt`/`endedAt`, positive integer `durationMs`, and
+`evidence` naming this admission's guardian `process.json`. The guardian measures with
+a monotonic clock from just before provider spawn through provider/tool waits and owned
+cleanup; credential preparation is outside that interval. The existing deadline and lease
+clocks are unchanged. Status and same-ID replay recover the identical measurement even
+if the caller lost stdout or `result.json`. For independent-review records, copy source,
+duration and evidence and compute `elapsedMinutes = durationMs / 60000`; UTC timestamps
+locate the turn and do not measure its duration. Legacy/incomplete timing, unknown
+termination, rejected admission and null-session results omit `timing`; never substitute
+zero, filesystem times or an estimate for an unmeasured reviewer turn.
+
+Admission evidence is persisted before worker spawn. The guardian holds a kernel lock
+for that canonical checkout, and a durable pointer names the exact admitted run. Two
+jobs cannot write there together. Rejected admission returns `needs_input` without
+launching a provider.
+
+The CLI process is the service owner and renews its guardian lease. There is no desktop
+owner lease. If the actual service process dies, the guardian expires that lease, kills
+its owned descendants and retains events/process evidence. Deadline and output limits
+also stop owned descendants and retain the native session. `--status` reconstructs a checkpoint
+from those files after restart without a provider call. Continue only with the previous
+admission ID, a verified terminated session and an identical binding, including job,
+checkout, gateway credential reference, model and permissions. A changed workspace or
+route never resumes that session. No automatic retry or continuation is performed.
+
+For unattended runs, each provider receives a unique inherited run marker. The guardian
+combines a full same-user process census with parent/start-identity tracking, so ordinary
+`start_new_session`/`setsid` tools remain owned after their launcher exits. Cleanup signals
+individual descendants after rechecking their start identities and requires an empty
+verified census before releasing admission. An unreadable census or ambiguous identity
+keeps admission held. Process environments are inspected in memory and never logged by
+this census. Like the existing full-access contract, this cannot contain a user or tool
+that deliberately discards ownership metadata and evades observation; use OS-enforced
+isolation for untrusted processes. Merely detaching a tool does not discard its marker.
+
+A dead guardian or missing/corrupt process evidence leaves the workspace held with
+`needs_input`, even when its PID is gone. An operator must independently reconcile that
+exact worker group and descendants before repairing the retained evidence; deleting a
+lock or retrying under another Factory home is not recovery. The runner intentionally
+does not guess termination or kill a possibly unrelated reused PID. Normal verified
+cleanup admits the next invocation. Logs, prompt and native session/checkpoint files
+remain private for consumer investigation; apply the service's retention policy there.
+
+JSON is the CLI's only non-help output. A worker failure exits 1; completed and
+`needs_input` reports exit 0, so consumers **must inspect the result**, not the exit code
+alone. Pre-admission errors use `{ outcome, summary, evidence, question }`; admitted
+runs wrap that report in `result` with the correlation fields above. A completed worker
+turn is never proof of delivery or consumer acceptance. Authenticated gateway smoke,
+installed runtime verification and actual delivery receipts remain separate rollout
+requirements; fake-provider lifecycle tests establish none of them.

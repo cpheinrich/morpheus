@@ -1,32 +1,21 @@
 ---
 owner: cpheinrich
-date: 2026-10-26
+date: 2026-11-02
 agents:
   - codex
-previous: .agent/inbox-archive/2026-10-26-1927-cpheinrich.md
+previous: .agent/inbox-archive/2026-11-02-2125-cpheinrich.md
 ---
-# Inbox — 2026-10-26
+# Inbox — 2026-11-02
 
-The issue automation reconciled all open issues and the fixes merged by other sessions since the previous run. It verified that #516 was already implemented in PR408 and closed it with current-code and regression-test evidence. The read-only shipping fix is merged in PR525; #421 is closed and its branch deleted. The CI identity fix is also merged in PR524; #492 is closed and its branch deleted. The research-record update is merged in PR526; #497 is closed and its branch deleted. Four issues were closed by this run; thirteen other closures since the prior run were reconciled with their merged fixes. The Paperclip delivery and terminal-preference results remain in the archived inbox. Unreplied decisions below are preserved.
+Issue maintenance reconciled the entire live backlog and preserved completed entries. PR580 is merged, resolving the same-head cancelled-workflow census errors in #564 and #577. The policy issue #248 is closed with current-source evidence: merged PR568 superseded the unmerged PR414 and removed its earlier review-continuation blocker. PR581 is also merged, resolving exact HQ record ranking in #478. PR582 is merged, resolving the quota cleanup timing flake in #560. Five issues closed in this run; four other-session closures were separately reconciled since the previous run. The live ledger now shows 64/74 tracked issues closed, with ten open. Unreplied decisions below remain in place.
 
-## ✅ 1. Issue maintenance this run · `codex`
+## ✅ 1. Review-continuation blocker resolved · `codex`
 
-[#516](https://github.com/cpheinrich/morpheus/issues/516) is closed: the existing `issuesToKeepOpen` relationship preserves incident ownership and requires `Refs` instead of closing keywords. Current-code checks passed 189 tests.
+[#248](https://github.com/cpheinrich/morpheus/issues/248) is closed with [the evidence comment](https://github.com/cpheinrich/morpheus/issues/248#issuecomment-6588491261), merged [PR568](https://github.com/cpheinrich/morpheus/pull/568), and 289 passing check/review regression tests. PR414 was explicitly closed unmerged by its maintainer as superseded; no additional turn or conflict integration is requested. The old PR414 decision in the previous inbox is obsolete.
 
-Merged [PR524](https://github.com/cpheinrich/morpheus/pull/524) keeps CI checks from different workflows separate while allowing later attempts of the same workflow to supersede earlier ones. Its independent review and integrated-head checks passed (7 passed, 2 expected skips); #492 closure and branch deletion are verified. Merged [PR525](https://github.com/cpheinrich/morpheus/pull/525) rejects explicit roadmap IDs with `pm ship --check` before writing any file. Its independent review, 127 focused tests, 3302 full-suite tests and final-head GitHub checks passed; merge, #421 closure and branch deletion are verified. Merged [PR526](https://github.com/cpheinrich/morpheus/pull/526) updates research records to use a concise body and detailed appendices. Independent review found no issues; 55 focused tests, 3297 full-suite tests, skill validation and final-head GitHub checks passed. #497 closure and branch deletion are verified.
+## ✅ 2. CI waiter duplicate cancellations fixed · `codex`
 
-## ❗ 2. PR414 conflict integration needs scoped review coverage · `codex`
-
-The policy choice for [#248](https://github.com/cpheinrich/morpheus/issues/248) is approved, and your current automation request authorizes reviewed merges. The original reviewer's fourth turn is complete: it cleared the test-only correction at `74290f6`, with 74 tests passing. It does not need to be repeated.
-
-[Your recorded authorization](https://github.com/cpheinrich/morpheus/pull/414#issuecomment-6377285624) separately requires review coverage for authored conflict-resolution edits. Current main has nine conflicts, including the check CLI, metadata workflow, their tests, two policy documents and generated output. The original author is no longer running. The general runbook permits named trunk integrations, but that does not erase your narrower recorded condition. Draft [PR414](https://github.com/cpheinrich/morpheus/pull/414) keeps its original author/reviewer history and auto-merge remains off. This corrects the stale request for the already-completed fourth turn, also identified in records-only PR463.
-
-- **A — authorize one original-reviewer turn for the current-main conflict integration (recommended).** Resolve those conflicts, have that reviewer assess the integrated result, and merge only after required checks pass.
-- **B — keep PR414 draft.** Preserve the approved implementation while deferring integration.
-- **C — decline the feature.** Record that new maintainer decision before closing the PR and issue.
-- **Other —** a different disposition.
-
-~
+Merged [PR580](https://github.com/cpheinrich/morpheus/pull/580) ignores an older cancelled run only when a newer run of the same workflow and head succeeds; pending replacements wait, and genuine failures still fail. The published Evo PR734 reproduction now returns green. Independent review cleared the implementation, 233 focused and 4,150 full-suite tests passed, and final-head CI passed. Issues #564/#577 are closed and the remote branch is deleted.
 
 ## ❗ 3. Kairos certificate-chain evidence · `codex`
 
@@ -47,7 +36,7 @@ The policy choice for [#248](https://github.com/cpheinrich/morpheus/issues/248) 
 
 ## ✅ 5. Remaining implementation queue is recorded · `codex`
 
-Next groups are missing-worktree recovery (#430, checking overlap with PR508), legacy website detection (#433), manager-review preflight (#444), shallow Git source ancestry (#445), exact roadmap-ID search (#478), active plugin-run preservation (#481), opt-in Swift brand output (#491). Audit-log issues #335 and #451 remain open intentionally. The atomic local issue ledger retains evidence, claims, exact review/check state and next actions; the weekly schedule stays active. Audit-owned and unrelated PRs remain untouched.
+Merged [PR581](https://github.com/cpheinrich/morpheus/pull/581) puts exact record identities before numeric token scores, preserves custom ranking and payload compatibility, and fixes the reviewer-found EIN-title edge case. The review condition is satisfied; 20 final search tests and final-head CI passed. Issue #478 closure and branch deletion are verified. Merged [PR582](https://github.com/cpheinrich/morpheus/pull/582) allows real-timer observation tolerance while pinning the exact 2999/3000 ms boundary deterministically. Independent review, 126 focused tests, 4,150 full-suite tests, 146 integrated focused tests and final-head CI passed. Issue #560 closure and branch deletion are verified. Next groups are missing-worktree recovery (#430), existing web/ detection (#433), manager-review preflight (#444), shallow Git ancestry (#445), active plugin-run preservation (#481), and opt-in Swift brand output (#491). Audit-log issues #335/#451 remain open intentionally. The atomic local issue ledger retains claims, review/check evidence and concrete next actions; the weekly schedule remains active. Unrelated and audit-owned PRs are preserved.
 
 ## ❗ 6. One older claim remains · `codex`
 

@@ -847,7 +847,9 @@ triggered the run:
 ```
 
 `morpheus heartbeat` runs a beat by hand; `.github/workflows/heartbeat.yml` is the reusable
-workflow and the calling repo owns the cron, since cadence is a project's own business. Exit codes
+workflow and the calling repo owns the cadence, since that is a project's own business. Morpheus's
+own `schedule.yml` is manual-only since 2026-11-03: Chris removed its hourly cron, and recurring runs
+now come from repository-owned schedules (§7.15). Exit codes
 separate the three outcomes that matter: **0** the beat ran (pick or no pick), **1** it could not
 read state, **2** dispatch was asked for and refused. A beat that could not reach origin refuses
 rather than proceeding — an unreadable queue is not an empty one, and reading it as empty would
@@ -1561,6 +1563,37 @@ pins, while [versioned closeout snapshots](docs/paperclip-closeout.md) preserve 
 verified attachment bytes without changing PM status. These prototypes are not extracted into
 the kit or installed in consumer HQs yet.
 
+### 7.15 Repository-owned schedules
+
+A recurring run belongs to the repository whose workflow it runs, so each repository declares its
+schedules in `.morpheus/schedules.json` on its default branch, and one shared, stateless tick
+dispatches them. GitHub's own `on.schedule` is best-effort — runs arrive late or not at all under
+load — and gives no record of which occurrence a run was for.
+
+- **Two invocations of one tick.** A host timer runs `morpheus scheduler tick` every minute; a
+  GitHub-hosted backup runs `tick --backup` every 15 minutes and dispatches only a slot that is 30
+  minutes overdue with nothing accepted since. Neither reads the other's state.
+- **Enrollment is a private list of repository names.** The host config holds names, an instance
+  id, a status path and optionally a GitHub CLI account — never a job definition, and no
+  hostname.
+- **History is the ledger.** An occurrence's identity is the run-name suffix
+  ` [schedule:<id>:<UTC instant>]`; any run carrying it means the slot was accepted, whatever its
+  conclusion. No database or queue: a history read that is unreadable or truncated is an error,
+  never "not yet dispatched". The only slot ever submitted is the latest due one, and never one
+  from before the registry file's commit.
+- **Receivers guard themselves.** `morpheus scheduler admit`, packaged as
+  `.github/actions/scheduler-admit`, turns away a run when another run of the same occurrence has a
+  successful `Scheduler occurrence admitted` marker step (the guard step itself is `Scheduler
+  admission` and succeeds for duplicates too), under whole-workflow `concurrency`. This narrows
+  duplicates; it does not make an external effect exactly-once, and existing domain receipts stay.
+- **A dispatch is not a delivery.** The scheduler's status file (atomic JSON: tick times,
+  per-schedule due slot, outcome, run id) reports whether the scheduler is running and submitting;
+  whether the work succeeded remains the receiver's evidence.
+
+Cron and timezone evaluation is Croner 11.0.0 (no dependencies), not hand-rolled. Morpheus itself
+registers no schedules: its hourly heartbeat cron was removed deliberately (§7.8). Contract,
+receiver template and health semantics: [`scheduler.md`](docs/runbooks/scheduler.md).
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.
@@ -2125,6 +2158,48 @@ inherits the domain, auth, and deploy pipeline. Shipped as `morpheus-kit/hq`.
 ```
 
 Public counterpart: `<domain>/brand` — see §12.4.
+
+### 11.0 Repository content is a deployment input
+
+An HQ is **static by default**. Markdown and other repository-owned records are read, validated and
+compiled during the deployment build; request-serving code never walks the repository or parses
+those source files. Repository-backed dynamic segments declare their complete route inventory with
+`generateStaticParams`. The generated HTML, search index and route inventory name the same source
+commit, so a deployment and a rollback always move them together.
+
+The verified session-cookie proxy remains the gate in front of shared static HQ material. That
+material must be visible to every role admitted by the gate and must contain no email, uid, role,
+account reference, portfolio value or other viewer-specific field. Static generation changes when
+the content is computed, not who may receive it: unauthenticated HTML, RSC and prefetch requests are
+still redirected before filesystem routing or cached content is served.
+
+Identity, accounts, portfolios, writes and other genuinely live data use an explicit dynamic page
+or a small client island backed by a narrow endpoint. Each such boundary verifies the session and
+its own authorization again and returns personalized responses as private, non-cacheable data. The
+static HQ layout never calls `cookies()`, `headers()`, Firestore or a repository filesystem API just
+to render shared chrome. A person's email is not sufficiently valuable in the rail to make every
+content page dynamic.
+
+Immutable external artifacts are not silently promoted to build inputs. A result stored in a
+private bucket stays behind its independently authorized, digest-verified loader unless its exact
+bytes and identity are declared reproducible deployment inputs. Builds and previews must not gain
+production data access merely to make a route static.
+
+Projects keep generated content split by use: a small metadata/link/search index, per-document
+compiled payloads, a static route inventory, and only the narrow fragments required by an explicit
+dynamic page. One manifest containing every document body recreates the server-bundle problem in a
+different file. CI derives the actual static/dynamic route inventory from the framework build,
+refuses undeclared dynamic HQ routes, and inspects runtime traces for Markdown anywhere under the
+canonical repository root outside dependency trees. A concrete URL emitted by a catch-all does not
+prove an overlapping explicit page static;
+the route inventory attributes each prerender entry to its source route. A prerender entry is not
+enough by itself: repository-backed routes must record `initialRevalidateSeconds: false`, because
+ISR may execute the repository loader again after the revalidation interval.
+
+Build-only content also makes deployment freshness part of correctness. A repository-content-only
+change must trigger the web deployment, and the deployed source commit must be observable in both
+pages and search. Large prerendered HTML still has a transfer and parsing cost; static generation is
+not permission to render an unbounded archive into one response.
 
 ### 11.1 Access control: Firebase Auth with custom claims
 
@@ -3210,11 +3285,15 @@ improvement?* Yes → kit. No → template.
 ### 18.0 Optional personal agent plugins
 
 `plugins/factory/` is a deliberate exception to the kit's single-package distribution:
-it is a personal Codex/Claude Code integration, not a dependency of company repositories. It owns its
+it is an experimental personal Codex/Claude Code integration, not a dependency of company repositories. It owns its
 manifest, skill, hooks, runtime, lockfile, tests and installation documentation. Neither
 `morpheus init` nor the CLI installer activates it. Explicit per-device installation copies
 the package into a personal marketplace; execution remains off until enabled. Personal
-settings and session records stay outside the repository.
+settings and session records stay outside the repository. The release status (`experimental`,
+default `off`) is repository-owned; the only per-machine switch is the private settings
+file's `mode`, which reinstalling never overwrites. In `manual` mode hooks advise and the
+coordinator starts every handoff; in `automatic` mode the prompt hook dispatches each turn to
+the routed worker and the coordinator manages it (the package README's "Automatic dispatch").
 
 The bridge works in both directions. Whichever agent holds the conversation is the
 coordinator, on this host's native login; it routes at safe checkpoints, keeps explicit
@@ -3235,6 +3314,24 @@ must be verified before delegation, and unknown/restricted confinement fails clo
 initial version. Cross-agent memory consists of explicitly selected read-only excerpts,
 with native memory controls respected and separate write ownership. See the package README
 for exact compatibility, subscription-overage and remote-host boundaries.
+
+The separate opt-in `plugins/factory/scripts/gateway-worker.mjs` entrypoint serves
+trusted unattended services without desktop identity, native login, quota discovery or
+Paperclip. An owner-only configuration outside workspaces fixes the claimed checkout,
+Codex gateway, credential reference, model, effort and exact sandbox/never approval.
+The caller durably saves each invocation UUID before calling; exclusive reservation
+precedes credential resolution, and status/same-ID replay only reconstruct evidence.
+The existing guardian owns the one-writer workspace lock, bounded lease and descendant
+cleanup. Caught preparation failures before spawn and definitive guardian ENOENT refusals
+retain phase-specific `never-launched` proof and a terminal failure with no native session.
+Corrected setup requires a fresh UUID without resume; the failed UUID never launches.
+Possible launches, dead guardians and missing proof remain unverified and held. Native
+continuation requires verified termination, a real session and the identical binding.
+Source/fake-provider qualification is distinct from runtime adoption and live gateway proof.
+The guardian retains UTC invocation bounds and monotonic duration through owned cleanup.
+Verified terminal results with a native session expose that optional runner timing through
+status/replay so lost caller replies do not lose review-duration evidence. Legacy, unknown
+and never-launched results invent no measurement; deadline and lease semantics stay unchanged.
 
 ### 18.1 Morpheus's own structure
 
@@ -3283,6 +3380,13 @@ a hosted search service. `morpheus-kit/hq-search` owns the MiniSearch document c
 snippets and browser loader; `/build`, `/pdf` and `/react` subpaths isolate build-time conversion,
 optional embedded-PDF-text extraction, and the interaction shell. OCR and image search are outside
 the first version. A PDF with no embedded text is indexed honestly by filename and path.
+The full normalized document text feeds MiniSearch's term postings but is not duplicated in stored
+result fields. Each build adapter stores one bounded precomputed excerpt for display, preserving
+full-text match coverage while keeping the private browser payload proportional to the index rather
+than the index plus another raw copy of every source document.
+Default ranking prioritizes exact record identities (complete title, path, filename or roadmap ID)
+before token scores and the result limit; ordinary topic searches retain source weighting.
+An explicit project `sourceWeight` callback replaces that default ranking policy.
 
 Each project still owns the consequential boundaries: its allowlisted content catalogue, route
 mapping, authorization gate, and visual system. It emits a versioned static index during the web

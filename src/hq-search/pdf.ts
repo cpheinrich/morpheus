@@ -1,4 +1,4 @@
-import type { HqSearchDocument } from "./index.js";
+import { searchExcerpt, type HqSearchDocument } from "./index.js";
 import { hqSearchAliases, plainText } from "./build.js";
 
 export type PdfSearchDocumentInput = {
@@ -43,5 +43,6 @@ export async function pdfSearchDocument(input: PdfSearchDocumentInput): Promise<
     metadata: input.metadata ?? "PDF",
     aliases: [input.aliases, discoveredAliases].filter(Boolean).join(" "),
     text: cleanText,
+    excerpt: searchExcerpt(cleanText),
   };
 }

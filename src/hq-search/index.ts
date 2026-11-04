@@ -1,4 +1,5 @@
 import MiniSearch, { type SearchResult } from "minisearch";
+import { ROADMAP_ID } from "../pm/id.js";
 
 export type HqSearchDocument = {
   id: string;
@@ -10,6 +11,7 @@ export type HqSearchDocument = {
   metadata: string;
   aliases: string;
   text: string;
+  excerpt?: string;
 };
 
 export type HqSearchPayload = {
@@ -21,13 +23,14 @@ export type HqSearchPayload = {
 };
 
 type IndexedHqSearchResult = SearchResult &
-  Pick<HqSearchDocument, "title" | "href" | "path" | "kind" | "text">;
+  Pick<HqSearchDocument, "title" | "href" | "path" | "kind"> &
+  Partial<Pick<HqSearchDocument, "excerpt" | "text">>;
 
 export type HqSearchResult = IndexedHqSearchResult & { snippet: string };
 
 export type HqSearchOptions = {
   limit?: number;
-  /** Project-specific ranking without forking the shared engine. */
+  /** Replaces default ranking, including exact-identity precedence. */
   sourceWeight?: (result: IndexedHqSearchResult) => number;
 };
 
@@ -52,7 +55,9 @@ const STOP_WORDS = new Set([
 
 const INDEX_OPTIONS = {
   fields: ["title", "path", "headings", "metadata", "aliases", "text"],
-  storeFields: ["title", "href", "path", "kind", "text"],
+  // MiniSearch indexes full text in its term postings. Store only the bounded
+  // display excerpt so the serialized index does not carry the raw text twice.
+  storeFields: ["title", "href", "path", "kind", "excerpt"],
   processTerm: (term: string) => {
     const normalized = term.toLocaleLowerCase();
     return STOP_WORDS.has(normalized) ? null : normalized;
@@ -79,9 +84,24 @@ function defaultSourceWeight(result: IndexedHqSearchResult) {
   return 1;
 }
 
+function exactIdentity(result: IndexedHqSearchResult, query: string, roadmapId: boolean) {
+  const path = result.path.toLocaleLowerCase();
+  const filename = path.slice(path.lastIndexOf("/") + 1);
+  const stem = filename.replace(/\.(?:mdx?|pdf)$/, "");
+  return [String(result.id).toLocaleLowerCase(), result.title.toLocaleLowerCase(), path, filename, stem]
+    .includes(query) || (roadmapId && stem.startsWith(`${query}-`));
+}
+
 export function createHqSearchIndex(documents: HqSearchDocument[]) {
   const index = new MiniSearch<HqSearchDocument>(INDEX_OPTIONS);
-  index.addAll(documents);
+  // Custom catalogues built against the original document type may not carry
+  // an excerpt yet. Derive it here, still during the build, without weakening
+  // the public source-document contract. Normalize supplied excerpts through
+  // the same boundary so a custom catalogue cannot expand stored result data.
+  index.addAll(documents.map((document) => ({
+    ...document,
+    excerpt: searchExcerpt(document.excerpt ?? document.text),
+  })));
   return index;
 }
 
@@ -100,14 +120,21 @@ export function searchHq(
 
   const resolved = typeof options === "number" ? { limit: options } : options;
   const sourceWeight = resolved.sourceWeight ?? defaultSourceWeight;
+  const identityQuery = query.trim().toLocaleLowerCase();
+  const roadmapId = ROADMAP_ID.test(normalized.toUpperCase());
 
   return (index.search(normalized, SEARCH_OPTIONS) as IndexedHqSearchResult[])
     .map((result) => ({ ...result, score: result.score * sourceWeight(result) }))
-    .sort((left, right) => right.score - left.score)
+    // Token scores split punctuated IDs; an exact identity wins before applying the limit.
+    .sort((left, right) =>
+      (resolved.sourceWeight ? 0 : Number(exactIdentity(right, identityQuery, roadmapId)) -
+        Number(exactIdentity(left, identityQuery, roadmapId))) || right.score - left.score,
+    )
     .slice(0, resolved.limit ?? 12)
     .map((result) => ({
       ...result,
-      snippet: searchSnippet(result.text, result.terms),
+      // Version-1 payloads built before excerpts were introduced stored `text`.
+      snippet: result.excerpt ?? searchSnippet(result.text ?? "", result.terms),
     }));
 }
 
@@ -127,4 +154,12 @@ export function searchSnippet(text: string, matchedTerms: string[], length = 190
   const excerpt = clean.slice(Math.max(0, start), end === -1 ? start + length : end).trim();
 
   return `${start > 0 ? "…" : ""}${excerpt}${end !== -1 && end < clean.length ? "…" : ""}`;
+}
+
+/** Build-time result preview with a hard bound independent of token length. */
+export function searchExcerpt(text: string, length = 190) {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (!clean) return "Filename and path only; this PDF has no extractable text.";
+  if (clean.length <= length) return clean;
+  return `${clean.slice(0, length).trimEnd()}…`;
 }

@@ -1,5 +1,116 @@
 # Decisions
 
+**Unattended Factory admission retains proven prelaunch failures** — 2026-11-03.
+MO-26-11-03-17.34.41. The explicit gateway-worker CLI is separate from desktop/Pool
+discovery: trusted service configuration fixes authority and gateway, the caller reserves
+an invocation UUID, and the existing guardian owns workspace serialization and cleanup.
+A caught preparation failure before spawn or definitive guardian ENOENT refusal records
+phase-specific never-launched proof, terminal failure and a null native session. Same-ID
+status/replay retain that failure even after setup recovers; a new intended invocation
+uses a fresh UUID without resume. Ambiguous launch, missing proof and unknown cleanup
+keep their holds; no historical unknown operation is cleared. Reuse existing atomic
+admission/result records and Node spawn evidence for this domain-specific lifecycle fix;
+no generic module, dependency, ledger, retry option, quota gate or provider fallback.
+The same guardian retains UTC invocation bounds and monotonic duration through owned
+cleanup, independently of its existing deadline clock. Verified terminal/native-session
+results expose optional runner timing for lost-reply review recovery; legacy, unknown
+and never-launched cases fabricate no duration. Consumers compute minutes from milliseconds.
+
+**Recurring runs are repository-owned schedules dispatched by one portable tick** — 2026-11-03.
+MO-26-11-03-12.57.01. Chris accepted the design: each repository declares `.morpheus/schedules.json`;
+a host timer runs `morpheus scheduler tick` every minute and one GitHub-hosted backup runs the same
+tick every 15 minutes with a 30-minute grace. The host config lists repository names only. Run
+history, keyed by the ` [schedule:<id>:<instant>]` run-name suffix, is the only ledger: no database,
+queue, controller, agent or dashboard. Only the latest due slot is ever submitted, never one before
+the registry file's commit; any run spends its slot; unreadable history is an error. Receivers run
+`scheduler admit` (a step named `Scheduler admission`) under whole-workflow concurrency, and a
+successful gated `Scheduler occurrence admitted` marker step is the only thing that consumes an
+occurrence. The tick's lock is taken over only from a dead owner PID, never for age alone. The
+shared iOS nightly's change baseline becomes the newest successful run with a successful upload job
+(`upload`, `Upload TestFlight build`, or `… / Upload TestFlight build`), refining the 2026-09-01
+cursor decision: an admission-only duplicate also succeeds, and its head must not stand in for an
+upload. This narrows duplicates and claims no exactly-once
+effect. Morpheus's hourly heartbeat cron is deliberately removed, per Chris; the workflow stays
+manual. Cron/timezone evaluation uses Croner 11.0.0 (registry modified 2026-11-01, no dependencies)
+rather than hand-rolled DST handling; GitHub access is Node `fetch` with a timeout and Zod.
+
+**Factory reads Codex ownership per MCP request** — 2026-11-03.
+MO-26-11-03-12.41.12. Desktop MCP processes can outlive their launching chat, so use
+host-injected `_meta.threadId` before the legacy `CODEX_THREAD_ID` environment fallback.
+Never take ownership from model arguments or fall back from malformed supplied metadata
+to an old process identity. This preserves the existing provider-neutral ownership contract.
+The unloaded-task reader accepts Codex's in-place zstd rollout compression and retains
+the active-turn, freshness and permission checks; missing files remain unavailable rather
+than triggering another session's settings. Reuse Node's built-in zstd as the profiler
+already does; this is a provider-specific correction with no generic module or dependency.
+
+**Factory delegation is a provider-neutral root tool with one sticky primary worker** —
+2026-11-02. MO-26-11-02-19.27.44. This supersedes the automatic prompt-hook dispatch decision
+immediately below. Neither Codex nor Claude hooks dispatch a user prompt. Both roots discover the
+same `factory_inspect`, `factory_delegate`, `factory_status`, `factory_wait`, `factory_answer` and
+`factory_stop` contract, with root identity injected by the MCP host and verified on every run
+control. An explicit user request to use the Factory binds; an explicit request to stay local
+does not; otherwise the root applies its ordinary sub-agent judgment and remains manager and
+verifier.
+
+The first successful primary launch pins provider and gateway for that root session. A failed
+preflight does not pin. Quota, gateway ordering or availability never silently changes an existing
+binding; an unavailable pinned gateway refuses, and changing provider requires a new root session.
+The primary provider conversation is scoped to its canonical checkout and never resumes across
+worktrees. `fresh:true` creates an isolated conversation on the same binding, may write only in a
+different isolated worktree, and never replaces the primary conversation; a clarification resumes
+the fresh conversation that asked it. Existing permission, quota, one-writer, concurrency,
+recursion and native-edit guards remain. `manual` and the saved `automatic` value are compatibility
+labels for the same model-directed behavior; global/project/task `off` remains authoritative. No
+new dependency.
+
+**Factory's prompt hook dispatches automatic turns; the coordinator stays the manager** —
+2026-11-02. MO-26-11-02-16.48.03. Chris authorized automatic dispatch with whichever agent holds
+the conversation remaining the manager, and asked that an activated session's first reply say
+Factory is delegating. In `automatic` mode `UserPromptSubmit` launches the routed worker through
+the existing start path. This supersedes "automatic dispatch is not part of this change" in the
+entry below.
+
+The design is held to these limits:
+
+- **Bounded handoff.** The worker gets the whole prompt (one over 32,000 characters is refused,
+  never truncated, since its end can carry the user's restrictions), the previous bridge result for the checkout,
+  and its own saved session. It gets no transcript; missing context comes from the clarification
+  loop.
+- **One launch per turn.** Codex's `turn_id` or Claude's `prompt_id` (transcript metadata only
+  as a fallback) identifies the turn, which is reserved durably before launch and run records name their
+  turn, so retries and restarts reconcile by run identity or report unknown.
+- **The manager first.** Active and waiting runs are returned to the manager before routing.
+- **Narrow local fallback.** Only existing routes and a `local:` prefix keep a turn local.
+  Errors and missing identity are explicit.
+
+A gateway is a shared credential, so there is no per-credential lock or scheduler. Lease, grace,
+`maxConcurrent` and per-checkout ownership are unchanged. The edit guard prevents races and is
+not a boundary. The notice is a deterministic `systemMessage`, plus a once-only first-reply
+instruction that is model-written and so not guaranteed. No dependency: the existing bridge,
+guardian, `ws` and Zod.
+
+**Factory is experimental; a machine opts in only through its saved `mode`** — 2026-11-02.
+MO-26-11-02-16.09.00. Chris approved a repository-owned experimental, default-off status with a
+private per-machine override. The override is the existing `config.json` `mode`, not a second
+`enabled` switch: a separate flag would add a state that can disagree with `mode`, and `off`
+already beats every project and task choice. `release` in `src/config.mjs` supplies the schema
+default and `doctor`'s report; the manifests say "Experimental". Installing stays separate from
+enabling: the installer writes settings only to carry an old `codex-claude` install's choice to
+a machine with none, never over a saved factory config. Install and activation stay personal to
+the machine (`factory@personal`, `factory@factory-local`); a test keeps every reference to the
+package, its settings directory and its variables out of `src/` and `.morpheus/`, so init,
+bootstrap, session start and self install/update cannot install or enable it. The coordinator
+remains the manager; automatic dispatch is not part of this change. No dependency.
+
+**Exact HQ record lookups precede token relevance by default** — 2026-11-02.
+MO-26-11-02-13.16.08, #478. Numeric token frequency must not displace the requested record.
+Use existing stored identity fields and the canonical roadmap-ID grammar, with filename
+boundaries, before the result limit. Keep ordinary MiniSearch/source-weight ranking within
+each group and preserve explicit project callbacks as a full ranking override. This is a
+small domain-specific correction using the existing MiniSearch dependency, with no second
+index, payload version, search provider or new package.
+
 **Reviews never wait on approval inside five turns, and any fresh reviewer may continue** —
 2026-10-30. MO-26-10-30-14.56.24. Evo's CD staging channel stalled from 2026-10-26 because a
 test-only repair PR (evo#665) had an incomplete initial review: the next turn needed
@@ -2250,3 +2361,12 @@ Three decisions stand:
 
 No dependency: existing GitHub concurrency, Morpheus reusable workflows and the upload action's
 automatic build number.
+
+## Superseded workflow cancellations retain exact run identity — 2026-11-02
+
+Issues #564/#577: a complete current-head census can contain an empty cancelled duplicate
+beside its successful replacement. Compare stable workflow IDs and creation time/run ID,
+never display name or response order. Ignore only the older cancellation after a successful
+replacement, or wait while that replacement is pending. Preserve genuine failures, unmatched
+cancellations and the final job-rollup check. This corrects the existing GitHub-specific
+census with native Map/Date operations; no generic module or dependency is needed.

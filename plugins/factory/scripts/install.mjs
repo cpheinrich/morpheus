@@ -20,7 +20,7 @@ import {
   helperCandidates,
   legacyPaths,
   legacyStatusLine,
-  migrateConfig,
+  settingsMigration,
   withoutLegacyMarketplaceEntry,
 } from "./install-lib.mjs";
 const source = fileURLToPath(new URL("..", import.meta.url));
@@ -95,11 +95,12 @@ async function legacyPresent(catalog) {
 }
 async function migrateLegacySettings() {
   await step("settings", async () => {
-    const old = await readJSON(legacy.config, null);
-    if (!old) return "no old config.json";
-    if (await exists(join(factoryHome, "config.json")))
-      return "factory already has a config.json; the old one was left alone";
-    const { config, dropped } = migrateConfig(old);
+    const plan = settingsMigration(
+      await exists(join(factoryHome, "config.json")),
+      await readJSON(legacy.config, null),
+    );
+    if (plan.skip) return plan.skip;
+    const { config, dropped } = plan;
     const { configWrite } = await import(
       pathToFileURL(join(destination, "src", "store.mjs")).href
     );
@@ -126,8 +127,17 @@ async function migrateLegacySettings() {
 async function removeLegacy(catalogName) {
   if (withClaude) {
     await step("Claude plugin", () => {
-      quiet("claude", ["plugin", "uninstall", LEGACY.claudePlugin]);
-      quiet("claude", ["plugin", "marketplace", "remove", LEGACY.claudeMarketplace]);
+      for (const args of [
+        ["plugin", "uninstall", LEGACY.claudePlugin],
+        ["plugin", "marketplace", "remove", LEGACY.claudeMarketplace],
+      ]) {
+        try {
+          quiet("claude", args);
+        } catch (e) {
+          if (!/not installed|not found|unknown|does not exist/i.test(String(e.stderr ?? e.message)))
+            throw e;
+        }
+      }
       return `uninstalled ${LEGACY.claudePlugin} and its marketplace`;
     });
   }
@@ -268,7 +278,7 @@ try {
   // Only now, with factory committed, is the old plugin removed.
   if (migrating) await removeLegacy(catalogName);
   console.log(
-    `Installed a standalone copy at ${destination}. Routing remains at its existing setting (off on first install). Start a new Codex task (and Claude session) to load the plugin and review/trust its hooks. Then run doctor and explicitly enable manual or automatic mode.`,
+    `Installed a standalone copy at ${destination}. Factory is experimental; routing remains at this machine's saved setting (off on first install). Start a new Codex task (and Claude session) to load the plugin and review/trust its hooks. Then run doctor and explicitly enable model-directed mode with \`enable manual\` (\`automatic\` remains a compatibility alias).`,
   );
 } catch (e) {
   console.error(e.message);
