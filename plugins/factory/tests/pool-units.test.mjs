@@ -102,17 +102,19 @@ test("a host file refuses shared workspaces, loose permissions and a location in
   const loaded = await loadHost(path);
   assert.deepEqual([loaded.graceSeconds, loaded.maxRunSeconds, loaded.quota], [30, 3600, {}]);
 });
-test("a delegated worker cannot start or follow up a pool conversation from the CLI", async (t) => {
+test("the CLI rejects removed pool operations and prevents recursive delegation", async (t) => {
   const { execFile } = await import("node:child_process");
   const root = await realpath(await mkdtemp(join(tmpdir(), "pool-loop-")));
   t.after(() => rm(root, { recursive: true, force: true }));
-  for (const [command, args] of [["pool.start", "{}"], ["pool.followup", "{}"], ["pool.answer", "{}"], ["pool.reattach", '{"retry":true}'], ["pool.recover", "{}"], ["start", "{}"]]) {
+  for (const [command, args] of [["pool.start", "{}"], ["pool.followup", "{}"], ["pool.answer", "{}"], ["pool.reattach", '{"retry":true}'], ["pool.recover", "{}"], ["start", "{}"], ["codex.start", "{}"], ["factory.delegate", "{}"]]) {
     const result = await new Promise((resolve) =>
       execFile(process.execPath, [new URL("../scripts/bridge.mjs", import.meta.url).pathname, command, args], {
         env: { PATH: process.env.PATH, FACTORY_HOME: root, FACTORY_DELEGATED: "1" },
       }, (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stderr })),
     );
-    assert.deepEqual([result.code, result.stderr.trim()], [1, "Delegated workers cannot delegate again."]);
+    assert.deepEqual([result.code, result.stderr.trim()], [1, command.startsWith("pool.")
+      ? "Unsupported Factory command. Use factory.inspect and factory.delegate for gateway workers."
+      : "Delegated workers cannot delegate again."]);
   }
 });
 

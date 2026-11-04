@@ -35,3 +35,5 @@ Independent review cleared the removal with no findings; the reviewer independen
   "findings": []
 }
 ```
+
+CI found one legacy CLI expectation still asserting the former pool recursion error. The new implementation correctly refused the obsolete command earlier. Updated that regression to require the unsupported-command error for removed pool commands while keeping recursion coverage for current start, codex.start and factory.delegate. No implementation change was needed.
