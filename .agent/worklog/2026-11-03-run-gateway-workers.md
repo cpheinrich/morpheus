@@ -221,3 +221,66 @@ because no shared core changed. Reused the previous dependency scope; no new dep
 The earlier context read-hook certification limitation remains unchanged and is not a
 waiver or a claimed receipt. Independent source review has not begun; this is an
 integration correction before its first turn.
+
+## Independent review turn 1 — FGW-001 retained, substantive, blocked
+
+The fresh reviewer `/root/factory_gateway_source_review` reviewed
+`025e7dd3fd87b92caec46fec07c51777a6811924` and blocked on FGW-001, with no other
+findings and no conditional clearance. The reviewer reproduced the defect through the
+actual runner/guardian using a fake provider: a tool launched with `start_new_session=True`
+survived in another PGID while the first result said terminationVerified=true and a
+second writer completed. The reviewer killed its synthetic descendant. This finding is
+preserved as substantive; the author has not cleared or retracted it. The supervising
+root holds the reviewer-issued identity, measured timing and formal review record.
+
+### FGW-001 author response for the same reviewer's required follow-up
+
+Accepted. The PGID-only census was insufficient for ordinary detached tools. Added a
+small Python ownership helper used only by unattended admission: the provider receives
+an inherited run marker; same-user process snapshots combine marker membership with
+parent/start-identity tracking. Detached/reparented descendants remain discoverable even
+if their original launcher exits between snapshots. Before signalling an individual PID,
+the helper rechecks its start identity. Unreadable census or ambiguous identity makes
+cleanup unverified, and admission remains held. Process environment text is inspected
+in memory and never persisted or logged; only owned PID/start identities enter the
+process record. The legacy desktop guardian's behavior is unchanged.
+
+The guardian now terminates tracked descendants through normal escalation and requires
+an empty verified ownership census after cleanup. This includes TERM-ignoring tools in
+different sessions/groups, not only the provider group. The existing same-run pointer
+and kernel workspace lock still control readmission; no new lease, quota control,
+scheduler or service was added. Reused Python standard-library process APIs and the
+existing identity-check pattern; no generic package or dependency was introduced.
+
+The new actual-process regression starts a detached TERM-ignoring tool that writes a
+heartbeat after reparenting. The first invocation must remove that descendant before
+claiming termination; a replacement invocation then runs while the old heartbeat remains
+unchanged. A second regression makes process census unreadable and requires held
+admission rather than treating a failed lookup as an empty group. Existing timeout,
+service-death, killed-guardian, descendant, redaction and desktop regressions are retained.
+The new helper is included by the existing recursive plugin source copy, and the plugin
+check command now parses both Python source files.
+
+Ownership remains a cooperating-tool contract under the authorized OS user, not kernel
+isolation against a full-access user deliberately removing ownership metadata and
+evading observation. Merely using setsid/start_new_session does not remove the marker.
+That userland limit does not justify the original PGID-only false termination claim;
+ordinary detached tools now participate in cleanup and its verification.
+
+Validation: 72/72 focused tests passed using the same seven-file batch recorded above,
+including 17 unattended tests. After tightening failed identity lookups to distinguish
+true process absence from unreadable identity, reran the 17-test ownership file.
+Typecheck, compile, plugin syntax checks, PM index and diff checks passed. No shared core
+changed and the full local repository suite remains unrun. Source review remains blocked
+pending the same reviewer's follow-up; no author clearance is asserted here.
+
+Refreshed the explicitly authorized authenticated read-only smoke after changing guardian
+identity: the new guardian/helper source hashes were captured before launch. A new caller
+UUID completed on the existing Codex gateway with gpt-6.1-sol/medium, read-only sandbox,
+exit 0, verified descendant cleanup, an unchanged empty workspace and agent-message-only
+events. Status and same-ID replay matched exactly with unchanged event bytes. A private
+value scan found no credential value in the new evidence or isolated Codex home, and no
+native auth file was created. Exact private invocation, source hashes, native session,
+admission and evidence paths are supplied to the root separately. This supersedes the
+older smoke's guardian identity only; it does not establish installation, service startup
+or consumer delivery acceptance. No Evo edits, runtime install or vendor/native fallback.

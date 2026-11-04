@@ -621,12 +621,22 @@ launching a provider.
 
 The CLI process is the service owner and renews its guardian lease. There is no desktop
 owner lease. If the actual service process dies, the guardian expires that lease, kills
-its owned process group and retains events/process evidence. Deadline and output limits
-also stop the group and retain the native session. `--status` reconstructs a checkpoint
+its owned descendants and retains events/process evidence. Deadline and output limits
+also stop owned descendants and retain the native session. `--status` reconstructs a checkpoint
 from those files after restart without a provider call. Continue only with the previous
 admission ID, a verified terminated session and an identical binding, including job,
 checkout, gateway credential reference, model and permissions. A changed workspace or
 route never resumes that session. No automatic retry or continuation is performed.
+
+For unattended runs, each provider receives a unique inherited run marker. The guardian
+combines a full same-user process census with parent/start-identity tracking, so ordinary
+`start_new_session`/`setsid` tools remain owned after their launcher exits. Cleanup signals
+individual descendants after rechecking their start identities and requires an empty
+verified census before releasing admission. An unreadable census or ambiguous identity
+keeps admission held. Process environments are inspected in memory and never logged by
+this census. Like the existing full-access contract, this cannot contain a user or tool
+that deliberately discards ownership metadata and evades observation; use OS-enforced
+isolation for untrusted processes. Merely detaching a tool does not discard its marker.
 
 A dead guardian or missing/corrupt process evidence leaves the workspace held with
 `needs_input`, even when its PID is gone. An operator must independently reconcile that

@@ -3,6 +3,7 @@ Even if the service is killed, this process expires the lease and removes descen
 """
 import json, os, selectors, signal, subprocess, sys, time, fcntl
 from pathlib import Path
+from owned_processes import OwnedProcesses, MARKER
 
 job_path = Path(sys.argv[1])
 job = json.loads(job_path.read_text())
@@ -35,8 +36,11 @@ if job.get('admission'):
         if not safe: refuse('Previous workspace admission has unverified termination')
     tmp = current_path.with_suffix('.tmp')
     tmp.write_text(json.dumps({'runId': job['runId'], 'directory': str(root)})); tmp.replace(current_path)
+owned = OwnedProcesses(job['runId']) if job.get('admission') else None
+child_env = dict(os.environ)
+if owned: child_env[MARKER] = job['runId']
 try:
-    child = subprocess.Popen(job['argv'], cwd=job['cwd'], env=os.environ,
+    child = subprocess.Popen(job['argv'], cwd=job['cwd'], env=child_env,
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              start_new_session=True)
 except Exception as error:
@@ -80,6 +84,7 @@ def output(dest, data, final=False):
 def stop(signum=signal.SIGINT):
     global stopping
     if stopping is None: stopping = time.monotonic()
+    if owned: owned.signal(signum)
     try: os.killpg(child.pid, signum)
     except ProcessLookupError: pass
     except PermissionError:
@@ -99,6 +104,7 @@ close_requested = text_input
 try:
     while True:
         now=time.monotonic()
+        if owned: owned.observe()
         if (root/'cancel').exists() or now-start > job['maxRunSeconds']:
             if job.get('admission'): state['reason']='Cancelled' if (root/'cancel').exists() else 'Run deadline reached'
             stop()
@@ -158,6 +164,11 @@ finally:
     stop(signal.SIGTERM)
     deadline=time.monotonic()+2
     while time.monotonic()<deadline:
+        if owned:
+            if owned.empty(): break
+            owned.signal(signal.SIGTERM)
+            time.sleep(.05)
+            continue
         try: os.killpg(child.pid,0)
         except (ProcessLookupError, PermissionError):break
         time.sleep(.05)
@@ -165,12 +176,15 @@ finally:
     child.wait()
     output(out, b'', True); output(err, b'', True)
     out.close();err.close();selector.close()
-    if job.get('admission'):
-        # Sending KILL is not proof of cleanup. Unknown ps results retain admission.
-        try:
-            rows = subprocess.check_output(['ps','-axo','pid=,pgid=,stat='], text=True)
-            state['cleanupVerified'] = not any(int(parts[1]) == child.pid and not parts[2].startswith('Z')
-                for line in rows.splitlines() if len(parts := line.split()) >= 3)
-        except Exception: state['cleanupVerified'] = False
+    if owned:
+        # KILL is not proof: wait for detached tools too, then retain admission on
+        # any unreadable census, identity ambiguity or remaining live descendant.
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and not owned.empty():
+            owned.signal(signal.SIGKILL)
+            time.sleep(.05)
+        state['cleanupVerified'] = owned.empty()
+        state['ownedProcesses'] = [{'pid': pid, 'identity': list(stamp)}
+                                   for pid, stamp in owned.known.items()]
     state.update(state='exited',exitCode=child.returncode,interrupted=interrupted)
     persist()

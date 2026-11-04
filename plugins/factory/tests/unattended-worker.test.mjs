@@ -248,3 +248,42 @@ test('a crash between directory reservation and evidence publication refuses sam
   await assert.rejects(gatewayWorker(f.configPath,'no replay',null,id),/Unknown admission ID/);
   await assert.rejects(readFile(join(f.cwd,'observed.json')),{code:'ENOENT'});
 });
+test('detached reparented descendants are killed before a replacement writer is admitted',async t=>{
+  const detached=`import os,signal,time,pathlib
+signal.signal(signal.SIGTERM,signal.SIG_IGN)
+pathlib.Path('escaped-ready').write_text(str(os.getpid()))
+while True:
+ pathlib.Path('escaped-heartbeat').write_text(str(time.time_ns()))
+ time.sleep(.02)
+`;
+  const provider=`import sys,subprocess,pathlib,time,json
+sys.stdin.read()
+p=subprocess.Popen(['python3','-c',${JSON.stringify(detached)}],start_new_session=True,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+while not pathlib.Path('escaped-ready').exists(): time.sleep(.01)
+print(json.dumps({'type':'thread.started','thread_id':'session-detached'}),flush=True)
+print(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':json.dumps({'outcome':'completed','summary':'detached tool started','evidence':[]})}}),flush=True)
+print(json.dumps({'type':'turn.completed'}),flush=True)
+`;
+  const f=await setup(t,provider);
+  t.after(async()=>{try{process.kill(Number(await readFile(join(f.cwd,'escaped-ready'),'utf8')),'SIGKILL');}catch{}});
+  const first=await gatewayWorker(f.configPath,'first writer');
+  const pid=Number(await readFile(join(f.cwd,'escaped-ready'),'utf8'));
+  assert.equal(first.terminationVerified,true);
+  assert.equal(first.result.outcome,'completed');
+  const proc=await json(join(f.state,first.admissionId,'process.json'));
+  assert.ok(proc.ownedProcesses.some(p=>p.pid===pid));
+  try { process.kill(pid,0); assert.match(await readFile(`/proc/${pid}/stat`,'utf8'),/\) Z /); } catch(e) { if(!['ENOENT','ESRCH'].includes(e.code)) throw e; }
+  const heartbeat=await readFile(join(f.cwd,'escaped-heartbeat'),'utf8');
+  await writeFile(join(f.root,'bin','codex'),'#!/usr/bin/env python3\n'+doneScript,{mode:0o700});
+  const second=await gatewayWorker(f.configPath,'replacement');
+  assert.equal(second.result.outcome,'completed');assert.equal(second.terminationVerified,true);
+  assert.equal(await readFile(join(f.cwd,'escaped-heartbeat'),'utf8'),heartbeat);
+});
+test('unreadable descendant census retains admission instead of certifying an empty group',async t=>{
+  const f=await setup(t);
+  await writeFile(join(f.root,'bin','ps'),'#!/bin/sh\nexit 1\n',{mode:0o700});
+  const first=await gatewayWorker(f.configPath,'unknown process ownership');
+  assert.equal(first.terminationVerified,false);
+  assert.equal(first.result.outcome,'needs_input');
+  assert.match((await gatewayWorker(f.configPath,'must hold')).result.summary,/unverified termination/);
+});
