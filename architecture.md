@@ -3738,9 +3738,12 @@ visual capture still runs simulator tests). A run whose SHA is a strict ancestor
 successful upload skips as superseded, forced or not. A re-run keeps its original SHA, and
 `release-preflight` admits any reviewed commit `main` contains, so this check is what stops a
 re-run of an older night from shipping code older than TestFlight already has under a higher build
-number (MO-26-11-04-00.19.43). A missing or unavailable baseline, and history unrelated to it,
-build conservatively: only a proven ancestor skips. Manual callers may force a build, which skips
-the watched-path comparison but not the superseded check. Keeping the caller
+number (MO-26-11-04-00.19.43). When the baseline cannot prove the run's age, the run builds
+conservatively only if it is main's current head, read fresh from GitHub. That covers an
+unreadable history, no upload found, an unavailable commit, or a baseline the run does not descend
+from. Any other commit, or a main head that cannot be read, fails the step, as the head-only
+preflight did. Manual callers may force a build, which skips the watched-path comparison but not
+these age checks. Keeping the caller
 workflow filename stable makes its successful runs the durable release cursor without a second
 state store.
 

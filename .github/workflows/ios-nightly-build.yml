@@ -33,7 +33,7 @@ on:
         type: string
         required: true
       force-build:
-        description: Build without the watched-path comparison; a commit older than the last successful upload still skips.
+        description: Build without the watched-path comparison; the source-age checks (superseded skip, current-main requirement) still apply.
         type: boolean
         default: false
       runner:
@@ -258,24 +258,47 @@ jobs:
 
           # A re-run keeps its original GITHUB_SHA. Release preflight accepts any reviewed commit that
           # main contains, so this job is what keeps a re-run of an older night from shipping code
-          # older than a build TestFlight already has (with a higher build number). Only proof that
-          # the last upload descends from this commit skips; anything unreadable decides nothing.
+          # older than a build TestFlight already has (with a higher build number). Proof that the
+          # last upload descends from this commit skips the night.
           superseded_by() {
             [ -n "$1" ] && [ "$1" != "$CURRENT_SHA" ] && git merge-base --is-ancestor "$CURRENT_SHA" "$1" 2>/dev/null
           }
           superseded_reason() {
             printf 'this commit is older than the last successful upload %s; a newer source already reached TestFlight' "${1:0:12}"
           }
+          # Without a baseline that this commit descends from (unreadable, none, unavailable or
+          # unrelated), age cannot be proved, so only main's current head may build: what
+          # preflight required before it admitted pinned sources. Read main fresh, never from the
+          # checkout's snapshot, and refuse when it cannot be read rather than report a healthy skip.
+          require_current_main() {
+            local main_sha
+            if ! main_sha="$(gh api -H "Accept: application/vnd.github+json" \
+                "/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha' </dev/null)" \
+                || ! [[ "$main_sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "$1, and current main could not be read; refusing to release ${CURRENT_SHA} without proof that it is not older than the last upload" >&2
+              exit 1
+            fi
+            if [ "$main_sha" != "$CURRENT_SHA" ]; then
+              echo "$1, and ${CURRENT_SHA} is not current main (${main_sha}); refusing: a re-run of an older run could ship code older than TestFlight already has" >&2
+              exit 1
+            fi
+          }
 
           if [ "$FORCE_BUILD" = "true" ]; then
             reason="forced by the caller"
-            # Forcing ignores the watched-path comparison, never the superseded check above. An
-            # unreadable baseline leaves the forced build alone, as before.
+            # Forcing ignores the watched-path comparison, never the age checks above.
             if [[ "$WORKFLOW_FILE" =~ ^[A-Za-z0-9._-]+\.(yml|yaml)$ ]] \
-                && forced_baseline="$(find_upload)" && superseded_by "$forced_baseline"; then
-              build=false
-              baseline="$forced_baseline"
-              reason="$(superseded_reason "$forced_baseline")"
+                && forced_baseline="$(find_upload)" && [ -n "$forced_baseline" ] \
+                && git cat-file -e "${forced_baseline}^{commit}" 2>/dev/null; then
+              if superseded_by "$forced_baseline"; then
+                build=false
+                baseline="$forced_baseline"
+                reason="$(superseded_reason "$forced_baseline")"
+              elif ! git merge-base --is-ancestor "$forced_baseline" "$CURRENT_SHA" 2>/dev/null; then
+                require_current_main "the last successful upload is not an ancestor of this commit"
+              fi
+            else
+              require_current_main "the upload baseline could not be established"
             fi
           else
             if [[ ! "$WORKFLOW_FILE" =~ ^[A-Za-z0-9._-]+\.(yml|yaml)$ ]]; then
@@ -303,15 +326,19 @@ jobs:
             if ! baseline="$(find_upload)"; then
               baseline=""
               reason="the upload baseline could not be read; building conservatively"
+              require_current_main "the upload baseline could not be read"
             elif [ -z "$baseline" ]; then
               reason="no successful upload found among the latest 100 successful runs"
+              require_current_main "no successful upload was found"
             elif ! git cat-file -e "${baseline}^{commit}" 2>/dev/null; then
               reason="the last successful upload commit is unavailable; building conservatively"
+              require_current_main "the last successful upload commit is unavailable"
             elif superseded_by "$baseline"; then
               build=false
               reason="$(superseded_reason "$baseline")"
-            elif ! git merge-base --is-ancestor "$baseline" "$CURRENT_SHA"; then
+            elif ! git merge-base --is-ancestor "$baseline" "$CURRENT_SHA" 2>/dev/null; then
               reason="the last successful upload is not an ancestor of main; building conservatively"
+              require_current_main "the last successful upload is not an ancestor of this commit"
             else
               set +e
               git diff --quiet "$baseline" "$CURRENT_SHA" -- "${paths[@]}"

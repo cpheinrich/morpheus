@@ -12,8 +12,11 @@ refuse. No input was added: every caller (Evo `ios-delivery`, `ios-full-verifica
 source should ship is the caller's decision. Independent review found that current-head equality
 had also stopped a re-run of an older nightly from uploading older code under a higher build
 number. So `ios-nightly-build` now skips, as superseded and even when forced, a run whose SHA is a
-strict ancestor of its last successful upload; unknown or unrelated history still builds
-conservatively. Evo's promotion already refuses a source older than production ships. This supersedes
+strict ancestor of its last successful upload. A second turn found the same downgrade when the
+Actions API cannot be read. So whenever the baseline cannot prove age (unreadable, none,
+unavailable or unrelated), only main's current head, read fresh from GitHub, may build. Anything
+else, including an unreadable main, refuses with exit 1, as the old head-only preflight did. Evo's
+promotion already refuses a source older than production ships. This supersedes
 "current" in the 2026-08-28 external-actions entry. The Firebase release action's own current-main
 check is unchanged. Native `gh api` and Bash; no dependency.
 
