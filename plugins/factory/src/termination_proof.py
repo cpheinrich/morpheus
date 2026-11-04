@@ -56,6 +56,15 @@ def valid(directory, run_id):
         return False
 
 
+def _comparable(words):
+    """An `lstart` as the guardian's TZ-less, C-format environment prints it, or not comparable."""
+    try:
+        datetime.strptime(' '.join(words), '%a %b %d %H:%M:%S %Y')
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 def _known(state):
     """The owned identities the guardian recorded: {pid: (uid, lstart words)}, or None if incomplete."""
     owned = state.get('ownedProcesses')
@@ -67,7 +76,8 @@ def _known(state):
             return None
         pid, stamp = entry.get('pid'), entry.get('identity')
         if not (type(pid) is int and pid > 0 and isinstance(stamp, list) and len(stamp) == 6
-                and type(stamp[0]) is int and all(isinstance(word, str) and word for word in stamp[1:])):
+                and type(stamp[0]) is int and all(isinstance(word, str) and word for word in stamp[1:])
+                and _comparable(stamp[1:])):
             return None
         known[pid] = tuple(stamp)
     return known
@@ -92,6 +102,11 @@ def _guardian_gone(pid, recorded):
 
 
 def reconcile(directory, run_id):
+    # `ps lstart` prints local time in the caller's locale. The guardian recorded identities with
+    # no TZ and a C-compatible format, so compare in that same form or a live process and the live
+    # guardian would read as reused PIDs.
+    os.environ.pop('TZ', None)
+    os.environ['LC_ALL'] = 'C'
     directory = Path(directory)
     if valid(directory, run_id):
         return {'proven': True, 'reason': 'already reconciled'}
@@ -102,7 +117,9 @@ def reconcile(directory, run_id):
         return {'proven': False, 'reason': 'existing reconciliation does not match this admission'}
     known = _known(state)
     pid, recorded = state.get('guardianPid'), state.get('guardianIdentity')
-    if known is None or not (type(pid) is int and pid > 0) or not (isinstance(recorded, str) and recorded.strip()):
+    guardian_words = recorded.split() if isinstance(recorded, str) else []
+    if (known is None or not (type(pid) is int and pid > 0) or len(guardian_words) != 7
+            or not all(word.isdigit() for word in guardian_words[5:]) or not _comparable(guardian_words[:5])):
         return {'proven': False, 'reason': 'original ownership evidence is incomplete'}
     # Bind the proof to the record as read before the census; a change since then invalidates it.
     proof = {'version': 1, 'admissionId': run_id, 'method': 'fresh owned-process census',

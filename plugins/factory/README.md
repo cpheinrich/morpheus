@@ -599,6 +599,9 @@ It refuses and writes nothing when any of the following holds:
 - the record is for another run, or is running, rejected or never launched;
 - cleanup was already verified.
 
+Process start times are compared the way the guardian recorded them: the reconcile drops `TZ` and
+uses `LC_ALL=C` before any `ps`, and it refuses recorded identities that are not in that format.
+
 `--status` and the guardian's admission gate accept a valid proof through one shared check, so
 `--resume` then continues normally. A later change to either bound file invalidates the proof.
 Repeating `--reconcile` is idempotent, and exits 0 only when termination is verified.

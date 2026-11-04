@@ -577,6 +577,9 @@ test('--reconcile fails closed on incomplete, unproven or ambiguous evidence, an
   const guardian = start();
   await refuse('the recorded guardian still alive', r => ({ ...r, guardianPid: guardian, guardianIdentity: guardianIdentity(guardian) }), 'guardian may still be running');
   await refuse('malformed identity', r => ({ ...r, ownedProcesses: [{ pid: gone, identity: oldStamp.slice(0, 5) }] }), 'original ownership evidence is incomplete');
+  // Only the guardian's TZ-less C-format lstart can be compared; any other format proves nothing.
+  await refuse('a non-C recorded start', r => ({ ...r, ownedProcesses: [{ pid: gone, identity: [uid, 'Wed', '4', 'Nov', '15:27:35', '2026'] }] }), 'original ownership evidence is incomplete');
+  await refuse('a guardian identity without pgid and uid', r => ({ ...r, guardianIdentity: 'Mon Jan  5 01:02:03 2026' }), 'original ownership evidence is incomplete');
   await refuse('no ownership record', r => { delete r.ownedProcesses; return r; }, 'original ownership evidence is incomplete');
   await refuse('empty ownership record', r => ({ ...r, ownedProcesses: [] }), 'original ownership evidence is incomplete');
   await refuse('no guardian identity', r => { delete r.guardianIdentity; return r; }, 'original ownership evidence is incomplete');
@@ -587,6 +590,23 @@ test('--reconcile fails closed on incomplete, unproven or ambiguous evidence, an
   await refuse('cleanup already verified', r => ({ ...r, cleanupVerified: true }), notEligible, { alreadyVerified: true });
   await refuse('never launched', () => null, notEligible);
   await refuse('a proof for other bytes', r => r, 'existing reconciliation does not match this admission', { proof: JSON.stringify({ version: 1, admissionId: 'x' }) });
+  // The caller's TZ or locale changes how ps prints a start time. Identities recorded in this
+  // environment must still match when the reconcile runs under another one (review F1).
+  const helper = fileURLToPath(new URL('../src/termination_proof.py', import.meta.url));
+  const shown = (pid, env) => execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', env: { ...process.env, ...env } }).trim();
+  const ownedAlive = start(), guardianAlive = start();
+  const zone = ['Pacific/Kiritimati', 'Etc/GMT+12'].find(tz => shown(ownedAlive, { TZ: tz }) !== shown(ownedAlive, {}));
+  for (const [label, env] of [[`TZ=${zone}`, { TZ: zone }], ['LC_ALL=en_GB.UTF-8', { LC_ALL: 'en_GB.UTF-8' }]]) {
+    assert.notEqual(shown(ownedAlive, env), shown(ownedAlive, {}), `${label} prints a different start time`);
+    for (const [guardianLive, reason] of [[true, 'guardian may still be running'], [false, 'owned processes remain']]) {
+      const c = await make(r => ({ ...r, ownedProcesses: [{ pid: ownedAlive, identity: [uid, ...lstart(ownedAlive)] }],
+        ...(guardianLive ? { guardianPid: guardianAlive, guardianIdentity: guardianIdentity(guardianAlive) } : {}) }));
+      const out = JSON.parse(execFileSync('python3', [helper, 'reconcile', c.dir, c.id], { encoding: 'utf8', env: { ...process.env, ...env } }));
+      assert.deepEqual(out, { proven: false, reason }, `${label}, guardian ${guardianLive ? 'alive' : 'gone'}`);
+      await assert.rejects(readFile(join(c.dir, 'reconciliation.json')), { code: 'ENOENT' });
+      assert.equal(alive(ownedAlive), true); assert.equal(alive(guardianAlive), true);
+    }
+  }
   // An unreadable census holds even when every recorded process is gone.
   await writeFile(join(f.root, 'bin', 'ps'), '#!/bin/sh\nexit 1\n', { mode: 0o700 });
   await refuse('an unreadable census', r => r, 'process census unreadable');

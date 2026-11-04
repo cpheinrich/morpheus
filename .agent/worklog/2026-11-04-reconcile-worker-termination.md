@@ -80,6 +80,32 @@ gate (`guardian.py`) and `workerResult` both read it directly.
   and `pnpm compile` pass with no generated changes.
 - All 7 guard mutations fail the tests (Appendix A).
 
+## Review finding F1 (condition C1)
+
+The fresh reviewer found that `ps lstart` prints local time in the caller's locale. The guardian
+records identities under an environment with no `TZ`, while `--reconcile` ran with the operator's
+full environment. Under another `TZ` or `LC_ALL`, a live owned process and the live guardian both
+read as reused PIDs, and the reconcile wrote a false proof.
+
+Fixed in `termination_proof.reconcile`: before any `ps`, it drops `TZ` and sets `LC_ALL=C`. It
+then refuses unless every recorded owned identity's five start words, and the first five words of
+`guardianIdentity`, parse as `%a %b %d %H:%M:%S %Y`. The guardian identity must also have exactly
+seven words, the last two integers. The tracker, guardian and Node code are unchanged.
+
+Before the fix, with b1d000a5's helper:
+- the new non-C-start case failed;
+- run on their own, the TZ cases failed too: under `TZ=Pacific/Kiritimati` with the guardian alive,
+  the reconcile returned `proven: true` and wrote the proof.
+
+After the fix:
+- under that `TZ` and under `LC_ALL=en_GB.UTF-8`, the reconcile refuses with the guardian alive
+  ("guardian may still be running") and with only the owned process alive ("owned processes
+  remain");
+- no proof is written and both processes stay alive;
+- a recorded start of `Wed 4 Nov 15:27:35 2026` and a 5-word guardian identity are refused.
+
+Tests now: the two reconcile tests pass 2/2, the full plugin suite 180/180, and `check.mjs` exits 0.
+
 ## Limits
 
 The proof meets the guardian's own standard and no more. Identity is uid plus start time to the

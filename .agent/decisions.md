@@ -8,7 +8,8 @@ standard: marker, recorded identities and descendants, plus the recorded guardia
 sends no signals and launches nothing. On positive proof only, it writes one `reconciliation.json`
 bound by SHA-256 to that admission's `process.json` and `admission.json`. One Python check serves
 the guardian's admission gate and `--status`. Missing, ambiguous, unreadable or stale evidence keeps
-the hold, and `process.json` is never rewritten. A reconcile daemon, an auto-reconciling `--status`
+the hold, and `process.json` is never rewritten. Start times are compared as the guardian recorded
+them (no `TZ`, `LC_ALL=C`); a recorded identity in any other format is refused. A reconcile daemon, an auto-reconciling `--status`
 and a flag reset were rejected: the observed defect needs one explicit, evidence-bound recovery.
 Standard library and the existing tracker; no dependency.
 
