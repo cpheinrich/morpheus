@@ -12,3 +12,26 @@ Verification: `node --test plugins/factory/tests/mcp.test.mjs plugins/factory/te
 Codebase graph Tier 2 used project Users-chrisheinrich-code-morpheus, generation 2026-11-04T06:11:02Z, complete bounded pool/tools query (53 entries), poolMethods snippet/trace, and coverage checks for the changed plugin paths. Sole recorded scope exclusion is generated `src/__pycache__`; no source gaps recorded. Graph trace reports no edges for the tool constant; exact source reads established its registration consumers. Coverage is best effort.
 
 Deployment: source/PR only while the parent chat's gateway worker is active. Do not replace/restart the running bridge. After merge and a safe idle point, supported `node plugins/factory/scripts/install.mjs` updates the personal installation; new Codex chats load the new MCP inventory. Existing chats may retain old tool inventories until reopened. Evo's primary `AGENTS.md` still has a top-level "Morpheus Factory — Chris's routing preference" paragraph describing the Paperclip pool; its correction is owned by the parent Evo task and the user's current instruction supersedes it.
+
+Independent review cleared the removal with no findings; the reviewer independently reran all 17 focused MCP, CLI and gateway tests. Gateway behavior and retained legacy backend consumers remain unchanged.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "3f5b9fef1cd02dd0cec566d5f2d4f8c9e7780b48",
+  "reviewed": "522909af9ca38a32c76e3956ea38a16194005dd1",
+  "covered": "522909af9ca38a32c76e3956ea38a16194005dd1",
+  "authorSession": "01a1a533-4836-76b2-b082-0c9cdd36f968",
+  "reviewerSession": "/root/remove_factory_paperclip/factory_cleanup_review",
+  "risk": "normal",
+  "elapsedMinutes": 0.7666666666666667,
+  "timing": {
+    "source": "clock",
+    "durationMs": 46000,
+    "evidence": "Reviewer clock readings: 2026-11-04 06:19:32 UTC to 2026-11-04 06:20:18 UTC; returned by /root/remove_factory_paperclip/factory_cleanup_review."
+  },
+  "outcome": "complete",
+  "summary": "Independent review cleared the removal with no findings; the reviewer independently reran all 17 focused MCP, CLI and gateway tests. Gateway behavior and retained legacy backend consumers remain unchanged.",
+  "findings": []
+}
+```
