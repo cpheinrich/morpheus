@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, realpath, readdir, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -169,18 +170,33 @@ print(json.dumps({'type':'thread.started','thread_id':'session-crash'}),flush=Tr
 pathlib.Path('started').write_text('yes')
 time.sleep(90)
 `);
-  const owner=spawn(process.execPath,[cli,'--config',f.configPath],{env:process.env,stdio:['pipe','ignore','ignore']});owner.stdin.end('start');
+  const admissionId=randomUUID();
+  await writeFile(join(f.root,'consumer-checkpoint.json'),JSON.stringify({admissionId}),{mode:0o600});
+  const owner=spawn(process.execPath,[cli,'--config',f.configPath,'--admission-id',admissionId],{env:process.env,stdio:['pipe','ignore','ignore']});owner.stdin.end('start');
   t.after(()=>{try{owner.kill('SIGKILL');}catch{}});
   await waitFor(()=>readFile(join(f.cwd,'started'),'utf8'),v=>v==='yes');
-  const pointer=await json(join(f.state,key(f.cwd)+'.json'));
-  assert.equal((await workerResult(pointer.runId)).terminationVerified,false);
+  const pointer={runId:admissionId,directory:join(f.state,admissionId)};
+  assert.equal((await workerResult(admissionId)).terminationVerified,false);
+  const duplicate=await gatewayWorker(f.configPath,'same operation retry',null,admissionId);
+  assert.equal(duplicate.admissionId,admissionId);
+  assert.equal(duplicate.terminationVerified,false);
   owner.kill('SIGKILL'); await once(owner,'close');
   const terminal=await waitFor(()=>json(join(pointer.directory,'process.json')),v=>v?.state==='exited');
   assert.equal(terminal.reason,'Owner lease expired');assert.equal(terminal.cleanupVerified,true);
-  const recovered=await workerResult(pointer.runId);
+  const status=spawn(process.execPath,[cli,'--status',admissionId],{env:process.env,stdio:['ignore','pipe','pipe']});
+  let output='';status.stdout.on('data',b=>output+=b);
+  assert.equal((await once(status,'close'))[0],0);
+  const recovered=JSON.parse(output);
+  const retried=await gatewayWorker(f.configPath,'do not relaunch',null,admissionId);
+  assert.deepEqual(retried,recovered);
   assert.equal(recovered.sessionId,'session-crash');assert.equal(recovered.terminationVerified,true);
   await writeFile(join(f.root,'bin','codex'),'#!/usr/bin/env python3\n'+doneScript,{mode:0o700});
-  const resumed=await gatewayWorker(f.configPath,'resume after service restart',pointer.runId);
+  const continuationId=randomUUID();
+  const continuation=spawn(process.execPath,[cli,'--config',f.configPath,'--admission-id',continuationId,'--resume',admissionId],{env:process.env,stdio:['pipe','pipe','pipe']});
+  let continuedOutput='';continuation.stdout.on('data',b=>continuedOutput+=b);continuation.stdin.end('resume after service restart');
+  assert.equal((await once(continuation,'close'))[0],0);
+  const resumed=JSON.parse(continuedOutput);
+  assert.equal(resumed.admissionId,continuationId);
   assert.equal(resumed.result.outcome,'completed');
   assert.ok((await json(join(f.cwd,'observed.json'))).argv.includes('session-crash'));
 });
@@ -204,4 +220,31 @@ test('a killed guardian cannot turn its unknown surviving worker into a new admi
   assert.match(replacement.result.summary,/unverified termination/);
   assert.equal(replacement.result.outcome,'needs_input');
   assert.doesNotThrow(()=>process.kill(proc.claudePid,0));
+});
+
+test('reserved provider key reference is preserved without persisting the key',async t=>{
+  const f=await setup(t);
+  process.env.OPENAI_API_KEY=secret;
+  await writeFile(f.configPath,JSON.stringify({...f.config,gateway:{...f.config.gateway,keyRef:'env:OPENAI_API_KEY'}}));
+  const result=await gatewayWorker(f.configPath,'reserved variable');
+  assert.equal(result.result.outcome,'completed');
+  assert.equal((await json(join(f.cwd,'observed.json'))).env.OPENAI_API_KEY,secret);
+  assert.doesNotMatch(await allText(f.state),new RegExp(secret));
+});
+test('caller admission ID is exclusive, binding checked and never reused to launch twice',async t=>{
+  const f=await setup(t);
+  const id=randomUUID();
+  const first=await gatewayWorker(f.configPath,'first',null,id);
+  await rm(join(f.cwd,'observed.json'));
+  assert.deepEqual(await gatewayWorker(f.configPath,'retry',null,id),first);
+  await assert.rejects(readFile(join(f.cwd,'observed.json')),{code:'ENOENT'});
+  await writeFile(f.configPath,JSON.stringify({...f.config,jobId:'other'}));
+  await assert.rejects(gatewayWorker(f.configPath,'wrong binding',null,id),/different job binding/);
+  await assert.rejects(gatewayWorker(f.configPath,'invalid',null,'../escape'),/Invalid admission UUID/);
+});
+test('a crash between directory reservation and evidence publication refuses same-ID replay',async t=>{
+  const f=await setup(t);const id=randomUUID();
+  await mkdir(join(f.state,id),{recursive:true,mode:0o700});
+  await assert.rejects(gatewayWorker(f.configPath,'no replay',null,id),/Unknown admission ID/);
+  await assert.rejects(readFile(join(f.cwd,'observed.json')),{code:'ENOENT'});
 });

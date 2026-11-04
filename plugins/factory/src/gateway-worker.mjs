@@ -50,7 +50,8 @@ export async function readWorkerConfig(path) {
   config.gateway.baseUrl = config.gateway.baseUrl.replace(/\/+$/, '');
   return config;
 }
-export async function gatewayWorker(configPath, prompt, resume = null) {
+export async function gatewayWorker(configPath, prompt, resume = null, admissionId = randomUUID()) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(admissionId)) throw new Error('Invalid admission UUID');
   if (typeof prompt !== 'string' || !prompt.trim() || Buffer.byteLength(prompt) > 1024 * 1024)
     throw new Error('Prompt must contain 1 to 1048576 bytes');
   const config = await readWorkerConfig(configPath);
@@ -61,7 +62,20 @@ export async function gatewayWorker(configPath, prompt, resume = null) {
   const stateInfo = await stat(canonicalRoot);
   if ((stateInfo.mode & 0o077) || stateInfo.uid !== process.getuid()) throw new Error('Worker state must be owner-only');
   const binding = { jobId: config.jobId, cwd: config.cwd, gateway: config.gateway, model: config.model, effort: config.effort, sandbox: config.sandbox, approvalPolicy: config.approvalPolicy };
+  const directory = join(root, admissionId);
+  // The caller persists this ID before invocation. Exclusive reservation is never
+  // reclaimed: retrying that operation reads evidence instead of launching again.
+  try { await mkdir(directory, { mode: 0o700 }); }
+  catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    const existing = await workerResult(admissionId);
+    if (JSON.stringify(existing.binding) !== JSON.stringify(binding))
+      throw new Error('Admission ID belongs to a different job binding');
+    return existing;
+  }
   let sessionId = null;
+  const record = { admissionId, binding, sessionId, state: 'admitted', resultPath: join(directory, 'result.json') };
+  await atomic(join(directory, 'admission.json'), record);
   if (resume) {
     if (!/^[0-9a-f-]{36}$/.test(resume)) throw new Error('Invalid continuation admission ID');
     const previous = await workerResult(resume);
@@ -74,11 +88,12 @@ export async function gatewayWorker(configPath, prompt, resume = null) {
   try { ({ env } = await checkCodex(config.cwd, undefined, config.gateway)); }
   catch { throw new Error('Gateway credential resolution failed; no fallback'); }
   if (!env.OPENAI_API_KEY?.trim()) throw new Error('Gateway credential is empty; no fallback');
+  const providerKey = env.OPENAI_API_KEY;
   env = withoutReferencedSecrets(env, { gateways: [config.gateway] });
   const isolated = {};
   for (const name of ['PATH', 'HOME', 'USER', 'LOGNAME', 'TMPDIR', 'LANG', 'LC_ALL'])
     if (env[name]) isolated[name] = env[name];
-  isolated.OPENAI_API_KEY = env.OPENAI_API_KEY;
+  isolated.OPENAI_API_KEY = providerKey;
   isolated.FACTORY_DELEGATED = '1';
   isolated.CODEX_HOME = join(root, 'sessions', key(JSON.stringify(binding)));
   await mkdir(isolated.CODEX_HOME, { recursive: true, mode: 0o700 });
@@ -89,10 +104,7 @@ export async function gatewayWorker(configPath, prompt, resume = null) {
     '-c', 'model_provider="OpenAI"',
     '-c', 'model_providers.OpenAI.env_key="OPENAI_API_KEY"',
     '-c', 'model_providers.OpenAI.requires_openai_auth=false');
-  const admissionId = randomUUID();
-  const directory = join(root, admissionId);
-  await mkdir(directory, { mode: 0o700 });
-  const record = { admissionId, binding, sessionId, state: 'admitted', resultPath: join(directory, 'result.json') };
+  record.sessionId = sessionId;
   await atomic(join(directory, 'admission.json'), record);
   const job = {
     runId: admissionId, cwd: config.cwd, argv,
