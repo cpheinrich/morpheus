@@ -625,6 +625,18 @@ they never repurpose the failed UUID. After correcting setup, the consumer saves
 Missing proof or a possibly started guardian remains unverified; an error or absent
 PID alone is insufficient evidence. Old unknown admissions are not retroactively cleared.
 
+Verified terminal results with a native session also expose optional `timing`:
+`source: "runner"`, UTC `startedAt`/`endedAt`, positive integer `durationMs`, and
+`evidence` naming this admission's guardian `process.json`. The guardian measures with
+a monotonic clock from just before provider spawn through provider/tool waits and owned
+cleanup; credential preparation is outside that interval. The existing deadline and lease
+clocks are unchanged. Status and same-ID replay recover the identical measurement even
+if the caller lost stdout or `result.json`. For independent-review records, copy source,
+duration and evidence and compute `elapsedMinutes = durationMs / 60000`; UTC timestamps
+locate the turn and do not measure its duration. Legacy/incomplete timing, unknown
+termination, rejected admission and null-session results omit `timing`; never substitute
+zero, filesystem times or an estimate for an unmeasured reviewer turn.
+
 Admission evidence is persisted before worker spawn. The guardian holds a kernel lock
 for that canonical checkout, and a durable pointer names the exact admitted run. Two
 jobs cannot write there together. Rejected admission returns `needs_input` without

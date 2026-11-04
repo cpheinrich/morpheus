@@ -11,6 +11,10 @@ uses a fresh UUID without resume. Ambiguous launch, missing proof and unknown cl
 keep their holds; no historical unknown operation is cleared. Reuse existing atomic
 admission/result records and Node spawn evidence for this domain-specific lifecycle fix;
 no generic module, dependency, ledger, retry option, quota gate or provider fallback.
+The same guardian retains UTC invocation bounds and monotonic duration through owned
+cleanup, independently of its existing deadline clock. Verified terminal/native-session
+results expose optional runner timing for lost-reply review recovery; legacy, unknown
+and never-launched cases fabricate no duration. Consumers compute minutes from milliseconds.
 
 **Recurring runs are repository-owned schedules dispatched by one portable tick** — 2026-11-03.
 MO-26-11-03-12.57.01. Chris accepted the design: each repository declares `.morpheus/schedules.json`;

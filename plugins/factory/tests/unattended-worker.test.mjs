@@ -59,6 +59,71 @@ async function allText(root) {
   }
   return text;
 }
+test('lost CLI reply recovers identical measured invocation timing including tool cleanup', async t => {
+  const tool = `import signal,time,pathlib,sys
+def finish(*args):
+ signal.signal(signal.SIGTERM,signal.SIG_IGN)
+ time.sleep(.4)
+ pathlib.Path('tool-cleaned').write_text(str(time.time_ns() // 1000000))
+ sys.exit(0)
+signal.signal(signal.SIGTERM,finish)
+pathlib.Path('tool-ready').write_text('yes')
+while True: time.sleep(.01)
+`;
+  const f = await setup(t, `import subprocess,time,pathlib
+subprocess.Popen(['python3','-c',${JSON.stringify(tool)}],start_new_session=True,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+while not pathlib.Path('tool-ready').exists(): time.sleep(.01)
+time.sleep(.3)
+` + doneScript);
+  const id = randomUUID();
+  const args = ['--config', f.configPath, '--admission-id', id];
+  const before = Date.now();
+  // The caller retains only the ID: it never receives/saves the CLI's stdout.
+  const owner = spawn(process.execPath, [cli, ...args], { env: process.env, stdio: ['pipe', 'ignore', 'ignore'] });
+  owner.stdin.end('review with a bounded provider/tool wait');
+  assert.equal((await once(owner, 'close'))[0], 0);
+  const after = Date.now();
+  const directory = join(f.state, id);
+  const processRecord = await json(join(directory, 'process.json'));
+  assert.equal(processRecord.cleanupVerified, true);
+  await rm(join(directory, 'result.json')); // Require reconstruction from guardian evidence.
+  const recovered = await invoke(['--status', id]);
+  assert.equal(recovered.code, 0);
+  assert.equal(recovered.output.sessionId, 'session-fixture');
+  const timing = recovered.output.timing;
+  assert.deepEqual(timing, { source: 'runner', ...processRecord.timing,
+    evidence: `Guardian process.json for admission ${id}; monotonic duration includes owned cleanup.` });
+  assert.equal(Number.isSafeInteger(timing.durationMs), true);
+  assert.ok(timing.durationMs >= 700, `provider wait plus cleanup: ${timing.durationMs}ms`);
+  assert.ok(timing.durationMs <= after - before);
+  assert.ok(Date.parse(timing.startedAt) >= before);
+  assert.ok(Date.parse(timing.endedAt) <= after);
+  assert.ok(Date.parse(timing.endedAt) >= Number(await readFile(join(f.cwd, 'tool-cleaned'), 'utf8')));
+  assert.deepEqual(await invoke(args), recovered);
+  assert.deepEqual(await invoke(['--status', id]), recovered);
+});
+test('legacy, incomplete and invalid timing never fabricate a reviewer duration', async t => {
+  const f = await setup(t);
+  const first = await gatewayWorker(f.configPath, 'measured');
+  const path = join(f.state, first.admissionId, 'process.json');
+  const record = await json(path);
+  for (const timing of [undefined, { startedAt: record.timing.startedAt },
+    { ...record.timing, durationMs: 0 }, { ...record.timing, durationMs: -1 },
+    { ...record.timing, durationMs: 1.5 }, { ...record.timing, endedAt: 'unknown' }]) {
+    await writeFile(path, JSON.stringify({ ...record, timing }));
+    const status = await workerResult(first.admissionId);
+    assert.equal(status.timing, undefined);
+    assert.equal(status.result.outcome, 'completed');
+  }
+  await writeFile(path, JSON.stringify({ ...record, state: 'running' }));
+  assert.equal((await workerResult(first.admissionId)).timing, undefined);
+  await writeFile(join(f.root, 'bin', 'codex'), '#!/usr/bin/env python3\nimport sys\nsys.stdin.read()\n', { mode: 0o700 });
+  await writeFile(path, JSON.stringify(record));
+  const noSession = await gatewayWorker(f.configPath, 'no native turn');
+  assert.equal(noSession.sessionId, null);
+  assert.equal(noSession.terminationVerified, true);
+  assert.equal(noSession.timing, undefined);
+});
 test('gateway-only launch pins args/env, stdin, exact permissions, and correlated continuation', async t => {
   const f = await setup(t);
   const result = await gatewayWorker(f.configPath,'make the reversible change');
@@ -127,6 +192,7 @@ counter.write_text(str(int(counter.read_text())+1) if counter.exists() else '1')
   assert.equal(first.code, 1);
   assert.equal(first.output.admissionId, id);
   assert.equal(first.output.sessionId, null);
+  assert.equal(first.output.timing, undefined);
   assert.equal(first.output.terminationVerified, true);
   assert.equal(first.output.state, 'failed');
   assert.deepEqual(first.output.prelaunchFailure, { phase: 'preparation', proof: 'never-launched', summary: 'Gateway credential resolution failed; no fallback' });
@@ -169,6 +235,7 @@ test('known preparation and guardian ENOENT failures are durable without weakeni
   assert.equal(noPython.code, 1);
   assert.equal(noPython.output.terminationVerified, true);
   assert.equal(noPython.output.sessionId, null);
+  assert.equal(noPython.output.timing, undefined);
   assert.deepEqual(noPython.output.prelaunchFailure, { phase: 'guardian-spawn', proof: 'never-launched', summary: 'Guardian executable unavailable; no launch.' });
   process.env.PATH = path;
   assert.deepEqual(await invoke(['--status', id]), noPython);

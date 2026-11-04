@@ -3328,6 +3328,10 @@ Corrected setup requires a fresh UUID without resume; the failed UUID never laun
 Possible launches, dead guardians and missing proof remain unverified and held. Native
 continuation requires verified termination, a real session and the identical binding.
 Source/fake-provider qualification is distinct from runtime adoption and live gateway proof.
+The guardian retains UTC invocation bounds and monotonic duration through owned cleanup.
+Verified terminal results with a native session expose that optional runner timing through
+status/replay so lost caller replies do not lose review-duration evidence. Legacy, unknown
+and never-launched results invent no measurement; deadline and lease semantics stay unchanged.
 
 ### 18.1 Morpheus's own structure
 

@@ -172,3 +172,40 @@ Independent review has not started and no clearance is claimed. Keep the PR draf
 unlabelled and auto-merge disabled until the supervising root runs a fresh reviewer with
 the complete prepared packet, records findings/timing, and completes required CI. No open
 implementation question remains; live adoption and authenticated qualification are separate.
+
+## Pre-review consumer integration — durable invocation timing
+
+Before the first independent review, root added one requirement within this lifecycle
+task: an unattended reviewer must retain actual runner duration if its consumer loses the
+reply before saving the review record. This update changes only Factory source/tests/docs
+and these records; no reviewer was launched and no review clearance exists.
+
+The existing guardian now retains UTC `startedAt` and `endedAt` plus monotonic integer
+`durationMs` in its process evidence for an admitted provider invocation. Measurement starts
+immediately before provider spawn and ends after owned cleanup, covering tool/provider waits.
+It uses a separate clock sample and leaves the existing deadline, lease, stop and cleanup
+logic unchanged. The public result exposes optional `timing` with runner-source provenance
+and an admission/process-record attestation only for verified terminal results with a native
+session and complete, positive safe-integer timing. Never-launched, rejected, unknown,
+legacy/unmeasured and null-session cases invent no reviewer duration. Consumers compute
+`elapsedMinutes = durationMs / 60000`; UTC timestamps are provenance, not elapsed measurement.
+Status reconstructs the same timing from guardian evidence even without the derived result
+file, and same-ID replay remains idempotent with no additional launch.
+
+Final focused command (same five files listed above): 51 passed, 0 failed, 0 skipped. The
+lost-reply test discards actual CLI stdout, deletes `result.json`, and recovers exact process
+timing through status/replay. It asserts at least 700 ms for the bounded 300 ms provider
+pause plus 400 ms detached-tool cleanup, and checks UTC bounds against caller/cleanup
+observations. Boundary tests reject zero, negative and fractional duration, incomplete or
+invalid UTC metadata, unknown termination and absent native session. Existing prelaunch,
+deadline, lease, ownership, native resume and redaction regressions still pass.
+
+Factory `pnpm check`, root `pnpm typecheck`, `pnpm compile`, `pnpm morpheus pm index` and
+`git diff --check` were rerun for this source increment and passed; no generated changes.
+No full root suite was run. Final focused receipt is retained privately as the timing
+batch log. Graph tools were not callable on this continuation, so current guardian/module/
+test source was read directly; the previous generation is not claimed as current coverage.
+The README, architecture, decision entry and roadmap acceptance now document timing.
+No new dependency, timing daemon, lease, option, live provider probe, consumer edit or
+installation was added. PR605 stays draft/unlabelled with auto-merge off for root's fresh
+independent review of the complete final increment.

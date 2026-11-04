@@ -3,6 +3,7 @@ Even if the service is killed, this process expires the lease and removes descen
 """
 import json, os, selectors, signal, subprocess, sys, time, fcntl
 from pathlib import Path
+from datetime import datetime, timezone
 from owned_processes import OwnedProcesses, MARKER
 
 job_path = Path(sys.argv[1])
@@ -39,6 +40,10 @@ if job.get('admission'):
 owned = OwnedProcesses(job['runId']) if job.get('admission') else None
 child_env = dict(os.environ)
 if owned: child_env[MARKER] = job['runId']
+# Measure the invocation independently of the existing deadline/lease clock, through
+# owned cleanup. Wall timestamps locate it; only the monotonic clock measures duration.
+invocation_start_ns = time.monotonic_ns()
+started_at = datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
 try:
     child = subprocess.Popen(job['argv'], cwd=job['cwd'], env=child_env,
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -46,6 +51,7 @@ try:
 except Exception as error:
     state.update(state='exited', exitCode=127, reason='Worker launch failed' if job.get('admission') else str(error), interrupted=False, cleanupVerified=True); persist()
     sys.exit(1)
+if owned: state['timing'] = {'startedAt': started_at}
 def identity(pid):
     try: return subprocess.check_output(['ps','-p',str(pid),'-o','lstart=','-o','pgid=','-o','uid='],text=True,stderr=subprocess.DEVNULL).strip()
     except subprocess.CalledProcessError: return None
@@ -187,4 +193,8 @@ finally:
         state['ownedProcesses'] = [{'pid': pid, 'identity': list(stamp)}
                                    for pid, stamp in owned.known.items()]
     state.update(state='exited',exitCode=child.returncode,interrupted=interrupted)
+    if owned:
+        state['timing'].update(
+            endedAt=datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
+            durationMs=(time.monotonic_ns() - invocation_start_ns) // 1000000)
     persist()

@@ -178,6 +178,12 @@ export async function workerResult(admissionId) {
           ? { outcome: 'failed', summary: run.error || 'Gateway worker exited without a successful structured turn; no fallback.', evidence: [], question: '' }
           : run.result;
   const output = { ...record, sessionId: run.newSession || null, state: result.outcome, terminationVerified, exitCode: state?.exitCode ?? null, result };
+  const timing = state?.timing;
+  if (terminationVerified && output.sessionId && Number.isSafeInteger(timing?.durationMs) && timing.durationMs > 0
+      && [timing.startedAt, timing.endedAt].every(value => typeof value === 'string'
+        && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && Number.isFinite(Date.parse(value))))
+    output.timing = { source: 'runner', startedAt: timing.startedAt, endedAt: timing.endedAt, durationMs: timing.durationMs,
+      evidence: `Guardian process.json for admission ${admissionId}; monotonic duration includes owned cleanup.` };
   if (terminationVerified || state?.admissionRejected) await atomic(join(directory, 'result.json'), output);
   return output;
 }
