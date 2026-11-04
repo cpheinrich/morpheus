@@ -54,3 +54,21 @@ One fresh independent normal-risk review covered this bounded task across two re
   ]
 }
 ```
+
+## Operational acceptance
+
+cpheinrich/agent-host-setup#23 merged as `0451cd7` on 2026-11-04 after its review record validated and
+all of its checks passed. The root installed that exact merge on the CI host through the existing
+`ci-vm/install.sh`. All three runtime files match the merged commit, the host config hash is
+unchanged, and the previous runtime is kept for rollback.
+
+The original CI job that the status filters had omitted was picked up within a minute of the
+install. It ran on a new VM owned by the dispatcher, using the intended image, label and source
+commit, on its first attempt. It completed successfully in about nine and a half minutes, with
+every native build, test and evidence step succeeding or skipped by design and no validation
+bypassed. The root then observed normal teardown: the VM and its process were removed, and the
+dispatcher state showed both slots free with no VMs left.
+
+Nothing was cancelled, rerun or registered by hand. No runner registration, config, label,
+capacity, credential, access or schedule changed. This meets the last criterion in
+`qa/acceptance/MO-26-11-04-07.16.25.md`. Private host evidence stays in ignored local handoffs.
