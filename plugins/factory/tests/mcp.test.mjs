@@ -191,7 +191,7 @@ test("Factory tools fail closed when the host cannot inject a verified root id",
   }
   assert.deepEqual(await readdir(root), []);
 });
-test("a delegated worker's MCP pool mutations refuse without contacting the bridge", async (t) => {
+test("removed pool tools are absent and refuse without contacting the bridge", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "mcp-delegated-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const transport = new StdioClientTransport({
@@ -202,6 +202,7 @@ test("a delegated worker's MCP pool mutations refuse without contacting the brid
   const client = new Client({ name: "test", version: "1" });
   t.after(() => client.close());
   await client.connect(transport);
+  assert.equal((await client.listTools()).tools.some(({ name }) => name.startsWith("pool_")), false);
   const conversationId = "00000000-0000-4000-8000-000000000001";
   for (const [name, args] of [
     ["pool_start", { threadId: "t", profile: "p", prompt: "x" }],
@@ -211,7 +212,8 @@ test("a delegated worker's MCP pool mutations refuse without contacting the brid
     ["pool_recover", { threadId: "t", conversationId }],
   ]) {
     const result = await client.callTool({ name, arguments: args });
-    assert.deepEqual([result.isError, result.content[0].text], [true, "Delegated workers cannot delegate again."]);
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /not found/);
   }
   assert.deepEqual(await readdir(root), []);
 });

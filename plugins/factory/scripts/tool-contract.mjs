@@ -15,20 +15,6 @@ export const claudeMethods = Object.freeze([
   "memories",
 ]);
 
-export const poolMethods = Object.freeze([
-  "profiles",
-  "start",
-  "status",
-  "wait",
-  "logs",
-  "answer",
-  "followup",
-  "stop",
-  "recover",
-  "reconcile",
-  "reattach",
-]);
-
 export const codexMethods = Object.freeze([
   "inspect",
   "start",
@@ -94,7 +80,6 @@ export const factorySpecs = Object.freeze({
 export const factoryMcpToolNames = names("factory", factoryMethods);
 
 export const codexMcpToolNames = Object.freeze([
-  ...names("pool", poolMethods),
   ...factoryMcpToolNames,
   ...names("claude", claudeMethods),
 ]);
