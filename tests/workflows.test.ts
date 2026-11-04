@@ -203,6 +203,9 @@ describe("release-preflight.yml", () => {
       compare?: string;
       prSha?: string | null;
       dirty?: boolean;
+      ref?: string;
+      /** The requested source when it is not the checked-out commit. */
+      expected?: string;
     };
 
     async function runPreflight(fixture: (shas: { source: string; later: string }) => Fixture) {
@@ -261,10 +264,10 @@ esac
           env: {
             ...process.env,
             PATH: `${bin}:${process.env.PATH}`,
-            GITHUB_REF: "refs/heads/main",
+            GITHUB_REF: f.ref ?? "refs/heads/main",
             GITHUB_REPOSITORY: "cpheinrich/example",
             GITHUB_OUTPUT: output,
-            EXPECTED_SHA: source,
+            EXPECTED_SHA: f.expected ?? source,
             GH_TOKEN: "fixture",
             PREFLIGHT_CALLS: calls,
             PREFLIGHT_MAIN: f.main ?? source,
@@ -333,6 +336,20 @@ esac
       expect(headsPr.ok).toBe(false);
       expect(headsPr.stderr).toContain("not associated with a merged pull request");
       expect(headsPr.output).toBe("");
+    });
+
+    it("rejects a non-main ref and a mismatched checkout before asking GitHub anything", async () => {
+      const branch = await runPreflight(() => ({ ref: "refs/heads/feature" }));
+      expect(branch.ok).toBe(false);
+      expect(branch.stderr).toContain("Release source must be refs/heads/main; got refs/heads/feature");
+      expect(branch.ghCalls).toEqual([]);
+      expect(branch.output).toBe("");
+
+      const mismatched = await runPreflight(({ later }) => ({ expected: later }));
+      expect(mismatched.ok).toBe(false);
+      expect(mismatched.stderr).toContain(`does not equal requested source ${mismatched.later}`);
+      expect(mismatched.ghCalls).toEqual([]);
+      expect(mismatched.output).toBe("");
     });
 
     it("rejects a dirty checkout before asking GitHub anything", async () => {
@@ -1639,7 +1656,8 @@ jq -r "$expr" "$FIXTURES/$file"
         if (run.jobs) await writeFile(join(fixtures, `jobs-${run.id}.json`), JSON.stringify({ total_count: run.jobs.length, jobs: run.jobs }));
       }
     };
-    const decide = async () => {
+    /** `current` replaces the checked-out HEAD as `github.sha`, as a re-run of an older night keeps its own. */
+    const decide = async ({ current, force = false }: { current?: string; force?: boolean } = {}) => {
       await writeFile(output, "", "utf8");
       await writeFile(summary, "", "utf8");
       await execFileAsync("bash", ["-euo", "pipefail", "-c", script!], {
@@ -1648,8 +1666,8 @@ jq -r "$expr" "$FIXTURES/$file"
           ...process.env,
           PATH: `${bin}:${process.env.PATH}`,
           FIXTURES: fixtures,
-          CURRENT_SHA: await git("rev-parse", "HEAD"),
-          FORCE_BUILD: "false",
+          CURRENT_SHA: current ?? (await git("rev-parse", "HEAD")),
+          FORCE_BUILD: String(force),
           GH_TOKEN: "fixture",
           GITHUB_OUTPUT: output,
           GITHUB_REPOSITORY: "example-org/example-app",
@@ -1661,7 +1679,7 @@ jq -r "$expr" "$FIXTURES/$file"
       return Object.fromEntries((await readFile(output, "utf8")).trim().split("\n").map((line) => line.split(/=(.*)/s).slice(0, 2)));
     };
     const cleanup = () => rm(root, { recursive: true, force: true });
-    return { commit, history, decide, cleanup };
+    return { commit, git, history, decide, cleanup };
   }
 
   const admissionOnly = [
@@ -1698,6 +1716,44 @@ jq -r "$expr" "$FIXTURES/$file"
         { id: 1, sha: a, jobs: [{ name: "Scheduler admission", conclusion: "success" }, { name: "Upload TestFlight build", conclusion: "success" }] },
       ]);
       expect(await t.decide()).toMatchObject({ build: "true", baseline: a });
+    } finally {
+      await t.cleanup();
+    }
+  });
+
+  it("never re-ships a commit older than the last upload, forced or not", async () => {
+    const t = await nightlyDecision();
+    try {
+      // Night A failed; a later night uploaded B, which descends from A; then night A is re-run.
+      const a = await t.commit("apps/ios/app.txt", "one\n");
+      const b = await t.commit("apps/ios/app.txt", "two\n");
+      await t.history([{ id: 2, sha: b, jobs: [{ name: "upload", conclusion: "success" }] }]);
+      const superseded = `this commit is older than the last successful upload ${b.slice(0, 12)}; a newer source already reached TestFlight`;
+      expect(await t.decide({ current: a })).toEqual({ build: "false", baseline: b, reason: superseded });
+      // A caller that forces every manual dispatch still cannot ship the older commit on re-run.
+      expect(await t.decide({ current: a, force: true })).toEqual({ build: "false", baseline: b, reason: superseded });
+      // The boundary: the uploaded commit itself is not older than itself.
+      expect(await t.decide({ current: b })).toMatchObject({ build: "false", reason: "no watched iOS paths changed since the last successful upload" });
+      expect(await t.decide({ current: b, force: true })).toEqual({ build: "true", baseline: "", reason: "forced by the caller" });
+      // A newer commit still builds normally.
+      const c = await t.commit("apps/ios/app.txt", "three\n");
+      expect(await t.decide({ current: c })).toMatchObject({ build: "true", baseline: b });
+      // Unrelated history proves nothing about age: it stays conservative.
+      await t.git("checkout", "--quiet", "--orphan", "unrelated");
+      const u = await t.commit("apps/ios/app.txt", "other\n");
+      expect(await t.decide({ current: u })).toEqual({
+        build: "true", baseline: b, reason: "the last successful upload is not an ancestor of main; building conservatively",
+      });
+      // An unreadable or unavailable baseline never skips a forced build, and stays conservative otherwise.
+      await t.history([{ id: 2, sha: b, jobs: null }]);
+      expect(await t.decide({ current: a, force: true })).toEqual({ build: "true", baseline: "", reason: "forced by the caller" });
+      expect(await t.decide({ current: a })).toEqual({ build: "true", baseline: "", reason: "the upload baseline could not be read; building conservatively" });
+      const missing = "e".repeat(40);
+      await t.history([{ id: 3, sha: missing, jobs: [{ name: "upload", conclusion: "success" }] }]);
+      expect(await t.decide({ current: a, force: true })).toEqual({ build: "true", baseline: "", reason: "forced by the caller" });
+      expect(await t.decide({ current: a })).toEqual({
+        build: "true", baseline: missing, reason: "the last successful upload commit is unavailable; building conservatively",
+      });
     } finally {
       await t.cleanup();
     }

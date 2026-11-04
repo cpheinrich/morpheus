@@ -3732,10 +3732,15 @@ base64 value in the protected environment as `IOS_GOOGLE_SERVICE_INFO_PLIST_BASE
 caller-owned upload script receives it. The built-in upload path installs `asccli` but does not
 derive a build number from GitHub metadata; the caller's upload script must allocate against App Store
 Connect so manual and automated uploads share one sequence. Scheduled runs compare
-those paths from the caller workflow's latest successful upload to the current `main` SHA; an empty
+those paths from the caller workflow's latest successful upload to the run's `main` SHA; an empty
 diff reports the release skip from a Linux job and provisions no release runner (the optional
-visual capture still runs simulator tests). A missing, unavailable, or
-non-ancestor baseline builds conservatively. Manual callers may force a build. Keeping the caller
+visual capture still runs simulator tests). A run whose SHA is a strict ancestor of the last
+successful upload skips as superseded, forced or not. A re-run keeps its original SHA, and
+`release-preflight` admits any reviewed commit `main` contains, so this check is what stops a
+re-run of an older night from shipping code older than TestFlight already has under a higher build
+number (MO-26-11-04-00.19.43). A missing or unavailable baseline, and history unrelated to it,
+build conservatively: only a proven ancestor skips. Manual callers may force a build, which skips
+the watched-path comparison but not the superseded check. Keeping the caller
 workflow filename stable makes its successful runs the durable release cursor without a second
 state store.
 
@@ -4032,9 +4037,12 @@ compare reports `main` strictly ahead of it), and requires GitHub to associate t
 with a merged pull request into `main`. It returns the verified SHA; the release job depends on the
 preflight and checks out that output rather than resolving a branch again. A direct push, branch
 run, commit main does not contain, or modified checkout therefore cannot reach a properly wired
-release job. A release pinned to a reviewed source keeps that source while `main` moves on: being
-the current head protects the process, not users, so it is not required (MO-26-11-04-00.19.43).
-Freshness — whether a newer source should ship instead — is the caller's scheduling decision.
+release job. A release pinned to a reviewed source keeps that source while `main` moves on, so
+the current head is not required (MO-26-11-04-00.19.43). That requirement also stopped a re-run of
+an older run from shipping code older than a delivered build. That protection now lives with the
+callers, which know their own upload history: `ios-nightly-build` skips a source older than its
+last successful upload, and Evo's `ios-delivery` promotes only staging receipts and skips one
+older than production already ships. A caller added later must make the same decision.
 
 The workflow is only the middle of the external-action contract:
 

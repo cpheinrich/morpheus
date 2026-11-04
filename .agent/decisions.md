@@ -9,7 +9,11 @@ commit is that SHA; it now also accepts the SHA when GitHub's compare reports cu
 strictly `ahead` of it. Diverged, behind, identical-but-different, unreadable or failed comparisons
 refuse. No input was added: every caller (Evo `ios-delivery`, `ios-full-verification`, Morpheus
 `ios-nightly-build`) verifies `github.sha`, and a caller-selected source would widen the gate. Which
-source should ship is the caller's scheduling decision, not a user protection. This supersedes
+source should ship is the caller's decision. Independent review found that current-head equality
+had also stopped a re-run of an older nightly from uploading older code under a higher build
+number. So `ios-nightly-build` now skips, as superseded and even when forced, a run whose SHA is a
+strict ancestor of its last successful upload; unknown or unrelated history still builds
+conservatively. Evo's promotion already refuses a source older than production ships. This supersedes
 "current" in the 2026-08-28 external-actions entry. The Firebase release action's own current-main
 check is unchanged. Native `gh api` and Bash; no dependency.
 
