@@ -121,3 +121,17 @@ test("enable requires an explicit mode and changes nothing otherwise", async (t)
   await run("bridge.mjs", ["enable"], { home });
   assert.equal(JSON.parse(await readFile(join(home, "config.json"), "utf8")).mode, "manual");
 });
+
+
+test("Factory CLI no longer advertises or accepts remote pool commands", async (t) => {
+  const home = await freshHome(t);
+  const help = await run("bridge.mjs", ["help"], { home });
+  assert.equal(help.code, 0);
+  assert.doesNotMatch(help.stdout, /pool[.-]|Paperclip/i);
+  for (const command of ["pool.profiles", "pool.start", "pool-host-entry", "pool-agent-config"]) {
+    const result = await run("bridge.mjs", [command], { home });
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Unsupported Factory command.*factory\.delegate/);
+  }
+  assert.deepEqual(await readdir(home), []);
+});

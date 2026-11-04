@@ -1,5 +1,12 @@
 # Decisions
 
+**Factory agent discovery uses gateway workers only** — 2026-11-03.
+MO-26-11-03-22.16.36. Chris confirmed Paperclip is unconfigured and unused and requested
+removal of its Factory guidance. Remove pool MCP tools, pool CLI commands and operator
+setup instructions from the agent-facing plugin. Keep the six `factory_*` tools and
+existing gateway behavior. Legacy backend modules remain for separate integrations;
+removing the broader Paperclip integration is a separate task. No new dependency.
+
 **Unattended Factory admission retains proven prelaunch failures** — 2026-11-03.
 MO-26-11-03-17.34.41. The explicit gateway-worker CLI is separate from desktop/Pool
 discovery: trusted service configuration fixes authority and gateway, the caller reserves
