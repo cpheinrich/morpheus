@@ -3732,18 +3732,10 @@ base64 value in the protected environment as `IOS_GOOGLE_SERVICE_INFO_PLIST_BASE
 caller-owned upload script receives it. The built-in upload path installs `asccli` but does not
 derive a build number from GitHub metadata; the caller's upload script must allocate against App Store
 Connect so manual and automated uploads share one sequence. Scheduled runs compare
-those paths from the caller workflow's latest successful upload to the run's `main` SHA; an empty
+those paths from the caller workflow's latest successful upload to the current `main` SHA; an empty
 diff reports the release skip from a Linux job and provisions no release runner (the optional
-visual capture still runs simulator tests). A run whose SHA is a strict ancestor of the last
-successful upload skips as superseded, forced or not. A re-run keeps its original SHA, and
-`release-preflight` admits any reviewed commit `main` contains, so this check is what stops a
-re-run of an older night from shipping code older than TestFlight already has under a higher build
-number (MO-26-11-04-00.19.43). When the baseline cannot prove the run's age, the run builds
-conservatively only if it is main's current head, read fresh from GitHub. That covers an
-unreadable history, no upload found, an unavailable commit, or a baseline the run does not descend
-from. Any other commit, or a main head that cannot be read, fails the step, as the head-only
-preflight did. Manual callers may force a build, which skips the watched-path comparison but not
-these age checks. Keeping the caller
+visual capture still runs simulator tests). A missing, unavailable, or
+non-ancestor baseline builds conservatively. Manual callers may force a build. Keeping the caller
 workflow filename stable makes its successful runs the durable release cursor without a second
 state store.
 
@@ -3783,11 +3775,12 @@ Its jobs:
 1. `plan` reads `.morpheus/cd.json` at the source commit. It records what the run uses: the source,
    the Morpheus `main` SHA, a configuration digest and an input digest. A scheduled staging slot
    skips only when no watched input changed since its last receipt tag.
-2. `preflight` calls Morpheus `release-preflight`. It confirms the source is a reviewed merge
-   contained in `main` — the current head or an ancestor of it — so a run that waited behind
-   another, or raced a merge, still ships the commit it pinned (MO-26-11-04-00.19.43). Earlier the
-   preflight also required the current head, a process-only property that cost such runs their
-   slot.
+2. `preflight` calls Morpheus `release-preflight`. It confirms the source is a reviewed merge, and by
+   default also requires it to be the current head of `main`, so a run that waited behind another
+   or raced a merge fails and loses its slot. The preflight's `allow-pinned-source: true` opt-in
+   (MO-26-11-04-00.19.43) accepts a reviewed merge `main` contains instead. That suits a caller
+   whose own controller pins the source and refuses older ones. Evo's release controller adopts
+   it in its own change.
 3. `tests` runs Morpheus `ios-ci`, with a fresh simulator per retry.
 4. Staging Firebase rules are deployed for this source. The phone gate exercises staging for
    both channels, so this runs on every run.
@@ -3808,7 +3801,7 @@ process warns or is deleted.
 | A test that failed then passed on retry | Warns. The steward or a person may add a quarantine entry in a reviewed PR (one test, a linked issue, expiry ≤ 14 days); a quarantined test runs outside the blocking suite and its failure warns until the entry expires, then blocks again. |
 | Physical-iPhone gate (collector evidence rules) | **Blocks** |
 | Firebase rules: V2 preflight required live rules to equal the client source; 7 of the 17 failures | Replaced by deploying the source's rules before upload. **Blocks** on what protects users: forward only (never roll back), refuse rules `main` never held, every index READY. |
-| Source is a reviewed merge on `main` | **Blocks**. `release-preflight` requires an exact merged-PR commit contained in `main`; being its current head is process-only and no longer required (MO-26-11-04-00.19.43). |
+| Source is a reviewed merge on `main` | **Blocks**. Being the current head of `main`, which `release-preflight` requires by default, is relaxed only for a caller that opts in with `allow-pinned-source` and owns source ordering itself (MO-26-11-04-00.19.43). |
 | Signing, entitlement/IPA verification, app validation script | **Blocks** |
 | Apple VALID, internally ready, held by the internal group | **Blocks**: this is delivery |
 | External groups, Beta App Review | **Warns** |
@@ -4035,17 +4028,21 @@ does not hold Security's write token. See [the execution contract](docs/runbooks
 
 `release-preflight` is the secret-free gate before any job that publishes outside GitHub. It accepts
 no caller-selected source: the workflow requires `refs/heads/main`, checks out `github.sha`, refuses
-a dirty tree, confirms the repository's current `main` contains the SHA (it is the head, or GitHub's
-compare reports `main` strictly ahead of it), and requires GitHub to associate that exact commit
-with a merged pull request into `main`. It returns the verified SHA; the release job depends on the
-preflight and checks out that output rather than resolving a branch again. A direct push, branch
-run, commit main does not contain, or modified checkout therefore cannot reach a properly wired
-release job. A release pinned to a reviewed source keeps that source while `main` moves on, so
-the current head is not required (MO-26-11-04-00.19.43). That requirement also stopped a re-run of
-an older run from shipping code older than a delivered build. That protection now lives with the
-callers, which know their own upload history: `ios-nightly-build` skips a source older than its
-last successful upload, and Evo's `ios-delivery` promotes only staging receipts and skips one
-older than production already ships. A caller added later must make the same decision.
+a dirty tree, confirms the SHA is still the repository's current `main`, and requires GitHub to
+associate that exact commit with a merged pull request into `main`. It returns the verified SHA;
+the release job depends on the preflight and checks out that output rather than resolving a branch
+again. A direct push, stale main run, branch run or modified checkout therefore cannot reach a
+properly wired release job.
+
+Current-head equality is the default for every invocation and every re-run. A re-run keeps its
+original SHA, and re-running failed jobs reuses earlier jobs' outputs, such as a change detector's
+`build=true` computed before a newer build shipped. Equality at preflight time is therefore what
+stops an older source from reaching a release after a newer one. A caller whose own controller
+pins a source and refuses older ones may pass `allow-pinned-source: true` (MO-26-11-04-00.19.43).
+The preflight then also accepts a reviewed merge that current `main` strictly contains: GitHub's
+compare must report `ahead`, and anything else, including an unreadable `main`, refuses. The
+exact checkout, merged-PR binding and read-only permissions are the same in both modes, and there
+is still no caller-selected source. A manual dispatch has no inputs, so it keeps the default.
 
 The workflow is only the middle of the external-action contract:
 

@@ -158,7 +158,11 @@ describe("release-preflight.yml", () => {
 
     expect(call).toBeDefined();
     expect(wf.on).toHaveProperty("workflow_dispatch");
-    expect(call?.inputs).toBeUndefined();
+    // One opt-in and no caller-selected source: the source is always github.sha.
+    expect(call?.inputs).toEqual({
+      "allow-pinned-source": expect.objectContaining({ type: "boolean", default: false }),
+    });
+    expect((wf.on as { workflow_dispatch?: unknown }).workflow_dispatch ?? null).toBeNull();
     expect(call?.secrets).toBeUndefined();
     expect(call?.outputs?.sha?.value).toBe("${{ jobs.verify.outputs.sha }}");
     expect(wf.permissions).toEqual({ contents: "read", "pull-requests": "read" });
@@ -183,13 +187,14 @@ describe("release-preflight.yml", () => {
     const script = String(verify?.run);
 
     expect(verify?.env?.GH_TOKEN).toBe("${{ github.token }}");
+    expect(verify?.env?.ALLOW_PINNED_SOURCE).toBe("${{ inputs.allow-pinned-source }}");
     expect(script).toContain('GITHUB_REF" != "refs/heads/main');
     expect(script).toContain("git rev-parse HEAD");
     expect(script).toContain("git status --porcelain --untracked-files=all");
     expect(script).toContain("/git/ref/heads/main");
     expect(script).toContain("/compare/${EXPECTED_SHA}...${main_sha}?per_page=1");
     expect(script).toContain('"$ancestry" != "ahead"');
-    expect(script).not.toContain("is not current origin/main");
+    expect(script).toContain('"${ALLOW_PINNED_SOURCE:-}" != "true"');
     expect(script).toContain("/commits/${EXPECTED_SHA}/pulls");
     expect(script).toContain("[.number, .base.ref, .merge_commit_sha] | @tsv");
     expect(script).toContain('candidate_base" = "main');
@@ -206,6 +211,8 @@ describe("release-preflight.yml", () => {
       ref?: string;
       /** The requested source when it is not the checked-out commit. */
       expected?: string;
+      /** ALLOW_PINNED_SOURCE as GitHub renders the input; undefined is a dispatch (no inputs). */
+      allow?: string;
     };
 
     async function runPreflight(fixture: (shas: { source: string; later: string }) => Fixture) {
@@ -268,6 +275,7 @@ esac
             GITHUB_REPOSITORY: "cpheinrich/example",
             GITHUB_OUTPUT: output,
             EXPECTED_SHA: f.expected ?? source,
+            ...(f.allow === undefined ? {} : { ALLOW_PINNED_SOURCE: f.allow }),
             GH_TOKEN: "fixture",
             PREFLIGHT_CALLS: calls,
             PREFLIGHT_MAIN: f.main ?? source,
@@ -286,15 +294,28 @@ esac
       }
     }
 
-    it("releases the current head of main without asking for ancestry", async () => {
-      const run = await runPreflight(() => ({}));
-      expect(run).toMatchObject({ ok: true });
-      expect(run.output).toBe(`sha=${run.source}\npr=42\n`);
-      expect(run.ghCalls.some((call) => call.includes("/compare/"))).toBe(false);
+    it("releases the current head of main without asking for ancestry, opted in or not", async () => {
+      for (const allow of [undefined, "false", "true"]) {
+        const run = await runPreflight(() => ({ allow }));
+        expect(run, String(allow)).toMatchObject({ ok: true });
+        expect(run.output).toBe(`sha=${run.source}\npr=42\n`);
+        expect(run.ghCalls.some((call) => call.includes("/compare/"))).toBe(false);
+      }
     });
 
-    it("releases a pinned reviewed source after main has moved past it", async () => {
-      const run = await runPreflight(({ later }) => ({ main: later, compare: "ahead" }));
+    it("by default refuses a source main has moved past, without asking for ancestry", async () => {
+      // A dispatch (no inputs), the default false, and anything but the exact string "true".
+      for (const allow of [undefined, "", "false", "TRUE", "1"]) {
+        const run = await runPreflight(({ later }) => ({ main: later, compare: "ahead", allow }));
+        expect(run.ok, String(allow)).toBe(false);
+        expect(run.stderr).toContain(`Release source ${run.source} is not current origin/main (${run.later})`);
+        expect(run.ghCalls.some((call) => call.includes("/compare/") || call.includes("/pulls"))).toBe(false);
+        expect(run.output).toBe("");
+      }
+    });
+
+    it("releases a pinned reviewed source after main has moved past it only when opted in", async () => {
+      const run = await runPreflight(({ later }) => ({ main: later, compare: "ahead", allow: "true" }));
       expect(run).toMatchObject({ ok: true });
       // The pinned source, never the newer head, is what the release job checks out.
       expect(run.output).toBe(`sha=${run.source}\npr=42\n`);
@@ -302,40 +323,67 @@ esac
     });
 
     it.each(["behind", "diverged", "identical", ""])(
-      "refuses a source main does not contain (compare status %j)",
+      "refuses an opted-in source main does not contain (compare status %j)",
       async (status) => {
-        const run = await runPreflight(({ later }) => ({ main: later, compare: status }));
+        const run = await runPreflight(({ later }) => ({ main: later, compare: status, allow: "true" }));
         expect(run.ok).toBe(false);
         expect(run.stderr).toContain("is not contained in current main");
         expect(run.output).toBe("");
       },
     );
 
-    it("refuses when the ancestry comparison itself fails", async () => {
-      const run = await runPreflight(({ later }) => ({ main: later, compare: "fail" }));
+    it("refuses an opted-in source when the ancestry comparison itself fails", async () => {
+      const run = await runPreflight(({ later }) => ({ main: later, compare: "fail", allow: "true" }));
       expect(run.ok).toBe(false);
       expect(run.output).toBe("");
       expect(run.ghCalls.some((call) => call.includes("/pulls"))).toBe(false);
     });
 
-    it.each(["", "not-a-sha", "F".repeat(40)])("refuses an unreadable main head %j", async (main) => {
-      const run = await runPreflight(() => ({ main }));
-      expect(run.ok).toBe(false);
-      expect(run.stderr).toContain("Could not read current main");
-      expect(run.output).toBe("");
+    it.each(["", "not-a-sha", "F".repeat(40)])("refuses an unreadable main head %j, opted in or not", async (main) => {
+      for (const allow of [undefined, "true"]) {
+        const run = await runPreflight(() => ({ main, allow }));
+        expect(run.ok, String(allow)).toBe(false);
+        expect(run.stderr).toContain("Could not read current main");
+        expect(run.output).toBe("");
+      }
     });
 
     it("still requires the pinned source itself to be a merged pull request", async () => {
       // An ancestor commit from a merged branch (not its merge commit) is reachable from main,
       // and main's head has its own merged PR; neither makes the ancestor a reviewed release.
-      const unassociated = await runPreflight(({ later }) => ({ main: later, compare: "ahead", prSha: null }));
+      const unassociated = await runPreflight(({ later }) => ({ main: later, compare: "ahead", prSha: null, allow: "true" }));
       expect(unassociated.ok).toBe(false);
       expect(unassociated.stderr).toContain("not associated with a merged pull request");
 
-      const headsPr = await runPreflight(({ later }) => ({ main: later, compare: "ahead", prSha: later }));
+      const headsPr = await runPreflight(({ later }) => ({ main: later, compare: "ahead", prSha: later, allow: "true" }));
       expect(headsPr.ok).toBe(false);
       expect(headsPr.stderr).toContain("not associated with a merged pull request");
       expect(headsPr.output).toBe("");
+
+      const headWithoutPr = await runPreflight(() => ({ prSha: null }));
+      expect(headWithoutPr.ok).toBe(false);
+      expect(headWithoutPr.stderr).toContain("not associated with a merged pull request");
+    });
+
+    it("keeps every in-repository caller on the default, so a cached build decision cannot re-ship an older source", async () => {
+      // Re-running failed jobs reuses a successful `changes` job's build=true. The preflight that then
+      // runs gets the caller's inputs, and ios-nightly-build passes none: the rendered input is the
+      // default, and main having moved past the run's SHA refuses (night A re-run after B uploaded).
+      const nightly = (await read("ios-nightly-build.yml")) as { jobs?: Record<string, { uses?: string; with?: Record<string, unknown> }> };
+      const call = Object.values(nightly.jobs ?? {}).find((job) => job.uses === "./.github/workflows/release-preflight.yml");
+      expect(call).toBeDefined();
+      const preflight = (await read("release-preflight.yml")) as ReleasePreflight;
+      const declared = preflight.on?.workflow_call?.inputs?.["allow-pinned-source"] as { default?: boolean };
+      const rendered = String(call?.with?.["allow-pinned-source"] ?? declared.default);
+      expect(rendered).toBe("false");
+      const rerun = await runPreflight(({ later }) => ({ main: later, compare: "ahead", allow: rendered }));
+      expect(rerun.ok).toBe(false);
+      expect(rerun.stderr).toContain("is not current origin/main");
+      expect(rerun.output).toBe("");
+      // No other workflow here opts in either; the Evo controller is the first, in its own PR.
+      for (const file of (await readdir(DIR)).filter((f) => f.endsWith(".yml") && f !== "release-preflight.yml")) {
+        expect(await readFile(join(DIR, file), "utf8"), file).not.toMatch(/allow-pinned-source:\s*true/);
+      }
     });
 
     it("rejects a non-main ref and a mismatched checkout before asking GitHub anything", async () => {
@@ -1636,16 +1684,6 @@ done
 case "$route" in
   */actions/runs/*/jobs*) id="\${route#*/actions/runs/}"; file="jobs-\${id%%/*}.json" ;;
   */workflows/*/runs*) file="runs-\${route##*page=}.json" ;;
-  */git/ref/heads/main) file="main.json" ;;
-  # Preflight's routes, answered from the real repository: compare by git ancestry, and every
-  # commit carries its own merged pull request unless a fixture says otherwise.
-  */compare/*)
-    pair="\${route##*/compare/}"; pair="\${pair%%[?]*}"; base="\${pair%%...*}"; head="\${pair##*...}"
-    if git merge-base --is-ancestor "$base" "$head" 2>/dev/null; then status=ahead; else status=diverged; fi
-    printf '{"status":"%s"}' "$status" | jq -r "$expr"; exit 0 ;;
-  */commits/*/pulls)
-    sha="\${route#*/commits/}"; sha="\${sha%%/*}"
-    printf '[{"number":41,"merged_at":"2026-11-04T00:00:00Z","base":{"ref":"main"},"merge_commit_sha":"%s"}]' "$sha" | jq -r "$expr"; exit 0 ;;
   *) echo "unexpected route $route" >&2; exit 1 ;;
 esac
 [ -f "$FIXTURES/$file" ] || { echo "HTTP 502" >&2; exit 1; }
@@ -1666,24 +1704,17 @@ jq -r "$expr" "$FIXTURES/$file"
         if (run.jobs) await writeFile(join(fixtures, `jobs-${run.id}.json`), JSON.stringify({ total_count: run.jobs.length, jobs: run.jobs }));
       }
     };
-    /**
-     * `current` replaces the checked-out HEAD as `github.sha`, as a re-run of an older night keeps its
-     * own. `main` is what GitHub reports as main's head (default: the checked-out HEAD); `null` makes
-     * that read fail. A refusal rejects with the step's stderr.
-     */
-    const decide = async ({ current, force = false, main }: { current?: string; force?: boolean; main?: string | null } = {}) => {
+    const decide = async () => {
       await writeFile(output, "", "utf8");
       await writeFile(summary, "", "utf8");
-      await rm(join(fixtures, "main.json"), { force: true });
-      if (main !== null) await writeFile(join(fixtures, "main.json"), JSON.stringify({ object: { sha: main ?? (await git("rev-parse", "HEAD")) } }));
       await execFileAsync("bash", ["-euo", "pipefail", "-c", script!], {
         cwd: repo,
         env: {
           ...process.env,
           PATH: `${bin}:${process.env.PATH}`,
           FIXTURES: fixtures,
-          CURRENT_SHA: current ?? (await git("rev-parse", "HEAD")),
-          FORCE_BUILD: String(force),
+          CURRENT_SHA: await git("rev-parse", "HEAD"),
+          FORCE_BUILD: "false",
           GH_TOKEN: "fixture",
           GITHUB_OUTPUT: output,
           GITHUB_REPOSITORY: "example-org/example-app",
@@ -1694,45 +1725,8 @@ jq -r "$expr" "$FIXTURES/$file"
       });
       return Object.fromEntries((await readFile(output, "utf8")).trim().split("\n").map((line) => line.split(/=(.*)/s).slice(0, 2)));
     };
-    const refusal = async (options: Parameters<typeof decide>[0]) => {
-      try {
-        await decide(options);
-      } catch (error) {
-        return String((error as { stderr?: string }).stderr);
-      }
-      throw new Error("the decision step did not refuse");
-    };
-    /**
-     * The whole release gate for `current`, as the caller wires it: the real decision step, then (only
-     * when it builds) the real release preflight from the checked-out source. True means an upload.
-     */
-    const releases = async (options: { current: string; force?: boolean; main?: string | null }) => {
-      let decision: Record<string, string>;
-      try { decision = await decide(options); } catch { return false; }
-      if (decision.build !== "true") return false;
-      const preflight = (await read("release-preflight.yml")) as { jobs?: { verify?: { steps?: Array<{ name?: string; run?: string }> } } };
-      const check = preflight.jobs?.verify?.steps?.find((step) => step.name === "Verify reviewed release source")?.run;
-      expect(check).toBeTruthy();
-      const branch = await git("rev-parse", "--abbrev-ref", "HEAD");
-      await git("checkout", "--quiet", "--detach", options.current);
-      try {
-        await execFileAsync("bash", ["-c", check!], {
-          cwd: repo,
-          env: {
-            ...process.env, PATH: `${bin}:${process.env.PATH}`, FIXTURES: fixtures, GH_TOKEN: "fixture",
-            GITHUB_REF: "refs/heads/main", GITHUB_REPOSITORY: "example-org/example-app",
-            GITHUB_OUTPUT: join(root, "preflight-output"), EXPECTED_SHA: options.current,
-          },
-        });
-        return true;
-      } catch {
-        return false;
-      } finally {
-        await git("checkout", "--quiet", branch);
-      }
-    };
     const cleanup = () => rm(root, { recursive: true, force: true });
-    return { commit, git, history, decide, refusal, releases, cleanup };
+    return { commit, history, decide, cleanup };
   }
 
   const admissionOnly = [
@@ -1769,102 +1763,6 @@ jq -r "$expr" "$FIXTURES/$file"
         { id: 1, sha: a, jobs: [{ name: "Scheduler admission", conclusion: "success" }, { name: "Upload TestFlight build", conclusion: "success" }] },
       ]);
       expect(await t.decide()).toMatchObject({ build: "true", baseline: a });
-    } finally {
-      await t.cleanup();
-    }
-  });
-
-  it("never re-ships a commit older than the last upload, forced or not", async () => {
-    const t = await nightlyDecision();
-    try {
-      // Night A failed; a later night uploaded B, which descends from A; then night A is re-run.
-      const a = await t.commit("apps/ios/app.txt", "one\n");
-      const b = await t.commit("apps/ios/app.txt", "two\n");
-      await t.history([{ id: 2, sha: b, jobs: [{ name: "upload", conclusion: "success" }] }]);
-      const superseded = `this commit is older than the last successful upload ${b.slice(0, 12)}; a newer source already reached TestFlight`;
-      expect(await t.decide({ current: a })).toEqual({ build: "false", baseline: b, reason: superseded });
-      // A caller that forces every manual dispatch still cannot ship the older commit on re-run.
-      expect(await t.decide({ current: a, force: true })).toEqual({ build: "false", baseline: b, reason: superseded });
-      // The boundary: the uploaded commit itself is not older than itself.
-      expect(await t.decide({ current: b })).toMatchObject({ build: "false", reason: "no watched iOS paths changed since the last successful upload" });
-      expect(await t.decide({ current: b, force: true })).toEqual({ build: "true", baseline: "", reason: "forced by the caller" });
-      // A newer commit still builds normally.
-      const c = await t.commit("apps/ios/app.txt", "three\n");
-      expect(await t.decide({ current: c })).toMatchObject({ build: "true", baseline: b });
-    } finally {
-      await t.cleanup();
-    }
-  });
-
-  it("builds only main's current head when the baseline cannot prove age, and refuses otherwise", async () => {
-    const t = await nightlyDecision();
-    try {
-      const a = await t.commit("apps/ios/app.txt", "one\n");
-      const b = await t.commit("apps/ios/app.txt", "two\n");
-      const missing = "e".repeat(40);
-      const unknown: Array<[string, Parameters<typeof t.history>[0], string]> = [
-        ["unreadable", [{ id: 2, sha: b, jobs: null }], "the upload baseline could not be read; building conservatively"],
-        ["empty", [{ id: 2, sha: b, jobs: [{ name: "Test before release / test", conclusion: "success" }] }], "no successful upload found among the latest 100 successful runs"],
-        ["unavailable", [{ id: 3, sha: missing, jobs: [{ name: "upload", conclusion: "success" }] }], "the last successful upload commit is unavailable; building conservatively"],
-      ];
-      for (const [name, runs, reason] of unknown) {
-        await t.history(runs);
-        // Main's head (B) still builds, forced or not, as before.
-        expect(await t.decide({ current: b }), name).toMatchObject({ build: "true", reason });
-        expect(await t.decide({ current: b, force: true }), name).toMatchObject({ build: "true", reason: "forced by the caller" });
-        // An older commit (a re-run of night A) refuses, forced or not.
-        for (const force of [false, true]) {
-          expect(await t.refusal({ current: a, force }), `${name} force=${force}`).toContain(`${a} is not current main (${b})`);
-        }
-        // Unreadable main refuses even for the head: unknown is never a healthy build.
-        expect(await t.refusal({ current: b, main: null }), name).toContain("current main could not be read");
-        expect(await t.refusal({ current: b, main: "not-a-sha" }), name).toContain("current main could not be read");
-      }
-      // Unrelated history proves nothing about age: only main's head builds conservatively.
-      await t.history([{ id: 2, sha: b, jobs: [{ name: "upload", conclusion: "success" }] }]);
-      await t.git("checkout", "--quiet", "--orphan", "unrelated");
-      const u = await t.commit("apps/ios/app.txt", "other\n");
-      expect(await t.decide({ current: u })).toEqual({
-        build: "true", baseline: b, reason: "the last successful upload is not an ancestor of main; building conservatively",
-      });
-      expect(await t.decide({ current: u, force: true })).toMatchObject({ build: "true", reason: "forced by the caller" });
-      for (const force of [false, true]) {
-        expect(await t.refusal({ current: u, force, main: b }), `unrelated force=${force}`).toContain(`${u} is not current main (${b})`);
-      }
-    } finally {
-      await t.cleanup();
-    }
-  });
-
-  it("never uploads an older source through decision plus preflight, whatever GitHub fails to answer", async () => {
-    const t = await nightlyDecision();
-    try {
-      // B, main's head, uploaded after A. The Actions API is down (502) but git refs, compare and
-      // pull requests answer: the exact case where the relaxed preflight alone would admit A.
-      const a = await t.commit("apps/ios/app.txt", "one\n");
-      const b = await t.commit("apps/ios/app.txt", "two\n");
-      const histories: Array<[string, Parameters<typeof t.history>[0]]> = [
-        ["actions api down", [{ id: 2, sha: b, jobs: null }]],
-        ["healthy", [{ id: 2, sha: b, jobs: [{ name: "upload", conclusion: "success" }] }]],
-        ["no upload yet", []],
-      ];
-      for (const [name, runs] of histories) {
-        await t.history(runs);
-        for (const force of [false, true]) {
-          expect(await t.releases({ current: a, force }), `${name}: A force=${force}`).toBe(false);
-          expect(await t.releases({ current: a, force, main: null }), `${name}: A, main unreadable, force=${force}`).toBe(false);
-        }
-      }
-      // The ordinary night still ships: B is main's head with an unreadable history, and the
-      // healthy forced case.
-      await t.history([{ id: 2, sha: b, jobs: null }]);
-      expect(await t.releases({ current: b })).toBe(true);
-      await t.history([{ id: 2, sha: b, jobs: [{ name: "upload", conclusion: "success" }] }]);
-      expect(await t.releases({ current: b, force: true })).toBe(true);
-      // A newer reviewed commit pinned behind main still ships once main has moved past it.
-      const c = await t.commit("apps/ios/app.txt", "three\n");
-      await t.commit("docs/readme.md", "later\n");
-      expect(await t.releases({ current: c })).toBe(true);
     } finally {
       await t.cleanup();
     }
