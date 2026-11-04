@@ -171,3 +171,7 @@ remain unverified and outside this implementation turn. No daemon, runtime/confi
 Paperclip mutation, gateway API request, consumer edit or release was performed. A killed
 guardian intentionally requires operator reconciliation; the retained held-admission
 case is tested. No human clarification or policy waiver is requested by this source PR.
+
+Draft PR: https://github.com/cpheinrich/morpheus/pull/604 (unlabelled, auto-merge off).
+Native implementation author session: `01a1a40a-ae6d-7853-9d16-f20b20e8ab6a`.
+The supervising root owns the next fresh independent review and remaining rollout proof.
