@@ -284,3 +284,57 @@ native auth file was created. Exact private invocation, source hashes, native se
 admission and evidence paths are supplied to the root separately. This supersedes the
 older smoke's guardian identity only; it does not establish installation, service startup
 or consumer delivery acceptance. No Evo edits, runtime install or vendor/native fallback.
+
+## Independent review completed
+
+The initial independent high-risk review blocked FGW-001: detached tool descendants survived PGID-only cleanup while replacement writers were admitted. The author added inherited ownership markers, parent/start identity tracking and verified empty-census cleanup; unreadable ownership retains admission. The same reviewer cleared the final source with no conditions or new findings after 22 passing focused checks. Actual authenticated gateway qualifications passed, including a real command tool retaining its ownership marker. This proves cooperating-tool source behavior; installation and Evo delivery remain separate acceptance.
+
+Source author native session01a1a40a-ae6d-7853-9d16-f20b20e8ab6a; canonical reviewer provenance is this supervising parent session. Root independently verified the real command-tool marker qualification (boolean True, exit0, cleanup verified, unchanged empty workspace).
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "34d1f03b7f2e134db7cbdc1d4032e768995d2376",
+  "reviewed": "025e7dd3fd87b92caec46fec07c51777a6811924",
+  "covered": "9f390c8222b544338ada478db99c2cf3d31a1b40",
+  "authorSession": "01a1a291-3585-7731-8dba-400d689e43fb",
+  "reviewerSession": "/root/factory_gateway_source_review",
+  "risk": "high",
+  "elapsedMinutes": 1.9394833333333332,
+  "timing": {
+    "source": "clock",
+    "durationMs": 116369,
+    "evidence": "Parent rollout01a1a291-3585-7731-8dba-400d689e43fb: spawn_agent factory_gateway_source_review at2026-11-04T01:06:59.962Z; initial FINAL_ANSWER blocked at2026-11-04T01:08:56.331Z."
+  },
+  "outcome": "complete",
+  "summary": "The initial independent high-risk review blocked FGW-001: detached tool descendants survived PGID-only cleanup while replacement writers were admitted. The author added inherited ownership markers, parent/start identity tracking and verified empty-census cleanup; unreadable ownership retains admission. The same reviewer cleared the final source with no conditions or new findings after 22 passing focused checks. Actual authenticated gateway qualifications passed, including a real command tool retaining its ownership marker. This proves cooperating-tool source behavior; installation and Evo delivery remain separate acceptance.",
+  "findings": [
+    {
+      "id": "FGW-001",
+      "severity": "substantive",
+      "description": "PGID-only cleanup declared verified termination while a detached/reparented tool remained alive, permitting another writer.",
+      "paths": [
+        "plugins/factory/src/guardian.py",
+        "plugins/factory/src/owned_processes.py",
+        "plugins/factory/tests/unattended-worker.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Inherited per-run marker plus parent/start-identity census tracks ordinary detached tools; identity-checked signals and verified empty census precede readmission, with unreadable census held. Reparented TERM-ignoring heartbeat and held-census regressions pass. Same reviewer reran22focusedchecks and cleared9f390c8 without conditions; cooperating-tool limitation remains documented."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/factory_gateway_source_review",
+      "commit": "9f390c8222b544338ada478db99c2cf3d31a1b40",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.9877666666666667,
+      "timing": {
+        "source": "clock",
+        "durationMs": 59266,
+        "evidence": "Same parent rollout: followup_task factory_gateway_source_review at2026-11-04T01:15:37.877Z; FINAL_ANSWER cleared at2026-11-04T01:16:37.143Z."
+      },
+      "summary": "Cleared FGW-001 fix and regressions;22focusedtests passed, all qualification hashes matched and real Codex marker-presence event inspected. No conditions or new findings. No service installation or consumer recovery claimed."
+    }
+  ]
+}
+```
