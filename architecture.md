@@ -3315,6 +3315,24 @@ initial version. Cross-agent memory consists of explicitly selected read-only ex
 with native memory controls respected and separate write ownership. See the package README
 for exact compatibility, subscription-overage and remote-host boundaries.
 
+The separate opt-in `plugins/factory/scripts/gateway-worker.mjs` entrypoint serves
+trusted unattended services without desktop identity, native login, quota discovery or
+Paperclip. An owner-only configuration outside workspaces fixes the claimed checkout,
+Codex gateway, credential reference, model, effort and exact sandbox/never approval.
+The caller durably saves each invocation UUID before calling; exclusive reservation
+precedes credential resolution, and status/same-ID replay only reconstruct evidence.
+The existing guardian owns the one-writer workspace lock, bounded lease and descendant
+cleanup. Caught preparation failures before spawn and definitive guardian ENOENT refusals
+retain phase-specific `never-launched` proof and a terminal failure with no native session.
+Corrected setup requires a fresh UUID without resume; the failed UUID never launches.
+Possible launches, dead guardians and missing proof remain unverified and held. Native
+continuation requires verified termination, a real session and the identical binding.
+Source/fake-provider qualification is distinct from runtime adoption and live gateway proof.
+The guardian retains UTC invocation bounds and monotonic duration through owned cleanup.
+Verified terminal results with a native session expose that optional runner timing through
+status/replay so lost caller replies do not lose review-duration evidence. Legacy, unknown
+and never-launched results invent no measurement; deadline and lease semantics stay unchanged.
+
 ### 18.1 Morpheus's own structure
 
 **One package, not many.** `morpheus-kit` ships everything with subpath exports, so a project

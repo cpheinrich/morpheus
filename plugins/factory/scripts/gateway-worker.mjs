@@ -6,7 +6,9 @@ if (args.length === 1 && args[0] === '--help') {
 } else {
   try {
     if (args[0] === '--status' && args.length === 2) {
-      console.log(JSON.stringify(await workerResult(args[1])));
+      const result = await workerResult(args[1]);
+      console.log(JSON.stringify(result));
+      process.exitCode = result.result.outcome === 'failed' ? 1 : 0;
     } else {
     const options = {};
     if (args.length % 2) throw new Error('Expected --config FILE [--admission-id UUID] [--resume ADMISSION_ID]');

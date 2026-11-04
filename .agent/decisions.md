@@ -1,5 +1,21 @@
 # Decisions
 
+**Unattended Factory admission retains proven prelaunch failures** — 2026-11-03.
+MO-26-11-03-17.34.41. The explicit gateway-worker CLI is separate from desktop/Pool
+discovery: trusted service configuration fixes authority and gateway, the caller reserves
+an invocation UUID, and the existing guardian owns workspace serialization and cleanup.
+A caught preparation failure before spawn or definitive guardian ENOENT refusal records
+phase-specific never-launched proof, terminal failure and a null native session. Same-ID
+status/replay retain that failure even after setup recovers; a new intended invocation
+uses a fresh UUID without resume. Ambiguous launch, missing proof and unknown cleanup
+keep their holds; no historical unknown operation is cleared. Reuse existing atomic
+admission/result records and Node spawn evidence for this domain-specific lifecycle fix;
+no generic module, dependency, ledger, retry option, quota gate or provider fallback.
+The same guardian retains UTC invocation bounds and monotonic duration through owned
+cleanup, independently of its existing deadline clock. Verified terminal/native-session
+results expose optional runner timing for lost-reply review recovery; legacy, unknown
+and never-launched cases fabricate no duration. Consumers compute minutes from milliseconds.
+
 **Recurring runs are repository-owned schedules dispatched by one portable tick** — 2026-11-03.
 MO-26-11-03-12.57.01. Chris accepted the design: each repository declares `.morpheus/schedules.json`;
 a host timer runs `morpheus scheduler tick` every minute and one GitHub-hosted backup runs the same
