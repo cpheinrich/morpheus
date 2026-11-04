@@ -43,6 +43,15 @@ async function waitFor(read, predicate) {
   assert.fail(`Timed out waiting for fixture evidence: ${JSON.stringify(value)}`);
 }
 async function json(path) { return JSON.parse(await readFile(path,'utf8')); }
+async function invoke(args, prompt = 'fixture') {
+  const child = spawn(process.execPath, [cli, ...args], { env: process.env, stdio: ['pipe', 'pipe', 'pipe'] });
+  let stdout = '', stderr = '';
+  child.stdout.on('data', b => stdout += b); child.stderr.on('data', b => stderr += b);
+  child.stdin.end(prompt);
+  const [code] = await once(child, 'close');
+  assert.equal(stderr, '');
+  return { code, output: JSON.parse(stdout) };
+}
 async function allText(root) {
   let text='';
   for(const entry of await readdir(root,{withFileTypes:true})) {
@@ -76,7 +85,7 @@ test('gateway-only launch pins args/env, stdin, exact permissions, and correlate
 test('missing key and invalid provider/permissions/config never run a native fallback', async t => {
   const f=await setup(t);
   delete process.env.TEST_GATEWAY_KEY;
-  await assert.rejects(gatewayWorker(f.configPath,'x'),/credential resolution failed/);
+  assert.equal((await gatewayWorker(f.configPath,'x')).result.summary,'Gateway credential resolution failed; no fallback');
   await assert.rejects(readFile(join(f.cwd,'observed.json')),{code:'ENOENT'});
   for(const change of [{gateway:{...f.config.gateway,provider:'claude'}},{approvalPolicy:'on-request'},{sandbox:'unknown'},{model:'auto'},{maxRunSeconds:0},{gateway:{...f.config.gateway,baseUrl:'https://user:password@gateway.invalid'}}]) {
     await writeFile(f.configPath,JSON.stringify({...f.config,...change}));
@@ -98,8 +107,87 @@ test('continuation refuses changed job, workspace, gateway, model or permission 
   const other=join(f.root,'other'); await mkdir(other);
   for(const change of [{jobId:'another-job'},{cwd:other},{gateway:{...f.config.gateway,baseUrl:'https://other.invalid'}},{model:'other-model'},{sandbox:'danger-full-access'}]) {
     await writeFile(f.configPath,JSON.stringify({...f.config,...change}));
-    await assert.rejects(gatewayWorker(f.configPath,'continue',first.admissionId),/same job, checkout and gateway/);
+    const refused = await gatewayWorker(f.configPath,'continue',first.admissionId);
+    assert.equal(refused.result.outcome,'failed');
+    assert.match(refused.result.summary,/same job, checkout and gateway/);
+    assert.equal(refused.prelaunchFailure.proof,'never-launched');
+    assert.equal(refused.sessionId,null);
   }
+});
+test('CLI retains a missing-key failure through status/replay and launches only a fresh UUID after restoration', async t => {
+  const f = await setup(t, `import pathlib
+counter=pathlib.Path('launch-count')
+counter.write_text(str(int(counter.read_text())+1) if counter.exists() else '1')
+` + doneScript);
+  const id = randomUUID();
+  const args = ['--config', f.configPath, '--admission-id', id];
+  const launches = () => readFile(join(f.cwd, 'launch-count'), 'utf8').catch(e => { if (e.code === 'ENOENT') return '0'; throw e; });
+  delete process.env.TEST_GATEWAY_KEY;
+  const first = await invoke(args);
+  assert.equal(first.code, 1);
+  assert.equal(first.output.admissionId, id);
+  assert.equal(first.output.sessionId, null);
+  assert.equal(first.output.terminationVerified, true);
+  assert.equal(first.output.state, 'failed');
+  assert.deepEqual(first.output.prelaunchFailure, { phase: 'preparation', proof: 'never-launched', summary: 'Gateway credential resolution failed; no fallback' });
+  assert.deepEqual(first.output.result, { outcome: 'failed', summary: 'Gateway credential resolution failed; no fallback', evidence: [], question: '' });
+  assert.deepEqual(await json(first.output.resultPath), first.output);
+  assert.deepEqual(await invoke(['--status', id]), first);
+  assert.deepEqual(await invoke(args), first);
+  process.env.TEST_GATEWAY_KEY = secret;
+  assert.deepEqual(await invoke(args), first);
+  assert.equal(await launches(), '0');
+  const fresh = await invoke(['--config', f.configPath, '--admission-id', randomUUID()]);
+  assert.equal(fresh.code, 0);
+  assert.equal(fresh.output.result.outcome, 'completed');
+  assert.equal(fresh.output.sessionId, 'session-fixture');
+  assert.equal(fresh.output.terminationVerified, true);
+  const argv = (await json(join(f.cwd, 'observed.json'))).argv;
+  assert.equal(argv[0], 'exec');
+  assert.equal(argv.includes('resume'), false);
+  assert.equal(await launches(), '1');
+  await assert.rejects(readFile(join(f.state, id, 'process.json')), { code: 'ENOENT' });
+  assert.deepEqual(await invoke(['--status', id]), first);
+  assert.doesNotMatch(await allText(f.state), new RegExp(secret));
+});
+test('known preparation and guardian ENOENT failures are durable without weakening missing/contradictory proof', async t => {
+  const f = await setup(t);
+  await mkdir(f.state, { recursive: true, mode: 0o700 });
+  await writeFile(join(f.state, 'sessions'), 'not a directory');
+  const args = ['--config', f.configPath, '--admission-id', randomUUID()];
+  const preparation = await invoke(args);
+  assert.equal(preparation.code, 1);
+  assert.equal(preparation.output.terminationVerified, true);
+  assert.equal(preparation.output.sessionId, null);
+  assert.deepEqual(preparation.output.prelaunchFailure, { phase: 'preparation', proof: 'never-launched', summary: 'Worker preparation failed; no launch.' });
+  assert.deepEqual(await invoke(args), preparation);
+  await rm(join(f.state, 'sessions'));
+  const path = process.env.PATH;
+  process.env.PATH = join(f.root, 'bin'); // No python3 executable; the OS refuses spawn.
+  const id = randomUUID();
+  const noPython = await invoke(['--config', f.configPath, '--admission-id', id]);
+  assert.equal(noPython.code, 1);
+  assert.equal(noPython.output.terminationVerified, true);
+  assert.equal(noPython.output.sessionId, null);
+  assert.deepEqual(noPython.output.prelaunchFailure, { phase: 'guardian-spawn', proof: 'never-launched', summary: 'Guardian executable unavailable; no launch.' });
+  process.env.PATH = path;
+  assert.deepEqual(await invoke(['--status', id]), noPython);
+  assert.deepEqual(await invoke(['--config', f.configPath, '--admission-id', id]), noPython);
+  const directory = join(f.state, id);
+  await assert.rejects(readFile(join(directory, 'process.json')), { code: 'ENOENT' });
+  await assert.rejects(readFile(join(f.cwd, 'observed.json')), { code: 'ENOENT' });
+  // Missing proof must not be inferred from the retained result or absence of a PID.
+  const record = await json(join(directory, 'admission.json'));
+  delete record.prelaunchFailure;
+  await writeFile(join(directory, 'admission.json'), JSON.stringify(record));
+  const unknown = await invoke(['--status', id]);
+  assert.equal(unknown.output.terminationVerified, false);
+  assert.equal(unknown.output.result.outcome, 'needs_input');
+  assert.deepEqual(await invoke(['--config', f.configPath, '--admission-id', id]), unknown);
+  record.prelaunchFailure = noPython.output.prelaunchFailure;
+  await writeFile(join(directory, 'admission.json'), JSON.stringify(record));
+  await writeFile(join(directory, 'process.json'), JSON.stringify({ runId: id, state: 'starting' }));
+  assert.equal((await invoke(['--status', id])).output.terminationVerified, false);
 });
 test('a CLI worker reports gateway failure without invoking native login or changing route',async t=>{
   const f=await setup(t,"import sys,pathlib\npathlib.Path('invoked').write_text(' '.join(sys.argv[1:]))\nsys.stdin.read()\nprint('{\"type\":\"turn.failed\",\"error\":{\"message\":\"gateway unavailable\"}}',flush=True)\nsys.exit(23)\n");
