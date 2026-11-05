@@ -29,6 +29,8 @@ if (argv[0] === '-help') {
   process.exit(0);
 }
 const value = flag => argv[argv.indexOf(flag) + 1];
+// Whether the destination had finished booting when this launched anything on it.
+const booted = fs.existsSync(process.env.EVENTS + '.booted.' + (value('-destination') || '').replace(/.*id=/, ''));
 const only = argv.filter(a => a.startsWith('-only-testing:')).map(a => a.slice(14));
 const skip = argv.filter(a => a.startsWith('-skip-testing:')).map(a => a.slice(14));
 // An identifier selects itself, everything below it, and a method named without parentheses.
@@ -38,7 +40,7 @@ let tests = JSON.parse(process.env.FAKE_TESTS)
   .filter(t => (!only.length || only.some(e => covers(t.id, e))) && !skip.some(e => covers(t.id, e)))
   .filter(t => !(retry && t.behavior === 'missing-on-retry'));
 if (argv.includes('-enumerate-tests')) {
-  fs.appendFileSync(process.env.EVENTS, JSON.stringify({ enumerate: tests.map(t => t.id), destination: value('-destination') }) + '\\n');
+  fs.appendFileSync(process.env.EVENTS, JSON.stringify({ enumerate: tests.map(t => t.id), destination: value('-destination'), booted }) + '\\n');
   if (process.env.FAIL_ENUMERATE) process.exit(70);
   fs.writeFileSync(value('-test-enumeration-output-path'), JSON.stringify({ errors: [], values: [{ enabledTests: tests.map(t => ({ identifier: t.id })), disabledTests: [] }] }));
   process.exit(0);
@@ -56,7 +58,7 @@ for (const target of (process.env.NO_START || '').split(',').filter(Boolean)) {
   tests = tests.filter(t => !t.id.startsWith(target + '/') || t.behavior === 'skip' || t.behavior === 'expected-failure');
   placeholders.push({ id: target + '/App encountered an error', result: 'Failed', placeholder: true });
 }
-fs.appendFileSync(process.env.EVENTS, JSON.stringify({ argv, selected: tests.map(t => t.id), deviceWasClean: clean, destination: value('-destination'), lane: process.env.MORPHEUS_IOS_LANE || null }) + '\\n');
+fs.appendFileSync(process.env.EVENTS, JSON.stringify({ argv, selected: tests.map(t => t.id), deviceWasClean: clean, destination: value('-destination'), lane: process.env.MORPHEUS_IOS_LANE || null, booted }) + '\\n');
 const results = tests.map((t, i) => {
   const failed = t.behavior === 'fail' || t.behavior === 'unnamed-failure' || t.behavior === 'missing-on-retry' ||
     (t.behavior === 'leftover' && (!clean || i > 0)) || (t.behavior === 'fail-first-run' && !ran.includes(t.id));
@@ -103,6 +105,14 @@ const fs = require('node:fs');
 const argv = process.argv.slice(2);
 if (argv[0] === 'simctl') {
   fs.appendFileSync(process.env.EVENTS, JSON.stringify({ simctl: argv.slice(1) }) + '\\n');
+  // Which devices have finished booting, one marker file each (two lanes call this at once):
+  // bootstatus boots one; shutdown, erase and a fresh clone are not booted.
+  const marker = process.env.EVENTS + '.booted.' + argv[2];
+  if (argv[1] === 'bootstatus') {
+    if ((process.env.FAIL_BOOT || '').split(',').includes(argv[2])) { console.error('Boot timed out'); process.exit(1); }
+    fs.writeFileSync(marker, '');
+  }
+  if (argv[1] === 'shutdown' || argv[1] === 'erase') fs.rmSync(marker, { force: true });
   if (argv[1] === 'list') {
     process.stdout.write(JSON.stringify({ devices: { 'iOS-26-5': [{ udid: process.env.FAKE_DEVICE, name: 'Morpheus CI fake' }] } }));
     process.exit(0);
@@ -851,6 +861,35 @@ describe("simulator lanes the runner's host declares", () => {
     expect(timing.xcodebuild[0]).toBeLessThanOrEqual(timing.xcodebuild[1]);
     expect(timing.xcodebuild[1]).toBeLessThanOrEqual(timing.finished);
   });
+
+  it("never launches anything on a simulator still booting: the enumeration and every lane wait for a full boot", async () => {
+    const h = await harness([...units, ...uis].map((id) => ({ id, behavior: "pass" as Behavior })), twoLanes);
+    expect((await h.run()).code).toBe(0);
+    const events = await h.events();
+    expect(events.find((e) => "enumerate" in e)!.booted).toBe(true);
+    const lanes = events.filter((e) => "argv" in e);
+    expect(lanes.length).toBe(2);
+    for (const lane of lanes) expect([lane.destination, lane.booted]).toEqual([lane.destination, true]);
+    // The job's simulator boots before it is enumerated; the clone after it is made.
+    const order = events.map((e) => ("simctl" in e ? (e.simctl as string[]).slice(0, 2).join(" ") : "enumerate" in e ? "enumerate" : "other"));
+    expect(order.indexOf(`bootstatus ${device}`)).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf(`bootstatus ${device}`)).toBeLessThan(order.indexOf("enumerate"));
+    expect(order.lastIndexOf(`bootstatus ${clone}`)).toBeGreaterThan(order.indexOf(`clone ${device}`));
+  });
+
+  it.each([["the job's simulator", device], ["the clone", clone]])(
+    "fails, launching nothing on it, when %s never finishes booting", async (_name, failing) => {
+      const h = await harness([...units, ...uis].map((id) => ({ id, behavior: "pass" as Behavior })),
+        { ...twoLanes, FAIL_BOOT: failing });
+      const { code, stdout } = await h.run();
+      expect(code).not.toBe(0);
+      expect(stdout).toContain(`Simulator ${failing} did not finish booting`);
+      const events = await h.events();
+      const launched = events.filter((e) => ("argv" in e || "enumerate" in e || "preTest" in e) &&
+        String(e.destination ?? e.preTest).endsWith(failing));
+      expect(launched).toEqual([]);
+      if (failing === clone) expect(events.some((e) => "simctl" in e && (e.simctl as string[]).join(" ") === `delete ${clone}`)).toBe(true);
+    });
 
   it("stops before cloning or running anything when the selection cannot be enumerated", async () => {
     const h = await harness([{ id: units[0]!, behavior: "pass" }], { ...twoLanes, FAIL_ENUMERATE: "1" });

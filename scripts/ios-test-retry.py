@@ -249,6 +249,17 @@ def simctl(*args):
     return subprocess.run(['xcrun', 'simctl', *args], capture_output=True, text=True)
 
 
+def booted(device):
+    """Wait until an owned simulator has finished booting (bootstatus -b boots it if it is shut down).
+
+    Nothing this runner starts may launch an app on a device still coming up: Xcode's enumeration
+    launches the app under test, and so does every lane's xcodebuild. RuntimeError if it never does.
+    """
+    done = simctl('bootstatus', device, '-b')
+    if done.returncode:
+        raise RuntimeError(f'Simulator {device} did not finish booting: {(done.stderr or done.stdout).strip()[-2000:]}')
+
+
 def second_simulator(device):
     """A clone of the job's own simulator, named so the job's cleanup also removes it."""
     listed = json.loads(simctl('list', 'devices', '-j').stdout or '{}')
@@ -281,6 +292,9 @@ def run_lanes(selections, devices, results, logs, enumeration=None):
         timing = {}
         here = results if n == 1 else results / f'lane-{n}'
         try:
+            # The clone, and the job's simulator shut down to clone it, are fully booted before
+            # the pre-test script or xcodebuild can launch anything on them.
+            booted(devices[n - 1])
             status, tested = run(1, first_selection(1)[:2] + [f'-only-testing:{t}' for t in selections[n - 1]]
                              + [f'-skip-testing:{t}' for t in lines('SKIP_TESTING')],
                              here, logs / f'lane-{n}', bundle=results / f'lane-{n}' / 'Tests.xcresult',
@@ -288,7 +302,7 @@ def run_lanes(selections, devices, results, logs, enumeration=None):
                              shared={'MORPHEUS_IOS_LANE_SELECTION': str(results / f'lane-{n}' / 'selection.txt'),
                                      **({'MORPHEUS_IOS_ENUMERATION': str(enumeration)} if enumeration else {})},
                              timing=timing)
-        except OSError as error:
+        except (OSError, RuntimeError) as error:
             print(f'::error::Lane {n} could not run: {error}', flush=True)
             status, tested = 1, False
         outcome[n - 1] = {'lane': n, 'device': devices[n - 1], 'tests': len(selections[n - 1]),
@@ -499,6 +513,9 @@ def main():
         # Everything the lanes cost outside the lanes themselves, so a comparison can see it.
         setup = record['laneSetupSeconds'] = {}
         try:
+            # Enumerating launches the app under test on the job's simulator, so it waits for a full
+            # boot first, as each lane does below before its own preparation and tests.
+            booted(device.group(1))
             started = time.monotonic()
             enumeration = results / 'lanes-enumeration.json'
             selections = partition(enumerated(f'id={device.group(1)}', enumeration), per_test=durations())
