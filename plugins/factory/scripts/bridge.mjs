@@ -113,6 +113,8 @@ try {
             provider: g.provider,
             baseUrl: g.baseUrl,
             usedPercent: g.usedPercent,
+            // The gateway's own timestamp for this reading, so its age is visible.
+            updatedAt: g.updatedAt ?? null,
             belowThreshold: g.usedPercent != null && g.usedPercent < result.config.threshold,
             keyRef: g.keyRef,
           };

@@ -180,8 +180,17 @@ how a credentials manager stays the single source of truth, for example
 `exec:/opt/homebrew/bin/darwin-env get FACTORY_CLAUDE_KEY`; give the command an absolute
 path, since the bridge service inherits the PATH of whichever session started it.
 
-Quota is read from the gateway's admin API (`GET /api/v1/admin/accounts`) with an admin
-login. Configure it as references too:
+Quota is read from the gateway's admin API with an admin login. `GET /api/v1/admin/accounts`
+only finds each provider's account: its stored counters are whatever sub2api last recorded
+and can be arbitrarily old, so they are never used. Every inspection, start and `doctor`
+then asks `GET /api/v1/admin/accounts/<id>/usage?source=active&force=true`, which makes
+sub2api query the provider for the account's 5-hour and 7-day windows. The account counts
+as its most-used window whose reset time has not passed. sub2api may still answer from its
+own short upstream cache (about three minutes for Claude), so a reading is not guaranteed
+to be from that instant; each gateway's `updatedAt` is the gateway's own timestamp for it.
+A failed usage read leaves that provider's quota unknown (routing treats it as no
+headroom) and does not affect the other provider. Each request times out after 15
+seconds. Configure the admin login as references too:
 
 ```json
 {
@@ -197,7 +206,7 @@ Without `admin`, the service falls back to `FACTORY_ADMIN_EMAIL` and
 Claude or Codex session that first started the service, which is rarely the shell that
 exported them (a desktop-app session exports nothing), so `env:` references and the env
 fallback usually mean "quota unknown, routing native". `bridge.mjs doctor` shows each
-gateway's `usedPercent`, whether it is below the threshold, whether its `keyRef` resolves,
+gateway's `usedPercent` and its `updatedAt`, whether it is below the threshold, whether its `keyRef` resolves,
 and where the admin login came from, so a misconfiguration is visible before a delegation
 is attempted.
 

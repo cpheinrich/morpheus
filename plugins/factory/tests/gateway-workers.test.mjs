@@ -53,9 +53,21 @@ async function harness(t, binaries) {
         json: async () => ({
           data: {
             items: [
-              { platform: "anthropic", extra: { session_window_utilization: 0.02 } },
-              { platform: "openai", extra: { codex_7d_used_percent: 4 } },
+              { id: 1, platform: "anthropic" },
+              { id: 2, platform: "openai" },
             ],
+          },
+        }),
+      };
+    const usage = { 1: 2, 2: 4 }[url.match(/\/admin\/accounts\/(\d+)\/usage\?source=active&force=true$/)?.[1]];
+    if (usage != null)
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            updated_at: new Date().toISOString(),
+            five_hour: { utilization: usage, resets_at: null },
+            seven_day: { utilization: usage, resets_at: null },
           },
         }),
       };

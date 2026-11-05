@@ -340,71 +340,128 @@ test("admin credentials come from configured references, else the service enviro
   assert.match(broken.error, /Environment variable E is not set/);
 });
 
-test("readGatewayQuota reads the sub2api admin API and fails closed", async () => {
+// A fake sub2api: the account list carries stale stored counters (100% used); the
+// per-account usage endpoint answers from `usage[id]`, which a test may change between
+// calls. Every request is logged.
+function fakeGateway(usage) {
+  const calls = [];
   const fetchImpl = async (url, opts) => {
-    if (url.endsWith("/api/v1/auth/login")) {
-      return { ok: true, json: async () => ({ data: { access_token: "tok" } }) };
-    }
-    if (url.endsWith("/api/v1/admin/accounts")) {
+    calls.push(url);
+    if (url.endsWith("/api/v1/auth/login")) return { ok: true, json: async () => ({ data: { access_token: "tok" } }) };
+    if (url.endsWith("/api/v1/admin/accounts"))
       return {
         ok: true,
         json: async () => ({
           data: {
             items: [
-              { platform: "anthropic", extra: { session_window_utilization: 0.05 } },
-              { platform: "openai", extra: { codex_7d_used_percent: 53 } },
+              { id: 7, platform: "anthropic", extra: { session_window_utilization: 1 } },
+              { id: 9, platform: "openai", extra: { codex_5h_used_percent: 100, codex_7d_used_percent: 100 } },
             ],
           },
         }),
       };
-    }
-    return { ok: false, status: 404, json: async () => ({}) };
+    const m = url.match(/\/api\/v1\/admin\/accounts\/(\d+)\/usage\?source=active&force=true$/);
+    assert.equal(opts.headers.authorization, "Bearer tok");
+    assert.ok(opts.signal instanceof AbortSignal, "every gateway request is time-bounded");
+    const answer = m && usage[m[1]];
+    if (answer instanceof Error) throw answer;
+    if (!answer) return { ok: false, status: 404, json: async () => ({}) };
+    return { ok: true, json: async () => answer };
   };
-  const gateways = [
-    { name: "claude", provider: "claude", baseUrl: "http://gw", keyRef: "env:KEY" },
-    { name: "codex", provider: "codex", baseUrl: "http://gw", keyRef: "env:KEY" },
-  ];
-  const result = await readGatewayQuota(gateways, { adminEmail: "a", adminPassword: "b", fetchImpl });
-  assert.equal(result[0].usedPercent, 5);
-  assert.equal(result[1].usedPercent, 53);
-  // No admin credentials: every gateway is unknown, never "plenty left".
-  const noCreds = await readGatewayQuota(gateways, { fetchImpl });
-  assert.equal(noCreds[0].usedPercent, null);
-  assert.equal(noCreds[1].usedPercent, null);
-  // A login failure fails closed too.
-  const bad = await readGatewayQuota(gateways, {
+  return { fetchImpl, calls };
+}
+const quotaGateways = [
+  { name: "claude", provider: "claude", baseUrl: "http://gw/", keyRef: "env:KEY" },
+  { name: "codex", provider: "codex", baseUrl: "http://gw", keyRef: "env:KEY" },
+];
+const quotaNow = Date.parse("2026-11-04T20:00:00Z");
+const window = (utilization, resets_at = "2026-11-04T22:00:00Z") => ({ utilization, resets_at, remaining_seconds: 7200 });
+
+test("readGatewayQuota reads live per-account usage, never the account list's stored counters", async () => {
+  const usage = {
+    7: { data: { updated_at: "2026-11-04T19:58:00Z", five_hour: window(4), seven_day: window(12) } },
+    9: { data: { updated_at: "2026-11-04T19:59:30Z", five_hour: window(3), seven_day: window(21) } },
+  };
+  const { fetchImpl, calls } = fakeGateway(usage);
+  const read = () => readGatewayQuota(quotaGateways, { adminEmail: "a", adminPassword: "b", fetchImpl, now: quotaNow });
+  const first = await read();
+  // The list says 100% used for both; the live endpoint's low readings win.
+  assert.deepEqual(
+    first.map((g) => [g.usedPercent, g.windows, g.updatedAt]),
+    [
+      [12, { "5h": 4, "7d": 12 }, "2026-11-04T19:58:00Z"],
+      [21, { "5h": 3, "7d": 21 }, "2026-11-04T19:59:30Z"],
+    ],
+  );
+  assert.deepEqual(
+    calls.filter((u) => u.includes("/usage")).sort(),
+    ["http://gw/api/v1/admin/accounts/7/usage?source=active&force=true", "http://gw/api/v1/admin/accounts/9/usage?source=active&force=true"],
+  );
+  // A repeated inspection asks again and reports what changed; nothing is cached.
+  usage[7] = { data: { updated_at: "2026-11-04T20:01:00Z", five_hour: window(88), seven_day: window(12) } };
+  const second = await read();
+  assert.equal(second[0].usedPercent, 88);
+  assert.equal(second[0].updatedAt, "2026-11-04T20:01:00Z");
+  assert.equal(calls.filter((u) => u.includes("/usage")).length, 4);
+});
+
+test("a failed usage read is unknown for that provider only", async () => {
+  for (const failure of [new Error("connect ECONNREFUSED"), undefined /* HTTP 404 */, { code: 0 } /* no data */]) {
+    const { fetchImpl } = fakeGateway({
+      7: failure,
+      9: { data: { updated_at: "2026-11-04T19:59:30Z", five_hour: window(3), seven_day: window(21) } },
+    });
+    const [claude, codex] = await readGatewayQuota(quotaGateways, { adminEmail: "a", adminPassword: "b", fetchImpl, now: quotaNow });
+    // Never the stored 100% (or any other stored figure): unknown, with the reason.
+    assert.equal(claude.usedPercent, null);
+    assert.equal(claude.updatedAt, undefined);
+    assert.match(claude.error, /ECONNREFUSED|usage HTTP 404|no data/);
+    assert.equal(codex.usedPercent, 21);
+    assert.equal(codex.error, undefined);
+  }
+});
+
+test("readGatewayQuota fails closed without credentials or login", async () => {
+  const { fetchImpl, calls } = fakeGateway({});
+  const noCreds = await readGatewayQuota(quotaGateways, { fetchImpl });
+  assert.deepEqual(noCreds.map((g) => g.usedPercent), [null, null]);
+  assert.equal(calls.length, 0);
+  const bad = await readGatewayQuota(quotaGateways, {
     adminEmail: "a",
     adminPassword: "b",
     fetchImpl: async () => ({ ok: false, status: 401, json: async () => ({}) }),
   });
-  assert.equal(bad[0].usedPercent, null);
+  assert.deepEqual(bad.map((g) => [g.usedPercent, g.error]), [[null, "login HTTP 401"], [null, "login HTTP 401"]]);
 });
 
 test("an account is as full as its most-used live window", async () => {
   const { accountUsage } = await import("../src/config.mjs");
-  const now = Date.parse("2026-10-31T13:30:00Z");
-  // Claude: an empty 5-hour window does not hide a nearly spent week.
-  assert.deepEqual(
-    accountUsage("claude", { session_window_utilization: 0, passive_usage_7d_utilization: 0.93, passive_usage_7d_reset: now / 1000 + 3600 }, now),
-    { usedPercent: 93, windows: { "5h": 0, "7d": 93 } },
-  );
-  // A 7-day window whose reset time has passed is not counted.
-  assert.deepEqual(
-    accountUsage("claude", { session_window_utilization: 0.06, passive_usage_7d_utilization: 0.93, passive_usage_7d_reset: now / 1000 - 60 }, now),
-    { usedPercent: 6, windows: { "5h": 6 } },
-  );
-  // Codex: the higher of the two, skipping a 5-hour window that already reset.
-  assert.equal(
-    accountUsage("codex", { codex_5h_used_percent: 80, codex_5h_reset_at: "2026-10-31T08:32:08Z", codex_7d_used_percent: 53, codex_7d_reset_at: "2026-11-05T05:11:11Z" }, now).usedPercent,
-    53,
-  );
-  assert.equal(
-    accountUsage("codex", { codex_5h_used_percent: 80, codex_5h_reset_at: "2026-10-31T14:00:00Z", codex_7d_used_percent: 53, codex_7d_reset_at: "2026-11-05T05:11:11Z" }, now).usedPercent,
-    80,
-  );
-  // Nothing readable is unknown, never headroom.
-  assert.deepEqual(accountUsage("claude", {}, now), { usedPercent: null, windows: {} });
-  assert.equal(accountUsage("codex", { codex_7d_used_percent: "53" }, now).usedPercent, null);
+  const now = quotaNow;
+  const at = (ms) => new Date(ms).toISOString();
+  // An empty 5-hour window does not hide a nearly spent week.
+  assert.deepEqual(accountUsage({ updated_at: "u", five_hour: window(0), seven_day: window(93) }, now), {
+    usedPercent: 93,
+    windows: { "5h": 0, "7d": 93 },
+    updatedAt: "u",
+  });
+  // Claude's 5-hour reset is honoured like any other: a window resetting exactly now is
+  // finished; one resetting a millisecond later still counts.
+  assert.deepEqual(accountUsage({ five_hour: window(100, at(now)), seven_day: window(40) }, now), {
+    usedPercent: 40,
+    windows: { "7d": 40 },
+    updatedAt: null,
+  });
+  assert.equal(accountUsage({ five_hour: window(100, at(now + 1)), seven_day: window(40) }, now).usedPercent, 100);
+  // A window with no reset time is counted as read.
+  assert.equal(accountUsage({ five_hour: window(55, null), seven_day: null }, now).usedPercent, 55);
+  // Both windows finished: unknown, not zero.
+  assert.equal(accountUsage({ five_hour: window(80, at(now - 1)), seven_day: window(90, at(now - 1)) }, now).usedPercent, null);
+  // Invalid or missing utilization is unreadable, never headroom.
+  for (const bad of ["53", NaN, Infinity, -1, null, undefined])
+    assert.equal(accountUsage({ five_hour: window(bad), seven_day: window(bad) }, now).usedPercent, null, String(bad));
+  assert.equal(accountUsage({ five_hour: window("53"), seven_day: window(20) }, now).usedPercent, 20);
+  assert.deepEqual(accountUsage({}, now), { usedPercent: null, windows: {}, updatedAt: null });
+  assert.equal(accountUsage({ updated_at: 12345 }, now).updatedAt, null);
 });
 
 test("placement picks the most-headroom gateway below the threshold", () => {
