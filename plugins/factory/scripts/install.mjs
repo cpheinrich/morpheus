@@ -11,7 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join, basename, dirname } from "node:path";
+import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 import {
@@ -19,6 +19,7 @@ import {
   findHelper,
   helperCandidates,
   legacyPaths,
+  installCopyFilter,
   legacyStatusLine,
   settingsMigration,
   withoutLegacyMarketplaceEntry,
@@ -190,11 +191,7 @@ try {
       "Existing factory marketplace entry has a different source. Resolve it explicitly before installing.",
     );
   const staged = join(temp, "factory");
-  await cp(source, staged, {
-    recursive: true,
-    filter: (path) =>
-      !["node_modules", ".git", "__pycache__"].includes(basename(path)),
-  });
+  await cp(source, staged, { recursive: true, filter: installCopyFilter });
   run(
     "pnpm",
     [

@@ -106,3 +106,12 @@ export function withoutLegacyMarketplaceEntry(catalog) {
   if (kept.length === plugins.length) return null;
   return { ...catalog, plugins: kept };
 }
+
+// What a staged install never copies: dependency and build output (the nested host package
+// builds only when its explicit setup runs) and private operator configuration,
+// which lives in FACTORY_HOME and must not ride along if one was dropped into a checkout.
+const NOT_INSTALLED = new Set(["node_modules", ".git", "__pycache__", "dist", "hosts.json", "factory.json", ".env"]);
+export function installCopyFilter(path) {
+  const name = path.split("/").pop();
+  return !NOT_INSTALLED.has(name) && !name.startsWith(".env.");
+}

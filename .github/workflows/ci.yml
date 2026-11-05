@@ -51,6 +51,14 @@ jobs:
           pnpm install --ignore-workspace --frozen-lockfile
           pnpm check
           pnpm test
+      - name: Test the Factory host package (own lockfile; no network, Docker or live services)
+        working-directory: plugins/factory/src/host
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm check
+          pnpm typecheck
+          pnpm test
+          pnpm build
 
   node:
     needs: changes
