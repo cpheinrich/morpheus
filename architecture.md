@@ -3304,17 +3304,25 @@ workers on the same host. A worker is the
 other agent on its native login, or either agent behind a pooled-subscription gateway
 (sub2api), reached as an API with its own key. A gateway of the coordinator's own provider
 is a valid delegate because it is a separate subscription; the coordinator's own native
-login never is, because that would be circular. Automatic mode picks the gateway with the
-most headroom below its threshold (90% used by default, read from the gateway's admin API)
-and otherwise keeps the work with the coordinator; missing or stale usage never triggers a
-handoff. The coordinator consumes its own allowance while supervising. A worker never
-widens permissions: Claude permission modes map onto Codex's sandbox (only an explicit
-bypass reaches full access), a same-provider worker inherits the coordinator's own mode or
-sandbox, and saved worker sessions are kept per gateway so routes never resume each other. Delegated workers are marked
+login never is, because that would be circular. Before a root session is pinned, routing picks
+the gateway with the most headroom below its threshold (90% used by default, read from the
+gateway's admin API; missing or stale usage is never headroom), and otherwise the other
+provider's native login on this host. An explicit provider request prefers that provider's
+eligible gateway; for the coordinator's own provider with no eligible gateway it is refused,
+never handed to the coordinator's own login. After the first successful primary launch the
+pinned route is used as-is: an ineligible pinned gateway refuses and nothing silently switches.
+The coordinator consumes its own allowance while supervising. Workers execute on the bridge's
+own host; a gateway supplies model access, not remote execution, and multi-machine worker
+onboarding is out of scope. Permissions depend on the coordinator and are never widened. A Codex
+coordinator must run with verified full access for any delegation, one repository or many: its
+`never` approval maps to a bypass-permissions Claude worker or a full-access Codex gateway
+worker, `on-request` to Claude's default mode or read-only, and other policies refuse; an
+unloaded desktop task additionally needs an active recorded turn with permissions disabled and
+a danger-full-access sandbox. A Claude coordinator needs no full access: plan/default map to a
+read-only Codex sandbox, acceptEdits/auto to workspace-write, and only an explicit bypass to full
+access; a same-provider Claude worker inherits its mode. Delegated workers are marked
 so neither side's hooks or tools delegate back. Native Claude session ids
-provide persistence; a leased process guardian bounds live workers. Permission metadata
-must be verified before delegation, and unknown/restricted confinement fails closed in the
-initial version. Cross-agent memory consists of explicitly selected read-only excerpts,
+provide persistence; a leased process guardian bounds live workers. Cross-agent memory consists of explicitly selected read-only excerpts,
 with native memory controls respected and separate write ownership. See the package README
 for exact compatibility, subscription-overage and remote-host boundaries.
 
@@ -3329,7 +3337,11 @@ directory of its first launch. One registry with one writer records ownership at
 another task's checkout, idle or not (including subdirectories, aliases and containing
 checkouts), and is released only when a checkout is confirmed absent, so independent tasks in the
 same repositories, even two roots starting in one original, get different checkouts. A fresh
-conversation gets its own map that never shares a primary checkout. One writer, the edit guard
+conversation gets its own map on the pinned route; a target the primary maps becomes a separate
+worktree. Ownership is per root task, not per conversation, so conversations of one task are not
+isolated from each other (an idle fresh conversation's adopted linked worktree may later be
+adopted by the primary or another fresh one); active writers are still serialized across every
+mapped checkout. One writer, the edit guard
 and per-repository `off` cover every mapped checkout; extra checkouts reach a worker as Claude
 `--add-dir` or Codex writable roots under `workspace-write` only, never widening a permission.
 Under full access this is ownership enforced at delegation, not an OS sandbox. Records from

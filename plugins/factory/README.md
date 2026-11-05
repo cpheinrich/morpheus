@@ -7,6 +7,15 @@ coordinate Codex (see [Claude coordinating Codex](#claude-coordinating-codex)). 
 by default**. Cloning Morpheus, installing its CLI, and scaffolding projects do not install
 or activate it.
 
+Every worker runs **on the host where the bridge runs**, in checkouts on that host. A gateway
+provides model access through a pooled subscription; it does not run the worker anywhere
+else. Onboarding other machines as a worker fleet is out of scope. Agent-facing routing does
+not use Paperclip, and the legacy pool modules in `src/` are not exposed through the
+`factory_*` tools.
+
+This README is the canonical reference; the `delegate` (Codex) and `delegate-to-codex`
+(Claude Code) skills are short procedures that point here.
+
 ## Status: experimental, off unless this machine opts in
 
 - **Repository-owned status.** `release` in `src/config.mjs` marks Factory `experimental`
@@ -36,22 +45,32 @@ or activate it.
 - **Source, instructions, tests:** `plugins/factory/` in Morpheus. Edit this package
   and submit a reviewed Morpheus PR to change its behavior.
 - **Installed source copy:** `~/plugins/factory/`, registered in your
-  personal marketplace. Codex additionally maintains its own plugin cache. These are copies,
-  not links to your working tree; installing an update is explicit.
+  personal marketplace. Codex and Claude Code additionally keep their own plugin caches. These
+  are copies, not links to your working tree: editing the source or pulling Morpheus changes
+  nothing that runs until you re-run the installer.
 - **Personal settings and bridge records:** `~/.local/share/factory/` (0700 directory,
   0600 files). `FACTORY_HOME` relocates this for testing or a separate installation.
 - **Claude conversations and memories:** Claude's native store, normally `~/.claude/`.
   The bridge records the session id per root task; it does not merge stores.
-- **Task-created worktrees:** `~/.local/share/factory/worktrees/`, owned per task through
-  `workspaces.json`; removing one releases it.
+- **Task records and checkouts:** `task-<hash>.json` per root task, `runs/<runId>/` per run,
+  `workspaces.json` (checkout ownership) and `worktrees/<task-hash>/<slot>/<repo>-<hash>/`
+  (checkouts Factory created), all under the Factory home. See the
+  [worked example](#worked-example).
 - Nothing about your subscription, selected executor, machine paths or conversation content
   belongs in the Morpheus repository.
 
 ## Install on each execution host
 
-Prerequisites: macOS, Node 22+, Python 3, pnpm 11, both CLIs on PATH, Codex signed in and
-Claude Code signed in with `claude auth login` using your subscription. Include
-`~/.local/bin` and `/opt/homebrew/bin` in the host's environment when needed.
+Prerequisites: macOS, Node 22+, Python 3, pnpm 11 and both CLIs on PATH. Include
+`~/.local/bin` and `/opt/homebrew/bin` in the host's environment when needed. The coordinator
+uses its own sign-in as usual. What a worker needs depends on its route:
+
+| Worker route | Needs on this host |
+|---|---|
+| Native Claude (a Codex task with no eligible gateway, or one asking for Claude) | `claude auth login` with a `claude.ai` subscription; no API key or provider override |
+| Native Codex (a Claude session with no eligible gateway, or one asking for Codex) | `codex login` with ChatGPT; `OPENAI_*`/`CODEX_API_KEY` are stripped |
+| Either provider behind a gateway | A `gateways` entry and admin login references (see [Gateway mode](#gateway-mode)); no native sign-in for that worker |
+| Claude behind a gateway | Additionally **no saved `claude.ai` login**: run `claude auth logout`, because a saved login was observed to override the gateway token, so this host cannot also use the native Claude route |
 
 From this package directory, explicitly run:
 
@@ -68,8 +87,13 @@ preserves other marketplace entries. The helper is looked for under
 `~/.codex/.tmp/plugins/.agents/skills/plugin-creator/` and the older
 `~/.codex/skills/.system/plugin-creator/`; if it is elsewhere, set `CODEX_PLUGIN_CREATOR`
 to its `create_basic_plugin.py` path. Installation does not choose manual or automatic
-mode. Finish existing delegated runs before updating the package; restart the bridge after
-an update so it loads the new source.
+mode.
+
+**Updating.** Re-run the installer from an updated source; nothing else updates an install. It
+keeps `config.json`, so the saved `mode`, gateways, `keyRef`s and admin references survive. Finish
+delegated runs first: the next client replaces an idle older bridge service and refuses while it
+still owns work. Start a new Codex task or Claude session afterwards; an open one keeps the tools
+and skills it loaded.
 
 **Migrating from `codex-claude`** (this package's name until 2026-10-31) is part of the same
 run. When the installer finds the old install it carries the old settings into
@@ -113,16 +137,26 @@ Ask Codex naturally:
 - “Stop Claude.”
 - “Show Claude's live output.”
 
-When the root calls `factory_delegate`, Factory selects a pooled gateway while its account is below the threshold
-(**90% used** by default), picking the gateway with the most headroom; once every gateway
-is at or above the threshold the other provider's native subscription is used. **A gateway of the
-coordinator's own provider counts:** it is a separate subscription reached as an API, so a
-Claude session can hand work to the Claude behind a gateway and a Codex task to the Codex
-behind one. The only route never taken is the coordinator's own native login, which would
-be circular. An explicit executor request (“use Claude”, `operation`) prefers that
-provider's gateway when one is below the threshold. With no eligible gateway, the other
-provider's native subscription is used; asking for the coordinator's own provider with no such
-gateway is refused because handing work to the root's own native login would be circular. This is subscription usage, not a token count for a single chat.
+**Routing chooses once per root session.** The first `factory_delegate` of a root session
+routes like this:
+
+1. With no explicit provider, the gateway with the most headroom below the threshold
+   (**90% used** by default). With no gateway configured, or none below it, the **other
+   provider's native login** on this host. Work never silently stays with the coordinator.
+2. With an explicit provider (“use Claude”, `provider`), that provider's roomiest eligible
+   gateway; otherwise that provider's native login if it is the other provider. Asking for the
+   coordinator's own provider with no eligible gateway is refused: the coordinator's own native
+   login is never a worker, because that would be circular.
+
+**A gateway of the coordinator's own provider counts:** it is a separate subscription reached
+as an API, so a Claude session can hand work to the Claude behind a gateway and a Codex task to
+the Codex behind one.
+
+The first successful primary launch then **pins** that executor and gateway (or native login)
+for the root session. Every later delegation, primary or `fresh:true`, uses the pinned route and
+never re-routes: a pinned gateway that is missing, changed provider, unreadable or at the
+threshold refuses until it is eligible again, and asking for the other provider needs a new root
+session. A failed launch pins nothing. This is subscription usage, not a token count for a single chat.
 The coordinator still consumes its own allowance while supervising. Missing/stale usage is
 reported as unknown and never treated as headroom. Existing saved thresholds are preserved
 when updating the plugin; change one with `bridge.mjs config`.
@@ -143,16 +177,17 @@ also verifies that the run belongs to that root session.
   an explicit request to keep work local prohibits it. Otherwise the root uses its normal
   sub-agent judgment: quick interactive work stays local, while a bounded larger chunk may be
   delegated. There is no separate classifier.
-- **Sticky primary worker.** The first successful primary launch pins executor and gateway for
-  the root session. Later gateway order or quota changes never silently switch it. An unavailable,
-  removed, changed-provider or over-threshold pinned gateway refuses until it is eligible again;
-  a different provider requires a new root session. The primary conversation keeps the working
-  directory of its first launch (Claude resumes a session only from that directory) and spans
-  every repository its task maps; see "Multi-repository workspaces" below.
-- **Fresh work.** `fresh:true` starts a separate conversation on the pinned route with its own
-  checkouts and never replaces the primary saved session. A target the primary already maps
-  becomes the source of a separate isolated worktree; one writer per checkout and
-  `maxConcurrent` still apply.
+- **Sticky primary worker.** The route is pinned as described above. The primary conversation
+  keeps the working directory of its first launch (Claude resumes a session only from that
+  directory) and spans every repository its task maps; see
+  [Multi-repository workspaces](#multi-repository-workspaces).
+- **Fresh work.** `fresh:true` (allowed only after the primary has launched once) starts a
+  separate conversation on the pinned route with its own map, kept on its run record. It never
+  replaces the primary saved session. A target the primary already maps becomes the source of a
+  separate isolated worktree. This is not isolation between conversations of one root task, which
+  share that task's ownership: an unowned linked worktree adopted by an idle fresh conversation
+  can later be adopted by the primary or another fresh conversation too. Isolation is between
+  root tasks; within one, one writer per checkout and `maxConcurrent` still serialize active runs.
 
 - **Manager contract.** The root sends a self-contained brief, waits, handles only routine
   reversible clarification itself, sends authorization/spending/publishing/material decisions to
@@ -207,6 +242,127 @@ receives them as `sandbox_workspace_write.writable_roots` only under `workspace-
 permission mode changes, so a read-only sandbox stays read-only. Under full access this is an
 ownership convention enforced at delegation, not an OS sandbox: the worker's shell can still
 write anywhere its user can.
+
+### Worked example
+
+A Codex task `T1` starts in `/work/app`, an ordinary clone of repository A (an *original*
+checkout). Repositories B and C are cloned at `/work/lib` and `/work/docs`. Paths below are
+illustrative; real records hold absolute canonical paths, and a repository is keyed by its
+canonical common Git directory.
+
+**1. First delegation: A plus B.** The root calls `factory_delegate` with:
+
+```json
+{ "prompt": "Add the parser to lib and use it in app. …", "cwd": "/work/app", "repos": ["/work/lib"] }
+```
+
+Both targets are originals, so each becomes a detached worktree at its committed HEAD. The
+route is chosen and pinned (here a Claude gateway named `claude-pool`), and one Claude
+conversation starts with its working directory in A's new checkout and B's checkout passed with
+`--add-dir`. The Factory home now holds:
+
+```text
+$FACTORY_HOME/
+├── config.json
+├── task-<hash(T1)>.json          root task record
+├── workspaces.json               checkout ownership, one writer
+├── runs/<runId>/run.json         one directory per run
+└── worktrees/<hash(T1)>/
+    └── primary/
+        ├── app-<hash(A)>/        detached worktree of /work/app
+        └── lib-<hash(B)>/        detached worktree of /work/lib
+```
+
+`<hash(T1)>` is 32 hex characters of the SHA-256 of the task id; `<hash(A)>` is 8 hex characters
+of the SHA-256 of repository A's common Git directory. The task record (abridged):
+
+```json
+{
+  "id": "T1",
+  "workerBinding": { "executor": "claude", "gateway": "claude-pool" },
+  "primaryCwd": "$FACTORY_HOME/worktrees/<hash(T1)>/primary/app-<hash(A)>",
+  "workspace": {
+    "/work/app/.git": { "path": "$FACTORY_HOME/worktrees/<hash(T1)>/primary/app-<hash(A)>", "source": "/work/app", "owned": true },
+    "/work/lib/.git": { "path": "$FACTORY_HOME/worktrees/<hash(T1)>/primary/lib-<hash(B)>", "source": "/work/lib", "owned": true }
+  },
+  "sessions": { "primary:$FACTORY_HOME/worktrees/<hash(T1)>/primary/app-<hash(A)>": "<claude-session-id>" }
+}
+```
+
+`sessions` maps the conversation's key to the provider's native Claude session id; a Codex worker
+uses `codexSessions` the same way. `factory_inspect` reports the map as
+`workspace: { "cwd": <primaryCwd>, "repositories": <the workspace map> }`. `workspaces.json`, written
+after the worker launched:
+
+```json
+{
+  "$FACTORY_HOME/worktrees/<hash(T1)>/primary/app-<hash(A)>": { "taskId": "T1", "project": "/work/app/.git", "source": "/work/app", "claimedAt": 1793850000000 },
+  "$FACTORY_HOME/worktrees/<hash(T1)>/primary/lib-<hash(B)>": { "taskId": "T1", "project": "/work/lib/.git", "source": "/work/lib", "claimedAt": 1793850000000 }
+}
+```
+
+**2. Later: add C.** `{ "prompt": "Document the parser in docs. …", "repos": ["/work/docs"] }`
+adds `primary/docs-<hash(C)>/` to the map and **resumes the same native Claude session** from the
+same working directory. No second worker or second root is started for the extra repository.
+
+**3. Later again: no targets.** `{ "prompt": "Fix the review findings. …" }` reuses the saved map
+(A, B and C) and the same session. If the Codex task has since moved to another repository, that
+repository is not added; only a named target is.
+
+**A separate root task.** Another Codex task `T2` that also starts in `/work/app` gets its own
+`worktrees/<hash(T2)>/primary/app-<hash(A)>/`. Naming T1's checkout from T2 is refused, even while
+T1 is idle.
+
+**A fresh conversation.** In T1, `{ "prompt": "…", "fresh": true, "cwd": "/work/app" }` gets
+`worktrees/<hash(T1)>/fresh-<first 8 characters of its runId>/app-<hash(A)>/`, on the pinned
+route, recorded on its run rather than in the task's `workspace` and `sessions`.
+
+**Already-claimed checkouts.** Had T1 started in a linked worktree from `morpheus pm claim`
+instead, that worktree would be adopted in place (`"source": null`) rather than copied.
+
+**Cleanup.** Merge or keep the work, then remove each checkout with `git worktree remove` (or
+`morpheus pm cleanup` for a claimed one). The next delegation that reads `workspaces.json` drops
+entries whose directory is confirmed absent.
+
+## Permissions depend on the coordinator
+
+These rules apply to every delegation, one repository or many; the multi-repository workspace
+did not change them.
+
+**Codex coordinating** (a Codex task calling `factory_*`). Delegation requires the task to run
+with verified **full access** (sandbox `dangerFullAccess`). Anything narrower is refused; there
+is no sandbox emulation. The task's approval policy then sets the worker's permissions:
+
+| Codex approval policy | Claude worker | Codex worker behind a gateway |
+|---|---|---|
+| `never` | `bypassPermissions` | full access |
+| `on-request` | `default` (asks; tool permissions go to the user) | `read-only` |
+| anything else | refused | refused |
+
+A loaded task's settings come from the app-server. For an unloaded desktop task the bridge reads
+the latest turn from its rollout. That turn must be active and recorded within 24 hours, with
+`permission_profile.type: "disabled"` and `sandbox_policy.type: "danger-full-access"`, or even
+`factory_inspect` refuses. In practice: choose Full access for the Codex task, then send a
+message so the active turn records it.
+
+**Claude coordinating** (a Claude Code session calling `factory_*`). Full access is not
+required. The session's mode, recorded by the plugin's hooks (send one message after trusting
+them), is mapped and never widened:
+
+| Claude permission mode | Codex worker | Claude worker behind a gateway |
+|---|---|---|
+| `plan`, `default` | `read-only` (Codex exec cannot ask) | the same mode |
+| `acceptEdits`, `auto` | `workspace-write`, approvals off, no network | the same mode |
+| `bypassPermissions` | full access | the same mode |
+| anything else | refused | the same mode |
+
+**Extra checkouts never widen a mode.** A Claude worker gets them through `--add-dir`; a Codex
+worker gets them as writable roots under `workspace-write` only, so `read-only` stays read-only.
+Full access is never permission to skip a business approval, repository review, spending or
+sending rule.
+
+The separate [unattended gateway worker](#explicit-unattended-codex-gateway-worker) takes its
+sandbox from its own private job configuration, not from these tables.
 
 ## Gateway mode
 
@@ -337,12 +493,11 @@ both. Start a new Claude session after installing, and review its hooks.
 - **Model and effort.** `codexModelMap` maps the Claude family (fable/opus/sonnet/haiku) to an
   approved `codexModels` entry; `codexEffortMap` maps effort. Unmapped values use Codex's own
   configured default rather than a guess.
-- **Permissions, never widened.** `bypassPermissions` → Codex full access
-  (`--dangerously-bypass-approvals-and-sandbox`). `auto` and `acceptEdits` → the
-  `workspace-write` sandbox with approvals off (writes inside the checkout, the task's other
-  checkouts and their linked worktrees' Git directories; no network). `default` and `plan` → `read-only`: `default` asks
-  before each edit, and Codex exec cannot ask. Any other mode refuses. Under
-  `workspace-write` Codex may be unable to push or reach the network; Claude does those steps.
+- **Permissions, never widened.** See the Claude table in
+  [Permissions depend on the coordinator](#permissions-depend-on-the-coordinator). Full access is
+  `--dangerously-bypass-approvals-and-sandbox`; `workspace-write` writes inside the checkout, the
+  task's other checkouts and their linked worktrees' Git directories. Under `workspace-write`
+  Codex may be unable to push or reach the network; Claude does those steps.
 - **Execution.** Each handoff runs `codex exec --json` under the same guardian lease, output
   cap and run limit as Claude workers, with the prompt on stdin. The primary conversation's
   saved Codex session id is resumed with `codex exec resume`. Codex cannot ask mid-run, so a
@@ -374,8 +529,9 @@ launches that worker; the run's
   maps to full access, on-request to read-only.
 - **Sessions are kept per task on the pinned route.** A root session pins executor and
   gateway once; its primary provider conversation is keyed by its first working directory and
-  spans the task's mapped checkouts. It never resumes on another gateway or native login. A `needs_input` reply must use the
-  route and run it came from.
+  spans the task's mapped checkouts. Because the route never changes, the conversation never
+  resumes on another gateway or native login. A `needs_input` reply must use the route and run it
+  came from.
 - **Credentials stay out of the worker.** It gets only the provider's own variables; every
   variable a configured `keyRef`, `emailRef` or `passwordRef` names is removed from its
   environment, along with `FACTORY_ADMIN_*`.
@@ -418,9 +574,7 @@ approval UI. Structured/prose `needs_input` results resume the same conversation
 `runId`, `replySource` and `replyReason`. Autonomous supervision is capped at eight replies by default. A genuine user answer
 remains allowed at the limit and resets that autonomous budget; its audit record is retained.
 
-Full-access/never-approval Codex turns launch Claude with `bypassPermissions`.
-Full-access/on-request turns use Claude's default prompts. Restricted or unknown
-sandboxes are refused in this release; there is no prompt-based sandbox emulation.
+Permission mapping is in [Permissions depend on the coordinator](#permissions-depend-on-the-coordinator).
 Business/repository approval rules remain part of the handoff even under full access.
 
 ## Subscription billing
