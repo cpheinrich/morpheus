@@ -35,6 +35,14 @@ Check requirements, error paths, absent inputs, security boundaries and integrat
 Prefer the simplest change that meets the requirements: when the same behaviour needs fewer parts
 or fewer lines, name the simpler version as a finding. A gate, approval step, state, option or
 mechanism that the requirements do not need is substantive; a local simplification is minor.
+For a human-facing HQ change, apply docs/runbooks/hq-product-design.md: current direction is a
+verb-led outcome of at most ten words, the executive brief is at most 75 words or five one-sentence
+bullets, and a verbose legacy page should usually lose 40–60% of its prose without losing the
+decision or action, owner, deadline, thresholds, material evidence, caveats or compliance constraints. Check
+before/after counts and the rendered first screen. Do not demand compression of legal/compliance
+documents, roadmap tickets, worklogs, inboxes, agent logs or raw meeting/source records. Minor copy
+trims are notes; verbosity that defeats explicit acceptance or hides the decision/action is a
+substantive intent or contract finding.
 You may inspect unchanged related code. A blocking finding must explain how this PR causes,
 exposes or worsens the defect, adds the unneeded complexity, or prevents acceptance criteria from
 being met. Independent pre-existing bugs

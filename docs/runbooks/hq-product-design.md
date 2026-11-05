@@ -24,6 +24,31 @@ context unless that is the page's purpose. Metadata supports the headline; it is
 Use direct, plain language and delete throat-clearing. A heading should name the question its
 section answers or the conclusion it supports.
 
+### Brevity contract
+
+Write for the person making a decision, not for the agent that assembled the record.
+
+- **Current direction is a verb-led outcome of at most ten words.** State what must happen, not
+  the implementation plan, dependency list or technical diagnosis. Put those details in the linked
+  operating record.
+- Keep an executive brief to at most 75 words or five one-sentence bullets. Do not repeat it in the
+  next section.
+- For a verbose human-facing legacy page, target a 40–60% prose reduction when the meaning can be
+  preserved. Remove setup, repeated qualifications, status narration and implementation detail
+  before cutting decisions or evidence. The percentage is a review prompt, not a quota.
+- Preserve the decision or action, owner, deadline, thresholds, material evidence, caveats and
+  compliance constraints. Move methods, provenance, history and exhaustive examples into linked
+  sections or appendices.
+- Exact values do not become prose debt. Keep necessary table rows, formulas, citations and source
+  evidence; shorten the explanation around them and make the default view answer one question.
+- Legal and compliance documents are not compression targets. Neither are agent-centered records
+  such as roadmap tickets, worklogs, inboxes, agent logs or raw meeting/source records. If they are
+  rendered for people, add a concise summary layer without deleting the authoritative detail.
+
+For a material rewrite, record before/after word counts and name the decisions, evidence and
+constraints preserved. A shorter page is successful only when it is faster to understand and
+still supports the same action.
+
 ## Page types and required order
 
 Choose one primary page type. A page that tries to be a dashboard, manual, research record and
@@ -49,7 +74,7 @@ behind filters or a secondary view rather than dominating current work.
 5. Appendices: methods, formulas, exhaustive tables, commands, provenance and history
 
 Put exact evidence in the appendices; do not delete it. Headline ratio metrics should also be
-expressed in plain-language percentages with direction. A document over about 1,200 words or seven
+expressed in plain-language percentages with direction. A document over about 800 words or seven
 second-level headings needs a local outline. Treat these as review triggers, not hard content limits.
 
 ### Procedure or work instruction
@@ -166,6 +191,9 @@ the shell and the component work together.
 Acceptance asks observable questions:
 
 - Can a first-time reader state the decision/action after the first screen?
+- Is current direction ten words or fewer, with technical detail in the linked record?
+- Did a material human-facing rewrite remove repetition while preserving decisions, evidence and
+  constraints—and leave exempt legal or agent records intact?
 - Can they reach any material section with a stable URL?
 - Can a keyboard user operate controls and horizontally scroll exact data?
 - Does mobile preserve the question, primary identity and action?
