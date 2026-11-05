@@ -91,6 +91,12 @@ Lead every product record with the takeaway, current call, evidence, risk and ne
 methods, exhaustive data and history in linked appendices. A portfolio page should make the current
 goal, active decisions, risks and asks visible before its archive.
 
+For HQ, make current direction a verb-led outcome of at most ten words. Keep the executive brief to
+75 words or five one-sentence bullets. When a human-facing legacy page is bloated, target a 40–60%
+prose reduction while preserving decisions, owners, dates, thresholds, evidence, caveats and
+compliance constraints. Do not apply that target to legal/compliance documents or agent-centered
+records such as roadmap tickets, worklogs, inboxes, agent logs and raw meeting/source records.
+
 Report changed decisions and genuine blockers when they occur. Do not turn routine progress into a
 stream the person must manage. For any unresolved product choice, present a recommendation and a
 small set of materially different options with consequences.
@@ -339,6 +345,18 @@ tables, commands, provenance and history.
 Choose one page type—operating hub, decision/research record, procedure, or data exploration—and
 use its order. A complete directory mirror follows the current operating layer; it does not replace
 it. Bound related navigation instead of listing every sibling.
+
+## Brevity
+
+Current direction is a verb-led outcome of at most ten words, with implementation detail in the
+linked record. Keep an executive brief to 75 words or five one-sentence bullets. For a verbose
+human-facing legacy page, target a 40–60% prose reduction while preserving decisions, owners,
+dates, thresholds, material evidence, caveats and compliance constraints. Shorten repetition and
+setup before evidence. Move methods, provenance, history and exhaustive examples to appendices.
+
+Do not compress legal/compliance documents or agent-centered records such as roadmap tickets,
+worklogs, inboxes, agent logs and raw meeting/source records. If those records are rendered for
+people, add a concise summary layer and leave the authoritative detail intact.
 
 ## Shared primitives
 

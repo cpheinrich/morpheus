@@ -14,6 +14,18 @@ Choose one page type—operating hub, decision/research record, procedure, or da
 use its order. A complete directory mirror follows the current operating layer; it does not replace
 it. Bound related navigation instead of listing every sibling.
 
+## Brevity
+
+Current direction is a verb-led outcome of at most ten words, with implementation detail in the
+linked record. Keep an executive brief to 75 words or five one-sentence bullets. For a verbose
+human-facing legacy page, target a 40–60% prose reduction while preserving decisions, owners,
+dates, thresholds, material evidence, caveats and compliance constraints. Shorten repetition and
+setup before evidence. Move methods, provenance, history and exhaustive examples to appendices.
+
+Do not compress legal/compliance documents or agent-centered records such as roadmap tickets,
+worklogs, inboxes, agent logs and raw meeting/source records. If those records are rendered for
+people, add a concise summary layer and leave the authoritative detail intact.
+
 ## Shared primitives
 
 Prefer the project's `morpheus-kit` owners for shell, executive brief, in-page navigation,
