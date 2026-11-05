@@ -85,3 +85,69 @@ source checkouts; `src/host/README.md` gives the per-host migration with rollbac
 
 - Pinning the sub2api image by digest, and floating postgres/redis patch tags, remain as noted
   in the source review; not changed here.
+
+## Independent review
+
+A fresh independent review of the high-risk migration cleared it conditionally on one substantive finding. F1: two personal identifiers from the original source still sat in an imported test, a certificate user id and a devicectl device identifier. The author replaced both with synthetic values and extended the public-fixture guard to the certificate userId shape and to non-synthetic UUID-shaped device identifiers, within the reviewer's condition paths; the host package suite and the condition's grep both pass. Two minor notes were answered without changes: a reinstall drops the host package's build output by design and its explicit setup rebuilds it, and the read-after-lstat window in the manifest loader needs write access to an owner-only directory. Limitation: the original public repository and this PR's first implementation commit still contain those identifiers in Git history; history rewriting and repository access are a separate, explicitly scoped decision.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "0fbc87a33c0a8f0b5edf43bcd51d36899ca05b49",
+  "reviewed": "2292757e9070e8668f70485369425aeed388c510",
+  "covered": "3e7579a633c588ea04134647346a4298cba424e9",
+  "authorSession": "01a1aa16-439b-7593-a1d1-53bd628aa0b0",
+  "reviewerSession": "38e52119-c25a-4c3f-b58c-c3a562089ad4",
+  "risk": "high",
+  "elapsedMinutes": 3.96245,
+  "timing": {
+    "source": "clock",
+    "durationMs": 237747,
+    "evidence": "Root clock around Factory run 6f2cc819-1620-42f5-be8c-764c6981e872 dispatch and wait: started 1793860442800 ms, ended 1793860680547 ms."
+  },
+  "outcome": "complete",
+  "summary": "A fresh independent review of the high-risk migration cleared it conditionally on one substantive finding. F1: two personal identifiers from the original source still sat in an imported test, a certificate user id and a devicectl device identifier. The author replaced both with synthetic values and extended the public-fixture guard to the certificate userId shape and to non-synthetic UUID-shaped device identifiers, within the reviewer's condition paths; the host package suite and the condition's grep both pass. Two minor notes were answered without changes: a reinstall drops the host package's build output by design and its explicit setup rebuilds it, and the read-after-lstat window in the manifest loader needs write access to an owner-only directory. Limitation: the original public repository and this PR's first implementation commit still contain those identifiers in Git history; history rewriting and repository access are a separate, explicitly scoped decision.",
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "substantive",
+      "description": "A personal Apple certificate user id and a devicectl device identifier from the original source remained in an imported test fixture, and the shape guard did not cover either shape.",
+      "paths": [
+        "plugins/factory/src/host/tests/test_update_controller.py",
+        "plugins/factory/src/host/tests/test_public_fixtures.py"
+      ],
+      "disposition": "fixed",
+      "response": "Replaced both with synthetic values (AAAAA11111 and 00000000-0000-0000-0000-00000000000E). The guard now reports a certificate userId assignment and any UUID-shaped identifier that is not synthetic (each group one repeated character, or all zeros but the last digit), with positive cases for both shapes; run against the original source test it flags both.",
+      "condition": {
+        "paths": [
+          "plugins/factory/src/host/tests/test_update_controller.py",
+          "plugins/factory/src/host/tests/test_public_fixtures.py",
+          ".agent/worklog/2026-11-04-migrate-factory-host.md"
+        ],
+        "evidence": "pnpm test in plugins/factory/src/host is green; git grep for the two identifiers under plugins/factory has no hits."
+      },
+      "conditionMet": "At 3e7579a633c5: `pnpm test` in plugins/factory/src/host exit 0 (vitest 68/68, unittest 271/271); the condition's `git grep -nE` for both identifiers under plugins/factory exit 1, no hits."
+    },
+    {
+      "id": "N1",
+      "severity": "minor",
+      "description": "Reinstalling the plugin drops the host package's dist and node_modules; the README could say to rebuild.",
+      "paths": [
+        "plugins/factory/src/host/README.md"
+      ],
+      "disposition": "disputed",
+      "response": "Intended: the copy filter excludes build output so installing never builds or runs host code, and the README's migration step 1 already runs pnpm install and build in the installed copy; the explicit setup's factory stage rebuilds too. Not changed after clearance."
+    },
+    {
+      "id": "N2",
+      "severity": "minor",
+      "description": "host_config.load checks the file with lstat and then reads it, a small check-then-read window.",
+      "paths": [
+        "plugins/factory/src/host/worker/host_config.py"
+      ],
+      "disposition": "disputed",
+      "response": "Exploiting it needs write access to the manifest's owner-only directory, which already allows replacing the manifest outright; the loader also refuses links and other owners. Accepted as bounded; no change after clearance."
+    }
+  ]
+}
+```
