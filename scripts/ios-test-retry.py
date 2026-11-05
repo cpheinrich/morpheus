@@ -108,9 +108,10 @@ def run(attempt, selection, results, logs):
 
 
 def selectable(identifier):
-    # A test is Class/method() (XCTest) or Suite/test() (Swift Testing). Xcode's placeholder for a
-    # bundle that never started is a bare sentence, so -only-testing would select nothing with it.
-    return '/' in identifier
+    # A test is Class/method() (XCTest), Suite/test() or a top-level test() (Swift Testing).
+    # Xcode's placeholder for a bundle that never started is a bare sentence under "System
+    # Failures", so -only-testing would select nothing with it.
+    return '/' in identifier or identifier.endswith(')')
 
 
 def read_results(bundle, keep=None):
@@ -173,6 +174,14 @@ def cases(node):
     return [case for child in node.get('children', []) for case in cases(child)]
 
 
+def tally(node):
+    """Test Case counts by the summary field each result is counted in once every failure passed."""
+    found = [case.get('result') for case in cases(node)]
+    skipped, expected = found.count('Skipped'), found.count('Expected Failure')
+    return {'passedTests': len(found) - skipped - expected, 'skippedTests': skipped,
+            'expectedFailures': expected, 'totalTestCount': len(found)}
+
+
 def combine(first, history, grafts):
     """Attempt 1's exports with each recovered test's retries as its Repetition children, and each
     bundle that could not start replaced by its node from the retry that ran it.
@@ -188,16 +197,13 @@ def combine(first, history, grafts):
         if node.get('nodeType', '').endswith('test bundle'):
             target = node.get('name')
             if target in grafts:
-                placeholders = len(cases(node))  # Counted as failed, and below as passed.
+                # Attempt 1's cases here (the placeholder, and any skipped beside it) leave the
+                # counts by their own category; the retry's cases join them by theirs.
+                old = tally(node)
                 node.clear()
                 node.update(copy.deepcopy(grafts[target]))
-                ran = cases(node)
-                skipped = sum(case.get('result') == 'Skipped' for case in ran)
-                expected = sum(case.get('result') == 'Expected Failure' for case in ran)
-                added['passedTests'] += len(ran) - skipped - expected - placeholders
-                added['skippedTests'] += skipped
-                added['expectedFailures'] += expected
-                added['totalTestCount'] += len(ran) - placeholders
+                for key, value in tally(node).items():
+                    added[key] += value - old[key]
         test = f"{target}/{node.get('nodeIdentifier')}"
         if node.get('nodeType') == 'Test Case':
             if test in history:
@@ -327,7 +333,7 @@ def report(record):
     flaky, failed, retried = record['flaky'], record['failed'], len(record['attempts']) > 1
     recovered, stuck = record['recoveredBundles'], record['failedBundles']
     for test in flaky:
-        print(f"::warning title=Flaky iOS test::{escape(test['id'])} failed attempt 1, then passed on a clean "
+        print(f"::warning title=Flaky iOS test::{escape(test['id'])} failed, then passed on a clean "
               f"retry (attempt {test['passedOnAttempt']} of {record['maxAttempts']}).", flush=True)
     for bundle in recovered:
         print(f"::warning title=iOS test bundle did not start::{escape(bundle['bundle'])} could not start on attempt 1, "

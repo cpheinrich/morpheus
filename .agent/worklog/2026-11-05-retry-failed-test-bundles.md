@@ -20,7 +20,8 @@ is the retry classification, not the host.
 ## What changed
 
 - `read_results` separates a bundle that could not start from real failures by structure: a
-  `Test Case` whose identifier is not `Class/method()` (no `/`). It reports such bundles as
+  `Test Case` whose identifier is neither `Class/method()` (contains `/`) nor a top-level Swift
+  Testing `test()` (ends with `)`). It reports such bundles as
   `broken`; a summary failure naming one is attributed only when the tree has that bundle's
   placeholder, so anything else still fails closed.
 - A broken bundle's retry selection is the caller's `ONLY_TESTING` entries inside that bundle, or
@@ -54,10 +55,31 @@ test that first runs (and fails) on the bundle retry.
 Mutants run locally against the suite, all killed: the original script (6 failures),
 placeholder treated as a test (5), selection widened to the whole bundle (2), unbounded empty
 selection (1), skips dropped (4), zero-test retry counted as started (1), graft counts not
-adjusted (1), new failures in the started bundle ignored (1). Not mutated: the Swift Testing
-case where a top-level `@Test` function's identifier might lack a `/`; it would be treated as a
-bundle failure and retried by the caller's bundle selection, which is conservative but would
-report the bundle rather than the test. No such consumer exists today.
+adjusted (1), new failures in the started bundle ignored (1).
+
+## Review turn 1 (conditional clearance) and the follow-up fixes
+
+The fresh reviewer found three things, all fixed in the follow-up commit:
+
+- **F1 (substantive):** the slash-only check classified a real top-level Swift Testing test
+  (`topLevel()`) as a bundle that could not start. Its retry then had no `/` ids, so `ran` was
+  empty and a genuinely flaky test never recovered. My first draft of this worklog called that
+  "conservative, no consumer today"; that was wrong for a generic contract. A test is now an
+  identifier containing `/` or ending in `)`. The regression retries `AppTests/topLevel()` by
+  exactly that id and reports it flaky, with no bundle entries.
+- **F2:** the graft subtracted the old bundle's cases from `passedTests` only, so a skipped or
+  expected-failure case beside the placeholder was double-counted. Counts now move category by
+  category (`tally`). The regression has one skipped and one expected failure beside the
+  placeholder and checks 5 total / 3 passed / 1 skipped / 1 expected.
+- **F3:** the flaky warning said "failed attempt 1" for a test whose first run and failure was
+  the bundle retry. It now says "failed, then passed on a clean retry (attempt N of M)", which is
+  true for both; the graft test asserts the late case.
+
+The fake now models skipped and expected-failure results. Follow-up mutation run on 22 tests,
+all killed: original script 9 failures; slash-only check restored (F1) 1; old graft subtraction
+(F2) 1; "failed attempt 1" wording (F3) 2; placeholder treated as a test 6; selection widened 2;
+unbounded empty selection 1; skips dropped 4; zero-test retry counted as started 1; graft counts
+unadjusted 2; new failures in the started bundle ignored 1.
 
 Fixtures use synthetic `App`/`AppTests`/`AppUITests` names; nothing from the private run
 artifacts is committed.
@@ -65,7 +87,7 @@ artifacts is committed.
 ## Appendix: commands
 
 ```sh
-pnpm exec vitest run tests/ios-test-retry.test.ts      # 20 passed
+pnpm exec vitest run tests/ios-test-retry.test.ts      # 20 passed; 22 after the review fixes
 pnpm typecheck
 pnpm compile
 pnpm morpheus pm index

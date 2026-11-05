@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const exec = promisify(execFile);
 const script = resolve("scripts/ios-test-retry.py");
-type Behavior = "pass" | "fail" | "leftover" | "unnamed-failure" | "missing-on-retry" | "fail-first-run";
+type Behavior = "pass" | "fail" | "leftover" | "unnamed-failure" | "missing-on-retry" | "fail-first-run" | "skip" | "expected-failure";
 type Test = { id: string; behavior: Behavior };
 type Invocation = { argv: string[]; selected: string[]; deviceWasClean: boolean };
 type Step = { id?: string; name?: string; run?: string; env?: Record<string, string> };
@@ -46,14 +46,16 @@ for (const target of (process.env.NO_START || '').split(',').filter(Boolean)) {
   const starts = ran.filter(line => line === 'start ' + target).length;
   fs.appendFileSync(ledger, 'start ' + target + '\\n');
   if (starts >= Number(process.env.NO_START_RUNS || 99)) continue;
-  tests = tests.filter(t => !t.id.startsWith(target + '/'));
+  // Skipped and expected-failure cases can sit beside the placeholder in the bundle's export.
+  tests = tests.filter(t => !t.id.startsWith(target + '/') || t.behavior === 'skip' || t.behavior === 'expected-failure');
   placeholders.push({ id: target + '/App encountered an error', result: 'Failed', placeholder: true });
 }
 fs.appendFileSync(process.env.EVENTS, JSON.stringify({ argv, selected: tests.map(t => t.id), deviceWasClean: clean }) + '\\n');
 const results = tests.map((t, i) => {
   const failed = t.behavior === 'fail' || t.behavior === 'unnamed-failure' || t.behavior === 'missing-on-retry' ||
     (t.behavior === 'leftover' && (!clean || i > 0)) || (t.behavior === 'fail-first-run' && !ran.includes(t.id));
-  return { ...t, result: failed ? 'Failed' : 'Passed' };
+  const other = { skip: 'Skipped', 'expected-failure': 'Expected Failure' }[t.behavior];
+  return { ...t, result: failed ? 'Failed' : other || 'Passed' };
 }).concat(placeholders);
 fs.appendFileSync(ledger, tests.map(t => t.id + '\\n').join(''));
 fs.writeFileSync(process.env.SIM_STATE, 'used');
@@ -72,8 +74,9 @@ fs.writeFileSync(bundle + '/fake-tests.json', JSON.stringify({ testNodes: [{ nod
 const failures = results.filter(t => t.result === 'Failed').map(t => t.behavior === 'unnamed-failure'
   ? { targetName: t.id.split('/')[0], failureText: 'The test runner crashed' }
   : { targetName: t.id.split('/')[0], testIdentifierString: t.id.split('/').slice(1).join('/'), testName: t.id.split('/').pop() });
-const counts = { totalTestCount: results.length, passedTests: results.length - failures.length, failedTests: failures.length,
-  skippedTests: 0, expectedFailures: 0 };
+const count = result => results.filter(t => t.result === result).length;
+const counts = { totalTestCount: results.length, passedTests: count('Passed'), failedTests: failures.length,
+  skippedTests: count('Skipped'), expectedFailures: count('Expected Failure') };
 fs.writeFileSync(bundle + '/fake-summary.json', JSON.stringify({ result: failures.length ? 'Failed' : 'Passed', ...counts,
   devicesAndConfigurations: [{ device: { deviceName: 'Fake' }, ...counts }], testFailures: failures }));
 console.log('xcodebuild ran ' + tests.length + ' tests');
@@ -174,7 +177,7 @@ describe("ios-test-retry.py", () => {
     expect(simctl).toEqual([["shutdown", device], ["erase", device]]);
 
     expect(await h.read("output")).toBe(`flaky-tests=["${stale}"]\n`);
-    expect(stdout).toContain(`::warning title=Flaky iOS test::${stale} failed attempt 1, then passed on a clean retry (attempt 2 of 3).`);
+    expect(stdout).toContain(`::warning title=Flaky iOS test::${stale} failed, then passed on a clean retry (attempt 2 of 3).`);
     expect(stdout).not.toContain("::error");
     expect(await h.read("summary.md")).toContain(`- \`${stale}\` passed on attempt 2`);
     const record = JSON.parse(await h.read("Results/test-attempts.json"));
@@ -311,6 +314,8 @@ const slowLaunch = "AppUITests/LaunchUITests/testSlowLaunch()";
 const onboard = "AppUITests/OnboardingUITests/testOnboards()";
 const settings = "AppUITests/SettingsUITests/testSettings()";
 const placeholder = "encountered an error";
+const record0 = (record: { attempts: { failed: string[]; failedBundles: string[] }[] }) =>
+  ({ failed: record.attempts[0]!.failed, failedBundles: record.attempts[0]!.failedBundles });
 const onlySkip = (i: Invocation) => i.argv.filter((a) => /^-(only|skip)-testing:/.test(a));
 
 describe("a test bundle that could not start", () => {
@@ -402,6 +407,23 @@ describe("a test bundle that could not start", () => {
     for (const invocation of await empty.invocations()) expect(invocation.argv.join(" ")).not.toContain(placeholder);
   });
 
+  it("retries a failed top-level Swift Testing test by its own id, not as a bundle", async () => {
+    // Swift Testing names a test outside any suite topLevel(), with no "/"; it is still a test.
+    const topLevel = "AppTests/topLevel()";
+    const h = await harness([{ id: unit, behavior: "pass" }, { id: topLevel, behavior: "fail-first-run" }]);
+    const { code, stdout } = await h.run();
+    expect(code).toBe(0);
+    const [first, retry, ...rest] = await h.invocations();
+    expect(rest).toEqual([]);
+    expect(first!.selected).toEqual([unit, topLevel]);
+    expect(onlySkip(retry!)).toEqual([`-only-testing:${topLevel}`]);
+    expect(JSON.parse(await h.read("Results/test-attempts.json"))).toMatchObject({
+      result: "passed", flaky: [{ id: topLevel, passedOnAttempt: 2 }], failedBundles: [], recoveredBundles: [],
+    });
+    expect(record0(JSON.parse(await h.read("Results/test-attempts.json")))).toEqual({ failed: [topLevel], failedBundles: [] });
+    expect(stdout).not.toContain("test bundle did not start");
+  });
+
   it("does not retry a bundle the caller selected nothing in", async () => {
     const h = await harness(suite, { ONLY_TESTING: "AppUITests/LaunchUITests/testLaunches", NO_START: "AppTests", NO_START_UNSELECTED: "1" });
     const { code, stdout } = await h.run();
@@ -460,7 +482,11 @@ describe("results a caller's validator reads", () => {
     const h = await harness([
       { id: unit, behavior: "pass" }, { id: unitB, behavior: "fail-first-run" }, { id: launch, behavior: "pass" },
     ], { ...evidenceEnv, NO_START: "AppTests", NO_START_RUNS: "1" });
-    expect((await h.run()).code).toBe(0);
+    const { code, stdout } = await h.run();
+    expect(code).toBe(0);
+    // Its first run, and first failure, was attempt 2: the warning must not claim attempt 1.
+    expect(stdout).toContain(`::warning title=Flaky iOS test::${unitB} failed, then passed on a clean retry (attempt 3 of 3).`);
+    expect(stdout).not.toContain("failed attempt 1");
     expect((await h.invocations()).map((i) => i.selected)).toEqual([[launch], [unit, unitB], [unitB]]);
     expect((await h.run(["/bin/bash", "-e", "-c", (await exportStep()).run!])).code).toBe(0);
 
@@ -481,6 +507,24 @@ describe("results a caller's validator reads", () => {
     expect(JSON.parse(await h.read("Results/test-attempts.json"))).toMatchObject({
       result: "passed", flaky: [{ id: unitB, passedOnAttempt: 3 }], recoveredBundles: [{ bundle: "AppTests", ranOnAttempt: 2 }],
     });
+  });
+
+  it("counts a bundle's skipped and expected-failure cases once, by category, when its retry replaces it", async () => {
+    const skipped = "AppTests/ImportTests/testDisabled()";
+    const expected = "AppTests/ImportTests/testKnownIssue()";
+    const h = await harness([
+      { id: skipped, behavior: "skip" }, { id: expected, behavior: "expected-failure" }, { id: unit, behavior: "pass" },
+      { id: unitB, behavior: "pass" }, { id: launch, behavior: "pass" },
+    ], { ...evidenceEnv, NO_START: "AppTests", NO_START_RUNS: "1" });
+    expect((await h.run()).code).toBe(0);
+    // Attempt 1: launch passed; the placeholder failed beside one skipped and one expected failure.
+    expect(JSON.parse(await h.read("Results/Tests.xcresult/fake-summary.json")))
+      .toMatchObject({ totalTestCount: 4, passedTests: 1, failedTests: 1, skippedTests: 1, expectedFailures: 1 });
+    expect((await h.run(["/bin/bash", "-e", "-c", (await exportStep()).run!])).code).toBe(0);
+    const summary = JSON.parse(await h.read("Results/summary.json"));
+    const counts = { totalTestCount: 5, passedTests: 3, failedTests: 0, skippedTests: 1, expectedFailures: 1 };
+    expect(summary).toMatchObject({ result: "Passed", ...counts });
+    expect(summary.devicesAndConfigurations[0]).toMatchObject(counts);
   });
 
   it("leaves the first attempt's own export when a test failed every attempt", async () => {

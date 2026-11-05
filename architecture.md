@@ -3733,8 +3733,8 @@ fails every attempt fails the job. Only a test seen passing counts: one missing 
 results stays failing, and a nonzero exit that no named test failure explains (a crashed or
 unbootstrapped bundle, or an exit contradicting all-passing results) is never retried away. A
 bundle whose test runner or host app could not start has no results, only Xcode's placeholder
-`Test Case` (a sentence such as "App encountered an error" under `System Failures`, not a
-`Class/method()` identifier); retrying `-only-testing` by that name runs nothing and exits 0. Such
+`Test Case` (a sentence such as "App encountered an error" under `System Failures`, neither a
+`Class/method()` identifier nor a top-level Swift Testing `test()`); retrying `-only-testing` by that name runs nothing and exits 0. Such
 a bundle is retried with the caller's own `only-testing` entries inside it, or the whole bundle
 when the caller selected all of it, never wider; a bundle the caller selected nothing in fails
 rather than being retried unbounded. Every retry carries the caller's `skip-testing`. The bundle
