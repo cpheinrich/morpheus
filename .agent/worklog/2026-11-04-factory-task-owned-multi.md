@@ -68,9 +68,6 @@ conversation was also bound to a single checkout.
   checkouts became owned. Claims are now checked first and recorded after launch.
 - **Created worktrees are detached rather than on a Factory branch,** so Morpheus's
   "never hand-name a branch" rule is untouched. The worker, or `pm claim`, chooses the branch.
-- **Ownership is claimed at resolution, before the launch.** A failed launch leaves the task owning
-  what it explicitly asked for, and a primary-slot worktree is reused at its deterministic path.
-  The binding and map are still committed only after a successful launch.
 - A first test hung because a `sed` edit turned the test helper `finish` into self-recursion;
   this was found with print bisection.
 
@@ -99,23 +96,56 @@ into its working directory and every `--add-dir`. The tests show:
 Mutating each guard failed the new tests, with one exception: the fresh `avoid` rule survived at
 first. A further assertion now kills it.
 
-`scripts/workspace-live.mjs` is the live harness for the root. It runs the source bridge in an
-isolated `FACTORY_HOME`. A fake-provider dry run of it reproduced the same five steps. That dry run
-is not live proof: live proof needs the real root id and provider.
+### Live proof
+
+The root ran this independently on c2021a56. It used the source bridge, an isolated
+`$FACTORY_HOME` with gateway key references only, and memory sharing disabled. It did not touch
+the installed service or other sessions' workers. Every worker was the Claude gateway worker. It
+ran on the MacBook Pro, and the gateway runs on the existing Mac mini. Nothing was stubbed: no
+root snapshot, no provider and no permission or root metadata.
+
+1. **One conversation across three repositories.** The command was
+   `FACTORY_HOME=$FACTORY_HOME node plugins/factory/scripts/workspace-live.mjs --root-kind codex --root-id <real Codex root id>`.
+   It ran with the actual Codex root `01a1a9c1-b30a-7363-8fbb-e1261218886c`. Three runs completed,
+   all in one native worker session, `d789676c-7fd7-4d2c-9e3d-2b454666f715`:
+   - `c185d33c-8398-4943-96aa-bc7b77c5dd7b` edited alpha and beta;
+   - `2e3ab3ea-e73e-4f49-9801-5f32e2758b8f` was a plain resume;
+   - `6aff8634-e6a8-4a71-910b-45dd947d581c` added gamma.
+
+   The root checked the exact NOTES values: alpha and beta read `live-1/live-2/live-3`, and gamma
+   reads `live-3`. All three are task-owned isolated worktrees. The originals were preserved:
+   alpha's uncommitted README edit is still only in the original, and beta and gamma are clean.
+2. **An independent second root.** This was a real Claude CLI coordinator, session
+   `86745b60-e212-4556-abeb-011aead60d51`. Its real SessionStart and UserPromptSubmit hooks fired,
+   and it used the source `claude-mcp.mjs`. It called the actual `factory_inspect`,
+   `factory_delegate` and `factory_wait` tools. Its run, `06315876-e750-4ed0-a726-e72984d56297`,
+   completed in a separate native session, `3a465a6d-82fb-4b03-920c-eed954627b8d`. It got its own
+   worktrees of the same alpha and beta sources. The root checked that their notes read exactly
+   `other-root`, that the paths differ from the first task's, and that the first task's notes were
+   untouched.
+3. **A cross-task claim.** The source bridge, called as that same second Claude root, was asked to
+   enroll the first task's gamma worktree. It refused: "is a checkout owned by another Factory
+   task".
+
+One dead end came from the test environment, not the product. A long thread-scoped
+`FACTORY_HOME` exceeded macOS's Unix-socket path limit. The first coordinator connected to MCP, but
+`factory_inspect` failed with `EINVAL`, so it stopped correctly before any delegation. A short
+temporary symlink to the same private runtime fixed the environment, and the rerun succeeded.
+The private evidence (stream, scripts, verified JSON) stays local to the root and is not
+published.
 
 ## Open questions
 
-- The live smoke with the real provider and real root identity is owned by the root and is not
-  part of this commit.
-- Created worktrees are never removed automatically. Is a cleanup command wanted once real use
-  shows they accumulate?
+- Created worktrees are never removed automatically. They are released when removed with
+  `git worktree remove` or `pm cleanup`. This is a stated limitation, not a merge blocker.
 
 ## Appendix: test commands
 
 - `cd plugins/factory && pnpm check && pnpm test`: 194 passed, 0 failed, including the 11 tests in
   `tests/workspace.test.mjs`. The existing fixtures now root in a linked worktree
   (`tests/git-fixtures.mjs`), because an original root is no longer adopted.
-- `node --test tests/workspace.test.mjs`: 11 passed.
+- `node --test tests/workspace.test.mjs`: 11 passed. The root reran it independently on c2021a56,
+  along with `pnpm check`.
 - `node --test tests/reverse.test.mjs tests/gateway-workers.test.mjs tests/manager.test.mjs tests/mcp.test.mjs tests/dispatch.test.mjs`:
   43 passed.
 - `pnpm typecheck`; `pnpm exec vitest run tests/factory-distribution.test.ts tests/ci-scope.test.ts`:
