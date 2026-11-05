@@ -45,6 +45,18 @@ text-heavy pages, excluding legal documents and agent-centered records such as r
 - `pnpm test` — 140 files and 4,235 tests passed. It ran once because the shared local-review
   prompt changed.
 
-The paired Darwin implementation compressed 12 selected pages from 24,887 to 12,039 words (51.6%)
+The paired Darwin implementation compressed 12 selected pages from 24,887 to 12,044 words (51.6%)
 and kept legal and agent-centered records unchanged, providing the first measured evidence for the
 new standard.
+
+## Review response — 2026-11-05
+
+- `HQB-01`: narrowed this Morpheus item to the reusable standard and Darwin/Evo pilot. Lakina
+  adoption is now explicitly owned by `LK-26-11-05-01.39.21` in the Lakina repository instead of
+  remaining hidden unfinished scope.
+- `HQB-02`: propagated the canonical preservation contract verbatim to both product/design skills
+  and both reviewer personas: decision or action, owner, deadline, thresholds, material evidence,
+  caveats and compliance constraints. The persona test now asserts that contract, the 75-word
+  executive-brief threshold and the full exemption semantics.
+- `HQB-03`: corrected the final paired Darwin count to 12,044 words at the reviewed implementation
+  head; the 51.6% reduction is unchanged.

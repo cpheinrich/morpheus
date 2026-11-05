@@ -43,8 +43,8 @@ own tests, and does the wrong thing.
 7. **HQ brevity and hierarchy.** For a human-facing HQ change, apply
    `docs/runbooks/hq-product-design.md`: current direction is a verb-led outcome of at most ten
    words; the executive brief is at most 75 words or five one-sentence bullets; and a verbose
-   legacy page should usually lose 40–60% of its prose without losing decisions, owners, dates,
-   thresholds, material evidence, caveats or compliance constraints. Check before/after counts and
+   legacy page should usually lose 40–60% of its prose without losing the decision or action, owner,
+   deadline, thresholds, material evidence, caveats or compliance constraints. Check before/after counts and
    the rendered first screen. Do not demand compression of legal/compliance documents, roadmap
    tickets, worklogs, inboxes, agent logs or raw meeting/source records. Minor copy trims are notes;
    verbosity that defeats an explicit HQ acceptance criterion or hides the decision/action is a

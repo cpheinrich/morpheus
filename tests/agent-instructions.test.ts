@@ -109,9 +109,12 @@ describe("Morpheus's own AGENTS.md", () => {
     for (const prompt of [agentReview, LOCAL_REVIEW_PROMPT]) {
       const normalized = prompt.replace(/\s+/g, " ");
       expect(normalized).toContain("at most ten words");
+      expect(normalized).toContain("at most 75 words or five one-sentence bullets");
       expect(normalized).toContain("40–60%");
+      expect(normalized).toContain("decision or action, owner, deadline, thresholds, material evidence, caveats or compliance constraints");
       expect(normalized).toContain("legal/compliance documents");
       expect(normalized).toContain("roadmap tickets");
+      expect(normalized).toContain("raw meeting/source records");
     }
   });
 });
