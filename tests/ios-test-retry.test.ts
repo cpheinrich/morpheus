@@ -17,7 +17,7 @@ const exec = promisify(execFile);
 const script = resolve("scripts/ios-test-retry.py");
 type Behavior = "pass" | "fail" | "leftover" | "unnamed-failure" | "missing-on-retry" | "fail-first-run" | "skip" | "expected-failure";
 type Test = { id: string; behavior: Behavior };
-type Invocation = { argv: string[]; selected: string[]; deviceWasClean: boolean };
+type Invocation = { argv: string[]; selected: string[]; deviceWasClean: boolean; destination?: string; lane?: string | null };
 type Step = { id?: string; name?: string; run?: string; env?: Record<string, string> };
 
 const fakeXcodebuild = `#!${process.execPath}
@@ -625,7 +625,7 @@ describe("simulator lanes the runner's host declares", () => {
     expect(code).toBe(0);
 
     const lanes = await lanesOf(h);
-    expect(lanes.map((l) => [l.destination, (l as unknown as { lane: string }).lane]).sort())
+    expect(lanes.map((l) => [l.destination, l.lane]).sort())
       .toEqual([[`platform=iOS Simulator,id=${device}`, "1"], [`platform=iOS Simulator,id=${clone}`, "2"]]);
     for (const lane of lanes) {
       expect(pair(lane.argv, "-parallel-testing-enabled")).toEqual(["-parallel-testing-enabled", "NO"]);
