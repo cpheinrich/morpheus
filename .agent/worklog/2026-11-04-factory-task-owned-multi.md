@@ -162,6 +162,15 @@ task and original:
 - GREEN after the fix: the same command gives 1 pass, 0 fail.
 - `node --test tests/workspace.test.mjs` gives 12 pass, 0 fail.
 - `pnpm check` is clean.
+- Live retry, run by the root on the fixed source with a real Claude gateway worker:
+  - A per-repository `off` refused a delegation before launch, after its isolated worktree had
+    been created. The refusal was "Delegation was disabled during preflight".
+  - Delegation was then re-enabled, with the runtime reached through a short symlink. Run
+    `38b0fe5f-3179-41b3-86f2-929b6b205a95` reused that worktree.
+  - The run resumed the same native session, `d789676c-7fd7-4d2c-9e3d-2b454666f715`. It changed
+    the fixture's protocol code and test, and `node --test` passed in the worktree.
+  - The original repository stayed unchanged.
+  - The private evidence stays local to the root.
 
 ### R2 (minor, disputed for this PR)
 
@@ -174,6 +183,62 @@ share that task's authority, and the one-writer guards still forbid concurrent w
 **Limitation.** Idle conversations within one root task are not isolated from each other.
 Isolating them would add scope beyond the independently owned tasks this item requires. This PR
 does not change code or docs for R2.
+
+### Review record
+
+Independent high-risk review identified FAC-R1 (symlinked-home retry) and minor FAC-R2 (same-task auxiliary checkout sharing). FAC-R1 was fixed within the reviewer's pre-cleared paths and its regression passed red/green; FAC-R2 was declined because root-task ownership and one-writer guards are the accepted boundary. Conditional clearance is satisfied; real cross-repo, resume, isolation and retry gateway checks passed. Full-access ownership is not OS confinement.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "d6ecc79839aa42296984b331d83daa2c3a182512",
+  "reviewed": "b3915213a666a4ba7ba6d4f68abbb2c539a0b53f",
+  "covered": "2f4d3fba5a5cf893a825712f19e2d5851612e031",
+  "authorSession": "43a5ef91-cfa2-4f90-81c9-fbb38420548f",
+  "reviewerSession": "e65c794e-e606-47b2-85bf-0036386de3dd",
+  "risk": "high",
+  "elapsedMinutes": 2.4309833333333333,
+  "timing": {
+    "source": "runner",
+    "durationMs": 145859,
+    "evidence": "Factory review run fae643fe-f94a-4741-9916-41ae6dcea86f, native Claude session e65c794e-e606-47b2-85bf-0036386de3dd: final result event duration_ms=145859."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk review identified FAC-R1 (symlinked-home retry) and minor FAC-R2 (same-task auxiliary checkout sharing). FAC-R1 was fixed within the reviewer's pre-cleared paths and its regression passed red/green; FAC-R2 was declined because root-task ownership and one-writer guards are the accepted boundary. Conditional clearance is satisfied; real cross-repo, resume, isolation and retry gateway checks passed. Full-access ownership is not OS confinement.",
+  "findings": [
+    {
+      "id": "FAC-R1",
+      "severity": "substantive",
+      "description": "Reviewer R1: isolatedWorktree compared a canonical existing checkout to a raw destination. Under symlinked FACTORY_HOME, a retry after a failed preflight refused the task's own unclaimed worktree.",
+      "paths": [
+        "plugins/factory/src/workspace.mjs",
+        "plugins/factory/tests/workspace.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Commit 2f4d3fba5a5cf893a825712f19e2d5851612e031 canonicalizes the existing destination before comparing and returning it, and adds a failing-before-fix retry regression.",
+      "condition": {
+        "paths": [
+          "plugins/factory/src/workspace.mjs",
+          "plugins/factory/tests/workspace.test.mjs"
+        ],
+        "evidence": "Add a regression resolving or starting the same task and original twice through a symlinked FACTORY_HOME; show it fails before the fix and passes after. Run node --test tests/workspace.test.mjs in plugins/factory."
+      },
+      "conditionMet": "Author demonstrated RED on the pre-fix implementation and GREEN after canonicalization; condition command passed all 12 tests. Root independently inspected the exact diff and reran all 12 workspace tests successfully. A further real gateway run reused a preflight-created worktree through a short symlinked runtime, resumed native session d789676c-7fd7-4d2c-9e3d-2b454666f715, changed protocol code, passed node --test and preserved the original."
+    },
+    {
+      "id": "FAC-R2",
+      "severity": "minor",
+      "description": "Reviewer R2: idle auxiliary fresh conversations of the same root task may later map the same linked checkout; active writers are still serialized.",
+      "paths": [
+        "plugins/factory/src/service.mjs",
+        "plugins/factory/src/workspace.mjs"
+      ],
+      "disposition": "disputed",
+      "response": "The accepted isolation boundary is the root task/session. Auxiliary or reviewer conversations within that root share its authority, while the one-writer guard forbids concurrent writes. Stronger separation between idle auxiliary conversations is outside this change; the remaining limitation is documented in this worklog."
+    }
+  ]
+}
+```
 
 ## Open questions
 
