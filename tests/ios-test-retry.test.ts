@@ -64,6 +64,10 @@ const results = tests.map((t, i) => {
   return { ...t, result: failed ? 'Failed' : other || 'Passed' };
 }).concat(placeholders);
 fs.appendFileSync(ledger, tests.map(t => t.id + '\\n').join(''));
+// One lane can be made slower than the other, as a lane with the longer classes is.
+if (process.env.FAKE_SLOW_LANE && process.env.MORPHEUS_IOS_LANE === process.env.FAKE_SLOW_LANE) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 600);
+}
 if (process.env.FAKE_SIGNAL_LANE && process.env.MORPHEUS_IOS_LANE === process.env.FAKE_SIGNAL_LANE) {
   process.on('exit', () => {}); // The bundle below is written; then the process dies by a signal.
   globalThis.__signal = true;
@@ -810,6 +814,38 @@ describe("simulator lanes the runner's host declares", () => {
     expect(record.result).toBe("failed");
     expect(record.lanes.find((l: { lane: number }) => l.lane === 2).exitCode).toBe(-15);
     expect(record.lanes.find((l: { lane: number }) => l.lane === 1).exitCode).toBe(0);
+  });
+
+  it("records each lane's own preparation and test interval on one clock, so unequal lanes are not hidden by a merged bundle", async () => {
+    const h = await harness([...units, ...uis].map((id) => ({ id, behavior: "pass" as Behavior })),
+      { ...twoLanes, FAKE_SLOW_LANE: "2" });
+    expect((await h.run()).code).toBe(0);
+    type Lane = { lane: number; preTest: [number, number]; xcodebuild: [number, number] };
+    const record = JSON.parse(await h.read("Results/test-attempts.json"));
+    const [one, two] = [1, 2].map((n) => record.lanes.find((l: Lane) => l.lane === n) as Lane);
+    const span = (i: [number, number]) => i[1] - i[0];
+    for (const lane of [one!, two!]) {
+      expect(lane.preTest[0]).toBeLessThanOrEqual(lane.preTest[1]);
+      expect(lane.preTest[1]).toBeLessThanOrEqual(lane.xcodebuild[0]);
+    }
+    // The slow lane's tests take longer, and the lanes ran at the same time.
+    expect(span(two!.xcodebuild)).toBeGreaterThanOrEqual(0.55);
+    expect(span(one!.xcodebuild)).toBeLessThan(span(two!.xcodebuild));
+    expect(Math.max(one!.xcodebuild[0], two!.xcodebuild[0])).toBeLessThan(Math.min(one!.xcodebuild[1], two!.xcodebuild[1]));
+    // Attempt 1's own interval holds both lanes, setup and merge included.
+    const timing = record.attempts[0].timing;
+    expect(timing.started).toBeLessThanOrEqual(Math.min(one!.preTest[0], two!.preTest[0]));
+    expect(timing.finished).toBeGreaterThanOrEqual(Math.max(one!.xcodebuild[1], two!.xcodebuild[1]));
+  });
+
+  it("records a one-simulator attempt's preparation and test interval", async () => {
+    const h = await harness([{ id: unit, behavior: "pass" }], { SIMULATOR_LANES_FROM_HOST: "true", PRE_TEST_SCRIPT: "pre-test.sh" });
+    expect((await h.run()).code).toBe(0);
+    const timing = JSON.parse(await h.read("Results/test-attempts.json")).attempts[0].timing;
+    expect(timing.started).toBeLessThanOrEqual(timing.preTest[0]);
+    expect(timing.preTest[1]).toBeLessThanOrEqual(timing.xcodebuild[0]);
+    expect(timing.xcodebuild[0]).toBeLessThanOrEqual(timing.xcodebuild[1]);
+    expect(timing.xcodebuild[1]).toBeLessThanOrEqual(timing.finished);
   });
 
   it("stops before cloning or running anything when the selection cannot be enumerated", async () => {

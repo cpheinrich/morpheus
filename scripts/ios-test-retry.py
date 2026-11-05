@@ -114,7 +114,8 @@ def retry_selection(selected):
             + [f'-skip-testing:{test}' for test in lines('SKIP_TESTING')])
 
 
-def run(attempt, selection, results, logs, bundle=None, destination=None, lane=None, echo=True, shared=None):
+def run(attempt, selection, results, logs, bundle=None, destination=None, lane=None, echo=True, shared=None,
+        timing=None):
     """One attempt: the caller's pre-test script, then one xcodebuild, logged to a file and stdout.
 
     Returns the exit status and whether xcodebuild ran: a failed pre-test script reports itself.
@@ -122,8 +123,12 @@ def run(attempt, selection, results, logs, bundle=None, destination=None, lane=N
     caller can do once-per-run work (a quarantine run, a scope check) on lane 1 only. `shared` adds
     what the lanes hand the pre-test script: MORPHEUS_IOS_LANE_SELECTION, the file naming this
     lane's tests, so it prepares only what they need, and MORPHEUS_IOS_ENUMERATION, Xcode's
-    enumeration of the caller's whole selection, so it need not enumerate again.
+    enumeration of the caller's whole selection, so it need not enumerate again. `timing`, when
+    given, gets each phase's [start, end] in epoch seconds from this process's own clock (preTest,
+    xcodebuild), so lanes can be compared on one timeline without trusting a merged bundle's times.
     """
+    timing = {} if timing is None else timing
+    stamp = lambda: round(time.time(), 3)
     results.mkdir(parents=True, exist_ok=True)
     logs.mkdir(parents=True, exist_ok=True)
     bundle = bundle or results / 'Tests.xcresult'
@@ -134,10 +139,12 @@ def run(attempt, selection, results, logs, bundle=None, destination=None, lane=N
         env['MORPHEUS_IOS_LANE'] = str(lane)
     env.update(shared or {})
     if os.environ.get('PRE_TEST_SCRIPT'):
+        timing['preTest'] = [stamp(), None]
         # A lane's pre-test output goes to its own log, not interleaved with the other lane's.
         with open(logs / 'pre-test.log', 'wb') if not echo else open(os.devnull, 'wb') as quiet:
             prepared = subprocess.run(['bash', f"{env['GITHUB_WORKSPACE']}/{env['PRE_TEST_SCRIPT']}"], env=env,
                                       stdout=None if echo else quiet, stderr=None if echo else subprocess.STDOUT)
+        timing['preTest'][1] = stamp()
         if prepared.returncode:
             where = f' on lane {lane}' if lane else ''
             print(f'::error::The pre-test script failed before attempt {attempt}{where}.', flush=True)
@@ -145,13 +152,16 @@ def run(attempt, selection, results, logs, bundle=None, destination=None, lane=N
     bundle.parent.mkdir(parents=True, exist_ok=True)
     command = ['xcodebuild', 'test-without-building', *xcodebuild_args(bundle, destination), *selection]
     with open(logs / 'tests.log', 'wb') as log:
+        timing['xcodebuild'] = [stamp(), None]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
         for chunk in iter(lambda: process.stdout.read1(65536), b''):
             if echo:
                 sys.stdout.buffer.write(chunk)
                 sys.stdout.buffer.flush()
             log.write(chunk)
-        return process.wait(), True
+        status = process.wait()
+        timing['xcodebuild'][1] = stamp()
+        return status, True
 
 
 def enumerated(destination, path):
@@ -262,6 +272,7 @@ def run_lanes(selections, devices, results, logs, enumeration=None):
 
     def lane(n):
         started = time.monotonic()
+        timing = {}
         here = results if n == 1 else results / f'lane-{n}'
         try:
             status, tested = run(1, first_selection(1)[:2] + [f'-only-testing:{t}' for t in selections[n - 1]]
@@ -269,12 +280,14 @@ def run_lanes(selections, devices, results, logs, enumeration=None):
                              here, logs / f'lane-{n}', bundle=results / f'lane-{n}' / 'Tests.xcresult',
                              destination=f'id={devices[n - 1]}', lane=n, echo=False,
                              shared={'MORPHEUS_IOS_LANE_SELECTION': str(results / f'lane-{n}' / 'selection.txt'),
-                                     **({'MORPHEUS_IOS_ENUMERATION': str(enumeration)} if enumeration else {})})
+                                     **({'MORPHEUS_IOS_ENUMERATION': str(enumeration)} if enumeration else {})},
+                             timing=timing)
         except OSError as error:
             print(f'::error::Lane {n} could not run: {error}', flush=True)
             status, tested = 1, False
         outcome[n - 1] = {'lane': n, 'device': devices[n - 1], 'tests': len(selections[n - 1]),
-                          'exitCode': status, 'ran': tested, 'seconds': round(time.monotonic() - started, 1)}
+                          'exitCode': status, 'ran': tested, 'seconds': round(time.monotonic() - started, 1),
+                          **timing}
 
     threads = [threading.Thread(target=lane, args=(n,)) for n in range(1, len(selections) + 1)]
     for thread in threads:
@@ -468,6 +481,9 @@ def main():
     if lanes is not None:
         record['simulatorLanes'] = lanes
         print(f'::notice::The runner host declares {lanes} simulator lane(s); attempt 1 uses {lanes}.', flush=True)
+    # Attempt 1 on this process's clock, everything included (enumeration, clone, preparation,
+    # tests, merge), and each phase of a one-simulator run; lanes record their own phases.
+    attempt_timing = {'started': round(time.time(), 3)}
     if lanes == 2:
         if not device:
             print('::error::Two lanes need the job-owned iOS simulator.', flush=True)
@@ -487,7 +503,7 @@ def main():
             if len(selections) < 2:
                 print(f'::notice::The selection is one class or suite, so it runs on one of the {lanes} lanes.',
                       flush=True)
-                status, tested = run(1, first_selection(lanes), results, logs)
+                status, tested = run(1, first_selection(lanes), results, logs, timing=attempt_timing)
             else:
                 started = time.monotonic()
                 clone = second_simulator(device.group(1))
@@ -507,13 +523,15 @@ def main():
     else:
         if lanes is not None:
             record['activeLanes'] = 1
-        status, tested = run(1, first_selection(lanes), results, logs)
+        status, tested = run(1, first_selection(lanes), results, logs, timing=attempt_timing)
+    attempt_timing['finished'] = round(time.time(), 3)
     first = read_results(results / 'Tests.xcresult') if status else None
     attributed = first and first['attributed']
     failing = sorted(first['failed']) if attributed else []
     broken = sorted(first['broken']) if attributed else []
     record['attempts'].append({'attempt': 1, 'resultBundle': 'Tests.xcresult', 'selection': 'caller',
-                               'exitCode': status, 'failed': failing, 'failedBundles': broken})
+                               'exitCode': status, 'failed': failing, 'failedBundles': broken,
+                               'timing': attempt_timing})
     unexplained = status != 0 and not failing and not broken
     if unexplained and tested:
         print('::error::xcodebuild failed without a failure that names a test, so nothing was retried.', flush=True)
