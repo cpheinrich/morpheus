@@ -58,3 +58,43 @@ or business authority.
 ## Open questions
 
 None for this scoped repair. Codex freshness remains an explicit upstream snapshot limit.
+
+## Independent review
+
+Independent high-risk review cleared the quota repair with no substantive findings. One minor note about burst usage reads was declined: the gateway retains its short Claude cache, failures already remain unknown, and this scoped repair adds no client refresh cache or new setting. The reviewer independently passed all 21 config tests.
+
+Fresh review used the same configured Claude gateway in a separate native conversation,
+run `de6ad1e9-c4ce-46ed-a325-d51dc5d2f356`; implementation history was not inherited.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "de6ecbea2e0bef03ae60faec2a991d6173e00d23",
+  "reviewed": "cca0350e0227b7e19adf5ecf62704e72caee9d7e",
+  "covered": "cca0350e0227b7e19adf5ecf62704e72caee9d7e",
+  "authorSession": "01a1a323-9ec6-7bd0-b4de-60f94f19ef54",
+  "reviewerSession": "76d72578-a2c5-44ea-9fdc-34f5a6ff6eea",
+  "risk": "high",
+  "elapsedMinutes": 1.20495,
+  "timing": {
+    "source": "clock",
+    "durationMs": 72297,
+    "evidence": "Root clock around fresh Factory reviewer run de6ad1e9-c4ce-46ed-a325-d51dc5d2f356: 2026-11-05T02:40:59.457Z to 2026-11-05T02:42:11.754Z. Native session 76d72578-a2c5-44ea-9fdc-34f5a6ff6eea; all invocation waits included."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk review cleared the quota repair with no substantive findings. One minor note about burst usage reads was declined: the gateway retains its short Claude cache, failures already remain unknown, and this scoped repair adds no client refresh cache or new setting. The reviewer independently passed all 21 config tests.",
+  "findings": [
+    {
+      "id": "R1-burst",
+      "severity": "minor",
+      "description": "Repeated force=true usage reads could cause upstream rate limiting if a gateway version bypasses its own Claude cache.",
+      "paths": [
+        "plugins/factory/src/config.mjs"
+      ],
+      "disposition": "disputed",
+      "response": "Retain the existing active-read API as requested. Inspected upstream Claude usage path retains its three-minute cache even with this request; failures already report unknown. No observed burst problem justifies another client cache, retry or setting in this simple fix."
+    }
+  ]
+}
+```
+
