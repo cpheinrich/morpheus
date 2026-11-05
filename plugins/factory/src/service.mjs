@@ -63,6 +63,15 @@ import {
   within,
   readiness,
 } from "./dispatch.mjs";
+import {
+  checkoutInfo,
+  checkouts,
+  extraRoots,
+  legacyMap,
+  overlaps,
+  resolveWorkspace,
+  workspaceNote,
+} from "./workspace.mjs";
 
 export function previewSelection(config, snapshot) {
   try {
@@ -72,11 +81,20 @@ export function previewSelection(config, snapshot) {
   }
 }
 const RECENT_RUN_LIMIT = 5;
-// The route is pinned once per root session, while provider conversations remain scoped to a
-// canonical checkout. Reusing one native conversation after changing worktrees can carry stale
-// repository instructions and tool context into the wrong checkout. A fresh run deliberately
-// gets no reusable key and never replaces the primary conversation.
+// The route is pinned once per root session, and so is the primary conversation's working
+// directory: Claude resumes a session only from the directory that created it. The key keeps its
+// pre-workspace form, `primary:<that directory>`, so saved conversations resume unchanged; other
+// repositories join the conversation's task-owned workspace rather than starting a new one. A
+// fresh run deliberately gets no reusable key and never replaces the primary conversation.
 export const sessionKeyFor = (cwd) => `primary:${cwd}`;
+const overlapping = (a, b) => a.some((x) => b.some((y) => overlaps(x, y)));
+const runDirs = (run) => run.dirs ?? [run.cwd];
+// Global and per-repository `off` cover every repository a delegation would write.
+function disabledRepository(config, task, map) {
+  if (config.mode === "off" || task.disabled) return "Delegation is disabled for this task.";
+  const off = [task.project, ...Object.keys(map)].find((project) => config.projects[project] === "off");
+  return off ? `Delegation is disabled for repository ${off}.` : null;
+}
 const legacySessionKeyFor = (cwd, gateway) =>
   gateway ? `${cwd}#gateway:${gateway.name}` : cwd;
 const bindingFor = (decision) => ({
@@ -226,6 +244,7 @@ export class Manager {
       snapshot,
       gateways,
       binding: task.workerBinding ?? null,
+      workspace: workspaceView(task),
       route: pinnedRoute(config, task, gateways, operation, "codex"),
       // What a start without overrides would run, including fallback provenance, so the
       // coordinator can report it before launching; a refusal is reported, not thrown.
@@ -266,19 +285,18 @@ export class Manager {
         throw new Error(
           "A fresh worker requires an established primary worker binding; delegate once without fresh=true first.",
         );
-      // Worktree correction is explicit because Morpheus can move work after the turn starts.
-      const identity = await projectIdentity(
-        args.cwd || previous?.cwd || snapshot.cwd,
-      );
-      if (identity.project !== task.project)
-        throw new Error(
-          "Delegation directory must belong to the Codex task repository.",
-        );
-      task.cwd = identity.cwd;
-      if (!fresh && task.primaryCwd && task.primaryCwd !== task.cwd)
-        throw new Error(
-          `This root session's primary worker is bound to ${task.primaryCwd}. Use fresh=true for a different isolated worktree, or start a new root session.`,
-        );
+      // Targets are explicit: the root's own checkout (or `cwd`) and `repos`. Each resolves to
+      // a checkout this task owns; the root's starting repository no longer limits the others.
+      const id = randomUUID();
+      const workspace = await this.workspace(task, {
+        fresh,
+        previous,
+        cwd: args.cwd || previous?.cwd,
+        repos: args.repos,
+        rootCwd: snapshot.cwd,
+        runId: id,
+      });
+      task.cwd = workspace.cwd;
       const sessionKey = fresh ? null : sessionKeyFor(task.cwd);
       const legacySessionKey = legacySessionKeyFor(task.cwd, decision.gateway);
       task.claudeSession =
@@ -319,15 +337,8 @@ export class Manager {
           : 0;
       if (replies > config.maxSupervisionReplies)
         throw new Error("Supervision limit reached. Escalate to the user.");
-      const active = [...this.runs.values()].filter((r) => !r.terminal);
-      const owner = active.find((run) => run.cwd === task.cwd);
-      if (owner)
-        throw new Error(
-          `Run ${owner.id} already owns this working directory. Wait for or stop that run before starting another writer here.`,
-        );
-      if (active.length >= config.maxConcurrent)
-        throw new Error("Delegation concurrency limit reached.");
-      await this.recoverOrphans(task);
+      this.assertOneWriter(workspace.dirs, config);
+      await this.recoverOrphans(task, workspace.dirs);
       const permissions = permissionMode(snapshot);
       // A Codex worker runs the coordinator's own model and effort; the sandbox follows the
       // same approval mapping, never wider (full access only for a never-approve task).
@@ -338,7 +349,8 @@ export class Manager {
               model: args.model ?? snapshot.model,
               effort: codexRootEffort(args.effort ?? snapshot.reasoningEffort),
             };
-      const codexSandbox = worker === "codex" ? codexPermission(permissions) : null;
+      const roots = extraRoots(workspace.map, task.cwd);
+      const codexSandbox = worker === "codex" ? codexPermission(permissions, roots) : null;
       const env = withoutReferencedSecrets(
         (worker === "claude"
           ? await checkClaude(task.cwd, undefined, decision.gateway ?? null)
@@ -346,17 +358,12 @@ export class Manager {
         ).env,
         config,
       );
-      const latestConfig = await configRead();
       const latestTask = await taskRead(task.id);
-      if (
-        latestConfig.mode === "off" ||
-        latestConfig.projects[task.project] === "off" ||
-        latestTask.disabled
-      )
-        throw new Error("Delegation was disabled during preflight");
+      const disabled = disabledRepository(await configRead(), { ...latestTask, project: task.project }, workspace.map);
+      if (disabled)
+        throw new Error(`Delegation was disabled during preflight: ${disabled}`);
       if (this.draining)
         throw new Error("Bridge upgrade is in progress; retry afterward.");
-      const id = randomUUID();
       const dir = runDir(id);
       await mkdir(dir, { mode: 0o700 });
       task.memoryEnabled =
@@ -365,15 +372,18 @@ export class Manager {
       // Shared memory is the other agent's store, so a same-provider worker gets none.
       const memories =
         worker === "claude" ? await memoryContext(config, task, "codex") : [];
+      const brief = withWorkspace(args.prompt, workspace.map, task.cwd);
       const prompt =
         worker === "claude"
-          ? await handoff(args.prompt, memories, "Codex")
-          : await codexHandoff(args.prompt, memories, "Codex");
+          ? await handoff(brief, memories, "Codex")
+          : await codexHandoff(brief, memories, "Codex");
       const record = {
         id,
         executor: worker,
         threadId: task.id,
         cwd: task.cwd,
+        workspace: workspace.map,
+        dirs: workspace.dirs,
         sessionKey,
         workerSlot: fresh ? "fresh" : "primary",
         fresh,
@@ -399,7 +409,7 @@ export class Manager {
           runId: id,
           argv:
             worker === "claude"
-              ? claudeArgs(task.claudeSession, selection, permissions)
+              ? claudeArgs(task.claudeSession, selection, permissions, roots)
               : codexArgs(codexSession, selection, codexSandbox, decision.gateway ?? null),
           cwd: task.cwd,
           prompt,
@@ -418,6 +428,7 @@ export class Manager {
         if (!fresh) {
           current.workerBinding ??= bindingFor(decision);
           current.primaryCwd ??= task.cwd;
+          current.workspace = workspace.map;
         }
       });
       return this.begin(id);
@@ -456,7 +467,7 @@ export class Manager {
         throw new Error("Delegation is disabled for this conversation's task or project");
     }
   }
-  async recoverOrphans(task) {
+  async recoverOrphans(task, dirs = [task.cwd]) {
     // Never launch over an orphan after a service restart. Guardian will expire its lease.
     for (const id of (await readdir(join(home(), "runs"))).filter((id) =>
       /^[0-9a-f-]{36}$/.test(id),
@@ -466,7 +477,7 @@ export class Manager {
       const record = await readJSON(join(runDir(id), "run.json"), null);
       if (
         record &&
-        (record.threadId === task.id || record.cwd === task.cwd) &&
+        (record.threadId === task.id || overlapping(runDirs(record), dirs)) &&
         !this.runs.has(id)
       ) {
         await writeFile(join(runDir(id), "cancel"), "recovery", {
@@ -659,6 +670,8 @@ export class Manager {
       codexSession,
       threadId,
       cwd,
+      workspace,
+      dirs,
       sessionKey,
       workerSlot,
       fresh,
@@ -686,6 +699,8 @@ export class Manager {
       codexSession,
       threadId,
       cwd,
+      workspace: workspace ?? null,
+      dirs: dirs ?? [cwd],
       sessionKey,
       workerSlot: workerSlot ?? "primary",
       fresh: fresh === true,
@@ -876,6 +891,7 @@ export class Manager {
       runs,
       gateways,
       binding: task.workerBinding ?? null,
+      workspace: workspaceView(task),
       route: pinnedRoute(config, task, gateways, operation, "claude"),
     };
   }
@@ -931,18 +947,16 @@ export class Manager {
         throw new Error(
           "A fresh worker requires an established primary worker binding; delegate once without fresh=true first.",
         );
-      const identity = await projectIdentity(
-        args.cwd || previous?.cwd || session.cwd,
-      );
-      if (identity.project !== task.project)
-        throw new Error(
-          "Delegation directory must belong to the Claude session repository.",
-        );
-      task.cwd = identity.cwd;
-      if (!fresh && task.primaryCwd && task.primaryCwd !== task.cwd)
-        throw new Error(
-          `This root session's primary worker is bound to ${task.primaryCwd}. Use fresh=true for a different isolated worktree, or start a new root session.`,
-        );
+      const id = randomUUID();
+      const workspace = await this.workspace(task, {
+        fresh,
+        previous,
+        cwd: args.cwd || previous?.cwd,
+        repos: args.repos,
+        rootCwd: session.cwd,
+        runId: id,
+      });
+      task.cwd = workspace.cwd;
       const sessionKey = fresh ? null : sessionKeyFor(task.cwd);
       const legacySessionKey = legacySessionKeyFor(task.cwd, decision.gateway);
       const sameRoute = (run) =>
@@ -988,16 +1002,9 @@ export class Manager {
           : 0;
       if (replies > config.maxSupervisionReplies)
         throw new Error("Supervision limit reached. Escalate to the user.");
-      const active = [...this.runs.values()].filter((r) => !r.terminal);
-      const owner = active.find((run) => run.cwd === task.cwd);
-      if (owner)
-        throw new Error(
-          `Run ${owner.id} already owns this working directory. Wait for or stop that run before starting another writer here.`,
-        );
-      if (active.length >= config.maxConcurrent)
-        throw new Error("Delegation concurrency limit reached.");
-      await this.recoverOrphans(task);
-      const outside = !`${identity.project}/`.startsWith(`${identity.cwd}/`);
+      this.assertOneWriter(workspace.dirs, config);
+      await this.recoverOrphans(task, workspace.dirs);
+      const roots = extraRoots(workspace.map, task.cwd);
       // A Claude worker inherits the session's own model, effort and permission mode, so
       // it can never be wider than the coordinator.
       const selection =
@@ -1012,7 +1019,7 @@ export class Manager {
             };
       const permission =
         worker === "codex"
-          ? codexPermission(session.permissionMode, outside ? [identity.project] : [])
+          ? codexPermission(session.permissionMode, roots)
           : { name: session.permissionMode };
       const env = withoutReferencedSecrets(
         (worker === "codex"
@@ -1021,33 +1028,31 @@ export class Manager {
         ).env,
         config,
       );
-      const latestConfig = await configRead();
       const latestTask = await taskRead(task.id);
-      if (
-        latestConfig.mode === "off" ||
-        latestConfig.projects[task.project] === "off" ||
-        latestTask.disabled
-      )
-        throw new Error("Delegation was disabled during preflight");
+      const disabled = disabledRepository(await configRead(), { ...latestTask, project: task.project }, workspace.map);
+      if (disabled)
+        throw new Error(`Delegation was disabled during preflight: ${disabled}`);
       if (this.draining)
         throw new Error("Bridge upgrade is in progress; retry afterward.");
-      const id = randomUUID();
       await mkdir(runDir(id), { mode: 0o700 });
       // Claude's own memory switches are checked inside memoryContext.
       task.memoryEnabled = config.memorySharing;
       // Shared memory is the other agent's store, so a same-provider worker gets none.
       const memories =
         worker === "codex" ? await memoryContext(config, task, "claude") : [];
+      const brief = withWorkspace(args.prompt, workspace.map, task.cwd);
       const prompt =
         worker === "codex"
-          ? await codexHandoff(args.prompt, memories, "Claude Code")
-          : await handoff(args.prompt, memories, "Claude Code");
+          ? await codexHandoff(brief, memories, "Claude Code")
+          : await handoff(brief, memories, "Claude Code");
       const record = {
         id,
         executor: worker,
         threadId: task.id,
         sessionId: args.sessionId,
         cwd: task.cwd,
+        workspace: workspace.map,
+        dirs: workspace.dirs,
         sessionKey,
         workerSlot: fresh ? "fresh" : "primary",
         fresh,
@@ -1074,7 +1079,7 @@ export class Manager {
           argv:
             worker === "codex"
               ? codexArgs(codexSession, selection, permission, decision.gateway ?? null)
-              : claudeArgs(claudeSession, selection, permission.name),
+              : claudeArgs(claudeSession, selection, permission.name, roots),
           cwd: task.cwd,
           prompt,
           ...(worker === "codex" ? { input: "text" } : {}),
@@ -1097,12 +1102,57 @@ export class Manager {
         if (!fresh) {
           current.workerBinding ??= bindingFor(decision);
           current.primaryCwd ??= task.cwd;
+          current.workspace = workspace.map;
         }
       });
       return this.begin(id);
     } finally {
       this.busy = false;
     }
+  }
+  // Resolves this delegation's checkouts. The primary conversation keeps one working directory
+  // and a persistent map of task-owned checkouts; adding or naming another repository joins that
+  // conversation instead of starting a new worker. A fresh conversation gets its own map, kept on
+  // its run record, and never shares a checkout of the primary map. A record that predates the
+  // map is migrated from its primary directory, preserving its saved conversation.
+  async workspace(task, { fresh, previous, cwd, repos = [], rootCwd, runId }) {
+    const primaryMap =
+      task.workspace ?? (task.primaryCwd ? await legacyMap(task.primaryCwd) : {});
+    const resumed = fresh && previous?.fresh === true;
+    const anchor = fresh ? (resumed ? previous.cwd : null) : task.primaryCwd ?? null;
+    const map = !fresh
+      ? primaryMap
+      : resumed
+        ? previous.workspace ?? (await legacyMap(previous.cwd))
+        : {};
+    // Without an anchor the first target is the working directory; with one, the root's own
+    // checkout is never added implicitly, so a moved root cannot widen the workspace silently.
+    const targets = [...(anchor ? (cwd ? [cwd] : []) : [cwd || rootCwd]), ...repos];
+    const resolved = await resolveWorkspace({
+      taskId: task.id,
+      slot: fresh ? `fresh-${runId.slice(0, 8)}` : "primary",
+      map,
+      targets,
+      rootCheckout: (await checkoutInfo(rootCwd)).top,
+      avoid: fresh ? checkouts(primaryMap) : [],
+    });
+    const workCwd = anchor ?? resolved.first;
+    return {
+      cwd: workCwd,
+      map: resolved.map,
+      dirs: [...new Set([workCwd, ...checkouts(resolved.map)])],
+    };
+  }
+  // One writer per checkout across every task: no two active runs may share or nest a directory.
+  assertOneWriter(dirs, config) {
+    const active = [...this.runs.values()].filter((r) => !r.terminal);
+    const owner = active.find((run) => overlapping(runDirs(run), dirs));
+    if (owner)
+      throw new Error(
+        `Run ${owner.id} already owns this working directory (${runDirs(owner).join(", ")}). Wait for or stop that run before starting another writer here.`,
+      );
+    if (active.length >= config.maxConcurrent)
+      throw new Error("Delegation concurrency limit reached.");
   }
   // Hooks never decide whether a user turn should be delegated. They only expose the active
   // tool contract and preserve verified session metadata and edit-race protection.
@@ -1120,11 +1170,14 @@ export class Manager {
     if (!targets) return {};
     const { active } = await this.taskRuns(await taskRead(taskId));
     for (const run of active) {
-      for (const target of targets)
-        if (within(await canonical(target), run.cwd))
+      for (const target of targets) {
+        const path = await canonical(target);
+        const dir = runDirs(run).find((candidate) => within(path, candidate));
+        if (dir)
           return {
-            deny: `Factory run ${run.id} (${run.executor}) is writing in ${run.cwd}. Wait for it, or stop it and wait until it is terminal, before editing files there.`,
+            deny: `Factory run ${run.id} (${run.executor}) is writing in ${dir}. Wait for it, or stop it and wait until it is terminal, before editing files there.`,
           };
+      }
     }
     return {};
   }
@@ -1193,6 +1246,7 @@ export class Manager {
       prompt: args.prompt,
       runId: args.runId,
       cwd: args.cwd,
+      repos: args.repos,
       operation: args.provider,
       model: args.model,
       effort: args.effort,
@@ -1372,6 +1426,14 @@ export class Manager {
     }
     throw new Error("Unknown bridge operation");
   }
+}
+const workspaceView = (task) => ({
+  cwd: task.primaryCwd ?? null,
+  repositories: task.workspace ?? null,
+});
+function withWorkspace(prompt, map, cwd) {
+  const note = workspaceNote(map, cwd);
+  return note ? `${note}\n\n${prompt}` : prompt;
 }
 const briefRun = (run) => ({
   id: run.id,

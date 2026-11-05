@@ -1,5 +1,23 @@
 # Decisions
 
+**One Factory task conversation spans repositories through task-owned checkouts** — 2026-11-04.
+MO-26-11-04-20.01.14. Chris approved one persistent worker conversation per task, writing in several
+explicitly named repositories, each through a checkout the task owns; independent tasks get
+different checkouts even in the same repositories, and originals are reference only. This removes
+the same-repository equality gate in `start`/`codexStart` and supersedes "the primary provider
+conversation is scoped to its canonical checkout" in the 2026-11-02 entry below: the conversation
+keeps its first working directory (Claude resumes only from it, so the `primary:<cwd>` key and old
+saved sessions stand) and adds repositories through a persisted map. Targets are explicit (`cwd`,
+`repos`), never inferred from where the root moved. An unowned linked worktree is adopted, an
+original becomes a detached worktree at its committed HEAD, and the root's own checkout is adopted
+as before but never owned (owning an original would lock it forever). One registry with one
+writer refuses equal, nested, containing and aliased claims across tasks, and only removing a
+checkout releases it. One writer, the edit guard and per-repository `off` cover every checkout;
+extra checkouts reach Claude as `--add-dir` and Codex as writable roots under `workspace-write`
+only, never widening a mode. Under full access this is an ownership convention enforced at
+delegation, not an OS sandbox. A coordinator, worker-per-repository, an auto-cleanup and a release
+command were not added. Native Git and Node only; no dependency.
+
 **Factory refreshes Claude quota through the gateway's existing usage read** — 2026-11-04.
 MO-26-11-04-18.31.58. The account list's Claude five-hour utilization is a stored snapshot
 without a reset bound. Request its active usage endpoint on inspection/start/doctor and

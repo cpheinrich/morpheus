@@ -3291,20 +3291,39 @@ manifest, skill, hooks, runtime, lockfile, tests and installation documentation.
 the package into a personal marketplace; execution remains off until enabled. Personal
 settings and session records stay outside the repository. The release status (`experimental`,
 default `off`) is repository-owned; the only per-machine switch is the private settings
-file's `mode`, which reinstalling never overwrites. In `manual` mode hooks advise and the
-coordinator starts every handoff; in `automatic` mode the prompt hook dispatches each turn to
-the routed worker and the coordinator manages it (the package README's "Automatic dispatch").
+file's `mode`, which reinstalling never overwrites. `manual` and the legacy `automatic` value both
+mean model-directed delegation: hooks never dispatch a user prompt. Both roots see the same
+provider-neutral `factory_*` tools, with root identity injected by the MCP host; the root
+decides when to delegate (an explicit user request to use or avoid the Factory binds), remains
+manager and verifier, and the first successful primary launch pins provider and gateway for that
+root session. Agent discovery uses gateway workers only; Paperclip pool tools are not exposed.
 
 The bridge works in both directions. Whichever agent holds the conversation is the
-coordinator, on this host's native login; it routes at safe checkpoints, keeps explicit
-task/operation overrides, and starts workers on the same host and worktree. A worker is the
+coordinator, on this host's native login; it keeps explicit task/operation overrides and starts
+workers on the same host. A worker is the
 other agent on its native login, or either agent behind a pooled-subscription gateway
 (sub2api), reached as an API with its own key. A gateway of the coordinator's own provider
 is a valid delegate because it is a separate subscription; the coordinator's own native
 login never is, because that would be circular. Automatic mode picks the gateway with the
 most headroom below its threshold (90% used by default, read from the gateway's admin API)
 and otherwise keeps the work with the coordinator; missing or stale usage never triggers a
-handoff. The coordinator consumes its own allowance while supervising. A worker never
+handoff. The coordinator consumes its own allowance while supervising.
+
+One task has one persistent primary worker conversation across repositories. Delegation names
+its targets explicitly (`cwd`, `repos`); each resolves to a checkout the task owns: a repository
+already mapped keeps its checkout, an unowned linked worktree is adopted, the root's own checkout
+is adopted as before, and an original checkout becomes a detached worktree at its committed HEAD
+under the private Factory home, so uncommitted edits are never copied and originals stay
+reference only. The map persists per task and adding a repository resumes the same native
+session; the conversation keeps the working directory of its first launch. One registry with
+one writer records ownership, refuses another task's checkout (including subdirectories, aliases
+and containing checkouts) and is released only when a checkout is removed, so independent tasks
+in the same repositories get different checkouts. A fresh conversation gets its own map that
+never shares a primary checkout. One writer, the edit guard and per-repository `off` cover every
+mapped checkout; extra checkouts reach a worker as Claude `--add-dir` or Codex writable roots
+under `workspace-write` only, never widening a permission. Under full access this is ownership
+enforced at delegation, not an OS sandbox. Records from before workspaces migrate from their
+single primary checkout and keep their saved conversation. A worker never
 widens permissions: Claude permission modes map onto Codex's sandbox (only an explicit
 bypass reaches full access), a same-provider worker inherits the coordinator's own mode or
 sandbox, and saved worker sessions are kept per gateway so routes never resume each other. Delegated workers are marked

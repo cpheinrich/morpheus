@@ -557,7 +557,8 @@ export function codexPermission(mode, writableRoots = []) {
     "-c",
     'approval_policy="never"',
   ];
-  // A linked worktree keeps its Git metadata outside the checkout; commits need it.
+  // A linked worktree keeps its Git metadata outside the checkout; commits need it. Other
+  // task-owned checkouts are writable roots too. A read-only sandbox receives none.
   if (sandbox === "workspace-write" && writableRoots.length)
     args.push(
       "-c",
