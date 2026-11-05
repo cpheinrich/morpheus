@@ -17,6 +17,12 @@ import { ROADMAP_ID } from "./id.js";
 export { ROADMAP_ID };
 export declare const GOAL_ID: RegExp;
 export declare const REQUEST_ID: RegExp;
+/**
+ * A task base branch name. Deliberately narrower than Git's ref grammar: segments of
+ * letters, digits, `.`, `_` and `-`, never starting with `-` or `.`, so the value can be
+ * passed to Git and a GitHub API path as data. Git's `check-ref-format` still applies.
+ */
+export declare const TASK_BASE: RegExp;
 /** The project prefix an id belongs to, or null if it is malformed. */
 export declare function prefixOf(id: string): string | null;
 /**
@@ -106,6 +112,7 @@ export declare const RoadmapItem: z.ZodObject<{
     issues: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
     issuesToKeepOpen: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
     acceptance: z.ZodOptional<z.ZodString>;
+    base: z.ZodOptional<z.ZodString>;
     needs: z.ZodOptional<z.ZodString>;
     created: z.ZodPreprocess<z.ZodISODate>;
     updated: z.ZodPreprocess<z.ZodISODate>;
@@ -201,6 +208,7 @@ export declare const ARTIFACTS: {
             issues: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
             issuesToKeepOpen: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
             acceptance: z.ZodOptional<z.ZodString>;
+            base: z.ZodOptional<z.ZodString>;
             needs: z.ZodOptional<z.ZodString>;
             created: z.ZodPreprocess<z.ZodISODate>;
             updated: z.ZodPreprocess<z.ZodISODate>;

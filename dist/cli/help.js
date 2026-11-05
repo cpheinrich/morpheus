@@ -13,7 +13,7 @@ Usage
                             [--slug fix-photo-picker] [--issue 123]
                             — name the slug like a branch; derived otherwise
   morpheus pm tagged <tag> [<tag> ...] [--json]     Read roadmap/worklogs matching all subject tags
-  morpheus pm claim <RM-014>
+  morpheus pm claim <RM-014> [--base <protected branch>]   --base: a release fix integrates there, not trunk
   morpheus pm resume <ID>   reuse an existing task worktree or its remote branch
   morpheus pm cleanup <ID> [--dry-run|--check] [--release-stale-sessions]
                                             prove a merge, then remove its idle task worktree
@@ -29,6 +29,7 @@ Usage
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus review prepare   independent local review handoff and worklog template [--base <ref>]
   morpheus review validate  [<worklog>] [--pr-body-file <file>] [--base <ref>]
+                            --base defaults to the task's claimed base, else origin/main
                             run CI's review-record check on the committed record
                             before pushing; finds the branch's record if unnamed
   morpheus review prompt    assemble the rung-2 reviewer prompt for this branch

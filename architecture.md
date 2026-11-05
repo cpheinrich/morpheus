@@ -1106,6 +1106,16 @@ Existing task worktrees are identified by their claimed roadmap branch. `pm resu
 exactly one remote claim and reuses its local worktree or creates a checkout of that branch,
 preserving local commits and edits. Multiple remote claims are ambiguous and refused.
 
+**A task's base is the trunk unless it was claimed against another protected branch.**
+`pm claim <ID> --base <branch>` (a release fix whose branch is cut from trunk and merged back
+after delivery) verifies through `gh` that the branch is protected in the trunk remote's
+repository, prepares the worktree at its fetched head and writes `base:` into the claimed item.
+Every "current source" question for that task — claim, context refresh and the gate, startup lag,
+resume, cleanup and the local review base — then measures that branch, so a release fix is never
+asked to contain trunk work that landed after the cut. The base travels in the item on the task
+branch (before the claim, in the preparation marker); one that is declared and unreadable refuses
+rather than reverting to trunk. `src/session/task-base.ts` owns the lookup.
+
 An optional provider session ID binds a conversation to its explicit task in the common Git
 metadata directory. Hook JSON carries `session_id`; Codex commands can also use `CODEX_THREAD_ID`;
 `pm claim` and `pm resume` accept `--session-id` for providers that do not export it. IDs are hashed,

@@ -4,8 +4,7 @@ import { readFile, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { gitSubprocessEnv } from "../git-env.js";
-import { projectPolicy } from "./policy.js";
-import { resolveTrunk } from "./git.js";
+import { taskTrunk } from "./task-base.js";
 import { assertWorktreePolicy } from "./worktrees.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
 import { measureLag, rescueDirtyTrunk, readDirt } from "./trunk-rescue.js";
@@ -31,10 +30,14 @@ export async function checkoutIdentity(cwd) {
     const own = await realpath(resolve(root, await sessionGit(root, ["rev-parse", "--git-dir"])));
     return { root, common, linked: own !== common };
 }
-/** Fetch into a private ref so concurrent sessions cannot replace FETCH_HEAD. */
-export async function fetchTrunk(root) {
-    const policy = await projectPolicy(root);
-    const trunk = await resolveTrunk(root, policy.trunk);
+/**
+ * Fetch into a private ref so concurrent sessions cannot replace FETCH_HEAD. Without a
+ * target this is the checkout's task base: the trunk, or a release branch the task was
+ * claimed against (`task-base.ts`), so every "current source" question measures the branch
+ * the work will merge into.
+ */
+export async function fetchTrunk(root, target) {
+    const trunk = target ?? await taskTrunk(root);
     await sessionGit(root, ["check-ref-format", `refs/heads/${trunk.branch}`]);
     const ref = `refs/morpheus/session-start/${randomUUID()}`;
     try {
@@ -110,7 +113,7 @@ export async function assertCurrentSource(root) {
         await sessionGit(root, ["merge-base", "--is-ancestor", fetched.sha, "HEAD"]);
     }
     catch {
-        throw new Error(`Checkout does not contain current ${fetched.trunk} (${fetched.sha}). Run morpheus context brief; integrate trunk into existing work explicitly, then re-read the records and refresh.`);
+        throw new Error(`Checkout does not contain current ${fetched.trunk} (${fetched.sha}). Run morpheus context brief; integrate ${fetched.trunk} (this task's base) into existing work explicitly, then re-read the records and refresh.`);
     }
     return fetched.sha;
 }

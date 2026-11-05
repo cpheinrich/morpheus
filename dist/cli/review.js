@@ -9,6 +9,7 @@ import { LOCAL_REVIEW_PROMPT } from "../review/local-prompt.js";
 import { committedConfig, git, reviewRecordLine, reviewRequired, verifyReviewRecord } from "../review/local.js";
 import { buildReviewPrompt } from "../review/prompt.js";
 import { projectCommands, reviewPacket } from "../review/packet.js";
+import { declaredBase, projectTrunk } from "../session/task-base.js";
 /**
  * `morpheus review prompt` — assemble the rung 2 reviewer prompt and print it.
  * `morpheus review needed` — decide whether it is worth spending a review.
@@ -173,6 +174,31 @@ export function reviewDelivery(beforeCommentId, commentId, bodyPath, prBodyPath)
     }
     console.log(result.why);
     return 1;
+}
+/**
+ * The ref a local review measures against. An explicit `--base` wins. Otherwise a task
+ * claimed against a base (`pm claim --base`) uses that branch, fetched first so its
+ * remote-tracking ref is current; every other task keeps the `origin/main` default. A PR
+ * into the base is checked by CI against `origin/<PR base>`, so the two agree.
+ */
+export async function reviewBase(root, explicit, fallback = "origin/main") {
+    const base = await declaredBase(root);
+    if (!base)
+        return explicit ?? fallback;
+    const { remote } = await projectTrunk(root);
+    const ref = `${remote}/${base}`;
+    if (explicit !== undefined) {
+        if (explicit !== ref)
+            console.error(`! This task's base is ${ref}; measuring against ${explicit} as requested. Its PR targets ${base}.`);
+        return explicit;
+    }
+    try {
+        git(root, ["fetch", "--quiet", "--no-tags", remote, `refs/heads/${base}:refs/remotes/${remote}/${base}`]);
+    }
+    catch {
+        throw new Error(`Cannot fetch this task's base ${ref}; a review is never measured against another branch instead.`);
+    }
+    return ref;
 }
 export async function prepareReview(productDir, root, base) {
     try {

@@ -2,7 +2,8 @@ import { CANONICAL_INPUTS, LEASE_TTL_MS, observeLease, } from "../session/lease.
 import { readInputs, readRecords } from "../session/inputs.js";
 import { MIN_RUN_CHARS, contentLines, formatRanges, mergeRanges } from "../session/evidence.js";
 import { check as checkContext, endTerm, refresh as takeReceipt } from "../session/context.js";
-import { resolveTrunk, trunkLog, worktreeRoot } from "../session/git.js";
+import { trunkLog, worktreeRoot } from "../session/git.js";
+import { taskTrunk } from "../session/task-base.js";
 import { projectPolicy } from "../session/policy.js";
 import { gate as gateAction, offlineDeclared } from "../session/gate.js";
 import { CODEX_HOOKS, installContext } from "../session/install.js";
@@ -128,8 +129,7 @@ export async function refresh(root, offline = offlineDeclared()) {
     const before = await checkContext(root, new Date(), offline);
     const previous = before.lease?.receipt;
     const wt = await worktreeRoot(root);
-    const policy = await projectPolicy(wt);
-    const trunk = await resolveTrunk(wt, policy.trunk);
+    const trunk = await taskTrunk(wt);
     const trunkRef = `${trunk.remote}/${trunk.branch}`;
     const result = await takeReceipt(root);
     const { lease, issue, written, trunkMissing, evidence } = result;

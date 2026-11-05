@@ -1,3 +1,4 @@
+import type { TrunkRef } from "./git.js";
 import { type Lag, type RescueDeps, type RescueResult } from "./trunk-rescue.js";
 export declare const sessionGit: (root: string, args: string[], trim?: boolean) => Promise<string>;
 export declare function checkoutIdentity(cwd: string): Promise<{
@@ -20,8 +21,13 @@ export interface SourceState {
     /** Why a fast-forward that should have happened did not. */
     fastForwardError?: string;
 }
-/** Fetch into a private ref so concurrent sessions cannot replace FETCH_HEAD. */
-export declare function fetchTrunk(root: string): Promise<{
+/**
+ * Fetch into a private ref so concurrent sessions cannot replace FETCH_HEAD. Without a
+ * target this is the checkout's task base: the trunk, or a release branch the task was
+ * claimed against (`task-base.ts`), so every "current source" question measures the branch
+ * the work will merge into.
+ */
+export declare function fetchTrunk(root: string, target?: TrunkRef): Promise<{
     sha: string;
     trunk: string;
     branch: string;

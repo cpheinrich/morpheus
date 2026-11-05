@@ -10,7 +10,8 @@ import type { EvidenceMode, Requirement } from "../session/certify.js";
 import { MIN_RUN_CHARS, contentLines, formatRanges, mergeRanges, type Range } from "../session/evidence.js";
 import type { RescueDeps } from "../session/trunk-rescue.js";
 import { check as checkContext, endTerm, refresh as takeReceipt } from "../session/context.js";
-import { resolveTrunk, trunkLog, worktreeRoot } from "../session/git.js";
+import { trunkLog, worktreeRoot } from "../session/git.js";
+import { taskTrunk } from "../session/task-base.js";
 import { projectPolicy } from "../session/policy.js";
 import { gate as gateAction, offlineDeclared, type Reach } from "../session/gate.js";
 import { CODEX_HOOKS, installContext, type Repair } from "../session/install.js";
@@ -136,8 +137,7 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
   const previous = before.lease?.receipt;
 
   const wt = await worktreeRoot(root);
-  const policy = await projectPolicy(wt);
-  const trunk = await resolveTrunk(wt, policy.trunk);
+  const trunk = await taskTrunk(wt);
   const trunkRef = `${trunk.remote}/${trunk.branch}`;
 
   const result = await takeReceipt(root);

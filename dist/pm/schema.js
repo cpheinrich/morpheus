@@ -21,6 +21,12 @@ import { ROADMAP_ID } from "./id.js";
 export { ROADMAP_ID };
 export const GOAL_ID = /^[A-Z]{2,4}-G-\d{4}-(Q[1-4]|ANNUAL)-\d{2}$/;
 export const REQUEST_ID = /^[A-Z]{2,4}-FR-\d{3,}$/;
+/**
+ * A task base branch name. Deliberately narrower than Git's ref grammar: segments of
+ * letters, digits, `.`, `_` and `-`, never starting with `-` or `.`, so the value can be
+ * passed to Git and a GitHub API path as data. Git's `check-ref-format` still applies.
+ */
+export const TASK_BASE = /^(?![-.])(?!.*\/[-.])(?!.*\.\.)[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
 /** The project prefix an id belongs to, or null if it is malformed. */
 export function prefixOf(id) {
     return /^([A-Z]{2,4})-/.exec(id)?.[1] ?? null;
@@ -107,6 +113,12 @@ export const RoadmapItem = z
     /** Linked issues whose closure belongs to a later verifier, such as release admission. */
     issuesToKeepOpen: z.array(z.number().int().positive()).default([]),
     acceptance: z.string().optional(),
+    /**
+     * The protected branch this task integrates into when it is not the trunk, such as a
+     * release branch a fix must reach without unrelated trunk work. Written only by
+     * `pm claim --base`; absent means the trunk. See `src/session/task-base.ts`.
+     */
+    base: z.string().regex(TASK_BASE, "must be a plain branch name such as release/ios-1a2b3c4d5e6f").optional(),
     /** What would unblock this. Required when `status` is `blocked`. */
     needs: z.string().optional(),
     created: isoDate,

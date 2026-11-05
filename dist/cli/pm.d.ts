@@ -1,3 +1,4 @@
+import { type CommandRunner } from "../session/task-base.js";
 /** A cheap context entrypoint: explicit subject metadata, never a model classification. */
 export declare function tagged(productDir: string, root: string, tags: string[], json: boolean): Promise<number>;
 /** Validate every artifact under a product directory. Returns an exit code. */
@@ -14,8 +15,13 @@ export declare function create(productDir: string, kind: string, title: string, 
 }, cwd: string): Promise<number>;
 /** Add issue-closure intent to an item that already exists. */
 export declare function linkIssue(productDir: string, id: string, rawIssue: string): Promise<number>;
-/** Claim a roadmap item by staking its branch on the remote. */
-export declare function claim(productDir: string, id: string, cwd: string, sessionId?: string | undefined, offline?: boolean): Promise<number>;
+/**
+ * Claim a roadmap item by staking its branch on the remote.
+ *
+ * `base` names a protected branch the task integrates into instead of the trunk (a
+ * release fix). Inside a checkout prepared for a base, the base is inherited.
+ */
+export declare function claim(productDir: string, id: string, cwd: string, sessionId?: string | undefined, offline?: boolean, base?: string, gh?: CommandRunner): Promise<number>;
 /** Reuse an explicitly named task's existing branch and checkout. */
 export declare function resume(id: string, cwd: string, sessionId?: string | undefined): Promise<number>;
 /**
