@@ -149,9 +149,12 @@ on:
         description: >-
           Let the runner's host decide the first attempt's simulators instead of parallel-testing:
           MORPHEUS_IOS_SIMULATOR_LANES in the runner environment is 1 (or unset) for one serial
-          simulator, 2 for Xcode's parallel testing on exactly two clones of the job's prepared
-          simulator; any other value fails before tests. Retries stay serial. Cannot be combined
-          with parallel-testing.
+          simulator, 2 for two explicit lanes: the selection is enumerated, whole classes and suites
+          of every target are split into two disjoint selections, a second simulator is cloned from
+          the job's own, the pre-test script prepares each (MORPHEUS_IOS_LANE=1 or 2), each runs its
+          share serially at the same time, and the two result bundles are merged. Any other value
+          fails before tests. Retries stay serial on the job's own erased simulator. Cannot be
+          combined with parallel-testing.
         type: boolean
         default: false
       firebase-emulators:

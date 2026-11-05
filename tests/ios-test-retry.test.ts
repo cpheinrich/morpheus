@@ -37,6 +37,12 @@ const retry = argv.includes('-collect-test-diagnostics') || /attempt-/.test(valu
 let tests = JSON.parse(process.env.FAKE_TESTS)
   .filter(t => (!only.length || only.some(e => covers(t.id, e))) && !skip.some(e => covers(t.id, e)))
   .filter(t => !(retry && t.behavior === 'missing-on-retry'));
+if (argv.includes('-enumerate-tests')) {
+  fs.appendFileSync(process.env.EVENTS, JSON.stringify({ enumerate: tests.map(t => t.id), destination: value('-destination') }) + '\\n');
+  if (process.env.FAIL_ENUMERATE) process.exit(70);
+  fs.writeFileSync(value('-test-enumeration-output-path'), JSON.stringify({ errors: [], values: [{ enabledTests: tests.map(t => ({ identifier: t.id })), disabledTests: [] }] }));
+  process.exit(0);
+}
 const clean = fs.readFileSync(process.env.SIM_STATE, 'utf8') === 'clean';
 const ledger = process.env.EVENTS + '.ran';
 const ran = fs.existsSync(ledger) ? fs.readFileSync(ledger, 'utf8').split('\\n') : [];
@@ -50,7 +56,7 @@ for (const target of (process.env.NO_START || '').split(',').filter(Boolean)) {
   tests = tests.filter(t => !t.id.startsWith(target + '/') || t.behavior === 'skip' || t.behavior === 'expected-failure');
   placeholders.push({ id: target + '/App encountered an error', result: 'Failed', placeholder: true });
 }
-fs.appendFileSync(process.env.EVENTS, JSON.stringify({ argv, selected: tests.map(t => t.id), deviceWasClean: clean }) + '\\n');
+fs.appendFileSync(process.env.EVENTS, JSON.stringify({ argv, selected: tests.map(t => t.id), deviceWasClean: clean, destination: value('-destination'), lane: process.env.MORPHEUS_IOS_LANE || null }) + '\\n');
 const results = tests.map((t, i) => {
   const failed = t.behavior === 'fail' || t.behavior === 'unnamed-failure' || t.behavior === 'missing-on-retry' ||
     (t.behavior === 'leftover' && (!clean || i > 0)) || (t.behavior === 'fail-first-run' && !ran.includes(t.id));
@@ -88,11 +94,32 @@ const fs = require('node:fs');
 const argv = process.argv.slice(2);
 if (argv[0] === 'simctl') {
   fs.appendFileSync(process.env.EVENTS, JSON.stringify({ simctl: argv.slice(1) }) + '\\n');
+  if (argv[1] === 'list') {
+    process.stdout.write(JSON.stringify({ devices: { 'iOS-26-5': [{ udid: process.env.FAKE_DEVICE, name: 'Morpheus CI fake' }] } }));
+    process.exit(0);
+  }
+  if (argv[1] === 'clone') { if (process.env.FAIL_CLONE) process.exit(1); console.log(process.env.FAKE_CLONE); process.exit(0); }
   if (argv[1] === 'erase') {
     if (process.env.FAIL_ERASE) { console.error('Unable to erase'); process.exit(1); }
     fs.writeFileSync(process.env.SIM_STATE, 'clean');
   }
   process.exit(argv[1] === 'shutdown' ? 149 : 0);
+}
+if (argv[0] === 'xcresulttool' && argv[1] === 'merge') {
+  const out = argv[argv.indexOf('--output-path') + 1];
+  const inputs = argv.slice(2, argv.indexOf('--output-path'));
+  fs.appendFileSync(process.env.EVENTS, JSON.stringify({ merge: inputs }) + '\\n');
+  fs.mkdirSync(out, { recursive: true });
+  const trees = inputs.map(i => JSON.parse(fs.readFileSync(i + '/fake-tests.json', 'utf8')));
+  const sums = inputs.map(i => JSON.parse(fs.readFileSync(i + '/fake-summary.json', 'utf8')));
+  const failed = sums.some(x => x.result === 'Failed');
+  fs.writeFileSync(out + '/fake-tests.json', JSON.stringify({ testNodes: [{ nodeType: 'Test Plan', name: 'App',
+    result: failed ? 'Failed' : 'Passed', children: trees.flatMap(t => t.testNodes[0].children) }] }));
+  const add = k => sums.reduce((n, x) => n + x[k], 0);
+  fs.writeFileSync(out + '/fake-summary.json', JSON.stringify({ result: failed ? 'Failed' : 'Passed',
+    totalTestCount: add('totalTestCount'), passedTests: add('passedTests'), failedTests: add('failedTests'), skippedTests: add('skippedTests'),
+    expectedFailures: add('expectedFailures'), devicesAndConfigurations: sums.flatMap(x => x.devicesAndConfigurations), testFailures: sums.flatMap(x => x.testFailures) }));
+  process.exit(0);
 }
 const kind = argv[3];
 const path = argv[argv.indexOf('--path') + 1] + '/fake-' + kind + '.json';
@@ -101,6 +128,7 @@ process.stdout.write(fs.readFileSync(path, 'utf8'));
 `;
 
 const device = "12345678-ABCD-ABCD-ABCD-123456789ABC";
+const clone = "87654321-DCBA-DCBA-DCBA-CBA987654321";
 const dirs: string[] = [];
 afterEach(async () => {
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
@@ -116,7 +144,7 @@ async function harness(tests: Test[], extra: Record<string, string> = {}) {
     await writeFile(join(dir, "bin", name!), body!);
     await chmod(join(dir, "bin", name!), 0o755);
   }
-  await writeFile(join(dir, "pre-test.sh"), 'printf \'{"preTest":"%s","results":"%s","logs":"%s"}\\n\' "$MORPHEUS_IOS_DESTINATION" "$RESULTS" "$LOGS" >> "$EVENTS"\n' +
+  await writeFile(join(dir, "pre-test.sh"), 'printf \'{"preTest":"%s","results":"%s","logs":"%s","lane":"%s"}\\n\' "$MORPHEUS_IOS_DESTINATION" "$RESULTS" "$LOGS" "${MORPHEUS_IOS_LANE:-}" >> "$EVENTS"\n' +
     'if [ -n "${PRE_TEST_FAIL_ON:-}" ] && [[ "$RESULTS" == *"$PRE_TEST_FAIL_ON" ]]; then exit 7; fi\n');
   await writeFile(join(dir, "sim-state"), "clean");
   const env: Record<string, string> = {
@@ -125,7 +153,7 @@ async function harness(tests: Test[], extra: Record<string, string> = {}) {
     GITHUB_STEP_SUMMARY: join(dir, "summary.md"), EVENTS: join(dir, "events"), SIM_STATE: join(dir, "sim-state"),
     FAKE_TESTS: JSON.stringify(tests), PROJECT: "App.xcodeproj", SCHEME: "App", CONFIGURATION: "Debug",
     SDK: "iphonesimulator", PLATFORM: "iOS Simulator", DESTINATION: "OS=26.5,name=iPhone 17 Pro Max",
-    MORPHEUS_IOS_DESTINATION: `id=${device}`, SOURCE_PACKAGES: join(dir, "packages"), DERIVED_DATA: join(dir, "derived"),
+    MORPHEUS_IOS_DESTINATION: `id=${device}`, FAKE_DEVICE: device, FAKE_CLONE: clone, SOURCE_PACKAGES: join(dir, "packages"), DERIVED_DATA: join(dir, "derived"),
     TEST_PLAN: "", ONLY_TESTING: "", SKIP_TESTING: "", TEST_ITERATIONS: "3", PARALLEL_TESTING: "NO",
     MAXIMUM_PARALLEL_TESTING_WORKERS: "0", PRE_TEST_SCRIPT: "", FIREBASE_EMULATORS: "false", ...extra,
   };
@@ -268,8 +296,8 @@ describe("ios-test-retry.py", () => {
     expect(order).toEqual(["pre", "xcodebuild", "simctl shutdown", "simctl erase", "pre", "xcodebuild"]);
     const prepared = (await h.events()).filter((e) => "preTest" in e);
     expect(prepared).toEqual([
-      { preTest: `id=${device}`, results: join(h.dir, "Results"), logs: join(h.dir, "Logs") },
-      { preTest: `id=${device}`, results: join(h.dir, "Results/attempt-2"), logs: join(h.dir, "Logs/attempt-2") },
+      { preTest: `id=${device}`, results: join(h.dir, "Results"), logs: join(h.dir, "Logs"), lane: "" },
+      { preTest: `id=${device}`, results: join(h.dir, "Results/attempt-2"), logs: join(h.dir, "Logs/attempt-2"), lane: "" },
     ]);
   });
 
@@ -583,28 +611,100 @@ describe("ios-ci.yml wiring", () => {
 describe("simulator lanes the runner's host declares", () => {
   const pair = (argv: string[], flag: string) => argv.slice(argv.indexOf(flag), argv.indexOf(flag) + 2);
 
-  it("runs attempt 1 on exactly two parallel clones and retries serially on the erased job simulator", async () => {
-    const h = await harness([{ id: unit, behavior: "pass" }, { id: stale, behavior: "leftover" }], {
-      SIMULATOR_LANES_FROM_HOST: "true", MORPHEUS_IOS_SIMULATOR_LANES: "2",
-    });
-    const { code, stdout } = await h.run();
+  const twoLanes = { SIMULATOR_LANES_FROM_HOST: "true", MORPHEUS_IOS_SIMULATOR_LANES: "2", PRE_TEST_SCRIPT: "pre-test.sh" };
+  const units = ["AppTests/ModelTests/testA()", "AppTests/ModelTests/testB()", "AppTests/StoreTests/testC()",
+    "AppTests/SyncTests/testD()", "AppTests/topLevel()"];
+  const uis = ["AppUITests/LaunchUITests/testE()", "AppUITests/LaunchUITests/testF()", "AppUITests/CheckoutUITests/testG()",
+    "AppUITests/SettingsUITests/testH()"];
+  const lanesOf = async (h: Awaited<ReturnType<typeof harness>>) => (await h.invocations())
+    .filter((i) => i.argv.some((a) => a.includes("Results/lane-")));
 
+  it("partitions whole classes of every target onto two prepared simulators, serial inside, and merges one first attempt", async () => {
+    const h = await harness([...units, ...uis].map((id) => ({ id, behavior: "pass" as Behavior })), twoLanes);
+    const { code, stdout } = await h.run();
     expect(code).toBe(0);
-    const [first, retry, ...rest] = await h.invocations();
-    expect(rest).toEqual([]);
-    expect(pair(first!.argv, "-parallel-testing-enabled")).toEqual(["-parallel-testing-enabled", "YES"]);
-    expect(pair(first!.argv, "-parallel-testing-worker-count")).toEqual(["-parallel-testing-worker-count", "2"]);
-    expect(first!.argv).not.toContain("-maximum-parallel-testing-workers");
-    expect(first!.selected).toEqual([unit, stale]);
-    // The retry is the existing serial rerun of only what failed, on the job's own erased device.
-    expect(pair(retry!.argv, "-parallel-testing-enabled")).toEqual(["-parallel-testing-enabled", "NO"]);
-    expect(retry!.argv).not.toContain("-parallel-testing-worker-count");
-    expect(retry!.argv).toContain(`platform=iOS Simulator,id=${device}`);
-    expect(retry!.deviceWasClean).toBe(true);
-    expect(retry!.selected).toEqual([stale]);
-    expect(stdout).toContain("::notice::The runner host declares 2 simulator lane(s); attempt 1 uses 2.");
+
+    const lanes = await lanesOf(h);
+    expect(lanes.map((l) => [l.destination, (l as unknown as { lane: string }).lane]).sort())
+      .toEqual([[`platform=iOS Simulator,id=${device}`, "1"], [`platform=iOS Simulator,id=${clone}`, "2"]]);
+    for (const lane of lanes) {
+      expect(pair(lane.argv, "-parallel-testing-enabled")).toEqual(["-parallel-testing-enabled", "NO"]);
+      expect(lane.argv).not.toContain("-parallel-testing-worker-count");
+      expect(lane.argv).not.toContain("-maximum-parallel-testing-workers");
+      // Every lane takes a share of every target, unit and UI alike.
+      expect(lane.selected.some((t) => t.startsWith("AppTests/"))).toBe(true);
+      expect(lane.selected.some((t) => t.startsWith("AppUITests/"))).toBe(true);
+    }
+    const [a, b] = lanes.map((l) => l.selected);
+    // Disjoint, exhaustive, and no class split across lanes.
+    expect([...a!, ...b!].sort()).toEqual([...units, ...uis].sort());
+    expect(a!.filter((t) => b!.includes(t))).toEqual([]);
+    for (const klass of ["AppTests/ModelTests", "AppUITests/LaunchUITests"]) {
+      expect([a, b].filter((sel) => sel!.some((t) => t.startsWith(klass + "/"))).length).toBe(1);
+    }
+
+    // Each lane ran the caller's preparation on its own simulator; lane 1 into RESULTS itself.
+    const prepared = (await h.events()).filter((e) => "preTest" in e).map((e) => [e.preTest, e.results, e.lane]).sort();
+    expect(prepared).toEqual([[`id=${device}`, join(h.dir, "Results"), "1"], [`id=${clone}`, join(h.dir, "Results/lane-2"), "2"]]);
+    const events = await h.events();
+    expect(events.find((e) => "merge" in e)?.merge).toEqual([join(h.dir, "Results/lane-1/Tests.xcresult"), join(h.dir, "Results/lane-2/Tests.xcresult")]);
+    const simctl = events.filter((e) => "simctl" in e).map((e) => (e.simctl as string[]).join(" "));
+    expect(simctl).toEqual(expect.arrayContaining([`clone ${device} Clone 90 of Morpheus CI fake`, `delete ${clone}`]));
+    expect(simctl.indexOf(`delete ${clone}`)).toBeGreaterThan(simctl.indexOf(`clone ${device} Clone 90 of Morpheus CI fake`));
+
     const record = JSON.parse(await h.read("Results/test-attempts.json"));
-    expect(record).toMatchObject({ simulatorLanes: 2, result: "passed", flaky: [{ id: stale, passedOnAttempt: 2 }] });
+    expect(record).toMatchObject({ simulatorLanes: 2, result: "passed" });
+    expect(record.lanes.map((l: { lane: number; device: string; tests: number; exitCode: number }) => [l.lane, l.device, l.exitCode]))
+      .toEqual([[1, device, 0], [2, clone, 0]]);
+    expect(record.lanes[0].tests + record.lanes[1].tests).toBe(9);
+    expect((await h.read("Results/lane-1/selection.txt")).trim().split("\n").sort()).toEqual([...a!].sort());
+    expect(await h.read("Logs/tests.log")).toMatch(/ran \d+ tests[\s\S]*ran \d+ tests/);
+    expect(stdout).toContain("::notice::The runner host declares 2 simulator lane(s); attempt 1 uses 2.");
+  });
+
+  it("never widens a caller's filter to a whole class", async () => {
+    const h = await harness([...units, ...uis].map((id) => ({ id, behavior: "pass" as Behavior })), {
+      ...twoLanes, ONLY_TESTING: "AppTests\nAppUITests/LaunchUITests/testE()", SKIP_TESTING: "AppTests/SyncTests",
+    });
+    expect((await h.run()).code).toBe(0);
+    const ran = (await lanesOf(h)).flatMap((l) => l.selected).sort();
+    expect(ran).toEqual([...units.filter((t) => !t.startsWith("AppTests/SyncTests/")), "AppUITests/LaunchUITests/testE()"].sort());
+    for (const lane of await lanesOf(h)) expect(lane.argv).toContain("-skip-testing:AppTests/SyncTests");
+  });
+
+  it("retries a lane's failure on the erased job simulator, serially, after the merged first attempt", async () => {
+    const h = await harness([...units.map((id) => ({ id, behavior: "pass" as Behavior })),
+      { id: uis[2]!, behavior: "fail-first-run" }, { id: uis[0]!, behavior: "pass" }], twoLanes);
+    expect((await h.run()).code).toBe(0);
+    const all = await h.invocations();
+    const retry = all[all.length - 1]!;
+    expect(retry.selected).toEqual([uis[2]]);
+    expect(retry.destination).toBe(`platform=iOS Simulator,id=${device}`);
+    expect(pair(retry.argv, "-parallel-testing-enabled")).toEqual(["-parallel-testing-enabled", "NO"]);
+    const record = JSON.parse(await h.read("Results/test-attempts.json"));
+    expect(record).toMatchObject({ result: "passed", flaky: [{ id: uis[2], passedOnAttempt: 2 }] });
+    expect(record.attempts[0].failed).toEqual([uis[2]]);
+  });
+
+  it("fails, and still removes the second simulator, when a lane's preparation fails", async () => {
+    const h = await harness([...units, ...uis].map((id) => ({ id, behavior: "pass" as Behavior })),
+      { ...twoLanes, PRE_TEST_FAIL_ON: "lane-2" });
+    const { code, stdout } = await h.run();
+    expect(code).not.toBe(0);
+    expect(stdout).toContain("::error::The pre-test script failed before attempt 1 on lane 2.");
+    const simctl = (await h.events()).filter((e) => "simctl" in e).map((e) => (e.simctl as string[]).join(" "));
+    expect(simctl).toContain(`delete ${clone}`);
+    expect(JSON.parse(await h.read("Results/test-attempts.json")).result).toBe("failed");
+  });
+
+  it("stops before cloning or running anything when the selection cannot be enumerated", async () => {
+    const h = await harness([{ id: units[0]!, behavior: "pass" }], { ...twoLanes, FAIL_ENUMERATE: "1" });
+    const { code, stdout } = await h.run();
+    expect(code).toBe(1);
+    expect(stdout).toContain("::error::Enumerating the selection failed");
+    const events = await h.events();
+    expect(events.some((e) => "simctl" in e && (e.simctl as string[])[0] === "clone")).toBe(false);
+    expect(events.some((e) => "argv" in e || "preTest" in e)).toBe(false);
   });
 
   it.each([["unset", undefined], ["empty", ""], ["one", "1"], ["padded one", " 1\n"]])(

@@ -25,8 +25,9 @@ retry did (see combine), so a caller's result validator keeps working unchanged.
 
 A caller that sets simulator-lanes-from-host lets the runner decide how many simulators attempt 1
 uses: MORPHEUS_IOS_SIMULATOR_LANES, set by the host in the runner's environment, is 1 (or absent)
-for one serial simulator and 2 for Xcode's parallel testing on exactly two clones of the job's
-prepared simulator. Anything else fails before a test runs. Retries stay serial on the erased job
+for one serial simulator and 2 for two explicit lanes (run_lanes). Anything else fails before a
+test runs. Xcode's own parallel testing is not used for this: it keeps a hosted unit bundle on one
+clone, so unit tests would never use the second simulator. Retries stay serial on the erased job
 simulator whatever the lane count.
 """
 import copy
@@ -45,13 +46,13 @@ def lines(name):
     return [line for line in os.environ.get(name, '').splitlines() if line]
 
 
-def xcodebuild_args(bundle):
+def xcodebuild_args(bundle, destination=None):
     env = os.environ
-    destination = env.get('MORPHEUS_IOS_DESTINATION') or env['DESTINATION']
+    destination = destination or env.get('MORPHEUS_IOS_DESTINATION') or env['DESTINATION']
     args = ['-project', env['PROJECT'], '-scheme', env['SCHEME'], '-configuration', env['CONFIGURATION'],
             '-sdk', env['SDK'], '-destination', f"platform={env['PLATFORM']},{destination}",
             '-clonedSourcePackagesDirPath', env['SOURCE_PACKAGES'], '-derivedDataPath', env['DERIVED_DATA'],
-            '-resultBundlePath', str(bundle),
+            *(['-resultBundlePath', str(bundle)] if bundle else []),
             '-onlyUsePackageVersionsFromResolvedFile', '-disableAutomaticPackageResolution']
     return args + (['-testPlan', env['TEST_PLAN']] if env.get('TEST_PLAN') else [])
 
@@ -74,11 +75,9 @@ def host_lanes():
 
 def first_selection(lanes=None):
     env = os.environ
-    if lanes == 2:
-        # Exactly two: the host sized its VM for two booted simulators, and Xcode's own choice of
-        # worker count follows the VM's cores, not its memory.
-        args = ['-parallel-testing-enabled', 'YES', '-parallel-testing-worker-count', '2']
-    elif lanes == 1:
+    if lanes is not None:
+        # Host lanes are always serial inside each simulator: two lanes are two explicit
+        # simulators, never Xcode's hidden clones.
         args = ['-parallel-testing-enabled', 'NO']
     else:
         args = ['-parallel-testing-enabled', env.get('PARALLEL_TESTING', 'NO')]
@@ -113,27 +112,163 @@ def retry_selection(selected):
             + [f'-skip-testing:{test}' for test in lines('SKIP_TESTING')])
 
 
-def run(attempt, selection, results, logs):
+def run(attempt, selection, results, logs, bundle=None, destination=None, lane=None, echo=True):
     """One attempt: the caller's pre-test script, then one xcodebuild, logged to a file and stdout.
 
     Returns the exit status and whether xcodebuild ran: a failed pre-test script reports itself.
+    A lane runs on its own simulator and passes MORPHEUS_IOS_LANE to the pre-test script, so a
+    caller can do once-per-run work (a quarantine run, a scope check) on lane 1 only.
     """
     results.mkdir(parents=True, exist_ok=True)
     logs.mkdir(parents=True, exist_ok=True)
+    bundle = bundle or results / 'Tests.xcresult'
     env = dict(os.environ, RESULTS=str(results), LOGS=str(logs))
+    if destination:
+        env['MORPHEUS_IOS_DESTINATION'] = destination
+    if lane:
+        env['MORPHEUS_IOS_LANE'] = str(lane)
     if os.environ.get('PRE_TEST_SCRIPT'):
-        prepared = subprocess.run(['bash', f"{env['GITHUB_WORKSPACE']}/{env['PRE_TEST_SCRIPT']}"], env=env)
+        # A lane's pre-test output goes to its own log, not interleaved with the other lane's.
+        with open(logs / 'pre-test.log', 'wb') if not echo else open(os.devnull, 'wb') as quiet:
+            prepared = subprocess.run(['bash', f"{env['GITHUB_WORKSPACE']}/{env['PRE_TEST_SCRIPT']}"], env=env,
+                                      stdout=None if echo else quiet, stderr=None if echo else subprocess.STDOUT)
         if prepared.returncode:
-            print(f'::error::The pre-test script failed before attempt {attempt}.', flush=True)
+            where = f' on lane {lane}' if lane else ''
+            print(f'::error::The pre-test script failed before attempt {attempt}{where}.', flush=True)
             return prepared.returncode, False
-    command = ['xcodebuild', 'test-without-building', *xcodebuild_args(results / 'Tests.xcresult'), *selection]
+    bundle.parent.mkdir(parents=True, exist_ok=True)
+    command = ['xcodebuild', 'test-without-building', *xcodebuild_args(bundle, destination), *selection]
     with open(logs / 'tests.log', 'wb') as log:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
         for chunk in iter(lambda: process.stdout.read1(65536), b''):
-            sys.stdout.buffer.write(chunk)
-            sys.stdout.buffer.flush()
+            if echo:
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.buffer.flush()
             log.write(chunk)
         return process.wait(), True
+
+
+def enumerated(destination, path):
+    """The caller's selection as Xcode enumerates it: every enabled test, by -only-testing identifier."""
+    command = ['xcodebuild', 'test-without-building', *xcodebuild_args(None, destination),
+               *first_selection(1)[2:], '-enumerate-tests', '-test-enumeration-style', 'flat',
+               '-test-enumeration-format', 'json', '-test-enumeration-output-path', str(path)]
+    done = subprocess.run(command, capture_output=True, text=True)
+    if done.returncode:
+        raise RuntimeError(f'Enumerating the selection failed: {done.stdout[-2000:]}{done.stderr[-2000:]}')
+    data = json.loads(path.read_text())
+    if data.get('errors'):
+        raise RuntimeError(f"Enumerating the selection reported errors: {data['errors']}")
+    tests = [t['identifier'] for value in data.get('values', []) for t in value.get('enabledTests', [])]
+    tests = [t for t in tests if t.count('/') >= 1 and selectable(t.split('/', 1)[1])]
+    if not tests:
+        raise RuntimeError('Enumerating the selection found no tests.')
+    return tests
+
+
+def group_of(test):
+    """A whole XCTest class or top-level Swift Testing suite (Target/Class), or a top-level test."""
+    parts = test.split('/')
+    return '/'.join(parts[:2]) if len(parts) >= 3 else test
+
+
+def partition(tests, lanes=2):
+    """Whole groups into `lanes` disjoint selections that together are exactly `tests`.
+
+    Each target is balanced on its own, largest group first onto the lane with fewer of that
+    target's tests, so every lane gets a share of every target (unit and UI alike). Selections name
+    tests, never groups, so a caller's narrower filter is never widened to a whole class.
+    """
+    groups = {}
+    for test in tests:
+        groups.setdefault(group_of(test), []).append(test)
+    selections = [[] for _ in range(lanes)]
+    for target in sorted({g.split('/')[0] for g in groups}):
+        load = [0] * lanes
+        for group in sorted((g for g in groups if g.split('/')[0] == target), key=lambda g: (-len(groups[g]), g)):
+            lane = load.index(min(load))
+            selections[lane] += groups[group]
+            load[lane] += len(groups[group])
+    flat = [t for selection in selections for t in selection]
+    if sorted(flat) != sorted(tests) or len(set(flat)) != len(flat):
+        raise RuntimeError('Lane selections are not an exact partition of the enumerated tests.')
+    return selections
+
+
+def simctl(*args):
+    return subprocess.run(['xcrun', 'simctl', *args], capture_output=True, text=True)
+
+
+def second_simulator(device):
+    """A clone of the job's own simulator, named so the job's cleanup also removes it."""
+    listed = json.loads(simctl('list', 'devices', '-j').stdout or '{}')
+    names = [d['name'] for ds in listed.get('devices', {}).values() for d in ds if d.get('udid') == device]
+    if not names:
+        raise RuntimeError(f'The job simulator {device} is not in the device list.')
+    simctl('shutdown', device)  # Already shut down is fine.
+    cloned = simctl('clone', device, f'Clone 90 of {names[0]}')
+    udid = cloned.stdout.strip()
+    if cloned.returncode or not DEVICE.match(f'id={udid}'):
+        raise RuntimeError(f'Could not clone the job simulator: {cloned.stderr.strip()}')
+    return udid
+
+
+def run_lanes(selections, devices, results, logs):
+    """Attempt 1 on two simulators at once, each prepared by the pre-test script and serial inside.
+
+    Each lane writes lane-<n>/Tests.xcresult and lane-<n>/tests.log; the bundles are then merged
+    into the attempt's Tests.xcresult and the logs concatenated into its tests.log, so everything
+    after attempt 1 reads one run. Lane 1's pre-test writes to RESULTS itself, as a one-lane run's
+    does; lane 2's to lane-2/.
+    """
+    import threading
+    import time
+    outcome = [None] * len(selections)
+
+    def lane(n):
+        started = time.monotonic()
+        here = results if n == 1 else results / f'lane-{n}'
+        try:
+            status, tested = run(1, first_selection(1)[:2] + [f'-only-testing:{t}' for t in selections[n - 1]]
+                             + [f'-skip-testing:{t}' for t in lines('SKIP_TESTING')],
+                             here, logs / f'lane-{n}', bundle=results / f'lane-{n}' / 'Tests.xcresult',
+                             destination=f'id={devices[n - 1]}', lane=n, echo=False)
+        except OSError as error:
+            print(f'::error::Lane {n} could not run: {error}', flush=True)
+            status, tested = 1, False
+        outcome[n - 1] = {'lane': n, 'device': devices[n - 1], 'tests': len(selections[n - 1]),
+                          'exitCode': status, 'ran': tested, 'seconds': round(time.monotonic() - started, 1)}
+
+    threads = [threading.Thread(target=lane, args=(n,)) for n in range(1, len(selections) + 1)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    for n in range(1, len(selections) + 1):
+        for name in ('pre-test.log', 'tests.log'):
+            if (logs / f'lane-{n}' / name).exists():
+                sys.stdout.buffer.write(f'--- lane {n} {name} ---\n'.encode() + (logs / f'lane-{n}' / name).read_bytes())
+    sys.stdout.flush()
+    logs.mkdir(parents=True, exist_ok=True)
+    with open(logs / 'tests.log', 'wb') as log:
+        for n in range(1, len(selections) + 1):
+            lane_log = logs / f'lane-{n}' / 'tests.log'
+            if lane_log.exists():
+                log.write(lane_log.read_bytes())
+    bundles = [str(results / f'lane-{n}' / 'Tests.xcresult') for n in range(1, len(selections) + 1)
+               if (results / f'lane-{n}' / 'Tests.xcresult').exists()]
+    status = max(o['exitCode'] for o in outcome)
+    tested = all(o['ran'] for o in outcome)
+    if len(bundles) == len(selections):
+        merged = subprocess.run(['xcrun', 'xcresulttool', 'merge', *bundles, '--output-path',
+                                 str(results / 'Tests.xcresult')], capture_output=True, text=True)
+        if merged.returncode:
+            print('::error::Could not merge the lanes\' result bundles.', merged.stderr, sep='\n', flush=True)
+            status = status or 1
+    elif tested:
+        print('::error::A lane left no result bundle.', flush=True)
+        status = status or 1
+    return status, tested, outcome
 
 
 def selectable(identifier):
@@ -293,7 +428,27 @@ def main():
     if lanes is not None:
         record['simulatorLanes'] = lanes
         print(f'::notice::The runner host declares {lanes} simulator lane(s); attempt 1 uses {lanes}.', flush=True)
-    status, tested = run(1, first_selection(lanes), results, logs)
+    if lanes == 2:
+        if not device:
+            print('::error::Two lanes need the job-owned iOS simulator.', flush=True)
+            return 1
+        clone = None
+        try:
+            selections = partition(enumerated(f'id={device.group(1)}', results / 'lanes-enumeration.json'))
+            clone = second_simulator(device.group(1))
+            for n, selection in enumerate(selections, start=1):
+                (results / f'lane-{n}').mkdir(parents=True, exist_ok=True)
+                (results / f'lane-{n}' / 'selection.txt').write_text(''.join(f'{t}\n' for t in selection))
+            status, tested, record['lanes'] = run_lanes(selections, [device.group(1), clone], results, logs)
+        except (RuntimeError, ValueError, OSError) as error:
+            print(f'::error::{error}', flush=True)
+            return 1
+        finally:
+            if clone:
+                simctl('shutdown', clone)
+                simctl('delete', clone)
+    else:
+        status, tested = run(1, first_selection(lanes), results, logs)
     first = read_results(results / 'Tests.xcresult') if status else None
     attributed = first and first['attributed']
     failing = sorted(first['failed']) if attributed else []

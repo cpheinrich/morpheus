@@ -3722,10 +3722,17 @@ run the full suite.
 A caller whose jobs land on hosts of different sizes can pass `simulator-lanes-from-host: true`
 instead of `parallel-testing`, and the two cannot be combined. The runner's host then declares
 attempt 1's simulators in its own environment as `MORPHEUS_IOS_SIMULATOR_LANES`: unset or `1` runs
-one serial simulator, `2` runs Xcode's parallel testing on exactly two clones of the job's prepared
-simulator (`-parallel-testing-worker-count 2`), and any other value fails before the pre-test
-script or a test runs. Morpheus names no host; the count lives in the host's private runner
-configuration. `test-attempts.json` records `simulatorLanes`, and retries stay serial.
+one serial simulator, `2` runs two explicit lanes, and any other value fails before the pre-test
+script or a test runs. Two lanes: the caller's selection is enumerated, whole XCTest classes and
+Swift Testing suites of every target are split into two disjoint selections that together are
+exactly the enumeration (each names tests, so a narrower caller filter is never widened), a second
+simulator is cloned from the job's own under its cleanup name, the pre-test script prepares each
+with `MORPHEUS_IOS_LANE` set (lane 1 writes to `RESULTS`, lane 2 to `RESULTS/lane-2`), both run
+serially inside at the same time, and their bundles are merged into attempt 1's `Tests.xcresult`.
+Xcode's own parallel testing is not used: it keeps a hosted unit bundle on one clone, so unit tests
+never reached the second simulator. Morpheus names no host; the count lives in the host's private
+runner configuration. `test-attempts.json` records `simulatorLanes` and each lane's device, test
+count, exit code and seconds; retries stay serial on the job's own erased simulator.
 Failed tests are retried in a clean simulator, never in the session that failed them.
 `test-iterations` is the total number of attempts (default 3; 0 or 1 runs once). Attempt 1 runs
 the caller's selection unchanged. When it fails, `scripts/ios-test-retry.py` erases the job-owned
