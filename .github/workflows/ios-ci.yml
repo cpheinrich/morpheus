@@ -854,6 +854,8 @@ jobs:
           ONLY_TESTING: ${{ inputs.only-testing }}
           SKIP_TESTING: ${{ inputs.skip-testing }}
           TEST_EVIDENCE_SCRIPT: ${{ inputs.test-evidence-script }}
+          ACTIONS_REF_INPUT: ${{ inputs.actions-ref }}
+          ARTIFACT_STAGE_REF_INPUT: ${{ inputs.artifact-stage-ref }}
         run: |
           set -euo pipefail
           git rev-parse HEAD > "$RESULTS/tested-sha.txt"
@@ -870,6 +872,48 @@ jobs:
           printf '%s\n' "$TEST_SELECTION" > "$RESULTS/selection.json"
           printf '%s\n' "$ONLY_TESTING" > "$RESULTS/only-testing.txt"
           printf '%s\n' "$SKIP_TESTING" > "$RESULTS/skip-testing.txt"
+          # What executed the tests, so a caller can tell whether two runs' results are comparable
+          # (Evo's grouped remediation reuses a baseline only on an identical environment). A value
+          # that cannot be read is null, which a comparison must treat as unknown, never as equal.
+          ACTIONS_REF="${ACTIONS_REF_INPUT:-}" ARTIFACT_STAGE_REF="${ARTIFACT_STAGE_REF_INPUT:-}" python3 - <<'PYTHON' || true
+          import json, os, pathlib, subprocess
+          def run(*args):
+              try:
+                  done = subprocess.run(args, capture_output=True, text=True, timeout=60)
+                  return done.stdout.strip() if done.returncode == 0 else None
+              except Exception:
+                  return None
+          device = None
+          udid = os.environ.get("MORPHEUS_IOS_DESTINATION", "").removeprefix("id=")
+          listing = run("xcrun", "simctl", "list", "devices", "-j")
+          if udid and listing:
+              for runtime, devices in json.loads(listing).get("devices", {}).items():
+                  for entry in devices:
+                      if entry.get("udid") == udid:
+                          device = dict(runtime=runtime, deviceType=entry.get("deviceTypeIdentifier"))
+          # Read Xcode's own version file rather than running xcodebuild, which is the tool under test.
+          xcode = None
+          developer = os.environ.get("DEVELOPER_DIR") or run("xcode-select", "-p")
+          try:
+              import plistlib
+              info = plistlib.loads((pathlib.Path(developer).parent / "version.plist").read_bytes())
+              xcode = dict(version=info.get("CFBundleShortVersionString"), build=info.get("ProductBuildVersion"))
+          except Exception:
+              pass
+          data = dict(
+              schemaVersion=1,
+              macOS=dict(version=run("sw_vers", "-productVersion"), build=run("sw_vers", "-buildVersion")),
+              hardwareModel=run("sysctl", "-n", "hw.model"),
+              xcode=xcode,
+              simulator=device,
+              runner=dict(name=os.environ.get("RUNNER_NAME"), environment=os.environ.get("RUNNER_ENVIRONMENT"),
+                          imageOS=os.environ.get("ImageOS"), imageVersion=os.environ.get("ImageVersion"),
+                          vmImage=os.environ.get("MORPHEUS_VM_IMAGE")),
+              morpheus=dict(actionsRef=os.environ.get("ACTIONS_REF") or None,
+                            artifactStageRef=os.environ.get("ARTIFACT_STAGE_REF") or None),
+          )
+          (pathlib.Path(os.environ["RESULTS"]) / "environment.json").write_text(json.dumps(data, sort_keys=True) + "\n")
+          PYTHON
           result_bundle="$RESULTS/Tests.xcresult"
           # A run that passed only after retries already has both, written by
           # scripts/ios-test-retry.py in the shape Xcode's in-process retry gave them.

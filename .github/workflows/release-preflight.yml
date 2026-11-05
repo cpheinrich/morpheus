@@ -17,6 +17,11 @@ name: Release Preflight
 # By default the source must be main's current head. A caller whose own controller pins a source
 # and refuses older ones (it owns that ordering) may opt in with `allow-pinned-source: true` to
 # accept a reviewed merge that main contains.
+#
+# A caller that releases from a protected iOS release branch (a branch cut from main when staging
+# starts, which only reviewed fixes reach) may also name that branch, its recorded base and the
+# source commit. The control commit above is still verified exactly as before; the source is
+# verified separately and returned as `source-sha`. Without `release-branch` nothing changes.
 
 on:
   workflow_call:
@@ -27,10 +32,29 @@ on:
           a caller that itself refuses sources older than what it already delivered.
         type: boolean
         default: false
+      release-branch:
+        description: >-
+          Optional protected release branch (`release/ios-<12 hex>`) the release source sits on.
+          Empty keeps the default behaviour: no source other than the control commit is checked.
+        type: string
+        default: ""
+      release-base:
+        description: The branch's recorded base, a full commit SHA that current main contains.
+        type: string
+        default: ""
+      source-sha:
+        description: >-
+          The exact release source on `release-branch`. Every commit between `release-base` and it
+          must be the squash merge of a pull request into that branch.
+        type: string
+        default: ""
     outputs:
       sha:
         description: Exact reviewed main commit the release job must check out.
         value: ${{ jobs.verify.outputs.sha }}
+      source-sha:
+        description: The verified release-branch source; empty unless `release-branch` was given.
+        value: ${{ jobs.verify.outputs.source-sha }}
   workflow_dispatch:
 
 permissions:
@@ -42,6 +66,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       sha: ${{ steps.source.outputs.sha }}
+      source-sha: ${{ steps.release-branch.outputs.source-sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -124,3 +149,95 @@ jobs:
             echo "sha=$EXPECTED_SHA"
             echo "pr=$merged_pr"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Verify release-branch source
+        id: release-branch
+        if: ${{ inputs.release-branch != '' || inputs.release-base != '' || inputs.source-sha != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BRANCH: ${{ inputs.release-branch }}
+          RELEASE_BASE: ${{ inputs.release-base }}
+          SOURCE_SHA: ${{ inputs.source-sha }}
+        run: |
+          set -euo pipefail
+
+          # All three or nothing: a half-specified release source never falls back to the control
+          # commit, because the caller would then ship something it did not name.
+          if ! [[ "$RELEASE_BRANCH" =~ ^release/ios-[0-9a-f]{12}$ ]]; then
+            echo "release-branch must be release/ios-<12 hex>; got '${RELEASE_BRANCH}'" >&2
+            exit 1
+          fi
+          for value in "$RELEASE_BASE" "$SOURCE_SHA"; do
+            if ! [[ "$value" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "release-base and source-sha must be full commit SHAs; got '${value}'" >&2
+              exit 1
+            fi
+          done
+          if [ "${RELEASE_BRANCH#release/ios-}" != "${RELEASE_BASE:0:12}" ]; then
+            echo "Release branch $RELEASE_BRANCH was not cut at its recorded base $RELEASE_BASE" >&2
+            exit 1
+          fi
+
+          api() { gh api -H "Accept: application/vnd.github+json" "/repos/${GITHUB_REPOSITORY}/$1" "${@:2}"; }
+
+          protected="$(api "branches/${RELEASE_BRANCH}" --jq '.protected')"
+          if [ "$protected" != "true" ]; then
+            echo "Release branch $RELEASE_BRANCH is not protected (protected: ${protected:-unknown})" >&2
+            exit 1
+          fi
+
+          # Compare base...head reports `identical` or `ahead` only when base is contained in head.
+          contained() {
+            local status
+            status="$(api "compare/$1...$2?per_page=1" --jq '.status')"
+            [ "$status" = "identical" ] || [ "$status" = "ahead" ]
+          }
+          main_sha="$(api "git/ref/heads/main" --jq '.object.sha')"
+          tip_sha="$(api "git/ref/heads/${RELEASE_BRANCH}" --jq '.object.sha')"
+          for value in "$main_sha" "$tip_sha"; do
+            if ! [[ "$value" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Could not read main or $RELEASE_BRANCH for ${GITHUB_REPOSITORY}" >&2
+              exit 1
+            fi
+          done
+          if ! contained "$RELEASE_BASE" "$main_sha"; then
+            echo "Release base $RELEASE_BASE is not contained in current main ($main_sha)" >&2
+            exit 1
+          fi
+          if ! contained "$SOURCE_SHA" "$tip_sha"; then
+            echo "Release source $SOURCE_SHA is not on $RELEASE_BRANCH (tip $tip_sha)" >&2
+            exit 1
+          fi
+          if ! contained "$RELEASE_BASE" "$SOURCE_SHA"; then
+            echo "Release source $SOURCE_SHA does not descend from release base $RELEASE_BASE" >&2
+            exit 1
+          fi
+
+          # Every commit since the base must be the squash merge of a merged pull request into this
+          # branch. A merge-commit merge brings the pull request's own commits along, and those have
+          # no such pull request, so it refuses; so does anything pushed or merged from main.
+          total="$(api "compare/${RELEASE_BASE}...${SOURCE_SHA}?per_page=1" --jq '.total_commits')"
+          if ! [[ "$total" =~ ^[0-9]+$ ]] || [ "$total" -gt 250 ]; then
+            echo "Cannot list the commits between $RELEASE_BASE and $SOURCE_SHA (total: ${total:-unknown})" >&2
+            exit 1
+          fi
+          if [ "$total" -gt 0 ]; then
+            commits="$(api "compare/${RELEASE_BASE}...${SOURCE_SHA}?per_page=250" --jq '.commits[].sha')"
+            if [ "$(printf '%s\n' "$commits" | grep -c .)" != "$total" ]; then
+              echo "Commit list between $RELEASE_BASE and $SOURCE_SHA is incomplete" >&2
+              exit 1
+            fi
+            while IFS= read -r commit; do
+              rows="$(api "commits/${commit}/pulls" --jq '.[] | select(.merged_at != null) | [.number, .base.ref, .merge_commit_sha] | @tsv')"
+              found=""
+              while IFS=$'\t' read -r number base merged; do
+                if [ "$base" = "$RELEASE_BRANCH" ] && [ "$merged" = "$commit" ]; then found="$number"; fi
+              done <<< "$rows"
+              if [ -z "$found" ]; then
+                echo "Commit $commit on $RELEASE_BRANCH is not the squash merge of a pull request into it" >&2
+                exit 1
+              fi
+            done <<< "$commits"
+          fi
+
+          echo "source-sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
