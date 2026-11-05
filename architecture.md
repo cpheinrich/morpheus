@@ -3719,6 +3719,34 @@ build-time exclusion would be a no-op. The intended use is a per-PR caller keepi
 selection is unchanged. `test-plan`, `only-testing` and `skip-testing` are the whole scope
 surface: a staging caller names a smoke plan or selection, and production leaves them empty to
 run the full suite.
+A caller whose jobs land on hosts of different sizes can pass `simulator-lanes-from-host: true`
+instead of `parallel-testing`, and the two cannot be combined. The runner's host then declares
+attempt 1's test parallelism in its own environment as `MORPHEUS_IOS_SIMULATOR_LANES`, which gives
+two generic runner profiles:
+
+- **Serial** — unset or `1`: Xcode's parallel testing off. Swift Testing then runs one test at a
+  time as well. The default for any host that has not been qualified for more.
+- **Parallel-capable** — `2`: Xcode's own parallel testing capped at two workers
+  (`-parallel-testing-enabled YES -maximum-parallel-testing-workers 2`). Xcode clones the job's
+  prepared simulator for its workers, decides how to spread the selection (a small or unit-only
+  selection may use one worker), and Swift Testing and XCTest parallelize inside each worker as they
+  would locally. Two is a cap the host was sized for, not a count Xcode must reach.
+
+Any other value fails before the pre-test script or a test runs. The build is not affected: the
+`build-for-testing` step always uses every CPU the runner has; only test execution follows the
+profile. Selection, the pre-test script (which prepares the job's simulator before Xcode clones
+it), evidence and retries are the same in both profiles: one xcodebuild, one result bundle, and a
+failed test retried serially on the erased job simulator. `test-attempts.json` records
+`simulatorLanes` and attempt 1's `timing`, its pre-test and xcodebuild intervals on the runner's
+monotonic clock (`clock` keeps the start's epoch as metadata), so wall time never comes from a
+result bundle's summary.
+
+The profile belongs to the macOS CI runner's host, never to the workflow or to Morpheus. Morpheus
+names no host and holds no fleet sizes: each operator records which hosts are parallel-capable, and
+their VM sizes, in private host configuration that writes the variable into the runner's
+environment. Only macOS hosts whose jobs test on simulators should set it; the script honours it
+for any caller that opts in, so physical-device runners (one device, serial) and Linux runners (no
+simulators) leave it unset.
 Failed tests are retried in a clean simulator, never in the session that failed them.
 `test-iterations` is the total number of attempts (default 3; 0 or 1 runs once). Attempt 1 runs
 the caller's selection unchanged. When it fails, `scripts/ios-test-retry.py` erases the job-owned

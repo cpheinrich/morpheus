@@ -579,3 +579,130 @@ describe("ios-ci.yml wiring", () => {
     expect((await h.invocations()).length).toBe(2);
   });
 });
+
+
+describe("simulator lanes the runner's host declares", () => {
+  const pair = (argv: string[], flag: string) => argv.slice(argv.indexOf(flag), argv.indexOf(flag) + 2);
+
+  it("runs attempt 1 with Xcode's parallel testing capped at two workers and retries serially on the erased job simulator", async () => {
+    const h = await harness([{ id: unit, behavior: "pass" }, { id: stale, behavior: "leftover" }], {
+      SIMULATOR_LANES_FROM_HOST: "true", MORPHEUS_IOS_SIMULATOR_LANES: "2", PRE_TEST_SCRIPT: "pre-test.sh",
+    });
+    const { code, stdout } = await h.run();
+
+    expect(code).toBe(0);
+    const [first, retry, ...rest] = await h.invocations();
+    expect(rest).toEqual([]);
+    expect(pair(first!.argv, "-parallel-testing-enabled")).toEqual(["-parallel-testing-enabled", "YES"]);
+    // A cap, not a count: a small selection may use fewer workers.
+    expect(pair(first!.argv, "-maximum-parallel-testing-workers")).toEqual(["-maximum-parallel-testing-workers", "2"]);
+    expect(first!.argv).not.toContain("-parallel-testing-worker-count");
+    // One xcodebuild for the whole selection, on the job's own prepared simulator.
+    expect(first!.argv).toContain(`platform=iOS Simulator,id=${device}`);
+    expect(first!.selected).toEqual([unit, stale]);
+    // The retry is the existing serial rerun of only what failed, on the job's own erased device.
+    expect(pair(retry!.argv, "-parallel-testing-enabled")).toEqual(["-parallel-testing-enabled", "NO"]);
+    expect(retry!.argv).not.toContain("-parallel-testing-worker-count");
+    expect(retry!.argv).not.toContain("-maximum-parallel-testing-workers");
+    expect(retry!.argv).toContain(`platform=iOS Simulator,id=${device}`);
+    expect(retry!.deviceWasClean).toBe(true);
+    expect(retry!.selected).toEqual([stale]);
+    expect(stdout).toContain("::notice::The runner host declares 2 simulator lane(s): attempt 1 runs with Xcode's parallel testing on, at most 2 workers.");
+    const record = JSON.parse(await h.read("Results/test-attempts.json"));
+    expect(record).toMatchObject({ simulatorLanes: 2, result: "passed", flaky: [{ id: stale, passedOnAttempt: 2 }] });
+    // Attempt 1's preparation and test intervals, in order, on the runner's monotonic clock.
+    const { preTest, xcodebuild } = record.attempts[0].timing;
+    expect(preTest[0]).toBeLessThanOrEqual(preTest[1]);
+    expect(preTest[1]).toBeLessThanOrEqual(xcodebuild[0]);
+    expect(xcodebuild[0]).toBeLessThanOrEqual(xcodebuild[1]);
+    expect(record.clock).toMatchObject({ unit: expect.stringContaining("monotonic") });
+  });
+
+  it.each([["unset", undefined], ["empty", ""], ["one", "1"], ["padded one", " 1\n"]])(
+    "runs with Xcode's parallel testing off when the host declares %s",
+    async (_name, declared) => {
+      const extra: Record<string, string> = { SIMULATOR_LANES_FROM_HOST: "true" };
+      if (declared !== undefined) extra.MORPHEUS_IOS_SIMULATOR_LANES = declared;
+      const h = await harness([{ id: unit, behavior: "pass" }], extra);
+      if (declared === undefined) delete h.env.MORPHEUS_IOS_SIMULATOR_LANES;
+      expect((await h.run()).code).toBe(0);
+      const [first] = await h.invocations();
+      expect(pair(first!.argv, "-parallel-testing-enabled")).toEqual(["-parallel-testing-enabled", "NO"]);
+      expect(first!.argv).not.toContain("-parallel-testing-worker-count");
+      expect(first!.argv).not.toContain("-maximum-parallel-testing-workers");
+      expect(JSON.parse(await h.read("Results/test-attempts.json")).simulatorLanes).toBe(1);
+    },
+  );
+
+  it.each(["0", "3", "two", "2x", "-1", "1 2"])("refuses a host declaring %j before any test runs", async (declared) => {
+    const h = await harness([{ id: unit, behavior: "pass" }], {
+      SIMULATOR_LANES_FROM_HOST: "true", MORPHEUS_IOS_SIMULATOR_LANES: declared, PRE_TEST_SCRIPT: "pre-test.sh",
+    });
+    const { code, stdout } = await h.run();
+    expect(code).toBe(1);
+    expect(stdout).toContain(`::error::MORPHEUS_IOS_SIMULATOR_LANES must be 1 or 2, not '${declared}'`);
+    // Neither the pre-test script nor xcodebuild ran, and no attempt record claims anything.
+    await expect(h.read("events")).rejects.toThrow();
+    await expect(h.read("Results/test-attempts.json")).rejects.toThrow();
+  });
+
+  it.each([["absent", undefined], ["false", "false"]])(
+    "ignores the host's declaration when the caller's opt-in is %s, keeping the caller's own settings",
+    async (_name, optIn) => {
+      const extra: Record<string, string> = {
+        MORPHEUS_IOS_SIMULATOR_LANES: "garbage", PARALLEL_TESTING: "YES", MAXIMUM_PARALLEL_TESTING_WORKERS: "3",
+      };
+      if (optIn !== undefined) extra.SIMULATOR_LANES_FROM_HOST = optIn;
+      const h = await harness([{ id: unit, behavior: "pass" }], extra);
+      expect((await h.run()).code).toBe(0);
+      const [first] = await h.invocations();
+      expect(pair(first!.argv, "-parallel-testing-enabled")).toEqual(["-parallel-testing-enabled", "YES"]);
+      expect(pair(first!.argv, "-maximum-parallel-testing-workers")).toEqual(["-maximum-parallel-testing-workers", "3"]);
+      expect(first!.argv).not.toContain("-parallel-testing-worker-count");
+      expect(JSON.parse(await h.read("Results/test-attempts.json"))).not.toHaveProperty("simulatorLanes");
+    },
+  );
+});
+
+describe("ios-ci.yml simulator-lanes-from-host input", () => {
+  type Wf = {
+    on: { workflow_call: { inputs: Record<string, { default?: unknown; type?: string }> } };
+    jobs: { test: { steps: Step[] } };
+  };
+  const workflow = async () => load(await readFile(".github/workflows/ios-ci.yml", "utf8")) as Wf;
+
+  it("is an opt-in boolean the test step forwards", async () => {
+    const wf = await workflow();
+    expect(wf.on.workflow_call.inputs["simulator-lanes-from-host"]).toMatchObject({ type: "boolean", default: false });
+    const step = wf.jobs.test.steps.find((s) => s.id === "tests")!;
+    expect(step.env?.SIMULATOR_LANES_FROM_HOST).toBe("${{ inputs.simulator-lanes-from-host }}");
+  });
+
+  it.each([
+    ["refuses it beside parallel-testing", "true", "YES", 1, "simulator-lanes-from-host replaces parallel-testing"],
+    ["accepts it alone", "true", "NO", 1, "Package.resolved is required"],
+    ["accepts parallel-testing alone", "false", "YES", 1, "Package.resolved is required"],
+  ])("validation %s", async (_name, fromHost, parallel, code, message) => {
+    const step = (await workflow()).jobs.test.steps.find((s) => s.name === "Validate locked project inputs")!;
+    const dir = await mkdtemp(join(tmpdir(), "ios-lanes-validate-"));
+    dirs.push(dir);
+    await mkdir(join(dir, "App.xcodeproj"));
+    let result: { code: number; stderr: string };
+    try {
+      await exec("/bin/bash", ["-e", "-c", step.run!], {
+        cwd: dir,
+        env: {
+          ...(process.env as Record<string, string>), PROJECT: "App.xcodeproj", SCHEME: "App", PARALLEL_TESTING: parallel,
+          MAXIMUM_PARALLEL_TESTING_WORKERS: "0", SIMULATOR_LANES_FROM_HOST: fromHost, TEST_ITERATIONS: "1",
+          GITHUB_WORKSPACE: dir,
+        },
+      });
+      result = { code: 0, stderr: "" };
+    } catch (error) {
+      result = error as { code: number; stderr: string };
+    }
+    // The two accepted cases pass the lanes check and stop at the next, unrelated requirement.
+    expect(result.code).toBe(code);
+    expect(result.stderr).toContain(message);
+  });
+});

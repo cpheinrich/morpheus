@@ -22,6 +22,14 @@ Attempt 1 keeps Tests.xcresult and tests.log at the root of RESULTS and LOGS; at
 attempt-n/ under both. test-attempts.json at the root of RESULTS records every attempt. When the
 retries recovered every failure, tests.json and summary.json there show it the way Xcode's own
 retry did (see combine), so a caller's result validator keeps working unchanged.
+
+A caller that sets simulator-lanes-from-host lets the runner's host decide attempt 1's parallelism:
+MORPHEUS_IOS_SIMULATOR_LANES, set by the host in the runner's environment, is 1 (or absent) for
+Xcode's parallel testing off, and 2 for Xcode's own parallel testing with at most two workers. Xcode
+then clones the prepared job simulator as it needs, and Swift Testing and XCTest parallelize as
+they would locally. Anything else fails before a test runs. Retries stay serial on the erased job
+simulator whatever the host declares. Attempt 1's preparation and xcodebuild intervals are recorded
+on the runner's monotonic clock, so a run's wall time never comes from a result bundle's summary.
 """
 import copy
 import json
@@ -29,6 +37,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 PASSING = {'Passed', 'Expected Failure'}
@@ -50,13 +59,36 @@ def xcodebuild_args(bundle):
     return args + (['-testPlan', env['TEST_PLAN']] if env.get('TEST_PLAN') else [])
 
 
-def first_selection():
+def host_lanes():
+    """The parallel lanes the runner's host declares, or None when the caller did not ask for them.
+
+    A host that never declares a count runs one. Only 1 and 2 are known; any other value is a host
+    configuration error, raised as ValueError so no test runs on a guess.
+    """
+    if os.environ.get('SIMULATOR_LANES_FROM_HOST') != 'true':
+        return None
+    declared = os.environ.get('MORPHEUS_IOS_SIMULATOR_LANES', '').strip()
+    if declared in ('', '1'):
+        return 1
+    if declared == '2':
+        return 2
+    raise ValueError(f'MORPHEUS_IOS_SIMULATOR_LANES must be 1 or 2, not {declared!r}')
+
+
+def first_selection(lanes=None):
     env = os.environ
-    args = ['-parallel-testing-enabled', env.get('PARALLEL_TESTING', 'NO')]
+    if lanes == 2:
+        # Xcode's own parallel testing, capped at the two simulators the host sized its VM for.
+        # A cap, not a count: a small selection may use fewer.
+        args = ['-parallel-testing-enabled', 'YES', '-maximum-parallel-testing-workers', '2']
+    elif lanes == 1:
+        args = ['-parallel-testing-enabled', 'NO']
+    else:
+        args = ['-parallel-testing-enabled', env.get('PARALLEL_TESTING', 'NO')]
+        if env.get('MAXIMUM_PARALLEL_TESTING_WORKERS', '0') != '0':
+            args += ['-maximum-parallel-testing-workers', env['MAXIMUM_PARALLEL_TESTING_WORKERS']]
     args += [f'-only-testing:{test}' for test in lines('ONLY_TESTING')]
     args += [f'-skip-testing:{test}' for test in lines('SKIP_TESTING')]
-    if env.get('MAXIMUM_PARALLEL_TESTING_WORKERS', '0') != '0':
-        args += ['-maximum-parallel-testing-workers', env['MAXIMUM_PARALLEL_TESTING_WORKERS']]
     return args
 
 
@@ -84,27 +116,42 @@ def retry_selection(selected):
             + [f'-skip-testing:{test}' for test in lines('SKIP_TESTING')])
 
 
-def run(attempt, selection, results, logs):
+CLOCK = (time.monotonic(), round(time.time(), 3))
+
+
+def stamp():
+    """Seconds since this runner started, on the monotonic clock."""
+    return round(time.monotonic() - CLOCK[0], 3)
+
+
+def run(attempt, selection, results, logs, timing=None):
     """One attempt: the caller's pre-test script, then one xcodebuild, logged to a file and stdout.
 
     Returns the exit status and whether xcodebuild ran: a failed pre-test script reports itself.
+    `timing`, when given, gets each phase's [start, end] (preTest, xcodebuild) from stamp().
     """
+    timing = {} if timing is None else timing
     results.mkdir(parents=True, exist_ok=True)
     logs.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, RESULTS=str(results), LOGS=str(logs))
     if os.environ.get('PRE_TEST_SCRIPT'):
+        timing['preTest'] = [stamp(), None]
         prepared = subprocess.run(['bash', f"{env['GITHUB_WORKSPACE']}/{env['PRE_TEST_SCRIPT']}"], env=env)
+        timing['preTest'][1] = stamp()
         if prepared.returncode:
             print(f'::error::The pre-test script failed before attempt {attempt}.', flush=True)
             return prepared.returncode, False
     command = ['xcodebuild', 'test-without-building', *xcodebuild_args(results / 'Tests.xcresult'), *selection]
     with open(logs / 'tests.log', 'wb') as log:
+        timing['xcodebuild'] = [stamp(), None]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
         for chunk in iter(lambda: process.stdout.read1(65536), b''):
             sys.stdout.buffer.write(chunk)
             sys.stdout.buffer.flush()
             log.write(chunk)
-        return process.wait(), True
+        status = process.wait()
+        timing['xcodebuild'][1] = stamp()
+        return status, True
 
 
 def selectable(identifier):
@@ -254,14 +301,26 @@ def main():
         print('::notice::Retries need the job-owned iOS simulator, so this run has one attempt.', flush=True)
         attempts = 1
 
-    record = {'schemaVersion': 1, 'maxAttempts': attempts, 'attempts': []}
-    status, tested = run(1, first_selection(), results, logs)
+    try:
+        lanes = host_lanes()
+    except ValueError as error:
+        print(f'::error::{error}. Fix the runner host\'s configuration; no test ran.', flush=True)
+        return 1
+
+    record = {'schemaVersion': 1, 'maxAttempts': attempts, 'attempts': [],
+              'clock': {'unit': 'seconds since the runner started, monotonic', 'startedEpoch': CLOCK[1]}}
+    if lanes is not None:
+        record['simulatorLanes'] = lanes
+        print(f'::notice::The runner host declares {lanes} simulator lane(s): attempt 1 runs with Xcode\'s '
+              f'parallel testing {"on, at most 2 workers" if lanes == 2 else "off"}.', flush=True)
+    timing = {}
+    status, tested = run(1, first_selection(lanes), results, logs, timing)
     first = read_results(results / 'Tests.xcresult') if status else None
     attributed = first and first['attributed']
     failing = sorted(first['failed']) if attributed else []
     broken = sorted(first['broken']) if attributed else []
     record['attempts'].append({'attempt': 1, 'resultBundle': 'Tests.xcresult', 'selection': 'caller',
-                               'exitCode': status, 'failed': failing, 'failedBundles': broken})
+                               'exitCode': status, 'failed': failing, 'failedBundles': broken, 'timing': timing})
     unexplained = status != 0 and not failing and not broken
     if unexplained and tested:
         print('::error::xcodebuild failed without a failure that names a test, so nothing was retried.', flush=True)
