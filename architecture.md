@@ -3307,23 +3307,7 @@ is a valid delegate because it is a separate subscription; the coordinator's own
 login never is, because that would be circular. Automatic mode picks the gateway with the
 most headroom below its threshold (90% used by default, read from the gateway's admin API)
 and otherwise keeps the work with the coordinator; missing or stale usage never triggers a
-handoff. The coordinator consumes its own allowance while supervising.
-
-One task has one persistent primary worker conversation across repositories. Delegation names
-its targets explicitly (`cwd`, `repos`); each resolves to a checkout the task owns: a repository
-already mapped keeps its checkout, an unowned linked worktree is adopted, the root's own checkout
-is adopted as before, and an original checkout becomes a detached worktree at its committed HEAD
-under the private Factory home, so uncommitted edits are never copied and originals stay
-reference only. The map persists per task and adding a repository resumes the same native
-session; the conversation keeps the working directory of its first launch. One registry with
-one writer records ownership, refuses another task's checkout (including subdirectories, aliases
-and containing checkouts) and is released only when a checkout is removed, so independent tasks
-in the same repositories get different checkouts. A fresh conversation gets its own map that
-never shares a primary checkout. One writer, the edit guard and per-repository `off` cover every
-mapped checkout; extra checkouts reach a worker as Claude `--add-dir` or Codex writable roots
-under `workspace-write` only, never widening a permission. Under full access this is ownership
-enforced at delegation, not an OS sandbox. Records from before workspaces migrate from their
-single primary checkout and keep their saved conversation. A worker never
+handoff. The coordinator consumes its own allowance while supervising. A worker never
 widens permissions: Claude permission modes map onto Codex's sandbox (only an explicit
 bypass reaches full access), a same-provider worker inherits the coordinator's own mode or
 sandbox, and saved worker sessions are kept per gateway so routes never resume each other. Delegated workers are marked
@@ -3333,6 +3317,24 @@ must be verified before delegation, and unknown/restricted confinement fails clo
 initial version. Cross-agent memory consists of explicitly selected read-only excerpts,
 with native memory controls respected and separate write ownership. See the package README
 for exact compatibility, subscription-overage and remote-host boundaries.
+
+One task has one persistent primary worker conversation across repositories. Delegation names
+its targets explicitly (`cwd`, `repos`); each resolves to a checkout the task owns: a repository
+already mapped keeps its checkout, an unowned linked worktree (the root's own included) is
+adopted, and every original checkout, the root's own included, becomes a detached worktree at
+its committed HEAD under the private Factory home, so uncommitted edits are never copied and
+originals stay reference only. Directories outside Git are refused. The map persists per task and
+adding a repository resumes the same native session; the conversation keeps the working
+directory of its first launch. One registry with one writer records ownership at launch, refuses
+another task's checkout, idle or not (including subdirectories, aliases and containing
+checkouts), and is released only when a checkout is confirmed absent, so independent tasks in the
+same repositories, even two roots starting in one original, get different checkouts. A fresh
+conversation gets its own map that never shares a primary checkout. One writer, the edit guard
+and per-repository `off` cover every mapped checkout; extra checkouts reach a worker as Claude
+`--add-dir` or Codex writable roots under `workspace-write` only, never widening a permission.
+Under full access this is ownership enforced at delegation, not an OS sandbox. Records from
+before workspaces migrate when their primary checkout is a linked worktree; one bound to an
+original or non-Git directory is refused with the remedy to start a new root session.
 
 The separate opt-in `plugins/factory/scripts/gateway-worker.mjs` entrypoint serves
 trusted unattended services without desktop identity, native login, quota discovery or

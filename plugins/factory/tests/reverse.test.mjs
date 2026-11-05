@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { linkedCheckout } from "./git-fixtures.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, chmod, readFile, mkdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -254,9 +255,7 @@ async function fakeCodex(root, body) {
 
 test("a Claude session delegates to Codex end to end through the guardian", async (t) => {
   const root = await isolatedHome(t);
-  const repo = join(root, "repo");
-  await mkdir(repo);
-  execFileSync("git", ["init", "-q", repo]);
+  const repo = await linkedCheckout(root, "repo");
   // Fake codex: records argv, stdin and environment, then streams real event shapes.
   const restore = await fakeCodex(
     root,
@@ -324,11 +323,9 @@ echo '{"type":"turn.completed","usage":{}}'
 
 test("one Claude session runs Codex concurrently only in different worktrees", async (t) => {
   const root = await isolatedHome(t);
-  const repo = join(root, "repo");
+  const repo = await linkedCheckout(root, "repo");
   const other = join(root, "other");
   const third = join(root, "third");
-  await mkdir(repo);
-  execFileSync("git", ["init", "-q", repo]);
   execFileSync("git", ["-C", repo, "config", "user.email", "test@example.com"]);
   execFileSync("git", ["-C", repo, "config", "user.name", "Test"]);
   await writeFile(join(repo, "README.md"), "test\n");
@@ -499,9 +496,7 @@ test("concurrent Codex session discoveries both persist", async (t) => {
 
 test("a worker binding is committed only after launch and then rejects provider changes", async (t) => {
   const root = await isolatedHome(t);
-  const repo = join(root, "repo");
-  await mkdir(repo);
-  execFileSync("git", ["init", "-q", repo]);
+  const repo = await linkedCheckout(root, "repo");
   const bin = join(root, "bin");
   await mkdir(bin, { recursive: true });
   await writeFile(
@@ -554,10 +549,8 @@ test("a worker binding is committed only after launch and then rejects provider 
 
 test("Codex-root fresh runs require a binding, persist together, and resume their own question", async (t) => {
   const root = await isolatedHome(t);
-  const repo = join(root, "repo");
+  const repo = await linkedCheckout(root, "repo");
   const other = join(root, "other");
-  await mkdir(repo);
-  execFileSync("git", ["init", "-q", repo]);
   execFileSync("git", ["-C", repo, "config", "user.email", "test@example.com"]);
   execFileSync("git", ["-C", repo, "config", "user.name", "Test"]);
   await writeFile(join(repo, "README.md"), "test\n");
@@ -801,8 +794,7 @@ test("inspection pruning cannot overwrite a concurrently persisted active run", 
 
 test("a needs_input result resumes only with an attributed reply", async (t) => {
   const root = await isolatedHome(t);
-  const repo = join(root, "repo");
-  await mkdir(repo);
+  const repo = await linkedCheckout(root, "repo");
   const restore = await fakeCodex(
     root,
     `#!/bin/sh

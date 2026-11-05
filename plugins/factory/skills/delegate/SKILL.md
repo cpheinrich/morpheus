@@ -25,8 +25,9 @@ never submit a local task to a different machine by guessing its project path.
    delegation) and `repos`. One primary conversation spans them all and keeps them on later
    delegations; adding a repository resumes it rather than starting another worker. Each
    target resolves to a task-owned checkout: an unowned linked worktree (such as one you
-   claimed) is adopted, an original checkout becomes an isolated worktree at its committed
-   HEAD, and another task's checkout is refused. `factory_inspect` reports the map as
+   claimed) is adopted, any original checkout, yours included, becomes an isolated worktree at
+   its committed HEAD, and another task's checkout or a directory outside Git is refused. A
+   conversation from before workspaces bound to an original is refused: start a new session. `factory_inspect` reports the map as
    `workspace`; tell the worker which checkout holds which part of the task.
    Do not ask it to redo mutations already completed. Default background=false; true is
    only for explicit user authorization to continue after disconnection.

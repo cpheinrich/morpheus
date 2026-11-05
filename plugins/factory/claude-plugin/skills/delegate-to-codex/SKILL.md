@@ -26,8 +26,9 @@ MCP server and CLI; never submit a local task to a different machine by guessing
    delegation) and `repos`. One primary conversation spans them all and keeps them on later
    delegations; adding a repository resumes it rather than starting another worker. Each
    target resolves to a task-owned checkout: an unowned linked worktree (such as one you
-   claimed) is adopted, an original checkout becomes an isolated worktree at its committed
-   HEAD, and another task's checkout is refused. `factory_inspect` reports the map as
+   claimed) is adopted, any original checkout, yours included, becomes an isolated worktree at
+   its committed HEAD, and another task's checkout or a directory outside Git is refused. A
+   conversation from before workspaces bound to an original is refused: start a new session. `factory_inspect` reports the map as
    `workspace`; tell the worker which checkout holds which part of the task. Default background=false; true only when the user
    explicitly authorizes work continuing after disconnection.
 4. Model, effort and permission mode map from this session (recorded by lifecycle hooks) to Codex through

@@ -10,7 +10,8 @@ import { execFileSync } from "node:child_process";
 import { defaults, codexPermission } from "../src/config.mjs";
 import { initStore, configWrite, taskRead, taskWrite, atomic, runDir } from "../src/store.mjs";
 import { Manager } from "../src/service.mjs";
-import { checkoutInfo, extraRoots, readOwners, workspaceNote } from "../src/workspace.mjs";
+import { checkoutInfo, claimCheckouts, extraRoots, readOwners, workspaceNote } from "../src/workspace.mjs";
+import { linkedCheckout } from "./git-fixtures.mjs";
 
 const exists = (path) => stat(path).then(() => true, () => false);
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
@@ -114,7 +115,9 @@ const flag = (argv, name) => argv.flatMap((arg, i) => (arg === name ? [argv[i + 
 
 test("one conversation writes two repositories, resumes, and adds a third without a new session", async (t) => {
   const { root, invocations } = await harness(t);
-  const app = await repository(root, "app");
+  // The root works in its claimed linked checkout of app, which the task adopts.
+  const app = await linkedCheckout(root, "app");
+  const appCommon = (await checkoutInfo(app)).project;
   const lib = await repository(root, "lib");
   const docs = await repository(root, "docs");
   // An uncommitted edit in an original checkout must never reach the task's worktree.
@@ -129,7 +132,7 @@ test("one conversation writes two repositories, resumes, and adds a third withou
   const libCommon = await realpath(join(lib, ".git"));
   const libTree = task.workspace[libCommon].path;
   assert.equal(task.primaryCwd, app);
-  assert.deepEqual(task.workspace[await realpath(join(app, ".git"))], { path: app, source: null, owned: false });
+  assert.deepEqual(task.workspace[appCommon], { path: app, source: null, owned: true });
   assert.deepEqual(task.workspace[libCommon], { path: libTree, source: lib, owned: true });
   assert.ok(libTree.startsWith(join(process.env.FACTORY_HOME, "worktrees")), libTree);
   // The isolated worktree is detached at the source's committed HEAD, without its local edit.
@@ -142,7 +145,7 @@ test("one conversation writes two repositories, resumes, and adds a third withou
   assert.equal(await exists(join(lib, "factory-marker.txt")), false);
   let [call] = await invocations();
   assert.equal(call.cwd, app);
-  assert.deepEqual(flag(call.argv, "--add-dir"), [libTree, libCommon]);
+  assert.deepEqual(flag(call.argv, "--add-dir"), [appCommon, libTree, libCommon]);
   assert.deepEqual(flag(call.argv, "--resume"), []);
   assert.match(call.stdin, new RegExp(`Write only in these task-owned checkouts`));
   assert.match(call.stdin, new RegExp(`an isolated worktree of ${lib}`));
@@ -153,7 +156,7 @@ test("one conversation writes two repositories, resumes, and adds a third withou
   call = (await invocations())[1];
   assert.equal(call.cwd, app);
   assert.deepEqual(flag(call.argv, "--resume"), ["sess-multi"]);
-  assert.deepEqual(flag(call.argv, "--add-dir"), [libTree, libCommon]);
+  assert.deepEqual(flag(call.argv, "--add-dir"), [appCommon, libTree, libCommon]);
 
   // Adding a repository extends the same conversation; it is not a new worker.
   const third = await m.start({ threadId, prompt: "Now docs too", repos: [docs] });
@@ -163,7 +166,7 @@ test("one conversation writes two repositories, resumes, and adds a third withou
   const docsTree = (await taskRead(threadId)).workspace[docsCommon].path;
   assert.equal(call.cwd, app);
   assert.deepEqual(flag(call.argv, "--resume"), ["sess-multi"]);
-  assert.deepEqual(flag(call.argv, "--add-dir"), [libTree, libCommon, docsTree, docsCommon]);
+  assert.deepEqual(flag(call.argv, "--add-dir"), [appCommon, libTree, libCommon, docsTree, docsCommon]);
   assert.equal(await readFile(join(libTree, "factory-marker.txt"), "utf8"), "written\nwritten\nwritten\n");
   assert.equal(await readFile(join(docsTree, "factory-marker.txt"), "utf8"), "written\n");
   assert.equal(await exists(join(docs, "factory-marker.txt")), false);
@@ -176,35 +179,55 @@ test("one conversation writes two repositories, resumes, and adds a third withou
   assert.equal((await taskRead(threadId)).workspace[libCommon].path, libTree);
 });
 
-test("independent tasks get separate checkouts and cannot claim another task's", async (t) => {
+test("two roots starting in one original checkout get their own worktrees, even while one is idle", async (t) => {
+  const { root } = await harness(t);
+  const app = await repository(root, "app");
+  const appCommon = await realpath(join(app, ".git"));
+  await writeFile(join(app, "README.md"), "uncommitted original edit\n");
+  // One service owns both root sessions, as the bridge does; both default to the original.
+  const m = stubbed(codexRoot(t, app));
+  const a = await m.start({ threadId: "task-a", prompt: "a" });
+  const aTree = (await taskRead("task-a")).workspace[appCommon].path;
+  assert.equal(a.cwd, aTree);
+  assert.notEqual(aTree, app);
+  // Task A's worker may still be running: B does not wait for it, because nothing is shared.
+  const b = await m.start({ threadId: "task-b", prompt: "b" });
+  const bTree = (await taskRead("task-b")).workspace[appCommon].path;
+  assert.equal(b.cwd, bTree);
+  assert.notEqual(bTree, aTree);
+  await finish(m);
+  // With A idle, a fresh root still cannot take A's checkout over.
+  await assert.rejects(
+    m.start({ threadId: "task-c", prompt: "take a", cwd: aTree }),
+    new RegExp(`is a checkout owned by another Factory task \\(${aTree}\\)`),
+  );
+  assert.equal((await taskRead("task-c")).workspace, undefined);
+  assert.equal((await readOwners())[aTree].taskId, "task-a");
+  // The original was never written or adopted by either task.
+  assert.equal(git(app, "status", "--porcelain"), "M README.md");
+  assert.equal(await readFile(join(aTree, "README.md"), "utf8"), "app\n");
+  assert.equal((await readOwners())[app], undefined);
+});
+
+test("independent tasks cannot claim another task's checkout by alias, nesting or containment", async (t) => {
   const { root } = await harness(t);
   const app = await repository(root, "app");
   const lib = await repository(root, "lib");
-  // One service owns both root sessions, as the bridge does.
-  const one = stubbed(codexRoot(t, app));
-  const two = one;
-  await one.start({ threadId: "task-one", prompt: "one", repos: [lib] });
+  const m = stubbed(codexRoot(t, app));
+  await m.start({ threadId: "task-one", prompt: "one", repos: [lib] });
+  await m.start({ threadId: "task-two", prompt: "two", repos: [lib] });
   const libCommon = await realpath(join(lib, ".git"));
   const oneTree = (await taskRead("task-one")).workspace[libCommon].path;
-  // Both roots sit in the same original checkout; it is shared, so one writer at a time.
-  await assert.rejects(
-    two.start({ threadId: "task-two", prompt: "two", repos: [lib] }),
-    (error) => /already owns this working directory/.test(error.message),
-  );
-  await finish(one);
-  await two.start({ threadId: "task-two", prompt: "two", repos: [lib] });
   const twoTree = (await taskRead("task-two")).workspace[libCommon].path;
   assert.notEqual(twoTree, oneTree);
   assert.equal(git(twoTree, "rev-parse", "HEAD"), git(lib, "rev-parse", "HEAD"));
-  await finish(two);
+  await finish(m);
 
-  // A third task may not register task one's checkout, through a subdirectory or an alias.
   await mkdir(join(oneTree, "nested"));
   await symlink(oneTree, join(root, "alias"));
-  const three = one;
   for (const target of [oneTree, join(oneTree, "nested"), join(root, "alias")])
     await assert.rejects(
-      three.start({ threadId: "task-three", prompt: "steal", repos: [target] }),
+      m.start({ threadId: "task-three", prompt: "steal", repos: [target] }),
       new RegExp(`owned by another Factory task \\(${oneTree}\\)`),
     );
   assert.equal((await taskRead("task-three")).workspace, undefined);
@@ -213,30 +236,56 @@ test("independent tasks get separate checkouts and cannot claim another task's",
   const outer = join(root, "outer");
   git(app, "worktree", "add", "-q", "--detach", outer);
   git(lib, "worktree", "add", "-q", "--detach", join(outer, "inner"));
-  await one.start({
-    threadId: "task-inner",
-    prompt: "inner",
-    cwd: app,
-    repos: [join(outer, "inner")],
-  });
-  await finish(one);
+  await m.start({ threadId: "task-inner", prompt: "inner", repos: [join(outer, "inner")] });
+  await finish(m);
   await assert.rejects(
-    three.start({ threadId: "task-three", prompt: "outer", cwd: outer }),
+    m.start({ threadId: "task-three", prompt: "outer", cwd: outer }),
     /overlaps a checkout owned by another Factory task/,
   );
 
   // Removing a checkout releases it; nothing else ever does.
   assert.equal((await readOwners())[oneTree].taskId, "task-one");
   git(lib, "worktree", "remove", "--force", oneTree);
-  await three.start({ threadId: "task-three", prompt: "now free", repos: [lib] });
+  await m.start({ threadId: "task-three", prompt: "now free", repos: [lib] });
   assert.equal((await readOwners())[oneTree], undefined);
+});
+
+test("an unreadable checkout keeps its owner; only a confirmed absence releases it", async (t) => {
+  const { root } = await harness(t);
+  const guarded = join(root, "guarded");
+  const checkout = join(guarded, "checkout");
+  await mkdir(checkout, { recursive: true });
+  await claimCheckouts("owner", [{ path: checkout, project: "p", source: null }]);
+  await chmod(guarded, 0o000);
+  t.after(() => chmod(guarded, 0o700).catch(() => {}));
+  // stat fails with EACCES here: that is not evidence the checkout is gone.
+  await assert.rejects(
+    claimCheckouts("intruder", [{ path: checkout, project: "p", source: null }]),
+    /owned by another Factory task/,
+  );
+  await chmod(guarded, 0o700);
+  assert.equal((await readOwners())[checkout].taskId, "owner");
+  await rm(guarded, { recursive: true });
+  // Once it is confirmed gone, the path is free for another task.
+  await claimCheckouts("intruder", [{ path: checkout, project: "p", source: null }]);
+  assert.equal((await readOwners())[checkout].taskId, "intruder");
+});
+
+test("a delegation that fails before launch claims nothing", async (t) => {
+  const { root } = await harness(t);
+  const app = await linkedCheckout(root, "app");
+  const m = codexRoot(t, app);
+  m.launch = async () => {
+    throw new Error("fixture launch failed");
+  };
+  await assert.rejects(m.start({ threadId: "failed", prompt: "x" }), /fixture launch failed/);
+  assert.deepEqual(await readOwners(), {});
 });
 
 test("a primary conversation refuses a second checkout of a mapped repository", async (t) => {
   const { root } = await harness(t);
-  const app = await repository(root, "app");
-  const other = join(root, "app-other");
-  git(app, "worktree", "add", "-q", "--detach", other);
+  const app = await linkedCheckout(root, "app");
+  const other = await linkedCheckout(root, "app-other", (await checkoutInfo(app)).project.replace(/\/\.git$/, ""));
   const m = stubbed(codexRoot(t, app));
   await m.start({ threadId: "bound", prompt: "first" });
   await finish(m);
@@ -251,30 +300,39 @@ test("a primary conversation refuses a second checkout of a mapped repository", 
   await taskWrite(task);
   const fresh = await m.start({ threadId: "bound", prompt: "isolated", fresh: true });
   assert.notEqual(fresh.cwd, app);
+  assert.equal(fresh.workspace[(await checkoutInfo(app)).project].source, app);
   assert.equal(git(fresh.cwd, "rev-parse", "HEAD"), git(app, "rev-parse", "HEAD"));
   assert.equal(fresh.claudeSession, null);
   assert.equal((await taskRead("bound")).primaryCwd, app);
 });
 
-test("a pre-workspace record keeps its saved conversation when a repository is added", async (t) => {
+test("a root outside Git is refused rather than given an unowned directory", async (t) => {
   const { root } = await harness(t);
-  const app = await repository(root, "app");
+  const plain = join(root, "plain");
+  await mkdir(plain);
+  const m = stubbed(codexRoot(t, await realpath(plain)));
+  await assert.rejects(m.start({ threadId: "plain", prompt: "x" }), /is not a Git checkout/);
+  assert.equal((await taskRead("plain")).workerBinding, undefined);
+});
+
+const legacyTask = (id, primary) => ({
+  id,
+  override: "auto",
+  disabled: false,
+  runId: null,
+  runIds: [],
+  claudeSession: null,
+  supervisionReplies: 0,
+  primaryCwd: primary,
+  workerBinding: { executor: "claude", gateway: null },
+  sessions: { [`primary:${primary}`]: "legacy-session" },
+});
+
+test("a pre-workspace record in a linked checkout keeps its saved conversation", async (t) => {
+  const { root } = await harness(t);
   const lib = await repository(root, "lib");
-  const linked = join(root, "app-task");
-  git(app, "worktree", "add", "-q", "--detach", linked);
-  const primary = await realpath(linked);
-  await taskWrite({
-    id: "legacy",
-    override: "auto",
-    disabled: false,
-    runId: null,
-    runIds: [],
-    claudeSession: null,
-    supervisionReplies: 0,
-    primaryCwd: primary,
-    workerBinding: { executor: "claude", gateway: null },
-    sessions: { [`primary:${primary}`]: "legacy-session" },
-  });
+  const primary = await linkedCheckout(root, "app-task");
+  await taskWrite(legacyTask("legacy", primary));
   // The root has since moved to another repository; that never widens the workspace.
   const m = stubbed(codexRoot(t, lib));
   const run = await m.start({ threadId: "legacy", prompt: "continue" });
@@ -295,6 +353,24 @@ test("a pre-workspace record keeps its saved conversation when a repository is a
   assert.notEqual(fresh.cwd, primary);
   assert.equal(git(fresh.cwd, "rev-parse", "HEAD"), git(primary, "rev-parse", "HEAD"));
   assert.equal(fresh.workspace[(await checkoutInfo(primary)).project].source, primary);
+});
+
+test("a pre-workspace conversation bound to an original checkout is refused with its remedy", async (t) => {
+  const { root } = await harness(t);
+  const app = await repository(root, "app");
+  await taskWrite(legacyTask("legacy-original", app));
+  const m = stubbed(codexRoot(t, app));
+  for (const args of [{ prompt: "continue" }, { prompt: "add", repos: [await repository(root, "lib")] }])
+    await assert.rejects(
+      m.start({ threadId: "legacy-original", ...args }),
+      new RegExp(`bound to ${app}, an original checkout.*Start a new root session`),
+    );
+  assert.equal(m.runs.size, 0);
+  assert.equal((await taskRead("legacy-original")).workspace, undefined);
+  assert.deepEqual(await readOwners(), {});
+  // A new root session in the same original starts cleanly in its own worktree.
+  const fresh = await m.start({ threadId: "new-root", prompt: "start over" });
+  assert.notEqual(fresh.cwd, app);
 });
 
 test("per-repository off covers every target repository", async (t) => {

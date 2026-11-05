@@ -154,11 +154,20 @@ also verifies that the run belongs to that root session.
   becomes the source of a separate isolated worktree; one writer per checkout and
   `maxConcurrent` still apply.
 
+- **Manager contract.** The root sends a self-contained brief, waits, handles only routine
+  reversible clarification itself, sends authorization/spending/publishing/material decisions to
+  the user, and independently verifies the result. Codex `needs_input` resumes through
+  `factory_delegate` with the originating `runId`; a live Claude question uses `factory_answer`.
+- **Edit guard and recursion.** While an owned worker is active, `PreToolUse` refuses the root's
+  native edit tools in that checkout (Claude Code `Edit`, `Write`, `MultiEdit`, `NotebookEdit`;
+  Codex `apply_patch`). Shell commands are not inspected, so this is an accidental-race guard,
+  not a sandbox. Workers run with `FACTORY_DELEGATED=1`; hooks exit and MCP delegation refuses.
+
 ### Multi-repository workspaces
 
 One task (root session) has one primary worker conversation, however many repositories it
 touches. `factory_delegate` takes explicit targets: `cwd` (the working directory, fixed at the
-first primary launch; defaults to the root's own checkout) and `repos` (up to 16 more). The
+first primary launch; defaults to the root's own directory) and `repos` (up to 16 more). The
 root's starting repository does not limit the others, and nothing is inferred: a later
 delegation without targets reuses the task's map, and a root that has moved to another
 repository does not add it. Each target resolves to a checkout the task owns:
@@ -167,21 +176,28 @@ repository does not add it. Each target resolves to a checkout the task owns:
 |---|---|
 | A repository the conversation already maps, its original, or a path inside its checkout | That checkout |
 | A different linked worktree of an already mapped repository | Refused: use `fresh:true` |
-| The root's own checkout (primary only) | Adopted, as before; an original checkout is never owned exclusively |
-| An unowned linked worktree (a claimed task checkout, e.g. from `morpheus pm claim`) | Adopted and owned |
-| An original checkout, or a fresh target the primary already maps | A new detached worktree at its committed HEAD under `$FACTORY_HOME/worktrees/` |
-| Another task's checkout, a path inside one, a symlink to one, or a checkout containing one | Refused |
-| A directory outside Git (other than the root's own) | Refused |
+| An unowned linked worktree (a claimed task checkout, e.g. from `morpheus pm claim`), including the root's own | Adopted and owned |
+| Any original checkout, the root's own included, or a fresh target the primary already maps | A new detached worktree at its committed HEAD under `$FACTORY_HOME/worktrees/`, owned by the task |
+| Another task's checkout (idle or not), a path inside one, a symlink to one, or a checkout containing one | Refused |
+| A directory outside Git, the root's own included | Refused: name a repository with `cwd` or `repos` |
+
+Two roots that start in the same original checkout therefore get separate worktrees and never
+share or take over each other's, even while one is idle. Every mapped checkout is owned; no
+task writes an original.
 
 The map (`repository → { path, source, owned }`, keyed by the canonical common Git directory)
 persists in the task record, so adding a repository resumes the same native conversation instead
 of starting a worker per repository. `factory_inspect` reports it as `workspace`. Uncommitted
 edits in an original are never copied, and the worker is told the original is reference only.
 Ownership lives in one registry, `$FACTORY_HOME/workspaces.json`, written by the bridge alone;
-an entry is released only when its checkout directory is removed (`git worktree remove` or
-`morpheus pm cleanup`). Factory never deletes a worktree it created: the work stays there until
-you merge or remove it. A record from before workspaces is migrated from its `primaryCwd` on its
-next delegation, keeping its saved conversation.
+ownership is recorded when the worker launches (a failed launch claims nothing) and released only
+when the checkout directory is confirmed absent (`git worktree remove` or `morpheus pm cleanup`);
+a permission or I/O error reading it keeps the owner. Factory never deletes a worktree it
+created: the work stays there until you merge or remove it. A record from before workspaces
+whose `primaryCwd` is a linked worktree migrates on its next delegation, keeping its saved
+conversation. One bound to an original checkout or a directory outside Git cannot move (its
+native session resumes only from that directory) and is refused with the remedy: start a new
+root session, which gets task-owned worktrees.
 
 Every checkout is guarded as one unit: no active run may share or nest a directory with another
 run's checkouts, `PreToolUse` refuses the root's native edits in any of them, and global or
@@ -191,14 +207,6 @@ receives them as `sandbox_workspace_write.writable_roots` only under `workspace-
 permission mode changes, so a read-only sandbox stays read-only. Under full access this is an
 ownership convention enforced at delegation, not an OS sandbox: the worker's shell can still
 write anywhere its user can.
-- **Manager contract.** The root sends a self-contained brief, waits, handles only routine
-  reversible clarification itself, sends authorization/spending/publishing/material decisions to
-  the user, and independently verifies the result. Codex `needs_input` resumes through
-  `factory_delegate` with the originating `runId`; a live Claude question uses `factory_answer`.
-- **Edit guard and recursion.** While an owned worker is active, `PreToolUse` refuses the root's
-  native edit tools in that checkout (Claude Code `Edit`, `Write`, `MultiEdit`, `NotebookEdit`;
-  Codex `apply_patch`). Shell commands are not inspected, so this is an accidental-race guard,
-  not a sandbox. Workers run with `FACTORY_DELEGATED=1`; hooks exit and MCP delegation refuses.
 
 ## Gateway mode
 

@@ -64,8 +64,8 @@ import {
   readiness,
 } from "./dispatch.mjs";
 import {
-  checkoutInfo,
   checkouts,
+  claimCheckouts,
   extraRoots,
   legacyMap,
   overlaps,
@@ -421,6 +421,8 @@ export class Manager {
         env,
         config,
       );
+      // Starts are serialized (busy), so nothing can claim these between check and claim.
+      await claimCheckouts(task.id, workspace.claims);
       await this.mutateTask(task.id, (current) => {
         current.runId = id;
         current.runIds = [...new Set([...(current.runIds ?? []), id])];
@@ -1090,6 +1092,8 @@ export class Manager {
         env,
         config,
       );
+      // Starts are serialized (busy), so nothing can claim these between check and claim.
+      await claimCheckouts(task.id, workspace.claims);
       await this.mutateTask(task.id, (current) => {
         current.runId = id;
         current.runIds = [...new Set([...(current.runIds ?? []), id])];
@@ -1133,13 +1137,13 @@ export class Manager {
       slot: fresh ? `fresh-${runId.slice(0, 8)}` : "primary",
       map,
       targets,
-      rootCheckout: (await checkoutInfo(rootCwd)).top,
       avoid: fresh ? checkouts(primaryMap) : [],
     });
     const workCwd = anchor ?? resolved.first;
     return {
       cwd: workCwd,
       map: resolved.map,
+      claims: resolved.claims,
       dirs: [...new Set([workCwd, ...checkouts(resolved.map)])],
     };
   }

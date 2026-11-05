@@ -1,8 +1,8 @@
 // Task-owned multi-repository workspaces. One worker conversation may write in several
 // repositories, but only in checkouts its task owns: a repository the task already maps keeps
-// its checkout, an unowned linked worktree (a claimed task checkout) is adopted, and an
-// original checkout is a read-only source from which an isolated worktree is created at its
-// committed HEAD. Ownership is recorded in one registry with one writer, and a checkout that is
+// its checkout, an unowned linked worktree (a claimed task checkout) is adopted, and every
+// original checkout, the root's own included, is a read-only source from which an isolated
+// worktree is created at its committed HEAD. Directories outside Git are refused. Ownership is recorded in one registry with one writer, and a checkout that is
 // nested in, or contains, another task's checkout is refused, so two tasks never share one.
 // This is an ownership convention enforced at delegation, not an OS sandbox: a full-access
 // worker's shell can still write anywhere its user can.
@@ -61,19 +61,28 @@ export async function checkoutInfo(path) {
 
 const registryFile = () => join(home(), "workspaces.json");
 let writer = Promise.resolve();
+// Only a confirmed absence releases a checkout. A permission or I/O error says nothing about
+// whether it still exists, so the owner keeps it rather than another task taking it over.
+const confirmedMissing = (path) =>
+  stat(path).then(
+    () => false,
+    (error) => error.code === "ENOENT" || error.code === "ENOTDIR",
+  );
 // The single writer for every task's checkout ownership. A checkout whose directory no longer
-// exists (removed with `git worktree remove` or `morpheus pm cleanup`) is released.
-export function claimCheckouts(taskId, register) {
+// exists (removed with `git worktree remove` or `morpheus pm cleanup`) is released. `check`
+// verifies without recording, so a delegation that fails before launch claims nothing.
+export function claimCheckouts(taskId, register, { check = false } = {}) {
   const current = writer.catch(() => {}).then(async () => {
     const owners = await readJSON(registryFile(), {});
     for (const path of Object.keys(owners))
-      if (!(await stat(path).then(() => true, () => false))) delete owners[path];
+      if (await confirmedMissing(path)) delete owners[path];
     for (const { path } of register)
       for (const [owned, owner] of Object.entries(owners))
         if (owner.taskId !== taskId && overlaps(path, owned))
           throw new Error(
             `${path} ${path === owned ? "is" : "overlaps"} a checkout owned by another Factory task (${owned}). Independent tasks never share a checkout; target the original repository to get an isolated worktree, or use another checkout.`,
           );
+    if (check) return owners;
     for (const entry of register)
       owners[entry.path] ??= { taskId, project: entry.project, source: entry.source, claimedAt: Date.now() };
     await atomic(registryFile(), owners);
@@ -99,16 +108,16 @@ async function isolatedWorktree(info, destination) {
 }
 
 /**
- * Resolves explicit targets into a slot's workspace map, `{ [repository]: { path, source } }`.
- * `rootCheckout` is the root session's own checkout, adopted as before for the primary slot.
- * Entries carry `owned` for checkouts registered exclusively to this task.
+ * Resolves explicit targets into a slot's workspace map,
+ * `{ [repository]: { path, source, owned: true } }`; every entry is registered to this task.
  * `avoid` holds checkouts another slot of the same task owns (the primary map, for a fresh
  * conversation): an overlapping target becomes a source for an isolated worktree instead.
  * Returns the updated map and the working directory the first target resolved to.
  */
-export async function resolveWorkspace({ taskId, slot, map = {}, targets, rootCheckout, avoid = [] }) {
+export async function resolveWorkspace({ taskId, slot, map = {}, targets, avoid = [] }) {
   if (targets.length > MAX_TARGETS)
     throw new Error(`At most ${MAX_TARGETS} repository targets are supported per delegation.`);
+  assertOwnedMap(map);
   const next = { ...map };
   let first = null;
   for (const target of targets) {
@@ -125,14 +134,13 @@ export async function resolveWorkspace({ taskId, slot, map = {}, targets, rootCh
           `This conversation already owns ${entry.path} for repository ${info.project}; ${info.top} is a different checkout. Use fresh=true for a separate isolated conversation and checkout.`,
         );
     } else {
-      const legacyRoot = slot === "primary" && rootCheckout && within(info.cwd, rootCheckout);
-      const clashes = avoid.some((path) => overlaps(info.top, path));
-      if (!info.git && !legacyRoot)
-        throw new Error(`${info.cwd} is not a Git checkout, so Factory cannot give this task an isolated worktree of it.`);
-      if (!info.git || ((info.linked || legacyRoot) && !clashes)) {
-        // The root's own original checkout is adopted as before but never owned exclusively,
-        // which would lock it for every later task; a linked worktree is owned.
-        next[info.project] = { path: info.top, source: null, owned: info.linked };
+      if (!info.git)
+        throw new Error(
+          `${info.cwd} is not a Git checkout. Factory workers write only in task-owned Git checkouts; name a repository with cwd or repos.`,
+        );
+      if (info.linked && !avoid.some((path) => overlaps(info.top, path))) {
+        // A linked worktree is adopted only if no other task owns it (checked when claimed).
+        next[info.project] = { path: info.top, source: null, owned: true };
         cwd = info.cwd;
       } else {
         const path = await isolatedWorktree(
@@ -145,20 +153,29 @@ export async function resolveWorkspace({ taskId, slot, map = {}, targets, rootCh
     }
     first ??= cwd;
   }
-  // Every owned checkout, including earlier ones, is (re)claimed against other tasks at once.
-  await claimCheckouts(
-    taskId,
-    Object.entries(next)
-      .filter(([, entry]) => entry.owned)
-      .map(([project, entry]) => ({ path: entry.path, project, source: entry.source })),
-  );
-  return { map: next, first };
+  // Every checkout, including earlier ones, is checked against other tasks now and claimed by
+  // the caller once the worker has launched.
+  const claims = Object.entries(next).map(([project, entry]) => ({ path: entry.path, project, source: entry.source }));
+  await claimCheckouts(taskId, claims, { check: true });
+  return { map: next, first, claims };
 }
 
-// Seeds a map from a pre-workspace record that knew only its primary checkout.
+// A conversation bound to an original checkout (or a directory outside Git) cannot move: its
+// native session resumes only from that directory, and continuing would keep writing a checkout
+// other tasks may share. It is refused with the remedy rather than silently preserved.
+function assertOwnedMap(map) {
+  for (const entry of Object.values(map))
+    if (entry.owned !== true)
+      throw new Error(
+        `This conversation is bound to ${entry.path}, an original checkout or non-Git directory that Factory no longer lets a task write. Start a new root session: its worker gets task-owned worktrees, and this conversation's history stays in the provider's store.`,
+      );
+}
+
+// Seeds a map from a pre-workspace record that knew only its primary checkout. A linked
+// worktree migrates; an original stays unowned and is then refused by resolveWorkspace.
 export async function legacyMap(cwd) {
   const info = await checkoutInfo(cwd);
-  return { [info.project]: { path: info.top, source: null, owned: info.linked } };
+  return { [info.project]: { path: info.top, source: null, owned: info.git && info.linked } };
 }
 
 export const checkouts = (map) => Object.values(map ?? {}).map((entry) => entry.path);

@@ -5,7 +5,8 @@
 // run records, task records and Git; nothing is synthesized.
 //
 //   FACTORY_HOME=$(mktemp -d) node scripts/workspace-live.mjs \
-//     --root-kind codex --root-id <real root id> [--second-root-id <another real root id>] \
+//     --root-kind codex --root-id <real root id> \
+//     [--second-root-kind claude --second-root-id <another real root id>] \
 //     [--config <private config.json with gateways/keyRefs only>]
 //
 // Steps: (1) one delegation writes two disposable repositories, (2) a follow-up resumes the same
@@ -23,6 +24,7 @@ const { values } = parseArgs({
     "root-kind": { type: "string", default: "codex" },
     "root-id": { type: "string" },
     "second-root-id": { type: "string" },
+    "second-root-kind": { type: "string" },
     config: { type: "string" },
   },
 });
@@ -55,11 +57,13 @@ const manager = new Manager();
 const kind = values["root-kind"];
 const brief = (label) =>
   `Live Factory workspace smoke. In EVERY task-owned checkout listed in the Factory workspace section above, append one line "${label}" to NOTES.md (create it if missing). Do not commit, do not touch any other path, and report the absolute NOTES.md paths you wrote as evidence.`;
+const kindOf = (rootId) => (rootId === values["second-root-id"] ? values["second-root-kind"] ?? kind : kind);
 async function delegate(rootId, args) {
-  const started = await manager.dispatch("factory.delegate", { rootKind: kind, rootId, ...args });
+  const rootKind = kindOf(rootId);
+  const started = await manager.dispatch("factory.delegate", { rootKind, rootId, ...args });
   let run = started;
   for (let i = 0; i < 720 && !run.terminal && !run.question; i++)
-    run = await manager.dispatch("factory.wait", { rootKind: kind, rootId, runId: started.id, seconds: 25 });
+    run = await manager.dispatch("factory.wait", { rootKind, rootId, runId: started.id, seconds: 25 });
   return run;
 }
 const summary = (run) => ({
@@ -91,7 +95,7 @@ evidence.firstTask = (await manager.factoryInspect({ rootKind: kind, rootId: roo
 const second = values["second-root-id"];
 if (second) {
   await record("4 second root, same repositories", second, { cwd: repos.alpha, repos: [repos.beta], prompt: brief("other-root") });
-  evidence.secondTask = (await manager.factoryInspect({ rootKind: kind, rootId: second })).workspace;
+  evidence.secondTask = (await manager.factoryInspect({ rootKind: kindOf(second), rootId: second })).workspace;
   // gamma is unmapped for the second root, so only cross-task ownership can refuse it.
   const gammaCommon = Object.keys(evidence.firstTask.repositories).find((key) => key.startsWith(repos.gamma));
   await record("5 second root claims first root's checkout", second, {
