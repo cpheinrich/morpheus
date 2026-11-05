@@ -143,6 +143,7 @@ describe("release-preflight.yml", () => {
         steps?: Array<{
           name?: string;
           id?: string;
+          if?: string;
           uses?: string;
           with?: Record<string, unknown>;
           env?: Record<string, string>;
