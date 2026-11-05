@@ -3721,37 +3721,15 @@ surface: a staging caller names a smoke plan or selection, and production leaves
 run the full suite.
 A caller whose jobs land on hosts of different sizes can pass `simulator-lanes-from-host: true`
 instead of `parallel-testing`, and the two cannot be combined. The runner's host then declares
-attempt 1's simulators in its own environment as `MORPHEUS_IOS_SIMULATOR_LANES`: unset or `1` runs
-one serial simulator, `2` runs two explicit lanes, and any other value fails before the pre-test
-script or a test runs. Two lanes: the caller's selection is enumerated, whole XCTest classes and
-Swift Testing suites of every target are split into two disjoint selections that together are
-exactly the enumeration (each names tests, so a narrower caller filter is never widened), a second
-simulator is cloned from the job's own under its cleanup name, the pre-test script prepares each
-with `MORPHEUS_IOS_LANE` set (lane 1 writes to `RESULTS`, lane 2 to `RESULTS/lane-2`), both run
-serially inside at the same time, and their bundles are merged into attempt 1's `Tests.xcresult`.
-Xcode's own parallel testing is not used: it keeps a hosted unit bundle on one clone, so unit tests
-never reached the second simulator. Morpheus names no host; the count lives in the host's private
-runner configuration. `test-attempts.json` records `simulatorLanes` and each lane's device, test
-count, exit code and seconds; retries stay serial on the job's own erased simulator. A selection
-that fills one lane only (one class or suite) runs on the job's own simulator with the caller's
-filters and clones nothing (`activeLanes: 1`); no lane ever runs without `-only-testing` filters,
-and any nonzero lane status, a signal's included, fails the attempt. Lanes balance by test count
-unless the caller passes `lane-durations`, a repository-relative JSON of measured seconds per whole
-class or suite (`{"groups": {"Target/Class": {"seconds": s, "tests": n}}}`): a group then weighs
-its selected tests times its seconds per test, and an unmeasured group the mean per test. Each
-lane's pre-test script also gets `MORPHEUS_IOS_LANE_SELECTION` (the file naming that lane's tests,
-so it can prepare only what they need) and `MORPHEUS_IOS_ENUMERATION` (the one enumeration of the
-whole selection, so it need not enumerate again). `laneSetupSeconds` records the enumeration, clone
-and merge time spent outside the lanes. Each lane records its `preTest` and `xcodebuild` intervals,
-and attempt 1 its own `timing` (start and finish, setup and merge included; the phases too on one
-simulator), in seconds on the runner's monotonic clock (`clock` keeps the start's epoch as
-metadata): a merged bundle's start and finish times come from one of its inputs and are not the
-run's wall time. Each lane's selection is also written as `lane-<n>-selection.txt` at the top of
-`RESULTS`, where evidence that keeps only top-level files still finds it. Nothing the lanes start
-launches on a simulator still booting: the job's simulator waits for `simctl bootstatus -b` before
-the enumeration (which launches the app under test), and each lane's simulator, the clone and the
-job's simulator shut down to clone it, waits again before its pre-test script and tests. The clone
-is made after the enumeration, so both lanes start from the same device state.
+attempt 1's parallelism in its own environment as `MORPHEUS_IOS_SIMULATOR_LANES`: unset or `1`
+runs with Xcode's parallel testing off, `2` runs Xcode's own parallel testing capped at two workers
+(`-parallel-testing-enabled YES -maximum-parallel-testing-workers 2`; Xcode clones the job's
+prepared simulator and may use fewer for a small selection, and Swift Testing and XCTest
+parallelize inside each worker as they would locally), and any other value fails before the
+pre-test script or a test runs. Morpheus names no host; the count lives in the host's private
+runner configuration. `test-attempts.json` records `simulatorLanes` and attempt 1's `timing`, its
+pre-test and xcodebuild intervals on the runner's monotonic clock (`clock` keeps the start's epoch
+as metadata), and retries stay serial on the erased job simulator.
 Failed tests are retried in a clean simulator, never in the session that failed them.
 `test-iterations` is the total number of attempts (default 3; 0 or 1 runs once). Attempt 1 runs
 the caller's selection unchanged. When it fails, `scripts/ios-test-retry.py` erases the job-owned

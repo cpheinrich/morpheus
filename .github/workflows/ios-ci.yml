@@ -147,24 +147,13 @@ on:
         default: 0
       simulator-lanes-from-host:
         description: >-
-          Let the runner's host decide the first attempt's simulators instead of parallel-testing:
-          MORPHEUS_IOS_SIMULATOR_LANES in the runner environment is 1 (or unset) for one serial
-          simulator, 2 for two explicit lanes: the selection is enumerated, whole classes and suites
-          of every target are split into two disjoint selections, a second simulator is cloned from
-          the job's own, the pre-test script prepares each (MORPHEUS_IOS_LANE=1 or 2), each runs its
-          share serially at the same time, and the two result bundles are merged. Any other value
-          fails before tests. Retries stay serial on the job's own erased simulator. Cannot be
-          combined with parallel-testing.
+          Let the runner's host decide the first attempt's parallelism instead of parallel-testing:
+          MORPHEUS_IOS_SIMULATOR_LANES in the runner environment is 1 (or unset) for Xcode's
+          parallel testing off, 2 for Xcode's parallel testing with at most two workers (clones of
+          the job's prepared simulator); any other value fails before tests. Retries stay serial.
+          Cannot be combined with parallel-testing.
         type: boolean
         default: false
-      lane-durations:
-        description: >-
-          Optional repository-relative JSON of measured seconds per whole class or suite,
-          {"groups": {"Target/Class": {"seconds": s, "tests": n}}}, so two lanes balance by
-          duration rather than by test count. A group it does not name weighs the mean measured
-          seconds per test. Only read with simulator-lanes-from-host on a two-lane host.
-        type: string
-        default: ""
       firebase-emulators:
         description: Run the test action inside Firebase Emulator Suite when the app depends on local services.
         type: boolean
@@ -466,7 +455,6 @@ jobs:
           PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
           MAXIMUM_PARALLEL_TESTING_WORKERS: ${{ inputs.maximum-parallel-testing-workers }}
           SIMULATOR_LANES_FROM_HOST: ${{ inputs.simulator-lanes-from-host }}
-          LANE_DURATIONS: ${{ inputs.lane-durations }}
           TEST_ITERATIONS: ${{ inputs.test-iterations }}
           FIREBASE_EMULATORS: ${{ inputs.firebase-emulators }}
           FIREBASE_CLI_VERSION: ${{ inputs.firebase-cli-version }}
@@ -504,15 +492,6 @@ jobs:
           if [ "$SIMULATOR_LANES_FROM_HOST" = "true" ] && [ "$PARALLEL_TESTING" = "YES" ]; then
             echo "simulator-lanes-from-host replaces parallel-testing; pass one of them" >&2
             exit 1
-          fi
-          if [ -n "$LANE_DURATIONS" ]; then
-            case "$LANE_DURATIONS" in
-              /*|*".."*) echo "lane-durations must be repository-relative without '..'" >&2; exit 1 ;;
-            esac
-            if [ ! -f "$GITHUB_WORKSPACE/$LANE_DURATIONS" ]; then
-              echo "lane-durations was not found: $LANE_DURATIONS" >&2
-              exit 1
-            fi
           fi
           if [[ ! "$TEST_ITERATIONS" =~ ^[0-9]+$ ]]; then
             echo "test-iterations must be a non-negative whole number of attempts" >&2
@@ -857,7 +836,6 @@ jobs:
           PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
           MAXIMUM_PARALLEL_TESTING_WORKERS: ${{ inputs.maximum-parallel-testing-workers }}
           SIMULATOR_LANES_FROM_HOST: ${{ inputs.simulator-lanes-from-host }}
-          LANE_DURATIONS: ${{ inputs.lane-durations }}
           FIREBASE_EMULATORS: ${{ inputs.firebase-emulators }}
           FIREBASE_CONFIG: ${{ inputs.firebase-config }}
           FIREBASE_PROJECT: ${{ inputs.firebase-project }}
