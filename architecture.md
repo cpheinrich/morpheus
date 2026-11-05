@@ -3732,7 +3732,10 @@ serially inside at the same time, and their bundles are merged into attempt 1's 
 Xcode's own parallel testing is not used: it keeps a hosted unit bundle on one clone, so unit tests
 never reached the second simulator. Morpheus names no host; the count lives in the host's private
 runner configuration. `test-attempts.json` records `simulatorLanes` and each lane's device, test
-count, exit code and seconds; retries stay serial on the job's own erased simulator.
+count, exit code and seconds; retries stay serial on the job's own erased simulator. A selection
+that fills one lane only (one class or suite) runs on the job's own simulator with the caller's
+filters and clones nothing (`activeLanes: 1`); no lane ever runs without `-only-testing` filters,
+and any nonzero lane status, a signal's included, fails the attempt.
 Failed tests are retried in a clean simulator, never in the session that failed them.
 `test-iterations` is the total number of attempts (default 3; 0 or 1 runs once). Attempt 1 runs
 the caller's selection unchanged. When it fails, `scripts/ios-test-retry.py` erases the job-owned

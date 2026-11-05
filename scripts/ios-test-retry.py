@@ -183,12 +183,16 @@ def partition(tests, lanes=2):
     for test in tests:
         groups.setdefault(group_of(test), []).append(test)
     selections = [[] for _ in range(lanes)]
+    total = [0] * lanes
     for target in sorted({g.split('/')[0] for g in groups}):
         load = [0] * lanes
         for group in sorted((g for g in groups if g.split('/')[0] == target), key=lambda g: (-len(groups[g]), g)):
-            lane = load.index(min(load))
+            # Fewest of this target's tests first; on a tie, fewest tests overall, so a target of
+            # one class does not land beside another target's one class on the same lane.
+            lane = min(range(lanes), key=lambda n: (load[n], total[n], n))
             selections[lane] += groups[group]
             load[lane] += len(groups[group])
+            total[lane] += len(groups[group])
     flat = [t for selection in selections for t in selection]
     if sorted(flat) != sorted(tests) or len(set(flat)) != len(flat):
         raise RuntimeError('Lane selections are not an exact partition of the enumerated tests.')
@@ -223,6 +227,9 @@ def run_lanes(selections, devices, results, logs):
     """
     import threading
     import time
+    # A lane with no -only-testing filter would run the whole scheme: never start one.
+    if not selections or any(not selection for selection in selections):
+        raise RuntimeError('A simulator lane has no tests selected; refusing to run it unfiltered.')
     outcome = [None] * len(selections)
 
     def lane(n):
@@ -257,7 +264,9 @@ def run_lanes(selections, devices, results, logs):
                 log.write(lane_log.read_bytes())
     bundles = [str(results / f'lane-{n}' / 'Tests.xcresult') for n in range(1, len(selections) + 1)
                if (results / f'lane-{n}' / 'Tests.xcresult').exists()]
-    status = max(o['exitCode'] for o in outcome)
+    # Any nonzero status fails the attempt, a signal's negative one included: max() would let a
+    # lane killed by SIGTERM (-15) hide behind a sibling's 0.
+    status = next((o['exitCode'] for o in outcome if o['exitCode'] != 0), 0)
     tested = all(o['ran'] for o in outcome)
     if len(bundles) == len(selections):
         merged = subprocess.run(['xcrun', 'xcresulttool', 'merge', *bundles, '--output-path',
@@ -435,11 +444,20 @@ def main():
         clone = None
         try:
             selections = partition(enumerated(f'id={device.group(1)}', results / 'lanes-enumeration.json'))
-            clone = second_simulator(device.group(1))
-            for n, selection in enumerate(selections, start=1):
-                (results / f'lane-{n}').mkdir(parents=True, exist_ok=True)
-                (results / f'lane-{n}' / 'selection.txt').write_text(''.join(f'{t}\n' for t in selection))
-            status, tested, record['lanes'] = run_lanes(selections, [device.group(1), clone], results, logs)
+            # A selection of one class or suite fills one lane only: run that one, on the job's
+            # own simulator, and never clone a device for nothing.
+            selections = [selection for selection in selections if selection]
+            record['activeLanes'] = len(selections)
+            if len(selections) < 2:
+                print(f'::notice::The selection is one class or suite, so it runs on one of the {lanes} lanes.',
+                      flush=True)
+                status, tested = run(1, first_selection(lanes), results, logs)
+            else:
+                clone = second_simulator(device.group(1))
+                for n, selection in enumerate(selections, start=1):
+                    (results / f'lane-{n}').mkdir(parents=True, exist_ok=True)
+                    (results / f'lane-{n}' / 'selection.txt').write_text(''.join(f'{t}\n' for t in selection))
+                status, tested, record['lanes'] = run_lanes(selections, [device.group(1), clone], results, logs)
         except (RuntimeError, ValueError, OSError) as error:
             print(f'::error::{error}', flush=True)
             return 1
@@ -448,6 +466,8 @@ def main():
                 simctl('shutdown', clone)
                 simctl('delete', clone)
     else:
+        if lanes is not None:
+            record['activeLanes'] = 1
         status, tested = run(1, first_selection(lanes), results, logs)
     first = read_results(results / 'Tests.xcresult') if status else None
     attributed = first and first['attributed']

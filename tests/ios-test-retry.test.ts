@@ -64,6 +64,10 @@ const results = tests.map((t, i) => {
   return { ...t, result: failed ? 'Failed' : other || 'Passed' };
 }).concat(placeholders);
 fs.appendFileSync(ledger, tests.map(t => t.id + '\\n').join(''));
+if (process.env.FAKE_SIGNAL_LANE && process.env.MORPHEUS_IOS_LANE === process.env.FAKE_SIGNAL_LANE) {
+  process.on('exit', () => {}); // The bundle below is written; then the process dies by a signal.
+  globalThis.__signal = true;
+}
 fs.writeFileSync(process.env.SIM_STATE, 'used');
 const bundle = value('-resultBundlePath');
 fs.mkdirSync(bundle, { recursive: true });
@@ -86,6 +90,7 @@ const counts = { totalTestCount: results.length, passedTests: count('Passed'), f
 fs.writeFileSync(bundle + '/fake-summary.json', JSON.stringify({ result: failures.length ? 'Failed' : 'Passed', ...counts,
   devicesAndConfigurations: [{ device: { deviceName: 'Fake' }, ...counts }], testFailures: failures }));
 console.log('xcodebuild ran ' + tests.length + ' tests');
+if (globalThis.__signal) process.kill(process.pid, 'SIGTERM');
 process.exit(failures.length || process.env.FORCE_EXIT ? 65 : 0);
 `;
 
@@ -696,6 +701,49 @@ describe("simulator lanes the runner's host declares", () => {
     const simctl = (await h.events()).filter((e) => "simctl" in e).map((e) => (e.simctl as string[]).join(" "));
     expect(simctl).toContain(`delete ${clone}`);
     expect(JSON.parse(await h.read("Results/test-attempts.json")).result).toBe("failed");
+  });
+
+  it("runs a one-suite selection on the job simulator alone, with its filters, and clones nothing", async () => {
+    const suite = ["AppTests/OneSuite/testA()", "AppTests/OneSuite/testB()"];
+    const h = await harness([...suite, ...units].map((id) => ({ id, behavior: "pass" as Behavior })),
+      { ...twoLanes, ONLY_TESTING: "AppTests/OneSuite" });
+    const { code, stdout } = await h.run();
+    expect(code).toBe(0);
+    const runs = await h.invocations();
+    // One xcodebuild, on the job's own simulator, selecting exactly the caller's suite.
+    expect(runs.length).toBe(1);
+    expect(runs[0]!.destination).toBe(`platform=iOS Simulator,id=${device}`);
+    expect(runs[0]!.selected.sort()).toEqual(suite);
+    expect(runs[0]!.argv.filter((a) => a.startsWith("-only-testing:"))).toEqual(["-only-testing:AppTests/OneSuite"]);
+    const events = await h.events();
+    expect(events.some((e) => "simctl" in e && (e.simctl as string[])[0] === "clone")).toBe(false);
+    expect(stdout).toContain("runs on one of the 2 lanes");
+    const record = JSON.parse(await h.read("Results/test-attempts.json"));
+    expect(record).toMatchObject({ simulatorLanes: 2, activeLanes: 1, result: "passed" });
+    expect(record).not.toHaveProperty("lanes");
+  });
+
+  it("never starts a lane without filters: one class per target goes one per lane", async () => {
+    const pairOfOnes = ["AppTests/OneSuite/testA()", "AppUITests/OneUITests/testB()"];
+    const h = await harness(pairOfOnes.map((id) => ({ id, behavior: "pass" as Behavior })), twoLanes);
+    expect((await h.run()).code).toBe(0);
+    const lanes = await lanesOf(h);
+    expect(lanes.map((l) => l.selected).sort()).toEqual([["AppTests/OneSuite/testA()"], ["AppUITests/OneUITests/testB()"]]);
+    for (const lane of lanes) expect(lane.argv.filter((a) => a.startsWith("-only-testing:")).length).toBe(1);
+    // Nothing outside the selection ran anywhere.
+    expect((await h.invocations()).flatMap((i) => i.selected).sort()).toEqual([...pairOfOnes].sort());
+    expect(JSON.parse(await h.read("Results/test-attempts.json")).activeLanes).toBe(2);
+  });
+
+  it("fails when a lane dies by a signal, even with both bundles written and the other lane green", async () => {
+    const h = await harness([...units, ...uis].map((id) => ({ id, behavior: "pass" as Behavior })),
+      { ...twoLanes, FAKE_SIGNAL_LANE: "2" });
+    const { code } = await h.run();
+    expect(code).not.toBe(0);
+    const record = JSON.parse(await h.read("Results/test-attempts.json"));
+    expect(record.result).toBe("failed");
+    expect(record.lanes.find((l: { lane: number }) => l.lane === 2).exitCode).toBe(-15);
+    expect(record.lanes.find((l: { lane: number }) => l.lane === 1).exitCode).toBe(0);
   });
 
   it("stops before cloning or running anything when the selection cannot be enumerated", async () => {
