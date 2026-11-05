@@ -1,5 +1,15 @@
 # Decisions
 
+**Factory refreshes Claude quota through the gateway's existing usage read** — 2026-11-04.
+MO-26-11-04-18.31.58. The account list's Claude five-hour utilization is a stored snapshot
+without a reset bound. Request its active usage endpoint on inspection/start/doctor and
+honor returned reset times; failures remain unknown rather than reusing old list counters.
+Expose the gateway's reported `updatedAt`, while documenting its short upstream cache.
+Retain Codex's canonical stored snapshot, expiry and actual snapshot timestamp: forcing its
+usage endpoint may generate a model probe and report the current time on old data. Native
+fetch/AbortSignal and the existing parser suffice; no dependency, polling daemon, age gate,
+retry mechanism or new setting. Check resets at response time, not before network waits.
+
 **An exited unattended admission's cleanup may be re-proven explicitly, never assumed** — 2026-11-04.
 MO-26-11-04-15.07.12. The guardian proves cleanup once, at exit, and a latched census failure or a
 slow tool left a real exited admission held for good with no supported recovery. An explicit
