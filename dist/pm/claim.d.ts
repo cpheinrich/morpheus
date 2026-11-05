@@ -104,5 +104,8 @@ export interface ClaimResult {
 /**
  * Claim an item: verify nothing holds it, create the branch, mark the item
  * in-progress, and push immediately so the claim is visible to everyone else.
+ *
+ * `base` is a verified task base the checkout was prepared from (`pm claim --base`). It is
+ * written into the item so the task carries it, and only the task branch is pushed.
  */
-export declare function claim(productDir: string, id: string, cwd: string): Promise<ClaimResult>;
+export declare function claim(productDir: string, id: string, cwd: string, base?: string): Promise<ClaimResult>;

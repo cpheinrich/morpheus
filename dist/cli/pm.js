@@ -3,6 +3,7 @@ import { offlineDeclared } from "../session/gate.js";
 import { guard } from "./context.js";
 import { assertCurrentSource } from "../session/start.js";
 import { prepareTask, resumeTask, bindTask } from "../session/tasks.js";
+import { declaredBase, preparedBase, verifyTaskBase } from "../session/task-base.js";
 import { execFile } from "node:child_process";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
@@ -316,18 +317,25 @@ export async function linkIssue(productDir, id, rawIssue) {
         throw error;
     }
 }
-/** Claim a roadmap item by staking its branch on the remote. */
-export async function claim(productDir, id, cwd, sessionId = process.env.CODEX_THREAD_ID, offline = false) {
+/**
+ * Claim a roadmap item by staking its branch on the remote.
+ *
+ * `base` names a protected branch the task integrates into instead of the trunk (a
+ * release fix). Inside a checkout prepared for a base, the base is inherited.
+ */
+export async function claim(productDir, id, cwd, sessionId = process.env.CODEX_THREAD_ID, offline = false, base, gh) {
     if (!id) {
-        console.error("Usage: morpheus pm claim RM-014");
+        console.error("Usage: morpheus pm claim RM-014 [--base <protected branch>]");
         return 1;
     }
     try {
         if (offlineDeclared(offline))
             throw new Error("New claims require a verified remote; offline claiming is refused.");
-        const target = await prepareTask(cwd, productDir, id.toUpperCase());
+        const requested = base ?? await preparedBase(cwd);
+        const verified = requested ? await verifyTaskBase(cwd, requested, gh) : null;
+        const target = await prepareTask(cwd, productDir, id.toUpperCase(), verified);
         if (target) {
-            console.log(`Prepared task worktree. WORK IN: ${target}`);
+            console.log(`Prepared task worktree${verified ? ` from ${verified.remote}/${verified.branch}` : ""}. WORK IN: ${target}`);
             await bindTask(target, id.toUpperCase(), sessionId, true);
             console.log("Read its AGENTS.md and required context records, run morpheus context refresh there, then repeat this pm claim command there. No branch has been claimed yet.");
             return 0;
@@ -336,9 +344,11 @@ export async function claim(productDir, id, cwd, sessionId = process.env.CODEX_T
         if (refused !== null)
             return refused;
         await assertCurrentSource(cwd);
-        const r = await claimItem(productDir, id.toUpperCase(), cwd);
+        const r = await claimItem(productDir, id.toUpperCase(), cwd, verified?.branch);
         console.log(`Claimed ${r.id} — ${r.title}`);
         console.log(`Branch ${r.branch} pushed; status set to in-progress.`);
+        if (verified)
+            console.log(`Task base: ${verified.remote}/${verified.branch}. Open its PR into ${verified.branch}; context and review measure that branch, never the trunk.`);
         await bindTask(cwd, r.id, sessionId);
         if (r.shipped?.length) {
             console.log(`\x1b[2mAlso marked shipped, riding along in this branch: ${r.shipped.join(", ")}\x1b[0m`);
@@ -358,6 +368,9 @@ export async function resume(id, cwd, sessionId = process.env.CODEX_THREAD_ID) {
     try {
         const target = await resumeTask(cwd, id.toUpperCase(), sessionId);
         console.log(`Resuming ${id.toUpperCase()}. WORK IN: ${target}`);
+        const base = await declaredBase(target);
+        if (base)
+            console.log(`Task base: ${base}. Its PR targets ${base}; integrate only ${base}, never the trunk.`);
         console.log("Run morpheus context brief there to fetch current trunk; preserve task edits and integrate explicitly if behind. Re-read records and refresh. If blocked, use morpheus pm unblock after its recorded need is answered.");
         return 0;
     }

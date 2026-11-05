@@ -150,7 +150,7 @@ export function parseClaimRefs(forEachRefOutput) {
 export function ageInDays(iso, now) {
     return Math.floor((now.getTime() - new Date(iso).getTime()) / 86_400_000);
 }
-async function setStatusInProgress(productDir, id) {
+async function setStatusInProgress(productDir, id, base) {
     const { items } = await parseArtifact(productDir, "roadmap");
     const item = items.find((i) => i.data.id === id);
     if (!item)
@@ -158,7 +158,7 @@ async function setStatusInProgress(productDir, id) {
     const raw = await readFile(item.path, "utf8");
     // `needs` is cleared, because re-claiming a previously blocked item means the
     // answer arrived. Leaving it would read as a live blocker on active work.
-    await writeFile(item.path, updateFrontmatter(raw, { status: "in-progress", needs: null, updated: today() }), "utf8");
+    await writeFile(item.path, updateFrontmatter(raw, { status: "in-progress", needs: null, updated: today(), ...(base ? { base } : {}) }), "utf8");
 }
 /**
  * Where an item file lives — **looked up, not reconstructed**.
@@ -176,8 +176,11 @@ async function itemPath(productDir, id) {
 /**
  * Claim an item: verify nothing holds it, create the branch, mark the item
  * in-progress, and push immediately so the claim is visible to everyone else.
+ *
+ * `base` is a verified task base the checkout was prepared from (`pm claim --base`). It is
+ * written into the item so the task carries it, and only the task branch is pushed.
  */
-export async function claim(productDir, id, cwd) {
+export async function claim(productDir, id, cwd, base) {
     // Reconcile before branching, so merged work is marked shipped here and
     // rides along with this claim's commit.
     //
@@ -185,8 +188,11 @@ export async function claim(productDir, id, cwd) {
     // working tree on protected `main`, with nowhere to go — which is exactly
     // what happened the first time, and is how a housekeeping step gets quietly
     // dropped.
+    //
+    // Not on a task base: the base carries only its own fixes back to the trunk, and status
+    // edits to trunk items would conflict with the trunk's own reconciliation at that merge.
     const { reconcile } = await import("./ship.js");
-    const reconciled = await reconcile(productDir, cwd).catch(() => null);
+    const reconciled = base ? null : await reconcile(productDir, cwd).catch(() => null);
     const { items } = await parseArtifact(productDir, "roadmap");
     const item = items.find((i) => i.data.id === id);
     if (!item)
@@ -210,9 +216,13 @@ export async function claim(productDir, id, cwd) {
         throw new ClaimError(`${id} is already claimed by branch "${existing[0]}". ` +
             `Run \`morpheus pm claims\` to see who and how long ago.`);
     }
+    // An item written for one base must not be claimed against another (or the trunk).
+    if (item.data.base && item.data.base !== base) {
+        throw new ClaimError(`${id} declares base ${item.data.base}; claim it with --base ${item.data.base}.`);
+    }
     const branch = `${branchPrefix(id)}${slugify(item.data.title)}`;
     await git(["checkout", "-b", branch], cwd);
-    await setStatusInProgress(productDir, id);
+    await setStatusInProgress(productDir, id, base);
     // Stage only the item files. `add -A` would sweep whatever else is in the
     // working tree into a commit the author did not intend — including editor
     // scratch, which is how a screenshot once reached a public repo.

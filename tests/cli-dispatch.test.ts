@@ -20,7 +20,7 @@ vi.mock("../src/cli/init.js", () => ({ init: vi.fn(async () => 73) }));
 vi.mock("../src/cli/web.js", () => ({ webAddConsumerAuth: vi.fn(async () => 73), webInit: vi.fn(async () => 73), webStatus: vi.fn(async () => 73) }));
 vi.mock("../src/cli/tokens.js", () => ({ build: vi.fn(async () => 73) }));
 vi.mock("../src/cli/heartbeat.js", () => ({ heartbeat: vi.fn(async () => 73) }));
-vi.mock("../src/cli/review.js", () => ({ prompt: vi.fn(async () => 73), reviewDelivery: vi.fn(async () => 73), reviewNeeded: vi.fn(async () => 73), prepareReview: vi.fn(async () => 73) }));
+vi.mock("../src/cli/review.js", () => ({ prompt: vi.fn(async () => 73), reviewDelivery: vi.fn(async () => 73), reviewNeeded: vi.fn(async () => 73), prepareReview: vi.fn(async () => 73), reviewBase: vi.fn(async (_root: string, explicit?: string) => explicit ?? "origin/main") }));
 vi.mock("../src/cli/voice.js", () => ({ brief: vi.fn(async () => 73), knowledge: vi.fn(async () => 73) }));
 vi.mock("../src/cli/team.js", () => ({ validate: vi.fn(async () => 73) }));
 vi.mock("../src/cli/context.js", () => ({ check: vi.fn(async () => 73), guard: vi.fn(async () => ({ refused: null, contained: false })), brief: vi.fn(async () => 73), install: vi.fn(async () => 73), refresh: vi.fn(async () => 73), status: vi.fn(async () => 73) }));

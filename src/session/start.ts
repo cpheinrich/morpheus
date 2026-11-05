@@ -4,8 +4,8 @@ import { readFile, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { gitSubprocessEnv } from "../git-env.js";
-import { projectPolicy } from "./policy.js";
-import { resolveTrunk } from "./git.js";
+import type { TrunkRef } from "./git.js";
+import { taskTrunk } from "./task-base.js";
 import { assertWorktreePolicy } from "./worktrees.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
 import { measureLag, rescueDirtyTrunk, readDirt, type Lag, type RescueDeps, type RescueResult } from "./trunk-rescue.js";
@@ -49,10 +49,14 @@ export interface SourceState {
   fastForwardError?: string;
 }
 
-/** Fetch into a private ref so concurrent sessions cannot replace FETCH_HEAD. */
-export async function fetchTrunk(root: string): Promise<{ sha: string; trunk: string; branch: string }> {
-  const policy = await projectPolicy(root);
-  const trunk = await resolveTrunk(root, policy.trunk);
+/**
+ * Fetch into a private ref so concurrent sessions cannot replace FETCH_HEAD. Without a
+ * target this is the checkout's task base: the trunk, or a release branch the task was
+ * claimed against (`task-base.ts`), so every "current source" question measures the branch
+ * the work will merge into.
+ */
+export async function fetchTrunk(root: string, target?: TrunkRef): Promise<{ sha: string; trunk: string; branch: string }> {
+  const trunk = target ?? await taskTrunk(root);
   await sessionGit(root, ["check-ref-format", `refs/heads/${trunk.branch}`]);
   const ref = `refs/morpheus/session-start/${randomUUID()}`;
   try {
@@ -123,7 +127,7 @@ export async function containsSource(root: string, sha: string): Promise<boolean
 export async function assertCurrentSource(root: string): Promise<string> {
   const fetched = await fetchTrunk(root);
   try { await sessionGit(root, ["merge-base", "--is-ancestor", fetched.sha, "HEAD"]); }
-  catch { throw new Error(`Checkout does not contain current ${fetched.trunk} (${fetched.sha}). Run morpheus context brief; integrate trunk into existing work explicitly, then re-read the records and refresh.`); }
+  catch { throw new Error(`Checkout does not contain current ${fetched.trunk} (${fetched.sha}). Run morpheus context brief; integrate ${fetched.trunk} (this task's base) into existing work explicitly, then re-read the records and refresh.`); }
   return fetched.sha;
 }
 

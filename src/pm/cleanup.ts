@@ -9,6 +9,7 @@ import { assertNoOtherTaskBindings, clearTaskBindings, temporaryTasks } from "..
 import { projectPolicy, sessionId } from "../session/policy.js";
 import { readLease } from "../session/store.js";
 import { resolveTrunk } from "../session/git.js";
+import { taskTrunk } from "../session/task-base.js";
 import { FETCH_PRUNE, findClaims } from "./claim.js";
 import { ROADMAP_ID, roadmapIdFromBranch } from "./id.js";
 import { parseArtifact } from "./parse.js";
@@ -119,7 +120,7 @@ export async function cleanupTask(cwd: string, productDir: string, id: string, d
   const trunk = await resolveTrunk(cwd, (await projectPolicy(cwd)).trunk);
   await git(cwd, [...FETCH_PRUNE]); // unlike reconciliation, failures here must never be swallowed
   if (trunk.remote !== "origin") await git(cwd, ["fetch", "--prune", "--no-tags", "--", trunk.remote]);
-  const fetched = await fetchTrunk(cwd);
+  const fetchedTrunk = await fetchTrunk(cwd, trunk);
   const worktrees = await listWorktrees(cwd);
   const markers = await temporaryTasks(identity.common);
   const locals = (await git(cwd, ["for-each-ref", "--format=%(refname:strip=2)", "refs/heads/"])).split("\n").filter(b => roadmapIdFromBranch(b) === id);
@@ -129,10 +130,14 @@ export async function cleanupTask(cwd: string, productDir: string, id: string, d
     throw new Error(`Ambiguous or missing task ${id}: ${branches.length} branches, ${targets.length} worktrees. Retain and resolve explicitly.`);
   }
   const target = targets[0]!;
+  // A task claimed against a base (`pm claim --base`) merges there, so its merge is proven
+  // against that branch; every other task against the trunk, as before.
+  const base = await taskTrunk(target.path);
+  const fetched = base.branch === trunk.branch ? fetchedTrunk : await fetchTrunk(cwd, base);
   await clean(target, identity.common);
   await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID, releaseStaleSessions);
   await assertNoOpenProcesses(target.path);
-  if (target.branch === fetched.branch) throw new Error(`Policy violation: secondary worktree on trunk ${fetched.branch}.`);
+  if (target.branch === trunk.branch || target.branch === fetched.branch) throw new Error(`Policy violation: secondary worktree on ${target.branch}.`);
   await assertItem(target.path, productRel, id, fetched.sha, target.detached);
   let pr: CleanupPr | undefined;
   let remote: string | null = null;

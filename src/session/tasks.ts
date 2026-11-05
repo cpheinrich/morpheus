@@ -7,6 +7,8 @@ import { checkoutIdentity, fetchTrunk, sessionGit as git, sessionKey } from "./s
 import { findClaims } from "../pm/claim.js";
 import { ROADMAP_ID, roadmapIdFromBranch } from "../pm/id.js";
 import { parseArtifact } from "../pm/parse.js";
+import type { TrunkRef } from "./git.js";
+import { preparedBase, projectTrunk } from "./task-base.js";
 
 interface TaskBinding { root: string; task: string; pending?: boolean }
 
@@ -47,8 +49,11 @@ async function destination(root: string, task: string): Promise<string> {
   return mkdtemp(join(parent, `${task.toLowerCase()}-`));
 }
 
-/** Prepare only; the destination must be read/certified before claim can push. */
-export async function prepareTask(root: string, productDir: string, id: string): Promise<string | null> {
+/**
+ * Prepare only; the destination must be read/certified before claim can push. `base` is a
+ * verified task base (`verifyTaskBase`); null prepares from the trunk, as before.
+ */
+export async function prepareTask(root: string, productDir: string, id: string, base: TrunkRef | null = null): Promise<string | null> {
   if (!ROADMAP_ID.test(id)) throw new Error(`Invalid roadmap ID: ${id}`);
   const checkout = await checkoutIdentity(root);
   const branch = await git(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
@@ -59,20 +64,34 @@ export async function prepareTask(root: string, productDir: string, id: string):
   if (item.data.status === "shipped" || item.data.status === "dropped") throw new Error(`${id} is ${item.data.status}; nothing to claim.`);
   const itemRel = relative(checkout.root, await realpath(item.path));
   if (itemRel.startsWith("..")) throw new Error("The roadmap must belong to this repository.");
-  const { sha, branch: trunkBranch } = await fetchTrunk(root);
-  await assertWorktreePolicy(root, trunkBranch);
-  // Reuse an explicitly prepared checkout only if it is exact trunk and
-  // has no unrelated tracked edits or commits to accidentally put in a claim.
+  const trunk = await projectTrunk(root);
+  const { sha } = await fetchTrunk(root, base ?? trunk);
+  await assertWorktreePolicy(root, trunk.branch);
+  // Reuse an explicitly prepared checkout only if it is exact trunk (or the
+  // requested base) and has no unrelated tracked edits or commits to
+  // accidentally put in a claim. A checkout prepared for another base is
+  // never reused: its receipt measured the other branch.
   const head = await git(root, ["rev-parse", "HEAD"]);
   const trackedChanges = await git(root, ["diff", "HEAD", "--name-only"]);
-  if (checkout.linked && branch === "HEAD" && head === sha && !trackedChanges) return null;
+  if (checkout.linked && branch === "HEAD" && head === sha && !trackedChanges) {
+    const prepared = await preparedBase(root);
+    if (prepared !== undefined && prepared !== (base?.branch ?? null)) {
+      throw new Error(`This checkout was prepared for base ${prepared ?? trunk.branch}, not ${base?.branch ?? trunk.branch}. Claim from the checkout you started in, or repeat the claim with --base ${prepared ?? trunk.branch}.`);
+    }
+    return null;
+  }
+  const tracked = await git(root, ["ls-files", "--", itemRel]);
+  // An item already on trunk but absent from the base would arrive in the base as a
+  // second copy of trunk's file and conflict when the base merges back.
+  if (base && tracked && !(await git(root, ["cat-file", "-e", `${sha}:${itemRel}`]).then(() => true, () => false))) {
+    throw new Error(`${id} is on ${trunk.branch} but not on ${base.branch}. File the fix as a new item with morpheus pm new and claim that with --base ${base.branch}. Nothing was prepared.`);
+  }
   const target = await destination(root, id);
   await git(root, ["worktree", "add", "--detach", "--", target, sha]);
-  await markTemporaryTask(target, id);
+  await markTemporaryTask(target, id, base?.branch);
   // Only move an uncommitted new item. Existing canonical items come from
   // fetched trunk, never from the old branch's edits or unrelated files.
   // Moving intake also avoids leaving trunk dirty forever after a new claim.
-  const tracked = await git(root, ["ls-files", "--", itemRel]);
   if (!tracked) {
     const currentItems = await parseArtifact(join(target, relative(checkout.root, await realpath(productDir))), "roadmap");
     if (currentItems.items.some(i => i.data.id === id)) throw new Error(`${id} now exists on trunk. Read ${target} before claiming it.`);
@@ -106,12 +125,12 @@ export async function resumeTask(root: string, id: string, sessionId?: string): 
 export interface TemporaryTask { root: string; task: string; gitDir: string }
 
 /** Only preparation writes this marker; a detached HEAD by itself is never consent. */
-async function markTemporaryTask(root: string, task: string): Promise<void> {
+async function markTemporaryTask(root: string, task: string, base?: string): Promise<void> {
   const identity = await checkoutIdentity(root);
   const dir = join(identity.common, "morpheus-temporary-worktrees");
   await mkdir(dir, { recursive: true });
   const gitDir = await realpath(resolve(root, await git(root, ["rev-parse", "--git-dir"])));
-  await writeFile(join(dir, `${sessionKey(identity.root)}.json`), JSON.stringify({ root: identity.root, task, gitDir }));
+  await writeFile(join(dir, `${sessionKey(identity.root)}.json`), JSON.stringify({ root: identity.root, task, gitDir, ...(base ? { base } : {}) }));
 }
 
 export async function temporaryTasks(common: string): Promise<TemporaryTask[]> {

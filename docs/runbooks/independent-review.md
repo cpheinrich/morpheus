@@ -17,7 +17,8 @@ and tests. When CI, visual evidence or PR metadata matters to review, move the i
 and open an unlabelled draft first; the reviewer should see that evidence and the final ticket
 state. Then
 run `morpheus review prepare --base origin/main`; this prints a review packet and does not
-launch a reviewer. The packet carries the contract, the repository path, the test commands derived
+launch a reviewer. A task claimed with `pm claim --base <branch>` omits `--base`: the packet and
+`review validate` then measure against `origin/<branch>`, the PR's target. The packet carries the contract, the repository path, the test commands derived
 from the project's manifests, the review range, and the ticket. An unclaimed change or one without
 declared acceptance is described as such and reviewed against the PR title and body; do not create
 an item to fill the line. The authoring agent must spawn one fresh reviewer subagent/session with

@@ -45,6 +45,13 @@ export declare function reviewNeeded(base: string, priorReviewPath?: string, jso
  * two apart, and must, because one is evidence and the other is a say-so.
  */
 export declare function reviewDelivery(beforeCommentId?: string, commentId?: string, bodyPath?: string, prBodyPath?: string): number;
+/**
+ * The ref a local review measures against. An explicit `--base` wins. Otherwise a task
+ * claimed against a base (`pm claim --base`) uses that branch, fetched first so its
+ * remote-tracking ref is current; every other task keeps the `origin/main` default. A PR
+ * into the base is checked by CI against `origin/<PR base>`, so the two agree.
+ */
+export declare function reviewBase(root: string, explicit?: string, fallback?: string): Promise<string>;
 export declare function prepareReview(productDir: string, root: string, base: string): Promise<number>;
 /**
  * `morpheus review validate` — run the review-record half of `check pr` before pushing.

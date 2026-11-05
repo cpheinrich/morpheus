@@ -55,6 +55,25 @@ An already isolated detached worktree can claim directly after reading and refre
 New worktrees are allocated under the operating system's temporary directory, outside `~/code`.
 Existing task worktrees remain usable at their original paths until they are safely removed.
 
+### Release-branch tasks: `--base`
+
+A fix that must reach a protected branch other than trunk — a release branch cut from trunk and
+merged back after delivery, such as Evo's `release/ios-<A12>` — is claimed with
+`morpheus pm claim <ID> --base <branch>`. Without `--base` nothing changes. With it:
+
+- The branch must be protected in the trunk remote's GitHub repository (`gh api …/branches/<b>`
+  reads `protected: true`) and must exist there. Unprotected, unknown, malformed or unreadable
+  answers refuse before anything is prepared; nothing falls back to trunk.
+- The task worktree is prepared at that branch's fetched head, and the repeated `pm claim` inside
+  it inherits the base. The claim writes `base: <branch>` into the item, pushes only the task
+  branch, and skips the ride-along board reconciliation (those status edits belong to trunk).
+- From then on `context refresh`, the gate, `context brief`'s lag, `pm resume` and `pm cleanup`
+  measure that branch, not trunk. When it advances, integrate **it**; never merge trunk into a
+  release task. `review prepare`/`validate` default `--base` to `origin/<branch>`, and CI checks
+  the PR against its base as always. Open the PR into the base branch.
+- File the fix as a **new** item (`pm new`) and claim it with `--base`. An item already on trunk
+  but absent from the base refuses: it would conflict when the base merges back.
+
 Use `morpheus pm resume <ID>` to continue an explicitly named existing task. It reuses the
 worktree holding its claimed branch, or checks out that branch in a worktree when needed.
 Preserve its commits and edits; fetch and integrate trunk explicitly when behind. A resumed session

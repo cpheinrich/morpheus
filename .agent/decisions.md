@@ -1,5 +1,21 @@
 # Decisions
 
+**A task may be based on a protected release branch, recorded in its item** — 2026-11-05.
+MO-26-11-05-04.28.10. Chris authorized Evo's branch-first group CD: a release branch R is cut from
+`main` when staging starts, fixes merge only into R, and R merges back after delivery. The PM path
+only prepared `main` and refused a release fix once unrelated work landed there, steering authors
+to merge `main` into a frozen release. `pm claim <ID> --base <branch>` adds an explicit task base;
+without it nothing changes. The branch must read `protected: true` through `gh` in the trunk
+remote's repository and exist there; anything unreadable refuses rather than reverting to `main`.
+The base is stored as `base:` in the claimed item, so it travels with the task branch to any
+machine (the preparation marker holds it before the claim). One lookup (`taskTrunk`) feeds every
+"current source" question: claim, refresh and the gate, startup lag, resume, cleanup and the
+default local review base. CI already checks a PR against `origin/<PR base>`. A base claim skips
+the ride-along board reconciliation, whose trunk status edits would conflict when R merges back,
+and an item already on `main` but absent from R refuses with the remedy (file a new item). Git
+branch config (local only, lost on another machine) and a second ledger were rejected. No
+dependency or generic module: native Git, the existing `gh` boundary, gray-matter and Zod.
+
 **Factory host tooling moves into the optional plugin; personal fleet config stays local** —
 2026-11-04. MO-26-11-04-21.51.56. Chris authorized moving the reusable `morpheus-factory`
 contents into the Factory plugin and sanitizing what is imported. They live in a nested

@@ -19,7 +19,8 @@ import {
   type EvidenceMode,
   type Requirement,
 } from "./certify.js";
-import { currentBranch, resolveTrunk, trunkSha, worktreeRoot, type TrunkRef } from "./git.js";
+import { currentBranch, trunkSha, worktreeRoot, type TrunkRef } from "./git.js";
+import { taskTrunk } from "./task-base.js";
 import { projectPolicy, sessionId } from "./policy.js";
 import { isAbsolute, relative } from "node:path";
 import { clearLease, readLease, writeLease } from "./store.js";
@@ -107,7 +108,7 @@ export async function refresh(root: string, now = new Date(), opts: RefreshOptio
   const policy = await projectPolicy(worktree);
   const records = await readRecords(worktree, required(policy));
   const inputs = records.map(({ id: record, fingerprint: print }) => ({ id: record, fingerprint: print }));
-  const trunk = await resolveTrunk(worktree, policy.trunk);
+  const trunk = await taskTrunk(worktree);
 
   // **Never skipped, whatever is declared.** The read-only commands may take
   // the declaration's word for it because they re-observe the *stored*
@@ -353,7 +354,7 @@ export async function check(
   // agent actually took — its `inputs` are the assertion, and comparing new
   // observations to them is the entire mechanism.
   const inputs = await readInputs(worktree, required(policy));
-  const trunk = await resolveTrunk(worktree, policy.trunk);
+  const trunk = await taskTrunk(worktree);
   const observation = offline
     ? ({ sha: null, reason: "unreachable" } as const)
     : await trunkSha(worktree, trunk);
