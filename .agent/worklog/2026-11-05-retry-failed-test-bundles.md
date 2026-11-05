@@ -84,6 +84,88 @@ unadjusted 2; new failures in the started bundle ignored 1.
 Fixtures use synthetic `App`/`AppTests`/`AppUITests` names; nothing from the private run
 artifacts is committed.
 
+## Independent review
+
+Fresh reviewer (normal risk) gave conditional clearance at 58afc837 with one substantive and two minor findings. F1 (substantive): the slash-only placeholder check treated a real top-level Swift Testing test such as topLevel() as a bundle that could not start, so a flaky test there never recovered; the reviewer set the condition that a test is an identifier containing '/' or ending in ')'. F2 (minor): the graft subtracted the old bundle's cases from passedTests only, double-counting skipped or expected-failure cases beside the placeholder. F3 (minor): the flaky warning claimed 'failed attempt 1' for a test whose first failure was the bundle retry. The author fixed all three in 88a121f9 with regressions and a mutation run in which every mutant, including each reverted fix, was killed. Because F2 and F3 lay outside the F1 condition's scope, the same reviewer took a focused follow-up at 88a121f9, re-ran the 22 focused tests, hand-checked the graft counts and the top-level retry and warning, and cleared all three with no new findings. No disagreement remains. Limitation: post-merge runtime verification on the consumer's staging simulator has not happened yet.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "49f7dd23ce7920083faa26f8bdd62537f1cccad6",
+  "reviewed": "58afc837f13836dc7f71d9008fb6254d539da6d9",
+  "covered": "88a121f91f6817325fac39f9b4e96b2e2961862b",
+  "authorSession": "fbbc4cb5-323f-472a-8a46-de3969c34456",
+  "reviewerSession": "15de8042-a173-4e16-9ca3-086344bdbe2b",
+  "risk": "normal",
+  "elapsedMinutes": 2.5328166666666667,
+  "timing": {
+    "source": "runner",
+    "durationMs": 151969,
+    "evidence": "Factory run 4ceae2f8-4679-4549-84dd-d6274c713815, native Claude session 15de8042-a173-4e16-9ca3-086344bdbe2b: events.jsonl result event duration_ms=151969 (read by the root from the runner's native events, not the envelope or the reviewer's clock)."
+  },
+  "outcome": "complete",
+  "summary": "Fresh reviewer (normal risk) gave conditional clearance at 58afc837 with one substantive and two minor findings. F1 (substantive): the slash-only placeholder check treated a real top-level Swift Testing test such as topLevel() as a bundle that could not start, so a flaky test there never recovered; the reviewer set the condition that a test is an identifier containing '/' or ending in ')'. F2 (minor): the graft subtracted the old bundle's cases from passedTests only, double-counting skipped or expected-failure cases beside the placeholder. F3 (minor): the flaky warning claimed 'failed attempt 1' for a test whose first failure was the bundle retry. The author fixed all three in 88a121f9 with regressions and a mutation run in which every mutant, including each reverted fix, was killed. Because F2 and F3 lay outside the F1 condition's scope, the same reviewer took a focused follow-up at 88a121f9, re-ran the 22 focused tests, hand-checked the graft counts and the top-level retry and warning, and cleared all three with no new findings. No disagreement remains. Limitation: post-merge runtime verification on the consumer's staging simulator has not happened yet.",
+  "findings": [
+    {
+      "id": "RT-F1",
+      "severity": "substantive",
+      "description": "selectable() used '/' only, so a real top-level Swift Testing @Test identifier such as topLevel() was classified as a bundle that could not start: failure gave tests {} failed set() broken {AppTests}; a passing retry gave tests {} and broken empty, so 'ran' stayed empty and a legitimately flaky test never recovered, widening the retry to the bundle and misreporting it. 'No current consumer' is not a valid exception for a generic contract.",
+      "paths": [
+        "scripts/ios-test-retry.py"
+      ],
+      "disposition": "fixed",
+      "response": "A test identifier is now one that contains '/' or ends with ')'; the comment names top-level Swift Testing tests. The worklog's earlier 'Not mutated' note is corrected.",
+      "condition": {
+        "paths": [
+          "scripts/ios-test-retry.py",
+          "tests/ios-test-retry.test.ts",
+          ".agent/worklog/2026-11-05-retry-failed-test-bundles.md"
+        ],
+        "evidence": "Regression: topLevel() fails first then passes, is retried with exactly -only-testing:AppTests/topLevel(), appears flaky and in neither failedBundles nor recoveredBundles; show the regression fails when the old slash-only check is restored; the full focused retry test file and typecheck pass."
+      },
+      "conditionMet": "88a121f9: 'retries a failed top-level Swift Testing test by its own id, not as a bundle' asserts retry -only-testing:AppTests/topLevel() only, flaky [{AppTests/topLevel(), 2}], failedBundles [] and recoveredBundles []. With the slash-only check restored the suite fails 1 test (that regression). pnpm exec vitest run tests/ios-test-retry.test.ts: 22 passed; pnpm typecheck passed."
+    },
+    {
+      "id": "RT-F2",
+      "severity": "minor",
+      "description": "combine() subtracted all of the old bundle's cases from passedTests only; if the old bundle had Skipped or Expected Failure cases beside the placeholder, skippedTests/expectedFailures double-counted and passed came up short (old 1 skipped + placeholder, retry 1 skipped + 3 passed reported passed 2 skipped 2 instead of 3/1).",
+      "paths": [
+        "scripts/ios-test-retry.py",
+        "tests/ios-test-retry.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "A tally() helper counts a node's cases by summary category; the graft adds new minus old per category. A regression with one skipped and one expected failure beside the placeholder asserts total 5, passed 3, failed 0, skipped 1, expected 1 in the summary and per-device counts; reverting to the old subtraction fails it."
+    },
+    {
+      "id": "RT-F3",
+      "severity": "minor",
+      "description": "The flaky warning said a test 'failed attempt 1' even when it first ran (and failed) on a bundle retry at attempt 2 and passed on attempt 3.",
+      "paths": [
+        "scripts/ios-test-retry.py",
+        "tests/ios-test-retry.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "The warning now reads 'failed, then passed on a clean retry (attempt N of M)', true in both cases, with no new counter. The graft test asserts the late-first-failure warning and that 'failed attempt 1' is absent; restoring the old wording fails 2 tests."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "15de8042-a173-4e16-9ca3-086344bdbe2b",
+      "commit": "88a121f91f6817325fac39f9b4e96b2e2961862b",
+      "scopeReason": "Follow-up after conditional clearance: resolve F1 and assess F2/F3 summary-accounting and diagnostic corrections outside the original F1 condition.",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.7104666666666667,
+      "timing": {
+        "source": "runner",
+        "durationMs": 42628,
+        "evidence": "Factory run 4af33805-caa9-4d80-92e0-97be52c4d914, resumed native Claude session 15de8042-a173-4e16-9ca3-086344bdbe2b: events.jsonl result event duration_ms=42628 (read by the root from the runner's native events, not the reviewer's clock)."
+      },
+      "summary": "Same reviewer confirmed F1 (substantive) and F2/F3 (minor) resolved at 88a121f9 with no new findings: 22 focused tests pass, graft counts hand-checked (4 old cases to 5 combined: passed 3, skipped 1, expected 1, failed 0), and topLevel() retried individually with an accurate warning."
+    }
+  ]
+}
+```
+
 ## Appendix: commands
 
 ```sh
