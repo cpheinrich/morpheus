@@ -14,9 +14,14 @@ never submit a local task to a different machine by guessing its project path.
    work locally prohibits it. Otherwise keep quick interactive work here and delegate a bounded
    chunk when a worker materially helps.
 2. Call `factory_inspect` before `factory_delegate`. Root identity comes from this Codex task's
-   environment and is never supplied by the model. The first successful primary delegation pins
-   provider and gateway for this root session. Later quota or ordering changes may refuse work but
-   never silently move it. A conflicting provider preference requires a new root session.
+   environment and is never supplied by the model. Delegation from a Codex task requires verified
+   Full access, for one repository or many; approval `never` or `on-request` sets the worker's
+   permissions and anything else is refused. An unloaded task needs an active latest turn recorded
+   with full access: if refused, ask the user to choose Full access and send a message.
+   Routing: an eligible gateway, else the other provider's native login; never this task's own
+   native login. The first successful primary delegation pins that route for this root session.
+   Later quota or ordering changes may refuse work but never silently move it. A conflicting
+   provider preference requires a new root session.
 3. Hand off the user's task, current working directory, completed work, exact next step,
    acceptance checks, and relevant approvals/constraints. Do not send credentials, hidden
    system/developer instructions, unrelated chats, or an entire memory store. Refer Claude
@@ -27,7 +32,8 @@ never submit a local task to a different machine by guessing its project path.
    target resolves to a task-owned checkout: an unowned linked worktree (such as one you
    claimed) is adopted, any original checkout, yours included, becomes an isolated worktree at
    its committed HEAD, and another task's checkout or a directory outside Git is refused. A
-   conversation from before workspaces bound to an original is refused: start a new session. `factory_inspect` reports the map as
+   later delegation without targets reuses the map. A conversation from before workspaces bound
+   to an original is refused: start a new root session. `factory_inspect` reports the map as
    `workspace`; tell the worker which checkout holds which part of the task.
    Do not ask it to redo mutations already completed. Default background=false; true is
    only for explicit user authorization to continue after disconnection.
@@ -46,8 +52,10 @@ never submit a local task to a different machine by guessing its project path.
    repository review, spending, or sending rule.
 5. Call `factory_wait` (up to 25 seconds) until completion or a question. It renews the owner
    lease. Do not edit files in the worker's checkout while it is active. To take over, call
-   `factory_stop` and wait until terminal. A `fresh:true` run gets a separate conversation and
-   its own checkouts, never shares one the primary maps, and never replaces the primary.
+   `factory_stop` and wait until terminal. A `fresh:true` run (only after a primary launch) gets
+   a separate conversation and map on the pinned route and never replaces the primary; a target
+   the primary maps becomes a separate worktree. Conversations of one root task share its
+   ownership, so this is not full isolation; active writers are still serialized.
 6. For an AskUserQuestion clarification with an obvious, low-risk reversible default,
    `factory_answer` may use `source: root` with the selected answers and a concrete reason.
    Assess the question's substance, not just its tool name. Never use this to grant new
@@ -79,6 +87,8 @@ sandbox no wider than this task's. It cannot ask mid-run: its question arrives a
 and resumes through `factory_delegate` as described above. The legacy `claude_*` tools remain only
 for compatibility; new coordination uses the provider-neutral `factory_*` contract.
 
-For installation, enable/disable, supported versions, host setup, cleanup, memory selection,
-and failure recovery, read the plugin's `README.md`. Keep this integration outside project
-scaffolding: another Morpheus contributor must never acquire it merely by cloning a repo.
+The canonical reference is the plugin's [`README.md`](../../README.md) (installed at
+`~/plugins/factory/README.md`; `plugins/factory/README.md` in Morpheus): routing, permissions,
+the multi-repository worked example, installation and updates, gateways, cleanup, memory
+selection and failure recovery. Keep this integration outside project scaffolding: another
+Morpheus contributor must never acquire it merely by cloning a repo.
