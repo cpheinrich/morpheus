@@ -24,6 +24,10 @@ import { projectPolicy } from "./policy.js";
  *
  * Every lookup that cannot be answered throws. A base that was declared and cannot be read
  * must never quietly become the trunk.
+ *
+ * Protection is verified once, when the base is claimed (`verifyTaskBase`). A later `base:`
+ * is read as committed and not re-asked of GitHub on every refresh: editing it is a visible
+ * change on the task branch, and CI checks the pull request against its actual base branch.
  */
 const exec = promisify(execFile);
 const git = async (root, args) => (await exec("git", args, { cwd: root, timeout: 30_000, env: gitSubprocessEnv() })).stdout.trim();

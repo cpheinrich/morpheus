@@ -130,11 +130,12 @@ export async function cleanupTask(cwd: string, productDir: string, id: string, d
     throw new Error(`Ambiguous or missing task ${id}: ${branches.length} branches, ${targets.length} worktrees. Retain and resolve explicitly.`);
   }
   const target = targets[0]!;
+  await clean(target, identity.common);
   // A task claimed against a base (`pm claim --base`) merges there, so its merge is proven
-  // against that branch; every other task against the trunk, as before.
+  // against that branch; every other task against the trunk, as before. Read only after
+  // `clean` has proven the checkout exists, so a stale registration keeps its own remedy.
   const base = await taskTrunk(target.path);
   const fetched = base.branch === trunk.branch ? fetchedTrunk : await fetchTrunk(cwd, base);
-  await clean(target, identity.common);
   await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID, releaseStaleSessions);
   await assertNoOpenProcesses(target.path);
   if (target.branch === trunk.branch || target.branch === fetched.branch) throw new Error(`Policy violation: secondary worktree on ${target.branch}.`);
