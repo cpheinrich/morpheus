@@ -97,3 +97,30 @@ The `delegate` arguments in the example are each accepted by `z.object(factorySp
 The full root suite was not run. No shared core changed, and the diff is documentation and
 records only. The plugin tests were run because the README and skills describe that code; no test
 reads this prose.
+
+## Independent review
+
+Fresh independent review of PR612 at 49d3300b94471fa6ffe7faf18ee323ee1d6d8f9c (base e29014694545f1d9e6d8d9970b8dbe801df1cff6): CLEARED, risk small/low, no findings. The docs-only README, both skills and architecture §18.0 match current source on routing (gateway, else the other provider's native login; own-provider request without an eligible gateway is refused; pinned only after a successful launch), coordinator-dependent permissions and fresh-conversation ownership. The worked example matches the real hash lengths, slot names, session keys, record and workspaces.json shapes, and claim-after-launch ordering. Local links and anchors resolve, and no personal paths appear. No edits, no GitHub writes, no tests rerun. Timing is not measured here; the author measures it.
+
+The author made no changes in response, because there were no findings. This was the initial review only, with no follow-up or finalization turn. The controller measured the reviewer's duration with clock readings around its invocation.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "e29014694545f1d9e6d8d9970b8dbe801df1cff6",
+  "reviewed": "49d3300b94471fa6ffe7faf18ee323ee1d6d8f9c",
+  "covered": "49d3300b94471fa6ffe7faf18ee323ee1d6d8f9c",
+  "authorSession": "88f10e21-afde-43d7-a25d-f8986229efe2",
+  "reviewerSession": "claude/23247cad-e15a-4b95-9338-f64174b30fca",
+  "risk": "small",
+  "elapsedMinutes": 1.3198333333333334,
+  "timing": {
+    "source": "clock",
+    "durationMs": 79190,
+    "evidence": "Controller clock readings around the reviewer invocation: start 2026-11-05T05:26:40.041Z, terminal 2026-11-05T05:27:59.231Z (Factory fresh run 1e490f06-1600-4741-b0ef-deeeba70e0b5, native reviewer session 23247cad-e15a-4b95-9338-f64174b30fca)."
+  },
+  "outcome": "cleared",
+  "summary": "Fresh independent review of PR612 at 49d3300b94471fa6ffe7faf18ee323ee1d6d8f9c (base e29014694545f1d9e6d8d9970b8dbe801df1cff6): CLEARED, risk small/low, no findings. The docs-only README, both skills and architecture §18.0 match current source on routing (gateway, else the other provider's native login; own-provider request without an eligible gateway is refused; pinned only after a successful launch), coordinator-dependent permissions and fresh-conversation ownership. The worked example matches the real hash lengths, slot names, session keys, record and workspaces.json shapes, and claim-after-launch ordering. Local links and anchors resolve, and no personal paths appear. No edits, no GitHub writes, no tests rerun. Timing is not measured here; the author measures it.",
+  "findings": []
+}
+```
