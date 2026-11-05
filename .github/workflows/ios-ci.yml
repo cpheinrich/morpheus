@@ -102,7 +102,9 @@ on:
           freshly erased simulator with a new xcodebuild (scripts/ios-test-retry.py). A
           test that then passes is flaky: it warns, appears in the job summary and the
           flaky-tests output, and does not fail the job. A test that fails every attempt
-          fails it. Tests.xcresult is the first attempt; test-attempts.json records every
+          fails it. A bundle whose runner could not start reruns the caller's own selection
+          inside it (with skip-testing), never wider, and must produce results to count.
+          Tests.xcresult is the first attempt; test-attempts.json records every
           attempt. When retries recovered every failure, tests.json and summary.json show
           each recovered test as passed with its attempts as Repetition children, the shape
           Xcode's in-process retry gave them, so existing result validators keep working.

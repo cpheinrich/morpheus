@@ -3731,8 +3731,18 @@ test that passes on a retry is flaky: a warning annotation, a job-summary line a
 `flaky-tests` workflow output (a JSON array) report it, and the job does not fail. A test that
 fails every attempt fails the job. Only a test seen passing counts: one missing from a retry's
 results stays failing, and a nonzero exit that no named test failure explains (a crashed or
-unbootstrapped bundle, or an exit contradicting all-passing results) is never retried away. With
-no job-owned simulator to erase there is one attempt. Xcode's in-process
+unbootstrapped bundle, or an exit contradicting all-passing results) is never retried away. A
+bundle whose test runner or host app could not start has no results, only Xcode's placeholder
+`Test Case` (a sentence such as "App encountered an error" under `System Failures`, not a
+`Class/method()` identifier); retrying `-only-testing` by that name runs nothing and exits 0. Such
+a bundle is retried with the caller's own `only-testing` entries inside it, or the whole bundle
+when the caller selected all of it, never wider; a bundle the caller selected nothing in fails
+rather than being retried unbounded. Every retry carries the caller's `skip-testing`. The bundle
+counts as running again only when the retry has results for its tests, which then stand in for
+it in `tests.json` and `summary.json`; failures among them are retried like any test. A recovered
+bundle warns, and one that ran none of its tests in any attempt fails the job by name.
+`test-attempts.json` lists them under `recoveredBundles` and `failedBundles`, never as test ids,
+so `flaky-tests` stays test ids only. With no job-owned simulator to erase there is one attempt. Xcode's in-process
 `-retry-tests-on-failure` is gone: it kept the simulator and the app's data, so Evo's
 leftover-state UI failures failed all three iterations, and relaunching per repetition re-ran
 whole UI bundles (2026-10-05). `Tests.xcresult` stays the first attempt's bundle and each retry
