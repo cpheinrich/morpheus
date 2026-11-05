@@ -93,7 +93,7 @@ goal, active decisions, risks and asks visible before its archive.
 
 For HQ, make current direction a verb-led outcome of at most ten words. Keep the executive brief to
 75 words or five one-sentence bullets. When a human-facing legacy page is bloated, target a 40–60%
-prose reduction while preserving decisions, owners, dates, thresholds, evidence, caveats and
+prose reduction while preserving the decision or action, owner, deadline, thresholds, material evidence, caveats and
 compliance constraints. Do not apply that target to legal/compliance documents or agent-centered
 records such as roadmap tickets, worklogs, inboxes, agent logs and raw meeting/source records.
 
@@ -350,8 +350,8 @@ it. Bound related navigation instead of listing every sibling.
 
 Current direction is a verb-led outcome of at most ten words, with implementation detail in the
 linked record. Keep an executive brief to 75 words or five one-sentence bullets. For a verbose
-human-facing legacy page, target a 40–60% prose reduction while preserving decisions, owners,
-dates, thresholds, material evidence, caveats and compliance constraints. Shorten repetition and
+human-facing legacy page, target a 40–60% prose reduction while preserving the decision or action,
+owner, deadline, thresholds, material evidence, caveats and compliance constraints. Shorten repetition and
 setup before evidence. Move methods, provenance, history and exhaustive examples to appendices.
 
 Do not compress legal/compliance documents or agent-centered records such as roadmap tickets,
