@@ -46,6 +46,68 @@ malformed, `gh`-failure, garbled-answer and deleted-remote bases refuse with no 
 or push. Mutations of the base lookup, the protection answer and the invalid-item-base check each
 fail tests (6, 1 and 1 failures).
 
+## Independent review
+
+A fresh Factory Claude session (`ee8eba16-2c34-40f0-8c86-08ff6815b6b9`, run
+`82640012-8103-46ff-adac-487eaa25977d`) reviewed `dce623ac` at high risk and cleared it. It raised
+two minor notes.
+
+- **F1, fixed in `208ffdd4`.** `pm cleanup` now checks for a stale registration before it
+  resolves the base. Reproduced before and after the fix on an `origin/master` project.
+- **F2, fixed with a doc note.** The base's protection is verified at claim only. Re-asking
+  GitHub on every refresh was declined, because it would put a provider call into every
+  governed command.
+
+The runner measured the turn at 250,918 ms.
+
+A fresh independent reviewer cleared PR 621 at high risk with no substantive findings. It read the full source diff, the new task-base module and its tests, and the related unchanged claim, cleanup, session and CI base wiring. It reran the focused tests (12 passed) and confirmed the committed dist matches a fresh compile. Two minor notes were raised and both are fixed within their own paths.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "bfea58912830e20f1256d7d5926dab350c75b9ff",
+  "reviewed": "dce623ac5c97953eedfd331a31eeb48549a81854",
+  "covered": "208ffdd487ba3a2e6c98997691c418fd8db2a793",
+  "authorSession": "625ea91d-824b-467d-91bc-7283ef9f9d28",
+  "reviewerSession": "ee8eba16-2c34-40f0-8c86-08ff6815b6b9",
+  "risk": "high",
+  "elapsedMinutes": 4.181966666666667,
+  "timing": {
+    "source": "runner",
+    "durationMs": 250918,
+    "evidence": "Factory run 82640012-8103-46ff-adac-487eaa25977d (fresh Claude session ee8eba16-2c34-40f0-8c86-08ff6815b6b9), created 2026-11-05T12:46:43.465Z; its events.jsonl result event reports duration_ms 250918, state completed, exit code 0."
+  },
+  "outcome": "complete",
+  "summary": "A fresh independent reviewer cleared PR 621 at high risk with no substantive findings. It read the full source diff, the new task-base module and its tests, and the related unchanged claim, cleanup, session and CI base wiring. It reran the focused tests (12 passed) and confirmed the committed dist matches a fresh compile. Two minor notes were raised and both are fixed within their own paths.",
+  "findings": [
+    {
+      "id": "F1-cleanup-stale-order",
+      "severity": "minor",
+      "description": "pm cleanup resolved the task base before its stale-registration check, so in a project whose trunk is not main a missing worktree directory failed with a raw fetch of origin/main instead of the Stale registration remedy.",
+      "paths": [
+        "src/pm/cleanup.ts",
+        "dist/pm/cleanup.js",
+        "dist/pm/cleanup.js.map"
+      ],
+      "disposition": "fixed",
+      "response": "Commit 208ffdd4 moves the base lookup after clean(target), so a missing directory reports Stale registration first. Reproduced ad hoc on an origin/master project: before, a raw fetch error for refs/heads/main; after, the stale-registration remedy. The task-base and worktree-cleanup tests pass (34). No test file was added, to stay within the finding's paths."
+    },
+    {
+      "id": "F2-base-protection-reverify",
+      "severity": "minor",
+      "description": "A base read from a claimed item is never re-verified as protected, so a hand-edited base: would be measured by the freshness gate without a protection check, although the docs say a base must be protected.",
+      "paths": [
+        "src/session/task-base.ts",
+        "dist/session/task-base.js",
+        "dist/session/task-base.js.map"
+      ],
+      "disposition": "fixed",
+      "response": "Took the reviewer's first option: the task-base module comment now states that protection is verified once at claim and not re-asked on every refresh. Re-verifying on each gate check would add a GitHub call to every governed command, a provider gate the requirements do not need. Editing base: is a visible change on the task branch, and CI checks the PR against its actual base."
+    }
+  ]
+}
+```
+
 ## Dead ends and limits
 
 - First draft considered per-branch Git config for the base: local to one machine, so a resume
