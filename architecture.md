@@ -3744,8 +3744,9 @@ result bundle's summary.
 The profile belongs to the macOS CI runner's host, never to the workflow or to Morpheus. Morpheus
 names no host and holds no fleet sizes: each operator records which hosts are parallel-capable, and
 their VM sizes, in private host configuration that writes the variable into the runner's
-environment. Runners of other kinds do not read it: a physical-device runner runs device tests
-serially on its one device, and Linux runners have no simulators.
+environment. Only macOS hosts whose jobs test on simulators should set it; the script honours it
+for any caller that opts in, so physical-device runners (one device, serial) and Linux runners (no
+simulators) leave it unset.
 Failed tests are retried in a clean simulator, never in the session that failed them.
 `test-iterations` is the total number of attempts (default 3; 0 or 1 runs once). Attempt 1 runs
 the caller's selection unchanged. When it fails, `scripts/ios-test-retry.py` erases the job-owned
