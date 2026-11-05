@@ -149,7 +149,7 @@ async function harness(tests: Test[], extra: Record<string, string> = {}) {
     await writeFile(join(dir, "bin", name!), body!);
     await chmod(join(dir, "bin", name!), 0o755);
   }
-  await writeFile(join(dir, "pre-test.sh"), 'printf \'{"preTest":"%s","results":"%s","logs":"%s","lane":"%s"}\\n\' "$MORPHEUS_IOS_DESTINATION" "$RESULTS" "$LOGS" "${MORPHEUS_IOS_LANE:-}" >> "$EVENTS"\n' +
+  await writeFile(join(dir, "pre-test.sh"), 'printf \'{"preTest":"%s","results":"%s","logs":"%s","lane":"%s","laneSelection":"%s","enumeration":"%s"}\\n\' "$MORPHEUS_IOS_DESTINATION" "$RESULTS" "$LOGS" "${MORPHEUS_IOS_LANE:-}" "${MORPHEUS_IOS_LANE_SELECTION:-}" "${MORPHEUS_IOS_ENUMERATION:-}" >> "$EVENTS"\n' +
     'if [ -n "${PRE_TEST_FAIL_ON:-}" ] && [[ "$RESULTS" == *"$PRE_TEST_FAIL_ON" ]]; then exit 7; fi\n');
   await writeFile(join(dir, "sim-state"), "clean");
   const env: Record<string, string> = {
@@ -301,8 +301,8 @@ describe("ios-test-retry.py", () => {
     expect(order).toEqual(["pre", "xcodebuild", "simctl shutdown", "simctl erase", "pre", "xcodebuild"]);
     const prepared = (await h.events()).filter((e) => "preTest" in e);
     expect(prepared).toEqual([
-      { preTest: `id=${device}`, results: join(h.dir, "Results"), logs: join(h.dir, "Logs"), lane: "" },
-      { preTest: `id=${device}`, results: join(h.dir, "Results/attempt-2"), logs: join(h.dir, "Logs/attempt-2"), lane: "" },
+      { preTest: `id=${device}`, results: join(h.dir, "Results"), logs: join(h.dir, "Logs"), lane: "", laneSelection: "", enumeration: "" },
+      { preTest: `id=${device}`, results: join(h.dir, "Results/attempt-2"), logs: join(h.dir, "Logs/attempt-2"), lane: "", laneSelection: "", enumeration: "" },
     ]);
   });
 
@@ -652,6 +652,11 @@ describe("simulator lanes the runner's host declares", () => {
     // Each lane ran the caller's preparation on its own simulator; lane 1 into RESULTS itself.
     const prepared = (await h.events()).filter((e) => "preTest" in e).map((e) => [e.preTest, e.results, e.lane]).sort();
     expect(prepared).toEqual([[`id=${device}`, join(h.dir, "Results"), "1"], [`id=${clone}`, join(h.dir, "Results/lane-2"), "2"]]);
+    // Each lane's preparation is told its own tests and given the one enumeration, not left to redo it.
+    for (const e of (await h.events()).filter((e) => "preTest" in e)) {
+      expect(e.laneSelection).toBe(join(h.dir, `Results/lane-${e.lane}/selection.txt`));
+      expect(e.enumeration).toBe(join(h.dir, "Results/lanes-enumeration.json"));
+    }
     const events = await h.events();
     expect(events.find((e) => "merge" in e)?.merge).toEqual([join(h.dir, "Results/lane-1/Tests.xcresult"), join(h.dir, "Results/lane-2/Tests.xcresult")]);
     const simctl = events.filter((e) => "simctl" in e).map((e) => (e.simctl as string[]).join(" "));
@@ -660,12 +665,73 @@ describe("simulator lanes the runner's host declares", () => {
 
     const record = JSON.parse(await h.read("Results/test-attempts.json"));
     expect(record).toMatchObject({ simulatorLanes: 2, result: "passed" });
+    expect(Object.keys(record.laneSetupSeconds).sort()).toEqual(["clone", "enumerate", "merge"]);
     expect(record.lanes.map((l: { lane: number; device: string; tests: number; exitCode: number }) => [l.lane, l.device, l.exitCode]))
       .toEqual([[1, device, 0], [2, clone, 0]]);
     expect(record.lanes[0].tests + record.lanes[1].tests).toBe(9);
     expect((await h.read("Results/lane-1/selection.txt")).trim().split("\n").sort()).toEqual([...a!].sort());
     expect(await h.read("Logs/tests.log")).toMatch(/ran \d+ tests[\s\S]*ran \d+ tests/);
     expect(stdout).toContain("::notice::The runner host declares 2 simulator lane(s); attempt 1 uses 2.");
+  });
+
+  const weighed = ["AppTests/HeavyTests/testSlow()", "AppTests/LightTests/testA()", "AppTests/LightTests/testB()",
+    "AppTests/LightTests/testC()", "AppTests/OtherTests/testD()", "AppTests/OtherTests/testE()"];
+  // The two lanes' selections, each sorted, in a fixed order: which lane got which does not matter.
+  const norm = (lanes: string[][]) => lanes.map((l) => [...l].sort()).sort((x, y) => x.join().localeCompare(y.join()));
+  const lanesBySelection = async (h: Awaited<ReturnType<typeof harness>>) => norm((await lanesOf(h)).map((l) => l.selected));
+
+  it("balances by test count without measured durations", async () => {
+    const h = await harness(weighed.map((id) => ({ id, behavior: "pass" as Behavior })), twoLanes);
+    expect((await h.run()).code).toBe(0);
+    // Three light tests on one lane; the two others and the slow one, three tests, on the other.
+    expect(await lanesBySelection(h)).toEqual(norm([weighed.slice(1, 4), [weighed[0]!, ...weighed.slice(4)]]));
+  });
+
+  it("balances by the caller's measured durations, a group without one weighing the mean per test", async () => {
+    const h = await harness(weighed.map((id) => ({ id, behavior: "pass" as Behavior })), {
+      ...twoLanes, LANE_DURATIONS: "durations.json",
+    });
+    // HeavyTests takes 100 s; LightTests 3 s over 3 tests. OtherTests is unmeasured, so it weighs
+    // the mean of 100 and 1 seconds per test: 50.5 each, 101 together. It fills one lane alone;
+    // HeavyTests and LightTests (103) the other, where counting tests put LightTests alone.
+    await writeFile(join(h.dir, "durations.json"), JSON.stringify({ groups: {
+      "AppTests/HeavyTests": { seconds: 100, tests: 1 }, "AppTests/LightTests": { seconds: 3, tests: 3 },
+    } }));
+    expect((await h.run()).code).toBe(0);
+    expect(await lanesBySelection(h)).toEqual(norm([weighed.slice(4), weighed.slice(0, 4)]));
+  });
+
+  it("weighs only the selected tests of a measured group, so a narrow filter is not treated as the whole class", async () => {
+    const h = await harness(weighed.map((id) => ({ id, behavior: "pass" as Behavior })), {
+      ...twoLanes, LANE_DURATIONS: "durations.json",
+      ONLY_TESTING: "AppTests/HeavyTests\nAppTests/LightTests/testA()\nAppTests/OtherTests",
+    });
+    // LightTests measures 300 s over 3 tests; its one selected test weighs 100, not 300. OtherTests
+    // weighs 120 alone on one lane; LightTests's test and the 50 s HeavyTests (150) share the other.
+    // Weighing LightTests as the whole class (300) would put it alone instead.
+    await writeFile(join(h.dir, "durations.json"), JSON.stringify({ groups: {
+      "AppTests/HeavyTests": { seconds: 50, tests: 1 }, "AppTests/LightTests": { seconds: 300, tests: 3 },
+      "AppTests/OtherTests": { seconds: 120, tests: 2 },
+    } }));
+    expect((await h.run()).code).toBe(0);
+    expect(await lanesBySelection(h)).toEqual(norm([[weighed[0]!, weighed[1]!], weighed.slice(4)]));
+  });
+
+  it.each([
+    ["no groups", { seconds: 1 }],
+    ["negative seconds", { groups: { "AppTests/HeavyTests": { seconds: -1, tests: 1 } } }],
+    ["zero tests", { groups: { "AppTests/HeavyTests": { seconds: 1, tests: 0 } } }],
+    ["a string", { groups: { "AppTests/HeavyTests": { seconds: "1", tests: 1 } } }],
+  ])("refuses measured durations with %s before cloning or running anything", async (_name, content) => {
+    const h = await harness(weighed.map((id) => ({ id, behavior: "pass" as Behavior })), {
+      ...twoLanes, LANE_DURATIONS: "durations.json",
+    });
+    await writeFile(join(h.dir, "durations.json"), JSON.stringify(content));
+    const { code, stdout } = await h.run();
+    expect(code).toBe(1);
+    expect(stdout).toContain("::error::lane-durations durations.json must map each group");
+    const events = await h.events().catch(() => []);
+    expect(events.some((e) => ("simctl" in e && (e.simctl as string[])[0] === "clone") || "argv" in e || "preTest" in e)).toBe(false);
   });
 
   it("never widens a caller's filter to a whole class", async () => {
@@ -809,22 +875,29 @@ describe("ios-ci.yml simulator-lanes-from-host input", () => {
   };
   const workflow = async () => load(await readFile(".github/workflows/ios-ci.yml", "utf8")) as Wf;
 
-  it("is an opt-in boolean the test step forwards", async () => {
+  it("is an opt-in boolean the test step forwards, with optional lane durations", async () => {
     const wf = await workflow();
     expect(wf.on.workflow_call.inputs["simulator-lanes-from-host"]).toMatchObject({ type: "boolean", default: false });
+    expect(wf.on.workflow_call.inputs["lane-durations"]).toMatchObject({ type: "string", default: "" });
     const step = wf.jobs.test.steps.find((s) => s.id === "tests")!;
     expect(step.env?.SIMULATOR_LANES_FROM_HOST).toBe("${{ inputs.simulator-lanes-from-host }}");
+    expect(step.env?.LANE_DURATIONS).toBe("${{ inputs.lane-durations }}");
   });
 
   it.each([
     ["refuses it beside parallel-testing", "true", "YES", 1, "simulator-lanes-from-host replaces parallel-testing"],
     ["accepts it alone", "true", "NO", 1, "Package.resolved is required"],
     ["accepts parallel-testing alone", "false", "YES", 1, "Package.resolved is required"],
-  ])("validation %s", async (_name, fromHost, parallel, code, message) => {
+    ["refuses absolute lane durations", "true", "NO", 1, "lane-durations must be repository-relative", "/etc/durations.json"],
+    ["refuses lane durations outside the repository", "true", "NO", 1, "lane-durations must be repository-relative", "a/../../d.json"],
+    ["refuses missing lane durations", "true", "NO", 1, "lane-durations was not found: missing.json", "missing.json"],
+    ["accepts present lane durations", "true", "NO", 1, "Package.resolved is required", "durations.json"],
+  ])("validation %s", async (_name, fromHost, parallel, code, message, durations = "") => {
     const step = (await workflow()).jobs.test.steps.find((s) => s.name === "Validate locked project inputs")!;
     const dir = await mkdtemp(join(tmpdir(), "ios-lanes-validate-"));
     dirs.push(dir);
     await mkdir(join(dir, "App.xcodeproj"));
+    await writeFile(join(dir, "durations.json"), "{}");
     let result: { code: number; stderr: string };
     try {
       await exec("/bin/bash", ["-e", "-c", step.run!], {
@@ -832,7 +905,7 @@ describe("ios-ci.yml simulator-lanes-from-host input", () => {
         env: {
           ...(process.env as Record<string, string>), PROJECT: "App.xcodeproj", SCHEME: "App", PARALLEL_TESTING: parallel,
           MAXIMUM_PARALLEL_TESTING_WORKERS: "0", SIMULATOR_LANES_FROM_HOST: fromHost, TEST_ITERATIONS: "1",
-          GITHUB_WORKSPACE: dir,
+          GITHUB_WORKSPACE: dir, LANE_DURATIONS: durations,
         },
       });
       result = { code: 0, stderr: "" };

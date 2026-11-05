@@ -36,6 +36,8 @@ import os
 import re
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 PASSING = {'Passed', 'Expected Failure'}
@@ -112,12 +114,15 @@ def retry_selection(selected):
             + [f'-skip-testing:{test}' for test in lines('SKIP_TESTING')])
 
 
-def run(attempt, selection, results, logs, bundle=None, destination=None, lane=None, echo=True):
+def run(attempt, selection, results, logs, bundle=None, destination=None, lane=None, echo=True, shared=None):
     """One attempt: the caller's pre-test script, then one xcodebuild, logged to a file and stdout.
 
     Returns the exit status and whether xcodebuild ran: a failed pre-test script reports itself.
     A lane runs on its own simulator and passes MORPHEUS_IOS_LANE to the pre-test script, so a
-    caller can do once-per-run work (a quarantine run, a scope check) on lane 1 only.
+    caller can do once-per-run work (a quarantine run, a scope check) on lane 1 only. `shared` adds
+    what the lanes hand the pre-test script: MORPHEUS_IOS_LANE_SELECTION, the file naming this
+    lane's tests, so it prepares only what they need, and MORPHEUS_IOS_ENUMERATION, Xcode's
+    enumeration of the caller's whole selection, so it need not enumerate again.
     """
     results.mkdir(parents=True, exist_ok=True)
     logs.mkdir(parents=True, exist_ok=True)
@@ -127,6 +132,7 @@ def run(attempt, selection, results, logs, bundle=None, destination=None, lane=N
         env['MORPHEUS_IOS_DESTINATION'] = destination
     if lane:
         env['MORPHEUS_IOS_LANE'] = str(lane)
+    env.update(shared or {})
     if os.environ.get('PRE_TEST_SCRIPT'):
         # A lane's pre-test output goes to its own log, not interleaved with the other lane's.
         with open(logs / 'pre-test.log', 'wb') if not echo else open(os.devnull, 'wb') as quiet:
@@ -172,27 +178,51 @@ def group_of(test):
     return '/'.join(parts[:2]) if len(parts) >= 3 else test
 
 
-def partition(tests, lanes=2):
+def durations():
+    """The caller's measured seconds per whole group (lane-durations), or {} to balance by count.
+
+    The file is {"groups": {"Target/Class": {"seconds": s, "tests": n}}}: a group's seconds over
+    its tests, from an earlier run. Anything malformed is a ValueError, so no lane runs on a guess.
+    """
+    path = os.environ.get('LANE_DURATIONS')
+    if not path:
+        return {}
+    groups = json.loads((Path(os.environ['GITHUB_WORKSPACE']) / path).read_text()).get('groups')
+    def number(value):
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
+    if not isinstance(groups, dict) or not all(
+            isinstance(entry, dict) and number(entry.get('seconds')) and number(entry.get('tests'))
+            and entry['tests'] > 0 for entry in groups.values()):
+        raise ValueError(f'lane-durations {path} must map each group to non-negative seconds over its tests')
+    return {group: entry['seconds'] / entry['tests'] for group, entry in groups.items()}
+
+
+def partition(tests, lanes=2, per_test=None):
     """Whole groups into `lanes` disjoint selections that together are exactly `tests`.
 
-    Each target is balanced on its own, largest group first onto the lane with fewer of that
-    target's tests, so every lane gets a share of every target (unit and UI alike). Selections name
-    tests, never groups, so a caller's narrower filter is never widened to a whole class.
+    Each target is balanced on its own, heaviest group first onto the lane with the least of that
+    target's load, so every lane gets a share of every target (unit and UI alike). A group weighs
+    its selected tests times its measured seconds per test when the caller gave them (per_test),
+    a group without a measure the mean of the measured ones, and with no measures at all one per
+    test. Selections name tests, never groups, so a caller's narrower filter is never widened.
     """
+    per_test = per_test or {}
     groups = {}
     for test in tests:
         groups.setdefault(group_of(test), []).append(test)
+    default = sum(per_test.values()) / len(per_test) if per_test else 1
+    weight = {group: len(members) * per_test.get(group, default) for group, members in groups.items()}
     selections = [[] for _ in range(lanes)]
     total = [0] * lanes
     for target in sorted({g.split('/')[0] for g in groups}):
         load = [0] * lanes
-        for group in sorted((g for g in groups if g.split('/')[0] == target), key=lambda g: (-len(groups[g]), g)):
-            # Fewest of this target's tests first; on a tie, fewest tests overall, so a target of
+        for group in sorted((g for g in groups if g.split('/')[0] == target), key=lambda g: (-weight[g], g)):
+            # Least of this target's load first; on a tie, least load overall, so a target of
             # one class does not land beside another target's one class on the same lane.
             lane = min(range(lanes), key=lambda n: (load[n], total[n], n))
             selections[lane] += groups[group]
-            load[lane] += len(groups[group])
-            total[lane] += len(groups[group])
+            load[lane] += weight[group]
+            total[lane] += weight[group]
     flat = [t for selection in selections for t in selection]
     if sorted(flat) != sorted(tests) or len(set(flat)) != len(flat):
         raise RuntimeError('Lane selections are not an exact partition of the enumerated tests.')
@@ -217,7 +247,7 @@ def second_simulator(device):
     return udid
 
 
-def run_lanes(selections, devices, results, logs):
+def run_lanes(selections, devices, results, logs, enumeration=None):
     """Attempt 1 on two simulators at once, each prepared by the pre-test script and serial inside.
 
     Each lane writes lane-<n>/Tests.xcresult and lane-<n>/tests.log; the bundles are then merged
@@ -225,8 +255,6 @@ def run_lanes(selections, devices, results, logs):
     after attempt 1 reads one run. Lane 1's pre-test writes to RESULTS itself, as a one-lane run's
     does; lane 2's to lane-2/.
     """
-    import threading
-    import time
     # A lane with no -only-testing filter would run the whole scheme: never start one.
     if not selections or any(not selection for selection in selections):
         raise RuntimeError('A simulator lane has no tests selected; refusing to run it unfiltered.')
@@ -239,7 +267,9 @@ def run_lanes(selections, devices, results, logs):
             status, tested = run(1, first_selection(1)[:2] + [f'-only-testing:{t}' for t in selections[n - 1]]
                              + [f'-skip-testing:{t}' for t in lines('SKIP_TESTING')],
                              here, logs / f'lane-{n}', bundle=results / f'lane-{n}' / 'Tests.xcresult',
-                             destination=f'id={devices[n - 1]}', lane=n, echo=False)
+                             destination=f'id={devices[n - 1]}', lane=n, echo=False,
+                             shared={'MORPHEUS_IOS_LANE_SELECTION': str(results / f'lane-{n}' / 'selection.txt'),
+                                     **({'MORPHEUS_IOS_ENUMERATION': str(enumeration)} if enumeration else {})})
         except OSError as error:
             print(f'::error::Lane {n} could not run: {error}', flush=True)
             status, tested = 1, False
@@ -268,6 +298,7 @@ def run_lanes(selections, devices, results, logs):
     # lane killed by SIGTERM (-15) hide behind a sibling's 0.
     status = next((o['exitCode'] for o in outcome if o['exitCode'] != 0), 0)
     tested = all(o['ran'] for o in outcome)
+    merging = time.monotonic()
     if len(bundles) == len(selections):
         merged = subprocess.run(['xcrun', 'xcresulttool', 'merge', *bundles, '--output-path',
                                  str(results / 'Tests.xcresult')], capture_output=True, text=True)
@@ -277,7 +308,7 @@ def run_lanes(selections, devices, results, logs):
     elif tested:
         print('::error::A lane left no result bundle.', flush=True)
         status = status or 1
-    return status, tested, outcome
+    return status, tested, outcome, round(time.monotonic() - merging, 1)
 
 
 def selectable(identifier):
@@ -442,8 +473,13 @@ def main():
             print('::error::Two lanes need the job-owned iOS simulator.', flush=True)
             return 1
         clone = None
+        # Everything the lanes cost outside the lanes themselves, so a comparison can see it.
+        setup = record['laneSetupSeconds'] = {}
         try:
-            selections = partition(enumerated(f'id={device.group(1)}', results / 'lanes-enumeration.json'))
+            started = time.monotonic()
+            enumeration = results / 'lanes-enumeration.json'
+            selections = partition(enumerated(f'id={device.group(1)}', enumeration), per_test=durations())
+            setup['enumerate'] = round(time.monotonic() - started, 1)
             # A selection of one class or suite fills one lane only: run that one, on the job's
             # own simulator, and never clone a device for nothing.
             selections = [selection for selection in selections if selection]
@@ -453,11 +489,14 @@ def main():
                       flush=True)
                 status, tested = run(1, first_selection(lanes), results, logs)
             else:
+                started = time.monotonic()
                 clone = second_simulator(device.group(1))
+                setup['clone'] = round(time.monotonic() - started, 1)
                 for n, selection in enumerate(selections, start=1):
                     (results / f'lane-{n}').mkdir(parents=True, exist_ok=True)
                     (results / f'lane-{n}' / 'selection.txt').write_text(''.join(f'{t}\n' for t in selection))
-                status, tested, record['lanes'] = run_lanes(selections, [device.group(1), clone], results, logs)
+                status, tested, record['lanes'], setup['merge'] = run_lanes(
+                    selections, [device.group(1), clone], results, logs, enumeration)
         except (RuntimeError, ValueError, OSError) as error:
             print(f'::error::{error}', flush=True)
             return 1
