@@ -67,6 +67,20 @@ describe('native selection and result evidence', () => {
       expect(JSON.parse(await readFile(join(f.env.RESULTS, 'execution.json'), 'utf8'))).toEqual({schemaVersion:1, sourceSha:'a'.repeat(40), executionId:'dispatch-1', runId:'123', runAttempt:'2'});
     } finally { await rm(f.dir,{recursive:true,force:true}); }
   });
+  it('records the test environment for baseline comparison, with unknown values null rather than guessed', async () => {
+    const f = await fixture();
+    try {
+      Object.assign(f.env, { ACTIONS_REF_INPUT: 'c'.repeat(40), ARTIFACT_STAGE_REF_INPUT: '', DEVELOPER_DIR: join(f.dir, 'missing-xcode'), MORPHEUS_IOS_DESTINATION: 'id=not-listed' });
+      await f.run('Export complete test evidence');
+      const env = JSON.parse(await readFile(join(f.env.RESULTS, 'environment.json'), 'utf8'));
+      expect(env.schemaVersion).toBe(1);
+      expect(env.morpheus).toEqual({ actionsRef: 'c'.repeat(40), artifactStageRef: null });
+      // The fake xcrun lists no device and the Xcode path has no version file: both stay unknown.
+      expect(env.simulator).toBeNull();
+      expect(env.xcode).toBeNull();
+      expect(Object.keys(env).sort()).toEqual(['hardwareModel', 'macOS', 'morpheus', 'runner', 'schemaVersion', 'simulator', 'xcode']);
+    } finally { await rm(f.dir,{recursive:true,force:true}); }
+  });
   it('passes selected identifiers literally as separate arguments and preserves full defaults', async () => {
     const f = await fixture();
     try {

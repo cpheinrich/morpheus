@@ -1,5 +1,31 @@
 # Decisions
 
+**Release preflight verifies an opt-in protected release-branch source beside the control commit** — 2026-11-05.
+MO-26-11-05-03.31.45. Chris directed Evo releases to cut a release branch from `main` when staging
+starts, merge only fixes into it, and merge it back once CD completes. A repair candidate on that
+branch is not contained in `main`, so neither the default (current head) nor `allow-pinned-source`
+(contained in `main`) can verify it.
+- **Inputs.** `release-preflight.yml` gains three empty-by-default inputs: `release-branch`,
+  `release-base` and `source-sha`. With none of them nothing changes for any caller, re-run or
+  dispatch.
+- **Checks.** The control commit (`github.sha`) is verified exactly as before, so an unreviewed
+  workflow revision cannot run. A separate step verifies the source:
+  - the branch is protected and named `release/ios-<base[:12]>`;
+  - the base is contained in `main`;
+  - the source is on the branch and descends from the base;
+  - every commit between them is the squash merge of a merged PR into that branch.
+- **Refusals.** A merge-commit merge, a direct push or a merge from `main` refuses, and so does a
+  half-specified input set. The verified source returns as `source-sha`.
+- **Environment record.** `ios-ci.yml` also writes `Results/environment.json`, so a caller can tell
+  whether two runs' results are comparable. It records:
+  - the macOS version and build, the hardware model, Xcode's version and build (from its
+    `version.plist`, not by running xcodebuild), and the simulator runtime and device type;
+  - runner and image identifiers where exposed;
+  - `actions-ref` and `artifact-stage-ref`.
+
+  An unreadable value is null, which callers must treat as unknown.
+- **Packages.** Native `gh api`, Bash and Python standard library; no dependency.
+
 **Factory host tooling moves into the optional plugin; personal fleet config stays local** —
 2026-11-04. MO-26-11-04-21.51.56. Chris authorized moving the reusable `morpheus-factory`
 contents into the Factory plugin and sanitizing what is imported. They live in a nested

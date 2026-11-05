@@ -158,10 +158,15 @@ describe("release-preflight.yml", () => {
 
     expect(call).toBeDefined();
     expect(wf.on).toHaveProperty("workflow_dispatch");
-    // One opt-in and no caller-selected source: the source is always github.sha.
+    // The control commit is always github.sha. The only caller-named source is the opt-in
+    // release-branch source, whose inputs all default to empty (the default path is unchanged).
     expect(call?.inputs).toEqual({
       "allow-pinned-source": expect.objectContaining({ type: "boolean", default: false }),
+      "release-branch": expect.objectContaining({ type: "string", default: "" }),
+      "release-base": expect.objectContaining({ type: "string", default: "" }),
+      "source-sha": expect.objectContaining({ type: "string", default: "" }),
     });
+    expect(call?.outputs?.["source-sha"]?.value).toBe("${{ jobs.verify.outputs.source-sha }}");
     expect((wf.on as { workflow_dispatch?: unknown }).workflow_dispatch ?? null).toBeNull();
     expect(call?.secrets).toBeUndefined();
     expect(call?.outputs?.sha?.value).toBe("${{ jobs.verify.outputs.sha }}");
@@ -405,6 +410,95 @@ esac
       expect(run.ok).toBe(false);
       expect(run.stderr).toContain("not clean");
       expect(run.ghCalls).toEqual([]);
+    });
+  });
+
+  describe("verifies an opt-in release-branch source against a fake GitHub API", () => {
+    const base = "a".repeat(40);
+    const source = "b".repeat(40);
+    const tip = "c".repeat(40);
+    const main = "d".repeat(40);
+    const fix = "e".repeat(40);
+    type Api = {
+      protected?: string;
+      statuses?: Record<string, string>;
+      total?: string;
+      commits?: string[];
+      pulls?: Record<string, string>;
+      tip?: string;
+    };
+
+    async function runSource(env: Record<string, string>, api: Api = {}) {
+      const root = await mkdtemp(join(tmpdir(), "morpheus-release-branch-"));
+      const bin = join(root, "bin");
+      const output = join(root, "output");
+      try {
+        await mkdir(bin, { recursive: true });
+        const src = /^[0-9a-f]{40}$/.test(env.SOURCE_SHA ?? "") ? env.SOURCE_SHA : source;
+        const statuses = { [`${base}...${main}`]: "ahead", [`${src}...${tip}`]: "ahead", [`${base}...${src}`]: "ahead", ...api.statuses };
+        const lines: string[] = [];
+        lines.push(`*"/branches/release/ios-aaaaaaaaaaaa "*) printf '%s\\n' '${api.protected ?? "true"}' ;;`);
+        lines.push(`*"/git/ref/heads/main "*) printf '%s\\n' '${main}' ;;`);
+        lines.push(`*"/git/ref/heads/release/ios-aaaaaaaaaaaa "*) printf '%s\\n' '${api.tip ?? tip}' ;;`);
+        lines.push(`*"/compare/${base}...${src}?per_page=250 "*) printf '%s\\n' ${(api.commits ?? [fix]).map((c) => `'${c}'`).join(" ")} ;;`);
+        lines.push(`*"/compare/${base}...${src}?per_page=1 --jq .total_commits"*) printf '%s\\n' '${api.total ?? "1"}' ;;`);
+        for (const [pair, status] of Object.entries(statuses)) lines.push(`*"/compare/${pair}?per_page=1 --jq .status"*) printf '%s\\n' '${status}' ;;`);
+        for (const [commit, row] of Object.entries(api.pulls ?? { [fix]: `7\trelease/ios-aaaaaaaaaaaa\t${fix}` })) lines.push(`*"/commits/${commit}/pulls "*) printf '${row}\\n' ;;`);
+        await writeFile(join(bin, "gh"), `#!/usr/bin/env bash\ncase "$*" in\n${lines.join("\n")}\n  *) exit 2 ;;\nesac\n`, "utf8");
+        await chmod(join(bin, "gh"), 0o755);
+        const steps = ((await read("release-preflight.yml")) as ReleasePreflight).jobs?.verify?.steps ?? [];
+        const step = steps.find((s) => s.name === "Verify release-branch source");
+        expect(step?.if).toContain("inputs.release-branch != ''");
+        const result = await execFileAsync("bash", ["-c", String(step?.run)], {
+          env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_REPOSITORY: "cpheinrich/example", GITHUB_OUTPUT: output, GH_TOKEN: "fixture", ...env },
+        }).then(
+          () => ({ ok: true as const, stderr: "" }),
+          (error: { stderr?: string }) => ({ ok: false as const, stderr: String(error.stderr) }),
+        );
+        return { ...result, output: await readFile(output, "utf8").catch(() => "") };
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+    const ok = { RELEASE_BRANCH: "release/ios-aaaaaaaaaaaa", RELEASE_BASE: base, SOURCE_SHA: source };
+
+    it("accepts a source reached from the base only through squash-merged pull requests into the branch", async () => {
+      const run = await runSource(ok);
+      expect(run).toMatchObject({ ok: true });
+      expect(run.output).toBe(`source-sha=${source}\n`);
+    });
+
+    it("accepts the base itself as the source (no fixes yet)", async () => {
+      const run = await runSource({ ...ok, SOURCE_SHA: base }, { statuses: { [`${base}...${base}`]: "identical" }, total: "0" });
+      expect(run).toMatchObject({ ok: true });
+      expect(run.output).toBe(`source-sha=${base}\n`);
+    });
+
+    it.each([
+      ["a malformed branch name", { ...ok, RELEASE_BRANCH: "release/ios-main" }, {}, "release-branch must be release/ios-<12 hex>"],
+      ["a branch not cut at its base", { ...ok, RELEASE_BRANCH: "release/ios-bbbbbbbbbbbb" }, {}, "was not cut at its recorded base"],
+      ["a short source", { ...ok, SOURCE_SHA: "b".repeat(12) }, {}, "must be full commit SHAs"],
+      ["an unprotected branch", ok, { protected: "false" }, "is not protected"],
+      ["a base main does not contain", ok, { statuses: { [`${base}...${main}`]: "diverged" } }, "is not contained in current main"],
+      ["a source not on the branch", ok, { statuses: { [`${source}...${tip}`]: "behind" } }, "is not on release/ios-aaaaaaaaaaaa"],
+      ["a source not descending from the base", ok, { statuses: { [`${base}...${source}`]: "diverged" } }, "does not descend from release base"],
+      ["a commit merged into another branch", ok, { pulls: { [fix]: `7\tmain\t${fix}` } }, "is not the squash merge of a pull request into it"],
+      ["a commit with no pull request (a direct push or a merge commit's own commits)", ok, { pulls: { [fix]: "" } }, "is not the squash merge"],
+      ["an unreadable commit count", ok, { total: "" }, "Cannot list the commits"],
+      ["a truncated commit list", ok, { total: "2" }, "is incomplete"],
+    ] as const)("refuses %s", async (_name, env, api, message) => {
+      const run = await runSource(env as Record<string, string>, api as Api);
+      expect(run.ok).toBe(false);
+      expect(run.stderr).toContain(message);
+      expect(run.output).toBe("");
+    });
+
+    it("never treats a half-specified release source as the default path", async () => {
+      for (const env of [{ RELEASE_BRANCH: "", RELEASE_BASE: base, SOURCE_SHA: source }, { ...ok, SOURCE_SHA: "" }]) {
+        const run = await runSource(env);
+        expect(run.ok).toBe(false);
+        expect(run.output).toBe("");
+      }
     });
   });
 });

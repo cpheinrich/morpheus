@@ -3860,7 +3860,7 @@ process warns or is deleted.
 | A test that failed then passed on retry | Warns. The steward or a person may add a quarantine entry in a reviewed PR (one test, a linked issue, expiry ≤ 14 days); a quarantined test runs outside the blocking suite and its failure warns until the entry expires, then blocks again. |
 | Physical-iPhone gate (collector evidence rules) | **Blocks** |
 | Firebase rules: V2 preflight required live rules to equal the client source; 7 of the 17 failures | Replaced by deploying the source's rules before upload. **Blocks** on what protects users: forward only (never roll back), refuse rules `main` never held, every index READY. |
-| Source is a reviewed merge on `main` | **Blocks**. Being the current head of `main`, which `release-preflight` requires by default, is relaxed only for a caller that opts in with `allow-pinned-source` and owns source ordering itself (MO-26-11-04-00.19.43). |
+| Source is a reviewed merge on `main` | **Blocks**. Being the current head of `main`, which `release-preflight` requires by default, is relaxed only for a caller that opts in with `allow-pinned-source` and owns source ordering itself (MO-26-11-04-00.19.43). A caller releasing from a protected `release/ios-*` branch may also name that branch, its base and the source, which are verified separately (MO-26-11-05-03.31.45). |
 | Signing, entitlement/IPA verification, app validation script | **Blocks** |
 | Apple VALID, internally ready, held by the internal group | **Blocks**: this is delivery |
 | External groups, Beta App Review | **Warns** |
@@ -4098,6 +4098,19 @@ original SHA, and re-running failed jobs reuses earlier jobs' outputs, such as a
 `build=true` computed before a newer build shipped. Equality at preflight time is therefore what
 stops an older source from reaching a release after a newer one. A caller whose own controller
 pins a source and refuses older ones may pass `allow-pinned-source: true` (MO-26-11-04-00.19.43).
+
+A caller that releases from a protected iOS release branch may also pass `release-branch`
+(`release/ios-<first 12 hex of its base>`), `release-base` and `source-sha`
+(MO-26-11-05-03.31.45). The control commit is still verified exactly as above. A separate step
+verifies the release source:
+- the branch is protected;
+- its base is contained in `main`;
+- the source is on the branch and descends from the base;
+- every commit between the base and the source is the squash merge of a merged pull request into
+  that branch, so a direct push, a merge-commit merge or anything merged from `main` refuses.
+
+It returns the verified source as `source-sha`. With none of the three inputs nothing else runs,
+and a half-specified set refuses rather than falling back to the control commit.
 The preflight then also accepts a reviewed merge that current `main` strictly contains: GitHub's
 compare must report `ahead`, and anything else, including an unreadable `main`, refuses. The
 exact checkout, merged-PR binding and read-only permissions are the same in both modes, and there
