@@ -1,5 +1,25 @@
 # Decisions
 
+**Factory host tooling moves into the optional plugin; personal fleet config stays local** —
+2026-11-04. MO-26-11-04-21.51.56. Chris authorized moving the reusable `morpheus-factory`
+contents into the Factory plugin and sanitizing what is imported. They live in a nested
+`plugins/factory/src/host/` package with its own lockfile and workspace file, so neither the
+plugin's runtime nor ordinary Morpheus install depends on them; languages and behaviour are
+kept, and the TypeScript core is built there rather than committed. Real hosts, paths, runner
+labels and devices move out of Git into an owner-only `$FACTORY_HOME/hosts.json`, validated by
+one Python boundary that refuses links, other owners, group/other access and credential-shaped
+values; Firestore, the future authority, will feed the same validator. Defaults that named a
+person or project (GitHub user, consumer repository, checkout paths, simulator and preview
+names, reserved runner names) are removed or became operator configuration, and the manifest must
+live outside every Git checkout. The hourly tick stops fast-forwarding its own checkout, because an installed copy is
+not one; the LaunchAgent installer keeps the previous plist for `--rollback` and refuses while a
+tick runs, and an unchanged storage watchdog is no longer restarted on setup reruns. Imported
+fixtures and docs are synthetic and a shape-based test (home paths, device UDIDs, tailnet
+names, runner labels, personal emails) guards them, deliberately without a list of real values.
+No history is imported; the source repository's own history is a separate cleanup. Live hosts
+migrate one at a time by the documented steps. No dependency: the source's existing
+TypeScript/vitest toolchain and the Python standard library.
+
 **One Factory task conversation spans repositories through task-owned checkouts** — 2026-11-04.
 MO-26-11-04-20.01.14. Chris approved one persistent worker conversation per task, writing in several
 explicitly named repositories, each through a checkout the task owns; independent tasks get

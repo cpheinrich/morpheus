@@ -56,6 +56,12 @@ This README is the canonical reference; the `delegate` (Codex) and `delegate-to-
   `workspaces.json` (checkout ownership) and `worktrees/<task-hash>/<slot>/<repo>-<hash>/`
   (checkouts Factory created), all under the Factory home. See the
   [worked example](#worked-example).
+- **Host and fleet tooling:** `src/host/`, a separate package with its own lockfile (worker
+  setup, Xcode host updates, fleet pin coordinator, storage watchdog, sub2api install and
+  the placement core). Installing the plugin copies it but never builds or runs it; see
+  [Host package](#host-package).
+- **Private host manifest:** `~/.local/share/factory/hosts.json` (owner-only), read only by
+  the host package.
 - Nothing about your subscription, selected executor, machine paths or conversation content
   belongs in the Morpheus repository.
 
@@ -645,12 +651,29 @@ Claude stream/question/resume protocol was tested with the installed Claude Code
 Windows is unsupported. Linux exercises portable tests in CI but is not a desktop support
 claim. A host missing authentication is reported; the plugin never copies another host's login.
 
+## Host package
+
+`src/host/` holds the tooling that used to live in the `morpheus-factory` repository:
+TypeScript placement/admission/broker core, Python/shell worker setup, per-host Xcode
+update controller and LaunchAgent installer, fleet pin coordinator, storage watchdog and
+the sub2api gateway install. It keeps its own `package.json`, lockfile and workspace file,
+so `pnpm install` there never joins Morpheus. Every command is explicit capability setup on
+the Mac it changes; the plugin installer and Morpheus never build it, install software
+(Xcode, runners, Docker, Colima, Tart, provider CLIs) or load its services.
+
+Personal hosts, paths, runners and devices live only in `$FACTORY_HOME/hosts.json`, owner
+only, validated by `src/host/worker/host_config.py`. The package's fixtures, examples and
+docs are synthetic, and a test rejects personal metadata by shape. See
+[`src/host/README.md`](src/host/README.md) for commands and for moving a host's services
+from a source checkout to the installed copy, with rollback.
+
 ## Development
 
 ```sh
 pnpm install --ignore-workspace --frozen-lockfile
 pnpm check
 pnpm test
+(cd src/host && pnpm install --frozen-lockfile && pnpm check && pnpm typecheck && pnpm test && pnpm build)
 ```
 
 Tests use fake subprocesses and local fixtures; they do not spend model allowance. Live

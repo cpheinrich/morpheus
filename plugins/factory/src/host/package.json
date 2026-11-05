@@ -1,0 +1,24 @@
+{
+  "name": "@morpheus/factory-host",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Optional Factory host and fleet tooling: placement core, Xcode host updates, worker setup. Explicit setup only.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run && python3 -m unittest discover -s tests -p 'test_*.py'",
+    "factory": "node dist/cli.js",
+    "check": "for f in worker/*.sh worker/setup/*.sh scripts/*.sh; do bash -n \"$f\" || exit 1; done && python3 -m py_compile worker/*.py fleet/*.py scripts/*.py"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.9.0",
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

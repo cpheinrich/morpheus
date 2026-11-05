@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "consumer": {
+    "repository": "example-org/example-app",
+    "assertion": "apps/ios/scripts/ci/assert-xcode-build.sh",
+    "pinPaths": [
+      ".github/workflows/*.yml",
+      "apps/ios/scripts/ci/assert-xcode-build.sh",
+      "apps/ios/scripts/ci/delivery/v3.mjs"
+    ],
+    "ignorePaths": [
+      ".github/workflows/legacy-*.yml"
+    ],
+    "deliveryWorkflow": "ios-delivery.yml"
+  },
+  "hosts": {
+    "ci-mini": {
+      "role": "ci-image",
+      "xcode": {
+        "version": "27.2",
+        "build": "27B52",
+        "components": [
+          "MetalToolchain"
+        ],
+        "phase": "promote"
+      },
+      "paths": {
+        "factory": "/Users/operator/plugins/factory/src/host",
+        "consumer": "/Users/operator/code/example-app",
+        "hostSetup": "/Users/operator/code/agent-host-setup",
+        "credentialsProject": "/Users/operator/code/example-app"
+      },
+      "apple": {
+        "idVar": "FACTORY_APPLE_ID",
+        "passwordVar": "FACTORY_APPLE_ID_PASSWORD"
+      },
+      "verification": {
+        "purpose": "apple-developer",
+        "account": "example-apple-developer"
+      },
+      "ci": {
+        "repository": "example-org/example-app",
+        "image": "ci-xcode-27.2",
+        "label": "xcode-27.2",
+        "builder": "/Users/operator/code/agent-host-setup/ci-vm/build-image.sh",
+        "verifier": "/Users/operator/code/agent-host-setup/ci-vm/verify-image.sh",
+        "activator": "/Users/operator/code/agent-host-setup/ci-vm/activate-pool.mjs",
+        "runtimes": [
+          "26.5",
+          "27.2"
+        ]
+      },
+      "validation": [
+        {
+          "argv": [
+            "/usr/bin/python3",
+            "/Users/operator/plugins/factory/src/host/worker/validate_consumer_main.py",
+            "--repo",
+            "/Users/operator/code/example-app"
+          ]
+        }
+      ]
+    },
+    "gate-mbp": {
+      "role": "phone-gate",
+      "xcode": {
+        "version": "27.2",
+        "build": "27B52",
+        "components": [
+          "MetalToolchain"
+        ],
+        "phase": "promote"
+      },
+      "paths": {
+        "factory": "/Users/operator/plugins/factory/src/host",
+        "consumer": "/Users/operator/code/example-app",
+        "credentialsProject": "/Users/operator/code/example-app"
+      },
+      "apple": {
+        "idVar": "FACTORY_APPLE_ID",
+        "passwordVar": "FACTORY_APPLE_ID_PASSWORD"
+      },
+      "verification": {
+        "purpose": "apple-developer",
+        "account": "example-apple-developer"
+      },
+      "runner": {
+        "label": "actions.runner.example-org.example-device-runner",
+        "dir": "/Users/operator/actions-runner-example-device-runner",
+        "requiredEnv": [
+          "MORPHEUS_CREDENTIALS_REPO"
+        ],
+        "organization": "example-org"
+      },
+      "signing": {
+        "identity": "Apple Development",
+        "team": "ABCDE12345"
+      },
+      "device": {
+        "udid": "00000000-000000000000000E"
+      },
+      "validation": [
+        {
+          "argv": [
+            "/usr/bin/python3",
+            "/Users/operator/plugins/factory/src/host/worker/validate_consumer_main.py",
+            "--repo",
+            "/Users/operator/code/example-app",
+            "--device-gate",
+            "00000000-000000000000000E"
+          ]
+        }
+      ]
+    }
+  }
+}

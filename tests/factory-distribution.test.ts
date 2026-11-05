@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -38,4 +39,24 @@ describe("Factory stays out of normal Morpheus distribution", () => {
     for (const manifest of [".codex-plugin/plugin.json", "claude-plugin/.claude-plugin/plugin.json"])
       expect(JSON.parse(plugin(manifest)).description, manifest).toMatch(/^Experimental, off until enabled on this machine\./);
   });
+
+  it("keeps the host package out of normal install and runs its whole suite in Factory CI", () => {
+    const host = JSON.parse(readFileSync(join(root, "plugins/factory/src/host/package.json"), "utf8")) as {
+      name: string; scripts: Record<string, string>;
+    };
+    expect(host.name).toBe("@morpheus/factory-host");
+    // Its own workspace file and lockfile keep `pnpm install` there from joining the root.
+    for (const own of ["pnpm-workspace.yaml", "pnpm-lock.yaml", "vitest.config.ts"])
+      expect(readdirSync(join(root, "plugins/factory/src/host"))).toContain(own);
+    expect(host.scripts.test).toContain("vitest run");
+    expect(host.scripts.test).toContain("unittest discover");
+    const ci = load(readFileSync(join(root, ".github/workflows/ci.yml"), "utf8")) as {
+      jobs: Record<string, { steps: Array<{ "working-directory"?: string; run?: string }> }>;
+    };
+    const step = ci.jobs.factory!.steps.find((s) => s["working-directory"] === "plugins/factory/src/host");
+    expect(step?.run?.split("\n").map((line) => line.trim()).filter(Boolean)).toEqual([
+      "pnpm install --frozen-lockfile", "pnpm check", "pnpm typecheck", "pnpm test", "pnpm build",
+    ]);
+  });
 });
+

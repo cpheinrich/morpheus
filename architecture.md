@@ -3348,6 +3348,22 @@ Under full access this is ownership enforced at delegation, not an OS sandbox. R
 before workspaces migrate when their primary checkout is a linked worktree; one bound to an
 original or non-Git directory is refused with the remedy to start a new root session.
 
+The nested `plugins/factory/src/host/` package holds the host and fleet tooling imported from
+the public `morpheus-factory` repository (source and commit only, no history): the TypeScript
+placement/admission/broker core and the Python/shell worker setup, Xcode host-update
+controller, fleet pin coordinator, storage watchdog and sub2api install, in their original
+languages. It owns its own manifest, lockfile and workspace file; Factory CI installs it and
+runs its check, typecheck, vitest and unittest suites and build, while root typecheck, lint
+and compile never see it. The plugin installer copies it without build output or private
+files and runs none of it; heavy capabilities (Xcode, runners, Docker/Colima, Tart, provider
+CLIs) run only from its explicit setup commands. Personal fleet configuration is one
+owner-only local JSON file, `$FACTORY_HOME/hosts.json`, holding references rather than
+secrets and validated by one boundary (`worker/host_config.py`) that a later Firestore source
+can feed. The hourly host-update tick no longer fetches its own code; a reinstall moves it,
+and its LaunchAgent installer keeps the previous service for rollback and never replaces a
+running tick. The external `agent-host-setup` repository stays separate; its reviewed ci-vm
+build/verify/activate/prune scripts are called by path from the private manifest.
+
 The separate opt-in `plugins/factory/scripts/gateway-worker.mjs` entrypoint serves
 trusted unattended services without desktop identity, native login, quota discovery or
 Paperclip. An owner-only configuration outside workspaces fixes the claimed checkout,
