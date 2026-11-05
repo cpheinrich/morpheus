@@ -27,7 +27,15 @@ SHAPES = {
 ORGANIZATION = re.compile(r"(?:organizationName|\bO)\s*=\s*([^\n,\\]+)")
 SYNTHETIC_ORGANIZATIONS = {"Example Org LLC.", "Example Org LLC", "Example Operator"}
 SYNTHETIC_IDS = {"ABCDE12345", "AAAAA11111", "BBBBB22222", "CCCCC33333"}
-APPLE_ID = re.compile(r'\(([A-Z0-9]{10})\)|organizationalUnitName\s*=\s*([A-Z0-9]{10})\b|"team"\s*:\s*"([A-Z0-9]{10})"|\bUID\s*=\s*([A-Z0-9]{10})\b')
+APPLE_ID = re.compile(r'\(([A-Z0-9]{10})\)|organizationalUnitName\s*=\s*([A-Z0-9]{10})\b|"team"\s*:\s*"([A-Z0-9]{10})"|\bUID\s*=\s*([A-Z0-9]{10})\b|\buserId\s*=\s*([A-Z0-9]{10})\b')
+# Device and devicectl identifiers: a UUID is synthetic only when each group repeats one
+# character, or it is all zeros but the last digit.
+UUID = re.compile(r"\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\b")
+
+
+def synthetic_uuid(value):
+    groups = value.split("-")
+    return all(len(set(group)) == 1 for group in groups) or set(value.replace("-", "")[:-1]) == {"0"}
 EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})\b")
 
 
@@ -37,6 +45,9 @@ def findings(text):
         value = next(group for group in match.groups() if group)
         if value not in SYNTHETIC_IDS and re.search(r"[0-9]", value) and re.search(r"[A-Z]", value):
             found.append(("Apple team or certificate id", value))
+    for match in UUID.finditer(text):
+        if not synthetic_uuid(match.group(0)):
+            found.append(("device identifier", match.group(0)))
     for match in ORGANIZATION.finditer(text):
         if match.group(1).strip() not in SYNTHETIC_ORGANIZATIONS:
             found.append(("certificate organization", match.group(1).strip()))
@@ -71,9 +82,15 @@ class PublicFixtureTests(unittest.TestCase):
             "actions.runner.acme.build-box \"team\": \"Q1W2E3R4T5\" alice@personal-mail.dev "
             "Apple Development: Alice Example (Z9Y8X7W6V5)\n    organizationName          = Acme Widgets Inc\n")}
         self.assertEqual(caught, {*SHAPES, "email address", "Apple team or certificate id", "certificate organization"})
+        # Each id shape on its own: a certificate userId and a devicectl identifier.
+        self.assertEqual(findings("    userId                    = Q9W8E7R6T5\n"), [("Apple team or certificate id", "Q9W8E7R6T5")])
+        self.assertEqual(findings('"identifier": "4B1C9E2D-7A3F-4E6B-9C8D-2F5A1B3C4D5E"'),
+                         [("device identifier", "4B1C9E2D-7A3F-4E6B-9C8D-2F5A1B3C4D5E")])
         self.assertEqual(findings("/Users/operator/code 00000000-000000000000000E actions.runner.example-org.x "
                                   "\"team\": \"ABCDE12345\" operator@example.test noreply@github.com 10.0.0.1 "
-                                  "Apple Development: Example Operator (AAAAA11111)\n    organizationName          = Example Org LLC.\n"), [])
+                                  "Apple Development: Example Operator (AAAAA11111)\n    organizationName          = Example Org LLC.\n"
+                                  "    userId                    = AAAAA11111\n 00000000-0000-0000-0000-00000000000E "
+                                  "11111111-2222-3333-4444-555555555555"), [])
 
     def test_private_manifest_is_not_in_the_package(self):
         names = {path.name for path in package_files()}

@@ -443,7 +443,7 @@ UDID = "00000000-000000000000000E"
 
 def device_record(udid, tunnel, transport, name="Test\u2019s iPhone", pairing="paired"):
     """The shape `devicectl list devices --json-output` writes, as seen on the Pro."""
-    return {"hardwareProperties": {"udid": udid}, "identifier": "68087738-05DB-5D1F-A350-1E576FBCC306",
+    return {"hardwareProperties": {"udid": udid}, "identifier": "00000000-0000-0000-0000-00000000000E",
             "connectionProperties": {"tunnelState": tunnel, "pairingState": pairing, "transportType": transport},
             "deviceProperties": {"name": name}}
 
@@ -925,11 +925,11 @@ class CheckTests(unittest.TestCase):
 
     def test_signing_team_comes_from_real_shaped_certificate_subjects(self):
         subjects = {
-            "PEM-A": ("subject= \n    userId                    = X35TT7TP7E\n"
+            "PEM-A": ("subject= \n    userId                    = AAAAA11111\n"
                       "    commonName                = Apple Development: Example Operator (AAAAA11111)\n"
                       "    organizationalUnitName    = ABCDE12345\n    organizationName          = Example Org LLC.\n"
                       "    countryName               = US\n"),
-            "PEM-B": ("subject= \n    userId                    = X35TT7TP7E\n"
+            "PEM-B": ("subject= \n    userId                    = AAAAA11111\n"
                       "    commonName                = Apple Development: operator@example.test (BBBBB22222)\n"
                       "    organizationalUnitName    = CCCCC33333\n    organizationName          = Example Operator\n"
                       "    countryName               = US\n"),
