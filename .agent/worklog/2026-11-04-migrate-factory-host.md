@@ -109,7 +109,7 @@ A fresh independent review of the high-risk migration cleared it conditionally o
   "summary": "A fresh independent review of the high-risk migration cleared it conditionally on one substantive finding. F1: two personal identifiers from the original source still sat in an imported test, a certificate user id and a devicectl device identifier. The author replaced both with synthetic values and extended the public-fixture guard to the certificate userId shape and to non-synthetic UUID-shaped device identifiers, within the reviewer's condition paths; the host package suite and the condition's grep both pass. Two minor notes were answered without changes: a reinstall drops the host package's build output by design and its explicit setup rebuilds it, and the read-after-lstat window in the manifest loader needs write access to an owner-only directory. Limitation: the original public repository and this PR's first implementation commit still contain those identifiers in Git history; history rewriting and repository access are a separate, explicitly scoped decision.",
   "findings": [
     {
-      "id": "F1",
+      "id": "F1-personal-ids",
       "severity": "substantive",
       "description": "A personal Apple certificate user id and a devicectl device identifier from the original source remained in an imported test fixture, and the shape guard did not cover either shape.",
       "paths": [
@@ -129,7 +129,7 @@ A fresh independent review of the high-risk migration cleared it conditionally o
       "conditionMet": "At 3e7579a633c5: `pnpm test` in plugins/factory/src/host exit 0 (vitest 68/68, unittest 271/271); the condition's `git grep -nE` for both identifiers under plugins/factory exit 1, no hits."
     },
     {
-      "id": "N1",
+      "id": "N1-host-rebuild",
       "severity": "minor",
       "description": "Reinstalling the plugin drops the host package's dist and node_modules; the README could say to rebuild.",
       "paths": [
@@ -139,7 +139,7 @@ A fresh independent review of the high-risk migration cleared it conditionally o
       "response": "Intended: the copy filter excludes build output so installing never builds or runs host code, and the README's migration step 1 already runs pnpm install and build in the installed copy; the explicit setup's factory stage rebuilds too. Not changed after clearance."
     },
     {
-      "id": "N2",
+      "id": "N2-load-window",
       "severity": "minor",
       "description": "host_config.load checks the file with lstat and then reads it, a small check-then-read window.",
       "paths": [
