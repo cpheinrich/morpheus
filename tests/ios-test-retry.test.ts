@@ -635,7 +635,8 @@ describe("simulator lanes the runner's host declares", () => {
       expect(lane.selected.some((t) => t.startsWith("AppTests/"))).toBe(true);
       expect(lane.selected.some((t) => t.startsWith("AppUITests/"))).toBe(true);
     }
-    const [a, b] = lanes.map((l) => l.selected);
+    // Threads finish in any order: name each lane by the lane it ran as.
+    const a = lanes.find((l) => l.lane === "1")!.selected, b = lanes.find((l) => l.lane === "2")!.selected;
     // Disjoint, exhaustive, and no class split across lanes.
     expect([...a!, ...b!].sort()).toEqual([...units, ...uis].sort());
     expect(a!.filter((t) => b!.includes(t))).toEqual([]);
