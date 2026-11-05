@@ -41,6 +41,13 @@ import time
 from pathlib import Path
 
 PASSING = {'Passed', 'Expected Failure'}
+# One monotonic clock for every interval this runner records: seconds since it started. Wall-clock
+# adjustments cannot stretch or shrink an elapsed time; the start's epoch is kept as metadata only.
+CLOCK = (time.monotonic(), round(time.time(), 3))
+
+
+def stamp():
+    return round(time.monotonic() - CLOCK[0], 3)
 DEVICE = re.compile(r'^id=([A-Fa-f0-9-]{36})$')
 
 
@@ -124,11 +131,10 @@ def run(attempt, selection, results, logs, bundle=None, destination=None, lane=N
     what the lanes hand the pre-test script: MORPHEUS_IOS_LANE_SELECTION, the file naming this
     lane's tests, so it prepares only what they need, and MORPHEUS_IOS_ENUMERATION, Xcode's
     enumeration of the caller's whole selection, so it need not enumerate again. `timing`, when
-    given, gets each phase's [start, end] in epoch seconds from this process's own clock (preTest,
+    given, gets each phase's [start, end] in seconds on the runner's monotonic clock (preTest,
     xcodebuild), so lanes can be compared on one timeline without trusting a merged bundle's times.
     """
     timing = {} if timing is None else timing
-    stamp = lambda: round(time.time(), 3)
     results.mkdir(parents=True, exist_ok=True)
     logs.mkdir(parents=True, exist_ok=True)
     bundle = bundle or results / 'Tests.xcresult'
@@ -483,7 +489,8 @@ def main():
         print(f'::notice::The runner host declares {lanes} simulator lane(s); attempt 1 uses {lanes}.', flush=True)
     # Attempt 1 on this process's clock, everything included (enumeration, clone, preparation,
     # tests, merge), and each phase of a one-simulator run; lanes record their own phases.
-    attempt_timing = {'started': round(time.time(), 3)}
+    record['clock'] = {'unit': 'seconds since the runner started, monotonic', 'startedEpoch': CLOCK[1]}
+    attempt_timing = {'started': stamp()}
     if lanes == 2:
         if not device:
             print('::error::Two lanes need the job-owned iOS simulator.', flush=True)
@@ -510,7 +517,10 @@ def main():
                 setup['clone'] = round(time.monotonic() - started, 1)
                 for n, selection in enumerate(selections, start=1):
                     (results / f'lane-{n}').mkdir(parents=True, exist_ok=True)
-                    (results / f'lane-{n}' / 'selection.txt').write_text(''.join(f'{t}\n' for t in selection))
+                    listed = ''.join(f'{t}\n' for t in selection)
+                    (results / f'lane-{n}' / 'selection.txt').write_text(listed)
+                    # Also at the top of RESULTS, where evidence that keeps only top-level files finds it.
+                    (results / f'lane-{n}-selection.txt').write_text(listed)
                 status, tested, record['lanes'], setup['merge'] = run_lanes(
                     selections, [device.group(1), clone], results, logs, enumeration)
         except (RuntimeError, ValueError, OSError) as error:
@@ -524,7 +534,7 @@ def main():
         if lanes is not None:
             record['activeLanes'] = 1
         status, tested = run(1, first_selection(lanes), results, logs, timing=attempt_timing)
-    attempt_timing['finished'] = round(time.time(), 3)
+    attempt_timing['finished'] = stamp()
     first = read_results(results / 'Tests.xcresult') if status else None
     attributed = first and first['attributed']
     failing = sorted(first['failed']) if attributed else []

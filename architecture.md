@@ -3744,8 +3744,10 @@ so it can prepare only what they need) and `MORPHEUS_IOS_ENUMERATION` (the one e
 whole selection, so it need not enumerate again). `laneSetupSeconds` records the enumeration, clone
 and merge time spent outside the lanes. Each lane records its `preTest` and `xcodebuild` intervals,
 and attempt 1 its own `timing` (start and finish, setup and merge included; the phases too on one
-simulator), in epoch seconds from the runner's clock: a merged bundle's start and finish times come
-from one of its inputs and are not the run's wall time.
+simulator), in seconds on the runner's monotonic clock (`clock` keeps the start's epoch as
+metadata): a merged bundle's start and finish times come from one of its inputs and are not the
+run's wall time. Each lane's selection is also written as `lane-<n>-selection.txt` at the top of
+`RESULTS`, where evidence that keeps only top-level files still finds it.
 Failed tests are retried in a clean simulator, never in the session that failed them.
 `test-iterations` is the total number of attempts (default 3; 0 or 1 runs once). Attempt 1 runs
 the caller's selection unchanged. When it fails, `scripts/ios-test-retry.py` erases the job-owned

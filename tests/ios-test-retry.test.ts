@@ -674,6 +674,8 @@ describe("simulator lanes the runner's host declares", () => {
       .toEqual([[1, device, 0], [2, clone, 0]]);
     expect(record.lanes[0].tests + record.lanes[1].tests).toBe(9);
     expect((await h.read("Results/lane-1/selection.txt")).trim().split("\n").sort()).toEqual([...a!].sort());
+    expect(await h.read("Results/lane-1-selection.txt")).toBe(await h.read("Results/lane-1/selection.txt"));
+    expect((await h.read("Results/lane-2-selection.txt")).trim().split("\n").sort()).toEqual([...b!].sort());
     expect(await h.read("Logs/tests.log")).toMatch(/ran \d+ tests[\s\S]*ran \d+ tests/);
     expect(stdout).toContain("::notice::The runner host declares 2 simulator lane(s); attempt 1 uses 2.");
   });
@@ -833,6 +835,8 @@ describe("simulator lanes the runner's host declares", () => {
     expect(span(one!.xcodebuild)).toBeLessThan(span(two!.xcodebuild));
     expect(Math.max(one!.xcodebuild[0], two!.xcodebuild[0])).toBeLessThan(Math.min(one!.xcodebuild[1], two!.xcodebuild[1]));
     // Attempt 1's own interval holds both lanes, setup and merge included.
+    expect(record.clock).toMatchObject({ unit: expect.stringContaining("monotonic") });
+    expect(record.clock.startedEpoch).toBeGreaterThan(1.7e9);
     const timing = record.attempts[0].timing;
     expect(timing.started).toBeLessThanOrEqual(Math.min(one!.preTest[0], two!.preTest[0]));
     expect(timing.finished).toBeGreaterThanOrEqual(Math.max(one!.xcodebuild[1], two!.xcodebuild[1]));
