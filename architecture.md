@@ -3719,6 +3719,13 @@ build-time exclusion would be a no-op. The intended use is a per-PR caller keepi
 selection is unchanged. `test-plan`, `only-testing` and `skip-testing` are the whole scope
 surface: a staging caller names a smoke plan or selection, and production leaves them empty to
 run the full suite.
+A caller whose jobs land on hosts of different sizes can pass `simulator-lanes-from-host: true`
+instead of `parallel-testing`, and the two cannot be combined. The runner's host then declares
+attempt 1's simulators in its own environment as `MORPHEUS_IOS_SIMULATOR_LANES`: unset or `1` runs
+one serial simulator, `2` runs Xcode's parallel testing on exactly two clones of the job's prepared
+simulator (`-parallel-testing-worker-count 2`), and any other value fails before the pre-test
+script or a test runs. Morpheus names no host; the count lives in the host's private runner
+configuration. `test-attempts.json` records `simulatorLanes`, and retries stay serial.
 Failed tests are retried in a clean simulator, never in the session that failed them.
 `test-iterations` is the total number of attempts (default 3; 0 or 1 runs once). Attempt 1 runs
 the caller's selection unchanged. When it fails, `scripts/ios-test-retry.py` erases the job-owned

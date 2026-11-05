@@ -22,6 +22,12 @@ Attempt 1 keeps Tests.xcresult and tests.log at the root of RESULTS and LOGS; at
 attempt-n/ under both. test-attempts.json at the root of RESULTS records every attempt. When the
 retries recovered every failure, tests.json and summary.json there show it the way Xcode's own
 retry did (see combine), so a caller's result validator keeps working unchanged.
+
+A caller that sets simulator-lanes-from-host lets the runner decide how many simulators attempt 1
+uses: MORPHEUS_IOS_SIMULATOR_LANES, set by the host in the runner's environment, is 1 (or absent)
+for one serial simulator and 2 for Xcode's parallel testing on exactly two clones of the job's
+prepared simulator. Anything else fails before a test runs. Retries stay serial on the erased job
+simulator whatever the lane count.
 """
 import copy
 import json
@@ -50,13 +56,36 @@ def xcodebuild_args(bundle):
     return args + (['-testPlan', env['TEST_PLAN']] if env.get('TEST_PLAN') else [])
 
 
-def first_selection():
+def host_lanes():
+    """The simulator lanes the runner's host declares, or None when the caller did not ask for them.
+
+    A host that never declares a count runs one lane. Only 1 and 2 are known; any other value is a
+    host configuration error, raised as ValueError so no test runs on a guess.
+    """
+    if os.environ.get('SIMULATOR_LANES_FROM_HOST') != 'true':
+        return None
+    declared = os.environ.get('MORPHEUS_IOS_SIMULATOR_LANES', '').strip()
+    if declared in ('', '1'):
+        return 1
+    if declared == '2':
+        return 2
+    raise ValueError(f'MORPHEUS_IOS_SIMULATOR_LANES must be 1 or 2, not {declared!r}')
+
+
+def first_selection(lanes=None):
     env = os.environ
-    args = ['-parallel-testing-enabled', env.get('PARALLEL_TESTING', 'NO')]
+    if lanes == 2:
+        # Exactly two: the host sized its VM for two booted simulators, and Xcode's own choice of
+        # worker count follows the VM's cores, not its memory.
+        args = ['-parallel-testing-enabled', 'YES', '-parallel-testing-worker-count', '2']
+    elif lanes == 1:
+        args = ['-parallel-testing-enabled', 'NO']
+    else:
+        args = ['-parallel-testing-enabled', env.get('PARALLEL_TESTING', 'NO')]
+        if env.get('MAXIMUM_PARALLEL_TESTING_WORKERS', '0') != '0':
+            args += ['-maximum-parallel-testing-workers', env['MAXIMUM_PARALLEL_TESTING_WORKERS']]
     args += [f'-only-testing:{test}' for test in lines('ONLY_TESTING')]
     args += [f'-skip-testing:{test}' for test in lines('SKIP_TESTING')]
-    if env.get('MAXIMUM_PARALLEL_TESTING_WORKERS', '0') != '0':
-        args += ['-maximum-parallel-testing-workers', env['MAXIMUM_PARALLEL_TESTING_WORKERS']]
     return args
 
 
@@ -254,8 +283,17 @@ def main():
         print('::notice::Retries need the job-owned iOS simulator, so this run has one attempt.', flush=True)
         attempts = 1
 
+    try:
+        lanes = host_lanes()
+    except ValueError as error:
+        print(f'::error::{error}. Fix the runner host\'s configuration; no test ran.', flush=True)
+        return 1
+
     record = {'schemaVersion': 1, 'maxAttempts': attempts, 'attempts': []}
-    status, tested = run(1, first_selection(), results, logs)
+    if lanes is not None:
+        record['simulatorLanes'] = lanes
+        print(f'::notice::The runner host declares {lanes} simulator lane(s); attempt 1 uses {lanes}.', flush=True)
+    status, tested = run(1, first_selection(lanes), results, logs)
     first = read_results(results / 'Tests.xcresult') if status else None
     attributed = first and first['attributed']
     failing = sorted(first['failed']) if attributed else []
