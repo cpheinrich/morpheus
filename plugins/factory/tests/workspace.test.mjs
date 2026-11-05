@@ -282,6 +282,30 @@ test("a delegation that fails before launch claims nothing", async (t) => {
   assert.deepEqual(await readOwners(), {});
 });
 
+test("a retry after a failed launch reuses its worktree under a symlinked FACTORY_HOME", async (t) => {
+  const { root } = await harness(t);
+  // The home is reached through a symlink, as /tmp and /var are on macOS.
+  await mkdir(join(root, "real-home"));
+  await symlink(join(root, "real-home"), join(root, "link-home"));
+  process.env.FACTORY_HOME = join(root, "link-home");
+  await initStore();
+  await configWrite({ ...defaults(), mode: "manual" });
+  const app = await repository(root, "app");
+  const m = codexRoot(t, app);
+  m.launch = async () => {
+    throw new Error("fixture launch failed");
+  };
+  // The first attempt creates the isolated worktree, then fails before launch and claims nothing.
+  await assert.rejects(m.start({ threadId: "retry", prompt: "x" }), /fixture launch failed/);
+  // The retry must find that same worktree rather than refuse it as foreign.
+  stubbed(m);
+  const run = await m.start({ threadId: "retry", prompt: "x" });
+  assert.ok(run.cwd.startsWith(await realpath(join(root, "real-home", "worktrees"))), run.cwd);
+  assert.equal(run.cwd, await realpath(run.cwd));
+  assert.equal(git(app, "worktree", "list", "--porcelain").match(/^worktree /gm).length, 2);
+  assert.equal((await readOwners())[run.cwd].taskId, "retry");
+});
+
 test("a primary conversation refuses a second checkout of a mapped repository", async (t) => {
   const { root } = await harness(t);
   const app = await linkedCheckout(root, "app");

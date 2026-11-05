@@ -95,10 +95,12 @@ export const readOwners = () => readJSON(registryFile(), {});
 
 async function isolatedWorktree(info, destination) {
   if (await stat(destination).then(() => true, () => false)) {
-    const existing = await checkoutInfo(destination);
-    if (existing.project !== info.project || existing.top !== destination)
+    // Compare canonical paths: FACTORY_HOME may be reached through a symlink (/tmp, /var).
+    const canonical = await realpath(destination);
+    const existing = await checkoutInfo(canonical);
+    if (existing.project !== info.project || existing.top !== canonical)
       throw new Error(`${destination} exists but is not a worktree of ${info.top}.`);
-    return destination;
+    return canonical;
   }
   await mkdir(join(destination, ".."), { recursive: true, mode: 0o700 });
   // Detached at the committed HEAD: uncommitted edits in the source are never copied, and

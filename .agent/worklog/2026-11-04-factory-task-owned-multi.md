@@ -134,6 +134,47 @@ temporary symlink to the same private runtime fixed the environment, and the rer
 The private evidence (stream, scripts, verified JSON) stays local to the root and is not
 published.
 
+## Independent review
+
+The review was of b3915213. It produced two findings, and only R1 changed code.
+
+### R1 (substantive): retry after a failed launch, under a symlinked home
+
+**Problem.** `isolatedWorktree` compared the realpath `top` of an existing worktree with the raw
+destination, which is built from `home()`. If `FACTORY_HOME` is reached through a symlink, as
+`/tmp` and `/var` are on macOS, this breaks retries. A launch that fails before it starts leaves
+the created worktree unclaimed, and every retry then refused it as "exists but is not a worktree".
+
+**Fix.** The function now compares and returns `realpath(destination)`. The change is limited to
+the condition's paths, `src/workspace.mjs` and `tests/workspace.test.mjs`.
+
+**Regression test.** "a retry after a failed launch reuses its worktree under a symlinked
+FACTORY_HOME". It uses an explicit symlinked home and calls `Manager.start` twice for the same
+task and original:
+- The first call fails before launch.
+- The second call must reuse the same canonical worktree, register it to the task, and leave
+  exactly one extra worktree.
+
+**Proof.**
+- RED on the pre-fix source:
+  `cd plugins/factory && node --test --test-name-pattern="symlinked FACTORY_HOME" tests/workspace.test.mjs`
+  gave 0 pass, 1 fail, with "…/link-home/worktrees/…/app-… exists but is not a worktree of …".
+- GREEN after the fix: the same command gives 1 pass, 0 fail.
+- `node --test tests/workspace.test.mjs` gives 12 pass, 0 fail.
+- `pnpm check` is clean.
+
+### R2 (minor, disputed for this PR)
+
+**Finding.** The registry records ownership by root task, so a later primary or fresh
+conversation of the same root task can adopt an idle fresh conversation's checkout.
+
+**Why it stays.** The accepted boundary is the root task. Its fresh and auxiliary conversations
+share that task's authority, and the one-writer guards still forbid concurrent writers.
+
+**Limitation.** Idle conversations within one root task are not isolated from each other.
+Isolating them would add scope beyond the independently owned tasks this item requires. This PR
+does not change code or docs for R2.
+
 ## Open questions
 
 - Created worktrees are never removed automatically. They are released when removed with
