@@ -21,8 +21,15 @@ MCP server and CLI; never submit a local task to a different machine by guessing
 3. Hand off the user's task, working directory, completed work, exact next step, acceptance
    checks, and relevant approvals/constraints. Do not send credentials, hidden system
    instructions, unrelated chats, or an entire memory store. Refer Codex to repository
-   instructions. Explicit `cwd` is only for a worktree of this same repository. Do not ask it
-   to redo mutations already completed. Default background=false; true only when the user
+   instructions. Do not ask it to redo mutations already completed.
+   Name every repository the worker may write: `cwd` (its working directory on the first
+   delegation) and `repos`. One primary conversation spans them all and keeps them on later
+   delegations; adding a repository resumes it rather than starting another worker. Each
+   target resolves to a task-owned checkout: an unowned linked worktree (such as one you
+   claimed) is adopted, any original checkout, yours included, becomes an isolated worktree at
+   its committed HEAD, and another task's checkout or a directory outside Git is refused. A
+   conversation from before workspaces bound to an original is refused: start a new session. `factory_inspect` reports the map as
+   `workspace`; tell the worker which checkout holds which part of the task. Default background=false; true only when the user
    explicitly authorizes work continuing after disconnection.
 4. Model, effort and permission mode map from this session (recorded by lifecycle hooks) to Codex through
    `codexModelMap`/`codexEffortMap`; unmapped values use Codex's configured default.
@@ -33,8 +40,8 @@ MCP server and CLI; never submit a local task to a different machine by guessing
    bypass a business approval, repository review, spending, or sending rule.
 5. Call `factory_wait` (up to 25 seconds) with the returned `runId` until completion. This
    renews only that run's owner lease. The bridge refuses a second writer in one checkout.
-   `fresh:true` creates a separate non-primary conversation and may run concurrently only in
-   another isolated worktree; it never replaces the primary conversation.
+   `fresh:true` creates a separate non-primary conversation with its own checkouts, never shares
+   one the primary maps, and never replaces the primary conversation.
 6. Codex runs non-interactively and cannot ask mid-run. A `needs_input` result carries its
    question: resume with `factory_delegate`, passing that result's `runId`, `replySource` and
    `replyReason`. `replySource: root` is allowed only for a routine, reversible

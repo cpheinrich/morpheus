@@ -44,13 +44,18 @@ export const factorySpecs = Object.freeze({
     { provider },
   ],
   delegate: [
-    "Delegate one bounded, self-contained brief through the Factory. The root remains manager and verifier. You MUST call this when the user explicitly requests Factory delegation, MUST NOT call it when the user requests local work, and otherwise use your normal sub-agent judgment. The first successful primary delegation pins provider and gateway for this root session. fresh=true creates an isolated non-primary conversation on that same binding and may run concurrently only in another isolated worktree.",
+    "Delegate one bounded, self-contained brief through the Factory. The root remains manager and verifier. You MUST call this when the user explicitly requests Factory delegation, MUST NOT call it when the user requests local work, and otherwise use your normal sub-agent judgment. The first successful primary delegation pins provider and gateway for this root session. One primary worker conversation serves the whole task across repositories: name every repository it may write with cwd (its working directory on the first delegation) and repos; later delegations may add repositories and keep the same conversation. Each target resolves to a checkout this task owns: a repository it already maps, an unowned linked worktree (adopted), or, for an original checkout, an isolated worktree created at its committed HEAD (uncommitted edits are not copied; the original is reference only). Another task's checkout is refused. fresh=true creates an isolated non-primary conversation with its own checkouts on that same binding.",
     {
       prompt: z.string().min(1).max(200000),
       runId: z.string().uuid().optional(),
       replySource: z.enum(["root", "user"]).optional(),
       replyReason: z.string().min(1).optional(),
       cwd: z.string().optional(),
+      repos: z
+        .array(z.string().min(1))
+        .max(16)
+        .optional()
+        .describe("Additional repository checkouts or original repositories this conversation may write; each resolves to a task-owned checkout."),
       provider,
       model: z.string().optional(),
       effort: z.enum(["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]).optional(),

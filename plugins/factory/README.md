@@ -41,7 +41,9 @@ or activate it.
 - **Personal settings and bridge records:** `~/.local/share/factory/` (0700 directory,
   0600 files). `FACTORY_HOME` relocates this for testing or a separate installation.
 - **Claude conversations and memories:** Claude's native store, normally `~/.claude/`.
-  The bridge records the session id per Codex task and worktree; it does not merge stores.
+  The bridge records the session id per root task; it does not merge stores.
+- **Task-created worktrees:** `~/.local/share/factory/worktrees/`, owned per task through
+  `workspaces.json`; removing one releases it.
 - Nothing about your subscription, selected executor, machine paths or conversation content
   belongs in the Morpheus repository.
 
@@ -144,11 +146,14 @@ also verifies that the run belongs to that root session.
 - **Sticky primary worker.** The first successful primary launch pins executor and gateway for
   the root session. Later gateway order or quota changes never silently switch it. An unavailable,
   removed, changed-provider or over-threshold pinned gateway refuses until it is eligible again;
-  a different provider requires a new root session. Provider conversations remain scoped to one
-  canonical checkout so repository instructions never leak across worktrees.
-- **Fresh work.** `fresh:true` starts a separate conversation on the pinned route and never
-  replaces the primary saved session. It can run concurrently only in another isolated worktree;
-  one writer per checkout and `maxConcurrent` still apply.
+  a different provider requires a new root session. The primary conversation keeps the working
+  directory of its first launch (Claude resumes a session only from that directory) and spans
+  every repository its task maps; see "Multi-repository workspaces" below.
+- **Fresh work.** `fresh:true` starts a separate conversation on the pinned route with its own
+  checkouts and never replaces the primary saved session. A target the primary already maps
+  becomes the source of a separate isolated worktree; one writer per checkout and
+  `maxConcurrent` still apply.
+
 - **Manager contract.** The root sends a self-contained brief, waits, handles only routine
   reversible clarification itself, sends authorization/spending/publishing/material decisions to
   the user, and independently verifies the result. Codex `needs_input` resumes through
@@ -157,6 +162,51 @@ also verifies that the run belongs to that root session.
   native edit tools in that checkout (Claude Code `Edit`, `Write`, `MultiEdit`, `NotebookEdit`;
   Codex `apply_patch`). Shell commands are not inspected, so this is an accidental-race guard,
   not a sandbox. Workers run with `FACTORY_DELEGATED=1`; hooks exit and MCP delegation refuses.
+
+### Multi-repository workspaces
+
+One task (root session) has one primary worker conversation, however many repositories it
+touches. `factory_delegate` takes explicit targets: `cwd` (the working directory, fixed at the
+first primary launch; defaults to the root's own directory) and `repos` (up to 16 more). The
+root's starting repository does not limit the others, and nothing is inferred: a later
+delegation without targets reuses the task's map, and a root that has moved to another
+repository does not add it. Each target resolves to a checkout the task owns:
+
+| Target | Resolves to |
+|---|---|
+| A repository the conversation already maps, its original, or a path inside its checkout | That checkout |
+| A different linked worktree of an already mapped repository | Refused: use `fresh:true` |
+| An unowned linked worktree (a claimed task checkout, e.g. from `morpheus pm claim`), including the root's own | Adopted and owned |
+| Any original checkout, the root's own included, or a fresh target the primary already maps | A new detached worktree at its committed HEAD under `$FACTORY_HOME/worktrees/`, owned by the task |
+| Another task's checkout (idle or not), a path inside one, a symlink to one, or a checkout containing one | Refused |
+| A directory outside Git, the root's own included | Refused: name a repository with `cwd` or `repos` |
+
+Two roots that start in the same original checkout therefore get separate worktrees and never
+share or take over each other's, even while one is idle. Every mapped checkout is owned; no
+task writes an original.
+
+The map (`repository → { path, source, owned }`, keyed by the canonical common Git directory)
+persists in the task record, so adding a repository resumes the same native conversation instead
+of starting a worker per repository. `factory_inspect` reports it as `workspace`. Uncommitted
+edits in an original are never copied, and the worker is told the original is reference only.
+Ownership lives in one registry, `$FACTORY_HOME/workspaces.json`, written by the bridge alone;
+ownership is recorded when the worker launches (a failed launch claims nothing) and released only
+when the checkout directory is confirmed absent (`git worktree remove` or `morpheus pm cleanup`);
+a permission or I/O error reading it keeps the owner. Factory never deletes a worktree it
+created: the work stays there until you merge or remove it. A record from before workspaces
+whose `primaryCwd` is a linked worktree migrates on its next delegation, keeping its saved
+conversation. One bound to an original checkout or a directory outside Git cannot move (its
+native session resumes only from that directory) and is refused with the remedy: start a new
+root session, which gets task-owned worktrees.
+
+Every checkout is guarded as one unit: no active run may share or nest a directory with another
+run's checkouts, `PreToolUse` refuses the root's native edits in any of them, and global or
+per-repository `off` for any target refuses the launch. A Claude worker receives the other
+checkouts (and a linked worktree's common Git directory) with `--add-dir`; a Codex worker
+receives them as `sandbox_workspace_write.writable_roots` only under `workspace-write`. Neither
+permission mode changes, so a read-only sandbox stays read-only. Under full access this is an
+ownership convention enforced at delegation, not an OS sandbox: the worker's shell can still
+write anywhere its user can.
 
 ## Gateway mode
 
@@ -289,19 +339,18 @@ both. Start a new Claude session after installing, and review its hooks.
   configured default rather than a guess.
 - **Permissions, never widened.** `bypassPermissions` → Codex full access
   (`--dangerously-bypass-approvals-and-sandbox`). `auto` and `acceptEdits` → the
-  `workspace-write` sandbox with approvals off (writes inside the checkout, plus a linked
-  worktree's Git directory; no network). `default` and `plan` → `read-only`: `default` asks
+  `workspace-write` sandbox with approvals off (writes inside the checkout, the task's other
+  checkouts and their linked worktrees' Git directories; no network). `default` and `plan` → `read-only`: `default` asks
   before each edit, and Codex exec cannot ask. Any other mode refuses. Under
   `workspace-write` Codex may be unable to push or reach the network; Claude does those steps.
 - **Execution.** Each handoff runs `codex exec --json` under the same guardian lease, output
-  cap and run limit as Claude workers, with the prompt on stdin. The saved Codex session id is
-  resumed per working directory with `codex exec resume`. Codex cannot ask mid-run, so a
+  cap and run limit as Claude workers, with the prompt on stdin. The primary conversation's
+  saved Codex session id is resumed with `codex exec resume`. Codex cannot ask mid-run, so a
   question arrives as a `needs_input` result and is answered with `factory_delegate` and
   that result's `runId`, `replySource` (`root` or `user`) and `replyReason`, within the
   same supervision budget.
-  One Claude session may run multiple Codex delegations concurrently when each uses a
-  different worktree. A second writer in the same working directory is refused with the
-  owning run id; the global `maxConcurrent` limit still applies. `factory_inspect` lists all
+  One Claude session may run multiple Codex delegations concurrently when their checkouts do
+  not overlap. A second writer in an overlapping checkout is refused with the owning run id; the global `maxConcurrent` limit still applies. `factory_inspect` lists all
   active runs and the five most recent terminal runs. Pass `runId` to wait, status or stop.
 - **Subscription only.** The bridge requires `codex login status` to report a ChatGPT
   sign-in and strips `OPENAI_*`/`CODEX_API_KEY` from the worker. Paid Codex credits cannot be
@@ -323,9 +372,9 @@ launches that worker; the run's
 - **A Codex worker for a Codex task** runs `codex exec` against the gateway with the task's own
   model and effort. Its sandbox follows the task's approval policy: never-approve full access
   maps to full access, on-request to read-only.
-- **Sessions are kept per checkout on the pinned route.** A root session pins executor and
-  gateway once; its primary provider conversation is keyed by canonical checkout. It never
-  resumes across worktrees, another gateway, or native login. A `needs_input` reply must use the
+- **Sessions are kept per task on the pinned route.** A root session pins executor and
+  gateway once; its primary provider conversation is keyed by its first working directory and
+  spans the task's mapped checkouts. It never resumes on another gateway or native login. A `needs_input` reply must use the
   route and run it came from.
 - **Credentials stay out of the worker.** It gets only the provider's own variables; every
   variable a configured `keyRef`, `emailRef` or `passwordRef` names is removed from its
@@ -349,16 +398,16 @@ turns still refuse. An unavailable rollout reports a task-metadata error; reopen
 and send a message rather than substituting another session. `bridge.mjs doctor` reads
 gateway quota independently, so healthy quota does not prove a task can delegate.
 
-The working directory defaults to the Codex turn's actual directory. An explicit alternate
-worktree must share the same canonical Git repository. Changing worktrees selects that
-worktree's saved Claude conversation. Codex must wait for the Claude writer to stop before
-editing the same files. The bridge prevents overlapping Claude runs per directory, limits
-concurrency to two, and never replays a task automatically after a crash.
+The working directory defaults to the Codex turn's actual directory. Other repositories join
+the same conversation as task-owned checkouts (see "Multi-repository workspaces"); a different
+checkout of a repository already mapped needs `fresh:true`. Codex must wait for the worker to
+stop before editing its checkouts. The bridge prevents overlapping runs, applies
+`maxConcurrent`, and never replays a task automatically after a crash.
 
 In the reverse direction, a Claude session can own multiple concurrent Codex runs in
-different worktrees. Native Codex session ids, `needs_input` resumes and supervision counts
-remain keyed by working directory. The bridge never permits two active writers in the same
-working directory, even when both belong to that Claude session.
+non-overlapping checkouts. `needs_input` resumes and supervision counts remain per run's
+working directory. The bridge never permits two active writers in overlapping checkouts, even
+when both belong to that Claude session.
 
 Claude questions return through its permission-control stream. Codex may answer routine,
 reversible clarifications with a recorded reason; substantive product decisions, new

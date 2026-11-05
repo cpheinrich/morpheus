@@ -20,7 +20,15 @@ never submit a local task to a different machine by guessing its project path.
 3. Hand off the user's task, current working directory, completed work, exact next step,
    acceptance checks, and relevant approvals/constraints. Do not send credentials, hidden
    system/developer instructions, unrelated chats, or an entire memory store. Refer Claude
-   to repository instructions. Explicit `cwd` is only for a worktree of this same repo.
+   to repository instructions.
+   Name every repository the worker may write: `cwd` (its working directory on the first
+   delegation) and `repos`. One primary conversation spans them all and keeps them on later
+   delegations; adding a repository resumes it rather than starting another worker. Each
+   target resolves to a task-owned checkout: an unowned linked worktree (such as one you
+   claimed) is adopted, any original checkout, yours included, becomes an isolated worktree at
+   its committed HEAD, and another task's checkout or a directory outside Git is refused. A
+   conversation from before workspaces bound to an original is refused: start a new session. `factory_inspect` reports the map as
+   `workspace`; tell the worker which checkout holds which part of the task.
    Do not ask it to redo mutations already completed. Default background=false; true is
    only for explicit user authorization to continue after disconnection.
 4. Model and effort are read from the active Codex turn, mapped separately, and applied to
@@ -39,7 +47,7 @@ never submit a local task to a different machine by guessing its project path.
 5. Call `factory_wait` (up to 25 seconds) until completion or a question. It renews the owner
    lease. Do not edit files in the worker's checkout while it is active. To take over, call
    `factory_stop` and wait until terminal. A `fresh:true` run gets a separate conversation and
-   never replaces the primary; it may run concurrently only in another isolated worktree.
+   its own checkouts, never shares one the primary maps, and never replaces the primary.
 6. For an AskUserQuestion clarification with an obvious, low-risk reversible default,
    `factory_answer` may use `source: root` with the selected answers and a concrete reason.
    Assess the question's substance, not just its tool name. Never use this to grant new

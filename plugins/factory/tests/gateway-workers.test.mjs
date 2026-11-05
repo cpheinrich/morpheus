@@ -2,6 +2,7 @@
 // the gateway is a separate subscription reached as an API. These run the real guardian with
 // fake CLIs and a stubbed sub2api admin API, and check what each worker was launched with.
 import { test } from "node:test";
+import { linkedCheckout } from "./git-fixtures.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, chmod, readFile, mkdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -73,10 +74,7 @@ async function harness(t, binaries) {
     throw new Error(`unexpected fetch ${url}`);
   };
   await initStore();
-  const repo = join(root, "repo");
-  await mkdir(repo);
-  execFileSync("git", ["init", "-q", repo]);
-  return { root, repo: await realpath(repo) };
+  return { root, repo: await linkedCheckout(root, "repo") };
 }
 
 async function gatewayConfig(provider, keyRef = "env:GW_KEY") {

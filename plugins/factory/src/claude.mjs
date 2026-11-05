@@ -141,7 +141,9 @@ export function applyClaudeEvent(run, event) {
   }
   return effects;
 }
-export function claudeArgs(session, selection, permission) {
+// Extra task-owned checkouts are added with --add-dir; the permission mode is unchanged, so
+// nothing is widened (bypassPermissions was already unconfined, plan stays read-only).
+export function claudeArgs(session, selection, permission, addDirs = []) {
   const args = [
     "claude",
     "-p",
@@ -175,6 +177,7 @@ export function claudeArgs(session, selection, permission) {
       additionalProperties: false,
     }),
   ];
+  for (const dir of addDirs) args.push("--add-dir", dir);
   if (session) args.push("--resume", session);
   return args;
 }

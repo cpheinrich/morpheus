@@ -3291,13 +3291,16 @@ manifest, skill, hooks, runtime, lockfile, tests and installation documentation.
 the package into a personal marketplace; execution remains off until enabled. Personal
 settings and session records stay outside the repository. The release status (`experimental`,
 default `off`) is repository-owned; the only per-machine switch is the private settings
-file's `mode`, which reinstalling never overwrites. In `manual` mode hooks advise and the
-coordinator starts every handoff; in `automatic` mode the prompt hook dispatches each turn to
-the routed worker and the coordinator manages it (the package README's "Automatic dispatch").
+file's `mode`, which reinstalling never overwrites. `manual` and the legacy `automatic` value both
+mean model-directed delegation: hooks never dispatch a user prompt. Both roots see the same
+provider-neutral `factory_*` tools, with root identity injected by the MCP host; the root
+decides when to delegate (an explicit user request to use or avoid the Factory binds), remains
+manager and verifier, and the first successful primary launch pins provider and gateway for that
+root session. Agent discovery uses gateway workers only; Paperclip pool tools are not exposed.
 
 The bridge works in both directions. Whichever agent holds the conversation is the
-coordinator, on this host's native login; it routes at safe checkpoints, keeps explicit
-task/operation overrides, and starts workers on the same host and worktree. A worker is the
+coordinator, on this host's native login; it keeps explicit task/operation overrides and starts
+workers on the same host. A worker is the
 other agent on its native login, or either agent behind a pooled-subscription gateway
 (sub2api), reached as an API with its own key. A gateway of the coordinator's own provider
 is a valid delegate because it is a separate subscription; the coordinator's own native
@@ -3314,6 +3317,24 @@ must be verified before delegation, and unknown/restricted confinement fails clo
 initial version. Cross-agent memory consists of explicitly selected read-only excerpts,
 with native memory controls respected and separate write ownership. See the package README
 for exact compatibility, subscription-overage and remote-host boundaries.
+
+One task has one persistent primary worker conversation across repositories. Delegation names
+its targets explicitly (`cwd`, `repos`); each resolves to a checkout the task owns: a repository
+already mapped keeps its checkout, an unowned linked worktree (the root's own included) is
+adopted, and every original checkout, the root's own included, becomes a detached worktree at
+its committed HEAD under the private Factory home, so uncommitted edits are never copied and
+originals stay reference only. Directories outside Git are refused. The map persists per task and
+adding a repository resumes the same native session; the conversation keeps the working
+directory of its first launch. One registry with one writer records ownership at launch, refuses
+another task's checkout, idle or not (including subdirectories, aliases and containing
+checkouts), and is released only when a checkout is confirmed absent, so independent tasks in the
+same repositories, even two roots starting in one original, get different checkouts. A fresh
+conversation gets its own map that never shares a primary checkout. One writer, the edit guard
+and per-repository `off` cover every mapped checkout; extra checkouts reach a worker as Claude
+`--add-dir` or Codex writable roots under `workspace-write` only, never widening a permission.
+Under full access this is ownership enforced at delegation, not an OS sandbox. Records from
+before workspaces migrate when their primary checkout is a linked worktree; one bound to an
+original or non-Git directory is refused with the remedy to start a new root session.
 
 The separate opt-in `plugins/factory/scripts/gateway-worker.mjs` entrypoint serves
 trusted unattended services without desktop identity, native login, quota discovery or

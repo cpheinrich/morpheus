@@ -1,5 +1,28 @@
 # Decisions
 
+**One Factory task conversation spans repositories through task-owned checkouts** — 2026-11-04.
+MO-26-11-04-20.01.14. Chris approved one persistent worker conversation per task, writing in several
+explicitly named repositories, each through a checkout the task owns; independent tasks get
+different checkouts even in the same repositories, and originals are reference only. This removes
+the same-repository equality gate in `start`/`codexStart` and supersedes "the primary provider
+conversation is scoped to its canonical checkout" in the 2026-11-02 entry below: the conversation
+keeps its first working directory (Claude resumes only from it, so the `primary:<cwd>` key and
+saved sessions in linked checkouts stand) and adds repositories through a persisted map. Targets
+are explicit (`cwd`, `repos`), never inferred from where the root moved. An unowned linked
+worktree is adopted; every original checkout, the root's own included, becomes a detached
+worktree at its committed HEAD; a directory outside Git is refused. There is no shared-original
+exception: two roots starting in one original get separate worktrees, and an idle task's checkout
+cannot be taken. A pre-workspace conversation bound to an original or non-Git directory is
+refused with the remedy (a new root session), because its native session cannot move and
+continuing would keep writing a shared original. One registry with one writer records ownership
+at launch, refuses equal, nested, containing and aliased claims across tasks, and releases a
+checkout only when its absence is confirmed; a permission or I/O error keeps the owner. One
+writer, the edit guard and per-repository `off` cover every checkout; extra checkouts reach Claude
+as `--add-dir` and Codex as writable roots under `workspace-write` only, never widening a mode.
+Under full access this is an ownership convention enforced at delegation, not an OS sandbox. A
+coordinator, worker-per-repository, an auto-cleanup and a release command were not added. Native
+Git and Node only; no dependency.
+
 **Factory refreshes Claude quota through the gateway's existing usage read** — 2026-11-04.
 MO-26-11-04-18.31.58. The account list's Claude five-hour utilization is a stored snapshot
 without a reset bound. Request its active usage endpoint on inspection/start/doctor and
