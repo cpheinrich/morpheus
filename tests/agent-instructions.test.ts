@@ -103,6 +103,20 @@ describe("Morpheus's own AGENTS.md", () => {
     expect(LOCAL_REVIEW_PROMPT).toContain("the author starts a fresh reviewer");
     expect(LOCAL_REVIEW_PROMPT).not.toMatch(/THIS SAME|same-reviewer turn|replacement reviewer/i);
   });
+
+  it("makes HQ brevity part of both reviewer personas", async () => {
+    const agentReview = await readFile(join(ROOT, ".github/agent-review-prompt.md"), "utf8");
+    for (const prompt of [agentReview, LOCAL_REVIEW_PROMPT]) {
+      const normalized = prompt.replace(/\s+/g, " ");
+      expect(normalized).toContain("at most ten words");
+      expect(normalized).toContain("at most 75 words or five one-sentence bullets");
+      expect(normalized).toContain("40–60%");
+      expect(normalized).toContain("decision or action, owner, deadline, thresholds, material evidence, caveats or compliance constraints");
+      expect(normalized).toContain("legal/compliance documents");
+      expect(normalized).toContain("roadmap tickets");
+      expect(normalized).toContain("raw meeting/source records");
+    }
+  });
 });
 
 describe("the scaffolded AGENTS.md", () => {
