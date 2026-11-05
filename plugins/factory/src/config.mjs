@@ -288,24 +288,41 @@ export async function resolveAdminCredentials(config, options = {}) {
   }
 }
 
+// Each gateway request is bounded so an unresponsive gateway reads as unknown quota
+// instead of holding an inspection or a start open.
+const GATEWAY_TIMEOUT_MS = 15000;
+
 // Read each gateway's account usage from the sub2api admin API. Fails closed: an
 // unreadable quota is `usedPercent: null`, which route() treats as no headroom.
+// Claude: the account list's stored 5-hour figure carries no reset time and sub2api only
+// refreshes it on use, so it can stay at an old value indefinitely. Claude's quota is
+// therefore read on every call from the per-account usage endpoint with
+// `source=active&force=true`; sub2api may answer from its own short upstream cache (about
+// three minutes), so `updatedAt` is the gateway's timestamp for that answer, not a
+// guaranteed provider measurement time. A failed read is unknown, never the stored figure.
+// Codex: the stored snapshot, whose windows carry reset times, with `updatedAt` from its
+// own `codex_usage_updated_at`. Codex's forced usage read would send a model request and
+// stamps a new time even on an old snapshot, so it is not used.
+// `now` defaults to the time each response is read, so a reset passed during the requests
+// counts as passed.
 // Assumes one sub2api instance (the first gateway's baseUrl) and one account per
 // provider; a multi-instance or multi-account pool needs a richer mapping.
 export async function readGatewayQuota(
   gateways,
-  { adminEmail, adminPassword, fetchImpl = globalThis.fetch, now = Date.now() } = {},
+  { adminEmail, adminPassword, fetchImpl = globalThis.fetch, now } = {},
 ) {
   if (!gateways.length) return [];
   if (!adminEmail || !adminPassword)
     return gateways.map((g) => ({ ...g, usedPercent: null }));
   const baseUrl = gateways[0].baseUrl.replace(/\/+$/, "");
+  const signal = () => AbortSignal.timeout(GATEWAY_TIMEOUT_MS);
   let token;
   try {
     const login = await fetchImpl(`${baseUrl}/api/v1/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email: adminEmail, password: adminPassword }),
+      signal: signal(),
     });
     if (!login.ok) throw new Error(`login HTTP ${login.status}`);
     token = (await login.json())?.data?.access_token;
@@ -313,53 +330,71 @@ export async function readGatewayQuota(
   } catch (error) {
     return gateways.map((g) => ({ ...g, usedPercent: null, error: error.message }));
   }
+  const headers = { authorization: `Bearer ${token}` };
   let items;
   try {
-    const accounts = await fetchImpl(`${baseUrl}/api/v1/admin/accounts`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
+    const accounts = await fetchImpl(`${baseUrl}/api/v1/admin/accounts`, { headers, signal: signal() });
     if (!accounts.ok) throw new Error(`accounts HTTP ${accounts.status}`);
     items = (await accounts.json())?.data?.items ?? [];
   } catch (error) {
     return gateways.map((g) => ({ ...g, usedPercent: null, error: error.message }));
   }
-  return gateways.map((g) => {
-    const platform = g.provider === "claude" ? "anthropic" : "openai";
-    const account = items.find((a) => a.platform === platform);
-    if (!account) return { ...g, usedPercent: null };
-    return { ...g, ...accountUsage(g.provider, account.extra ?? {}, now) };
-  });
+  return Promise.all(
+    gateways.map(async (g) => {
+      const platform = g.provider === "claude" ? "anthropic" : "openai";
+      const account = items.find((a) => a.platform === platform);
+      if (!account) return { ...g, usedPercent: null };
+      if (g.provider !== "claude") return { ...g, ...accountUsage(g.provider, account.extra ?? {}, now ?? Date.now()) };
+      try {
+        const id = encodeURIComponent(account.id);
+        const res = await fetchImpl(`${baseUrl}/api/v1/admin/accounts/${id}/usage?source=active&force=true`, {
+          headers,
+          signal: signal(),
+        });
+        if (!res.ok) throw new Error(`usage HTTP ${res.status}`);
+        const data = (await res.json())?.data;
+        if (!data || typeof data !== "object") throw new Error("usage response has no data");
+        return { ...g, ...accountUsage("claude", data, now ?? Date.now()) };
+      } catch (error) {
+        return { ...g, usedPercent: null, error: error.message };
+      }
+    }),
+  );
 }
 
 // An account is as full as its most-used window: a subscription with an empty 5-hour
-// window but a nearly spent week has no headroom. A window whose reset time has passed
-// is skipped (sub2api only refreshes on use, so it reports the finished window's figure).
-// sub2api gives no reset time with Claude's 5-hour utilization, so that one window is
-// always counted as read.
+// window but a nearly spent week has no headroom. A window whose reset time has passed is
+// skipped, since its figure belongs to a finished window; a window with no reset time is
+// counted as read. A missing, non-numeric or negative figure is unreadable, not zero.
+// `source` is Claude's live usage data (`five_hour`/`seven_day` of
+// `{ utilization (percent), resets_at }` and `updated_at`) or Codex's stored account extra.
 // Returns usedPercent null when no window is readable, which routing treats as no headroom.
-export function accountUsage(provider, extra, now = Date.now()) {
+export function accountUsage(provider, source, now = Date.now()) {
   const live = (resetAt) => {
     if (resetAt == null) return true;
     const ms = typeof resetAt === "number" ? resetAt * 1000 : Date.parse(resetAt);
     return !Number.isFinite(ms) || ms > now;
   };
-  const windows =
-    provider === "claude"
-      ? [
-          { name: "5h", used: extra.session_window_utilization, resetAt: null, fraction: true },
-          { name: "7d", used: extra.passive_usage_7d_utilization, resetAt: extra.passive_usage_7d_reset, fraction: true },
-        ]
-      : [
-          { name: "5h", used: extra.codex_5h_used_percent, resetAt: extra.codex_5h_reset_at },
-          { name: "7d", used: extra.codex_7d_used_percent, resetAt: extra.codex_7d_reset_at },
-        ];
+  const claude = provider === "claude";
+  const windows = claude
+    ? [
+        { name: "5h", used: source.five_hour?.utilization, resetAt: source.five_hour?.resets_at },
+        { name: "7d", used: source.seven_day?.utilization, resetAt: source.seven_day?.resets_at },
+      ]
+    : [
+        { name: "5h", used: source.codex_5h_used_percent, resetAt: source.codex_5h_reset_at },
+        { name: "7d", used: source.codex_7d_used_percent, resetAt: source.codex_7d_reset_at },
+      ];
+  const stamp = claude ? source.updated_at : source.codex_usage_updated_at;
+  const updatedAt = typeof stamp === "string" && stamp ? stamp : null;
   const read = windows
-    .filter((w) => Number.isFinite(w.used) && live(w.resetAt))
-    .map((w) => ({ name: w.name, usedPercent: Math.round(w.fraction ? w.used * 100 : w.used) }));
-  if (!read.length) return { usedPercent: null, windows: {} };
+    .filter((w) => Number.isFinite(w.used) && w.used >= 0 && live(w.resetAt))
+    .map((w) => ({ name: w.name, usedPercent: Math.round(w.used) }));
+  if (!read.length) return { usedPercent: null, windows: {}, updatedAt };
   return {
     usedPercent: Math.max(...read.map((w) => w.usedPercent)),
     windows: Object.fromEntries(read.map((w) => [w.name, w.usedPercent])),
+    updatedAt,
   };
 }
 // Claude exposes subscription windows only to its status line, which records them.

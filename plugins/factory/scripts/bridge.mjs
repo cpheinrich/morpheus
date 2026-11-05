@@ -113,6 +113,9 @@ try {
             provider: g.provider,
             baseUrl: g.baseUrl,
             usedPercent: g.usedPercent,
+            // When the reading was reported (Claude: the gateway's answer; Codex: its stored
+            // snapshot), so its age is visible.
+            updatedAt: g.updatedAt ?? null,
             belowThreshold: g.usedPercent != null && g.usedPercent < result.config.threshold,
             keyRef: g.keyRef,
           };

@@ -180,8 +180,24 @@ how a credentials manager stays the single source of truth, for example
 `exec:/opt/homebrew/bin/darwin-env get FACTORY_CLAUDE_KEY`; give the command an absolute
 path, since the bridge service inherits the PATH of whichever session started it.
 
-Quota is read from the gateway's admin API (`GET /api/v1/admin/accounts`) with an admin
-login. Configure it as references too:
+Quota is read from the gateway's admin API with an admin login. `GET /api/v1/admin/accounts`
+finds each provider's account. An account counts as its most-used 5-hour or 7-day window
+whose reset time has not passed, judged when the response arrives.
+
+- **Claude.** The account list's stored 5-hour figure has no reset time and sub2api only
+  refreshes it on use, so it can stay at an old value indefinitely and is never used.
+  Every inspection, start and `doctor` asks
+  `GET /api/v1/admin/accounts/<id>/usage?source=active&force=true`, which makes sub2api
+  query Anthropic. sub2api may still answer from its own short cache (about three
+  minutes), so `updatedAt` is the gateway's timestamp for that answer, not a guaranteed
+  provider measurement time. A failed read leaves Claude's quota unknown (routing treats
+  it as no headroom) and does not affect Codex.
+- **Codex.** The account list's stored snapshot, whose windows carry reset times.
+  `updatedAt` is the snapshot's own `codex_usage_updated_at`, so it can be old. The usage
+  endpoint is not called for Codex: forcing it sends a model request, and it stamps the
+  current time even when it returns an old snapshot.
+
+Each request times out after 15 seconds. Configure the admin login as references too:
 
 ```json
 {
@@ -197,7 +213,7 @@ Without `admin`, the service falls back to `FACTORY_ADMIN_EMAIL` and
 Claude or Codex session that first started the service, which is rarely the shell that
 exported them (a desktop-app session exports nothing), so `env:` references and the env
 fallback usually mean "quota unknown, routing native". `bridge.mjs doctor` shows each
-gateway's `usedPercent`, whether it is below the threshold, whether its `keyRef` resolves,
+gateway's `usedPercent` and its `updatedAt`, whether it is below the threshold, whether its `keyRef` resolves,
 and where the admin login came from, so a misconfiguration is visible before a delegation
 is attempted.
 
