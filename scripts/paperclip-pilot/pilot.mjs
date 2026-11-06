@@ -38,19 +38,21 @@ const [command, ...rest] = words;
 function fail(message, code = 2) { console.error(`paperclip-pilot: ${message}`); process.exit(code); }
 function print(value) { console.log(JSON.stringify(value, null, 2)); }
 
+function checkHost(name, host) {
+  for (const key of ["controllerCwd", "supervisorPath", "hostConfigPath"]) if (!isAbsolute(host[key] ?? "")) fail(`hosts.${name}.${key} must be absolute`);
+  if (!["local", "ssh"].includes(host.transport)) fail(`hosts.${name}.transport must be local or ssh`);
+  if (host.transport === "ssh" && !/^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/.test(host.sshTarget ?? "")) fail(`hosts.${name}.sshTarget must be user@host`);
+  if (host.transport === "ssh" && !(Number.isInteger(host.tunnelPort) && host.tunnelPort > 1024 && host.tunnelPort < 65536)) fail(`hosts.${name}.tunnelPort must be a fixed unprivileged port`);
+  if (!host.hostConfig?.workspace || !isAbsolute(host.hostConfig.workspace)) fail(`hosts.${name}.hostConfig.workspace must be absolute`);
+}
+
 function loadInventory() {
   if (!existsSync(inventoryPath)) fail(`no inventory at ${inventoryPath}; copy inventory.example.json there and fill it in`);
   const info = statSync(inventoryPath);
   if ((info.mode & 0o022) !== 0) fail("inventory must not be group/world writable (chmod 600)");
   const inventory = JSON.parse(readFileSync(inventoryPath, "utf8"));
   if (inventory.schema !== SCHEMA) fail(`inventory schema must be ${SCHEMA}`);
-  for (const [name, host] of Object.entries(inventory.hosts ?? {})) {
-    for (const key of ["controllerCwd", "supervisorPath", "hostConfigPath"]) if (!isAbsolute(host[key] ?? "")) fail(`hosts.${name}.${key} must be absolute`);
-    if (!["local", "ssh"].includes(host.transport)) fail(`hosts.${name}.transport must be local or ssh`);
-    if (host.transport === "ssh" && !/^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/.test(host.sshTarget ?? "")) fail(`hosts.${name}.sshTarget must be user@host`);
-    if (host.transport === "ssh" && !(Number.isInteger(host.tunnelPort) && host.tunnelPort > 1024 && host.tunnelPort < 65536)) fail(`hosts.${name}.tunnelPort must be a fixed unprivileged port`);
-    if (!host.hostConfig?.workspace || !isAbsolute(host.hostConfig.workspace)) fail(`hosts.${name}.hostConfig.workspace must be absolute`);
-  }
+  for (const [name, host] of Object.entries(inventory.hosts ?? {})) checkHost(name, host);
   return inventory;
 }
 
@@ -161,6 +163,44 @@ function readOnHost(host, path) {
   return result.stdout;
 }
 
+async function enrollCompany(inventory, plan) {
+  const companies = list(await api(inventory, "GET", "/companies"));
+  let company = companies.find(c => c.id === inventory.company.id) ?? companies.find(c => c.name === inventory.company.name);
+  if (!company) {
+    plan.push({ create: "company", name: inventory.company.name });
+    if (apply) company = await api(inventory, "POST", "/companies", { name: inventory.company.name, description: inventory.company.description ?? "Morpheus Paperclip pilot", budgetMonthlyCents: 0 });
+  }
+  if (company && inventory.company.id && inventory.company.id !== company.id) fail("inventory company id does not match the controller");
+  if (company) inventory.company.id = company.id;
+  return company;
+}
+
+function adoptAgent(inventory, name, host, existing, body, plan) {
+  const fields = drift(existing, body);
+  if (fields.length) fail(`agent ${existing.id} for ${name} drifted in ${fields.join(", ")}; do not repoint — remove it and enroll a new agent`);
+  if ((inventory.retiredAgentIds ?? []).includes(existing.id)) fail(`agent ${existing.id} was retired; it cannot be re-bound`);
+  plan.push({ host: name, agentId: existing.id, action: "adopt" });
+  host.agentId = existing.id;
+}
+
+// Adopt a matching agent, create a missing one, refuse drift; then lock its permissions.
+async function enrollHost(inventory, name, agents, company, plan) {
+  const host = inventory.hosts[name], body = agentBody(inventory, name);
+  const existing = host.agentId ? agents.find(a => a.id === host.agentId) : agents.find(a => a.name === body.name);
+  if (host.agentId && !existing) fail(`hosts.${name}.agentId ${host.agentId} is not on the controller; remove it from the inventory explicitly before re-enrolling`);
+  if (existing) adoptAgent(inventory, name, host, existing, body, plan);
+  else {
+    plan.push({ host: name, action: "create", name: body.name });
+    if (apply) host.agentId = (await api(inventory, "POST", `/companies/${company.id}/agents`, body)).id;
+  }
+  // Tightening permissions is not repointing; apply it to adopted agents too.
+  const granted = existing?.permissions ?? {};
+  if (!existing || granted.canCreateAgents !== false || granted.canCreateSkills !== false || granted.canAssignTasks !== false) {
+    plan.push({ host: name, action: "restrict-permissions", permissions: LOCKED });
+    if (apply) await api(inventory, "PATCH", `/agents/${host.agentId}/permissions`, LOCKED);
+  }
+}
+
 const commands = {
   // One entry point after the operator supplies the private host inventory and native login.
   async setup() {
@@ -220,36 +260,9 @@ const commands = {
   // Idempotent: adopt matching agents, create missing ones, refuse drift.
   async enroll() {
     const inventory = loadInventory(), plan = [];
-    const companies = list(await api(inventory, "GET", "/companies"));
-    let company = companies.find(c => c.id === inventory.company.id) ?? companies.find(c => c.name === inventory.company.name);
-    if (!company) {
-      plan.push({ create: "company", name: inventory.company.name });
-      if (apply) company = await api(inventory, "POST", "/companies", { name: inventory.company.name, description: inventory.company.description ?? "Morpheus Paperclip pilot", budgetMonthlyCents: 0 });
-    }
-    if (company && inventory.company.id && inventory.company.id !== company.id) fail("inventory company id does not match the controller");
-    if (company) inventory.company.id = company.id;
+    const company = await enrollCompany(inventory, plan);
     const agents = company ? list(await api(inventory, "GET", `/companies/${company.id}/agents`)) : [];
-    for (const name of Object.keys(inventory.hosts)) {
-      const host = inventory.hosts[name], body = agentBody(inventory, name);
-      const existing = host.agentId ? agents.find(a => a.id === host.agentId) : agents.find(a => a.name === body.name);
-      if (host.agentId && !existing) fail(`hosts.${name}.agentId ${host.agentId} is not on the controller; remove it from the inventory explicitly before re-enrolling`);
-      if (existing) {
-        const fields = drift(existing, body);
-        if (fields.length) fail(`agent ${existing.id} for ${name} drifted in ${fields.join(", ")}; do not repoint — remove it and enroll a new agent`);
-        if ((inventory.retiredAgentIds ?? []).includes(existing.id)) fail(`agent ${existing.id} was retired; it cannot be re-bound`);
-        plan.push({ host: name, agentId: existing.id, action: "adopt" });
-        host.agentId = existing.id;
-      } else {
-        plan.push({ host: name, action: "create", name: body.name });
-        if (apply) host.agentId = (await api(inventory, "POST", `/companies/${company.id}/agents`, body)).id;
-      }
-      // Tightening permissions is not repointing; apply it to adopted agents too.
-      const granted = existing?.permissions ?? {};
-      if (!existing || granted.canCreateAgents !== false || granted.canCreateSkills !== false || granted.canAssignTasks !== false) {
-        plan.push({ host: name, action: "restrict-permissions", permissions: LOCKED });
-        if (apply) await api(inventory, "PATCH", `/agents/${host.agentId}/permissions`, LOCKED);
-      }
-    }
+    for (const name of Object.keys(inventory.hosts)) await enrollHost(inventory, name, agents, company, plan);
     if (apply) saveInventory(inventory);
     print({ applied: apply, companyId: inventory.company.id ?? null, plan });
   },
