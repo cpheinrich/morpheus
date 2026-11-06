@@ -16,3 +16,6 @@ applies; no independent-review record or manual waiver was fabricated.
 
 The initial staged diff check caught the prior inbox's trailing blank line at archive EOF;
 normalized only that whitespace and reran the complete staged/range diff checks.
+
+The initial head passed all CI checks. Trunk advanced while it ran; merged current trunk
+without conflicts to satisfy branch protection and validate CI again on the integrated head.
