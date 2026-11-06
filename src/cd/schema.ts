@@ -188,16 +188,21 @@ export function configurationDigest(config: CdConfig): string { const { mode: _m
 export function parseState(value: unknown): CdState {
   // State revisions are never silently reset or interpreted as an empty ledger.
   const state = value as CdState;
-  if (!state || state.schemaVersion !== 1 || !state.epoch || !state.repository || !state.transitions || !state.intents || !Array.isArray(state.sources) || !state.builds || !state.budget || !state.agents || !state.fences || !Array.isArray(state.slots) || !Array.isArray(state.pauses)) throw new Error("Invalid or unsupported CD state; an explicit lossless migration is required");
+  if (!hasLedgerShape(state)) throw new Error("Invalid or unsupported CD state; an explicit lossless migration is required");
   if (state.postResumeAcceptances !== undefined) z.record(digest, postResumeAcceptanceSchema).parse(state.postResumeAcceptances);
   if (state.budget.spendingPolicy !== undefined) budgetSpendingPolicySchema.parse(state.budget.spendingPolicy);
-  for (const intent of Object.values(state.intents)) {
-    if (!Array.isArray(intent.attempts) || !Array.isArray(intent.lineage) || !intent.originalSource || !intent.oldestDebtAt || !intent.deadlineAt) throw new Error("Incomplete durable delivery intent");
-    if (intent.state === "delivered" && !intent.receipt) throw new Error("Delivered intent is missing immutable receipt");
-    if (intent.sourceAgeWaiver) {
-      if (!intent.validation) throw new Error("Source-age waiver requires a validation intent");
-      sourceAgeWaiverSchema.parse(intent.sourceAgeWaiver);
-    }
-  }
+  for (const intent of Object.values(state.intents)) parseIntent(intent);
   return state;
+}
+function hasLedgerShape(state: CdState): boolean {
+  return !!state && state.schemaVersion === 1 && !!state.epoch && !!state.repository && !!state.transitions && !!state.intents && Array.isArray(state.sources)
+    && !!state.builds && !!state.budget && !!state.agents && !!state.fences && Array.isArray(state.slots) && Array.isArray(state.pauses);
+}
+function parseIntent(intent: CdState["intents"][string]): void {
+  if (!Array.isArray(intent.attempts) || !Array.isArray(intent.lineage) || !intent.originalSource || !intent.oldestDebtAt || !intent.deadlineAt) throw new Error("Incomplete durable delivery intent");
+  if (intent.state === "delivered" && !intent.receipt) throw new Error("Delivered intent is missing immutable receipt");
+  if (intent.sourceAgeWaiver) {
+    if (!intent.validation) throw new Error("Source-age waiver requires a validation intent");
+    sourceAgeWaiverSchema.parse(intent.sourceAgeWaiver);
+  }
 }
