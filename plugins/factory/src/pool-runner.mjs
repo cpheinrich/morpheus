@@ -44,6 +44,18 @@ export function remoteCommand(profile, args, { spawnImpl = spawn, env = process.
   });
 }
 const list = (value) => (Array.isArray(value) ? value : Array.isArray(value?.items) ? value.items : []);
+// The coordinator may not know this issue's id (an unknown POST outcome). Accept it
+// only through the marker of a journaled turn assigned to this exact agent.
+async function markedConversation(issue, issueId, profileName, profile) {
+  const mark = parseMarker(issue.description);
+  if (!mark || issue.assigneeAgentId !== profile.agentId) return null;
+  const conversation = await readConversation(mark.conversationId);
+  if (!conversation || conversation.profile !== profileName || (conversation.issueId && conversation.issueId !== issueId)) return null;
+  const turn = await readJSON(turnPath(conversation.id, mark.turn), null);
+  if (turn?.promptSha256 !== mark.promptSha256) return null;
+  await linkIssue(conversation.id, issueId, "runner");
+  return { ...conversation, issueId };
+}
 async function locate(api, runId, profileName, profile) {
   const issues = await api.get(`/heartbeat-runs/${runId}/issues`);
   if (!Array.isArray(issues)) throw new Error("Paperclip returned no issue list for this run");
@@ -60,16 +72,8 @@ async function locate(api, runId, profileName, profile) {
       if (conversation?.profile === profileName) return { conversation, issue };
       continue;
     }
-    // The coordinator may not know this issue's id (an unknown POST outcome). Accept it
-    // only through the marker of a journaled turn assigned to this exact agent.
-    const mark = parseMarker(issue.description);
-    if (!mark || issue.assigneeAgentId !== profile.agentId) continue;
-    const conversation = await readConversation(mark.conversationId);
-    if (!conversation || conversation.profile !== profileName || (conversation.issueId && conversation.issueId !== issueId)) continue;
-    const turn = await readJSON(turnPath(conversation.id, mark.turn), null);
-    if (turn?.promptSha256 !== mark.promptSha256) continue;
-    await linkIssue(conversation.id, issueId, "runner");
-    return { conversation: { ...conversation, issueId }, issue };
+    const conversation = await markedConversation(issue, issueId, profileName, profile);
+    if (conversation) return { conversation, issue };
   }
   return { conversation: null, issue: first };
 }
