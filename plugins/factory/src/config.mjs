@@ -430,32 +430,36 @@ export function claudeRemaining(snapshot, now = Date.now(), maxAgeMs = 20 * 6000
  * (modelFallback, when the active Codex model has no mapping). The provenance travels
  * with the run's selection so a coordinator can say what ran without asking.
  */
-export function modelSelection(config, snapshot, override = {}) {
-  const requested = snapshot.model ?? null;
+const UNSUPPORTED_MODEL =
+  "Unsupported Claude model identifier. Pass a full model id or a family alias as `claude --model` accepts it.";
+// Override first, then modelMap, then modelFallback; a source with an empty model is
+// reported as unsupported rather than falling through.
+function chosenModel(config, requested, override) {
   const mapped = requested == null ? undefined : config.modelMap[requested];
   const fallback = config.modelFallback ?? null;
-  let model;
-  let source;
-  if (override.model != null) [model, source] = [override.model, "override"];
-  else if (mapped != null) [model, source] = [mapped, "mapped"];
-  else if (fallback) [model, source] = [fallback, "fallback"];
-  const effort = override.effort ?? config.effortMap[snapshot.reasoningEffort];
-  if (!model && source)
-    throw new Error(
-      "Unsupported Claude model identifier. Pass a full model id or a family alias as `claude --model` accepts it.",
-    );
+  if (override.model != null) return [override.model, "override"];
+  if (mapped != null) return [mapped, "mapped"];
+  if (fallback) return [fallback, "fallback"];
+  return [undefined, undefined];
+}
+function assertModelAllowed(model, source, requested) {
+  if (!model && source) throw new Error(UNSUPPORTED_MODEL);
   if (!model)
     throw new Error(
       `No Claude model mapping for Codex model "${requested ?? "unknown"}" and modelFallback is disabled. Add it to modelMap, set modelFallback (for example "opus"), or pass an explicit model.`,
     );
   if (typeof model !== "string" || !modelIdPattern.test(model))
-    throw new Error(
-      "Unsupported Claude model identifier. Pass a full model id or a family alias as `claude --model` accepts it.",
-    );
+    throw new Error(UNSUPPORTED_MODEL);
   if (MOVING_MODEL_ALIASES.has(model.toLowerCase()))
     throw new Error(
       `Claude model alias "${model}" moves with releases and could select a paid-credit-only model; name the model explicitly.`,
     );
+}
+export function modelSelection(config, snapshot, override = {}) {
+  const requested = snapshot.model ?? null;
+  const [model, source] = chosenModel(config, requested, override);
+  const effort = override.effort ?? config.effortMap[snapshot.reasoningEffort];
+  assertModelAllowed(model, source, requested);
   if (!["low", "medium", "high", "xhigh", "max"].includes(effort))
     throw new Error("No effort mapping for the current Codex selection.");
   return {
