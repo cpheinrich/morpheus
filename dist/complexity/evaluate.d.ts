@@ -39,6 +39,18 @@ export interface Evaluation {
 export declare function isTouched(fn: FunctionRow, target: Target, all: FunctionRow[]): boolean;
 export type Scope = "changed" | "all";
 export declare function evaluate(config: ComplexityConfig, results: FileResult[], targets: Map<string, Target>, scope?: Scope): Evaluation;
+/** A measured function as `--json` reports it: `targeted` when the check judged it against the policy. */
+export type MeasuredFunction = FunctionRow & {
+    targeted: boolean;
+};
+export type MeasuredFile = Omit<FileResult, "functions"> & {
+    functions?: MeasuredFunction[];
+};
+/**
+ * Every row Lizard returned, not only the findings: a refactor's before/after needs the unflagged
+ * helpers and their NLOC too. Membership uses the same `isTouched` as the findings.
+ */
+export declare function measurements(results: FileResult[], targets: Map<string, Target>): MeasuredFile[];
 /**
  * An exception is judged only where its file was analysed in this run; in a
  * targeted run an untouched file's exception is "not evaluated", never stale.

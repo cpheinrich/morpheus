@@ -73,6 +73,18 @@ function coverageNote(paths) {
     return { rule: "coverage", severity: "note", message: `${paths.length} file(s) in a language Lizard does not read were not measured: ${summary}` };
 }
 /**
+ * Every row Lizard returned, not only the findings: a refactor's before/after needs the unflagged
+ * helpers and their NLOC too. Membership uses the same `isTouched` as the findings.
+ */
+export function measurements(results, targets) {
+    return results.map(({ functions, ...file }) => {
+        if (!functions)
+            return file;
+        const target = targets.get(file.path) ?? "all";
+        return { ...file, functions: functions.map((fn) => ({ ...fn, targeted: isTouched(fn, target, functions) })) };
+    });
+}
+/**
  * An exception is judged only where its file was analysed in this run; in a
  * targeted run an untouched file's exception is "not evaluated", never stale.
  * A run over every file (`all`) has seen the whole tree, so an exception whose

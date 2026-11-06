@@ -1485,7 +1485,10 @@ fails, `enforce` measures every in-scope file and fails on CCN over the limit, a
 in a language Lizard reads, or a stale exception. Cognitive complexity only warns. In-source
 suppressions are neutralised and reported rather than obeyed; the only ways to narrow the bar are
 `exclude` and a narrow, reasoned `exceptions` entry, both printed in every report, and a change to
-the block within a pull request is shown as a before/after warning. Detail:
+the block within a pull request is shown as a before/after warning. Findings are
+refactored with one canonical, versioned prompt shipped in the CLI (`morpheus complexity prompt`);
+`check --json` carries every measured function row, so a refactor reports before/after metrics for
+its whole family without a second analyzer. Detail:
 [`docs/runbooks/complexity.md`](docs/runbooks/complexity.md).
 
 ### 7.13 The GitHub Manager is the backstop for a loop whose author has left

@@ -26,8 +26,8 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `.github/workflows/` | Reusable workflows called by every project |
 | `docs/runbooks/` | Procedures, for humans and agents — read on demand (index below) |
 | `.github/agent-review-prompt.md` | The rung-2 reviewer persona — versioned, so it is reviewable |
-| `.claude/skills/` | Canonical Claude procedures; project-facing entries are classified in `src/project-skills.ts` |
-| `.agents/skills/` | Canonical Codex/Grok procedures; project-facing entries are classified in `src/project-skills.ts` |
+| `.claude/skills/` | Canonical Claude procedures, classified in `src/project-skills.ts` |
+| `.agents/skills/` | Canonical Codex/Grok procedures, classified in `src/project-skills.ts` |
 | `local/handoffs/` | Handoff docs, both directions. Gitignored — never committed |
 | `qa/acceptance/` | Acceptance criteria per item, named by `RoadmapItem.acceptance` |
 | `tests/` | Vitest, mirroring `src/` |
@@ -93,8 +93,8 @@ Run `morpheus context brief` at session start if the hook did not; follow its `W
 On a dirty trunk it moves tracked edits to a `wip/trunk-*` branch (a draft PR only if the repo is private), then
 fast-forwards; `doctor --all` lists stuck trunks and unpushed rescues.
 
-**Read `AGENTS.md`, `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md` once
-at session start — `AGENTS.md` too, because an injected copy leaves no read evidence — then run
+**Read `AGENTS.md` (an injected copy leaves no read evidence), `.agent/decisions.md`,
+`.agent/learned.md` and `hq/team/<your handle>.md` once at session start, then run
 `morpheus context refresh` once.** After that, just run the gated command
 (`pm claim`, `pm new`, `pm link-issue`, `pm block`, `access sync`, `firebase auth setup`,
 `web init` provisioning); past the five-minute term the gate re-certifies when nothing moved.
@@ -214,8 +214,9 @@ touched shared core (`src/pm/`, `src/check/`, `src/session/`, `src/review/`,
 `src/init/templates.ts`). Never re-run an unchanged suite to see whether it passes this time.
 Record the focused commands, and why that scope, in the test plan.
 
-**Complexity:** after each changed function family run `morpheus complexity check`; report its
-summary before review ([`complexity.md`](docs/runbooks/complexity.md)).
+**Complexity:** after each changed function family run `morpheus complexity check` and inspect it
+by hand; refactor findings with `morpheus complexity prompt`; report the summary before review
+([`complexity.md`](docs/runbooks/complexity.md)).
 
 **Before opening a PR**, run `pnpm typecheck`, the focused tests, `pnpm compile` and
 `pnpm morpheus pm index`, and commit any generated changes. CI runs the same checks.

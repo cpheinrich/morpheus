@@ -12,3 +12,6 @@ export interface CheckFlags {
  * mapping bug changes untouched code too.
  */
 export declare function check(root: string, flags: CheckFlags): Promise<number>;
+/** The canonical refactoring prompt, shipped beside this module so every installed CLI prints the same text. */
+export declare const PROMPT_PATH: URL;
+export declare function prompt(): Promise<number>;

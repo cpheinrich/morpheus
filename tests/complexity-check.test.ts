@@ -76,6 +76,22 @@ describe("complexity check against the real pinned Lizard", () => {
     expect((await check(root, { all: true })).exitCode).toBe(1);
   });
 
+  it("reports every function of a touched file in --json, flagged or not, with NLOC and cognitive", async () => {
+    const root = await repo({ "morpheus.json": enforce, "fam.js": jsFunction("helper", 15) + jsFunction("entry", 15) });
+    await put(root, { "fam.js": jsFunction("helper", 15) + jsFunction("entry", 16) });
+    // What `--json` prints is this object serialised.
+    const report = JSON.parse(JSON.stringify(await check(root))) as Extract<CheckReport, { state: "ran" }>;
+    const rows = report.files.find((f) => f.path === "fam.js")?.functions?.filter((f) => f.name !== "*global*");
+    expect(rows?.map(({ name, ccn, cognitive, nloc, start, end, targeted }) => ({ name, ccn, cognitive, nloc, start, end, targeted }))).toEqual([
+      { name: "helper", ccn: 15, cognitive: 14, nloc: 17, start: 1, end: 17, targeted: false },
+      { name: "entry", ccn: 16, cognitive: 15, nloc: 18, start: 18, end: 35, targeted: true },
+    ]);
+    // Only the touched function is judged; the unflagged helper is reported, not found.
+    expect(report.findings.filter((f) => f.rule === "ccn-over").map((f) => f.message)).toEqual(["fam.js:18 entry ( a ) has CCN 16 (limit 15)"]);
+    const all = await check(root, { all: true });
+    expect(all.files.find((f) => f.path === "fam.js")?.functions?.every((f) => f.targeted)).toBe(true);
+  });
+
   it("notes Markdown, Metal and image changes as coverage, never failing enforce", async () => {
     const root = await repo({ "morpheus.json": enforce });
     await put(root, { "docs/a.md": "# x\n", "Shader.metal": "kernel void k() {}\n", "logo.png": Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2]) });

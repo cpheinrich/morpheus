@@ -1,5 +1,13 @@
 # Decisions
 
+**Findings are refactored with one canonical prompt shipped in the CLI** — 2026-11-05.
+MO-26-11-05-23.15.42. Chris's rollout mandate makes the tested refactoring prompt part of every
+project's complexity workflow. It is one Markdown asset beside the analyzer runner, copied by
+`pnpm compile` and printed by `morpheus complexity prompt`, so a CLI update reaches every project
+and no project copy can drift; no skill, catalog or generated module. `check --json` adds every
+measured function row with a `targeted` flag, so before/after family metrics come from the same
+analyzer run on base and head; no compare command or path option. No dependency.
+
 **Function complexity uses one pinned Lizard, checked first by the agent, with CI as backstop** —
 2026-11-05. MO-26-11-05-21.48.00. Chris's rollout mandate: a reusable pinned analyzer installed by
 Morpheus, targeted checks while the change is small, review integration and a CI backstop; Evo blocks
