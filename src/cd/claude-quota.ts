@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { type Readable } from "node:stream";
 import { type QuotaSnapshot } from "./schema.js";
 import { quotaUsed } from "./state.js";
-import { QuotaReadError } from "./quota-reader.js";
+import { QuotaReadError, readerFailure } from "./quota-reader.js";
 
 const READ_MS = 60_000, CLEANUP_FUSE_MS = 3_000, INIT_ID = "morpheus-cd-init", USAGE_ID = "morpheus-cd-usage";
 export const CLAUDE_USAGE_SOURCE = "Claude Code get_usage";
@@ -197,7 +197,7 @@ class UsageRead {
       if (this.cleanupSeen) return false;
       this.cleanupSeen = true; this.cleanup = status.cleanup === "terminated"; return true;
     }
-    const failure = readerFailure(status, keys.length);
+    const failure = readerFailure(status, keys.length, "reader");
     if (failure === undefined) return false;
     if (live) this.fail(failure);
     return true;
@@ -244,11 +244,4 @@ class UsageRead {
     if (Date.now() - this.started >= READ_MS || !this.value) { this.fail("returned unknown or expired telemetry"); return; }
     this.settled = true; clearTimeout(this.timer); this.resolve(this.value);
   }
-}
-/** The reason a well-formed reader status fails the read, or undefined for an unrecognized status. */
-function readerFailure(status: Record<string, unknown>, keyCount: number): string | undefined {
-  if (keyCount === 2 && status.reader === "spawn-failed" && Number.isInteger(status.errno) && Number(status.errno) >= 0 && Number(status.errno) <= 4095) return `reader could not start (errno=${status.errno})`;
-  if (keyCount === 2 && status.reader === "exited" && Number.isInteger(status.code) && Number(status.code) >= -255 && Number(status.code) <= 255) return `reader exited (code=${status.code})`;
-  if (keyCount === 1 && status.reader === "status-unavailable") return "reader status unavailable";
-  return undefined;
 }
