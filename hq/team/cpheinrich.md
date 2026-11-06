@@ -1,29 +1,24 @@
 ---
 owner: cpheinrich
-date: 2026-11-02
+date: 2026-11-06
 agents:
   - codex
-previous: .agent/inbox-archive/2026-11-02-2125-cpheinrich.md
+previous: .agent/inbox-archive/2026-11-06-1426-cpheinrich.md
 ---
-# Inbox — 2026-11-02
+# Inbox — 2026-11-06
 
-Issue maintenance reconciled the entire live backlog and preserved completed entries. PR580 is merged, resolving the same-head cancelled-workflow census errors in #564 and #577. The policy issue #248 is closed with current-source evidence: merged PR568 superseded the unmerged PR414 and removed its earlier review-continuation blocker. PR581 is also merged, resolving exact HQ record ranking in #478. PR582 is merged, resolving the quota cleanup timing flake in #560. Five issues closed in this run; four other-session closures were separately reconciled since the previous run. The live ledger now shows 64/74 tracked issues closed, with ten open. Unreplied decisions below remain in place.
+Visual planning guidance and the authorized consumer rollout are complete. The implementation
+PRs merged after independent review and green CI; active working copies were preserved.
+Unreplied items below are carried forward unchanged. The previous exchange is
+[archived](../../.agent/inbox-archive/2026-11-06-1426-cpheinrich.md).
 
-## ✅ 1. Review-continuation blocker resolved · `codex`
-
-[#248](https://github.com/cpheinrich/morpheus/issues/248) is closed with [the evidence comment](https://github.com/cpheinrich/morpheus/issues/248#issuecomment-6588491261), merged [PR568](https://github.com/cpheinrich/morpheus/pull/568), and 289 passing check/review regression tests. PR414 was explicitly closed unmerged by its maintainer as superseded; no additional turn or conflict integration is requested. The old PR414 decision in the previous inbox is obsolete.
-
-## ✅ 2. CI waiter duplicate cancellations fixed · `codex`
-
-Merged [PR580](https://github.com/cpheinrich/morpheus/pull/580) ignores an older cancelled run only when a newer run of the same workflow and head succeeds; pending replacements wait, and genuine failures still fail. The published Evo PR734 reproduction now returns green. Independent review cleared the implementation, 233 focused and 4,150 full-suite tests passed, and final-head CI passed. Issues #564/#577 are closed and the remote branch is deleted.
-
-## ❗ 3. Kairos certificate-chain evidence · `codex`
+## ❗ 1. Kairos certificate-chain evidence · `codex`
 
 [#310](https://github.com/cpheinrich/morpheus/issues/310) still lacks the failed public leaf certificate's issuer and validity dates, or the detailed unquiet `security verify-cert` error. The generic trust failure does not identify a correct certificate-chain change. No private key, password, provisioning profile or production rerun is requested.
 
 ~
 
-## ❗ 4. Adopt the worktree-storage report · `codex`
+## ❗ 2. Adopt the worktree-storage report · `codex`
 
 [#423](https://github.com/cpheinrich/morpheus/issues/423) requests durable/configurable worktree storage after temporary-directory loss. Its reporter has CONTRIBUTOR association and read-only repository permission, so the repository's trusted-intake policy prevents implementing that request without maintainer adoption.
 
@@ -34,11 +29,7 @@ Merged [PR580](https://github.com/cpheinrich/morpheus/pull/580) ignores an older
 
 ~
 
-## ✅ 5. Remaining implementation queue is recorded · `codex`
-
-Merged [PR581](https://github.com/cpheinrich/morpheus/pull/581) puts exact record identities before numeric token scores, preserves custom ranking and payload compatibility, and fixes the reviewer-found EIN-title edge case. The review condition is satisfied; 20 final search tests and final-head CI passed. Issue #478 closure and branch deletion are verified. Merged [PR582](https://github.com/cpheinrich/morpheus/pull/582) allows real-timer observation tolerance while pinning the exact 2999/3000 ms boundary deterministically. Independent review, 126 focused tests, 4,150 full-suite tests, 146 integrated focused tests and final-head CI passed. Issue #560 closure and branch deletion are verified. Next groups are missing-worktree recovery (#430), existing web/ detection (#433), manager-review preflight (#444), shallow Git ancestry (#445), active plugin-run preservation (#481), and opt-in Swift brand output (#491). Audit-log issues #335/#451 remain open intentionally. The atomic local issue ledger retains claims, review/check evidence and concrete next actions; the weekly schedule remains active. Unrelated and audit-owned PRs are preserved.
-
-## ❗ 6. One older claim remains · `codex`
+## ❗ 3. One older claim remains · `codex`
 
 `MO-26-09-16-00.36.07` shipped in [PR #390](https://github.com/cpheinrich/morpheus/pull/390), and its remote branch is deleted. That previous disposition request is resolved. `MO-055` still holds remote branch `mo-055-a-new-contributor-gets-an-inbox-in-one-c`; this automation did not take it over. The original context is in [the archived exchange](../../.agent/inbox-archive/2026-10-12-1945-cpheinrich.md).
 
@@ -49,3 +40,10 @@ Merged [PR581](https://github.com/cpheinrich/morpheus/pull/581) puts exact recor
 
 ~
 
+## ✅ 4. Visual planning rollout complete · `codex`
+
+Merged [PR633](https://github.com/cpheinrich/morpheus/pull/633) and completed the authorized
+consumer rollout with independent clearance and passing CI. Useful relationship diagrams now
+belong early in planning; trivial edits need none, and no approval pause or merge gate was added.
+The [canonical guide](../../.agents/skills/visual-design/SKILL.md) remains centrally refinable
+and is available through `morpheus skills guide visual-design`. No action is needed for this rollout.
