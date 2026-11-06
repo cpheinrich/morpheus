@@ -80,7 +80,7 @@ Independent gateway review cleared the exact implementation commit with no findi
     "durationMs": 74816,
     "evidence": "Factory gateway run 552a2d33-5cf0-42bb-b342-fb4c7b5c96cc; Codex session 01a1b2d2-7d11-7140-a98f-4b45b78bfcde, turn 01a1b2d2-7fa6-70e1-926b-e25a8d0bf470 task_complete event: duration_ms=74816. Supervisor inspected native transcript task_started/task_complete boundaries."
   },
-  "outcome": "cleared",
+  "outcome": "complete",
   "summary": "Independent gateway review cleared the exact implementation commit with no findings. The reviewer passed 114 focused tests, typecheck and diff checks, and confirmed the retained distribution diagram matches the source. No fixes, disagreement or follow-up were needed. Rendered pixels were not inspected; no application UI changed.",
   "findings": []
 }
