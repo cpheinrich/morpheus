@@ -40,6 +40,12 @@ The canonical contract ships in `src/review/local-prompt.ts`; the old `review pr
 
 ## Policy
 
+Ask whether an early diagram would help explain the design and whether retained diagrams are
+useful and accurate. This is advisory: trivial self-contained changes need none, and missing or
+cosmetic diagrams do not block. Substantive inaccuracies are ordinary correctness/documentation
+findings. Visual planning adds no approval pause, required artifact or merge gate. The shared
+procedure is printed by `morpheus skills guide visual-design`.
+
 `review.required` in `morpheus.json` defaults to true, including existing manifests. False is a
 visible project opt-out. Records/board-only changes, exact dependency-only Dependabot PRs, and
 marked dependency-only PRs from the exact `morpheus-security[bot]` App keep narrow exemptions.

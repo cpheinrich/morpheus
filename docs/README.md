@@ -31,6 +31,8 @@ Keep runbooks about *doing*: decisions and their reasons belong in `architecture
 
 ## Agent procedures
 
+- [Early visual planning](visual-planning.md) — shared diagram guidance, refinement and consumer rollout.
+
 Moved out of `AGENTS.md` on 2026-10-07 so every session stops loading them; `AGENTS.md` keeps the
 one-line rule and says when to read each.
 

@@ -1,5 +1,17 @@
 # Decisions
 
+**Visual planning is early, selective and advisory** — 2026-11-06.
+MO-26-11-06-13.35.21. Chris approved proactive diagrams before implementation when relationships
+help explain architecture, workflows/pipelines, async handoffs, state transitions, ownership or
+substantial alternatives; trivial self-contained edits skip them. The small `visual-design` skill
+uses the existing canonical/Claude mirror/generated CLI/pointer convention and single project-skill
+registry. `morpheus skills guide visual-design` prints it. Scaffold and existing-project instruction
+adoption carry the early trigger; doctor warns about the latter's absence. Durable diagrams remain
+fenced Mermaid under architecture section 15, and agents update retained diagrams after material
+design changes. Review asks about usefulness/accuracy as advice; substantive inaccuracies remain
+normal findings. No approval pause, mandatory diagram artifact or new merge gate. Reused the existing
+CLI dispatcher, registry and template mechanisms; no generic module or new dependency is needed.
+
 **Findings are refactored with one canonical prompt shipped in the CLI** — 2026-11-05.
 MO-26-11-05-23.15.42. Chris's rollout mandate makes the tested refactoring prompt part of every
 project's complexity workflow. It is one Markdown asset beside the analyzer runner, copied by

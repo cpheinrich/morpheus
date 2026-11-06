@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { VISUAL_DESIGN_SKILL } from "../design/visual-design.js";
 import {
   projectSkillCatalog,
   syncProjectSkills,
@@ -9,6 +10,15 @@ import {
 
 const providerName = (provider: SkillProvider): string =>
   provider === "agents" ? "Codex/Grok" : "Claude";
+
+export function showProjectSkillGuide(name?: string): number {
+  if (name !== "visual-design") {
+    console.error(`Unknown project skill guide "${name ?? ""}". Guides: visual-design.`);
+    return 1;
+  }
+  console.log(VISUAL_DESIGN_SKILL.replace(/\n$/, ""));
+  return 0;
+}
 
 export function listProjectSkills(json: boolean): number {
   const skills = projectSkillCatalog();

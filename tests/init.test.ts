@@ -104,9 +104,9 @@ describe("morpheus init", () => {
     expect(instructions).toContain("must spawn one fresh reviewer subagent/session");
     expect(instructions).toContain("does not\nlaunch a reviewer");
     expect(instructions).toContain("without inheriting the author's conversation history");
-    expect(instructions).toContain("Do not wait for a PR monitor");
-    expect(instructions).toContain("The author measures each turn from runner duration metadata or actual clock readings");
-    expect(instructions).toContain("New version 2 records require timing source, milliseconds and");
+    expect(instructions).toContain("CI and PR monitors never start this review");
+    expect(instructions).toContain("Measure each turn from runner metadata or actual clock readings, never estimates");
+    expect(instructions).toContain("timing source, milliseconds and evidence");
     expect(await read(".github/pull_request_template.md")).toContain("review prepare only prints the packet");
     expect(await read(".github/pull_request_template.md")).toContain("review-record:");
   });

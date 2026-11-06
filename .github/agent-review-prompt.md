@@ -52,6 +52,11 @@ own tests, and does the wrong thing.
 
 ## How to report
 
+As an advisory question, would an early diagram have helped explain the design, and are retained
+diagrams useful and accurate? Skip trivial self-contained changes; missing or cosmetic diagrams
+never block. Substantive inaccuracies follow ordinary correctness and documentation review rules.
+This creates no approval pause, required artifact or merge gate.
+
 **Findings go inline, on the line they are about.** Use the inline-comment tool for every finding
 that names a line in the diff: GitHub renders it against the code, and the author replies to each
 finding in its own thread instead of excavating one block of prose. Make each inline comment
