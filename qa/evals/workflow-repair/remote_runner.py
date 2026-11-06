@@ -32,16 +32,8 @@ def _invalid_constant(value):
     raise ValueError("non-finite JSON number")
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--solution", required=True)
-    parser.add_argument("--episode", required=True)
-    parser.add_argument("--sha256", required=True)
-    parser.add_argument("--temporary", required=True)
-    parser.add_argument("--timeout", type=float, default=10)
-    args = parser.parse_args()
-    if not 0 < args.timeout <= 10:
-        raise RuntimeError("invalid timeout")
+def hashed_source(args):
+    """The solution bytes, reached without symlinks inside the episode and matching the expected digest."""
     root = Path(args.episode).resolve(strict=True)
     source = Path(os.path.abspath(args.solution))
     relative = source.relative_to(root)
@@ -55,6 +47,10 @@ def main():
     data = source.read_bytes()
     if hashlib.sha256(data).hexdigest() != args.sha256:
         raise RuntimeError("source digest mismatch")
+    return source, data
+
+
+def read_request():
     raw = sys.stdin.buffer.read(LIMIT + 1)
     if len(raw) > LIMIT:
         raise RuntimeError("oversized request")
@@ -62,6 +58,39 @@ def main():
                          parse_constant=_invalid_constant)
     if not isinstance(request, dict) or set(request) != {"payload"}:
         raise RuntimeError("invalid request")
+    return request
+
+
+def run_candidate(source, data, request):
+    # Compile the hashed bytes directly; never reopen source for import.
+    namespace = {"__name__": "candidate_solution", "__file__": str(source)}
+    exec(compile(data, str(source), "exec"), namespace)
+    solve = namespace.get("solve")
+    if not callable(solve):
+        raise RuntimeError("missing solve(payload)")
+    try:
+        answer = solve(request["payload"])
+    except ValueError:
+        return {"protocol": 1, "error": "ValueError"}
+    reply = {"protocol": 1, "result": answer}
+    # Serialization failures are transport errors, never candidate
+    # ValueError outcomes expected by invalid-input test cases.
+    json.dumps(reply, allow_nan=False)
+    return reply
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--solution", required=True)
+    parser.add_argument("--episode", required=True)
+    parser.add_argument("--sha256", required=True)
+    parser.add_argument("--temporary", required=True)
+    parser.add_argument("--timeout", type=float, default=10)
+    args = parser.parse_args()
+    if not 0 < args.timeout <= 10:
+        raise RuntimeError("invalid timeout")
+    source, data = hashed_source(args)
+    request = read_request()
     resource.setrlimit(resource.RLIMIT_FSIZE, (LIMIT, LIMIT))
     resource.setrlimit(resource.RLIMIT_CPU, (math.ceil(args.timeout), math.ceil(args.timeout)))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
@@ -78,21 +107,7 @@ def main():
         os.dup2(captured.fileno(), 1)
         os.dup2(captured.fileno(), 2)
         try:
-            # Compile the hashed bytes directly; never reopen source for import.
-            namespace = {"__name__": "candidate_solution", "__file__": str(source)}
-            exec(compile(data, str(source), "exec"), namespace)
-            solve = namespace.get("solve")
-            if not callable(solve):
-                raise RuntimeError("missing solve(payload)")
-            try:
-                answer = solve(request["payload"])
-            except ValueError:
-                reply = {"protocol": 1, "error": "ValueError"}
-            else:
-                reply = {"protocol": 1, "result": answer}
-                # Serialization failures are transport errors, never candidate
-                # ValueError outcomes expected by invalid-input test cases.
-                json.dumps(reply, allow_nan=False)
+            reply = run_candidate(source, data, request)
         except BaseException as exc:
             failure = type(exc).__name__
         finally:

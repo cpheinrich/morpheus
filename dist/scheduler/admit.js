@@ -9,6 +9,27 @@ export const GUARD_STEP = "Scheduler admission";
  * The guard step's own success proves nothing, so it is never read.
  */
 export const ADMISSION_STEP = "Scheduler occurrence admitted";
+function occurrenceSlot(schedulerId, scheduledFor) {
+    if (!scheduleId.safeParse(schedulerId).success)
+        throw new Error(`invalid scheduler-id ${JSON.stringify(schedulerId.slice(0, 80))}`);
+    const slot = parseInstant(scheduledFor);
+    if (!slot)
+        throw new Error(`scheduled-for must be a UTC instant like 2026-11-03T08:00:00Z`);
+    return slot;
+}
+/** Whether an earlier attempt of this run already admitted; refuses a guard step named like the marker it gates. */
+async function earlierAttemptAdmitted(input, github) {
+    for (const job of await github.jobs(input.repository, input.runId)) {
+        const attempt = job.run_attempt ?? 1;
+        // The step running now is this guard. Named like the marker, every duplicate would mint one.
+        if (attempt === input.runAttempt && job.steps?.some(s => s.name === ADMISSION_STEP && s.status === "in_progress")) {
+            throw new Error(`name the guard step "${GUARD_STEP}"; "${ADMISSION_STEP}" is reserved for the step it gates`);
+        }
+        if (attempt < input.runAttempt && admitted(job))
+            return true;
+    }
+    return false;
+}
 /** Throws on anything malformed or unreadable; a guard that cannot decide must not admit. */
 export async function admit(input, github) {
     const { schedulerId, scheduledFor } = input;
@@ -19,11 +40,7 @@ export async function admit(input, github) {
         throw new Error("scheduler-id and scheduled-for must be supplied together");
     if (!github)
         throw new Error("admitting a scheduled occurrence needs GitHub access");
-    if (!scheduleId.safeParse(schedulerId).success)
-        throw new Error(`invalid scheduler-id ${JSON.stringify(schedulerId.slice(0, 80))}`);
-    const slot = parseInstant(scheduledFor);
-    if (!slot)
-        throw new Error(`scheduled-for must be a UTC instant like 2026-11-03T08:00:00Z`);
+    const slot = occurrenceSlot(schedulerId, scheduledFor);
     const current = await github.run(input.repository, input.runId);
     const suffix = runNameSuffix(schedulerId, scheduledFor);
     if (!current.display_title.endsWith(suffix)) {
@@ -31,15 +48,8 @@ export async function admit(input, github) {
     }
     if (typeof current.workflow_id !== "number")
         throw new Error("this run reports no workflow id");
-    for (const job of await github.jobs(input.repository, input.runId)) {
-        const attempt = job.run_attempt ?? 1;
-        // The step running now is this guard. Named like the marker, every duplicate would mint one.
-        if (attempt === input.runAttempt && job.steps?.some(s => s.name === ADMISSION_STEP && s.status === "in_progress")) {
-            throw new Error(`name the guard step "${GUARD_STEP}"; "${ADMISSION_STEP}" is reserved for the step it gates`);
-        }
-        if (attempt < input.runAttempt && admitted(job)) {
-            return { admitted: false, reason: "an earlier attempt of this run was admitted", duplicateOf: input.runId };
-        }
+    if (await earlierAttemptAdmitted(input, github)) {
+        return { admitted: false, reason: "an earlier attempt of this run was admitted", duplicateOf: input.runId };
     }
     const since = new Date(slot.getTime() - HISTORY_SKEW_MS);
     for (const run of await github.runs(input.repository, current.workflow_id, since)) {

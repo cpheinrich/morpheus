@@ -56,10 +56,8 @@ export function adoptSources(state: CdState, sources: SourceRevision[], now: str
 export function createIntent(state: CdState, config: CdConfig, channel: Channel, source: SourceRevision, slot: string, now: string, validation = false, group?: string, requestId?: string, sourceAgeWaiver?: SourceAgeWaiver): DeliveryIntent {
   invariant(!sourceAgeWaiver || validation, "Source-age waiver requires a validation intent");
   const waiver = sourceAgeWaiver && sourceAgeWaiverSchema.parse(sourceAgeWaiver);
-  const cursor = state.cursors[channel], historical = cursor && source.order < cursor.order;
-  invariant(!group || group === config.channels[channel].internalGroupId || validation && group === config.channels[channel].validationGroupId, "Delivery group must be explicitly declared for this channel");
-  const isolatedValidation = Boolean(validation && group && group === config.channels[channel].validationGroupId && group !== config.channels[channel].internalGroupId);
-  if (historical) invariant(validation && group === config.channels[channel].validationGroupId && group !== config.channels[channel].internalGroupId, "Historical validation requires its explicit separate configured internal group");
+  const cursor = state.cursors[channel];
+  const isolatedValidation = intentGroupIsolation(config, channel, source, cursor, validation, group);
   const id = requestId ?? `${channel}-${slot.replace(/[^0-9]/g, "")}`;
   invariant(!state.intents[id], `Delivery ${id} already exists`);
   const debt = state.sources.filter((item, index) => item.order > (cursor?.order ?? -1) && item.order <= source.order && item.inputDigest !== state.sources[index - 1]?.inputDigest);
@@ -68,57 +66,70 @@ export function createIntent(state: CdState, config: CdConfig, channel: Channel,
   if (!waiver && !eligible(source, config, channel, now)) { intent.state = "waiting"; intent.eligibleAt = after(source.mainEnteredAt, config.channels[channel].minimumAgeHours * 60); intent.nextCheckAt = intent.eligibleAt; intent.nextAction = "wait-source-age"; }
   state.intents[id] = intent; return intent;
 }
+/** A delivery group must be declared for the channel; a historical source needs its separate validation group. Returns whether the intent is isolated validation. */
+function intentGroupIsolation(config: CdConfig, channel: Channel, source: SourceRevision, cursor: CdState["cursors"][Channel], validation: boolean, group: string | undefined): boolean {
+  const { internalGroupId, validationGroupId } = config.channels[channel], historical = cursor && source.order < cursor.order;
+  invariant(!group || group === internalGroupId || validation && group === validationGroupId, "Delivery group must be explicitly declared for this channel");
+  const isolatedValidation = Boolean(validation && group && group === validationGroupId && group !== internalGroupId);
+  if (historical) invariant(validation && group === validationGroupId && group !== internalGroupId, "Historical validation requires its explicit separate configured internal group");
+  return isolatedValidation;
+}
 /** Slot decisions and watermark mutate together inside one ledger transaction. */
 export function evaluateSlots(state: CdState, config: CdConfig, now: string): void {
   for (const channel of ["staging", "production"] as const) {
     const due = dueSlots(config, channel, state.evaluatedSlots[channel], now);
-    if (channel === "production" && due.length > 1 && !activeIntent(state, channel)) {
-      const latest = due.at(-1)!, candidate = state.sources.filter(source => eligible(source, config, channel, latest)).at(-1);
-      if (candidate) {
-        const intent = createIntent(state, config, channel, candidate, latest, now);
-        intent.coveredSlots = [...due]; intent.deadlineAt = after(due[0]!, config.deadlines.deliveryHours * 60);
-        for (const slot of due) state.slots.push({ channel, slot, decision: slot === latest ? "intent" : "missed", intentId: intent.id });
-        state.evaluatedSlots[channel] = latest; continue;
-      }
-    }
-    for (const slot of due) {
-      const candidate = state.sources.filter(source => eligible(source, config, channel, slot)).at(-1);
-      const cursor = state.cursors[channel], cursorSource = cursor && state.sources.find(source => source.sha === cursor.sourceSha);
-      const unchanged = channel === "staging" && candidate && cursorSource?.inputDigest === candidate.inputDigest;
-      const active = activeIntent(state, channel);
-      if (!candidate) state.slots.push({ channel, slot, decision: "missed" });
-      else if (unchanged && !active) state.slots.push({ channel, slot, decision: "no-change" });
-      else if (active) {
-        if (active.attempts.length === 0 && candidate.order > sourceAt(state, active.source).order) {
-          active.source = candidate.sha; active.lineage.push({ source: candidate.sha, inputDigest: candidate.inputDigest, mainEnteredAt: candidate.mainEnteredAt, reason: "coalesced never-started slot", evidence: candidate.evidence.ref });
-          active.coveredSources = state.sources.filter(source => source.order > (cursor?.order ?? -1) && source.order <= candidate.order).map(source => source.sha);
-        }
-        const covered = channel === "production" || candidate.order <= sourceAt(state, active.source).order;
-        if (covered) active.coveredSlots.push(slot);
-        state.slots.push({ channel, slot, decision: covered ? "covered" : "missed", ...(covered ? { intentId: active.id } : {}) });
-      } else {
-        // Only the newest never-started production catch-up remains active. Original slot debt
-        // stays in coveredSlots and the original deadline is never moved forward.
-        const intent = createIntent(state, config, channel, candidate, slot, now);
-        const earlier = state.slots.filter(item => item.channel === channel && item.decision === "missed" && !item.intentId);
-        if (earlier.length) { intent.coveredSlots = [...earlier.map(item => item.slot), slot]; intent.deadlineAt = after(earlier[0]!.slot, config.deadlines.deliveryHours * 60); for (const item of earlier) item.intentId = intent.id; }
-        state.slots.push({ channel, slot, decision: "intent", intentId: intent.id });
-      }
-      state.evaluatedSlots[channel] = slot;
-    }
-    if (!activeIntent(state, channel)) {
-      const missed = state.slots.filter(item => item.channel === channel && item.decision === "missed" && !item.intentId);
-      if (missed.length) {
-        const latest = missed.at(-1)!, source = state.sources.filter(item => eligible(item, config, channel, latest.slot)).at(-1);
-        if (source && (channel === "production" || source.order > (state.cursors[channel]?.order ?? -1))) {
-          const intent = createIntent(state, config, channel, source, latest.slot, now, false, undefined, `${channel}-catchup-${latest.slot.replace(/[^0-9]/g, "")}`);
-          intent.coveredSlots = missed.map(item => item.slot);
-          intent.deadlineAt = after(missed[0]!.slot, config.deadlines.deliveryHours * 60);
-          for (const item of missed) item.intentId = intent.id;
-        }
-      }
-    }
+    if (channel === "production" && due.length > 1 && !activeIntent(state, channel) && catchUpProduction(state, config, due, now)) continue;
+    for (const slot of due) { decideSlot(state, config, channel, slot, now); state.evaluatedSlots[channel] = slot; }
+    if (!activeIntent(state, channel)) adoptMissedSlots(state, config, channel, now);
   }
+}
+/** Several due production slots with nothing active collapse into one intent for the newest eligible source. */
+function catchUpProduction(state: CdState, config: CdConfig, due: string[], now: string): boolean {
+  const channel = "production", latest = due.at(-1)!, candidate = state.sources.filter(source => eligible(source, config, channel, latest)).at(-1);
+  if (!candidate) return false;
+  const intent = createIntent(state, config, channel, candidate, latest, now);
+  intent.coveredSlots = [...due]; intent.deadlineAt = after(due[0]!, config.deadlines.deliveryHours * 60);
+  for (const slot of due) state.slots.push({ channel, slot, decision: slot === latest ? "intent" : "missed", intentId: intent.id });
+  state.evaluatedSlots[channel] = latest;
+  return true;
+}
+function decideSlot(state: CdState, config: CdConfig, channel: Channel, slot: string, now: string): void {
+  const candidate = state.sources.filter(source => eligible(source, config, channel, slot)).at(-1);
+  const cursor = state.cursors[channel], cursorSource = cursor && state.sources.find(source => source.sha === cursor.sourceSha);
+  const unchanged = channel === "staging" && candidate && cursorSource?.inputDigest === candidate.inputDigest;
+  const active = activeIntent(state, channel);
+  if (!candidate) state.slots.push({ channel, slot, decision: "missed" });
+  else if (unchanged && !active) state.slots.push({ channel, slot, decision: "no-change" });
+  else if (active) coverWithActive(state, channel, slot, candidate, active);
+  else {
+    // Only the newest never-started production catch-up remains active. Original slot debt
+    // stays in coveredSlots and the original deadline is never moved forward.
+    const intent = createIntent(state, config, channel, candidate, slot, now);
+    const earlier = state.slots.filter(item => item.channel === channel && item.decision === "missed" && !item.intentId);
+    if (earlier.length) { intent.coveredSlots = [...earlier.map(item => item.slot), slot]; intent.deadlineAt = after(earlier[0]!.slot, config.deadlines.deliveryHours * 60); for (const item of earlier) item.intentId = intent.id; }
+    state.slots.push({ channel, slot, decision: "intent", intentId: intent.id });
+  }
+}
+/** A never-started active intent coalesces onto a newer candidate; the slot is covered or missed. */
+function coverWithActive(state: CdState, channel: Channel, slot: string, candidate: SourceRevision, active: DeliveryIntent): void {
+  const cursor = state.cursors[channel];
+  if (active.attempts.length === 0 && candidate.order > sourceAt(state, active.source).order) {
+    active.source = candidate.sha; active.lineage.push({ source: candidate.sha, inputDigest: candidate.inputDigest, mainEnteredAt: candidate.mainEnteredAt, reason: "coalesced never-started slot", evidence: candidate.evidence.ref });
+    active.coveredSources = state.sources.filter(source => source.order > (cursor?.order ?? -1) && source.order <= candidate.order).map(source => source.sha);
+  }
+  const covered = channel === "production" || candidate.order <= sourceAt(state, active.source).order;
+  if (covered) active.coveredSlots.push(slot);
+  state.slots.push({ channel, slot, decision: covered ? "covered" : "missed", ...(covered ? { intentId: active.id } : {}) });
+}
+function adoptMissedSlots(state: CdState, config: CdConfig, channel: Channel, now: string): void {
+  const missed = state.slots.filter(item => item.channel === channel && item.decision === "missed" && !item.intentId);
+  if (!missed.length) return;
+  const latest = missed.at(-1)!, source = state.sources.filter(item => eligible(item, config, channel, latest.slot)).at(-1);
+  if (!source || channel !== "production" && source.order <= (state.cursors[channel]?.order ?? -1)) return;
+  const intent = createIntent(state, config, channel, source, latest.slot, now, false, undefined, `${channel}-catchup-${latest.slot.replace(/[^0-9]/g, "")}`);
+  intent.coveredSlots = missed.map(item => item.slot);
+  intent.deadlineAt = after(missed[0]!.slot, config.deadlines.deliveryHours * 60);
+  for (const item of missed) item.intentId = intent.id;
 }
 export function reserveBuild(state: CdState, appId: string, version: string, attemptId: string, providerMaximum: string, now: string): string {
   const key = `${appId}/${version}`, sequence = state.builds[key] ??= { maximum: "0", reservations: {} };
@@ -209,12 +220,7 @@ export function recordTests(state: CdState, config: CdConfig, evidence: TestEvid
   const before = attemptAt(state, evidence.intentId, evidence.attemptId), optional = postResumeAcceptance(state, before.intent);
   invariant(!optional?.yielded && (!optional?.releases[before.attempt.id] || before.attempt.tests), "Released/yielded acceptance cannot acquire new test authority");
   const { intent, attempt } = checkIdentity(state, evidence);
-  invariant(evidence.scope === "full" && evidence.appInputDigest === attempt.appInputDigest && evidence.configurationDigest === attempt.configurationDigest, "Full-test/source/configuration evidence mismatch");
-  const ids = evidence.inventory.ids;
-  invariant(ids.length > 0 && new Set(ids).size === ids.length && evidence.inventory.sha256 === hash([...ids].sort()), "Invalid full runtime test inventory");
-  invariant(evidence.results.length === ids.length && new Set(evidence.results.map(result => result.id)).size === ids.length, "Actual test results do not cover the complete inventory exactly once");
-  for (const result of evidence.results) invariant(ids.includes(result.id) && (result.status === "passed" || result.status === "skipped" && config.tests.allowedSkips.includes(result.id)), `Full test failed or unexpectedly skipped: ${result.id}`);
-  invariant(evidence.artifacts.length > 0 && evidence.artifacts.every(artifact => /^[a-f0-9]{64}$/.test(artifact.sha256)) && /^[a-f0-9]{64}$/.test(evidence.validator.sha256), "Full tests need hashed artifacts and validator");
+  assertFullTestEvidence(config, attempt, evidence);
   const evidenceHash = hash(evidence);
   if (attempt.tests) {
     invariant(attempt.tests.evidenceHash === evidenceHash, "Test evidence is immutable");
@@ -223,6 +229,15 @@ export function recordTests(state: CdState, config: CdConfig, evidence: TestEvid
   // Complete inventories/results stay in their downloaded, hashed Actions artifact.
   // The hot ledger retains the verified proof, not hundreds of repeated test rows.
   attempt.tests = { schemaVersion: 1, intentId: evidence.intentId, attemptId: evidence.attemptId, dispatchEffectId: evidence.dispatchEffectId, sourceSha: evidence.sourceSha, controlSha: evidence.controlSha, runId: evidence.runId, runAttempt: evidence.runAttempt, scope: "full", appInputDigest: evidence.appInputDigest, configurationDigest: evidence.configurationDigest, evidenceHash, inventoryHash: evidence.inventory.sha256, executedCount: evidence.results.length, skippedIds: evidence.results.filter(result => result.status === "skipped").map(result => result.id), artifacts: evidence.artifacts, validator: evidence.validator, ...(physicalDevice ? { physicalDevice } : {}) }; intent.state = "uploading"; intent.nextAction = "await-upload-claim";
+}
+/** The evidence is a full, exactly-once, passing (or allowed-skip) run of the attempt's own input, with hashed artifacts. */
+function assertFullTestEvidence(config: CdConfig, attempt: Attempt, evidence: TestEvidence): void {
+  invariant(evidence.scope === "full" && evidence.appInputDigest === attempt.appInputDigest && evidence.configurationDigest === attempt.configurationDigest, "Full-test/source/configuration evidence mismatch");
+  const ids = evidence.inventory.ids;
+  invariant(ids.length > 0 && new Set(ids).size === ids.length && evidence.inventory.sha256 === hash([...ids].sort()), "Invalid full runtime test inventory");
+  invariant(evidence.results.length === ids.length && new Set(evidence.results.map(result => result.id)).size === ids.length, "Actual test results do not cover the complete inventory exactly once");
+  for (const result of evidence.results) invariant(ids.includes(result.id) && (result.status === "passed" || result.status === "skipped" && config.tests.allowedSkips.includes(result.id)), `Full test failed or unexpectedly skipped: ${result.id}`);
+  invariant(evidence.artifacts.length > 0 && evidence.artifacts.every(artifact => /^[a-f0-9]{64}$/.test(artifact.sha256)) && /^[a-f0-9]{64}$/.test(evidence.validator.sha256), "Full tests need hashed artifacts and validator");
 }
 export function claimUpload(state: CdState, config: CdConfig, evidence: UploadEvidence, now: string): string {
   const before = attemptAt(state, evidence.intentId, evidence.attemptId);
@@ -243,17 +258,22 @@ export function recordUpload(state: CdState, evidence: UploadEvidence, now: stri
   const found = attemptAt(state, evidence.intentId, evidence.attemptId), retired = found.attempt.status === "retired-uncertain";
   const { intent, attempt } = retired ? found : checkIdentity(state, evidence), operation = attempt.upload;
   invariant(operation && operation.id === (evidence.uploadOperationId ?? `upload:${attempt.id}`), "No matching durable upload claim");
-  for (const key of ["appId", "version", "buildNumber", "ipaSha256"] as const) invariant(evidence[key] === operation.identity[key], `Upload receipt ${key} substitution`);
-  if (retired) for (const key of ["sourceSha", "controlSha", "dispatchEffectId", "runId", "runAttempt"] as const) invariant(evidence[key] === operation.identity[key], `Retired upload ${key} substitution`);
-  invariant(evidence.outcome, "Upload receipt requires explicit outcome");
-  invariant(!operation.providerUploadId || !evidence.providerUploadId || operation.providerUploadId === evidence.providerUploadId, "Upload resource identity changed");
+  assertUploadReceipt(operation, evidence, retired);
   if (operation.outcome === "accepted") invariant(evidence.outcome === "accepted" || evidence.outcome === "uncertain", "Accepted upload cannot be rewritten");
   else operation.outcome = evidence.outcome;
   operation.providerUploadId ??= evidence.providerUploadId; operation.acceptedAt ??= evidence.outcome === "accepted" ? evidence.acceptedAt ?? now : undefined; operation.diagnostics = evidence.diagnostics;
   if (retired) return; // A late resource is retained for observation, never promotion/credit.
-  if (operation.outcome === "rejected") { if (!intent.postResumeKey) attempt.status = "failed"; if (intent.postResumeKey) { intent.state = "waiting"; intent.nextAction = "observe-rejected-acceptance"; return; } repairWork(state, intent.id, [`Apple rejected ${attempt.appId}/${attempt.version}/${attempt.buildNumber}`, evidence.diagnostics ?? "No provider diagnostics"], now); }
-  else { intent.state = operation.outcome === "accepted" ? "processing" : "waiting"; intent.nextAction = "observe-exact-apple-build"; }
+  if (operation.outcome !== "rejected") { intent.state = operation.outcome === "accepted" ? "processing" : "waiting"; intent.nextAction = "observe-exact-apple-build"; }
+  else if (intent.postResumeKey) { intent.state = "waiting"; intent.nextAction = "observe-rejected-acceptance"; return; }
+  else { attempt.status = "failed"; repairWork(state, intent.id, [`Apple rejected ${attempt.appId}/${attempt.version}/${attempt.buildNumber}`, evidence.diagnostics ?? "No provider diagnostics"], now); }
   intent.nextCheckAt = now;
+}
+/** The receipt names the claimed build and IPA (and, for a retired attempt, its execution) with an explicit outcome and stable resource id. */
+function assertUploadReceipt(operation: NonNullable<Attempt["upload"]>, evidence: UploadEvidence, retired: boolean): asserts evidence is UploadEvidence & { outcome: NonNullable<UploadEvidence["outcome"]> } {
+  for (const key of ["appId", "version", "buildNumber", "ipaSha256"] as const) invariant(evidence[key] === operation.identity[key], `Upload receipt ${key} substitution`);
+  if (retired) for (const key of ["sourceSha", "controlSha", "dispatchEffectId", "runId", "runAttempt"] as const) invariant(evidence[key] === operation.identity[key], `Retired upload ${key} substitution`);
+  invariant(evidence.outcome, "Upload receipt requires explicit outcome");
+  invariant(!operation.providerUploadId || !evidence.providerUploadId || operation.providerUploadId === evidence.providerUploadId, "Upload resource identity changed");
 }
 export function validateObservation(intent: DeliveryIntent, attempt: Attempt, observation: InternalObservation): void {
   invariant(observation.appId === attempt.appId && observation.version === attempt.version && observation.buildNumber === attempt.buildNumber, "Wrong app/version/build observation");
@@ -267,31 +287,47 @@ export function deliver(state: CdState, intentId: string, attemptId: string, obs
   if (intent.postResumeKey) { invariant(config, "Post-resume receipt requires current configuration"); assertPostResumeAdmission(state, config, intentId, now); }
   invariant(!state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope)), "Delivery is explicitly paused");
   invariant(attempt.status === "active" && intent.attempts.at(-1)?.id === attemptId && attempt.tests && attempt.artifactsVerifiedAt && attempt.upload?.acceptedAt && attempt.runId && attempt.runAttempt, "Delivery lacks current accepted upload and downloaded full-test provenance");
-  const source = sourceAt(state, attempt.sourceSha), cursor = state.cursors[intent.channel];
-  const promoted = state.groupCursors?.[intent.groupId];
-  invariant(intent.isolatedValidation || (!cursor || source.order >= cursor.order) && (!promoted || source.order >= promoted.order), "Delivery would regress the live ordinary/group cursor");
+  const source = sourceAt(state, attempt.sourceSha);
+  assertCursorAdvance(state, intent, source, "Delivery would regress the live ordinary/group cursor");
   validateObservation(intent, attempt, observation);
-  const receipt: Receipt = { schemaVersion: 1, intentId, attemptId, dispatchEffectId: attempt.dispatchEffectId, sourceSha: attempt.sourceSha, controlSha: attempt.controlSha, runId: attempt.runId, runAttempt: attempt.runAttempt, appInputDigest: attempt.appInputDigest, configurationDigest: attempt.configurationDigest, ipaSha256: attempt.upload.identity.ipaSha256, uploadOperationId: attempt.upload.id, providerUploadId: attempt.upload.providerUploadId, testEvidenceHash: attempt.tests.evidenceHash, observation, deliveredAt: now };
+  const receipt = deliveryReceipt(intentId, attempt, observation, now);
   const optional = postResumeAcceptance(state, intent);
   if (optional) { const key = postResumeGroupKey(optional, attemptId, intent.groupId, observation.buildId); if (optional.groups[key]) optional.groups[key]!.observedAt ??= now; }
   intent.receipt = receipt; intent.state = "delivered"; intent.nextAction = "complete"; intent.nextCheckAt = now; attempt.status = "delivered"; attempt.observation = observation;
+  advanceAfterDelivery(state, intent, attempt, source, !!optional, now);
+  return receipt;
+}
+/** A delivery moves its cursors, credits covered missed slots, releases its group operation and completes its agent work. */
+function advanceAfterDelivery(state: CdState, intent: DeliveryIntent, attempt: Attempt, source: SourceRevision, optional: boolean, now: string): void {
   if (!intent.validation) state.cursors[intent.channel] = { sourceSha: source.sha, order: source.order, receiptId: intent.id };
   if (!optional) { state.groupCursors ??= {}; state.groupCursors[intent.groupId] = { sourceSha: source.sha, order: source.order, receiptId: intent.id }; }
-  if (!intent.validation) for (const slot of state.slots.filter(item => item.channel === intent.channel && item.decision === "missed" && !item.intentId)) {
+  if (!intent.validation) creditMissedSlots(state, intent, source);
+  if (!optional && state.groupOperations[intent.groupId]?.attemptId === attempt.id) state.groupOperations[intent.groupId]!.completedAt = now;
+  for (const work of Object.values(state.agents)) if (work.intentId === intent.id) work.state = "complete";
+}
+/** Called only after deliver() has asserted the attempt's tests, accepted upload and bound run. */
+function deliveryReceipt(intentId: string, attempt: Attempt, observation: InternalObservation, now: string): Receipt {
+  const attemptId = attempt.id, upload = attempt.upload!;
+  return { schemaVersion: 1, intentId, attemptId, dispatchEffectId: attempt.dispatchEffectId, sourceSha: attempt.sourceSha, controlSha: attempt.controlSha, runId: attempt.runId!, runAttempt: attempt.runAttempt!, appInputDigest: attempt.appInputDigest, configurationDigest: attempt.configurationDigest, ipaSha256: upload.identity.ipaSha256, uploadOperationId: upload.id, providerUploadId: upload.providerUploadId, testEvidenceHash: attempt.tests!.evidenceHash, observation, deliveredAt: now };
+}
+/** Non-isolated work may not move the channel's ordinary cursor or its group's cursor backwards. */
+function assertCursorAdvance(state: CdState, intent: DeliveryIntent, source: SourceRevision, message: string): void {
+  const cursor = state.cursors[intent.channel], promoted = state.groupCursors?.[intent.groupId];
+  invariant(intent.isolatedValidation || (!cursor || source.order >= cursor.order) && (!promoted || source.order >= promoted.order), message);
+}
+/** Unclaimed missed slots whose then-selected source this delivery covers are credited to it. */
+function creditMissedSlots(state: CdState, intent: DeliveryIntent, source: SourceRevision): void {
+  for (const slot of state.slots.filter(item => item.channel === intent.channel && item.decision === "missed" && !item.intentId)) {
     const selectedAtSlot = state.sources.filter(item => Date.parse(item.mainEnteredAt) <= Date.parse(slot.slot)).at(-1);
     if (selectedAtSlot && selectedAtSlot.order <= source.order) { slot.intentId = intent.id; if (!intent.coveredSlots.includes(slot.slot)) intent.coveredSlots.push(slot.slot); }
   }
-  if (!optional && state.groupOperations[intent.groupId]?.attemptId === attempt.id) state.groupOperations[intent.groupId]!.completedAt = now;
-  for (const work of Object.values(state.agents)) if (work.intentId === intentId) work.state = "complete";
-  return receipt;
 }
 export function claimGroup(state: CdState, intentId: string, attemptId: string, now: string): void {
-  const { intent, attempt } = attemptAt(state, intentId, attemptId), cursor = state.cursors[intent.channel];
+  const { intent, attempt } = attemptAt(state, intentId, attemptId);
   invariant(!intent.postResumeKey, "Post-resume membership uses its separate stable obligation");
   invariant(attempt.status === "active" && intent.attempts.at(-1)?.id === attemptId && attempt.upload?.acceptedAt, "Only a current accepted attempt may promote a group");
   invariant(!state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope)), "Delivery is explicitly paused");
-  const source = sourceAt(state, attempt.sourceSha), promoted = state.groupCursors?.[intent.groupId];
-  invariant(intent.isolatedValidation || (!cursor || source.order >= cursor.order) && (!promoted || source.order >= promoted.order), "Group promotion would regress the live cursor");
+  assertCursorAdvance(state, intent, sourceAt(state, attempt.sourceSha), "Group promotion would regress the live cursor");
   const previous = state.groupOperations[intent.groupId];
   invariant(!previous || previous.completedAt || previous.attemptId === attemptId, "Group is reserved by another attempt");
   state.groupOperations[intent.groupId] ??= { attemptId, claimedAt: now };

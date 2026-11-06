@@ -240,10 +240,21 @@ export function completionNotice(
     })
     .parse(record);
   const includeSummary = config.notification.includeSummary;
+  const summary = noticeSummary(record, includeSummary);
+  assertNoticeReady(record, config, note, delivery);
+  const date = new Intl.DateTimeFormat("en-US", {
+    dateStyle: "long",
+    timeZone: config.timeZone,
+  }).format(new Date(note.occurred));
+  return noticeText(date, summary, includeSummary, delivery.actions, note.hqUrl);
+}
+
+/** The one-line verified summary when the profile includes one, else empty. */
+function noticeSummary(record: Record<string, unknown>, includeSummary: boolean | undefined): string {
   if (includeSummary && record.summary === undefined) {
     throw new Error("This profile requires the verified note summary in the journal");
   }
-  const summary = includeSummary
+  return includeSummary
     ? z
         .string()
         .min(12)
@@ -251,6 +262,15 @@ export function completionNotice(
         .refine((value) => !/[\r\n]/.test(value), "must be one line")
         .parse(record.summary)
     : "";
+}
+
+/** In project scope, with a current index when one is required, not already sent, and linking into canonical HQ. */
+function assertNoticeReady(
+  record: Record<string, unknown>,
+  config: MeetingIntakeConfig,
+  note: { projects: string[]; noteSha256: string; hqUrl: string },
+  delivery: { index: { status: "verified"; noteDigest: string } | { status: "not-applicable" } },
+): void {
   if (!note.projects.includes(config.project)) {
     throw new Error(`Meeting is outside the ${config.project} project scope`);
   }
@@ -279,13 +299,11 @@ export function completionNotice(
   ) {
     throw new Error("Notice URL is outside canonical HQ");
   }
-  const date = new Intl.DateTimeFormat("en-US", {
-    dateStyle: "long",
-    timeZone: config.timeZone,
-  }).format(new Date(note.occurred));
-  const actionsRecorded = delivery.actions.status === "recorded";
-  const recordedActionCount =
-    delivery.actions.status === "recorded" ? delivery.actions.count : 0;
+}
+
+function noticeText(date: string, summary: string, includeSummary: boolean | undefined, actions: { status: "recorded"; count: number } | { status: "not-promoted" }, hqUrl: string): string {
+  const actionsRecorded = actions.status === "recorded";
+  const recordedActionCount = actions.status === "recorded" ? actions.count : 0;
   const actionStatus = actionsRecorded
     ? recordedActionCount
       ? "The action items were also recorded."
@@ -298,16 +316,16 @@ export function completionNotice(
         (recordedActionCount
           ? ", along with the action items"
           : "; no new action items were filed") +
-        `. ${note.hqUrl}`
+        `. ${hqUrl}`
       );
     }
     return (
-      `Meeting notes for ${date} have been summarized and recorded. ${actionStatus} ` + note.hqUrl
+      `Meeting notes for ${date} have been summarized and recorded. ${actionStatus} ` + hqUrl
     );
   }
   return (
     `Meeting notes for ${date} have been summarized and recorded. ${summary} ` +
     actionStatus +
-    ` ${note.hqUrl}`
+    ` ${hqUrl}`
   );
 }

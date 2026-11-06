@@ -18,34 +18,33 @@ function tally(checks, noun = "check") {
  * The whole output of a wait: one line when green, and otherwise only what an
  * agent acts on — which check, where, and the failing step's own words.
  */
+/** The pull-request digest's first line: the verdict, where, and the check tally. */
+function headline(input, where, scope, after, raceOnly) {
+    const summary = `${where} (${scope}${tally(input.checks)}) ${after}`;
+    switch (input.verdict) {
+        case "green":
+            return `✓ CI green — ${summary}`;
+        case "failed": {
+            const still = input.timedOut ? "; stopped at the deadline with checks still running" : "";
+            return raceOnly
+                ? `✗ CI blocked only by the agent-reviewed label race — ${summary}${still}`
+                : `✗ CI failed — ${summary}${still}`;
+        }
+        case "pending":
+            return `… CI still running at the deadline — ${summary}`;
+        case "no-checks":
+            return input.requiredOnly && input.ignored > 0
+                ? `? No required checks on ${where} ${after} (${input.ignored} non-required ignored by --required-only)`
+                : `? No checks reported on ${where} ${after} — workflows may not have triggered, or this repository has no CI for the PR`;
+    }
+}
 export function renderDigest(input) {
     const where = `${input.repo}#${input.pr} @ ${short(input.headSha)}`;
     const scope = input.requiredOnly ? "required " : "";
     const after = `after ${formatDuration(input.elapsedMs)}`;
     const failures = input.checks.filter(failed);
     const races = failures.filter((c) => input.details.get(checkKey(c))?.labelRace);
-    const out = [];
-    switch (input.verdict) {
-        case "green":
-            out.push(`✓ CI green — ${where} (${scope}${tally(input.checks)}) ${after}`);
-            break;
-        case "failed": {
-            const raceOnly = races.length === failures.length;
-            const still = input.timedOut ? "; stopped at the deadline with checks still running" : "";
-            out.push(raceOnly
-                ? `✗ CI blocked only by the agent-reviewed label race — ${where} (${scope}${tally(input.checks)}) ${after}${still}`
-                : `✗ CI failed — ${where} (${scope}${tally(input.checks)}) ${after}${still}`);
-            break;
-        }
-        case "pending":
-            out.push(`… CI still running at the deadline — ${where} (${scope}${tally(input.checks)}) ${after}`);
-            break;
-        case "no-checks":
-            out.push(input.requiredOnly && input.ignored > 0
-                ? `? No required checks on ${where} ${after} (${input.ignored} non-required ignored by --required-only)`
-                : `? No checks reported on ${where} ${after} — workflows may not have triggered, or this repository has no CI for the PR`);
-            break;
-    }
+    const out = [headline(input, where, scope, after, races.length === failures.length)];
     if (input.movedFrom.length > 0) {
         out.push(`! head moved during the wait: ${[...input.movedFrom, input.headSha].map(short).join(" → ")}; results are for ${short(input.headSha)} only`);
     }
@@ -107,29 +106,26 @@ const CONCLUSION_WORDS = {
  * The whole output of a run wait, in the pull-request digest's shape: one line
  * when green, and otherwise which job, where, and the failing step's words.
  */
+function runHeadline(input, run, after) {
+    const attempt = run.attempt > 1 ? ` (attempt ${run.attempt})` : "";
+    const branch = run.headBranch ? ` on ${run.headBranch}` : "";
+    const where = `${input.repo ? `${input.repo} ` : ""}${run.workflow} run ${run.id}${attempt} @ ${short(run.headSha)}${branch}`;
+    const jobs = input.jobs.length > 0 ? ` (${tally(input.jobs, "job")})` : "";
+    if (input.verdict === "green")
+        return `✓ Run green — ${where}${jobs} ${after}`;
+    if (input.verdict === "failed") {
+        const word = CONCLUSION_WORDS[run.conclusion] ?? `ended ${run.conclusion || "unsuccessfully"}`;
+        return `✗ Run ${word} — ${where}${jobs} ${after}`;
+    }
+    return `… Run still ${run.status.replace(/_/g, " ")} at the deadline — ${where}${jobs} ${after}`;
+}
 export function renderRunDigest(input) {
     const after = `after ${formatDuration(input.elapsedMs)}`;
     const run = input.run;
     if (!run) {
         return `? No run of ${input.wanted} found ${after} — it may not have been triggered yet, or the filter matches nothing`;
     }
-    const attempt = run.attempt > 1 ? ` (attempt ${run.attempt})` : "";
-    const branch = run.headBranch ? ` on ${run.headBranch}` : "";
-    const where = `${input.repo ? `${input.repo} ` : ""}${run.workflow} run ${run.id}${attempt} @ ${short(run.headSha)}${branch}`;
-    const jobs = input.jobs.length > 0 ? ` (${tally(input.jobs, "job")})` : "";
-    const out = [];
-    switch (input.verdict) {
-        case "green":
-            out.push(`✓ Run green — ${where}${jobs} ${after}`);
-            break;
-        case "failed": {
-            const word = CONCLUSION_WORDS[run.conclusion] ?? `ended ${run.conclusion || "unsuccessfully"}`;
-            out.push(`✗ Run ${word} — ${where}${jobs} ${after}`);
-            break;
-        }
-        default:
-            out.push(`… Run still ${run.status.replace(/_/g, " ")} at the deadline — ${where}${jobs} ${after}`);
-    }
+    const out = [runHeadline(input, run, after)];
     if (input.movedFrom.length > 0) {
         out.push(`! a newer matching run started during the wait: ${[...input.movedFrom, run.id].join(" → ")}; results are for run ${run.id} only`);
     }

@@ -108,6 +108,11 @@ export function substituteEvidence(body, published) {
 export function hasPlaceholder(body) {
     return new RegExp(PLACEHOLDER.source).test(body);
 }
+/** The first line of what publishing reported (stderr when the command left one), or a fixed fallback. */
+function publishFailure(error) {
+    const stderr = error.stderr;
+    return (stderr ? stderr.toString() : error instanceof Error ? error.message : String(error)).trim().split("\n")[0] || "unknown error";
+}
 /**
  * The apply step's whole handling of a decision's screenshots, kept apart from GitHub so its
  * safety rule can be tested: evidence matters only to a merge on the head the session finished
@@ -143,8 +148,7 @@ export function applyEvidence(decision, opts) {
         published = opts.publish(prepared.items);
     }
     catch (error) {
-        const stderr = error.stderr;
-        return failed((stderr ? stderr.toString() : error instanceof Error ? error.message : String(error)).trim().split("\n")[0] || "unknown error");
+        return failed(publishFailure(error));
     }
     const placed = substituteEvidence(decision.body, published);
     return "problem" in placed ? failed(placed.problem) : { ...decision, body: placed.body };

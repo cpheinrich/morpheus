@@ -91,8 +91,7 @@ def inside(child, parent):
     return child == parent or child.startswith(parent.rstrip("/") + "/")
 
 
-def load_config(path):
-    """Refuse a binding the model could have written or another user could edit."""
+def read_owned_config(path):
     if not os.path.isabs(path):
         raise Refusal("config path must be absolute")
     info = os.stat(path)
@@ -102,12 +101,20 @@ def load_config(path):
         config = json.load(handle)
     if config.get("schema") != CONFIG_SCHEMA:
         raise Refusal("unknown config schema")
+    return config
+
+
+def check_fields(config):
     for key in ("hostId", "agentId", "accountId", "model", "effort"):
         if not isinstance(config.get(key), str) or not config[key]:
             raise Refusal("config.%s is required" % key)
     for key in ("workspace", "codexCommand", "stateDir"):
         if not isinstance(config.get(key), str) or not os.path.isabs(config[key]):
             raise Refusal("config.%s must be an absolute path" % key)
+
+
+def check_binding(config, path):
+    """The config must be exactly the host binding the controller registered, for this file and this supervisor."""
     binding = config.get("binding")
     if (not isinstance(binding, list) or len(binding) != 8
             or not all(isinstance(binding[i], str) and binding[i] for i in (0, 1, 3, 4, 5, 6, 7))
@@ -117,6 +124,9 @@ def load_config(path):
     if (binding[0] != config["hostId"] or binding[3] != config["accountId"] or binding[5] != config["workspace"]
             or os.path.realpath(binding[6]) != os.path.realpath(__file__) or os.path.realpath(binding[7]) != os.path.realpath(path)):
         raise Refusal("host config differs from its registered binding")
+
+
+def check_placement(config, path):
     if not os.path.isdir(config["workspace"]):
         raise Refusal("workspace does not exist")
     if inside(config["stateDir"], config["workspace"]):
@@ -125,6 +135,9 @@ def load_config(path):
         raise Refusal("config must be outside the workspace")
     if config.get("instructionsSha256") is not None and not re.match(r"^[0-9a-f]{64}$", str(config["instructionsSha256"])):
         raise Refusal("config.instructionsSha256 must be a sha256 hex digest")
+
+
+def check_quota_config(config):
     quota = config.get("quotaCommand")
     if not isinstance(quota, list) or not quota or not all(isinstance(a, str) and a for a in quota):
         raise Refusal("config.quotaCommand must be a non-empty argv list")
@@ -135,6 +148,9 @@ def load_config(path):
         stop, hard = limit.get("stopAt"), limit.get("hardAt")
         if not all(isinstance(v, (int, float)) and 0 < v <= 100 for v in (stop, hard)) or stop > hard:
             raise Refusal("config.limits.%s needs 0 < stopAt <= hardAt <= 100" % window)
+
+
+def apply_defaults(config):
     config.setdefault("slots", 1)
     config.setdefault("maxRunSec", 170)
     config.setdefault("quotaTimeoutSec", 75)
@@ -147,6 +163,16 @@ def load_config(path):
         raise Refusal("config.slots must be 1-8")
     if not (isinstance(config["maxRunSec"], (int, float)) and 1 <= config["maxRunSec"] <= 3600):
         raise Refusal("config.maxRunSec must be 1-3600")
+
+
+def load_config(path):
+    """Refuse a binding the model could have written or another user could edit."""
+    config = read_owned_config(path)
+    check_fields(config)
+    check_binding(config, path)
+    check_placement(config, path)
+    check_quota_config(config)
+    apply_defaults(config)
     for sub in ("slots", "receipts"):
         os.makedirs(os.path.join(config["stateDir"], sub), mode=0o700, exist_ok=True)
     return config
@@ -157,6 +183,34 @@ def load_config(path):
 # --model M [-c model_reasoning_effort="E"] [extraArgs] (resume ID -|-). Accept that
 # shape only, with this host's model and effort. Anything that could change the
 # workspace, home, profile, provider or billing route is refused, never dropped.
+def parse_exec_options(body):
+    """(model, effort, sandbox) from the allowed options; anything else is refused."""
+    i, model, effort, sandbox = 0, None, None, False
+    while i < len(body):
+        arg, value = body[i], body[i + 1] if i + 1 < len(body) else None
+        if arg == "--skip-git-repo-check":
+            i += 1
+        elif arg == "--model" and value is not None:
+            model, i = value, i + 2
+        elif arg == "-c" and value is not None:
+            effort, sandbox = config_override(value, effort, sandbox)
+            i += 2
+        else:
+            raise Refusal("argument is not allowed: %s" % arg.split("=", 1)[0])
+    return model, effort, sandbox
+
+
+def config_override(value, effort, sandbox):
+    match = re.match(r'^model_reasoning_effort="([a-z]+)"$', value)
+    if match:
+        return match.group(1), sandbox
+    if value == 'sandbox_mode="workspace-write"':
+        return effort, True
+    if value not in ("sandbox_workspace_write.network_access=true", "sandbox_workspace_write.network_access=false"):
+        raise Refusal("config override is not allowed: %s" % value.split("=", 1)[0])
+    return effort, sandbox
+
+
 def validate_args(args, config):
     if not isinstance(args, list) or not all(isinstance(a, str) for a in args):
         raise Refusal("args must be a string list")
@@ -165,24 +219,7 @@ def validate_args(args, config):
     resume = len(args) >= 5 and args[-3] == "resume"
     if resume and not SESSION_ID.match(args[-2]):
         raise Refusal("resume session id is malformed")
-    body, i, model, effort, sandbox = args[2:-3] if resume else args[2:-1], 0, None, None, False
-    while i < len(body):
-        arg, value = body[i], body[i + 1] if i + 1 < len(body) else None
-        if arg == "--skip-git-repo-check":
-            i += 1
-        elif arg == "--model" and value is not None:
-            model, i = value, i + 2
-        elif arg == "-c" and value is not None:
-            match = re.match(r'^model_reasoning_effort="([a-z]+)"$', value)
-            if match:
-                effort = match.group(1)
-            elif value == 'sandbox_mode="workspace-write"':
-                sandbox = True
-            elif value not in ("sandbox_workspace_write.network_access=true", "sandbox_workspace_write.network_access=false"):
-                raise Refusal("config override is not allowed: %s" % value.split("=", 1)[0])
-            i += 2
-        else:
-            raise Refusal("argument is not allowed: %s" % arg.split("=", 1)[0])
+    model, effort, sandbox = parse_exec_options(args[2:-3] if resume else args[2:-1])
     if model != config["model"]:
         raise Refusal("model must be %s" % config["model"])
     if effort != config["effort"]:
@@ -257,26 +294,41 @@ def judge_quota(snapshot, config, in_flight, now=None, gate="stopAt"):
     not make it impossible, which is why stopAt sits below the hard ceiling.
     """
     now = time.time() if now is None else now
-    if not isinstance(snapshot, dict) or not isinstance(snapshot.get("windows"), list) or not snapshot["windows"]:
-        return "unknown", "no quota windows"
-    observed = parse_time(snapshot.get("observedAt"))
-    if observed is None or observed > now + 5 or now - observed > config["quotaFreshSec"]:
-        return "unknown", "quota observation is stale or undated"
+    problem = reading_problem(snapshot, config, now)
+    if problem:
+        return "unknown", problem
     charged = max(0, int(in_flight) - 1) * float(config["reservePp"])
     worst = None
     for window in snapshot["windows"]:
-        limit = config["limits"].get(window.get("id"))
-        used, resets = window.get("usedPercent"), parse_time(window.get("resetsAt"))
-        if limit is None:
-            return "unknown", "quota window %r has no configured limit" % window.get("id")
-        if not isinstance(used, (int, float)) or isinstance(used, bool) or not math.isfinite(used) or not 0 <= used <= 100:
-            return "unknown", "quota window %s has no valid usage" % window.get("id")
-        if resets is None or resets <= now:
-            return "unknown", "quota window %s has no future reset" % window.get("id")
-        if used + charged >= limit[gate]:
-            return "refuse", "window %s at %.1f%% (+%.1fpp in flight) reaches %s %.1f%%" % (window["id"], used, charged, gate, limit[gate])
-        worst = max(worst or 0, used)
+        verdict = window_verdict(window, config, now, charged, gate)
+        if verdict:
+            return verdict
+        worst = max(worst or 0, window.get("usedPercent"))
     return "admit", "highest window %.1f%% with %d in flight" % (worst, in_flight)
+
+
+def reading_problem(snapshot, config, now):
+    if not isinstance(snapshot, dict) or not isinstance(snapshot.get("windows"), list) or not snapshot["windows"]:
+        return "no quota windows"
+    observed = parse_time(snapshot.get("observedAt"))
+    if observed is None or observed > now + 5 or now - observed > config["quotaFreshSec"]:
+        return "quota observation is stale or undated"
+    return None
+
+
+def window_verdict(window, config, now, charged, gate):
+    """(decision, detail) when this window refuses or is unknown; None when it is under its gate."""
+    limit = config["limits"].get(window.get("id"))
+    used, resets = window.get("usedPercent"), parse_time(window.get("resetsAt"))
+    if limit is None:
+        return "unknown", "quota window %r has no configured limit" % window.get("id")
+    if not isinstance(used, (int, float)) or isinstance(used, bool) or not math.isfinite(used) or not 0 <= used <= 100:
+        return "unknown", "quota window %s has no valid usage" % window.get("id")
+    if resets is None or resets <= now:
+        return "unknown", "quota window %s has no future reset" % window.get("id")
+    if used + charged >= limit[gate]:
+        return "refuse", "window %s at %.1f%% (+%.1fpp in flight) reaches %s %.1f%%" % (window["id"], used, charged, gate, limit[gate])
+    return None
 
 
 def sanitize_quota(snapshot):
@@ -474,7 +526,8 @@ class Run:
         return code
 
 
-def run(config_path):
+def admitted_envelope(config_path):
+    """(config, envelope, trailing), or the exit code after logging why the request was refused."""
     try:
         config = load_config(config_path)
     except (Refusal, OSError, ValueError) as error:
@@ -492,25 +545,82 @@ def run(config_path):
     if not (isinstance(envelope.get("inFlight"), int) and 1 <= envelope["inFlight"] <= 16):
         log("envelope inFlight must be an integer 1-16")
         return CONFIG
-    record = Run(config, envelope)
-    try:
-        record.receipt["resume"] = validate_args(envelope.get("args"), config)["resume"]
-        env = child_env(config, envelope)
-        if trailing.strip():
-            raise Refusal("unexpected data after the envelope")
-    except Refusal as error:
-        return record.finish("refused", "not-started", REFUSED, stopReason=str(error))
+    return config, envelope, trailing
 
-    # The workspace is model-writable, so a run could rewrite its own AGENTS.md.
-    # The staged digest lives in the operator config; drift refuses the next run.
-    if config.get("instructionsSha256"):
-        try:
-            with open(os.path.join(config["workspace"], "AGENTS.md"), "rb") as handle:
-                actual = digest(handle.read())
-        except OSError:
-            actual = None
-        if actual != config["instructionsSha256"]:
-            return record.finish("refused", "not-started", REFUSED, stopReason="workspace AGENTS.md differs from the staged instructions")
+
+# The workspace is model-writable, so a run could rewrite its own AGENTS.md.
+# The staged digest lives in the operator config; drift refuses the next run.
+def instructions_drifted(config):
+    if not config.get("instructionsSha256"):
+        return False
+    try:
+        with open(os.path.join(config["workspace"], "AGENTS.md"), "rb") as handle:
+            actual = digest(handle.read())
+    except OSError:
+        actual = None
+    return actual != config["instructionsSha256"]
+
+
+class Watch:
+    """The running model's stop reason, deadline and the in-flight quota meter."""
+
+    def __init__(self, config, envelope, record, stop):
+        self.config, self.envelope, self.record = config, envelope, record
+        self.stop = stop
+        self.deadline = time.monotonic() + config["maxRunSec"]
+        self.next_meter = time.monotonic() + config["meterIntervalSec"] if config["meterIntervalSec"] else None
+        self.meter = None
+        self.stdin_open = True
+
+    def read_controller(self):
+        if not self.stdin_open:
+            time.sleep(0.1)
+            return
+        readable, _, _ = select.select([0], [], [], 0.1)
+        if readable:
+            data = os.read(0, 4096)
+            if not data:
+                self.stdin_open = False
+                self.stop["reason"] = "controller connection lost"
+            elif b"stop" in data:
+                self.stop["reason"] = "cancel requested"
+
+    def start_meter(self):
+        config, deadline = self.config, self.deadline
+        meter = {"result": None}
+
+        def take(box=meter):
+            box["result"] = read_quota(config, min(config["quotaTimeoutSec"], max(1, deadline - time.monotonic())), box)
+        meter["thread"] = threading.Thread(target=take, daemon=True)
+        meter["thread"].start()
+        self.meter = meter
+
+    def judge_meter(self):
+        snap, err = self.meter["result"]
+        verdict, why = ("unknown", err) if err else judge_quota(snap, self.config, self.envelope["inFlight"], gate="hardAt")
+        self.record.receipt.setdefault("meter", []).append({"decision": verdict, "detail": why, "quota": sanitize_quota(snap)})
+        self.record.save()
+        if verdict != "admit":
+            # Unknown mid-run telemetry stops the model as firmly as a breach.
+            self.stop["reason"] = "meter " + verdict + ": " + why
+        self.meter, self.next_meter = None, time.monotonic() + self.config["meterIntervalSec"]
+
+    def follow(self, child):
+        while child.poll() is None and not self.stop["reason"]:
+            if time.monotonic() >= self.deadline:
+                self.stop["reason"] = "deadline"
+                break
+            self.read_controller()
+            if self.next_meter and self.meter is None and time.monotonic() >= self.next_meter:
+                self.start_meter()
+            if self.meter is not None and self.meter["result"] is not None:
+                self.judge_meter()
+
+
+def preflight_refusal(config, envelope, record):
+    """(slot, fd, meta) once a slot and quota admit the run, or the finished refusal code."""
+    if instructions_drifted(config):
+        return record.finish("refused", "not-started", REFUSED, stopReason="workspace AGENTS.md differs from the staged instructions")
     slot, slot_fd, slot_meta = acquire_slot(config, record.uuid)
     if slot is None:
         return record.finish("refused", "not-started", REFUSED, stopReason="no free host slot")
@@ -521,22 +631,10 @@ def run(config_path):
     if decision != "admit":
         release_slot(slot_fd, slot_meta, record.uuid, False)
         return record.finish("refused", "not-started", REFUSED, stopReason="quota " + decision + ": " + detail)
+    return slot, slot_fd, slot_meta
 
-    stop_flag = {"reason": None}
 
-    def on_signal(signum, _frame):
-        stop_flag["reason"] = stop_flag["reason"] or "signal %d" % signum
-
-    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-        signal.signal(sig, on_signal)
-
-    try:
-        child = subprocess.Popen([config["codexCommand"]] + envelope["args"], cwd=config["workspace"], env=env,
-                                 stdin=subprocess.PIPE, stdout=None, stderr=None, start_new_session=True,
-                                 pass_fds=(slot_fd,))
-    except OSError:
-        release_slot(slot_fd, slot_meta, record.uuid, False)
-        return record.finish("refused", "not-started", REFUSED, stopReason="model command could not start")
+def record_launch(config, envelope, record, child):
     record.receipt.update({"state": "running", "child": {"pid": child.pid, "birth": birth_of(child.pid)}, "startedAt": now_iso(),
                            "deadlineAt": datetime.fromtimestamp(time.time() + config["maxRunSec"], timezone.utc).isoformat()})
     record.save()
@@ -549,43 +647,12 @@ def run(config_path):
             pass
 
     threading.Thread(target=feed, daemon=True).start()
-    deadline = time.monotonic() + config["maxRunSec"]
-    next_meter = time.monotonic() + config["meterIntervalSec"] if config["meterIntervalSec"] else None
-    meter = None
-    stdin_open = True
-    while child.poll() is None and not stop_flag["reason"]:
-        if time.monotonic() >= deadline:
-            stop_flag["reason"] = "deadline"
-            break
-        if stdin_open:
-            readable, _, _ = select.select([0], [], [], 0.1)
-            if readable:
-                data = os.read(0, 4096)
-                if not data:
-                    stdin_open = False
-                    stop_flag["reason"] = "controller connection lost"
-                elif b"stop" in data:
-                    stop_flag["reason"] = "cancel requested"
-        else:
-            time.sleep(0.1)
-        if next_meter and meter is None and time.monotonic() >= next_meter:
-            meter = {"result": None}
-            def take(box=meter):
-                box["result"] = read_quota(config, min(config["quotaTimeoutSec"], max(1, deadline - time.monotonic())), box)
-            meter["thread"] = threading.Thread(target=take, daemon=True)
-            meter["thread"].start()
-        if meter is not None and meter["result"] is not None:
-            snap, err = meter["result"]
-            verdict, why = ("unknown", err) if err else judge_quota(snap, config, envelope["inFlight"], gate="hardAt")
-            record.receipt.setdefault("meter", []).append({"decision": verdict, "detail": why, "quota": sanitize_quota(snap)})
-            record.save()
-            if verdict != "admit":
-                # Unknown mid-run telemetry stops the model as firmly as a breach.
-                stop_flag["reason"] = "meter " + verdict + ": " + why
-            meter, next_meter = None, time.monotonic() + config["meterIntervalSec"]
 
-    reason = stop_flag["reason"]
+
+def settle(config, record, child, watch, slot_fd, slot_meta):
+    reason = watch.stop["reason"]
     code = child.poll()
+    meter = watch.meter
     if meter is not None and meter.get("proc") is not None and meter["proc"].poll() is None:
         stop_group(meter["proc"])  # A quota reader, not a model; do not leave it behind.
     verified = terminate_owned(config, record.uuid)
@@ -605,6 +672,45 @@ def run(config_path):
     if reason:
         return record.finish("stopped", "verified", STOPPED, stopReason=reason)
     return record.finish("exited", "verified", child.returncode if code is None else code)
+
+
+def run(config_path):
+    admitted = admitted_envelope(config_path)
+    if not isinstance(admitted, tuple):
+        return admitted
+    config, envelope, trailing = admitted
+    record = Run(config, envelope)
+    try:
+        record.receipt["resume"] = validate_args(envelope.get("args"), config)["resume"]
+        env = child_env(config, envelope)
+        if trailing.strip():
+            raise Refusal("unexpected data after the envelope")
+    except Refusal as error:
+        return record.finish("refused", "not-started", REFUSED, stopReason=str(error))
+    admitted_slot = preflight_refusal(config, envelope, record)
+    if not isinstance(admitted_slot, tuple):
+        return admitted_slot
+    slot, slot_fd, slot_meta = admitted_slot
+
+    stop_flag = {"reason": None}
+
+    def on_signal(signum, _frame):
+        stop_flag["reason"] = stop_flag["reason"] or "signal %d" % signum
+
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(sig, on_signal)
+    try:
+        child = subprocess.Popen([config["codexCommand"]] + envelope["args"], cwd=config["workspace"], env=env,
+                                 stdin=subprocess.PIPE, stdout=None, stderr=None, start_new_session=True,
+                                 pass_fds=(slot_fd,))
+    except OSError:
+        release_slot(slot_fd, slot_meta, record.uuid, False)
+        return record.finish("refused", "not-started", REFUSED, stopReason="model command could not start")
+    record_launch(config, envelope, record, child)
+    # The deadline and meter clock start once the model is launched.
+    watch = Watch(config, envelope, record, stop_flag)
+    watch.follow(child)
+    return settle(config, record, child, watch, slot_fd, slot_meta)
 
 
 def status(config_path):

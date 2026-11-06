@@ -48,6 +48,12 @@ interface FileRead {
   content?: string;
 }
 
+/** An image, PDF or notebook result is not lines of a record. */
+function notTextLines(response: unknown, file: Json | null): boolean {
+  if (isObject(response) && typeof response["type"] === "string" && response["type"] !== "text") return true;
+  return isObject(response) && file === null && "type" in response;
+}
+
 /**
  * Claude Code's Read result: `tool_response` is the tool's own output,
  * `{ type: "text", file: { filePath, content, startLine, numLines, totalLines } }`
@@ -64,10 +70,12 @@ export function fileRead(payload: Json): FileRead | null {
   if (file && typeof file["content"] === "string" && isCount(file["startLine"]) && isCount(file["numLines"])) {
     return { path, from: Math.max(1, file["startLine"]), count: file["numLines"], content: file["content"] };
   }
-  // An image, PDF or notebook result is not lines of a record.
-  if (isObject(response) && typeof response["type"] === "string" && response["type"] !== "text") return null;
-  if (isObject(response) && file === null && "type" in response) return null;
-  // A payload without the recorded shape still names the range it asked for.
+  if (notTextLines(response, file)) return null;
+  return requestedRange(path, input);
+}
+
+/** A payload without the recorded shape still names the range it asked for. */
+function requestedRange(path: string, input: Json): FileRead {
   const offset = isCount(input["offset"]) ? input["offset"] : 1;
   const limit = isCount(input["limit"]) && input["limit"] > 0 ? input["limit"] : 2000;
   return { path, from: Math.max(1, offset), count: limit };
@@ -182,19 +190,9 @@ async function fromText(text: string, root: string, session: string, at: string,
  */
 export async function recordRead(raw: string, now = new Date()): Promise<Map<string, EvidenceEntry[]>> {
   const written = new Map<string, EvidenceEntry[]>();
-  let payload: unknown;
-  try {
-    payload = JSON.parse(raw);
-  } catch {
-    return written;
-  }
-  if (!isObject(payload)) return written;
-  const id = payload["session_id"];
-  if (typeof id !== "string" || !id) return written;
-  const session = sessionTag(id);
-  // `turn_id` is required in Codex's PostToolUse input and absent from Claude's.
-  const provider: Provider = "turn_id" in payload ? "codex" : "claude";
-  const cwd = typeof payload["cwd"] === "string" && payload["cwd"] ? payload["cwd"] : process.cwd();
+  const hook = hookPayload(raw);
+  if (!hook) return written;
+  const { payload, session, provider, cwd } = hook;
   const at = now.toISOString();
 
   const add = (root: string, entries: EvidenceEntry[]) => written.set(root, [...(written.get(root) ?? []), ...entries]);
@@ -208,21 +206,50 @@ export async function recordRead(raw: string, now = new Date()): Promise<Map<str
     const result = await fromFileRead(read, cwd, session, at);
     if (result.root) add(result.root, result.entries);
   } else {
-    // Claude Code reports a shell command that exits non-zero as a failed
-    // tool call: no `tool_response`, and the model is shown `error` instead —
-    // which is where `context refresh` prints the lines it is refusing over.
-    const text =
-      payload["hook_event_name"] === "PostToolUseFailure"
-        ? typeof payload["error"] === "string" ? payload["error"] : null
-        : outputText(payload["tool_response"]);
+    const text = shownText(payload, failed);
     // Not understood: no liveness either. A hook that cannot see results must
     // leave the session on the assertion, not lock it out.
     if (text === null) return written;
-    const via = typeof payload["tool_name"] === "string" ? payload["tool_name"].slice(0, 64) || "tool" : "tool";
-    if (cwdRoot) add(cwdRoot, withinCap(text, provider) ? await fromText(text, cwdRoot, session, at, via) : []);
+    if (cwdRoot) add(cwdRoot, withinCap(text, provider) ? await fromText(text, cwdRoot, session, at, toolLabel(payload)) : []);
   }
   if (cwdRoot && !written.has(cwdRoot)) add(cwdRoot, []);
+  await appendWithLiveness(written, session, provider, at, now);
+  return written;
+}
 
+/** The payload with its session tag, provider and working directory, or null when it names no session. */
+function hookPayload(raw: string): { payload: Json; session: string; provider: Provider; cwd: string } | null {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!isObject(payload)) return null;
+  const id = payload["session_id"];
+  if (typeof id !== "string" || !id) return null;
+  // `turn_id` is required in Codex's PostToolUse input and absent from Claude's.
+  const provider: Provider = "turn_id" in payload ? "codex" : "claude";
+  const cwd = typeof payload["cwd"] === "string" && payload["cwd"] ? payload["cwd"] : process.cwd();
+  return { payload, session: sessionTag(id), provider, cwd };
+}
+
+function toolLabel(payload: Json): string {
+  return typeof payload["tool_name"] === "string" ? payload["tool_name"].slice(0, 64) || "tool" : "tool";
+}
+
+/**
+ * The text the model was shown. Claude Code reports a shell command that exits non-zero as a
+ * failed tool call: no `tool_response`, and the model is shown `error` instead — which is where
+ * `context refresh` prints the lines it is refusing over.
+ */
+function shownText(payload: Json, failed: boolean): string | null {
+  if (failed) return typeof payload["error"] === "string" ? payload["error"] : null;
+  return outputText(payload["tool_response"]);
+}
+
+/** Appends each checkout's entries, preceded by this session's liveness entry the first time. */
+async function appendWithLiveness(written: Map<string, EvidenceEntry[]>, session: string, provider: Provider, at: string, now: Date): Promise<void> {
   for (const [root, entries] of written) {
     const { entries: logged } = await readEvidence(root);
     const live = logged.some((e) => e.kind === "live" && e.session === session);
@@ -230,7 +257,6 @@ export async function recordRead(raw: string, now = new Date()): Promise<Map<str
     written.set(root, all);
     await appendEvidence(root, all, now);
   }
-  return written;
 }
 
 /** CLI entry: read the payload from stdin, record, and always exit 0. */

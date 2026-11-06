@@ -59,15 +59,46 @@ function markerMatches(path, expected) {
   catch { return false; }
 }
 
+function compatibleTemplate(selected, { device, runtime }) {
+  return runtime === selected.runtime
+    && device.deviceTypeIdentifier === selected.device.deviceTypeIdentifier && device.isAvailable && device.dataPath
+    && ['Shutdown', 'Booted'].includes(device.state);
+}
+
+function createTemplate(selected, name, command) {
+  const udid = command('create', name, selected.device.deviceTypeIdentifier, selected.runtime);
+  if (!deviceIdentifierPattern.test(udid)) throw Error('simctl returned an invalid template device identifier.');
+  const refreshed = JSON.parse(command('list', 'devices', '-j'));
+  const template = ownedTemplateDevices(refreshed).find(({ runtime, device }) => runtime === selected.runtime && device.udid === udid);
+  if (!template?.device.dataPath) throw Error('Created simulator template is missing from the device inventory.');
+  return template;
+}
+
+// Boot the template once per Xcode developer directory, then leave it shut down for cloning.
+function warmTemplate(template, name, command, developerDir) {
+  const marker = JSON.stringify({ version: 1, developerDir });
+  const markerPath = join(template.device.dataPath, '.morpheus-ci-template.json');
+  if (markerMatches(markerPath, marker)) {
+    if (template.device.state !== 'Shutdown') command('shutdown', template.device.udid);
+    return;
+  }
+  if (template.device.state !== 'Shutdown') command('shutdown', template.device.udid);
+  command('boot', template.device.udid);
+  const errors = [];
+  try { command('bootstatus', template.device.udid, '-b'); }
+  catch (error) { errors.push(error); }
+  try { command('shutdown', template.device.udid); }
+  catch (error) { errors.push(error); }
+  if (errors.length) throw new AggregateError(errors, `Failed to warm simulator template ${name}.`);
+  writeFileSync(markerPath, marker);
+}
+
 export function cloneFromWarmedTemplate(selected, jobName, command = sim, options = {}) {
   if (!ownedJobPattern.test(jobName)) throw Error('Invalid simulator ownership name.');
   const name = simulatorTemplateName(selected);
   const inventory = JSON.parse(command('list', 'devices', '-j'));
   const templates = ownedTemplateDevices(inventory);
-  const matching = templates.filter(({ runtime, device }) => runtime === selected.runtime
-    && device.deviceTypeIdentifier === selected.device.deviceTypeIdentifier && device.isAvailable && device.dataPath
-    && ['Shutdown', 'Booted'].includes(device.state));
-  let template = matching[0];
+  let template = templates.filter((entry) => compatibleTemplate(selected, entry))[0];
 
   // The template is never a test destination. Keep exactly one compatible source
   // so runtime upgrades and interrupted earlier attempts cannot accumulate devices.
@@ -76,31 +107,8 @@ export function cloneFromWarmedTemplate(selected, jobName, command = sim, option
     removeDevice(entry.device, command);
   }
 
-  if (!template) {
-    const udid = command('create', name, selected.device.deviceTypeIdentifier, selected.runtime);
-    if (!deviceIdentifierPattern.test(udid)) throw Error('simctl returned an invalid template device identifier.');
-    const refreshed = JSON.parse(command('list', 'devices', '-j'));
-    template = ownedTemplateDevices(refreshed).find(({ runtime, device }) => runtime === selected.runtime && device.udid === udid);
-    if (!template?.device.dataPath) throw Error('Created simulator template is missing from the device inventory.');
-  }
-
-  const developerDir = options.developerDir ?? process.env.DEVELOPER_DIR ?? '';
-  const marker = JSON.stringify({ version: 1, developerDir });
-  const markerPath = join(template.device.dataPath, '.morpheus-ci-template.json');
-  if (!markerMatches(markerPath, marker)) {
-    if (template.device.state !== 'Shutdown') command('shutdown', template.device.udid);
-    command('boot', template.device.udid);
-    const errors = [];
-    try { command('bootstatus', template.device.udid, '-b'); }
-    catch (error) { errors.push(error); }
-    try { command('shutdown', template.device.udid); }
-    catch (error) { errors.push(error); }
-    if (errors.length) throw new AggregateError(errors, `Failed to warm simulator template ${name}.`);
-    writeFileSync(markerPath, marker);
-  } else if (template.device.state !== 'Shutdown') {
-    command('shutdown', template.device.udid);
-  }
-
+  if (!template) template = createTemplate(selected, name, command);
+  warmTemplate(template, name, command, options.developerDir ?? process.env.DEVELOPER_DIR ?? '');
   return command('clone', template.device.udid, jobName);
 }
 

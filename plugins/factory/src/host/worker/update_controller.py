@@ -134,6 +134,37 @@ def pin_for_host(manifest_path, host):
     for key in ("paths", "apple", "runner", "signing", "device", "ci"):
         _object(pin, key)
     xcode = pin["xcode"]
+    version, build, components = _xcode_identity(xcode)
+    checks = _validation_checks(pin, host)
+    # An absent phase means promote; holding a host at stage is an explicit,
+    # reviewed manifest value.
+    phase = xcode.get("phase", "promote")
+    if phase not in ("stage", "promote"):
+        raise UpdateError("phase must be stage or promote")
+    retain = xcode.get("retain", 1)
+    if type(retain) is not int or retain < 1:
+        raise UpdateError("xcode.retain must be an integer of at least 1")
+    verification = _verification(pin)
+    ci = pin.get("ci")
+    _check_ci(ci)
+    role = pin.get("role", "ci-image" if ci is not None else "phone-gate")
+    if role not in ROLES:
+        raise UpdateError("role must be ci-image or phone-gate")
+    if (role == "ci-image") != (ci is not None):
+        raise UpdateError("a ci-image host requires a ci block and a phone-gate host must not have one")
+    apple = _apple(pin)
+    paths = default_paths(role, _configured_paths(pin))
+    runner = pin.get("runner")
+    runner_label = _runner_label(runner)
+    signing = _signing(pin)
+    device_udid = _device_udid(pin)
+    if runner is not None:
+        runner = {**runner, "requiredEnv": runner.get("requiredEnv", [])}
+    return HostPin(version, build, checks, phase, verification, components, role, retain, paths, apple, ci,
+                   runner_label, runner, signing, device_udid)
+
+
+def _xcode_identity(xcode):
     version, build = xcode.get("version"), xcode.get("build")
     if not isinstance(version, str) or not VERSION.fullmatch(version):
         raise UpdateError("Xcode version must be exact numeric form")
@@ -144,6 +175,10 @@ def pin_for_host(manifest_path, host):
         raise UpdateError("Xcode components must be named identifiers")
     if len(set(components)) != len(components):
         raise UpdateError("Xcode components must not repeat")
+    return version, build, components
+
+
+def _validation_checks(pin, host):
     checks = pin.get("validation")
     if not isinstance(checks, list) or not checks:
         raise UpdateError(f"host {host} requires nonempty validation commands")
@@ -156,21 +191,20 @@ def pin_for_host(manifest_path, host):
             raise UpdateError("validation executable must be an absolute path")
         if "cwd" in check and (not isinstance(check["cwd"], str) or not Path(check["cwd"]).is_absolute()):
             raise UpdateError("validation cwd must be absolute")
-    # An absent phase means promote; holding a host at stage is an explicit,
-    # reviewed manifest value.
-    phase = xcode.get("phase", "promote")
-    if phase not in ("stage", "promote"):
-        raise UpdateError("phase must be stage or promote")
-    retain = xcode.get("retain", 1)
-    if type(retain) is not int or retain < 1:
-        raise UpdateError("xcode.retain must be an integer of at least 1")
+    return checks
+
+
+def _verification(pin):
     verification = pin.get("verification")
     if verification is not None:
         if not isinstance(verification, dict) or set(verification) != {"purpose", "account"}:
             raise UpdateError("verification requires purpose and account")
         if any(not isinstance(verification[key], str) or not HOST.fullmatch(verification[key]) for key in ("purpose", "account")):
             raise UpdateError("verification purpose and account must be lowercase identifiers")
-    ci = pin.get("ci")
+    return verification
+
+
+def _check_ci(ci):
     if ci is not None and "runtimes" in ci:
         runtimes = ci["runtimes"]
         # Exact iOS versions: the image builder copies these simulator runtimes
@@ -180,48 +214,57 @@ def pin_for_host(manifest_path, host):
             raise UpdateError("ci.runtimes must be a non-empty list of unique exact iOS versions")
     if ci is not None and "imagePruner" in ci and (not isinstance(ci["imagePruner"], str) or not Path(ci["imagePruner"]).is_absolute()):
         raise UpdateError("ci.imagePruner must be an absolute path")
-    role = pin.get("role", "ci-image" if ci is not None else "phone-gate")
-    if role not in ROLES:
-        raise UpdateError("role must be ci-image or phone-gate")
-    if (role == "ci-image") != (ci is not None):
-        raise UpdateError("a ci-image host requires a ci block and a phone-gate host must not have one")
+
+
+def _apple(pin):
     apple = {**DEFAULT_APPLE, **(pin.get("apple") or {})}
     if set(apple) != set(DEFAULT_APPLE) or any(not isinstance(apple[key], str) or not ENV_NAME.fullmatch(apple[key]) for key in apple):
         raise UpdateError("apple idVar and passwordVar must be environment variable names")
+    return apple
+
+
+def _configured_paths(pin):
     paths = pin.get("paths") or {}
     if set(paths) - set(PATH_KEYS):
         raise UpdateError(f"paths accepts only {', '.join(PATH_KEYS)}")
     if any(not isinstance(value, str) or not Path(value).is_absolute() for value in paths.values()):
         raise UpdateError("paths must be absolute")
-    paths = default_paths(role, paths)
-    runner = pin.get("runner")
-    runner_label = None
-    if runner is not None:
-        runner_label = runner.get("label")
-        if set(runner) - RUNNER_KEYS or not isinstance(runner_label, str) or not LABEL.fullmatch(runner_label):
-            raise UpdateError("runner.label must be a LaunchAgent label")
-        if "dir" in runner and (not isinstance(runner["dir"], str) or not Path(runner["dir"]).is_absolute()):
-            raise UpdateError("runner.dir must be absolute")
-        required = runner.get("requiredEnv", [])
-        if not isinstance(required, list) or any(not isinstance(name, str) or not ENV_NAME.fullmatch(name) for name in required):
-            raise UpdateError("runner.requiredEnv must list environment variable names")
-        if "organization" in runner and (not isinstance(runner["organization"], str) or not ORGANIZATION.fullmatch(runner["organization"])):
-            raise UpdateError("runner.organization must be a GitHub organization login")
+    return paths
+
+
+def _runner_label(runner):
+    if runner is None:
+        return None
+    runner_label = runner.get("label")
+    if set(runner) - RUNNER_KEYS or not isinstance(runner_label, str) or not LABEL.fullmatch(runner_label):
+        raise UpdateError("runner.label must be a LaunchAgent label")
+    if "dir" in runner and (not isinstance(runner["dir"], str) or not Path(runner["dir"]).is_absolute()):
+        raise UpdateError("runner.dir must be absolute")
+    required = runner.get("requiredEnv", [])
+    if not isinstance(required, list) or any(not isinstance(name, str) or not ENV_NAME.fullmatch(name) for name in required):
+        raise UpdateError("runner.requiredEnv must list environment variable names")
+    if "organization" in runner and (not isinstance(runner["organization"], str) or not ORGANIZATION.fullmatch(runner["organization"])):
+        raise UpdateError("runner.organization must be a GitHub organization login")
+    return runner_label
+
+
+def _signing(pin):
     signing = pin.get("signing")
     if signing is not None:
         if set(signing) != {"identity", "team"} or not isinstance(signing["identity"], str) or not signing["identity"].strip() \
                 or ":" in signing["identity"] or not isinstance(signing["team"], str) or not TEAM.fullmatch(signing["team"]):
             raise UpdateError("signing requires an identity name and a 10-character team id")
+    return signing
+
+
+def _device_udid(pin):
     device = pin.get("device")
-    device_udid = None
-    if device is not None:
-        device_udid = device.get("udid")
-        if set(device) != {"udid"} or not isinstance(device_udid, str) or not UDID.fullmatch(device_udid):
-            raise UpdateError("device.udid must be a hardware UDID")
-    if runner is not None:
-        runner = {**runner, "requiredEnv": runner.get("requiredEnv", [])}
-    return HostPin(version, build, checks, phase, verification, components, role, retain, paths, apple, ci,
-                   runner_label, runner, signing, device_udid)
+    if device is None:
+        return None
+    device_udid = device.get("udid")
+    if set(device) != {"udid"} or not isinstance(device_udid, str) or not UDID.fullmatch(device_udid):
+        raise UpdateError("device.udid must be a hardware UDID")
+    return device_udid
 
 
 def default_paths(role, configured):
@@ -379,10 +422,7 @@ def request_verification_code(verification, started_at, timeout_seconds, length)
     the caller request a new code early. Exit 75 is "no code yet"; exit 78 is a
     refusal (bad token or configuration) and stops the run without a resend.
     """
-    executable = os.environ.get("FACTORY_VERIFICATION_CODE_COMMAND", "")
-    if not executable or not Path(executable).is_absolute() or not os.access(executable, os.X_OK):
-        raise UpdateError("verification-code provider is not configured as an executable absolute path")
-    env = {key: os.environ[key] for key in ("HOME", "PATH", "TMPDIR", "LANG", "USER", "LOGNAME", "FACTORY_VERIFICATION_CODE_URL", "FACTORY_VERIFICATION_CODE_TOKEN") if key in os.environ}
+    executable, env = _code_provider()
     deadline = (started_at or time.time()) + timeout_seconds
     while True:
         remaining = max(1, int(deadline - time.time()))
@@ -400,14 +440,27 @@ def request_verification_code(verification, started_at, timeout_seconds, length)
             continue
         if result.returncode:
             raise UpdateError("verification-code provider failed")
-        try:
-            response = json.loads(result.stdout)
-            code = response["code"]
-        except (ValueError, KeyError, TypeError) as error:
-            raise UpdateError("verification-code provider returned an invalid response") from error
-        if not isinstance(code, str) or not CODE.fullmatch(code) or len(code) != length:
-            raise UpdateError("verification-code provider returned an invalid code length")
-        return code
+        return _provided_code(result.stdout, length)
+
+
+def _code_provider():
+    """The configured provider executable and the minimal environment it runs with."""
+    executable = os.environ.get("FACTORY_VERIFICATION_CODE_COMMAND", "")
+    if not executable or not Path(executable).is_absolute() or not os.access(executable, os.X_OK):
+        raise UpdateError("verification-code provider is not configured as an executable absolute path")
+    env = {key: os.environ[key] for key in ("HOME", "PATH", "TMPDIR", "LANG", "USER", "LOGNAME", "FACTORY_VERIFICATION_CODE_URL", "FACTORY_VERIFICATION_CODE_TOKEN") if key in os.environ}
+    return executable, env
+
+
+def _provided_code(stdout, length):
+    try:
+        response = json.loads(stdout)
+        code = response["code"]
+    except (ValueError, KeyError, TypeError) as error:
+        raise UpdateError("verification-code provider returned an invalid response") from error
+    if not isinstance(code, str) or not CODE.fullmatch(code) or len(code) != length:
+        raise UpdateError("verification-code provider returned an invalid code length")
+    return code
 
 
 def _answer_hidden_prompt(master, line, timeout=5.0):
@@ -430,15 +483,68 @@ def _answer_hidden_prompt(master, line, timeout=5.0):
     os.write(master, line)
 
 
+class _XcodesDialog:
+    """xcodes' prompts as they appear: choose SMS, pick the trusted phone, then submit the code."""
+
+    def __init__(self, master, verification, wait_seconds, first_challenge):
+        self.master = master
+        self.verification = verification
+        self.wait_seconds = wait_seconds
+        self.sms_selected = False
+        self.phone_selected = False
+        self.code_submitted = False
+        self.challenge_started = first_challenge
+
+    def respond(self, recent):
+        if not self.sms_selected and 'Enter "sms"' in recent and "trusted devices:" in recent:
+            _answer_hidden_prompt(self.master, b"sms\n")
+            self.sms_selected = True
+        if not self.phone_selected and "Select a trusted phone number to receive a code via SMS:" in recent:
+            choice = _trusted_phone_choice(recent)
+            self.challenge_started = self.challenge_started or time.time()
+            os.write(self.master, f"{choice}\n".encode())
+            self.phone_selected = True
+        match = SMS_PROMPT.search(recent)
+        if not self.code_submitted and match:
+            self.challenge_started = self.challenge_started or time.time()
+            try:
+                code = request_verification_code(self.verification, self.challenge_started, self.wait_seconds, int(match.group(1)))
+            except CodeTimeout as error:
+                raise CodeTimeout(str(error), self.challenge_started) from error
+            _answer_hidden_prompt(self.master, f"{code}\n".encode())
+            self.code_submitted = True
+
+
+def _trusted_phone_choice(recent):
+    choices = re.findall(r"(?m)^([0-9]+): .+$", recent)
+    configured = os.environ.get("FACTORY_VERIFICATION_PHONE_INDEX", "")
+    if configured:
+        if configured not in choices:
+            raise UpdateError("configured trusted phone index is unavailable")
+        return configured
+    if len(choices) == 1:
+        return choices[0]
+    raise UpdateError("multiple trusted phone numbers require FACTORY_VERIFICATION_PHONE_INDEX")
+
+
+def _xcodes_failure(output, returncode, code_submitted):
+    details = output.lower()
+    if any(word in details for word in ("rate limit", "too many", "locked")):
+        return UpdateError("xcodes: Apple limited verification attempts")
+    if code_submitted:
+        return UpdateError("xcodes: verification code was rejected")
+    category = xcodes_category(output)
+    if category:
+        return UpdateError(f"xcodes: {category}")
+    return UpdateError(f"xcodes exited {returncode}")
+
+
 def _xcodes_interactive_attempt(argv, verification, wait_seconds, first_challenge, apple=None):
     """Drive xcodes' one-shot SMS prompt through a private pseudo-terminal."""
     master, slave = pty.openpty()
     process = None
     output = ""
-    sms_selected = False
-    phone_selected = False
-    code_submitted = False
-    challenge_started = first_challenge
+    dialog = _XcodesDialog(master, verification, wait_seconds, first_challenge)
     try:
         process = subprocess.Popen(argv, stdin=slave, stdout=slave, stderr=slave, env=xcodes_environment(apple), close_fds=True)
         os.close(slave)
@@ -448,65 +554,38 @@ def _xcodes_interactive_attempt(argv, verification, wait_seconds, first_challeng
             if time.monotonic() >= deadline:
                 raise UpdateError("xcodes timed out")
             ready, _, _ = select.select([master], [], [], min(1, max(0, deadline - time.monotonic())))
-            if ready:
-                try:
-                    chunk = os.read(master, 65536)
-                except OSError:
-                    chunk = b""
-                if chunk:
-                    output = (output + chunk.decode("utf-8", errors="replace"))[-131072:]
-                    recent = output[-8192:]
-                    if not sms_selected and 'Enter "sms"' in recent and "trusted devices:" in recent:
-                        _answer_hidden_prompt(master, b"sms\n")
-                        sms_selected = True
-                    if not phone_selected and "Select a trusted phone number to receive a code via SMS:" in recent:
-                        choices = re.findall(r"(?m)^([0-9]+): .+$", recent)
-                        configured = os.environ.get("FACTORY_VERIFICATION_PHONE_INDEX", "")
-                        if configured:
-                            if configured not in choices:
-                                raise UpdateError("configured trusted phone index is unavailable")
-                            choice = configured
-                        elif len(choices) == 1:
-                            choice = choices[0]
-                        else:
-                            raise UpdateError("multiple trusted phone numbers require FACTORY_VERIFICATION_PHONE_INDEX")
-                        challenge_started = challenge_started or time.time()
-                        os.write(master, f"{choice}\n".encode())
-                        phone_selected = True
-                    match = SMS_PROMPT.search(recent)
-                    if not code_submitted and match:
-                        challenge_started = challenge_started or time.time()
-                        try:
-                            code = request_verification_code(verification, challenge_started, wait_seconds, int(match.group(1)))
-                        except CodeTimeout as error:
-                            raise CodeTimeout(str(error), challenge_started) from error
-                        _answer_hidden_prompt(master, f"{code}\n".encode())
-                        code_submitted = True
-                    continue
+            chunk = _read_pty(master) if ready else b""
+            if chunk:
+                output = (output + chunk.decode("utf-8", errors="replace"))[-131072:]
+                dialog.respond(output[-8192:])
+                continue
             if process.poll() is not None:
                 break
         if process.returncode:
-            details = output.lower()
-            if any(word in details for word in ("rate limit", "too many", "locked")):
-                raise UpdateError("xcodes: Apple limited verification attempts")
-            if code_submitted:
-                raise UpdateError("xcodes: verification code was rejected")
-            category = xcodes_category(output)
-            if category:
-                raise UpdateError(f"xcodes: {category}")
-            raise UpdateError(f"xcodes exited {process.returncode}")
-        return "xcodes-complete", challenge_started
+            raise _xcodes_failure(output, process.returncode, dialog.code_submitted)
+        return "xcodes-complete", dialog.challenge_started
     finally:
-        if process is not None and process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
-        os.close(master)
-        if slave >= 0:
-            os.close(slave)
+        _end_xcodes(process, master, slave)
+
+
+def _read_pty(master):
+    try:
+        return os.read(master, 65536)
+    except OSError:
+        return b""
+
+
+def _end_xcodes(process, master, slave):
+    if process is not None and process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+    os.close(master)
+    if slave >= 0:
+        os.close(slave)
 
 
 def run_xcodes(argv, verification=None, apple=None):
@@ -784,6 +863,49 @@ def remove_app(app):
         raise UpdateError(f"could not remove {app} (see {aside}): {error.strerror}") from error
 
 
+def _protected_apps(version, selected, previous, plain):
+    """The selected app, each previous selection, and the target of a symlinked Xcode.app, as existing real paths."""
+    protected = {app_path(version), developer_app(selected)}
+    for developer in ([previous] if isinstance(previous, str) else list(previous or [])):
+        if developer:
+            protected.add(developer_app(developer))
+    if plain.is_symlink():
+        protected.add(plain.resolve())
+    return {app.resolve() for app in protected if app is not None and app.exists()}
+
+
+def _identified_build(app):
+    try:
+        return installed_build(app)
+    except UpdateError:
+        return None
+
+
+def _versioned_candidates(protected):
+    candidates = []
+    for app in APPLICATIONS.glob("Xcode_*.app"):
+        match = re.fullmatch(r"Xcode_([0-9]+(?:\.[0-9]+){1,2})\.app", app.name)
+        if match is None or app.is_symlink() or app.resolve() in protected:
+            continue
+        # Only a bundle Xcode itself identifies is ours to remove.
+        if _identified_build(app) is not None:
+            candidates.append((version_key(match.group(1)), app))
+    return candidates
+
+
+def _plain_candidate(plain, protected):
+    """The root helper removes only Factory's versioned bundles, so a plain
+    Xcode.app is a candidate only when the caller can delete it: one owned
+    by root (an App Store install) stays, for removal by hand, rather than
+    failing every later reconcile."""
+    if not (plain.is_dir() and not plain.is_symlink() and plain.resolve() not in protected and removable_by_caller(plain)):
+        return []
+    identity = _identified_build(plain)
+    if identity is not None and re.fullmatch(r"[0-9]+(\.[0-9]+)*", identity[0]):
+        return [(version_key(identity[0]), plain)]
+    return []
+
+
 def prune(version, build, retain, previous=None, window=False):
     """Keep `retain` Xcode bundles: protected ones first, then the newest others.
 
@@ -805,37 +927,9 @@ def prune(version, build, retain, previous=None, window=False):
         raise UpdateError("approved Xcode is not selected; pruning refused")
     if window:
         retain = max(retain, 2)
-    protected = {app_path(version), developer_app(current["selected"])}
-    for developer in ([previous] if isinstance(previous, str) else list(previous or [])):
-        if developer:
-            protected.add(developer_app(developer))
     plain = APPLICATIONS / "Xcode.app"
-    if plain.is_symlink():
-        protected.add(plain.resolve())
-    protected = {app.resolve() for app in protected if app is not None and app.exists()}
-    candidates = []
-    for app in APPLICATIONS.glob("Xcode_*.app"):
-        match = re.fullmatch(r"Xcode_([0-9]+(?:\.[0-9]+){1,2})\.app", app.name)
-        if match is None or app.is_symlink() or app.resolve() in protected:
-            continue
-        try:
-            identity = installed_build(app)
-        except UpdateError:
-            identity = None
-        # Only a bundle Xcode itself identifies is ours to remove.
-        if identity is not None:
-            candidates.append((version_key(match.group(1)), app))
-    # The root helper removes only Factory's versioned bundles, so a plain
-    # Xcode.app is a candidate only when the caller can delete it: one owned
-    # by root (an App Store install) stays, for removal by hand, rather than
-    # failing every later reconcile.
-    if plain.is_dir() and not plain.is_symlink() and plain.resolve() not in protected and removable_by_caller(plain):
-        try:
-            identity = installed_build(plain)
-        except UpdateError:
-            identity = None
-        if identity is not None and re.fullmatch(r"[0-9]+(\.[0-9]+)*", identity[0]):
-            candidates.append((version_key(identity[0]), plain))
+    protected = _protected_apps(version, current["selected"], previous, plain)
+    candidates = _versioned_candidates(protected) + _plain_candidate(plain, protected)
     candidates.sort(reverse=True)
     removed = []
     for _, app in candidates[max(0, retain - len(protected)):]:
@@ -1200,6 +1294,44 @@ def preflight(pin):
         raise UpdateError("preflight: " + "; ".join(failed))
 
 
+def _authentication_command(args):
+    verification, apple = None, None
+    if args.manifest or args.host:
+        if not args.manifest or not args.host or not HOST.fullmatch(args.host):
+            raise UpdateError(f"{args.command} requires both --manifest and --host when either is supplied")
+        pin = pin_for_host(args.manifest, args.host)
+        verification, apple = pin.verification, pin.apple
+    result = check_authentication(verification, apple) if args.command == "auth-check" else interactive_login(apple)
+    print(json.dumps({"result": result}))
+    return 0
+
+
+def _locked_command(args, pin, state_dir):
+    """The state-changing commands, run under the controller lock."""
+    version, build, checks, phase, verification, components, apple = (
+        pin.version, pin.build, pin.checks, pin.phase, pin.verification, pin.components, pin.apple)
+    extra = {}
+    if args.command == "image-stage":
+        ci = ci_for_host(pin)
+        result = stage_ci_image(version, build, state_dir, verification, components, ci, apple)
+    elif args.command == "stage":
+        result = stage(version, build, state_dir, verification, components, apple)
+    elif args.command == "validate":
+        result = validate(version, build, checks)
+    elif args.command == "reconcile":
+        before = report(version, build)
+        result = reconcile(version, build, checks, phase, state_dir, verification, components, apple, before=before)
+        if result in ("promoted", "already-current"):
+            record = promotion(state_dir, version, build)
+            extra["removed"] = prune(version, build, pin.retain, [before["selected"], record and record.get("previous")],
+                                     window=in_window(state_dir, version, build)) or []
+    elif args.command == "retire":
+        result, extra["removed"] = retire(pin, state_dir)
+    else:
+        result = activate(version, build, state_dir)
+    return result, extra
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("auth-check", "auth-login", "status", "check", "stage", "validate", "activate", "reconcile", "image-stage", "retire"))
@@ -1209,15 +1341,7 @@ def main():
     parser.add_argument("--json", action="store_true", help="check: print JSON (the default output is already JSON)")
     args = parser.parse_args()
     if args.command in ("auth-check", "auth-login"):
-        verification, apple = None, None
-        if args.manifest or args.host:
-            if not args.manifest or not args.host or not HOST.fullmatch(args.host):
-                raise UpdateError(f"{args.command} requires both --manifest and --host when either is supplied")
-            pin = pin_for_host(args.manifest, args.host)
-            verification, apple = pin.verification, pin.apple
-        result = check_authentication(verification, apple) if args.command == "auth-check" else interactive_login(apple)
-        print(json.dumps({"result": result}))
-        return 0
+        return _authentication_command(args)
     if not args.host or not HOST.fullmatch(args.host):
         raise UpdateError("host id must use lowercase letters, digits, and hyphens")
     if not args.manifest:
@@ -1245,25 +1369,7 @@ def main():
         if args.command in ("stage", "image-stage", "reconcile"):
             # Refuse before a multi-GB download rather than after it.
             preflight(pin)
-        extra = {}
-        if args.command == "image-stage":
-            ci = ci_for_host(pin)
-            result = stage_ci_image(version, build, state_dir, verification, components, ci, apple)
-        elif args.command == "stage":
-            result = stage(version, build, state_dir, verification, components, apple)
-        elif args.command == "validate":
-            result = validate(version, build, checks)
-        elif args.command == "reconcile":
-            before = report(version, build)
-            result = reconcile(version, build, checks, phase, state_dir, verification, components, apple, before=before)
-            if result in ("promoted", "already-current"):
-                record = promotion(state_dir, version, build)
-                extra["removed"] = prune(version, build, pin.retain, [before["selected"], record and record.get("previous")],
-                                         window=in_window(state_dir, version, build)) or []
-        elif args.command == "retire":
-            result, extra["removed"] = retire(pin, state_dir)
-        else:
-            result = activate(version, build, state_dir)
+        result, extra = _locked_command(args, pin, state_dir)
         print(json.dumps({"result": result, "host": args.host, "xcode": {"version": version, "build": build}, **extra}))
     return 0
 

@@ -101,6 +101,26 @@ def _guardian_gone(pid, recorded):
     return bool(current) and current.split() != recorded.split()
 
 
+def _guardian_evidence(pid, recorded):
+    """A positive PID and a seven-word lstart identity this module can compare."""
+    guardian_words = recorded.split() if isinstance(recorded, str) else []
+    return (type(pid) is int and pid > 0 and len(guardian_words) == 7
+            and all(word.isdigit() for word in guardian_words[5:]) and bool(_comparable(guardian_words[:5])))
+
+
+def _link_proof(directory, proof):
+    tmp = directory / f'{PROOF}.{os.getpid()}.tmp'
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, 'w') as handle:
+        handle.write(json.dumps(proof))
+    try:
+        os.link(tmp, directory / PROOF)  # Exclusive: never replaces an existing proof.
+    except FileExistsError:
+        pass
+    finally:
+        tmp.unlink()
+
+
 def reconcile(directory, run_id):
     # `ps lstart` prints local time in the caller's locale. The guardian recorded identities with
     # no TZ and a C-compatible format, so compare in that same form or a live process and the live
@@ -117,9 +137,7 @@ def reconcile(directory, run_id):
         return {'proven': False, 'reason': 'existing reconciliation does not match this admission'}
     known = _known(state)
     pid, recorded = state.get('guardianPid'), state.get('guardianIdentity')
-    guardian_words = recorded.split() if isinstance(recorded, str) else []
-    if (known is None or not (type(pid) is int and pid > 0) or len(guardian_words) != 7
-            or not all(word.isdigit() for word in guardian_words[5:]) or not _comparable(guardian_words[:5])):
+    if known is None or not _guardian_evidence(pid, recorded):
         return {'proven': False, 'reason': 'original ownership evidence is incomplete'}
     # Bind the proof to the record as read before the census; a change since then invalidates it.
     proof = {'version': 1, 'admissionId': run_id, 'method': 'fresh owned-process census',
@@ -132,16 +150,7 @@ def reconcile(directory, run_id):
     if not tracker.empty():
         return {'proven': False, 'reason': 'owned processes remain' if tracker.verified else 'process census unreadable'}
     proof['reconciledAt'] = datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
-    tmp = directory / f'{PROOF}.{os.getpid()}.tmp'
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, 'w') as handle:
-        handle.write(json.dumps(proof))
-    try:
-        os.link(tmp, directory / PROOF)  # Exclusive: never replaces an existing proof.
-    except FileExistsError:
-        pass
-    finally:
-        tmp.unlink()
+    _link_proof(directory, proof)
     proven = valid(directory, run_id)
     return {'proven': proven, 'reason': 'fresh owned-process census found none' if proven else 'admission record changed during reconciliation'}
 

@@ -75,7 +75,95 @@ def save_attempts(attempts):
     temporary.replace(STATE)
 
 
-def main():
+def first_line(process, fallback):
+    reason = (process.stderr or process.stdout).strip().splitlines()
+    return reason[0] if reason else fallback
+
+
+def proof_refusal(repo, path, task_id):
+    """Why Morpheus will not prove this worktree removable, or None when it proves it."""
+    try:
+        probe = subprocess.run(["morpheus", "pm", "cleanup", task_id, "--dry-run"],
+                               cwd=repo, capture_output=True, text=True, timeout=90)
+    except subprocess.TimeoutExpired:
+        return "cleanup proof timed out"
+    if probe.returncode:
+        return first_line(probe, "cleanup proof refused")
+    if not probe.stdout.startswith(f"Safe to remove: {path} ("):
+        return "cleanup proof named a different worktree"
+    return None
+
+
+def removal_refusal(repo, task_id):
+    """Run the real cleanup, which re-proves safety; the reason it refused, or None."""
+    try:
+        result = subprocess.run(["morpheus", "pm", "cleanup", task_id], cwd=repo,
+                                capture_output=True, text=True, timeout=90)
+    except subprocess.TimeoutExpired:
+        return "cleanup recheck timed out"
+    if result.returncode:
+        return first_line(result, "cleanup recheck refused")
+    return None
+
+
+def reclaim(repo, path, task_id, head, apply, attempts):
+    refusal = proof_refusal(repo, path, task_id)
+    if refusal is None and not apply:
+        print(f"Would remove proved-complete task worktree {path}", flush=True)
+        return
+    if refusal is None:
+        refusal = removal_refusal(repo, task_id)
+        if refusal is None:
+            print(f"Removed proved-complete task worktree {path}", flush=True)
+            attempts.pop(str(path), None)
+            return
+    print(f"Retain {path}: {refusal}", flush=True)
+    if apply:
+        attempts[str(path)] = {"head": head, "time": time.time()}
+
+
+def reached_target(args):
+    return args.target_free_gb and free_gib() >= args.target_free_gb
+
+
+def old_worktrees(repo, args):
+    """Prune stale registrations, then list old task worktrees oldest first; None when either fails."""
+    prune = ["git", "-C", str(repo), "worktree", "prune", "--verbose", "--expire", "now"]
+    if not args.apply:
+        prune.append("--dry-run")
+    pruned = subprocess.run(prune, capture_output=True, text=True)
+    if pruned.returncode:
+        print(f"Cannot prune stale registrations in {repo}: {pruned.stderr.strip()}", flush=True)
+        return None
+    if pruned.stdout.strip():
+        print(f"Pruned stale Git registrations in {repo}: {len(pruned.stdout.splitlines())}", flush=True)
+    try:
+        return sorted(candidates(repo, args.min_age_days), key=lambda item: item[0].stat().st_mtime)
+    except (OSError, subprocess.CalledProcessError, UnicodeError) as error:
+        print(f"Cannot inventory worktrees in {repo}: {error}", flush=True)
+        return None
+
+
+def recently_tried(attempts, path, head, apply):
+    previous = attempts.get(str(path), {})
+    return apply and previous.get("head") == head and time.time() - previous.get("time", 0) < DAY
+
+
+def sweep_repository(repo, args, attempts, used):
+    """Try this repository's old task worktrees; returns the running attempt count."""
+    for path, task_id, head in old_worktrees(repo, args) or []:
+        if reached_target(args):
+            break
+        if recently_tried(attempts, path, head, args.apply):
+            continue
+        if used >= args.max_attempts:
+            break
+        used += 1
+        reclaim(repo, path, task_id, head, args.apply, attempts)
+    return used
+
+
+def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--code-root", type=Path, default=HOME / "code")
@@ -85,74 +173,22 @@ def main():
     args = parser.parse_args()
     if args.min_age_days < 7 or args.max_attempts < 1:
         parser.error("retention and attempt limit must be positive and conservative")
+    return args
+
+
+def main():
+    args = parse_args()
     if not shutil.which("morpheus"):
         print("Morpheus CLI unavailable; skipping task worktree deletion", flush=True)
         return 0
     attempts = load_attempts() if args.apply else {}
     used = 0
     for repo in repository_roots(args.code_root):
-        if args.target_free_gb and free_gib() >= args.target_free_gb:
+        if reached_target(args):
             break
-        prune = ["git", "-C", str(repo), "worktree", "prune", "--verbose", "--expire", "now"]
-        if not args.apply:
-            prune.append("--dry-run")
-        pruned = subprocess.run(prune, capture_output=True, text=True)
-        if pruned.returncode:
-            print(f"Cannot prune stale registrations in {repo}: {pruned.stderr.strip()}", flush=True)
-            continue
-        if pruned.stdout.strip():
-            print(f"Pruned stale Git registrations in {repo}: {len(pruned.stdout.splitlines())}", flush=True)
-        try:
-            old = sorted(candidates(repo, args.min_age_days), key=lambda item: item[0].stat().st_mtime)
-        except (OSError, subprocess.CalledProcessError, UnicodeError) as error:
-            print(f"Cannot inventory worktrees in {repo}: {error}", flush=True)
-            continue
-        for path, task_id, head in old:
-            if args.target_free_gb and free_gib() >= args.target_free_gb:
-                break
-            key = str(path)
-            previous = attempts.get(key, {})
-            if args.apply and previous.get("head") == head and time.time() - previous.get("time", 0) < DAY:
-                continue
-            if used >= args.max_attempts:
-                break
-            used += 1
-            try:
-                probe = subprocess.run(["morpheus", "pm", "cleanup", task_id, "--dry-run"],
-                                       cwd=repo, capture_output=True, text=True, timeout=90)
-            except subprocess.TimeoutExpired:
-                print(f"Retain {path}: cleanup proof timed out", flush=True)
-                if args.apply:
-                    attempts[key] = {"head": head, "time": time.time()}
-                continue
-            if probe.returncode:
-                reason = (probe.stderr or probe.stdout).strip().splitlines()
-                print(f"Retain {path}: {reason[0] if reason else 'cleanup proof refused'}", flush=True)
-                if args.apply:
-                    attempts[key] = {"head": head, "time": time.time()}
-                continue
-            if not probe.stdout.startswith(f"Safe to remove: {path} ("):
-                print(f"Retain {path}: cleanup proof named a different worktree", flush=True)
-                if args.apply:
-                    attempts[key] = {"head": head, "time": time.time()}
-                continue
-            if args.apply:
-                try:
-                    result = subprocess.run(["morpheus", "pm", "cleanup", task_id], cwd=repo,
-                                            capture_output=True, text=True, timeout=90)
-                except subprocess.TimeoutExpired:
-                    print(f"Retain {path}: cleanup recheck timed out", flush=True)
-                    attempts[key] = {"head": head, "time": time.time()}
-                    continue
-                if result.returncode:
-                    reason = (result.stderr or result.stdout).strip().splitlines()
-                    print(f"Retain {path}: {reason[0] if reason else 'cleanup recheck refused'}", flush=True)
-                    attempts[key] = {"head": head, "time": time.time()}
-                else:
-                    print(f"Removed proved-complete task worktree {path}", flush=True)
-                    attempts.pop(key, None)
-            else:
-                print(f"Would remove proved-complete task worktree {path}", flush=True)
+        # A repository that cannot be pruned or listed adds no attempts, so the
+        # limit check after it is the one the next repository would make first.
+        used = sweep_repository(repo, args, attempts, used)
         if used >= args.max_attempts:
             break
     if args.apply:

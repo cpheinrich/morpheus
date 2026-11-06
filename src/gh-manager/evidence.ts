@@ -119,6 +119,12 @@ export function hasPlaceholder(body: string): boolean {
 
 type Published = { file: string; caption: string; url: string }[];
 
+/** The first line of what publishing reported (stderr when the command left one), or a fixed fallback. */
+function publishFailure(error: unknown): string {
+  const stderr = (error as { stderr?: string | Buffer }).stderr;
+  return (stderr ? stderr.toString() : error instanceof Error ? error.message : String(error)).trim().split("\n")[0] || "unknown error";
+}
+
 /**
  * The apply step's whole handling of a decision's screenshots, kept apart from GitHub so its
  * safety rule can be tested: evidence matters only to a merge on the head the session finished
@@ -148,10 +154,7 @@ export function applyEvidence<D extends { action: string; head: string; body?: s
   if ("problem" in check) return failed(check.problem);
   if (opts.dryRun) return { ...decision, body: check.body };
   let published: Published;
-  try { published = opts.publish(prepared.items); } catch (error) {
-    const stderr = (error as { stderr?: string | Buffer }).stderr;
-    return failed((stderr ? stderr.toString() : error instanceof Error ? error.message : String(error)).trim().split("\n")[0] || "unknown error");
-  }
+  try { published = opts.publish(prepared.items); } catch (error) { return failed(publishFailure(error)); }
   const placed = substituteEvidence(decision.body, published);
   return "problem" in placed ? failed(placed.problem) : { ...decision, body: placed.body };
 }

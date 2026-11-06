@@ -103,45 +103,57 @@ export function usesManagerReview(labels: string[]): boolean {
   return labels.includes(MANAGER_REVIEWED_LABEL);
 }
 
+/** The App applied the label and cleared an ancestor of this head, followed only by exact trunk merges. */
+function assertManagerClearance(opts: ManagerReviewInput): void {
+  // An unreadable actor is not the App. Refusing here is what stops an author
+  // applying the label to their own record.
+  if (opts.labelActor !== GH_MANAGER_LOGIN) {
+    throw new Error(`${MANAGER_REVIEWED_LABEL} must be applied by ${GH_MANAGER_LOGIN}; it was applied by ${opts.labelActor ?? "an actor that could not be determined"}. Remove it and use the ordinary independent review.`);
+  }
+  if (!opts.clearedHead || !/^[a-f0-9]{40}$/.test(opts.clearedHead)) {
+    throw new Error(`no clearance from ${GH_MANAGER_LOGIN} could be read for this pull request; the label alone does not clear it`);
+  }
+  // The clearance is for one commit. Trunk may be merged in afterwards, exactly as after an
+  // ordinary review, but only by a merge Git reproduces: a hand-resolved merge or any other
+  // commit after the cleared head is work the App never saw, whatever the record now says.
+  if (!isAncestor(opts.root, opts.clearedHead, opts.head)) throw new Error("the head the GitHub Manager cleared is not an ancestor of this pull request's head; the branch was rewritten after clearance");
+  verifyUncoveredCommits(opts.root, {}, opts.clearedHead, opts.head, opts.base, new Set(), "commits were pushed after the GitHub Manager cleared this pull request; its clearance covers the head it reviewed and exact trunk merges only");
+}
+
+function readManagerRecord(opts: ManagerReviewInput) {
+  const lines = [...visibleProse(opts.body).matchAll(/^manager-review-record:[ \t]*(\S+)[ \t]*$/gm)];
+  if (lines.length !== 1) throw new Error("PR body needs one visible manager-review-record: .agent/worklog/<task>.md line");
+  const path = lines[0]![1]!;
+  if (!/^\.agent\/worklog\/[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(path)) throw new Error("manager-review-record must name a worklog Markdown file");
+  const mode = git(opts.root, ["ls-tree", opts.head, "--", path]).split(" ")[0];
+  if (mode !== "100644") throw new Error("manager review worklog must be a regular committed file");
+  const record = parseManagerReviewRecord(git(opts.root, ["show", `${opts.head}:${path}`]));
+  validateManagerReviewRecord(record);
+  return { record, path };
+}
+
+/** reviewed..head is one chain of this pull request's own work, touching no human-gated path. */
+function assertManagerScope(opts: ManagerReviewInput, record: ReturnType<typeof readManagerRecord>["record"]): void {
+  const fork = git(opts.root, ["merge-base", opts.base, opts.head]);
+  for (const [older, newer] of [[record.reviewed, record.covered], [record.covered, opts.clearedHead], [opts.clearedHead, opts.head]]) {
+    if (!isAncestor(opts.root, older!, newer!)) throw new Error("reviewed, covered and the pull request head must form an ancestor chain");
+  }
+  // `reviewed` must be this pull request's own work, not a trunk commit behind it.
+  if (isAncestor(opts.root, record.reviewed, fork)) throw new Error("the reviewed commit is trunk history, not this pull request's work");
+  const gated = humanGatedPaths(changedPaths(opts.root, fork, opts.head), managerPolicy(opts.root, opts.head));
+  if (gated.length) {
+    throw new Error(`the manager cannot clear a change to policy a project is operated by, or to a protected path: ${gated.slice(0, 5).join(", ")}${gated.length > 5 ? ` (+${gated.length - 5} more)` : ""}. This needs the ordinary independent review or a human.`);
+  }
+}
+
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkManagerReview(opts: ManagerReviewInput): Finding[] {
   try {
     const config = committedConfig(opts.root, opts.head);
     if (!reviewRequired(config)) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
-    // An unreadable actor is not the App. Refusing here is what stops an author
-    // applying the label to their own record.
-    if (opts.labelActor !== GH_MANAGER_LOGIN) {
-      throw new Error(`${MANAGER_REVIEWED_LABEL} must be applied by ${GH_MANAGER_LOGIN}; it was applied by ${opts.labelActor ?? "an actor that could not be determined"}. Remove it and use the ordinary independent review.`);
-    }
-    if (!opts.clearedHead || !/^[a-f0-9]{40}$/.test(opts.clearedHead)) {
-      throw new Error(`no clearance from ${GH_MANAGER_LOGIN} could be read for this pull request; the label alone does not clear it`);
-    }
-    // The clearance is for one commit. Trunk may be merged in afterwards, exactly as after an
-    // ordinary review, but only by a merge Git reproduces: a hand-resolved merge or any other
-    // commit after the cleared head is work the App never saw, whatever the record now says.
-    if (!isAncestor(opts.root, opts.clearedHead, opts.head)) throw new Error("the head the GitHub Manager cleared is not an ancestor of this pull request's head; the branch was rewritten after clearance");
-    verifyUncoveredCommits(opts.root, {}, opts.clearedHead, opts.head, opts.base, new Set(), "commits were pushed after the GitHub Manager cleared this pull request; its clearance covers the head it reviewed and exact trunk merges only");
-    const lines = [...visibleProse(opts.body).matchAll(/^manager-review-record:[ \t]*(\S+)[ \t]*$/gm)];
-    if (lines.length !== 1) throw new Error("PR body needs one visible manager-review-record: .agent/worklog/<task>.md line");
-    const path = lines[0]![1]!;
-    if (!/^\.agent\/worklog\/[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(path)) throw new Error("manager-review-record must name a worklog Markdown file");
-    const mode = git(opts.root, ["ls-tree", opts.head, "--", path]).split(" ")[0];
-    if (mode !== "100644") throw new Error("manager review worklog must be a regular committed file");
-    const record = parseManagerReviewRecord(git(opts.root, ["show", `${opts.head}:${path}`]));
-    validateManagerReviewRecord(record);
-
-    const fork = git(opts.root, ["merge-base", opts.base, opts.head]);
-    for (const [older, newer] of [[record.reviewed, record.covered], [record.covered, opts.clearedHead], [opts.clearedHead, opts.head]]) {
-      if (!isAncestor(opts.root, older!, newer!)) throw new Error("reviewed, covered and the pull request head must form an ancestor chain");
-    }
-    // `reviewed` must be this pull request's own work, not a trunk commit behind it.
-    if (isAncestor(opts.root, record.reviewed, fork)) throw new Error("the reviewed commit is trunk history, not this pull request's work");
-
-    const gated = humanGatedPaths(changedPaths(opts.root, fork, opts.head), managerPolicy(opts.root, opts.head));
-    if (gated.length) {
-      throw new Error(`the manager cannot clear a change to policy a project is operated by, or to a protected path: ${gated.slice(0, 5).join(", ")}${gated.length > 5 ? ` (+${gated.length - 5} more)` : ""}. This needs the ordinary independent review or a human.`);
-    }
-
+    assertManagerClearance(opts);
+    const { record, path } = readManagerRecord(opts);
+    assertManagerScope(opts, record);
     const merges = new Set<string>();
     const fixPaths = new Set([path, ...record.findings.filter(f => f.disposition === "fixed").flatMap(f => f.paths)]);
     for (const commit of verifyUncoveredCommits(opts.root, record, record.reviewed, record.covered, opts.base, fixPaths, "the manager's fix commits touch paths no fixed finding names; every change it makes must be recorded as a finding")) merges.add(commit);

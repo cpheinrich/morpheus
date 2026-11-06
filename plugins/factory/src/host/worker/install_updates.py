@@ -78,32 +78,7 @@ def rollback(parser, target, domain):
     print(f"restored the previous {LABEL}")
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--host")
-    parser.add_argument("--manifest", type=Path, help="private host manifest; defaults to $FACTORY_HOME/hosts.json")
-    parser.add_argument("--credentials-project", type=Path, help="defaults to the host's paths.credentialsProject in the manifest")
-    parser.add_argument("--github-user", help="GitHub login whose stored gh auth the fleet PR agent uses (required to install)")
-    parser.add_argument("--rollback", action="store_true", help="restore the LaunchAgent this installer last replaced")
-    parser.add_argument("--provider-command", type=Path)
-    parser.add_argument("--provider-url")
-    parser.add_argument("--check", action="store_true")
-    args = parser.parse_args()
-    root = Path(__file__).resolve().parents[1]
-    runner = root / "worker/update_runner.sh"
-    target = Path.home() / f"Library/LaunchAgents/{LABEL}.plist"
-    domain = f"gui/{os.getuid()}"
-    if args.rollback:
-        return rollback(parser, target, domain)
-    if not args.host:
-        parser.error("--host is required")
-    manifest = Path(os.path.abspath(args.manifest or host_config.default_manifest()))
-    try:
-        host_config.load(manifest)
-    except host_config.ConfigError as error:
-        parser.error(str(error))
-    if not runner.is_file():
-        parser.error(f"runner missing from this package: {runner}")
+def _resolve_credentials_project(parser, args, root, manifest):
     if args.credentials_project is None:
         try:
             args.credentials_project = Path(load_controller(root).pin_for_host(manifest, args.host).paths["credentialsProject"])
@@ -111,15 +86,21 @@ def main():
             parser.error(f"no --credentials-project and the manifest gives none for {args.host}: {error}")
     if not args.credentials_project.is_dir():
         parser.error("credentials project must exist")
-    if args.check:
-        print("manifest: present")
-        print(f"credentials project: {args.credentials_project}")
-        print(f"LaunchAgent: {'installed' if target.is_file() else 'missing'}")
-        print(f"verification provider: {'configured' if args.provider_command and args.provider_url else 'missing'}")
-        ok, checks = host_check(root, manifest, args.host, args.credentials_project, args.provider_command, args.provider_url)
-        for name, passed, detail, blocking in checks:
-            print(f"{name}: {'ok' if passed else ('FAIL' if blocking else 'WARN')} - {detail}")
-        sys.exit(0 if ok else 1)
+
+
+def _report_check(args, root, manifest, target):
+    """--check: report presence and every host check, exiting 1 when a blocking one fails."""
+    print("manifest: present")
+    print(f"credentials project: {args.credentials_project}")
+    print(f"LaunchAgent: {'installed' if target.is_file() else 'missing'}")
+    print(f"verification provider: {'configured' if args.provider_command and args.provider_url else 'missing'}")
+    ok, checks = host_check(root, manifest, args.host, args.credentials_project, args.provider_command, args.provider_url)
+    for name, passed, detail, blocking in checks:
+        print(f"{name}: {'ok' if passed else ('FAIL' if blocking else 'WARN')} - {detail}")
+    sys.exit(0 if ok else 1)
+
+
+def _validate_install_args(parser, args):
     if not args.github_user or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*", args.github_user):
         parser.error("GitHub user must be an account login")
     if bool(args.provider_command) != bool(args.provider_url):
@@ -128,14 +109,10 @@ def main():
         parser.error("provider command must be an executable absolute path")
     if args.provider_url and not args.provider_url.startswith("https://"):
         parser.error("provider URL must use HTTPS")
-    ok, checks = host_check(root, manifest, args.host, args.credentials_project, args.provider_command, args.provider_url)
-    # Only checks that gate Factory's own actions refuse the install; the rest warn.
-    blocking_failures = [f"{name}: {detail}" for name, passed, detail, blocking in checks if not passed and blocking]
-    if blocking_failures:
-        parser.exit(1, f"install_updates.py: host check failed, not installing: {'; '.join(blocking_failures)}\n")
-    for name, passed, detail, blocking in checks:
-        if not passed:
-            print(f"warning: {name}: {detail}")
+
+
+def _install_launch_agent(parser, args, root, runner, manifest, target, domain):
+    """Writes the LaunchAgent atomically, keeping the replaced one for --rollback, then bootstraps it."""
     target.parent.mkdir(parents=True, exist_ok=True)
     arguments = ["/bin/bash", str(runner), "--host", args.host, "--manifest", str(manifest), "--credentials-project", str(args.credentials_project.resolve()), "--github-user", args.github_user]
     if args.provider_command:
@@ -163,6 +140,47 @@ def main():
     temporary.replace(target)
     bootstrap(domain, target)
     print(f"installed {LABEL} for {args.host} from {root}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--host")
+    parser.add_argument("--manifest", type=Path, help="private host manifest; defaults to $FACTORY_HOME/hosts.json")
+    parser.add_argument("--credentials-project", type=Path, help="defaults to the host's paths.credentialsProject in the manifest")
+    parser.add_argument("--github-user", help="GitHub login whose stored gh auth the fleet PR agent uses (required to install)")
+    parser.add_argument("--rollback", action="store_true", help="restore the LaunchAgent this installer last replaced")
+    parser.add_argument("--provider-command", type=Path)
+    parser.add_argument("--provider-url")
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
+    root = Path(__file__).resolve().parents[1]
+    runner = root / "worker/update_runner.sh"
+    target = Path.home() / f"Library/LaunchAgents/{LABEL}.plist"
+    domain = f"gui/{os.getuid()}"
+    if args.rollback:
+        return rollback(parser, target, domain)
+    if not args.host:
+        parser.error("--host is required")
+    manifest = Path(os.path.abspath(args.manifest or host_config.default_manifest()))
+    try:
+        host_config.load(manifest)
+    except host_config.ConfigError as error:
+        parser.error(str(error))
+    if not runner.is_file():
+        parser.error(f"runner missing from this package: {runner}")
+    _resolve_credentials_project(parser, args, root, manifest)
+    if args.check:
+        _report_check(args, root, manifest, target)
+    _validate_install_args(parser, args)
+    ok, checks = host_check(root, manifest, args.host, args.credentials_project, args.provider_command, args.provider_url)
+    # Only checks that gate Factory's own actions refuse the install; the rest warn.
+    blocking_failures = [f"{name}: {detail}" for name, passed, detail, blocking in checks if not passed and blocking]
+    if blocking_failures:
+        parser.exit(1, f"install_updates.py: host check failed, not installing: {'; '.join(blocking_failures)}\n")
+    for name, passed, detail, blocking in checks:
+        if not passed:
+            print(f"warning: {name}: {detail}")
+    _install_launch_agent(parser, args, root, runner, manifest, target, domain)
 
 
 if __name__ == "__main__":

@@ -68,6 +68,34 @@ const JOB_URL = /\/actions\/runs\/\d+\/job\/(\d+)/;
 export function jobIdFromUrl(url) {
     return url ? JOB_URL.exec(url)?.[1] : undefined;
 }
+/** One rollup node as a check: a check run (which must name its suite) or a commit status; undefined for other kinds. */
+function rollupCheck(node) {
+    if (node.__typename === "CheckRun") {
+        if (!node.checkSuite?.id)
+            return { error: `check ${node.name ?? "(unnamed check)"} has no check suite identity` };
+        return {
+            name: node.name ?? "(unnamed check)",
+            workflow: node.checkSuite?.workflowRun?.workflow?.name ?? undefined,
+            suiteId: node.checkSuite.id,
+            workflowId: node.checkSuite.workflowRun?.workflow?.id,
+            outcome: checkRunOutcome(node.status, node.conclusion),
+            url: node.detailsUrl ?? undefined,
+            required: node.isRequired === true,
+            startedAt: node.startedAt ?? undefined,
+            jobId: jobIdFromUrl(node.detailsUrl),
+        };
+    }
+    if (node.__typename === "StatusContext") {
+        return {
+            name: node.context ?? "(unnamed status)",
+            outcome: statusOutcome(node.state),
+            url: node.targetUrl ?? undefined,
+            required: node.isRequired === true,
+            startedAt: node.createdAt ?? undefined,
+        };
+    }
+    return undefined;
+}
 /** `gh api graphql` output for {@link ROLLUP_QUERY}; an error string when the shape is not what was asked for. */
 export function parseRollup(json) {
     const data = json;
@@ -82,30 +110,11 @@ export function parseRollup(json) {
     const contexts = commit.statusCheckRollup?.contexts;
     const checks = [];
     for (const node of contexts?.nodes ?? []) {
-        if (node.__typename === "CheckRun") {
-            if (!node.checkSuite?.id)
-                return { error: `check ${node.name ?? "(unnamed check)"} has no check suite identity` };
-            checks.push({
-                name: node.name ?? "(unnamed check)",
-                workflow: node.checkSuite?.workflowRun?.workflow?.name ?? undefined,
-                suiteId: node.checkSuite.id,
-                workflowId: node.checkSuite.workflowRun?.workflow?.id,
-                outcome: checkRunOutcome(node.status, node.conclusion),
-                url: node.detailsUrl ?? undefined,
-                required: node.isRequired === true,
-                startedAt: node.startedAt ?? undefined,
-                jobId: jobIdFromUrl(node.detailsUrl),
-            });
-        }
-        else if (node.__typename === "StatusContext") {
-            checks.push({
-                name: node.context ?? "(unnamed status)",
-                outcome: statusOutcome(node.state),
-                url: node.targetUrl ?? undefined,
-                required: node.isRequired === true,
-                startedAt: node.createdAt ?? undefined,
-            });
-        }
+        const check = rollupCheck(node);
+        if (check && "error" in check)
+            return check;
+        if (check)
+            checks.push(check);
     }
     return {
         pr: pr.number,

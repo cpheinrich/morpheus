@@ -84,52 +84,65 @@ async function poll(deps: WaitDeps, repo: string, pr: number): Promise<Snapshot 
   }
 }
 
+type CensusRun = { headSha: string; status: string; conclusion: unknown; databaseId: number; workflowDatabaseId: number; createdAt: string };
+
 /** Actions runs can exist before their jobs appear in the commit check rollup. */
 async function currentHeadRuns(deps: WaitDeps, repo: string, headSha: string, hasActionsCheck: boolean): Promise<"complete" | "pending" | { error: string }> {
   const res = await deps.gh(["run", "list", "--repo", repo, "--commit", headSha, "--limit", "100", "--json", "headSha,status,conclusion,databaseId,workflowDatabaseId,createdAt"]);
   if (res.code !== 0) return { error: firstLine(res.stderr) || `gh exited ${res.code}` };
+  let runs: unknown;
   try {
-    const runs: unknown = JSON.parse(res.stdout);
-    if (!Array.isArray(runs) || runs.length >= 100 || (hasActionsCheck && runs.length === 0)) {
-      return { error: "workflow run census is incomplete" };
-    }
-    type Run = { headSha: string; status: string; conclusion: unknown; databaseId: number; workflowDatabaseId: number; createdAt: string };
-    const rows: Run[] = [];
-    for (const run of runs) {
-      const row = run as Partial<Run> | null;
-      if (!row || row.headSha !== headSha || typeof row.status !== "string"
-        || !Number.isSafeInteger(row.databaseId) || row.databaseId! <= 0
-        || !Number.isSafeInteger(row.workflowDatabaseId) || row.workflowDatabaseId! <= 0
-        || typeof row.createdAt !== "string" || !Number.isFinite(Date.parse(row.createdAt))) {
-        return { error: "workflow run census returned an invalid or foreign row" };
-      }
-      rows.push(row as Run);
-    }
-    // Creation time, then ID, orders same-second duplicates independently of API order.
-    // Only cancellation is supersedable: a real failure remains evidence even if
-    // another run succeeded, and different workflow IDs never replace one another.
-    const newer = (a: Run, b: Run) => Date.parse(a.createdAt) > Date.parse(b.createdAt)
-      || (Date.parse(a.createdAt) === Date.parse(b.createdAt) && a.databaseId > b.databaseId);
-    const latest = new Map<number, Run>();
-    for (const row of rows) {
-      const prior = latest.get(row.workflowDatabaseId);
-      if (!prior || newer(row, prior)) latest.set(row.workflowDatabaseId, row);
-    }
-    let pending = false;
-    for (const row of rows) {
-      if (row.status !== "completed") { pending = true; continue; }
-      const successor = latest.get(row.workflowDatabaseId)!;
-      if (row.conclusion === "cancelled" && newer(successor, row)
-        && (successor.status !== "completed" || successor.conclusion === "success")) continue;
-      if (!["success", "neutral", "skipped"].includes(String(row.conclusion))) {
-        return { error: `workflow run ${row.databaseId} ended ${String(row.conclusion)} without a matching failed check receipt` };
-      }
-    }
-    if (pending) return "pending";
-    return "complete";
+    runs = JSON.parse(res.stdout);
   } catch {
     return { error: "workflow run census returned output that is not JSON" };
   }
+  const rows = censusRows(runs, headSha, hasActionsCheck);
+  return "error" in rows ? rows : censusVerdict(rows.rows);
+}
+
+/** Every row of a complete census for this head, or why the census cannot be trusted. */
+function censusRows(runs: unknown, headSha: string, hasActionsCheck: boolean): { rows: CensusRun[] } | { error: string } {
+  if (!Array.isArray(runs) || runs.length >= 100 || (hasActionsCheck && runs.length === 0)) {
+    return { error: "workflow run census is incomplete" };
+  }
+  const rows: CensusRun[] = [];
+  for (const run of runs) {
+    const row = run as Partial<CensusRun> | null;
+    if (!row || row.headSha !== headSha || typeof row.status !== "string"
+      || !Number.isSafeInteger(row.databaseId) || row.databaseId! <= 0
+      || !Number.isSafeInteger(row.workflowDatabaseId) || row.workflowDatabaseId! <= 0
+      || typeof row.createdAt !== "string" || !Number.isFinite(Date.parse(row.createdAt))) {
+      return { error: "workflow run census returned an invalid or foreign row" };
+    }
+    rows.push(row as CensusRun);
+  }
+  return { rows };
+}
+
+/**
+ * Creation time, then ID, orders same-second duplicates independently of API order.
+ * Only cancellation is supersedable: a real failure remains evidence even if
+ * another run succeeded, and different workflow IDs never replace one another.
+ */
+function censusVerdict(rows: CensusRun[]): "complete" | "pending" | { error: string } {
+  const newer = (a: CensusRun, b: CensusRun) => Date.parse(a.createdAt) > Date.parse(b.createdAt)
+    || (Date.parse(a.createdAt) === Date.parse(b.createdAt) && a.databaseId > b.databaseId);
+  const latest = new Map<number, CensusRun>();
+  for (const row of rows) {
+    const prior = latest.get(row.workflowDatabaseId);
+    if (!prior || newer(row, prior)) latest.set(row.workflowDatabaseId, row);
+  }
+  let pending = false;
+  for (const row of rows) {
+    if (row.status !== "completed") { pending = true; continue; }
+    const successor = latest.get(row.workflowDatabaseId)!;
+    if (row.conclusion === "cancelled" && newer(successor, row)
+      && (successor.status !== "completed" || successor.conclusion === "success")) continue;
+    if (!["success", "neutral", "skipped"].includes(String(row.conclusion))) {
+      return { error: `workflow run ${row.databaseId} ended ${String(row.conclusion)} without a matching failed check receipt` };
+    }
+  }
+  return pending ? "pending" : "complete";
 }
 
 /** Failing-step logs for up to {@link MAX_LOGS} failed jobs; `repo` absent means gh's current repository. */
@@ -166,79 +179,94 @@ export async function waitCi(deps: WaitDeps, opts: WaitOptions): Promise<WaitRes
   const target = await resolvePr(deps, opts);
   if ("error" in target) return { exitCode: EXIT.error, output: `wait-ci: ${target.error}` };
   const { repo, pr } = target;
-
-  const movedFrom: string[] = [];
-  let headSha: string | null = null;
-  let headSeenAt = start;
-  let snapshot: Snapshot | null = null;
-  let errors = 0;
-  let delay: number | null = null;
-  let timedOut = false;
-  let runsPending = false;
+  const wait = new HeadWatch(deps, start);
 
   for (;;) {
     const result = await poll(deps, repo, pr);
     if ("error" in result) {
-      errors++;
-      if (errors >= MAX_POLL_ERRORS) {
+      if (++wait.errors >= MAX_POLL_ERRORS) {
         return { exitCode: EXIT.error, output: `wait-ci: ${MAX_POLL_ERRORS} consecutive polls of ${repo}#${pr} failed; last: ${result.error}` };
       }
     } else {
-      errors = 0;
-      if (headSha !== null && result.headSha !== headSha) {
-        movedFrom.push(headSha);
-        headSeenAt = deps.now();
-        delay = null;
-      }
-      headSha = result.headSha;
-      snapshot = result;
-      runsPending = false;
+      wait.errors = 0;
+      wait.adopt(result);
+      wait.runsPending = false;
     }
+    const snapshot = wait.snapshot;
     const visible = snapshot ? relevant(snapshot.checks, opts.requiredOnly) : [];
     if (snapshot && settled(visible)) {
-      // A registered failure is decisive. A green rollup is not: Actions runs
-      // may be queued or executing before their job checks register here.
-      if (verdict(visible) !== "green") break;
-      if (snapshot.truncated) {
-        return { exitCode: EXIT.error, output: `wait-ci: could not verify all current-head checks on ${repo}#${pr}; rollup exceeds 100 rows` };
-      }
-      if (opts.requiredOnly) break;
-      const runs = await currentHeadRuns(deps, repo, snapshot.headSha, snapshot.checks.some((check) => Boolean(check.workflow)));
-      if (typeof runs !== "string") {
-        return { exitCode: EXIT.error, output: `wait-ci: could not verify current-head workflow runs on ${repo}#${pr}: ${runs.error}` };
-      }
-      runsPending = runs === "pending";
-      if (runs === "complete") {
-        // Re-read after the census: registration may have changed while it ran.
-        const candidateSha = snapshot.headSha;
-        const confirmed = await poll(deps, repo, pr);
-        if ("error" in confirmed) {
-          return { exitCode: EXIT.error, output: `wait-ci: could not confirm current-head checks on ${repo}#${pr}: ${confirmed.error}` };
-        }
-        if (confirmed.headSha !== snapshot.headSha) {
-          movedFrom.push(snapshot.headSha);
-          headSeenAt = deps.now();
-          delay = null;
-        }
-        headSha = confirmed.headSha;
-        snapshot = confirmed;
-        // The run census belonged to candidateSha. A replacement head (or an
-        // incomplete confirmation rollup) has not been verified, including
-        // when this poll consumed the last moment before the deadline.
-        runsPending = confirmed.headSha !== candidateSha || confirmed.truncated;
-        if (!snapshot.truncated && confirmed.headSha === candidateSha && settled(relevant(snapshot.checks, false)) && verdict(snapshot.checks) === "green") break;
-      }
+      const decided = await confirmSettled(deps, repo, pr, opts, wait, visible);
+      if (decided === "done") break;
+      if (decided !== "continue") return decided;
     }
     const now = deps.now();
-    if (snapshot && visible.length === 0 && now - headSeenAt >= NO_CHECKS_GRACE_MS) break;
+    if (snapshot && visible.length === 0 && now - wait.headSeenAt >= NO_CHECKS_GRACE_MS) break;
     if (now >= deadline) {
-      timedOut = true;
+      wait.timedOut = true;
       break;
     }
-    delay = nextDelay(delay, deadline - now);
-    await deps.sleep(delay);
+    wait.delay = nextDelay(wait.delay, deadline - now);
+    await deps.sleep(wait.delay);
   }
+  return finalDigest(deps, repo, pr, opts, wait, start);
+}
 
+/** The followed head, the latest snapshot and the loop's bookkeeping. A head that moves is named and restarts the backoff. */
+class HeadWatch {
+  movedFrom: string[] = [];
+  headSha: string | null = null;
+  snapshot: Snapshot | null = null;
+  errors = 0;
+  delay: number | null = null;
+  timedOut = false;
+  runsPending = false;
+  constructor(readonly deps: WaitDeps, public headSeenAt: number) {}
+  adopt(result: Snapshot): void {
+    if (this.headSha !== null && result.headSha !== this.headSha) {
+      this.movedFrom.push(this.headSha);
+      this.headSeenAt = this.deps.now();
+      this.delay = null;
+    }
+    this.headSha = result.headSha;
+    this.snapshot = result;
+  }
+}
+
+/**
+ * Settled checks: a registered failure is decisive. A green rollup is not: Actions runs may be
+ * queued or executing before their job checks register here, so a complete run census and a
+ * re-read of the rollup confirm it. Returns "done", "continue" (keep waiting), or a final error.
+ */
+async function confirmSettled(deps: WaitDeps, repo: string, pr: number, opts: WaitOptions, wait: HeadWatch, visible: Check[]): Promise<"done" | "continue" | WaitResult> {
+  const snapshot = wait.snapshot!;
+  if (verdict(visible) !== "green") return "done";
+  if (snapshot.truncated) {
+    return { exitCode: EXIT.error, output: `wait-ci: could not verify all current-head checks on ${repo}#${pr}; rollup exceeds 100 rows` };
+  }
+  if (opts.requiredOnly) return "done";
+  const runs = await currentHeadRuns(deps, repo, snapshot.headSha, snapshot.checks.some((check) => Boolean(check.workflow)));
+  if (typeof runs !== "string") {
+    return { exitCode: EXIT.error, output: `wait-ci: could not verify current-head workflow runs on ${repo}#${pr}: ${runs.error}` };
+  }
+  wait.runsPending = runs === "pending";
+  if (runs !== "complete") return "continue";
+  // Re-read after the census: registration may have changed while it ran.
+  const candidateSha = snapshot.headSha;
+  const confirmed = await poll(deps, repo, pr);
+  if ("error" in confirmed) {
+    return { exitCode: EXIT.error, output: `wait-ci: could not confirm current-head checks on ${repo}#${pr}: ${confirmed.error}` };
+  }
+  wait.adopt(confirmed);
+  // The run census belonged to candidateSha. A replacement head (or an
+  // incomplete confirmation rollup) has not been verified, including
+  // when this poll consumed the last moment before the deadline.
+  wait.runsPending = confirmed.headSha !== candidateSha || confirmed.truncated;
+  if (!confirmed.truncated && confirmed.headSha === candidateSha && settled(relevant(confirmed.checks, false)) && verdict(confirmed.checks) === "green") return "done";
+  return "continue";
+}
+
+async function finalDigest(deps: WaitDeps, repo: string, pr: number, opts: WaitOptions, wait: HeadWatch, start: number): Promise<WaitResult> {
+  const { snapshot, timedOut, runsPending, movedFrom } = wait;
   if (!snapshot) return { exitCode: EXIT.error, output: `wait-ci: no successful poll of ${repo}#${pr} before the deadline` };
   const checks = relevant(snapshot.checks, opts.requiredOnly);
   const observedVerdict = verdict(checks);

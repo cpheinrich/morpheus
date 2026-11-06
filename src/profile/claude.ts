@@ -119,32 +119,41 @@ export class ClaudeTranscript {
   push(line: string): void {
     this.lineNo++;
     if (line.trim() === "") return;
-    let o: Json | null;
-    try {
-      o = obj(JSON.parse(line));
-    } catch {
-      this.issue("unparseable JSON");
-      return;
-    }
-    if (!o) {
-      this.issue("line is not a JSON object");
-      return;
-    }
+    const o = this.parse(line);
+    if (!o) return;
     const type = str(o.type);
     const at = time(o.timestamp);
     if (at !== null && (type === "user" || type === "assistant" || type === "attachment" || type === "system")) {
       this.timestamps.push(at);
     }
+    this.noteContext(o);
+
+    if (type === "assistant") this.assistant(o, at);
+    else if (type === "user") this.user(o, at);
+    else if (type === "cost-state") this.cost = typeof o.totalCostUSD === "number" ? o.totalCostUSD : this.cost;
+  }
+
+  /** The line as a JSON object; anything else is recorded as an issue. */
+  private parse(line: string): Json | null {
+    let o: Json | null;
+    try {
+      o = obj(JSON.parse(line));
+    } catch {
+      this.issue("unparseable JSON");
+      return null;
+    }
+    if (!o) this.issue("line is not a JSON object");
+    return o;
+  }
+
+  /** Session id, each change of working directory and branch, and the sidechain flag. */
+  private noteContext(o: Json): void {
     this.sessionId ??= str(o.sessionId);
     const cwd = str(o.cwd);
     if (cwd && this.cwds[this.cwds.length - 1] !== cwd) this.cwds.push(cwd);
     const branch = str(o.gitBranch);
     if (branch && branch !== "HEAD" && this.branches[this.branches.length - 1] !== branch) this.branches.push(branch);
     if (o.isSidechain === true) this.sidechain = true;
-
-    if (type === "assistant") this.assistant(o, at);
-    else if (type === "user") this.user(o, at);
-    else if (type === "cost-state") this.cost = typeof o.totalCostUSD === "number" ? o.totalCostUSD : this.cost;
   }
 
   private issue(message: string): void {
@@ -198,14 +207,8 @@ export class ClaudeTranscript {
     }
   }
 
-  finish(): ParsedSession {
-    const { file, subagent } = this.options;
-    if (!this.sessionId && !subagent) {
-      if (this.lineNo > 0) this.issues.push({ file, line: null, message: "no sessionId in any line" });
-      return { session: null, spans: [], issues: this.issues };
-    }
-    const parentSessionId = subagent?.parentSessionId ?? null;
-    const sessionId = subagent ? `${subagent.parentSessionId}:${subagent.agentId}` : this.sessionId!;
+  private identity(): { parentSessionId: string | null; sessionId: string; isSidechain: boolean; agentType: string | null; role: Role } {
+    const subagent = this.options.subagent;
     const isSidechain = Boolean(subagent) || this.sidechain;
     const agentType = subagent?.agentType ?? null;
     const role: Role = !isSidechain
@@ -213,59 +216,70 @@ export class ClaudeTranscript {
       : REVIEW.test(`${agentType ?? ""} ${subagent?.description ?? ""}`)
         ? "reviewer"
         : "subagent";
+    return {
+      parentSessionId: subagent?.parentSessionId ?? null,
+      sessionId: subagent ? `${subagent.parentSessionId}:${subagent.agentId}` : this.sessionId!,
+      isSidechain, agentType, role,
+    };
+  }
+
+  /** One span per tool use, timed to its result, with busy and human-wait intervals for active time. */
+  private toolSpans(owner: Pick<SpanRow, "sessionId" | "isSidechain" | "role" | "repo">): { spans: SpanRow[]; busy: Interval[]; waiting: Interval[] } {
+    const { sessionId, isSidechain, role, repo } = owner;
+    const spans: SpanRow[] = [];
+    const busy: Interval[] = [];
+    const waiting: Interval[] = [];
+    for (const use of this.toolUses) {
+    const result = this.results.get(use.id);
+    const durationMs = result ? Math.max(0, result.at - use.at) : null;
+    const input = obj(use.input) ?? {};
+    const background = Boolean(result?.background || input.run_in_background === true);
+    const phase = result?.rejected ? "human-wait" : classifyTool(use.name, use.input);
+    if (phase === "human-wait") {
+      if (durationMs !== null) waiting.push({ start: use.at, end: use.at + durationMs });
+    } else if (credible(durationMs)) {
+      busy.push({ start: use.at, end: use.at + durationMs });
+    }
+    const request = this.requests.get(use.messageId);
+    const share = request && request.model !== "<synthetic>" ? request.toolUseIds.length : 0;
+    const command = typeof input.command === "string" && use.name === "Bash" ? truncateCommand(input.command) : null;
+    spans.push({
+      kind: "span",
+      provider: "claude",
+      sessionId,
+      isSidechain,
+      role,
+      repo,
+      tool: use.name,
+      phase,
+      start: new Date(use.at).toISOString(),
+      durationMs,
+      command,
+      background,
+      inputTokens: share ? Math.round((request!.usage.input + request!.usage.cacheRead + request!.usage.cacheCreation) / share) : null,
+      outputTokens: share ? Math.round(request!.usage.output / share) : null,
+    });
+    }
+    return { spans, busy, waiting };
+  }
+
+  finish(): ParsedSession {
+    const { file, subagent } = this.options;
+    if (!this.sessionId && !subagent) {
+      if (this.lineNo > 0) this.issues.push({ file, line: null, message: "no sessionId in any line" });
+      return { session: null, spans: [], issues: this.issues };
+    }
+    const { parentSessionId, sessionId, isSidechain, agentType, role } = this.identity();
     const cwd = this.cwds[0] ?? null;
     const repo = deriveRepo(cwd, this.options.roots, this.options.home);
     const branch = this.branches[this.branches.length - 1] ?? null;
     const item = deriveItem(...this.branches, ...this.cwds);
 
     const real = [...this.requests.values()].filter((r) => r.model !== "<synthetic>").sort((a, b) => a.order - b.order);
-    const tokens = emptyTokens();
-    const byModel = new Map<string, ModelUsage>();
-    for (const r of real) {
-      addTokens(tokens, r.usage);
-      const key = `${r.model}\u0000${r.effort ?? ""}`;
-      let m = byModel.get(key);
-      if (!m) byModel.set(key, (m = { model: r.model, effort: r.effort, requests: 0, tokens: emptyTokens() }));
-      m.requests++;
-      addTokens(m.tokens, r.usage);
-    }
+    const { tokens, byModel } = usageByModel(real);
     const first = real[0];
     const firstTurnContextTokens = first ? first.usage.input + first.usage.cacheRead + first.usage.cacheCreation : null;
-
-    const spans: SpanRow[] = [];
-    const busy: Interval[] = [];
-    const waiting: Interval[] = [];
-    for (const use of this.toolUses) {
-      const result = this.results.get(use.id);
-      const durationMs = result ? Math.max(0, result.at - use.at) : null;
-      const input = obj(use.input) ?? {};
-      const background = Boolean(result?.background || input.run_in_background === true);
-      const phase = result?.rejected ? "human-wait" : classifyTool(use.name, use.input);
-      if (phase === "human-wait") {
-        if (durationMs !== null) waiting.push({ start: use.at, end: use.at + durationMs });
-      } else if (credible(durationMs)) {
-        busy.push({ start: use.at, end: use.at + durationMs });
-      }
-      const request = this.requests.get(use.messageId);
-      const share = request && request.model !== "<synthetic>" ? request.toolUseIds.length : 0;
-      const command = typeof input.command === "string" && use.name === "Bash" ? truncateCommand(input.command) : null;
-      spans.push({
-        kind: "span",
-        provider: "claude",
-        sessionId,
-        isSidechain,
-        role,
-        repo,
-        tool: use.name,
-        phase,
-        start: new Date(use.at).toISOString(),
-        durationMs,
-        command,
-        background,
-        inputTokens: share ? Math.round((request!.usage.input + request!.usage.cacheRead + request!.usage.cacheCreation) / share) : null,
-        outputTokens: share ? Math.round(request!.usage.output / share) : null,
-      });
-    }
+    const { spans, busy, waiting } = this.toolSpans({ sessionId, isSidechain, role, repo });
 
     const sorted = [...this.timestamps].sort((a, b) => a - b);
     const start = sorted[0];
@@ -299,6 +313,20 @@ export class ClaudeTranscript {
     };
     return { session, spans, issues: this.issues };
   }
+}
+
+function usageByModel(real: { model: string; effort: string | null; usage: TokenTotals }[]): { tokens: TokenTotals; byModel: Map<string, ModelUsage> } {
+  const tokens = emptyTokens();
+  const byModel = new Map<string, ModelUsage>();
+  for (const r of real) {
+    addTokens(tokens, r.usage);
+    const key = `${r.model}\u0000${r.effort ?? ""}`;
+    let m = byModel.get(key);
+    if (!m) byModel.set(key, (m = { model: r.model, effort: r.effort, requests: 0, tokens: emptyTokens() }));
+    m.requests++;
+    addTokens(m.tokens, r.usage);
+  }
+  return { tokens, byModel };
 }
 
 function unique<T>(values: T[]): T[] {

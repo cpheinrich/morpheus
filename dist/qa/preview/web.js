@@ -9,6 +9,17 @@ import { fileURLToPath } from "node:url";
 import { normalizeUpstream } from "../web/server.js";
 import { DEFAULT_TTL_MINUTES, defaultRun, launchPlist, requireFreePort, tunnelCommand, withPreviewCancellation, } from "./ios.js";
 const record = (v) => v !== null && typeof v === "object" && !Array.isArray(v) ? v : null;
+function webCommand(raw, issues) {
+    if (raw === undefined)
+        return undefined;
+    if (!Array.isArray(raw) || raw.length === 0 || !raw.every((c) => typeof c === "string" && c)) {
+        issues.push("qa.web.command must be a non-empty array of strings.");
+        return undefined;
+    }
+    return raw;
+}
+const validNamespace = (namespace) => /^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(namespace) && !namespace.includes("..");
+const insideProject = (cwd) => typeof cwd === "string" && !!cwd && !cwd.startsWith("/") && !cwd.split("/").includes("..");
 export function parseWebPreviewConfig(raw, projectName = "Project") {
     const web = record(record(raw)?.web);
     if (!web)
@@ -21,22 +32,16 @@ export function parseWebPreviewConfig(raw, projectName = "Project") {
     catch (error) {
         issues.push(`qa.web.url: ${error.message}`);
     }
-    let command;
-    if (web.command !== undefined) {
-        if (!Array.isArray(web.command) || web.command.length === 0 || !web.command.every((c) => typeof c === "string" && c))
-            issues.push("qa.web.command must be a non-empty array of strings.");
-        else
-            command = web.command;
-    }
+    const command = webCommand(web.command, issues);
     const cwd = web.cwd === undefined ? "." : web.cwd;
-    if (typeof cwd !== "string" || !cwd || cwd.startsWith("/") || cwd.split("/").includes(".."))
+    if (!insideProject(cwd))
         issues.push("qa.web.cwd must be a path inside the project.");
     const path = web.path === undefined ? "/" : web.path;
     if (typeof path !== "string" || !path.startsWith("/"))
         issues.push("qa.web.path must start with /.");
     const slug = projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
     const namespace = typeof web.namespace === "string" ? web.namespace : `morpheus.qa.${slug}`;
-    if (!/^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(namespace) || namespace.includes(".."))
+    if (!validNamespace(namespace))
         issues.push("qa.web.namespace may hold letters, digits, single dots and dashes only.");
     if (issues.length)
         return { ok: false, issues };
@@ -53,6 +58,29 @@ export async function loadWebPreviewConfig(root) {
     const m = record(manifest);
     return parseWebPreviewConfig(m?.qa, typeof m?.name === "string" && m.name ? m.name : "Project");
 }
+/** Validates and applies one value flag; each throws the message the CLI prints. */
+const WEB_VALUE_FLAGS = {
+    "--port": (options, v) => {
+        if (!/^\d+$/.test(v) || Number(v) < 1024 || Number(v) > 65535)
+            throw new Error("Port must be an integer from 1024 to 65535.");
+        options.port = Number(v);
+    },
+    "--ttl-minutes": (options, v) => {
+        if (!/^\d+$/.test(v) || Number(v) < 1 || Number(v) > 1440)
+            throw new Error("TTL must be 1–1440 minutes.");
+        options.ttlMinutes = Number(v);
+    },
+    "--path": (options, v) => {
+        if (!v.startsWith("/"))
+            throw new Error("--path must start with /.");
+        options.path = v;
+    },
+    "--ssh-host": (options, v) => {
+        if (!/^[\w.@-]+$/.test(v))
+            throw new Error("SSH host must be a hostname or user@hostname (or an SSH config alias).");
+        options.sshHost = v;
+    },
+};
 export function parseWebPreviewArgs(argv) {
     const args = [...argv];
     const options = { command: "start" };
@@ -64,32 +92,10 @@ export function parseWebPreviewArgs(argv) {
         const flag = args.shift();
         const value = () => { const v = args.shift(); if (!v || v.startsWith("-"))
             throw new Error(`Missing value for ${flag}`); return v; };
-        if (flag === "--port") {
-            const v = value();
-            if (!/^\d+$/.test(v) || Number(v) < 1024 || Number(v) > 65535)
-                throw new Error("Port must be an integer from 1024 to 65535.");
-            options.port = Number(v);
-        }
-        else if (flag === "--ttl-minutes") {
-            const v = value();
-            if (!/^\d+$/.test(v) || Number(v) < 1 || Number(v) > 1440)
-                throw new Error("TTL must be 1–1440 minutes.");
-            options.ttlMinutes = Number(v);
-        }
-        else if (flag === "--path") {
-            const v = value();
-            if (!v.startsWith("/"))
-                throw new Error("--path must start with /.");
-            options.path = v;
-        }
-        else if (flag === "--ssh-host") {
-            const v = value();
-            if (!/^[\w.@-]+$/.test(v))
-                throw new Error("SSH host must be a hostname or user@hostname (or an SSH config alias).");
-            options.sshHost = v;
-        }
-        else
+        const apply = Object.hasOwn(WEB_VALUE_FLAGS, flag) ? WEB_VALUE_FLAGS[flag] : undefined;
+        if (!apply)
             throw new Error(`Unknown option: ${flag}`);
+        apply(options, value());
     }
     return options;
 }
@@ -145,6 +151,16 @@ const canonical = (path) => { try {
 catch {
     return resolve(path);
 } };
+/** The state names this checkout's root and dev directory. */
+function sameCheckout(ctx, state) {
+    if (!state || typeof state.root !== "string" || !isAbsolute(state.root) || typeof state.cwd !== "string" || !state.cwd || isAbsolute(state.cwd) || state.cwd.split("/").includes(".."))
+        return false;
+    return canonical(state.root) === canonical(ctx.root) && canonical(resolve(state.root, state.cwd)) === canonical(resolve(ctx.root, ctx.config.cwd));
+}
+function wellFormedState(state) {
+    return typeof state.upstream === "string" && Number.isInteger(state.port) && state.port >= 1 && state.port <= 65535 && typeof state.spawned === "boolean"
+        && Number.isFinite(state.expiresAt) && typeof state.path === "string" && state.path.startsWith("/");
+}
 function readState(ctx) {
     if (!existsSync(ctx.stateFile))
         return undefined;
@@ -157,11 +173,9 @@ function readState(ctx) {
     catch {
         throw new Error(`Cannot read preview state at ${ctx.stateFile}; it was retained.`);
     }
-    if (!state || typeof state.root !== "string" || !isAbsolute(state.root) || typeof state.cwd !== "string" || !state.cwd || isAbsolute(state.cwd) || state.cwd.split("/").includes("..") || canonical(state.root) !== canonical(ctx.root)
-        || canonical(resolve(state.root, state.cwd)) !== canonical(resolve(ctx.root, ctx.config.cwd)))
+    if (!sameCheckout(ctx, state))
         throw new Error(`Refusing preview state for another checkout or dev directory: ${ctx.stateFile}.`);
-    if (typeof state.upstream !== "string" || !Number.isInteger(state.port) || state.port < 1 || state.port > 65535 || typeof state.spawned !== "boolean"
-        || !Number.isFinite(state.expiresAt) || typeof state.path !== "string" || !state.path.startsWith("/"))
+    if (!wellFormedState(state))
         throw new Error(`Invalid preview state at ${ctx.stateFile}; it was retained.`);
     try {
         normalizeUpstream(state.upstream);
@@ -184,6 +198,21 @@ function verifyJob(ctx, status) {
 }
 /** Bounded legacy lookup keeps pre-upgrade sessions discoverable after a project/namespace rename. */
 function discover(ctx) {
+    const sessions = [];
+    for (const group of candidateContexts(ctx).values())
+        sessions.push(...groupSessions(group));
+    const registered = sessions.filter(session => session.status);
+    if (registered.length > 1)
+        throw new Error("Multiple registered web previews match this checkout; refusing ambiguous ownership. No job was stopped.");
+    // The stable namespace can also hold a legacy project literally named 'web': deduplicate its file.
+    const unique = new Map();
+    for (const session of sessions)
+        if (!unique.has(session.ctx.stateFile) || session.status)
+            unique.set(session.ctx.stateFile, session);
+    return [...unique.values()];
+}
+/** This checkout's contexts under every cache namespace, grouped by launchd target. */
+function candidateContexts(ctx) {
     const directories = existsSync(ctx.cacheRoot) ? readdirSync(ctx.cacheRoot, { withFileTypes: true }).filter(entry => (entry.isDirectory() || entry.isSymbolicLink()) && /^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(entry.name) && !entry.name.includes("..")) : [];
     if (directories.length > 4096)
         throw new Error(`Too many cache directories to verify preview ownership under ${ctx.cacheRoot}.`);
@@ -205,35 +234,25 @@ function discover(ctx) {
     }
     if (candidates.size > 64)
         throw new Error("Too many matching preview records; refusing ambiguous ownership.");
-    const sessions = [];
-    for (const group of candidates.values()) {
-        const records = group.map(candidate => ({ ctx: candidate, state: readState(candidate) }));
-        const status = job(group[0]);
-        if (status) {
-            const args = jobArguments(status);
-            const owner = records.find(candidate => candidate.state && args?.[2] && resolve(args[2]) === resolve(candidate.ctx.stateFile));
-            if (!owner)
-                throw new Error(`Preview job ${group[0].target} has no verifiable state-file binding. No job was stopped.`);
-            verifyJob(owner.ctx, status);
-            for (const candidate of records)
-                if (candidate.state)
-                    sessions.push({ ctx: candidate.ctx, state: candidate.state, status: candidate === owner ? status : "" });
-        }
-        else {
-            for (const candidate of records)
-                if (candidate.state)
-                    sessions.push({ ctx: candidate.ctx, state: candidate.state, status: "" });
-        }
+    return candidates;
+}
+/** One target's sessions; a registered job must bind exactly one of their state files, which then carries its status. */
+function groupSessions(group) {
+    const records = group.map(candidate => ({ ctx: candidate, state: readState(candidate) }));
+    const status = job(group[0]);
+    let owner;
+    if (status) {
+        const args = jobArguments(status);
+        owner = records.find(candidate => candidate.state && args?.[2] && resolve(args[2]) === resolve(candidate.ctx.stateFile));
+        if (!owner)
+            throw new Error(`Preview job ${group[0].target} has no verifiable state-file binding. No job was stopped.`);
+        verifyJob(owner.ctx, status);
     }
-    const registered = sessions.filter(session => session.status);
-    if (registered.length > 1)
-        throw new Error("Multiple registered web previews match this checkout; refusing ambiguous ownership. No job was stopped.");
-    // The stable namespace can also hold a legacy project literally named 'web': deduplicate its file.
-    const unique = new Map();
-    for (const session of sessions)
-        if (!unique.has(session.ctx.stateFile) || session.status)
-            unique.set(session.ctx.stateFile, session);
-    return [...unique.values()];
+    const sessions = [];
+    for (const candidate of records)
+        if (candidate.state)
+            sessions.push({ ctx: candidate.ctx, state: candidate.state, status: candidate === owner ? status : "" });
+    return sessions;
 }
 async function answers(url) {
     try {
@@ -388,19 +407,8 @@ export async function waitForWebPreview(state, readJob, logPath, check) {
     throw readinessError(`The web preview did not become ready on port ${state.port}.`, logPath);
 }
 export async function runWebPreview(ctx, options, project) {
-    if (options.command === "status") {
-        const sessions = discover(ctx), found = sessions.find(session => session.status);
-        let ok = false;
-        for (let attempt = 0; attempt < 3 && !ok; attempt++) {
-            ok = found ? await webHealthy(found.state) : false;
-            if (!ok && found && attempt < 2)
-                await sleep(1000);
-        }
-        if (!ok)
-            throw new Error(`No healthy owned web preview for this checkout. Run start. Log: ${join(found?.ctx.stateDir ?? sessions[0]?.ctx.stateDir ?? ctx.stateDir, "preview.log")}`);
-        report(found.ctx, found.state, options);
-        return;
-    }
+    if (options.command === "status")
+        return webStatus(ctx, options);
     for (const directory of [join(ctx.cacheRoot, "morpheus.qa.web"), ctx.stateDir])
         if (existsSync(directory) && lstatSync(directory).isSymbolicLink())
             throw new Error(`Refusing symlinked preview state directory ${directory}.`);
@@ -412,24 +420,11 @@ export async function runWebPreview(ctx, options, project) {
     catch {
         throw new Error(`Another preview start is running. If it was interrupted, remove ${lock} after confirming it has ended.`);
     }
-    let activeCtx = ctx, activeState;
-    const stop = () => stopWeb(activeCtx, activeState);
+    // `stop` reads the active session when it runs: it moves to the new state once that is written.
+    const active = { ctx, state: undefined };
+    const stop = () => stopWeb(active.ctx, active.state);
     try {
-        const sessions = discover(ctx);
-        const found = sessions.find(session => session.status) ?? (sessions.length === 1 ? sessions[0] : undefined);
-        if (sessions.length > 1 && !found)
-            throw new Error("Multiple unregistered preview records match this checkout; no stop was confirmed. Inspect the retained session files.");
-        const unverifiedLive = await Promise.all(sessions.filter(session => session !== found).map(session => servicesListening(session.state)));
-        if (unverifiedLive.some(Boolean))
-            throw new Error("Another matching preview record has live services without a verified job; refusing ambiguous ownership. No job was stopped.");
-        const previous = found?.state;
-        activeCtx = found?.ctx ?? ctx;
-        activeState = previous;
-        // A stale stable-path record must not be overwritten while an unverified service still answers.
-        if (options.command === "start")
-            for (const stale of sessions)
-                if (stale !== found && stale.ctx.stateFile === ctx.stateFile)
-                    await stopWeb(stale.ctx, stale.state);
+        const previous = await adoptExisting(ctx, options, active);
         await withPreviewCancellation(async (check) => {
             if (options.command === "stop") {
                 const stopped = await stop();
@@ -438,65 +433,107 @@ export async function runWebPreview(ctx, options, project) {
             }
             await stop();
             check();
-            const site = ctx.config.url;
-            const running = await answers(site);
-            if (!running && !ctx.config.command)
-                throw new Error(`Nothing answers at ${site}. Start the dev server, or declare qa.web.command so the preview can.`);
-            // Front the site at its own address when the preview starts the dev server and can choose its
-            // port; otherwise sit beside it on a port of our own.
-            // --port is an explicit request for a port of our own, so it turns own-address mode off.
-            const askedSite = options.port === sitePort(site);
-            const front = !running && frontable(ctx.config) && (options.port === undefined || askedSite);
-            if (askedSite && !front)
-                throw new Error(`--port ${options.port} is the site's own port, which ${running ? "its dev server already holds" : "the dev server will take"}; choose another port or omit --port.`);
-            const port = front ? sitePort(site) : options.port ?? previous?.port ?? defaultWebPort(ctx.key);
-            await requireFreePort(port);
-            const devPort = front ? await spareDevPort(port, port) : sitePort(site);
-            const siteUrl = new URL(site);
-            const upstream = front ? `${siteUrl.protocol}//${siteUrl.hostname}:${devPort}` : site;
-            if (!running) {
-                // Fail now, with the reason, rather than after the readiness wait: a command not on PATH.
-                const binary = ctx.config.command[0];
-                if (!binary.includes("/")) {
-                    try {
-                        ctx.run("/usr/bin/which", [binary]);
-                    }
-                    catch {
-                        throw new Error(`qa.web.command starts with "${binary}", which is not on PATH.`);
-                    }
-                }
-            }
-            const state = {
-                root: ctx.root, upstream, site, port, path: options.path ?? ctx.config.path, cwd: ctx.config.cwd, project,
-                expiresAt: Date.now() + (options.ttlMinutes ?? DEFAULT_TTL_MINUTES) * 60000,
-                spawned: !running,
-                ...(ctx.config.command ? { command: ctx.config.command.map((a) => a.replaceAll("{port}", String(devPort))) } : {}),
-            };
-            activeCtx = ctx;
-            activeState = state;
-            const temporary = `${ctx.stateFile}.tmp`;
-            writeFileSync(temporary, JSON.stringify(state, null, 2), { mode: 0o600 });
-            renameSync(temporary, ctx.stateFile);
-            const plist = join(ctx.stateDir, "preview.plist");
-            writeFileSync(plist, launchPlist({
-                label: ctx.label, args: [process.execPath, supervisorPath(), ctx.stateFile], cwd: ctx.root, log: join(ctx.stateDir, "preview.log"),
-                env: { PATH: process.env.PATH ?? "", HOME: homedir() },
-            }), { mode: 0o600 });
-            try {
-                ctx.run("launchctl", ["bootstrap", `gui/${process.getuid()}`, plist]);
-                if (state.spawned)
-                    ctx.log(`Starting the dev server (${state.command.join(" ")}) — the first compile can take a minute…`);
-                await waitForWebPreview(state, () => job(ctx), join(ctx.stateDir, "preview.log"), check);
-                report(ctx, state, options);
-            }
-            catch (error) {
-                await stop();
-                throw error;
-            }
+            await startWeb(ctx, options, project, previous, active, stop, check);
         }, async () => { await stop(); });
     }
     finally {
         rmSync(lock, { recursive: true, force: true });
+    }
+}
+async function webStatus(ctx, options) {
+    const sessions = discover(ctx), found = sessions.find(session => session.status);
+    let ok = false;
+    for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+        ok = found ? await webHealthy(found.state) : false;
+        if (!ok && found && attempt < 2)
+            await sleep(1000);
+    }
+    if (!ok)
+        throw new Error(`No healthy owned web preview for this checkout. Run start. Log: ${join(found?.ctx.stateDir ?? sessions[0]?.ctx.stateDir ?? ctx.stateDir, "preview.log")}`);
+    report(found.ctx, found.state, options);
+}
+/** Takes ownership of the one verifiable existing session; refuses ambiguity and stops a stale record at the stable path. */
+async function adoptExisting(ctx, options, active) {
+    const sessions = discover(ctx);
+    const found = sessions.find(session => session.status) ?? (sessions.length === 1 ? sessions[0] : undefined);
+    if (sessions.length > 1 && !found)
+        throw new Error("Multiple unregistered preview records match this checkout; no stop was confirmed. Inspect the retained session files.");
+    const unverifiedLive = await Promise.all(sessions.filter(session => session !== found).map(session => servicesListening(session.state)));
+    if (unverifiedLive.some(Boolean))
+        throw new Error("Another matching preview record has live services without a verified job; refusing ambiguous ownership. No job was stopped.");
+    const previous = found?.state;
+    active.ctx = found?.ctx ?? ctx;
+    active.state = previous;
+    // A stale stable-path record must not be overwritten while an unverified service still answers.
+    if (options.command === "start")
+        for (const stale of sessions)
+            if (stale !== found && stale.ctx.stateFile === ctx.stateFile)
+                await stopWeb(stale.ctx, stale.state);
+    return previous;
+}
+async function startWeb(ctx, options, project, previous, active, stop, check) {
+    const site = ctx.config.url;
+    const running = await answers(site);
+    if (!running && !ctx.config.command)
+        throw new Error(`Nothing answers at ${site}. Start the dev server, or declare qa.web.command so the preview can.`);
+    const { port, devPort, upstream } = await previewPorts(ctx, options, previous, site, running);
+    if (!running)
+        assertCommandOnPath(ctx);
+    const state = {
+        root: ctx.root, upstream, site, port, path: options.path ?? ctx.config.path, cwd: ctx.config.cwd, project,
+        expiresAt: Date.now() + (options.ttlMinutes ?? DEFAULT_TTL_MINUTES) * 60000,
+        spawned: !running,
+        ...(ctx.config.command ? { command: ctx.config.command.map((a) => a.replaceAll("{port}", String(devPort))) } : {}),
+    };
+    active.ctx = ctx;
+    active.state = state;
+    const temporary = `${ctx.stateFile}.tmp`;
+    writeFileSync(temporary, JSON.stringify(state, null, 2), { mode: 0o600 });
+    renameSync(temporary, ctx.stateFile);
+    const plist = join(ctx.stateDir, "preview.plist");
+    writeFileSync(plist, launchPlist({
+        label: ctx.label, args: [process.execPath, supervisorPath(), ctx.stateFile], cwd: ctx.root, log: join(ctx.stateDir, "preview.log"),
+        env: { PATH: process.env.PATH ?? "", HOME: homedir() },
+    }), { mode: 0o600 });
+    try {
+        ctx.run("launchctl", ["bootstrap", `gui/${process.getuid()}`, plist]);
+        if (state.spawned)
+            ctx.log(`Starting the dev server (${state.command.join(" ")}) — the first compile can take a minute…`);
+        await waitForWebPreview(state, () => job(ctx), join(ctx.stateDir, "preview.log"), check);
+        report(ctx, state, options);
+    }
+    catch (error) {
+        await stop();
+        throw error;
+    }
+}
+/**
+ * Front the site at its own address when the preview starts the dev server and can choose its
+ * port; otherwise sit beside it on a port of our own. --port is an explicit request for a port of
+ * our own, so it turns own-address mode off.
+ */
+async function previewPorts(ctx, options, previous, site, running) {
+    const askedSite = options.port === sitePort(site);
+    const front = !running && frontable(ctx.config) && (options.port === undefined || askedSite);
+    if (askedSite && !front)
+        throw new Error(`--port ${options.port} is the site's own port, which ${running ? "its dev server already holds" : "the dev server will take"}; choose another port or omit --port.`);
+    const port = front ? sitePort(site) : options.port ?? previous?.port ?? defaultWebPort(ctx.key);
+    await requireFreePort(port);
+    const devPort = front ? await spareDevPort(port, port) : sitePort(site);
+    const siteUrl = new URL(site);
+    const upstream = front ? `${siteUrl.protocol}//${siteUrl.hostname}:${devPort}` : site;
+    return { port, devPort, upstream };
+}
+/** Fail now, with the reason, rather than after the readiness wait: a command not on PATH. */
+function assertCommandOnPath(ctx) {
+    const binary = ctx.config.command[0];
+    if (binary.includes("/"))
+        return;
+    try {
+        ctx.run("/usr/bin/which", [binary]);
+    }
+    catch {
+        throw new Error(`qa.web.command starts with "${binary}", which is not on PATH.`);
     }
 }
 //# sourceMappingURL=web.js.map

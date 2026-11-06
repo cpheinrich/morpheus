@@ -22,18 +22,9 @@ export function subscriptionFromAuthStatus(text) {
     );
   return auth.subscriptionType;
 }
-export async function checkClaude(cwd = process.cwd(), run = exec, gateway = null) {
-  // Gateway mode: point the CLI at a pooled subscription and skip the native check.
-  if (gateway) {
-    const key = await resolveKeyRef(gateway.keyRef);
-    const env = subscriptionEnv(process.env);
-    env.ANTHROPIC_BASE_URL = gateway.baseUrl;
-    env.ANTHROPIC_AUTH_TOKEN = key;
-    env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
-    return { env, subscription: "gateway" };
-  }
-  // CLI settings can inject credentials after environment sanitization. Refuse
-  // provider overrides rather than editing the user's settings or credentials.
+// CLI settings can inject credentials after environment sanitization: the user's
+// and managed settings, then every .claude directory from cwd up to the root.
+function claudeSettingsPaths(cwd) {
   const settings = [
     join(
       process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"),
@@ -51,7 +42,19 @@ export async function checkClaude(cwd = process.cwd(), run = exec, gateway = nul
     if (parent === directory) break;
     directory = parent;
   }
-  for (const path of settings) {
+  return settings;
+}
+function overridesProvider(value) {
+  return (
+    value.apiKeyHelper ||
+    Object.keys(value.env || {}).some((k) =>
+      /^(ANTHROPIC_|CLAUDE_CODE_(USE_|OAUTH_TOKEN|API_KEY|BASE_URL))/.test(k),
+    )
+  );
+}
+// Refuse provider overrides rather than editing the user's settings or credentials.
+async function refuseProviderOverrides(paths) {
+  for (const path of paths) {
     let value;
     try {
       value = JSON.parse(await readFile(path, "utf8"));
@@ -59,30 +62,40 @@ export async function checkClaude(cwd = process.cwd(), run = exec, gateway = nul
       if (e.code === "ENOENT") continue;
       throw new Error(`Cannot validate Claude settings: ${path}`);
     }
-    if (
-      value.apiKeyHelper ||
-      Object.keys(value.env || {}).some((k) =>
-        /^(ANTHROPIC_|CLAUDE_CODE_(USE_|OAUTH_TOKEN|API_KEY|BASE_URL))/.test(k),
-      )
-    )
+    if (overridesProvider(value))
       throw new Error(
         `Subscription delegation refuses provider overrides in ${path}`,
       );
   }
-  const env = subscriptionEnv(process.env);
-  let stdout;
+}
+async function claudeAuthStatus(run, env, cwd) {
   try {
-    ({ stdout } = await run("claude", ["auth", "status"], {
+    const { stdout } = await run("claude", ["auth", "status"], {
       env,
       cwd,
       timeout: 10000,
       maxBuffer: 65536,
-    }));
+    });
+    return stdout;
   } catch (error) {
     if (!error.stdout)
       throw new Error(`Claude authentication check failed: ${error.message}`);
-    stdout = error.stdout;
+    return error.stdout;
   }
+}
+export async function checkClaude(cwd = process.cwd(), run = exec, gateway = null) {
+  // Gateway mode: point the CLI at a pooled subscription and skip the native check.
+  if (gateway) {
+    const key = await resolveKeyRef(gateway.keyRef);
+    const env = subscriptionEnv(process.env);
+    env.ANTHROPIC_BASE_URL = gateway.baseUrl;
+    env.ANTHROPIC_AUTH_TOKEN = key;
+    env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
+    return { env, subscription: "gateway" };
+  }
+  await refuseProviderOverrides(claudeSettingsPaths(cwd));
+  const env = subscriptionEnv(process.env);
+  const stdout = await claudeAuthStatus(run, env, cwd);
   return { env, subscription: subscriptionFromAuthStatus(stdout) };
 }
 export async function handoff(prompt, memories, coordinator = "Codex") {
@@ -94,8 +107,7 @@ export async function handoff(prompt, memories, coordinator = "Codex") {
 }
 // Folds one Claude stream-json event into a run. Side effects (cancel, close, session
 // persistence) belong to the caller, so the local bridge and the pool host share one parser.
-export function applyClaudeEvent(run, event) {
-  const effects = { ended: false, overage: false, session: null };
+function applyClaudeText(run, event) {
   if (
     event.type === "stream_event" &&
     event.event?.delta?.type === "text_delta"
@@ -113,6 +125,20 @@ export function applyClaudeEvent(run, event) {
       .slice(-8000);
     run.sequence++;
   }
+}
+function applyClaudeResult(run, event) {
+  run.result = event.structured_output || {
+    outcome: event.is_error ? "failed" : "needs_input",
+    summary:
+      event.result || "Claude ended without a structured completion report.",
+    evidence: [],
+  };
+  if (event.is_error) run.result.outcome = "failed";
+  run.state = run.result.outcome;
+}
+export function applyClaudeEvent(run, event) {
+  const effects = { ended: false, overage: false, session: null };
+  applyClaudeText(run, event);
   if (
     event.type === "rate_limit_event" &&
     event.rate_limit_info?.isUsingOverage
@@ -129,14 +155,7 @@ export function applyClaudeEvent(run, event) {
     run.state = "needs_input";
   }
   if (event.type === "result") {
-    run.result = event.structured_output || {
-      outcome: event.is_error ? "failed" : "needs_input",
-      summary:
-        event.result || "Claude ended without a structured completion report.",
-      evidence: [],
-    };
-    if (event.is_error) run.result.outcome = "failed";
-    run.state = run.result.outcome;
+    applyClaudeResult(run, event);
     effects.ended = true;
   }
   return effects;

@@ -23,16 +23,20 @@ function endGroup(child: ChildProcess | undefined): Promise<void> {
   });
 }
 
+/** Spawns the dev server in its own process group when this preview owns it. */
+function startDevServer(state: WebPreviewState): ChildProcess | undefined {
+  if (!state.spawned || !state.command) return undefined;
+  const [command, ...args] = state.command;
+  const child = spawn(command!, args, { cwd: resolve(state.root, state.cwd), stdio: "inherit", detached: true, env: process.env });
+  // A missing binary emits "error", not "exit"; unhandled, it would crash the supervisor silently.
+  child.once("error", (error) => { console.error(`dev server could not start: ${error.message}; ending the preview.`); process.exit(1); });
+  return child;
+}
+
 async function main([stateFile]: string[]): Promise<void> {
   if (!stateFile) throw new Error("usage: web-supervisor <state.json>");
   const state = JSON.parse(readFileSync(stateFile, "utf8")) as WebPreviewState;
-  let child: ChildProcess | undefined;
-  if (state.spawned && state.command) {
-    const [command, ...args] = state.command;
-    child = spawn(command!, args, { cwd: resolve(state.root, state.cwd), stdio: "inherit", detached: true, env: process.env });
-    // A missing binary emits "error", not "exit"; unhandled, it would crash the supervisor silently.
-    child.once("error", (error) => { console.error(`dev server could not start: ${error.message}; ending the preview.`); process.exit(1); });
-  }
+  const child = startDevServer(state);
   let server: Awaited<ReturnType<typeof startWebQaServer>>;
   try {
     const publicOrigin = frontedSite(state);
@@ -65,11 +69,16 @@ async function main([stateFile]: string[]): Promise<void> {
   }
   for (;;) {
     await sleep(5000);
-    try {
-      const current = JSON.parse(readFileSync(stateFile, "utf8")) as WebPreviewState;
-      if (!Number.isFinite(current.expiresAt) || Date.now() >= current.expiresAt || current.port !== state.port) { await stop(0); return; }
-    } catch { await stop(0); return; }
+    if (!stillCurrent(stateFile, state)) { await stop(0); return; }
   }
+}
+
+/** The state file still exists, has not expired and still names this port. */
+function stillCurrent(stateFile: string, state: WebPreviewState): boolean {
+  try {
+    const current = JSON.parse(readFileSync(stateFile, "utf8")) as WebPreviewState;
+    return Number.isFinite(current.expiresAt) && Date.now() < current.expiresAt && current.port === state.port;
+  } catch { return false; }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

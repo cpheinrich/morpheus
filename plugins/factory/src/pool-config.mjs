@@ -224,32 +224,43 @@ export function transportEnv(env) {
 // Same admission rule as the pilot supervisor: unknown or stale telemetry refuses, and
 // every reported window needs a configured limit. A pool host admits one turn per
 // workspace, so nothing else in flight is charged.
-export function judgeQuota(snapshot, quota, now = Date.now(), gate = "stopAt") {
-  if (!snapshot || !Array.isArray(snapshot.windows) || !snapshot.windows.length)
-    return { decision: "unknown", detail: "no quota windows" };
+// Why the reading as a whole cannot be trusted, or null when its windows can be judged.
+function quotaReadingProblem(snapshot, quota, now) {
+  if (!snapshot || !Array.isArray(snapshot.windows) || !snapshot.windows.length) return "no quota windows";
   const observed = Date.parse(snapshot.observedAt);
   if (!Number.isFinite(observed) || observed > now + 5000 || now - observed > quota.freshSeconds * 1000)
-    return { decision: "unknown", detail: "quota observation is stale or undated" };
+    return "quota observation is stale or undated";
   // Every configured window must be reported exactly once; a reading that omits the
   // weekly window must not admit on the session window alone.
   const ids = snapshot.windows.map((window) => window?.id);
-  if (new Set(ids).size !== ids.length) return { decision: "unknown", detail: "quota windows are duplicated" };
+  if (new Set(ids).size !== ids.length) return "quota windows are duplicated";
   const missing = Object.keys(quota.limits).filter((id) => !ids.includes(id));
-  if (missing.length) return { decision: "unknown", detail: `quota window ${missing[0]} was not reported` };
+  if (missing.length) return `quota window ${missing[0]} was not reported`;
+  return null;
+}
+// A refusal or unknown verdict for one window, or null when it is under its gate.
+function windowVerdict(window, quota, now, gate) {
+  const id = window?.id;
+  const configured = quota.limits[id];
+  if (!configured) return { decision: "unknown", detail: `quota window ${JSON.stringify(id)} has no configured limit` };
+  const used = window.usedPercent;
+  if (typeof used !== "number" || !Number.isFinite(used) || used < 0 || used > 100)
+    return { decision: "unknown", detail: `quota window ${id} has no valid usage` };
+  const resets = Date.parse(window.resetsAt);
+  if (!Number.isFinite(resets) || resets <= now)
+    return { decision: "unknown", detail: `quota window ${id} has no future reset` };
+  if (used >= configured[gate])
+    return { decision: "refuse", detail: `window ${id} at ${used}% reaches ${gate} ${configured[gate]}%` };
+  return null;
+}
+export function judgeQuota(snapshot, quota, now = Date.now(), gate = "stopAt") {
+  const problem = quotaReadingProblem(snapshot, quota, now);
+  if (problem) return { decision: "unknown", detail: problem };
   let worst = 0;
   for (const window of snapshot.windows) {
-    const id = window?.id;
-    const configured = quota.limits[id];
-    if (!configured) return { decision: "unknown", detail: `quota window ${JSON.stringify(id)} has no configured limit` };
-    const used = window.usedPercent;
-    if (typeof used !== "number" || !Number.isFinite(used) || used < 0 || used > 100)
-      return { decision: "unknown", detail: `quota window ${id} has no valid usage` };
-    const resets = Date.parse(window.resetsAt);
-    if (!Number.isFinite(resets) || resets <= now)
-      return { decision: "unknown", detail: `quota window ${id} has no future reset` };
-    if (used >= configured[gate])
-      return { decision: "refuse", detail: `window ${id} at ${used}% reaches ${gate} ${configured[gate]}%` };
-    worst = Math.max(worst, used);
+    const verdict = windowVerdict(window, quota, now, gate);
+    if (verdict) return verdict;
+    worst = Math.max(worst, window.usedPercent);
   }
   return { decision: "admit", detail: `highest window ${worst}%` };
 }

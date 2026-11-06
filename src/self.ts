@@ -165,6 +165,17 @@ async function readMorpheusInstallStatus(
     };
   }
 
+  return compareWithMain(runner, source, kind, installedSha, checkout);
+}
+
+/** The install against current main: unknown when main is unreachable, then dirty, current, ahead or stale. */
+async function compareWithMain(
+  runner: NonNullable<MorpheusStatusOptions["runner"]>,
+  source: string,
+  kind: MorpheusInstallKind,
+  installedSha: string,
+  checkout: { dirty: boolean } | null,
+): Promise<MorpheusInstallStatus> {
   const remote = await runner(
     "git",
     ["ls-remote", "--exit-code", MORPHEUS_REMOTE, "refs/heads/main"],

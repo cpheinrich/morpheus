@@ -180,6 +180,21 @@ function isShellHook(content: string): boolean {
   return /^#![^\n]*\b(?:sh|bash|zsh|dash|ksh)\b/.test(first);
 }
 
+/** The hook's new content with the managed block created, refreshed or appended; refuses a malformed block or a non-shell hook. */
+function plannedHook(existing: string | null, block: string): { next: string; outcome: HookOutcome } | { blocked: string } {
+  if (existing === null) return { next: `#!/bin/sh\n\n${block}\n`, outcome: "created" };
+  const range = managedRange(existing);
+  if (range === "broken") return { blocked: "The existing Morpheus marker block is malformed; left it untouched." };
+  if (range) {
+    const next = existing.slice(0, range.start) + block + existing.slice(range.end);
+    return { next, outcome: next === existing ? "present" : "updated" };
+  }
+  if (!isShellHook(existing)) return { blocked: "The existing hook is not a recognised shell script; left it untouched." };
+  // The extra newline belongs to Morpheus. Removal can therefore take it
+  // back and leave every byte of the pre-existing hook intact.
+  return { next: `${existing}\n${block}\n`, outcome: "updated" };
+}
+
 async function installHook(
   root: string,
   hook: (typeof HOOKS)[number],
@@ -212,40 +227,9 @@ async function installHook(
     };
   }
 
-  let next: string;
-  let outcome: HookOutcome;
-  if (existing === null) {
-    next = `#!/bin/sh\n\n${block}\n`;
-    outcome = "created";
-  } else {
-    const range = managedRange(existing);
-    if (range === "broken") {
-      return {
-        root,
-        hook,
-        path,
-        outcome: "blocked",
-        detail: "The existing Morpheus marker block is malformed; left it untouched.",
-      };
-    }
-    if (range) {
-      next = existing.slice(0, range.start) + block + existing.slice(range.end);
-      outcome = next === existing ? "present" : "updated";
-    } else if (!isShellHook(existing)) {
-      return {
-        root,
-        hook,
-        path,
-        outcome: "blocked",
-        detail: "The existing hook is not a recognised shell script; left it untouched.",
-      };
-    } else {
-      // The extra newline belongs to Morpheus. Removal can therefore take it
-      // back and leave every byte of the pre-existing hook intact.
-      next = `${existing}\n${block}\n`;
-      outcome = "updated";
-    }
-  }
+  const planned = plannedHook(existing, block);
+  if ("blocked" in planned) return { root, hook, path, outcome: "blocked", detail: planned.blocked };
+  const { next, outcome } = planned;
 
   try {
     if (outcome !== "present") {
@@ -416,6 +400,20 @@ async function acquireUpdateLock(path: string, now: Date) {
   }
 }
 
+/** Current, or not verifiably stale: no update is attempted. */
+function noUpdateNeeded(status: MorpheusInstallStatus): EnsureResult | undefined {
+  if (status.fresh === true) {
+    return { outcome: "current", detail: "Morpheus already contains current main." };
+  }
+  if (status.relation === "offline" || (status.relation === "unknown" && status.installedSha)) {
+    return {
+      outcome: "deferred",
+      detail: status.detail ?? "Current Morpheus main could not be verified; leaving the install unchanged.",
+    };
+  }
+  return undefined;
+}
+
 export async function ensureAutoUpdate(opts: EnsureOptions = {}): Promise<EnsureResult> {
   const configPath = opts.configPath ?? autoUpdateConfigPath();
   const config = await readAutoUpdateConfig(configPath);
@@ -430,15 +428,8 @@ export async function ensureAutoUpdate(opts: EnsureOptions = {}): Promise<Ensure
   }
 
   const status = await (opts.status ?? (() => morpheusInstallStatus()))();
-  if (status.fresh === true) {
-    return { outcome: "current", detail: "Morpheus already contains current main." };
-  }
-  if (status.relation === "offline" || (status.relation === "unknown" && status.installedSha)) {
-    return {
-      outcome: "deferred",
-      detail: status.detail ?? "Current Morpheus main could not be verified; leaving the install unchanged.",
-    };
-  }
+  const settled = noUpdateNeeded(status);
+  if (settled) return settled;
 
   const now = opts.now ?? new Date();
   const lockPath = join(dirname(configPath), "auto-update.lock");

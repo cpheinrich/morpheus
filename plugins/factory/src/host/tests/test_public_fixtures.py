@@ -39,22 +39,36 @@ def synthetic_uuid(value):
 EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})\b")
 
 
-def findings(text):
-    found = [(name, match.group(0)) for name, shape in SHAPES.items() for match in shape.finditer(text)]
+def apple_id_findings(text):
     for match in APPLE_ID.finditer(text):
         value = next(group for group in match.groups() if group)
         if value not in SYNTHETIC_IDS and re.search(r"[0-9]", value) and re.search(r"[A-Z]", value):
-            found.append(("Apple team or certificate id", value))
+            yield ("Apple team or certificate id", value)
+
+
+def device_findings(text):
     for match in UUID.finditer(text):
         if not synthetic_uuid(match.group(0)):
-            found.append(("device identifier", match.group(0)))
+            yield ("device identifier", match.group(0))
+
+
+def organization_findings(text):
     for match in ORGANIZATION.finditer(text):
         if match.group(1).strip() not in SYNTHETIC_ORGANIZATIONS:
-            found.append(("certificate organization", match.group(1).strip()))
+            yield ("certificate organization", match.group(1).strip())
+
+
+def email_findings(text):
     for match in EMAIL.finditer(text):
         domain = match.group(1).lower()
         if domain not in ALLOWED_EMAIL_DOMAINS and not domain.endswith("noreply.github.com") and domain != "github.com":
-            found.append(("email address", match.group(0)))
+            yield ("email address", match.group(0))
+
+
+def findings(text):
+    found = [(name, match.group(0)) for name, shape in SHAPES.items() for match in shape.finditer(text)]
+    for scan in (apple_id_findings, device_findings, organization_findings, email_findings):
+        found.extend(scan(text))
     return found
 
 

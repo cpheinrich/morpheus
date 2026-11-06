@@ -137,6 +137,26 @@ export async function cleanupTask(cwd, productDir, id, dryRun = false, releaseSt
     const productRel = relative(identity.root, await realpath(resolve(productDir)));
     if (!productRel || productRel.startsWith("..") || isAbsolute(productRel))
         throw new Error("Product directory must be inside this repository.");
+    const { trunk, fetched, markers, target } = await locateTask(cwd, identity, id);
+    await clean(target, identity.common);
+    await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID, releaseStaleSessions);
+    await assertNoOpenProcesses(target.path);
+    if (target.branch === fetched.branch)
+        throw new Error(`Policy violation: secondary worktree on trunk ${fetched.branch}.`);
+    await assertItem(target.path, productRel, id, fetched.sha, target.detached);
+    const { pr, remote } = target.detached
+        ? await proveDetachedContained(cwd, target, markers, id, fetched)
+        : await proveBranchMerged(cwd, target, trunk, fetched);
+    const result = { path: target.path, branch: target.branch, pr: pr?.number, dryRun };
+    if (dryRun)
+        return result;
+    if (identity.root === target.path)
+        throw new Error("Run cleanup from another checkout, so it cannot remove the caller's working directory.");
+    await removeTask(cwd, identity, target, remote, releaseStaleSessions);
+    return result;
+}
+/** Fetches trunk and finds the one worktree (and at most one branch) holding the task. */
+async function locateTask(cwd, identity, id) {
     const trunk = await resolveTrunk(cwd, (await projectPolicy(cwd)).trunk);
     await git(cwd, [...FETCH_PRUNE]); // unlike reconciliation, failures here must never be swallowed
     if (trunk.remote !== "origin")
@@ -150,45 +170,38 @@ export async function cleanupTask(cwd, productDir, id, dryRun = false, releaseSt
     if (branches.length > 1 || targets.length !== 1 || (targets[0].detached && branches.length)) {
         throw new Error(`Ambiguous or missing task ${id}: ${branches.length} branches, ${targets.length} worktrees. Retain and resolve explicitly.`);
     }
-    const target = targets[0];
-    await clean(target, identity.common);
-    await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID, releaseStaleSessions);
-    await assertNoOpenProcesses(target.path);
-    if (target.branch === fetched.branch)
-        throw new Error(`Policy violation: secondary worktree on trunk ${fetched.branch}.`);
-    await assertItem(target.path, productRel, id, fetched.sha, target.detached);
-    let pr;
-    let remote = null;
-    if (target.detached) {
-        const marker = markers.find(m => m.root === target.path && m.task === id);
-        const own = await realpath(resolve(target.path, await git(target.path, ["rev-parse", "--git-dir"])));
-        if (own !== marker.gitDir)
-            throw new Error("Temporary marker does not match this checkout; manual action required.");
-        await contained(cwd, target.head, fetched.sha, "Temporary detached HEAD is not reachable from observed trunk; retain it.");
+    return { trunk, fetched, markers, target: targets[0] };
+}
+async function proveDetachedContained(cwd, target, markers, id, fetched) {
+    const marker = markers.find(m => m.root === target.path && m.task === id);
+    const own = await realpath(resolve(target.path, await git(target.path, ["rev-parse", "--git-dir"])));
+    if (own !== marker.gitDir)
+        throw new Error("Temporary marker does not match this checkout; manual action required.");
+    await contained(cwd, target.head, fetched.sha, "Temporary detached HEAD is not reachable from observed trunk; retain it.");
+    return { pr: undefined, remote: null };
+}
+/** The branch's PR merged into trunk, contains the local HEAD, and the remote branch holds nothing unmerged. */
+async function proveBranchMerged(cwd, target, trunk, fetched) {
+    if (!target.branch)
+        throw new Error("Unmarked detached worktree requires explicit human action.");
+    const pr = await cleanupPr(cwd, target.branch, trunk.remote);
+    if (pr.state !== "MERGED" || pr.baseRefName !== fetched.branch)
+        throw new Error(`PR #${pr.number} is ${pr.state} into ${pr.baseRefName}; require MERGED into ${fetched.branch}.`);
+    // Fetch objects missing after squash/auto-delete, then compare the immutable recorded OID.
+    for (const sha of [pr.headRefOid, pr.mergeCommit.oid]) {
+        if (!oid.test(sha))
+            throw new Error("Incomplete PR commit evidence.");
+        await git(cwd, ["cat-file", "-e", `${sha}^{commit}`]).catch(() => git(cwd, ["fetch", "--no-tags", "--no-write-fetch-head", "--", trunk.remote, sha]));
     }
-    else {
-        if (!target.branch)
-            throw new Error("Unmarked detached worktree requires explicit human action.");
-        pr = await cleanupPr(cwd, target.branch, trunk.remote);
-        if (pr.state !== "MERGED" || pr.baseRefName !== fetched.branch)
-            throw new Error(`PR #${pr.number} is ${pr.state} into ${pr.baseRefName}; require MERGED into ${fetched.branch}.`);
-        // Fetch objects missing after squash/auto-delete, then compare the immutable recorded OID.
-        for (const sha of [pr.headRefOid, pr.mergeCommit.oid]) {
-            if (!oid.test(sha))
-                throw new Error("Incomplete PR commit evidence.");
-            await git(cwd, ["cat-file", "-e", `${sha}^{commit}`]).catch(() => git(cwd, ["fetch", "--no-tags", "--no-write-fetch-head", "--", trunk.remote, sha]));
-        }
-        await contained(cwd, target.head, pr.headRefOid, "Local HEAD is not contained in the merged PR head; local commits or unavailable ancestry require manual action.");
-        await contained(cwd, pr.mergeCommit.oid, fetched.sha, "PR merge commit is not reachable from observed remote trunk.");
-        remote = await remoteHead(cwd, target.branch);
-        if (remote)
-            await contained(cwd, remote, pr.headRefOid, "Remote branch contains unmerged work or unavailable ancestry; retain it.");
-    }
-    const result = { path: target.path, branch: target.branch, pr: pr?.number, dryRun };
-    if (dryRun)
-        return result;
-    if (identity.root === target.path)
-        throw new Error("Run cleanup from another checkout, so it cannot remove the caller's working directory.");
+    await contained(cwd, target.head, pr.headRefOid, "Local HEAD is not contained in the merged PR head; local commits or unavailable ancestry require manual action.");
+    await contained(cwd, pr.mergeCommit.oid, fetched.sha, "PR merge commit is not reachable from observed remote trunk.");
+    const remote = await remoteHead(cwd, target.branch);
+    if (remote)
+        await contained(cwd, remote, pr.headRefOid, "Remote branch contains unmerged work or unavailable ancestry; retain it.");
+    return { pr, remote };
+}
+/** Revalidates, then deletes the remote branch, the worktree and the local branch, in that order. */
+async function removeTask(cwd, identity, target, remote, releaseStaleSessions) {
     // Revalidate immediately before mutation. Git also refuses dirty/locked worktrees, without --force.
     const current = (await listWorktrees(cwd)).find(w => w.path === target.path);
     if (!current || current.head !== target.head || current.branch !== target.branch)
@@ -213,7 +226,6 @@ export async function cleanupTask(cwd, productDir, id, dryRun = false, releaseSt
             throw new Error("Worktree removed, but local branch moved; branch retained for manual inspection.");
         await git(cwd, ["branch", "-D", "--", target.branch]);
     }
-    return result;
 }
 /** Local inventory: no fetch, no deletion. Missing directories are registrations, not completed tasks. */
 export async function worktreeStatus(cwd) {

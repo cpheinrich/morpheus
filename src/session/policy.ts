@@ -54,18 +54,21 @@ export interface ProjectContext extends LeasePolicy {
   droppedInputs?: string[];
 }
 
-export async function projectPolicy(root: string): Promise<ProjectContext> {
-  let config: ContextConfig = {};
+/** `morpheus.json`'s `context` block, `{}` when it has none, or null when the manifest cannot be read. */
+async function contextConfig(root: string): Promise<ContextConfig | null> {
   try {
     const manifest = JSON.parse(await readFile(join(root, "morpheus.json"), "utf8")) as {
       context?: ContextConfig;
     };
-    config = manifest.context ?? {};
+    return manifest.context ?? {};
   } catch {
-    return {};
+    return null;
   }
+}
 
-
+export async function projectPolicy(root: string): Promise<ProjectContext> {
+  const config = await contextConfig(root);
+  if (!config) return {};
   const trunk = typeof config.trunk === "string" && config.trunk ? { trunk: config.trunk } : {};
   const raw = Array.isArray(config.requiredInputs) ? config.requiredInputs : null;
   const declared = raw ? asStrings(raw) : null;

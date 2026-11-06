@@ -175,16 +175,67 @@ function compactText(value, limit) {
   return String(value ?? "").slice(0, limit);
 }
 
-function inspect() {
-  const repo = requiredEnv("GITHUB_REPOSITORY");
-  const outputDir = resolve(requiredEnv("OUTPUT_DIR"));
-  const policy = parsePolicy(resolve(requiredEnv("POLICY_FILE")));
+function inspectionLimits() {
   const requested = Number(process.env.PR_NUMBER ?? "0");
   const maxPrs = Number(process.env.MAX_PRS ?? "25");
   if (!Number.isInteger(requested) || requested < 0) throw new Error("PR_NUMBER must be non-negative");
   if (!Number.isInteger(maxPrs) || maxPrs < 1 || maxPrs > 100) {
     throw new Error("MAX_PRS must be between 1 and 100");
   }
+  return { requested, maxPrs };
+}
+
+// One open Dependabot PR as the policy sees it, plus the full context an agent route needs.
+function inspectCandidate(repo, policy, listed) {
+  const view = pullRequestView(repo, listed.number);
+  const files = pullRequestFiles(repo, listed.number);
+  const paths = files.map((file) => String(file.filename));
+  const parsed = parseDependabotTitle(String(view.title));
+  const policyDecision = decideByPolicy(policy, {
+    author: String(view.author?.login ?? ""),
+    title: String(view.title),
+    changedFiles: paths,
+  });
+  const checks = summarizeChecks(view.statusCheckRollup);
+
+  const candidate = {
+    number: Number(view.number),
+    title: String(view.title),
+    url: String(view.url),
+    author: String(view.author?.login ?? ""),
+    headSha: String(view.headRefOid),
+    baseRef: String(view.baseRefName),
+    dependency: parsed?.dependency ?? null,
+    fromVersion: parsed?.fromVersion ?? null,
+    toVersion: parsed?.toVersion ?? null,
+    updateType: parsed?.updateType ?? "version-update:unknown",
+    changedFiles: paths,
+    checks,
+    route: policyDecision.route,
+    reason: policyDecision.reason,
+  };
+  if (policyDecision.route !== "agent") return { candidate, context: null };
+  return {
+    candidate,
+    context: {
+      ...candidate,
+      body: compactText(listed.body, 20_000),
+      fileChanges: files.map((file) => ({
+        filename: String(file.filename),
+        status: String(file.status),
+        additions: Number(file.additions ?? 0),
+        deletions: Number(file.deletions ?? 0),
+        patch: compactText(file.patch, 16_000),
+      })),
+    },
+  };
+}
+
+function inspect() {
+  const repo = requiredEnv("GITHUB_REPOSITORY");
+  const outputDir = resolve(requiredEnv("OUTPUT_DIR"));
+  const policy = parsePolicy(resolve(requiredEnv("POLICY_FILE")));
+  const { requested, maxPrs } = inspectionLimits();
 
   mkdirSync(outputDir, { recursive: true });
   const open = listPullRequests(repo, requested)
@@ -195,49 +246,11 @@ function inspect() {
   const agentContext = [];
 
   for (const listed of open) {
-    const view = pullRequestView(repo, listed.number);
-    const files = pullRequestFiles(repo, listed.number);
-    const paths = files.map((file) => String(file.filename));
-    const parsed = parseDependabotTitle(String(view.title));
-    const policyDecision = decideByPolicy(policy, {
-      author: String(view.author?.login ?? ""),
-      title: String(view.title),
-      changedFiles: paths,
-    });
-    const checks = summarizeChecks(view.statusCheckRollup);
-
-    const candidate = {
-      number: Number(view.number),
-      title: String(view.title),
-      url: String(view.url),
-      author: String(view.author?.login ?? ""),
-      headSha: String(view.headRefOid),
-      baseRef: String(view.baseRefName),
-      dependency: parsed?.dependency ?? null,
-      fromVersion: parsed?.fromVersion ?? null,
-      toVersion: parsed?.toVersion ?? null,
-      updateType: parsed?.updateType ?? "version-update:unknown",
-      changedFiles: paths,
-      checks,
-      route: policyDecision.route,
-      reason: policyDecision.reason,
-    };
+    const { candidate, context } = inspectCandidate(repo, policy, listed);
     inspection.push(candidate);
-
-    if (policyDecision.route === "agent") {
-      agentContext.push({
-        ...candidate,
-        body: compactText(listed.body, 20_000),
-        fileChanges: files.map((file) => ({
-          filename: String(file.filename),
-          status: String(file.status),
-          additions: Number(file.additions ?? 0),
-          deletions: Number(file.deletions ?? 0),
-          patch: compactText(file.patch, 16_000),
-        })),
-      });
-    }
+    if (context) agentContext.push(context);
   }
+
 
   const schema = {
     type: "object",
@@ -403,6 +416,67 @@ function decisionBody(route, reason, detail = "") {
   return `${MARKER}\n### ${heading}\n\n${safeProse(reason)}${detail ? `\n\n${safeProse(detail)}` : ""}\n\nThe maintainer revalidates the bot author, head SHA, dependency-only file scope, and current checks before acting.`;
 }
 
+// The policy route, or for an agent route the agent's decision on this exact head SHA.
+function agentDecision(candidate, agent) {
+  if (candidate.route !== "agent") return { route: candidate.route, reason: candidate.reason, detail: "" };
+  const result = agent.get(candidate.number);
+  if (!result) {
+    return {
+      route: "human_review",
+      reason: "Codex triage was unavailable or returned no valid decision for this exact head SHA.",
+      detail: "",
+    };
+  }
+  return {
+    route: result.decision,
+    reason: result.summary,
+    detail: result.risks.length ? `Risks noted: ${result.risks.join("; ")}` : "No specific risks noted.",
+  };
+}
+
+// The earlier decision stands only if the PR is still the inspected bot change, and an
+// auto-merge only while every current check passes.
+function revalidated(decision, candidate, current) {
+  let { route, reason, detail } = decision;
+  if (
+    current.author?.login !== DEPENDABOT_LOGIN ||
+    current.headRefOid !== candidate.headSha ||
+    !isDependencyOnly(current.changedFiles)
+  ) {
+    route = "human_review";
+    reason = "The author, head SHA, or changed-file scope moved after inspection; refusing the earlier decision.";
+  }
+  if (route === "auto_merge" && !current.checks.allPassing) {
+    route = "human_review";
+    reason = "Not every current check is passing; auto-merge was not enabled.";
+    detail = current.checks.checks
+      .filter((check) => !["SUCCESS", "NEUTRAL", "SKIPPED"].includes(check.state))
+      .map((check) => `${check.name}: ${check.state}`)
+      .join("; ");
+  }
+  return { route, reason, detail };
+}
+
+function applyDecision(repo, candidate, current, { route, reason, detail }) {
+  setDecisionLabel(repo, candidate.number, route);
+  upsertComment(repo, candidate.number, decisionBody(route, reason, detail));
+  if (route === "auto_merge") {
+    gh(["pr", "merge", String(candidate.number), "--repo", repo, "--auto", "--squash"]);
+    if (shouldAdvanceAutoMerge(route, current.mergeStateStatus)) {
+      gh([
+        "api",
+        `repos/${repo}/pulls/${candidate.number}/update-branch`,
+        "-X",
+        "PUT",
+        "-f",
+        `expected_head_sha=${current.headRefOid}`,
+      ]);
+    }
+  } else if (route === "close") {
+    gh(["api", `repos/${repo}/pulls/${candidate.number}`, "-X", "PATCH", "-f", "state=closed"]);
+  }
+}
+
 function deliver() {
   const repo = requiredEnv("GITHUB_REPOSITORY");
   const inspection = JSON.parse(readFileSync(resolve(requiredEnv("INSPECTION_FILE")), "utf8"));
@@ -413,66 +487,15 @@ function deliver() {
   const report = [];
 
   for (const candidate of inspection) {
-    let route = candidate.route;
-    let reason = candidate.reason;
-    let detail = "";
-
-    if (route === "agent") {
-      const result = agent.get(candidate.number);
-      if (result) {
-        route = result.decision;
-        reason = result.summary;
-        detail = result.risks.length ? `Risks noted: ${result.risks.join("; ")}` : "No specific risks noted.";
-      } else {
-        route = "human_review";
-        reason = "Codex triage was unavailable or returned no valid decision for this exact head SHA.";
-      }
-    }
-
+    const decision = agentDecision(candidate, agent);
     const current = currentPullRequest(repo, candidate.number);
     if (current.state !== "OPEN") {
       report.push(`#${candidate.number}: skipped because it is no longer open`);
       continue;
     }
-    if (
-      current.author?.login !== DEPENDABOT_LOGIN ||
-      current.headRefOid !== candidate.headSha ||
-      !isDependencyOnly(current.changedFiles)
-    ) {
-      route = "human_review";
-      reason = "The author, head SHA, or changed-file scope moved after inspection; refusing the earlier decision.";
-    }
-
-    if (route === "auto_merge" && !current.checks.allPassing) {
-      route = "human_review";
-      reason = "Not every current check is passing; auto-merge was not enabled.";
-      detail = current.checks.checks
-        .filter((check) => !["SUCCESS", "NEUTRAL", "SKIPPED"].includes(check.state))
-        .map((check) => `${check.name}: ${check.state}`)
-        .join("; ");
-    }
-
+    const { route, reason, detail } = revalidated(decision, candidate, current);
     report.push(`#${candidate.number}: ${route} — ${safeProse(reason, 300)}`);
-    if (dryRun) continue;
-
-    setDecisionLabel(repo, candidate.number, route);
-    upsertComment(repo, candidate.number, decisionBody(route, reason, detail));
-
-    if (route === "auto_merge") {
-      gh(["pr", "merge", String(candidate.number), "--repo", repo, "--auto", "--squash"]);
-      if (shouldAdvanceAutoMerge(route, current.mergeStateStatus)) {
-        gh([
-          "api",
-          `repos/${repo}/pulls/${candidate.number}/update-branch`,
-          "-X",
-          "PUT",
-          "-f",
-          `expected_head_sha=${current.headRefOid}`,
-        ]);
-      }
-    } else if (route === "close") {
-      gh(["api", `repos/${repo}/pulls/${candidate.number}`, "-X", "PATCH", "-f", "state=closed"]);
-    }
+    if (!dryRun) applyDecision(repo, candidate, current, { route, reason, detail });
   }
 
   const heading = dryRun ? "Dependabot maintainer dry run" : "Dependabot maintainer delivery";
