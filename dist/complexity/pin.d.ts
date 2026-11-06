@@ -33,7 +33,10 @@ export declare function pinKey(pin: LizardPin): string;
  * 4 and `Notice` at 4. The TypeScript rows exercise template literal types
  * inside interface and object-type bodies (PR562): `7f14ea5` and upstream
  * fold every later function into `*global*` (CCN 6, cognitive 3) and measure
- * neither `choose` nor `run`. A wrong Lizard, a venv whose interpreter vanished after
+ * neither `choose` nor `run`. The attribute rows exercise JSX spread attributes and hyphenated
+ * attribute names inside children (PR560 at bb9efad), as `.tsx` and as `.jsx`; their line bounds
+ * are part of the expectation because `484bbd0` runs `Grid` on to line 15 (CCN 4) and measures
+ * neither `Card` nor `after`. A wrong Lizard, a venv whose interpreter vanished after
  * an upgrade, or a stamp written by hand all fail this, which is why every
  * check runs it rather than trusting `ready.json`.
  */
@@ -42,4 +45,5 @@ export declare const CANARY_EXPECTED: readonly {
     name: string;
     ccn: number;
     cognitive: number;
+    lines?: [number, number];
 }[];

@@ -22,6 +22,25 @@ import sys
 # Spelled in pieces so this file does not report itself.
 DIRECTIVE = re.compile("lizard" + " forgive|GENERATED" + " CODE")
 
+# JSX spread attributes ({...x}) and hyphenated attribute names inside children (PR560 at bb9efad),
+# measured as both .tsx and .jsx. 484bbd0 runs Grid on to line 15 and measures neither Card nor after.
+ATTRIBUTES = """function Row(props) {
+  return <i {...props} />;
+}
+function Grid({ rows, extra, open, k }) {
+  return (
+    <div>
+      <Row {...extra} />
+      <Row {...(open ? extra : rows)} />
+      <table><tbody><tr><td key={k} data-state={open && 'on'}>x</td></tr></tbody></table>
+    </div>);
+}
+function Card({ r, href }) {
+  return <ul>{r ? <li><a href={href}>Open the result <span aria-hidden="true">↗</span></a></li> : null}</ul>;
+}
+function after(x) { if (x) { return 1 } return 2; }
+"""
+
 # Known measurements of the pinned build (pin.ts CANARY_EXPECTED). The Swift, TSX and TS files exercise
 # the fork's fixes, so an upstream or older Lizard measures them differently and fails the canary.
 CANARY = {
@@ -79,6 +98,8 @@ class Box {
   }
 }
 """,
+    "attributes.tsx": ATTRIBUTES,
+    "attributes.jsx": ATTRIBUTES,
 }
 
 

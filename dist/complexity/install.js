@@ -77,12 +77,16 @@ function sameDir(file, dir) {
         return false;
     }
 }
-function canaryMismatch(parsed, want) {
+/** One canary row's verdict: null when it measured as recorded, else the reason. */
+export function canaryMismatch(parsed, want) {
     const row = parsed.files?.find((f) => f.path === want.path)?.functions?.find((f) => f.name === want.name);
-    if (row && row.ccn === want.ccn && row.cognitive === want.cognitive)
+    const span = (start, end) => (want.lines ? `, lines ${start}-${end}` : "");
+    const boundsMatch = !want.lines || (row?.start === want.lines[0] && row.end === want.lines[1]);
+    if (row && row.ccn === want.ccn && row.cognitive === want.cognitive && boundsMatch)
         return null;
-    const got = row ? `CCN ${row.ccn}, cognitive ${row.cognitive}` : "no such function";
-    return `canary ${want.path} ${want.name} measured ${got}; the pinned build gives CCN ${want.ccn}, cognitive ${want.cognitive}`;
+    const got = row ? `CCN ${row.ccn}, cognitive ${row.cognitive}${span(row.start, row.end)}` : "no such function";
+    const expected = `CCN ${want.ccn}, cognitive ${want.cognitive}${want.lines ? span(...want.lines) : ""}`;
+    return `canary ${want.path} ${want.name} measured ${got}; the pinned build gives ${expected}`;
 }
 function firstLine(text) {
     return text.trim().split("\n").filter(Boolean).pop() ?? "no output";
