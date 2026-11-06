@@ -37,32 +37,57 @@ function generatedPaths(importFiles) {
   }));
 }
 
+function eligibleSecurityPr(pr) {
+  return pr.user?.login === SECURITY_LOGIN && pr.base?.repo?.full_name === REPOSITORY &&
+    pr.head?.repo?.full_name === REPOSITORY && String(pr.head?.ref ?? "").startsWith("morpheus-security/") &&
+    !pr.draft && /^[0-9a-f]{40}$/.test(pr.head?.sha ?? "");
+}
+
+function passingCandidateCheck(check, headSha) {
+  return check.name === CANDIDATE_CHECK && check.head_sha === headSha &&
+    check.app?.slug === SECURITY_APP && check.status === "completed" && check.conclusion === "success";
+}
+
+// One to eight distinct source files, one to twenty imports, and only their own generated outputs.
+function validImportScope(record) {
+  return Array.isArray(record.importFiles) && record.importFiles.length >= 1 && record.importFiles.length <= 8 &&
+    new Set(record.importFiles).size === record.importFiles.length && !record.importFiles.some((path) => !sourcePath(path)) &&
+    Number.isInteger(record.importCount) && record.importCount >= 1 && record.importCount <= 20 &&
+    Array.isArray(record.generatedFiles) && record.generatedFiles.length <= 32 &&
+    !record.generatedFiles.some((path) => !generatedPaths(record.importFiles).has(path));
+}
+
+function validReplacement(record) {
+  return dependencyPath(record.sourcePath) &&
+    PACKAGE_NAME.test(record.dependency ?? "") && PACKAGE_NAME.test(record.replacement ?? "") &&
+    /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(record.replacementVersion ?? "") &&
+    typeof record.advisory === "string";
+}
+
+function validReceiptRecord(record, headSha) {
+  return record.version === 2 && record.mode === "import-only-compatibility" &&
+    record.repository === REPOSITORY && record.headSha === headSha &&
+    validImportScope(record) && validReplacement(record);
+}
+
+// The PR changes exactly the declared files, each modified, plus dependency manifests.
+function receiptMatchesFiles(record, files) {
+  const allowed = new Set([...record.importFiles, ...record.generatedFiles]);
+  const observed = (files ?? []).map((file) => file.filename);
+  return observed.includes(record.sourcePath) && observed.some((path) => dependencyPath(path) && path.endsWith("package.json")) &&
+    !(files ?? []).some((file) => file.status !== "modified" || (!allowed.has(file.filename) && !dependencyPath(file.filename))) &&
+    record.importFiles.every((path) => observed.includes(path)) &&
+    record.generatedFiles.every((path) => observed.includes(path));
+}
+
 export function candidateReceipt(pr, checkRuns, files) {
-  if (pr.user?.login !== SECURITY_LOGIN || pr.base?.repo?.full_name !== REPOSITORY ||
-      pr.head?.repo?.full_name !== REPOSITORY || !String(pr.head?.ref ?? "").startsWith("morpheus-security/") ||
-      pr.draft || !/^[0-9a-f]{40}$/.test(pr.head?.sha ?? "")) return null;
+  if (!eligibleSecurityPr(pr)) return null;
   for (const check of (checkRuns ?? []).sort((a, b) => Number(b.id ?? 0) - Number(a.id ?? 0))) {
-    if (check.name !== CANDIDATE_CHECK || check.head_sha !== pr.head.sha ||
-        check.app?.slug !== SECURITY_APP || check.status !== "completed" || check.conclusion !== "success") continue;
+    if (!passingCandidateCheck(check, pr.head.sha)) continue;
     let record;
     try { record = JSON.parse(check.output?.summary ?? ""); } catch { continue; }
-    if (record.version !== 2 || record.mode !== "import-only-compatibility" ||
-        record.repository !== REPOSITORY || record.headSha !== pr.head.sha ||
-        !Array.isArray(record.importFiles) || record.importFiles.length < 1 || record.importFiles.length > 8 ||
-        new Set(record.importFiles).size !== record.importFiles.length || record.importFiles.some((path) => !sourcePath(path)) ||
-        !Number.isInteger(record.importCount) || record.importCount < 1 || record.importCount > 20 ||
-        !Array.isArray(record.generatedFiles) || record.generatedFiles.length > 32 ||
-        record.generatedFiles.some((path) => !generatedPaths(record.importFiles).has(path)) ||
-        !dependencyPath(record.sourcePath) ||
-        !PACKAGE_NAME.test(record.dependency ?? "") || !PACKAGE_NAME.test(record.replacement ?? "") ||
-        !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(record.replacementVersion ?? "") ||
-        typeof record.advisory !== "string") continue;
-    const allowed = new Set([...record.importFiles, ...record.generatedFiles]);
-    const observed = (files ?? []).map((file) => file.filename);
-    if (!observed.includes(record.sourcePath) || !observed.some((path) => dependencyPath(path) && path.endsWith("package.json")) ||
-        (files ?? []).some((file) => file.status !== "modified" || (!allowed.has(file.filename) && !dependencyPath(file.filename))) ||
-        !record.importFiles.every((path) => observed.includes(path)) ||
-        !record.generatedFiles.every((path) => observed.includes(path))) continue;
+    if (!validReceiptRecord(record, pr.head.sha)) continue;
+    if (!receiptMatchesFiles(record, files)) continue;
     return record;
   }
   return null;
@@ -235,16 +260,18 @@ export function requireReviewedCheckout(attestedHead, checkedOutHead) {
   if (attestedHead !== checkedOutHead) throw new Error("Reviewer checkout is not the attested live PR head");
 }
 
+function validFindings(value) {
+  return Array.isArray(value.findings) && value.findings.length <= 20 &&
+    !value.findings.some((entry) => typeof entry !== "string" || entry.trim().length < 12) &&
+    (value.verdict === "clear" ? value.findings.length === 0 : value.findings.length !== 0);
+}
+
 export function parseReviewDecision(value, repo, pr, head) {
   if (!value || value.version !== 1 || value.repository !== repo || value.pr !== pr || value.headSha !== head ||
       !["clear", "findings"].includes(value.verdict) || typeof value.summary !== "string" ||
-      value.summary.trim().length < 80 || !Array.isArray(value.findings) ||
-      value.findings.length > 20 || value.findings.some((entry) => typeof entry !== "string" || entry.trim().length < 12) ||
-      (value.verdict === "clear" && value.findings.length !== 0) ||
-      (value.verdict === "findings" && value.findings.length === 0)) return null;
+      value.summary.trim().length < 80 || !validFindings(value)) return null;
   return value;
 }
-
 export function reviewDecisionFromSession(result) {
   if (result?.is_error !== false || typeof result.result !== "string") return null;
   try { return JSON.parse(result.result); } catch { return null; }
@@ -257,6 +284,34 @@ function extractDecision(resultPath, decisionPath) {
   writeFileSync(decisionPath, JSON.stringify(decision ?? {}));
 }
 
+// A completed review result for this exact head, or a bounded hold when there is none.
+function reviewOutcome(decisionPath, resultPath, number, head) {
+  try {
+    const result = JSON.parse(readFileSync(resultPath, "utf8"));
+    const decision = parseReviewDecision(JSON.parse(readFileSync(decisionPath, "utf8")), REPOSITORY, number, head);
+    if (result.is_error === false && decision)
+      return { verdict: decision.verdict, summary: decision.summary.trim(), findings: decision.findings };
+  } catch { /* Fail closed with a bounded hold. */ }
+  return { verdict: "hold", summary: "The separate review did not produce a valid, completed decision for this exact head.", findings: [] };
+}
+
+function reviewBody(number, head, attempt, { verdict, summary, findings }) {
+  const marker = `<!-- morpheus-security-review ${JSON.stringify({ version: 1, repository: REPOSITORY, pr: number, headSha: head, verdict, attempt })} -->`;
+  const safe = (text) => String(text).replaceAll("-->", "-- &gt;").slice(0, 2000);
+  return `${marker}\n\nIndependent review of Security candidate \`${head}\`: **${verdict}**.\n\n${safe(summary)}\n` +
+    (findings.length ? `\nFindings:\n${findings.map((finding) => `- ${safe(finding)}`).join("\n")}\n` : "");
+}
+
+// A prior review on this head is final unless it was a first hold: a clear one only
+// restores its label. True when a new review should be posted.
+function priorReviewAllowsRetry(existing, candidate, number) {
+  if (!existing) return true;
+  const prior = reviewMarker(existing.body);
+  if (prior?.verdict === "clear" &&
+      !(candidate.pr.labels ?? []).some((label) => label.name === REVIEW_LABEL)) addReviewLabel(number);
+  return prior?.verdict === "hold" && (prior.attempt ?? 1) < 2;
+}
+
 function apply(number, decisionPath, resultPath) {
   if (!policy()) throw new Error("Repository opt-in is absent");
   const candidate = proof(number);
@@ -264,31 +319,11 @@ function apply(number, decisionPath, resultPath) {
   const head = candidate.pr.head.sha;
   const comments = pages(`repos/${REPOSITORY}/issues/${number}/comments?per_page=100`);
   const existing = managerReviewFor(comments, number, head);
-  if (existing) {
-    const prior = reviewMarker(existing.body);
-    if (prior?.verdict === "clear" &&
-        !(candidate.pr.labels ?? []).some((label) => label.name === REVIEW_LABEL)) addReviewLabel(number);
-    if (prior?.verdict !== "hold" || (prior.attempt ?? 1) >= 2) return;
-  }
-  let verdict = "hold";
-  let summary = "The separate review did not produce a valid, completed decision for this exact head.";
-  let findings = [];
-  try {
-    const result = JSON.parse(readFileSync(resultPath, "utf8"));
-    const decision = parseReviewDecision(JSON.parse(readFileSync(decisionPath, "utf8")), REPOSITORY, number, head);
-    if (result.is_error === false && decision) {
-      verdict = decision.verdict;
-      summary = decision.summary.trim();
-      findings = decision.findings;
-    }
-  } catch { /* Fail closed with a bounded hold. */ }
+  if (!priorReviewAllowsRetry(existing, candidate, number)) return;
+  const outcome = reviewOutcome(decisionPath, resultPath, number, head);
   const attempt = existing ? (reviewMarker(existing.body)?.attempt ?? 1) + 1 : 1;
-  const marker = `<!-- morpheus-security-review ${JSON.stringify({ version: 1, repository: REPOSITORY, pr: number, headSha: head, verdict, attempt })} -->`;
-  const safe = (text) => String(text).replaceAll("-->", "-- &gt;").slice(0, 2000);
-  const body = `${marker}\n\nIndependent review of Security candidate \`${head}\`: **${verdict}**.\n\n${safe(summary)}\n` +
-    (findings.length ? `\nFindings:\n${findings.map((finding) => `- ${safe(finding)}`).join("\n")}\n` : "");
-  execFileSync("gh", ["api", "--method", "POST", `repos/${REPOSITORY}/issues/${number}/comments`, "-f", `body=${body}`], { encoding: "utf8" });
-  if (verdict === "clear") addReviewLabel(number);
+  execFileSync("gh", ["api", "--method", "POST", `repos/${REPOSITORY}/issues/${number}/comments`, "-f", `body=${reviewBody(number, head, attempt, outcome)}`], { encoding: "utf8" });
+  if (outcome.verdict === "clear") addReviewLabel(number);
 }
 
 function addReviewLabel(number) {
