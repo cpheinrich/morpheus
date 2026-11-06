@@ -41,6 +41,20 @@ function Card({ r, href }) {
 function after(x) { if (x) { return 1 } return 2; }
 """
 
+# A valueless JSX attribute after a braced one (PR560 at 24c6ff3), measured as both .tsx and .jsx.
+# 3b53c11 runs Chart on to line 10 and measures no after.
+VALUELESS = """function Chart({ data, wide }) {
+  return (
+    <div>
+      <chart margin={{ top: 6 }} accessibilityLayer>
+        <axis data={data} hide />
+      </chart>
+      <label x={1} flag>{wide ? 'wide' : 'narrow'}</label>
+    </div>);
+}
+function after(x) { if (x) { return 1 } return 2; }
+"""
+
 # Known measurements of the pinned build (pin.ts CANARY_EXPECTED). The Swift, TSX and TS files exercise
 # the fork's fixes, so an upstream or older Lizard measures them differently and fails the canary.
 CANARY = {
@@ -100,6 +114,8 @@ class Box {
 """,
     "attributes.tsx": ATTRIBUTES,
     "attributes.jsx": ATTRIBUTES,
+    "valueless.tsx": VALUELESS,
+    "valueless.jsx": VALUELESS,
 }
 
 

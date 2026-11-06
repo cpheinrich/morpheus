@@ -316,6 +316,7 @@ describe("installation", () => {
       "canary.ts choose 4", "canary.ts run 3", "canary.ts *global* 1",
       "attributes.tsx Row 1 1-3", "attributes.tsx Grid 3 4-11", "attributes.tsx Card 2 12-14", "attributes.tsx after 2 15-15",
       "attributes.jsx Row 1 1-3", "attributes.jsx Grid 3 4-11", "attributes.jsx Card 2 12-14", "attributes.jsx after 2 15-15",
+      "valueless.tsx Chart 2 1-9", "valueless.tsx after 2 10-10", "valueless.jsx Chart 2 1-9", "valueless.jsx after 2 10-10",
     ]);
   });
 
@@ -335,6 +336,17 @@ describe("installation", () => {
     expect(result).toEqual({
       ok: false,
       reason: "canary canary.ts choose measured no such function; the pinned build gives CCN 4, cognitive 1",
+    });
+    expect(await toolStatus(previous, env)).toMatchObject({ state: "broken", reason: result.ok ? "" : result.reason });
+  }, 300_000);
+
+  it("refuses 3b53c11, whose JSX reader runs a function past a valueless attribute that follows a braced one", async () => {
+    // 3b53c11 (tag morpheus-analyzer-2026-11-06-tsx) measures valueless.tsx as Chart 1-10 CCN 3 and no after.
+    const previous = { ...LIZARD_PIN, commit: "3b53c116fe93aebea86f44cd5d001813cfc13401" };
+    const result = await installLizard(previous, env);
+    expect(result).toEqual({
+      ok: false,
+      reason: "canary valueless.tsx Chart measured CCN 3, cognitive 2, lines 1-10; the pinned build gives CCN 2, cognitive 1, lines 1-9",
     });
     expect(await toolStatus(previous, env)).toMatchObject({ state: "broken", reason: result.ok ? "" : result.reason });
   }, 300_000);
