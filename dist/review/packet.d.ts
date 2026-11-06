@@ -28,4 +28,6 @@ export declare function reviewPacket(opts: {
     head: string;
     ticket: PacketTicket;
     commands: string[];
+    /** `morpheus complexity check` on the range, or why it did not run; never just the command. */
+    complexity?: string;
 }): string;

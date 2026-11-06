@@ -716,6 +716,12 @@ describe("the review packet", () => {
     expect(packet).toContain("Acceptance: - it works");
   });
 
+  it("carries the complexity result, or why it did not run, as its last line", () => {
+    const base = { root: "/r", fork: "a".repeat(40), head: "b".repeat(40), ticket: {}, commands: [] };
+    expect(reviewPacket({ ...base, complexity: "Complexity: NOT RUN — not installed" }).split("\n").at(-1)).toBe("Complexity: NOT RUN — not installed");
+    expect(reviewPacket(base)).not.toContain("Complexity");
+  });
+
   it("describes an unclaimed, acceptance-less change as supported rather than printing none", () => {
     const packet = reviewPacket({ root: "/work/acme", fork: "a".repeat(40), head: "b".repeat(40), ticket: {}, commands: [] });
     expect(packet).toContain("Ticket: unclaimed change — review against the PR title and body; no roadmap item is required");

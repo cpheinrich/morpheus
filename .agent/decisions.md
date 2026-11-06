@@ -1,5 +1,22 @@
 # Decisions
 
+**Function complexity uses one pinned Lizard, checked first by the agent, with CI as backstop** —
+2026-11-05. MO-26-11-05-21.48.00. Chris's rollout mandate: a reusable pinned analyzer installed by
+Morpheus, targeted checks while the change is small, review integration and a CI backstop; Evo blocks
+on CCN > 15 after its baseline refactor, Lakina and Morpheus stay advisory until theirs merge, no
+blanket ignores or threshold gaming. Lizard is fetched by commit id (content-addressed, no tarball
+digest) and its two runtime imports, `pygments` and `pathspec`, install into a venv by exact wheel
+hash; the install directory is keyed on the whole pin and every check runs a canary, so a stale or
+broken runtime reads as "not run". Morpheus carries no analyzer supplements: gaps are fixed in the
+fork or upstream and listed as coverage limits. Lizard's in-source suppressions are neutralised by
+same-length text substitution and reported, never obeyed. CI is a step inside the required
+`pr / conventions` job (no new required check, no branch-protection change); advisory never fails it,
+even when install fails; enforce measures every in-scope file. A policy change between merge base and
+head is shown as a warning, not gated. Exceptions are per function (path plus Lizard long name), carry
+the CCN they cover, a reason and a reference. Considered `uv` and installing Lizard with pip (pip does
+not hash-check a source build's build dependencies); used the runner's `python3 -m venv` and
+`pip --require-hashes --only-binary :all:`. No new Node dependency: Zod, minimatch and native Git.
+
 **Factory host tooling moves into the optional plugin; personal fleet config stays local** —
 2026-11-04. MO-26-11-04-21.51.56. Chris authorized moving the reusable `morpheus-factory`
 contents into the Factory plugin and sanitizing what is imported. They live in a nested

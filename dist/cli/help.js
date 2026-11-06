@@ -115,6 +115,13 @@ Usage
                             install the pinned official package when absent,
                             configure detected agent clients, enable auto-index
                             and auto-watch, and fully index this exact checkout
+  morpheus complexity install [--check]
+                            install the pinned Lizard analyzer (commit + hashed wheels in a
+                            venv under ~/.morpheus/tools); --check runs its canary
+  morpheus complexity check [--base <ref>] [--all] [--json] [--ci]
+                            measure the functions your changes touch (committed, staged,
+                            unstaged, untracked) against morpheus.json complexity; exit 1 only
+                            in enforce mode, 2 when it could not run
   morpheus self check       verify the installed CLI contains current Morpheus main
   morpheus self update      install current main from a disposable clean checkout
   morpheus self install     install this clean current-main checkout as a copied package

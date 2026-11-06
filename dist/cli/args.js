@@ -62,6 +62,7 @@ const booleanOptions = {
     "--worktree": (flags) => { flags.worktree = true; },
     "--nul": (flags) => { flags.nul = true; },
     "--full": (flags) => { flags.full = true; },
+    "--ci": (flags) => { flags.ci = true; },
     "--dispatch": (flags) => { flags.dispatch = true; },
     "--required-only": (flags) => { flags.requiredOnly = true; },
 };
@@ -87,6 +88,7 @@ export function parseArgs(argv) {
         all: false,
         offline: false,
         full: false,
+        ci: false,
         requiredOnly: false,
         json: false,
         dispatch: false,

@@ -55,6 +55,7 @@ import {
 import { GATED, offlineDeclared } from "../session/gate.js";
 import { noteWrite } from "../session/context.js";
 import { install as codebaseMemoryInstall } from "./codebase-memory.js";
+import { check as complexityCheck, install as complexityInstall } from "./complexity.js";
 import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
 import {
   autoUpdate as selfAutoUpdate,
@@ -125,6 +126,20 @@ async function dispatchCodebaseMemory({ flags, command }: Invocation): Promise<n
     console.error(`Unknown codebase-memory command "${command}".\n\n${HELP}`);
     return 1;
   
+}
+
+async function dispatchComplexity({ flags, command }: Invocation): Promise<number> {
+  if (command === "install") return complexityInstall(flags.check);
+  if (command === "check") {
+    return complexityCheck(process.cwd(), {
+      ...(flags.baseGiven ? { base: flags.base } : {}),
+      all: flags.all,
+      json: flags.json,
+      ci: flags.ci,
+    });
+  }
+  console.error(`Unknown complexity command "${command ?? ""}".\n\n${HELP}`);
+  return 1;
 }
 
 async function dispatchHeartbeat({ flags, dir }: Invocation): Promise<number> {
@@ -630,6 +645,7 @@ const groups: Record<string, (invocation: Invocation) => Promise<number>> = {
   "doctor": dispatchDoctor,
   "ios": dispatchIos,
   "codebase-memory": dispatchCodebaseMemory,
+  "complexity": dispatchComplexity,
   "heartbeat": dispatchHeartbeat,
   "gh-manager": dispatchGhManager,
   "voice": dispatchVoice,
