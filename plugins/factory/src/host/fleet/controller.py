@@ -132,35 +132,78 @@ def _relative_path(value: object) -> str:
     return value
 
 
+def _consumer_repository(raw: dict) -> str:
+    repository = raw.get("repository")
+    if not isinstance(repository, str) or not REPOSITORY.fullmatch(repository):
+        raise FleetError("consumer repository must be owner/name")
+    return repository
+
+
+def _consumer_list(raw: dict, key: str, default: list, message: str, *, non_empty: bool = False) -> list:
+    value = raw.get(key, default)
+    if not isinstance(value, list) or (non_empty and not value):
+        raise FleetError(message)
+    return value
+
+
+def _exception_pair(entry: object) -> tuple[str, str]:
+    if not isinstance(entry, dict) or not isinstance(entry.get("version"), str) or not VERSION.fullmatch(entry["version"]) \
+            or not isinstance(entry.get("reason"), str) or not entry["reason"].strip():
+        raise FleetError("each consumer exception needs a relative path, an exact version and a reason")
+    return (_relative_path(entry.get("path")), entry["version"])
+
+
+def _delivery_workflow(raw: dict, default: str) -> str:
+    delivery_workflow = raw.get("deliveryWorkflow", default)
+    if not isinstance(delivery_workflow, str) or not WORKFLOW_FILE.fullmatch(delivery_workflow):
+        raise FleetError("consumer deliveryWorkflow must be a workflow file name")
+    return delivery_workflow
+
+
 def read_consumer(data: dict) -> Consumer:
     raw = data.get("consumer")
     if not isinstance(raw, dict):
         raise FleetError("invalid consumer manifest entry")
     default = Consumer()
-    repository = raw.get("repository")
-    if not isinstance(repository, str) or not REPOSITORY.fullmatch(repository):
-        raise FleetError("consumer repository must be owner/name")
+    repository = _consumer_repository(raw)
     assertion = _relative_path(raw.get("assertion", default.assertion))
-    pin_paths = raw.get("pinPaths", list(default.pin_paths))
-    if not isinstance(pin_paths, list) or not pin_paths:
-        raise FleetError("consumer pinPaths must be a non-empty list")
-    ignore_paths = raw.get("ignorePaths", [])
-    if not isinstance(ignore_paths, list):
-        raise FleetError("consumer ignorePaths must be a list")
-    exceptions = raw.get("exceptions", [])
-    if not isinstance(exceptions, list):
-        raise FleetError("consumer exceptions must be a list")
-    pairs = []
-    for entry in exceptions:
-        if not isinstance(entry, dict) or not isinstance(entry.get("version"), str) or not VERSION.fullmatch(entry["version"]) \
-                or not isinstance(entry.get("reason"), str) or not entry["reason"].strip():
-            raise FleetError("each consumer exception needs a relative path, an exact version and a reason")
-        pairs.append((_relative_path(entry.get("path")), entry["version"]))
-    delivery_workflow = raw.get("deliveryWorkflow", default.delivery_workflow)
-    if not isinstance(delivery_workflow, str) or not WORKFLOW_FILE.fullmatch(delivery_workflow):
-        raise FleetError("consumer deliveryWorkflow must be a workflow file name")
+    pin_paths = _consumer_list(raw, "pinPaths", list(default.pin_paths), "consumer pinPaths must be a non-empty list", non_empty=True)
+    ignore_paths = _consumer_list(raw, "ignorePaths", [], "consumer ignorePaths must be a list")
+    exceptions = _consumer_list(raw, "exceptions", [], "consumer exceptions must be a list")
+    pairs = [_exception_pair(entry) for entry in exceptions]
+    delivery_workflow = _delivery_workflow(raw, default.delivery_workflow)
     return Consumer(repository, assertion, tuple(_relative_path(path) for path in pin_paths),
                     tuple(_relative_path(path) for path in ignore_paths), tuple(pairs), delivery_workflow)
+
+
+def _host_pin(entry: dict) -> Pin:
+    xcode = entry.get("xcode", {})
+    version, build, phase = xcode.get("version"), xcode.get("build"), xcode.get("phase", "promote")
+    if not isinstance(version, str) or not VERSION.fullmatch(version) or not isinstance(build, str) or not BUILD.fullmatch(build) or phase not in ("stage", "promote"):
+        raise FleetError("invalid exact Xcode pin or phase")
+    return Pin(version, build, phase)
+
+
+def _host_role(entry: dict) -> tuple[str, bool]:
+    has_ci = isinstance(entry.get("ci"), dict)
+    role = entry.get("role", "ci-image" if has_ci else "phone-gate")
+    if role not in ROLES or (role == "ci-image") != has_ci:
+        raise FleetError("host role must be ci-image with a ci block, or phone-gate without one")
+    return role, has_ci
+
+
+def _host_paths(entry: dict) -> dict:
+    paths = entry.get("paths", {})
+    if not isinstance(paths, dict) or any(not isinstance(value, str) or not value.startswith("/") for value in paths.values()):
+        raise FleetError("host paths must be absolute")
+    return paths
+
+
+def _host_hold(entry: dict) -> str | None:
+    hold = entry.get("hold")
+    if hold is not None and (not isinstance(hold, str) or not hold.strip()):
+        raise FleetError("host hold must be a reason string")
+    return hold
 
 
 def read_host(manifest: Path, host: str) -> HostConfig:
@@ -169,21 +212,11 @@ def read_host(manifest: Path, host: str) -> HostConfig:
     except host_config.ConfigError as error:
         raise FleetError(str(error)) from None
     entry = data.get("hosts", {}).get(host, {})
-    xcode = entry.get("xcode", {})
-    version, build, phase = xcode.get("version"), xcode.get("build"), xcode.get("phase", "promote")
-    if not isinstance(version, str) or not VERSION.fullmatch(version) or not isinstance(build, str) or not BUILD.fullmatch(build) or phase not in ("stage", "promote"):
-        raise FleetError("invalid exact Xcode pin or phase")
-    has_ci = isinstance(entry.get("ci"), dict)
-    role = entry.get("role", "ci-image" if has_ci else "phone-gate")
-    if role not in ROLES or (role == "ci-image") != has_ci:
-        raise FleetError("host role must be ci-image with a ci block, or phone-gate without one")
-    paths = entry.get("paths", {})
-    if not isinstance(paths, dict) or any(not isinstance(value, str) or not value.startswith("/") for value in paths.values()):
-        raise FleetError("host paths must be absolute")
-    hold = entry.get("hold")
-    if hold is not None and (not isinstance(hold, str) or not hold.strip()):
-        raise FleetError("host hold must be a reason string")
-    return HostConfig(Pin(version, build, phase), role, has_ci, read_consumer(data), dict(paths), hold)
+    pin = _host_pin(entry)
+    role, has_ci = _host_role(entry)
+    paths = _host_paths(entry)
+    hold = _host_hold(entry)
+    return HostConfig(pin, role, has_ci, read_consumer(data), dict(paths), hold)
 
 
 def read_pin(manifest: Path, host: str) -> Pin:
@@ -210,6 +243,14 @@ def path_matches(path: str, pattern: str) -> bool:
     return len(parts) == len(globs) and all(fnmatch.fnmatchcase(part, glob) for part, glob in zip(parts, globs))
 
 
+def _pinned_tokens(root: Path, path: str, consumer: Consumer) -> tuple[list[str], list[str]]:
+    body = git_file(root, "origin/main", path)
+    versions, builds = pin_tokens(body)
+    if path.endswith((".yml", ".yaml")):
+        versions += [label for line in RUNNER_LINE.findall(body) for label in RUNNER_LABEL.findall(line)]
+    return [version for version in versions if not consumer.excepted(path, version)], builds
+
+
 def consumer_has_pin(root: Path, pin: Pin, consumer: Consumer) -> bool:
     """Inspect merged consumer main; a PR branch alone never advances the fleet."""
     command(["git", "-C", str(root), "fetch", "origin", "main"])
@@ -218,11 +259,7 @@ def consumer_has_pin(root: Path, pin: Pin, consumer: Consumer) -> bool:
     for path in (line.strip() for line in listing.splitlines()):
         if not any(path_matches(path, pattern) for pattern in consumer.pin_paths) or consumer.ignores(path):
             continue
-        body = git_file(root, "origin/main", path)
-        versions, builds = pin_tokens(body)
-        if path.endswith((".yml", ".yaml")):
-            versions += [label for line in RUNNER_LINE.findall(body) for label in RUNNER_LABEL.findall(line)]
-        versions = [version for version in versions if not consumer.excepted(path, version)]
+        versions, builds = _pinned_tokens(root, path, consumer)
         # Every token must be the pin: a substring test would accept 27.21 for
         # 27.2, or one updated line beside a stale one.
         if any(version != pin.version for version in versions) or any(build != pin.build for build in builds):

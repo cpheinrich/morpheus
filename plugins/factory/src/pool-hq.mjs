@@ -67,32 +67,42 @@ const receipt = (op) => ({
   operationId: op.operationId, action: op.action, requestSha256: op.requestSha256,
   conversationId: op.conversationId, turn: op.turn, state: op.state,
 });
-export async function verifyHQBinding(profileName, conversation = null, { args = null, executionPool = null, apiUrl = null, issue = null } = {}) {
-  const mapping = mappingSchema.parse(JSON.parse(await ownerFile(hqPath(), "HQ controller mapping")));
-  if (args && (args.connectorId !== mapping.connectorId || args.companyId !== mapping.companyId))
-    throw new Error("HQ connector/company scope refused");
-  const pool = await loadPool();
+function assertControllerIdentity(mapping, pool) {
   if (mapping.companyId !== pool.controller.companyId || canonical(mapping.controller) !== canonical(controllerOf(pool)))
     throw new Error("HQ controller identity changed; reinstall the owner mapping");
-  const config = await configRead();
-  if (config.mode === "off") throw new Error("Delegation disabled");
-  const profile = pool.profiles[profileName];
-  const entry = mapping.profiles[profileName];
+}
+function assertProfileBinding(profileName, profile, entry, executionPool, mapping) {
   if (!profile || !entry || hqProfileDigest(profile) !== entry.profileSha256)
     throw new Error("HQ profile is not mapped or changed; reinstall the owner mapping");
   if (executionPool && (canonical(controllerOf(executionPool)) !== canonical(mapping.controller) ||
     hqProfileDigest(executionPool.profiles[profileName]) !== entry.profileSha256))
     throw new Error("HQ captured execution binding changed");
-  const repository = await projectIdentity(entry.repository);
-  if (repository.cwd !== entry.repository || repository.project !== entry.project || config.projects[entry.project] === "off")
-    throw new Error("HQ repository mapping changed or delegation is disabled");
-  const identity = mappingDigest(mapping, profileName);
+}
+function assertRunScope(mapping, identity, profileName, { conversation, apiUrl, issue }) {
   if (conversation && (!conversation.hq || conversation.hq.mappingSha256 !== identity || conversation.profile !== profileName))
     throw new Error("Conversation is outside this HQ mapping");
   if (apiUrl && apiOrigin(apiUrl) !== apiOrigin(mapping.controller.baseUrl))
     throw new Error("HQ run controller origin changed");
   if (issue && (issue.companyId !== mapping.companyId || (issue.projectId ?? null) !== mapping.controller.projectId))
     throw new Error("HQ run company/project scope changed");
+}
+// Checks run in this order and each refuses on its own: connector scope, controller
+// identity, delegation mode, profile binding, repository, then the run's own scope.
+export async function verifyHQBinding(profileName, conversation = null, { args = null, executionPool = null, apiUrl = null, issue = null } = {}) {
+  const mapping = mappingSchema.parse(JSON.parse(await ownerFile(hqPath(), "HQ controller mapping")));
+  if (args && (args.connectorId !== mapping.connectorId || args.companyId !== mapping.companyId))
+    throw new Error("HQ connector/company scope refused");
+  const pool = await loadPool();
+  assertControllerIdentity(mapping, pool);
+  const config = await configRead();
+  if (config.mode === "off") throw new Error("Delegation disabled");
+  const entry = mapping.profiles[profileName];
+  assertProfileBinding(profileName, pool.profiles[profileName], entry, executionPool, mapping);
+  const repository = await projectIdentity(entry.repository);
+  if (repository.cwd !== entry.repository || repository.project !== entry.project || config.projects[entry.project] === "off")
+    throw new Error("HQ repository mapping changed or delegation is disabled");
+  const identity = mappingDigest(mapping, profileName);
+  assertRunScope(mapping, identity, profileName, { conversation, apiUrl, issue });
   return { project: entry.project, mappingSha256: identity };
 }
 
@@ -107,88 +117,100 @@ export class HQPool {
     const args = schemas[action].parse(input);
     if (args.actor.kind === "agent" && ["answer", "followup"].includes(action) && !args.reason?.trim())
       throw new Error("Agent HQ replies require an explicit supervision reason");
-    if (action === "profiles") {
-      const mapping = mappingSchema.parse(JSON.parse(await ownerFile(hqPath(), "HQ controller mapping")));
-      const profiles = [];
-      for (const name of Object.keys(mapping.profiles)) {
-        await this.authorize(args, name);
-        const p = (await loadPool()).profiles[name];
-        profiles.push({ name, provider: p.provider, model: p.model, effort: p.effort, permission: p.permission });
-      }
-      if (!profiles.length) throw new Error("No HQ profiles are installed");
-      return { profiles };
-    }
-    if (action === "operation") {
-      const op = await readJSON(operationPath(args.operationId), null);
-      if (!op) throw new Error("Unknown HQ operation");
-      const admission = await this.authorize(args, op.profile, await readConversation(op.conversationId));
-      if (op.mappingSha256 !== admission.mappingSha256) throw new Error("HQ operation mapping changed");
-      return this.observe(op);
-    }
+    if (action === "profiles") return this.listProfiles(args);
+    if (action === "operation") return this.observeOperation(args);
     const c = args.conversationId ? await this.pool.conversation(args.conversationId) : null;
     const profile = c?.profile ?? args.profile;
     const admission = await this.authorize(args, profile, c);
-    if (!mutations.has(action)) {
-      if (action === "logs") {
-        const result = await this.pool.logs(args);
-        return { offset: result.offset, nextOffset: result.nextOffset, lines: result.lines.map((line) => Object.fromEntries(
-          ["pool", "type", "subtype", "state", "termination", "decision", "kind", "category"].filter((key) => typeof line[key] === "string").map((key) => [key, line[key]]),
-        )) };
-      }
-      // Plain reattach only observes uncertain writes, never retries them.
-      const s = action === "reattach" ? await this.pool.reattach({ conversationId: c.id })
-        : action === "wait" ? await this.pool.wait(args) : await this.pool.status(args);
-      await this.authorize(args, profile, await this.pool.conversation(c.id));
-      return { work: projectHQStatus(s) };
-    }
+    if (!mutations.has(action)) return this.read(action, args, c, profile);
     if (this.draining()) throw new Error("Bridge upgrade is in progress; retry afterward.");
     if (this.busy.has(args.operationId)) throw new Error("HQ operation is applying; observe it before retrying");
     this.busy.add(args.operationId);
     try {
-      const requestSha256 = sha256(canonical({ action, args }));
-      const previous = await readJSON(operationPath(args.operationId), null);
-      if (previous) {
-        if (previous.requestSha256 !== requestSha256) throw new Error("HQ operation id already has a different payload");
-        if (previous.mappingSha256 !== admission.mappingSha256) throw new Error("HQ operation mapping changed");
-        return this.observe(previous);
-      }
-      const op = {
-        version: 1, operationId: args.operationId, action, requestSha256, profile,
-        mappingSha256: admission.mappingSha256, actor: args.actor, companyId: args.companyId,
-        conversationId: c?.id ?? randomUUID(), turn: action === "followup" ? null : c?.turns ?? 1, state: "prepared", createdAt: Date.now(),
-      };
-      await mkdir(join(poolHome(), "hq-operations"), { recursive: true, mode: 0o700 });
-      await atomic(operationPath(op.operationId), op);
-      const hq = {
-        conversationId: op.conversationId,
-        identity: { mappingSha256: op.mappingSha256, actor: args.actor, operationId: op.operationId },
-        admit: async (current, executionPool = null) => {
-          if (this.draining()) throw new Error("Bridge upgrade is in progress");
-          return this.authorize(args, profile, current, executionPool);
-        },
-        recordTurn: async (id, turn) => {
-          Object.assign(op, { conversationId: id, turn, state: "applying" });
-          await atomic(operationPath(op.operationId), op);
-        },
-      };
-      const source = args.actor.kind === "user" ? "user" : "codex";
-      try {
-        let result;
-        if (action === "start") result = await this.pool.start(args, hq);
-        else if (action === "followup") result = await this.pool.followup({ ...args, replySource: source, replyReason: args.reason ?? "Authenticated HQ actor follow-up" }, hq);
-        else if (action === "answer") result = await this.pool.answer({ ...args, source, reason: args.reason ?? "Authenticated HQ actor reply" }, hq);
-        else result = await this.pool.stop(args, hq);
-        Object.assign(op, { state: "receipted", receiptedAt: Date.now() });
-        await atomic(operationPath(op.operationId), op);
-        return { operation: receipt(op), work: projectHQStatus(result) };
-      } catch {
-        // We cannot infer no effects from an exception (including a lost local write).
-        // Retain the exact identity and expose observation; never automatically retry.
-        op.state = "unknown";
-        await atomic(operationPath(op.operationId), op);
-        return this.observe(op);
-      }
+      return await this.mutate(action, args, c, profile, admission);
     } finally { this.busy.delete(args.operationId); }
+  }
+  async listProfiles(args) {
+    const mapping = mappingSchema.parse(JSON.parse(await ownerFile(hqPath(), "HQ controller mapping")));
+    const profiles = [];
+    for (const name of Object.keys(mapping.profiles)) {
+      await this.authorize(args, name);
+      const p = (await loadPool()).profiles[name];
+      profiles.push({ name, provider: p.provider, model: p.model, effort: p.effort, permission: p.permission });
+    }
+    if (!profiles.length) throw new Error("No HQ profiles are installed");
+    return { profiles };
+  }
+  async observeOperation(args) {
+    const op = await readJSON(operationPath(args.operationId), null);
+    if (!op) throw new Error("Unknown HQ operation");
+    const admission = await this.authorize(args, op.profile, await readConversation(op.conversationId));
+    if (op.mappingSha256 !== admission.mappingSha256) throw new Error("HQ operation mapping changed");
+    return this.observe(op);
+  }
+  async read(action, args, c, profile) {
+    if (action === "logs") {
+      const result = await this.pool.logs(args);
+      return { offset: result.offset, nextOffset: result.nextOffset, lines: result.lines.map((line) => Object.fromEntries(
+        ["pool", "type", "subtype", "state", "termination", "decision", "kind", "category"].filter((key) => typeof line[key] === "string").map((key) => [key, line[key]]),
+      )) };
+    }
+    // Plain reattach only observes uncertain writes, never retries them.
+    const s = action === "reattach" ? await this.pool.reattach({ conversationId: c.id })
+      : action === "wait" ? await this.pool.wait(args) : await this.pool.status(args);
+    await this.authorize(args, profile, await this.pool.conversation(c.id));
+    return { work: projectHQStatus(s) };
+  }
+  async mutate(action, args, c, profile, admission) {
+    const requestSha256 = sha256(canonical({ action, args }));
+    const previous = await readJSON(operationPath(args.operationId), null);
+    if (previous) {
+      if (previous.requestSha256 !== requestSha256) throw new Error("HQ operation id already has a different payload");
+      if (previous.mappingSha256 !== admission.mappingSha256) throw new Error("HQ operation mapping changed");
+      return this.observe(previous);
+    }
+    const op = {
+      version: 1, operationId: args.operationId, action, requestSha256, profile,
+      mappingSha256: admission.mappingSha256, actor: args.actor, companyId: args.companyId,
+      conversationId: c?.id ?? randomUUID(), turn: action === "followup" ? null : c?.turns ?? 1, state: "prepared", createdAt: Date.now(),
+    };
+    await mkdir(join(poolHome(), "hq-operations"), { recursive: true, mode: 0o700 });
+    await atomic(operationPath(op.operationId), op);
+    const hq = this.handle(op, args, profile);
+    try {
+      const result = await this.apply(action, args, hq);
+      Object.assign(op, { state: "receipted", receiptedAt: Date.now() });
+      await atomic(operationPath(op.operationId), op);
+      return { operation: receipt(op), work: projectHQStatus(result) };
+    } catch {
+      // We cannot infer no effects from an exception (including a lost local write).
+      // Retain the exact identity and expose observation; never automatically retry.
+      op.state = "unknown";
+      await atomic(operationPath(op.operationId), op);
+      return this.observe(op);
+    }
+  }
+  // What the pool sees of this operation: its identity, live re-admission and turn journal.
+  handle(op, args, profile) {
+    return {
+      conversationId: op.conversationId,
+      identity: { mappingSha256: op.mappingSha256, actor: args.actor, operationId: op.operationId },
+      admit: async (current, executionPool = null) => {
+        if (this.draining()) throw new Error("Bridge upgrade is in progress");
+        return this.authorize(args, profile, current, executionPool);
+      },
+      recordTurn: async (id, turn) => {
+        Object.assign(op, { conversationId: id, turn, state: "applying" });
+        await atomic(operationPath(op.operationId), op);
+      },
+    };
+  }
+  apply(action, args, hq) {
+    const source = args.actor.kind === "user" ? "user" : "codex";
+    if (action === "start") return this.pool.start(args, hq);
+    if (action === "followup") return this.pool.followup({ ...args, replySource: source, replyReason: args.reason ?? "Authenticated HQ actor follow-up" }, hq);
+    if (action === "answer") return this.pool.answer({ ...args, source, reason: args.reason ?? "Authenticated HQ actor reply" }, hq);
+    return this.pool.stop(args, hq);
   }
   async observe(op) {
     const c = await readConversation(op.conversationId);

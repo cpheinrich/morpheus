@@ -5,70 +5,103 @@ export function assertTransition(previous, next) {
     invariant(next.epoch === previous.epoch && next.repository === previous.repository && next.schemaVersion === previous.schemaVersion, "Epoch/schema changes require an explicit lossless migration");
     for (const [id, record] of Object.entries(previous.transitions))
         invariant(hash(next.transitions[id]) === hash(record), "Applied transition history cannot be removed or rewritten");
-    for (const [id, old] of Object.entries(previous.intents)) {
-        const current = next.intents[id];
-        invariant(current, "Delivery obligations and receipts cannot be deleted");
-        for (const key of ["id", "channel", "slot", "originalSource", "selectedMainEnteredAt", "validation", "isolatedValidation", "groupId", "createdAt"])
-            invariant(current[key] === old[key], `Original delivery ${key} is immutable`);
-        invariant(current.postResumeKey === old.postResumeKey, "Post-resume origin association is immutable");
-        invariant(hash(current.sourceAgeWaiver ?? null) === hash(old.sourceAgeWaiver ?? null), "Original source-age waiver is immutable");
-        invariant(Date.parse(current.oldestDebtAt) <= Date.parse(old.oldestDebtAt) && Date.parse(current.deadlineAt) <= Date.parse(old.deadlineAt), "New work cannot reset the oldest debt or overdue clock");
-        invariant(current.attempts.length >= old.attempts.length && current.lineage.length >= old.lineage.length, "Attempts and source lineage are append-only");
-        invariant(hash(current.lineage.slice(0, old.lineage.length)) === hash(old.lineage), "Existing source lineage cannot be rewritten");
-        if (old.receipt)
-            invariant(current.state === "delivered" && hash(current.receipt) === hash(old.receipt), "The committed final receipt is immutable");
-        if (old.external?.status === "available")
-            invariant(hash(current.external) === hash(old.external), "Committed external availability evidence is immutable");
-        if (old.external?.terminal)
-            invariant(hash(current.external) === hash(old.external), "Terminal external evidence is immutable");
-        for (let index = 0; index < old.attempts.length; index++) {
-            const before = old.attempts[index], after = current.attempts[index];
-            for (const key of ["id", "dispatchEffectId", "sourceSha", "controlSha", "appInputDigest", "configurationDigest", "appId", "version", "buildNumber", "lane", "createdAt"])
-                invariant(before[key] === after[key], `Attempt ${key} is immutable`);
-            if (before.runId)
-                invariant(before.runId === after.runId && before.runAttempt === after.runAttempt, "Bound workflow/run attempt cannot change");
-            if (before.tests)
-                invariant(hash(before.tests) === hash(after.tests), "Committed full-test evidence is immutable");
-            if (before.upload)
-                invariant(after.upload && before.upload.id === after.upload.id && hash(before.upload.identity) === hash(after.upload.identity) && (!before.upload.acceptedAt || before.upload.acceptedAt === after.upload.acceptedAt), "Upload claims/identity/acceptance cannot be erased or reused");
-        }
-    }
-    for (const [key, raw] of Object.entries(next.postResumeAcceptances ?? {})) {
-        const record = postResumeAcceptanceSchema.parse(raw), intent = next.intents[record.intentId];
-        invariant(intent && intent.postResumeKey === key && intent.validation && !intent.isolatedValidation && intent.attempts.length <= 1, "Post-resume journal requires its unique uncounted validation intent");
-        postResumeAcceptance(next, intent);
-        const old = previous.postResumeAcceptances?.[key];
-        if (!old)
-            invariant(!previous.intents[record.intentId], "Existing intents cannot be enrolled as post-resume acceptance");
-        else {
-            invariant(hash(record.origin) === hash(old.origin) && record.intentId === old.intentId && record.qualifications.length >= old.qualifications.length && hash(record.qualifications.slice(0, old.qualifications.length)) === hash(old.qualifications), "Post-resume origin and qualifications are append-only");
-            if (old.yielded)
-                invariant(hash(record.yielded) === hash(old.yielded), "Post-resume yield cannot be erased or rewritten");
-            for (const [id, release] of Object.entries(old.releases))
-                invariant(hash(record.releases[id]) === hash(release), "Execution release cannot be erased or rewritten");
-            for (const [id, group] of Object.entries(old.groups)) {
-                const after = record.groups[id];
-                invariant(after && after.attemptId === group.attemptId && after.groupId === group.groupId && after.buildId === group.buildId && after.claimedAt === group.claimedAt && (!group.observedAt || after.observedAt === group.observedAt), "Optional group claim is immutable");
-            }
-        }
-        for (const attempt of intent.attempts) {
-            const release = record.releases[attempt.id];
-            if (release)
-                invariant(release.identityDigest === hash({ schemaVersion: 1, intentId: intent.id, attemptId: attempt.id, dispatchEffectId: attempt.dispatchEffectId, sourceSha: attempt.sourceSha, controlSha: attempt.controlSha, runId: attempt.runId, runAttempt: attempt.runAttempt }) && attempt.quiescence && hash(attempt.quiescence) === release.quiescenceDigest && attempt.lease?.owner === release.leaseOwner && attempt.lease.fence === release.fence && next.fences[attempt.id] === release.fence && attempt.workflowTerminalAt, "Released executor authority cannot be changed or revived");
-            if (record.yielded?.attemptId === attempt.id)
-                invariant(attempt.dispatch.state === "intended" && !attempt.dispatch.sentAt && !attempt.runId && !attempt.runAttempt && !attempt.tests && !attempt.upload && !Object.keys(next.transitions).some(id => id.startsWith(`dispatch-call-${attempt.id}-`)), "Yielded attempt cannot acquire effect authority");
-            if (attempt.upload && !attempt.upload.acceptedAt && (attempt.upload.outcome !== "rejected" || !release))
-                invariant(attempt.status === "active", "Unreleased optional upload must remain the same active execution");
-        }
-        for (const [id, group] of Object.entries(record.groups))
-            invariant(id === postResumeGroupKey(record, group.attemptId, group.groupId, group.buildId) && intent.groupId === group.groupId && intent.attempts.some(attempt => attempt.id === group.attemptId && attempt.observation?.buildId === group.buildId && attempt.upload?.acceptedAt), "Optional group key/accepted build differs");
-    }
+    for (const [id, old] of Object.entries(previous.intents))
+        assertIntentHistory(old, next.intents[id]);
+    for (const [key, raw] of Object.entries(next.postResumeAcceptances ?? {}))
+        assertPostResumeAcceptance(previous, next, key, raw);
     for (const key of Object.keys(previous.postResumeAcceptances ?? {}))
         invariant(next.postResumeAcceptances?.[key], "Post-resume journal cannot be removed");
+    assertCursors(previous, next);
+    assertExternalReviewHistory(previous, next);
+    assertExternalReviewShape(next);
+    for (const [key, before] of Object.entries(previous.builds)) {
+        const after = next.builds[key];
+        invariant(after && BigInt(after.maximum) >= BigInt(before.maximum), "Build sequence cannot regress");
+        for (const [id, reservation] of Object.entries(before.reservations))
+            invariant(hash(after.reservations[id]) === hash(reservation), "Build reservations remain burned forever");
+    }
+    assertBudget(previous, next);
+    for (const intent of Object.values(next.intents))
+        assertIntentWellFormed(next, intent);
+    for (const channel of ["staging", "production"])
+        invariant(Object.values(next.intents).filter(intent => intent.channel === channel && !intent.validation && intent.state !== "delivered").length <= 1, "Only one ordinary delivery per channel may be outstanding");
+}
+/** An existing delivery keeps its identity, clocks, append-only history and committed evidence. */
+function assertIntentHistory(old, current) {
+    invariant(current, "Delivery obligations and receipts cannot be deleted");
+    for (const key of ["id", "channel", "slot", "originalSource", "selectedMainEnteredAt", "validation", "isolatedValidation", "groupId", "createdAt"])
+        invariant(current[key] === old[key], `Original delivery ${key} is immutable`);
+    invariant(current.postResumeKey === old.postResumeKey, "Post-resume origin association is immutable");
+    invariant(hash(current.sourceAgeWaiver ?? null) === hash(old.sourceAgeWaiver ?? null), "Original source-age waiver is immutable");
+    invariant(Date.parse(current.oldestDebtAt) <= Date.parse(old.oldestDebtAt) && Date.parse(current.deadlineAt) <= Date.parse(old.deadlineAt), "New work cannot reset the oldest debt or overdue clock");
+    invariant(current.attempts.length >= old.attempts.length && current.lineage.length >= old.lineage.length, "Attempts and source lineage are append-only");
+    invariant(hash(current.lineage.slice(0, old.lineage.length)) === hash(old.lineage), "Existing source lineage cannot be rewritten");
+    if (old.receipt)
+        invariant(current.state === "delivered" && hash(current.receipt) === hash(old.receipt), "The committed final receipt is immutable");
+    if (old.external?.status === "available")
+        invariant(hash(current.external) === hash(old.external), "Committed external availability evidence is immutable");
+    if (old.external?.terminal)
+        invariant(hash(current.external) === hash(old.external), "Terminal external evidence is immutable");
+    for (let index = 0; index < old.attempts.length; index++)
+        assertAttemptHistory(old.attempts[index], current.attempts[index]);
+}
+function assertAttemptHistory(before, after) {
+    for (const key of ["id", "dispatchEffectId", "sourceSha", "controlSha", "appInputDigest", "configurationDigest", "appId", "version", "buildNumber", "lane", "createdAt"])
+        invariant(before[key] === after[key], `Attempt ${key} is immutable`);
+    if (before.runId)
+        invariant(before.runId === after.runId && before.runAttempt === after.runAttempt, "Bound workflow/run attempt cannot change");
+    if (before.tests)
+        invariant(hash(before.tests) === hash(after.tests), "Committed full-test evidence is immutable");
+    if (before.upload)
+        invariant(after.upload && before.upload.id === after.upload.id && hash(before.upload.identity) === hash(after.upload.identity) && (!before.upload.acceptedAt || before.upload.acceptedAt === after.upload.acceptedAt), "Upload claims/identity/acceptance cannot be erased or reused");
+}
+function assertPostResumeAcceptance(previous, next, key, raw) {
+    const record = postResumeAcceptanceSchema.parse(raw), intent = next.intents[record.intentId];
+    invariant(intent && intent.postResumeKey === key && intent.validation && !intent.isolatedValidation && intent.attempts.length <= 1, "Post-resume journal requires its unique uncounted validation intent");
+    postResumeAcceptance(next, intent);
+    const old = previous.postResumeAcceptances?.[key];
+    if (!old)
+        invariant(!previous.intents[record.intentId], "Existing intents cannot be enrolled as post-resume acceptance");
+    else
+        assertPostResumeHistory(old, record);
+    for (const attempt of intent.attempts)
+        assertPostResumeAttempt(next, intent, record, attempt);
+    for (const [id, group] of Object.entries(record.groups))
+        invariant(id === postResumeGroupKey(record, group.attemptId, group.groupId, group.buildId) && intent.groupId === group.groupId && intent.attempts.some(attempt => attempt.id === group.attemptId && attempt.observation?.buildId === group.buildId && attempt.upload?.acceptedAt), "Optional group key/accepted build differs");
+}
+function assertPostResumeHistory(old, record) {
+    invariant(hash(record.origin) === hash(old.origin) && record.intentId === old.intentId && record.qualifications.length >= old.qualifications.length && hash(record.qualifications.slice(0, old.qualifications.length)) === hash(old.qualifications), "Post-resume origin and qualifications are append-only");
+    if (old.yielded)
+        invariant(hash(record.yielded) === hash(old.yielded), "Post-resume yield cannot be erased or rewritten");
+    for (const [id, release] of Object.entries(old.releases))
+        invariant(hash(record.releases[id]) === hash(release), "Execution release cannot be erased or rewritten");
+    for (const [id, group] of Object.entries(old.groups)) {
+        const after = record.groups[id];
+        invariant(after && after.attemptId === group.attemptId && after.groupId === group.groupId && after.buildId === group.buildId && after.claimedAt === group.claimedAt && (!group.observedAt || after.observedAt === group.observedAt), "Optional group claim is immutable");
+    }
+}
+function assertPostResumeAttempt(next, intent, record, attempt) {
+    const release = record.releases[attempt.id];
+    if (release)
+        invariant(releaseStillBinds(next, intent, attempt, release), "Released executor authority cannot be changed or revived");
+    if (record.yielded?.attemptId === attempt.id)
+        invariant(attempt.dispatch.state === "intended" && !attempt.dispatch.sentAt && !attempt.runId && !attempt.runAttempt && !attempt.tests && !attempt.upload && !Object.keys(next.transitions).some(id => id.startsWith(`dispatch-call-${attempt.id}-`)), "Yielded attempt cannot acquire effect authority");
+    if (attempt.upload && !attempt.upload.acceptedAt && (attempt.upload.outcome !== "rejected" || !release))
+        invariant(attempt.status === "active", "Unreleased optional upload must remain the same active execution");
+}
+function releaseStillBinds(next, intent, attempt, release) {
+    return release.identityDigest === hash({ schemaVersion: 1, intentId: intent.id, attemptId: attempt.id, dispatchEffectId: attempt.dispatchEffectId, sourceSha: attempt.sourceSha, controlSha: attempt.controlSha, runId: attempt.runId, runAttempt: attempt.runAttempt })
+        && attempt.quiescence && hash(attempt.quiescence) === release.quiescenceDigest
+        && attempt.lease?.owner === release.leaseOwner && attempt.lease.fence === release.fence && next.fences[attempt.id] === release.fence
+        && attempt.workflowTerminalAt;
+}
+function assertCursors(previous, next) {
     for (const [channel, old] of Object.entries(previous.cursors))
         invariant(next.cursors[channel].order >= old.order, "Ordinary delivery cursors cannot regress");
     for (const [group, old] of Object.entries(previous.groupCursors ?? {}))
         invariant(next.groupCursors?.[group] && next.groupCursors[group].order >= old.order, "Internal group cursors cannot regress");
+}
+function assertExternalReviewHistory(previous, next) {
     for (const [key, old] of Object.entries(previous.externalReviews ?? {})) {
         const current = next.externalReviews?.[key];
         invariant(current && current.appId === old.appId && current.buildId === old.buildId && current.attempts.length >= old.attempts.length, "External review claims and exact build binding cannot be deleted or rewritten");
@@ -81,52 +114,54 @@ export function assertTransition(previous, next) {
                 invariant(after.submissionId === before.submissionId, "Exact external submission identity is immutable");
         }
     }
+}
+function assertExternalReviewShape(next) {
     for (const [key, review] of Object.entries(next.externalReviews ?? {})) {
         invariant(key === hash({ appId: review.appId, buildId: review.buildId }) && review.attempts.length > 0, "External review operation must retain its exact app/build key and claims");
         for (const attempt of review.attempts)
             invariant(Number.isFinite(Date.parse(attempt.claimedAt)) && (attempt.outcome === "claimed" || attempt.completedAt && Number.isFinite(Date.parse(attempt.completedAt))), "External review operation needs measured claim/completion times");
     }
-    for (const [key, before] of Object.entries(previous.builds)) {
-        const after = next.builds[key];
-        invariant(after && BigInt(after.maximum) >= BigInt(before.maximum), "Build sequence cannot regress");
-        for (const [id, reservation] of Object.entries(before.reservations))
-            invariant(hash(after.reservations[id]) === hash(reservation), "Build reservations remain burned forever");
-    }
+}
+function assertBudget(previous, next) {
     if (next.budget.spendingPolicy !== undefined)
         budgetSpendingPolicySchema.parse(next.budget.spendingPolicy);
-    if (previous.budget.spendingPolicy) {
-        invariant(next.budget.spendingPolicy?.campaignId === previous.budget.spendingPolicy.campaignId, "Campaign spending policy cannot be removed or reassigned");
-        if (next.budget.spendingPolicy.capMicros !== previous.budget.spendingPolicy.capMicros)
-            invariant(next.budget.spendingPolicy.authorizationRef !== previous.budget.spendingPolicy.authorizationRef, "Changed budget cap requires a new human authorization reference");
-        if (next.budget.spendingPolicy.capMicros === previous.budget.spendingPolicy.capMicros && next.budget.spendingPolicy.authorizationRef === previous.budget.spendingPolicy.authorizationRef)
-            invariant(hash(next.budget.spendingPolicy) === hash(previous.budget.spendingPolicy), "Unchanged spending policy must retain its adoption record");
+    const before = previous.budget.spendingPolicy;
+    if (before) {
+        invariant(next.budget.spendingPolicy?.campaignId === before.campaignId, "Campaign spending policy cannot be removed or reassigned");
+        const after = next.budget.spendingPolicy;
+        if (after.capMicros !== before.capMicros)
+            invariant(after.authorizationRef !== before.authorizationRef, "Changed budget cap requires a new human authorization reference");
+        if (after.capMicros === before.capMicros && after.authorizationRef === before.authorizationRef)
+            invariant(hash(after) === hash(before), "Unchanged spending policy must retain its adoption record");
     }
     invariant(next.budget.spentMicros >= previous.budget.spentMicros, "Settled spend cannot decrease");
-    for (const [id, before] of Object.entries(previous.budget.reservations)) {
+    for (const [id, reserved] of Object.entries(previous.budget.reservations)) {
         const after = next.budget.reservations[id];
-        invariant(after && after.digest === before.digest && after.maximumMicros === before.maximumMicros, "Paid request liability/identity cannot be discarded");
-        if (before.status === "settled")
-            invariant(hash(after) === hash(before), "Paid settlement tombstones are immutable");
+        invariant(after && after.digest === reserved.digest && after.maximumMicros === reserved.maximumMicros, "Paid request liability/identity cannot be discarded");
+        if (reserved.status === "settled")
+            invariant(hash(after) === hash(reserved), "Paid settlement tombstones are immutable");
     }
-    for (const intent of Object.values(next.intents)) {
-        if (intent.postResumeKey)
-            postResumeAcceptance(next, intent);
-        invariant(!intent.sourceAgeWaiver || intent.validation, "Source-age waiver requires a validation intent");
-        if (intent.sourceAgeWaiver)
-            sourceAgeWaiverSchema.parse(intent.sourceAgeWaiver);
-        invariant(Number.isFinite(Date.parse(intent.nextCheckAt)) && Number.isFinite(Date.parse(intent.deadlineAt)), "Every delivery needs an explicit next check and original deadline");
-        if (intent.state === "repairing")
-            invariant(Object.values(next.agents).some(work => work.intentId === intent.id && work.state !== "complete"), "Repairing state must atomically own durable agent work");
-        if (intent.state === "delivered")
-            invariant(intent.receipt, "Delivery requires its exact immutable receipt");
-        if (intent.external) {
-            invariant(intent.state === "delivered" && intent.receipt && !intent.isolatedValidation && Number.isFinite(Date.parse(intent.external.nextCheckAt)), "External follow-up requires its delivered receipt and explicit next check");
-            const observation = intent.external.observation, receipt = intent.receipt.observation;
-            if (observation)
-                invariant(observation.appId === receipt.appId && observation.version === receipt.version && observation.buildNumber === receipt.buildNumber && observation.buildId === receipt.buildId, "External evidence cannot substitute a sibling internal receipt build");
-        }
-    }
-    for (const channel of ["staging", "production"])
-        invariant(Object.values(next.intents).filter(intent => intent.channel === channel && !intent.validation && intent.state !== "delivered").length <= 1, "Only one ordinary delivery per channel may be outstanding");
+}
+/** Every delivery in the next state, old or new, satisfies its standing shape rules. */
+function assertIntentWellFormed(next, intent) {
+    if (intent.postResumeKey)
+        postResumeAcceptance(next, intent);
+    invariant(!intent.sourceAgeWaiver || intent.validation, "Source-age waiver requires a validation intent");
+    if (intent.sourceAgeWaiver)
+        sourceAgeWaiverSchema.parse(intent.sourceAgeWaiver);
+    invariant(Number.isFinite(Date.parse(intent.nextCheckAt)) && Number.isFinite(Date.parse(intent.deadlineAt)), "Every delivery needs an explicit next check and original deadline");
+    if (intent.state === "repairing")
+        invariant(Object.values(next.agents).some(work => work.intentId === intent.id && work.state !== "complete"), "Repairing state must atomically own durable agent work");
+    if (intent.state === "delivered")
+        invariant(intent.receipt, "Delivery requires its exact immutable receipt");
+    assertExternalFollowUp(intent);
+}
+function assertExternalFollowUp(intent) {
+    if (!intent.external)
+        return;
+    invariant(intent.state === "delivered" && intent.receipt && !intent.isolatedValidation && Number.isFinite(Date.parse(intent.external.nextCheckAt)), "External follow-up requires its delivered receipt and explicit next check");
+    const observation = intent.external.observation, receipt = intent.receipt.observation;
+    if (observation)
+        invariant(observation.appId === receipt.appId && observation.version === receipt.version && observation.buildNumber === receipt.buildNumber && observation.buildId === receipt.buildId, "External evidence cannot substitute a sibling internal receipt build");
 }
 //# sourceMappingURL=invariants.js.map

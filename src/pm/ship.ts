@@ -206,37 +206,9 @@ export async function reconcile(
     const pr = prs?.find((p) => p.branch.startsWith(branchPrefix(id)));
 
     if (claims.length > 0) {
-      const mergedHere = prs?.find((p) => claims.includes(p.branch));
-      if (mergedHere && didNoWork(mergedHere)) {
-        outcomes.push({
-          kind: "no-work",
-          id,
-          pr: mergedHere.number,
-          branch: mergedHere.branch,
-        });
-      } else if (mergedHere && item.data.status === "blocked") {
-        // The branch surviving on origin is not staleness here — `pm claim`
-        // leaves it there on purpose so the partial work stays reachable, and
-        // says so. Writing `shipped` would retire an item whose `needs:` still
-        // names outstanding work.
-        outcomes.push({
-          kind: "blocked",
-          id,
-          pr: mergedHere.number,
-          needs: item.data.needs,
-        });
-      } else if (mergedHere) {
-        if (opts.write) await markShipped(productDir, id, mergedHere.number);
-        outcomes.push({
-          kind: "stale",
-          id,
-          branch: mergedHere.branch,
-          pr: mergedHere.number,
-        });
-      } else if (inReview) {
-        outcomes.push({ kind: "open", id, branch: claims[0]! });
-      }
       // A claimed backlog or in-progress item is just work underway.
+      const outcome = await claimedOutcome(item, claims, prs, productDir, opts.write);
+      if (outcome) outcomes.push(outcome);
       continue;
     }
 
@@ -265,89 +237,152 @@ export async function reconcile(
   return { outcomes, blind: prs === null };
 }
 
-export function formatReconcile(r: ReconcileResult): string {
-  const shipped = r.outcomes.filter((o) => o.kind === "shipped");
-  const open = r.outcomes.filter((o) => o.kind === "open");
-  const unconfirmed = r.outcomes.filter((o) => o.kind === "unconfirmed");
-  const stale = r.outcomes.filter((o): o is Extract<ShipOutcome, { kind: "stale" }> =>
-    o.kind === "stale",
-  );
-  const reopened = r.outcomes.filter((o): o is Extract<ShipOutcome, { kind: "reopened" }> =>
-    o.kind === "reopened",
-  );
-  const noWork = r.outcomes.filter((o): o is Extract<ShipOutcome, { kind: "no-work" }> =>
-    o.kind === "no-work",
-  );
-  const blocked = r.outcomes.filter((o): o is Extract<ShipOutcome, { kind: "blocked" }> =>
-    o.kind === "blocked",
-  );
-  const lines: string[] = [];
+type RoadmapEntry = Awaited<ReturnType<typeof parseArtifact>>["items"][number];
 
-  if (shipped.length) {
-    lines.push(`\x1b[32mShipped ${shipped.length} item(s):\x1b[0m`);
-    for (const o of shipped) {
-      lines.push(`  ${o.id}${"pr" in o && o.pr ? ` \x1b[2m(#${o.pr})\x1b[0m` : ""}`);
-    }
+/** A claimed item's outcome against a PR merged from one of its claim branches; undefined while work is underway. */
+async function claimedOutcome(item: RoadmapEntry, claims: string[], prs: Awaited<ReturnType<typeof mergedPrs>>, productDir: string, write: boolean): Promise<ShipOutcome | undefined> {
+  const id = item.data.id;
+  const inReview = item.data.status === "review";
+  const mergedHere = prs?.find((p) => claims.includes(p.branch));
+  if (mergedHere && didNoWork(mergedHere)) {
+    return {
+      kind: "no-work",
+      id,
+      pr: mergedHere.number,
+      branch: mergedHere.branch,
+    };
+  } else if (mergedHere && item.data.status === "blocked") {
+    // The branch surviving on origin is not staleness here — `pm claim`
+    // leaves it there on purpose so the partial work stays reachable, and
+    // says so. Writing `shipped` would retire an item whose `needs:` still
+    // names outstanding work.
+    return {
+      kind: "blocked",
+      id,
+      pr: mergedHere.number,
+      needs: item.data.needs,
+    };
+  } else if (mergedHere) {
+    if (write) await markShipped(productDir, id, mergedHere.number);
+    return {
+      kind: "stale",
+      id,
+      branch: mergedHere.branch,
+      pr: mergedHere.number,
+    };
+  } else if (inReview) {
+    return { kind: "open", id, branch: claims[0]! };
   }
-  if (stale.length) {
-    lines.push(
-      `\n\x1b[33m${stale.length} merged branch(es) still on origin — these read as live claims:\x1b[0m`,
-    );
-    for (const o of stale) lines.push(`  ${o.id}  \x1b[2m${o.branch} (#${o.pr})\x1b[0m`);
-    lines.push(
-      "\x1b[2m  Marked shipped, but the branch blocks `pm claim` until it is gone:\n" +
-        stale.map((o) => `    git push origin --delete ${o.branch}`).join("\n") +
-        "\x1b[0m",
-    );
-  }
-  if (open.length) {
-    lines.push(`\n\x1b[2mStill open — branch is on origin:\x1b[0m`);
-    for (const o of open) lines.push(`  \x1b[2m${o.id}\x1b[0m`);
-  }
-  if (reopened.length) {
-    lines.push("\n\x1b[2mIn backlog with a merged PR — left alone in case the reopen was\ndeliberate:\x1b[0m");
-    for (const o of reopened) lines.push(`  \x1b[2m${o.id} (#${o.pr})\x1b[0m`);
-  }
-  if (noWork.length) {
-    lines.push(
-      `\n\x1b[33m${noWork.length} item(s) NOT shipped — the merged PR changed only records and\nboard files, so it did not do the item's work:\x1b[0m`,
-    );
-    for (const o of noWork) lines.push(`  ${o.id}  \x1b[2m${o.branch} (#${o.pr})\x1b[0m`);
-    lines.push(
-      "\x1b[2m  This is how MO-010 was marked shipped against a PR that only moved the\n" +
-        "  inbox. If the item really is done, `morpheus pm ship <ID>` says so\n" +
-        "  deliberately.\x1b[0m",
-    );
-  }
-  if (blocked.length) {
-    lines.push(
-      `\n\x1b[33m${blocked.length} blocked item(s) NOT shipped — a merged PR on a blocked item is\nthe expected state, not evidence the item is done:\x1b[0m`,
-    );
-    for (const o of blocked) {
-      lines.push(`  ${o.id} \x1b[2m(#${o.pr})\x1b[0m`);
-      if (o.needs) lines.push(`    \x1b[2mneeds: ${o.needs}\x1b[0m`);
-    }
-    lines.push(
-      "\x1b[2m  Clear the blocker with `morpheus pm unblock <ID>` first. Reconciling\n" +
-        "  these automatically would retire the item that records why the work is\n" +
-        "  not finished.\x1b[0m",
-    );
-  }
-  if (unconfirmed.length) {
-    lines.push(
-      r.blind
-        ? "\n\x1b[33mCould not reach `gh`, so nothing was confirmed or written.\x1b[0m"
-        : "\n\x1b[33mNo branch and no merged PR — not assumed shipped:\x1b[0m",
-    );
-    for (const o of unconfirmed) lines.push(`  ${o.id}`);
-    lines.push(
-      "\x1b[2m  A missing branch is the absence of evidence, not evidence of a\n" +
-        "  merge. Run `morpheus pm ship <ID>` if you know it shipped.\x1b[0m",
-    );
-  }
+  return undefined;
+}
+
+export function formatReconcile(r: ReconcileResult): string {
+  const of = <K extends ShipOutcome["kind"]>(kind: K) => r.outcomes.filter((o): o is Extract<ShipOutcome, { kind: K }> => o.kind === kind);
+  const lines = [
+    ...shippedLines(of("shipped")),
+    ...staleLines(of("stale")),
+    ...openLines(of("open")),
+    ...reopenedLines(of("reopened")),
+    ...noWorkLines(of("no-work")),
+    ...blockedLines(of("blocked")),
+    ...unconfirmedLines(of("unconfirmed"), r.blind),
+  ];
   if (!lines.length) return "\x1b[32m✓ Nothing in review.\x1b[0m";
   return lines.join("\n");
 }
+
+type Outcomes<K extends ShipOutcome["kind"]> = Extract<ShipOutcome, { kind: K }>[];
+
+function shippedLines(shipped: Outcomes<"shipped">): string[] {
+  if (!shipped.length) return [];
+  const lines: string[] = [];
+  lines.push(`\x1b[32mShipped ${shipped.length} item(s):\x1b[0m`);
+  for (const o of shipped) {
+    lines.push(`  ${o.id}${"pr" in o && o.pr ? ` \x1b[2m(#${o.pr})\x1b[0m` : ""}`);
+  }
+  return lines;
+}
+
+function staleLines(stale: Outcomes<"stale">): string[] {
+  if (!stale.length) return [];
+  const lines: string[] = [];
+  lines.push(
+    `\n\x1b[33m${stale.length} merged branch(es) still on origin — these read as live claims:\x1b[0m`,
+  );
+  for (const o of stale) lines.push(`  ${o.id}  \x1b[2m${o.branch} (#${o.pr})\x1b[0m`);
+  lines.push(
+    "\x1b[2m  Marked shipped, but the branch blocks `pm claim` until it is gone:\n" +
+      stale.map((o) => `    git push origin --delete ${o.branch}`).join("\n") +
+      "\x1b[0m",
+  );
+  return lines;
+}
+
+function openLines(open: Outcomes<"open">): string[] {
+  if (!open.length) return [];
+  const lines: string[] = [];
+  lines.push(`\n\x1b[2mStill open — branch is on origin:\x1b[0m`);
+  for (const o of open) lines.push(`  \x1b[2m${o.id}\x1b[0m`);
+  return lines;
+}
+
+function reopenedLines(reopened: Outcomes<"reopened">): string[] {
+  if (!reopened.length) return [];
+  const lines: string[] = [];
+  lines.push("\n\x1b[2mIn backlog with a merged PR — left alone in case the reopen was\ndeliberate:\x1b[0m");
+  for (const o of reopened) lines.push(`  \x1b[2m${o.id} (#${o.pr})\x1b[0m`);
+  return lines;
+}
+
+function noWorkLines(noWork: Outcomes<"no-work">): string[] {
+  if (!noWork.length) return [];
+  const lines: string[] = [];
+  lines.push(
+    `\n\x1b[33m${noWork.length} item(s) NOT shipped — the merged PR changed only records and\nboard files, so it did not do the item's work:\x1b[0m`,
+  );
+  for (const o of noWork) lines.push(`  ${o.id}  \x1b[2m${o.branch} (#${o.pr})\x1b[0m`);
+  lines.push(
+    "\x1b[2m  This is how MO-010 was marked shipped against a PR that only moved the\n" +
+      "  inbox. If the item really is done, `morpheus pm ship <ID>` says so\n" +
+      "  deliberately.\x1b[0m",
+  );
+  return lines;
+}
+
+function blockedLines(blocked: Outcomes<"blocked">): string[] {
+  if (!blocked.length) return [];
+  const lines: string[] = [];
+  lines.push(
+    `\n\x1b[33m${blocked.length} blocked item(s) NOT shipped — a merged PR on a blocked item is\nthe expected state, not evidence the item is done:\x1b[0m`,
+  );
+  for (const o of blocked) {
+    lines.push(`  ${o.id} \x1b[2m(#${o.pr})\x1b[0m`);
+    if (o.needs) lines.push(`    \x1b[2mneeds: ${o.needs}\x1b[0m`);
+  }
+  lines.push(
+    "\x1b[2m  Clear the blocker with `morpheus pm unblock <ID>` first. Reconciling\n" +
+      "  these automatically would retire the item that records why the work is\n" +
+      "  not finished.\x1b[0m",
+  );
+  return lines;
+}
+
+function unconfirmedLines(unconfirmed: Outcomes<"unconfirmed">, blind: boolean): string[] {
+  if (!unconfirmed.length) return [];
+  const lines: string[] = [];
+  lines.push(
+    blind
+      ? "\n\x1b[33mCould not reach `gh`, so nothing was confirmed or written.\x1b[0m"
+      : "\n\x1b[33mNo branch and no merged PR — not assumed shipped:\x1b[0m",
+  );
+  for (const o of unconfirmed) lines.push(`  ${o.id}`);
+  lines.push(
+    "\x1b[2m  A missing branch is the absence of evidence, not evidence of a\n" +
+      "  merge. Run `morpheus pm ship <ID>` if you know it shipped.\x1b[0m",
+  );
+  return lines;
+}
+
 
 export interface CleanupPr {
   number: number;

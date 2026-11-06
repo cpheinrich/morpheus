@@ -336,14 +336,7 @@ def direct_call(binding, plan, prompt, output):
     return {"exitCode": process.returncode}
 
 
-def queued_call(binding, config, plan, prompt, output, issue=None):
-    operator = Operator(config)
-    aid = binding["agentId"]
-    title = "Workflow repair " + output.name + " / " + aid
-    if issue is None:
-        issue = operator.api("POST", "/companies/" + config["companyId"] + "/issues",
-                             {"title": title, "description": prompt, "status": "todo", "workMode": "standard",
-                              "priority": "medium", "assigneeAgentId": aid})
+def verify_issue_readback(operator, config, aid, title, issue, output):
     # Upstream can return a same-title existing issue even for another assignee.
     # A successful POST is therefore not evidence of the requested assignment.
     if (issue.get("companyId") != config["companyId"] or issue.get("assigneeAgentId") != aid
@@ -352,65 +345,154 @@ def queued_call(binding, config, plan, prompt, output, issue=None):
                    "returnedAssignee": issue.get("assigneeAgentId"), "expectedAssignee": aid})
         operator.api("POST", "/agents/" + aid + "/pause", {})
         raise RuntimeError("issue readback did not match this call; reconcile before further admissions")
-    write_json(output / "issue.json", {"id": issue["id"], "identifier": issue.get("identifier")})
-    # Assignment owns wakeup. Never add a manual wake to an uncertain submission.
+
+
+def settle_extra_runs(operator, aid, runs, output):
+    """The first run finished: pause the agent and cancel any upstream retry, which must not have started."""
+    operator.api("POST", "/agents/" + aid + "/pause", {})
+    extras = runs[1:]
+    for extra in extras:
+        if extra["status"] in ("queued", "running"):
+            operator.api("POST", "/heartbeat-runs/" + extra["id"] + "/cancel", {})
+    write_json(output / "upstream-retries.json", extras)
+    if any(extra.get("startedAt") for extra in extras):
+        raise RuntimeError("additional run started; quarantine episode and retain all spend")
+
+
+def await_queued_run(operator, config, plan, aid, output):
+    """Assignment owns wakeup. Never add a manual wake to an uncertain submission."""
     deadline = time.monotonic() + plan["initialSeconds"] + 120
     run = None
     announced = False
-    try:
-        while time.monotonic() < deadline:
-            runs = operator.api("GET", "/companies/" + config["companyId"] + "/heartbeat-runs?agentId=" + aid + "&limit=200")
-            runs = runs if isinstance(runs, list) else runs.get("items", [])
-            if runs:
-                runs.sort(key=lambda r: (r["createdAt"], r["id"]))
-                run = runs[0]
-                if not announced:
-                    print(json.dumps({"event": "queue-run-observed", "episode": output.name, "runId": run["id"]}), flush=True)
-                    announced = True
-                if run["status"] not in ("queued", "running"):
-                    operator.api("POST", "/agents/" + aid + "/pause", {})
-                    extras = runs[1:]
-                    for extra in extras:
-                        if extra["status"] in ("queued", "running"):
-                            operator.api("POST", "/heartbeat-runs/" + extra["id"] + "/cancel", {})
-                    write_json(output / "upstream-retries.json", extras)
-                    if any(extra.get("startedAt") for extra in extras):
-                        raise RuntimeError("additional run started; quarantine episode and retain all spend")
-                    break
-            time.sleep(2)
-        if run is None or run["status"] in ("queued", "running"):
-            if run:
-                operator.api("POST", "/heartbeat-runs/" + run["id"] + "/cancel", {})
-            raise RuntimeError("queue deadline; reconcile before further admissions")
-        write_json(output / "run.json", run)
-        chunks, offset = [], 0
-        for _ in range(8):
-            log = operator.api("GET", "/heartbeat-runs/" + run["id"] + "/log?offset=" + str(offset) + "&limitBytes=1048576")
-            chunks.append(log.get("content", ""))
-            next_offset = log.get("nextOffset", offset)
-            if next_offset == offset or next_offset >= run.get("logBytes", 0):
+    while time.monotonic() < deadline:
+        runs = operator.api("GET", "/companies/" + config["companyId"] + "/heartbeat-runs?agentId=" + aid + "&limit=200")
+        runs = runs if isinstance(runs, list) else runs.get("items", [])
+        if runs:
+            runs.sort(key=lambda r: (r["createdAt"], r["id"]))
+            run = runs[0]
+            if not announced:
+                print(json.dumps({"event": "queue-run-observed", "episode": output.name, "runId": run["id"]}), flush=True)
+                announced = True
+            if run["status"] not in ("queued", "running"):
+                settle_extra_runs(operator, aid, runs, output)
                 break
-            offset = next_offset
-        else:
-            raise RuntimeError("run log exceeds collection bound")
-        raw = "".join(chunks)
+        time.sleep(2)
+    if run is None or run["status"] in ("queued", "running"):
+        if run:
+            operator.api("POST", "/heartbeat-runs/" + run["id"] + "/cancel", {})
+        raise RuntimeError("queue deadline; reconcile before further admissions")
+    return run
+
+
+def read_run_log(operator, run):
+    chunks, offset = [], 0
+    for _ in range(8):
+        log = operator.api("GET", "/heartbeat-runs/" + run["id"] + "/log?offset=" + str(offset) + "&limitBytes=1048576")
+        chunks.append(log.get("content", ""))
+        next_offset = log.get("nextOffset", offset)
+        if next_offset == offset or next_offset >= run.get("logBytes", 0):
+            break
+        offset = next_offset
+    else:
+        raise RuntimeError("run log exceeds collection bound")
+    return "".join(chunks)
+
+
+def queued_receipt(stderr, output):
+    receipts = []
+    for line in stderr.splitlines():
+        if "MORPHEUS_PAPERCLIP_RECEIPT " in line:
+            try:
+                receipts.append(json.loads(line.split("MORPHEUS_PAPERCLIP_RECEIPT ", 1)[1]))
+            except ValueError:
+                pass
+    if len(receipts) != 1 or receipts[0].get("termination") not in ("verified", "not-started"):
+        raise RuntimeError("queued termination unknown; inspect host receipts before continuing")
+    write_json(output / "receipt.json", receipts[0])
+
+
+def queued_call(binding, config, plan, prompt, output, issue=None):
+    operator = Operator(config)
+    aid = binding["agentId"]
+    title = "Workflow repair " + output.name + " / " + aid
+    if issue is None:
+        issue = operator.api("POST", "/companies/" + config["companyId"] + "/issues",
+                             {"title": title, "description": prompt, "status": "todo", "workMode": "standard",
+                              "priority": "medium", "assigneeAgentId": aid})
+    verify_issue_readback(operator, config, aid, title, issue, output)
+    write_json(output / "issue.json", {"id": issue["id"], "identifier": issue.get("identifier")})
+    try:
+        run = await_queued_run(operator, config, plan, aid, output)
+        write_json(output / "run.json", run)
+        raw = read_run_log(operator, run)
         (output / "upstream-log.ndjson").write_text(raw)
         streams = unwrap_log(raw)
         (output / "stdout.jsonl").write_text(streams["stdout"])
         (output / "stderr.txt").write_text(streams["stderr"])
-        receipts = []
-        for line in streams["stderr"].splitlines():
-            if "MORPHEUS_PAPERCLIP_RECEIPT " in line:
-                try:
-                    receipts.append(json.loads(line.split("MORPHEUS_PAPERCLIP_RECEIPT ", 1)[1]))
-                except ValueError:
-                    pass
-        if len(receipts) != 1 or receipts[0].get("termination") not in ("verified", "not-started"):
-            raise RuntimeError("queued termination unknown; inspect host receipts before continuing")
-        write_json(output / "receipt.json", receipts[0])
+        queued_receipt(streams["stderr"], output)
         return {"runId": run["id"], "issueId": issue["id"], "runStatus": run["status"]}
     finally:
         operator.api("POST", "/agents/" + aid + "/pause", {})
+
+
+def workspace_hashes(workspace):
+    return {str(p.relative_to(workspace)): digest(p.read_bytes()) for p in workspace.rglob("*") if p.is_file() and not p.is_symlink()}
+
+
+def seed_workspace(workspace, case):
+    workspace.mkdir(parents=True, mode=0o700)
+    for name, content in {**case["files"], "AGENTS.md": INSTRUCTIONS}.items():
+        path = workspace / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+
+
+def manager_brief(root, config, plan, row_id, case, episode, start):
+    """Run the manager arm and return its delegation brief; its workspace and output are then sealed."""
+    manager_workspace = root / "manager-workspaces" / row_id
+    manager_workspace.mkdir(parents=True, mode=0o700)
+    (manager_workspace / "AGENTS.md").write_text(INSTRUCTIONS)
+    manager_output = episode / "manager"
+    manager_output.mkdir()
+    manager_prompt = MANAGER + json.dumps(case, sort_keys=True)
+    binding = setup_call(root, config, plan, row_id + "-manager", manager_workspace,
+                         plan["managerSeconds"], False, manager_prompt)
+    with protect_operator(config):
+        direct_call(binding, plan, manager_prompt, manager_output)
+        require_tools(manager_output)
+    trace = parse_trace((manager_output / "stdout.jsonl").read_text())
+    write_json(manager_output / "trace.json", trace)
+    print(json.dumps({"event": "manager-finished", "id": row_id, "hasBrief": bool(trace["messages"]), "elapsedSeconds": time.monotonic() - start}), flush=True)
+    brief = trace["messages"][-1] if trace["messages"] else "Manager did not return a brief; use the public contract and context directly."
+    manager_workspace.chmod(0)
+    for path in manager_output.rglob("*"):
+        if path.is_file():
+            path.chmod(0)
+    return brief
+
+
+def run_worker(root, config, plan, row, prompt, workspace, episode, start, remaining):
+    binding = setup_call(root, config, plan, row["id"] + "-worker", workspace, remaining,
+                         row["arm"] in ("Q", "F"), prompt)
+    write_json(episode / "binding.json", {k: v for k, v in binding.items() if k != "body"})
+    try:
+        with protect_operator(config):
+            metadata = queued_call(binding, config, plan, prompt, episode) if row["arm"] in ("Q", "F") else direct_call(binding, plan, prompt, episode)
+            require_tools(episode)
+        write_json(episode / "trace.json", parse_trace((episode / "stdout.jsonl").read_text()))
+        hashes = workspace_hashes(workspace)
+        write_json(episode / "result.json", dict(metadata, elapsedSeconds=time.monotonic() - start,
+                                                artifactSha256=hashes, workerPromptSha256=digest(prompt)))
+        print(json.dumps({"event": "episode-finished", "id": row["id"], "elapsedSeconds": time.monotonic() - start}), flush=True)
+    except Exception as exc:
+        write_json(episode / "error.json", {"type": type(exc).__name__, "message": str(exc), "elapsedSeconds": time.monotonic() - start})
+        raise
+    finally:
+        workspace.chmod(0)
+        # Finished model traces contain solutions; subsequent episodes cannot read them.
+        for path in episode.rglob("*"):
+            if path.is_file():
+                path.chmod(0)
 
 
 def collect(root, config, row_id):
@@ -422,61 +504,18 @@ def collect(root, config, row_id):
     episode.mkdir(parents=True, mode=0o700)
     case = plan["public"][row["case"]]
     workspace = root / "workspaces" / row_id
-    workspace.mkdir(parents=True, mode=0o700)
-    for name, content in {**case["files"], "AGENTS.md": INSTRUCTIONS}.items():
-        path = workspace / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
+    seed_workspace(workspace, case)
     start = time.monotonic()
     print(json.dumps({"event": "episode-started", "id": row_id, "arm": row["arm"]}), flush=True)
     write_json(episode / "intent.json", {"row": row, "promptSha256": digest(WORKER), "publicCaseSha256": digest(json.dumps(case, sort_keys=True)), "at": time.time()})
     prompt = WORKER
     if row["arm"] in ("P", "F"):
-        manager_workspace = root / "manager-workspaces" / row_id
-        manager_workspace.mkdir(parents=True, mode=0o700)
-        (manager_workspace / "AGENTS.md").write_text(INSTRUCTIONS)
-        manager_output = episode / "manager"
-        manager_output.mkdir()
-        manager_prompt = MANAGER + json.dumps(case, sort_keys=True)
-        binding = setup_call(root, config, plan, row_id + "-manager", manager_workspace,
-                             plan["managerSeconds"], False, manager_prompt)
-        with protect_operator(config):
-            direct_call(binding, plan, manager_prompt, manager_output)
-            require_tools(manager_output)
-        trace = parse_trace((manager_output / "stdout.jsonl").read_text())
-        write_json(manager_output / "trace.json", trace)
-        print(json.dumps({"event": "manager-finished", "id": row_id, "hasBrief": bool(trace["messages"]), "elapsedSeconds": time.monotonic() - start}), flush=True)
-        brief = trace["messages"][-1] if trace["messages"] else "Manager did not return a brief; use the public contract and context directly."
-        prompt += "\nDelegation brief:\n" + brief
-        manager_workspace.chmod(0)
-        for path in manager_output.rglob("*"):
-            if path.is_file():
-                path.chmod(0)
+        prompt += "\nDelegation brief:\n" + manager_brief(root, config, plan, row_id, case, episode, start)
     remaining = max(1, plan["initialSeconds"] - (time.monotonic() - start))
     print(json.dumps({"event": "worker-started", "id": row_id, "budgetSeconds": remaining}), flush=True)
     prompt += "\nYou have a hard worker budget of approximately " + str(int(remaining)) + " seconds. Prioritize the repair, essential verification and truthful handoff before optional expansions.\n"
     (episode / "worker-prompt.txt").write_text(prompt)
-    binding = setup_call(root, config, plan, row_id + "-worker", workspace, remaining,
-                         row["arm"] in ("Q", "F"), prompt)
-    write_json(episode / "binding.json", {k: v for k, v in binding.items() if k != "body"})
-    try:
-        with protect_operator(config):
-            metadata = queued_call(binding, config, plan, prompt, episode) if row["arm"] in ("Q", "F") else direct_call(binding, plan, prompt, episode)
-            require_tools(episode)
-        write_json(episode / "trace.json", parse_trace((episode / "stdout.jsonl").read_text()))
-        hashes = {str(p.relative_to(workspace)): digest(p.read_bytes()) for p in workspace.rglob("*") if p.is_file() and not p.is_symlink()}
-        write_json(episode / "result.json", dict(metadata, elapsedSeconds=time.monotonic() - start,
-                                                artifactSha256=hashes, workerPromptSha256=digest(prompt)))
-        print(json.dumps({"event": "episode-finished", "id": row_id, "elapsedSeconds": time.monotonic() - start}), flush=True)
-    except Exception as exc:
-        write_json(episode / "error.json", {"type": type(exc).__name__, "message": str(exc), "elapsedSeconds": time.monotonic() - start})
-        raise
-    finally:
-        workspace.chmod(0)
-        # Finished model traces contain solutions; subsequent episodes cannot read them.
-        for path in episode.rglob("*"):
-            if path.is_file():
-                path.chmod(0)
+    run_worker(root, config, plan, row, prompt, workspace, episode, start, remaining)
 
 
 def public_check(root, config, row_id):
@@ -521,29 +560,43 @@ def public_check(root, config, row_id):
         workspace.chmod(0)
 
 
+def continuation_feedback(root, row):
+    if row["split"] != "locked" or row["arm"] not in ("A", "F") or row["repeat"]:
+        raise ValueError("only primary locked A/F rows permit continuation")
+    feedback = json.loads((root / "public-checks" / (row["id"] + ".json")).read_text())
+    if feedback["exitCode"] == 0:
+        raise ValueError("passing public test cannot trigger continuation")
+    return feedback
+
+
+def copy_sealed(original, workspace):
+    original.chmod(0o700)
+    try:
+        shutil.copytree(original, workspace, symlinks=True)
+    finally:
+        original.chmod(0)
+
+
+def sealed_worker_prompt(root, row_id):
+    old_prompt = root / "episodes" / row_id / "worker-prompt.txt"
+    old_prompt.chmod(0o600)
+    prompt = old_prompt.read_text()
+    old_prompt.chmod(0)
+    return prompt
+
+
 def continuation(root, config, row_id):
     plan = load_plan(root)
     row = next(r for r in plan["schedule"] if r["id"] == row_id)
-    if row["split"] != "locked" or row["arm"] not in ("A", "F") or row["repeat"]:
-        raise ValueError("only primary locked A/F rows permit continuation")
-    feedback = json.loads((root / "public-checks" / (row_id + ".json")).read_text())
-    if feedback["exitCode"] == 0:
-        raise ValueError("passing public test cannot trigger continuation")
+    feedback = continuation_feedback(root, row)
     original = root / "workspaces" / row_id
     workspace = root / "workspaces" / (row_id + "-continuation")
     episode = root / "episodes" / (row_id + "-continuation")
     if episode.exists() or workspace.exists():
         raise ValueError("continuation already attempted")
     episode.mkdir(parents=True, mode=0o700)
-    original.chmod(0o700)
-    try:
-        shutil.copytree(original, workspace, symlinks=True)
-    finally:
-        original.chmod(0)
-    old_prompt = root / "episodes" / row_id / "worker-prompt.txt"
-    old_prompt.chmod(0o600)
-    prompt = old_prompt.read_text()
-    old_prompt.chmod(0)
+    copy_sealed(original, workspace)
+    prompt = sealed_worker_prompt(root, row_id)
     prompt += "\nThe independently run PUBLIC smoke check failed. Continue from the files and fix the cause within130seconds. Public feedback:\n" + json.dumps(feedback)
     write_json(episode / "intent.json", {"row": row, "feedback": feedback, "at": time.time(), "freshSession": True})
     binding = setup_call(root, config, plan, row_id + "-continuation", workspace,
@@ -555,7 +608,7 @@ def continuation(root, config, row_id):
             require_tools(episode)
         write_json(episode / "trace.json", parse_trace((episode / "stdout.jsonl").read_text()))
         write_json(episode / "result.json", dict(result, elapsedSeconds=time.monotonic() - started,
-                   artifactSha256={str(p.relative_to(workspace)): digest(p.read_bytes()) for p in workspace.rglob("*") if p.is_file() and not p.is_symlink()}))
+                   artifactSha256=workspace_hashes(workspace)))
     finally:
         workspace.chmod(0)
         for path in episode.rglob("*"):

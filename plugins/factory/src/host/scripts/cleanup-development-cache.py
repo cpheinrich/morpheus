@@ -124,52 +124,69 @@ def remove_old_children(parent, days, apply, target=None):
     return count
 
 
-def remove_installed_app_installers(downloads, apply, applications=Path("/Applications")):
-    """Remove Downloads installers that match an installed application name."""
-    if not downloads.is_dir() or downloads.is_symlink():
-        return 0
+def installer_candidates(downloads):
     candidates = list(downloads.iterdir())
     ibkr = downloads / "ibkr"
     if ibkr.is_dir() and not ibkr.is_symlink():
         candidates.extend(ibkr.iterdir())
+    return candidates
+
+
+def installed_app_names(applications):
     installed = []
     for root in (applications, HOME / "Applications"):
         if root.is_dir() and not root.is_symlink():
             installed.extend(app.stem for app in root.glob("*.app") if app.is_dir() and not app.is_symlink())
-    xcode_installed = any(name.lower().startswith("xcode") for name in installed)
+    return installed
 
-    def matches_app(stem):
-        for app in installed:
-            parts = re.findall(r"[a-z0-9]+", app.lower())
-            while parts and parts[-1].isdigit():
-                parts.pop()
-            if not parts:
-                continue
-            prefix = r"[\s._-]*".join(re.escape(part) for part in parts)
-            if re.match(rf"^{prefix}(?:[\s._-]|$)", stem.lower()):
-                return True
+
+def matches_installed_app(stem, installed):
+    for app in installed:
+        parts = re.findall(r"[a-z0-9]+", app.lower())
+        while parts and parts[-1].isdigit():
+            parts.pop()
+        if not parts:
+            continue
+        prefix = r"[\s._-]*".join(re.escape(part) for part in parts)
+        if re.match(rf"^{prefix}(?:[\s._-]|$)", stem.lower()):
+            return True
+    return False
+
+
+def installer_is_eligible(path, installed, xcode_installed):
+    """An installer file or "* Installer.app" whose application is already installed."""
+    if path.is_symlink():
         return False
+    suffix = path.suffix.lower()
+    installer_app = suffix == ".app" and path.is_dir() and path.stem.lower().endswith(" installer")
+    if not (suffix in (".dmg", ".pkg", ".xip") and path.is_file() or installer_app):
+        return False
+    if suffix == ".xip":
+        return bool(XCODE_INSTALLER.fullmatch(path.name) and xcode_installed)
+    return matches_installed_app(path.stem, installed)
 
+
+def remove_entry(path):
+    if path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+
+
+def remove_installed_app_installers(downloads, apply, applications=Path("/Applications")):
+    """Remove Downloads installers that match an installed application name."""
+    if not downloads.is_dir() or downloads.is_symlink():
+        return 0
+    candidates = installer_candidates(downloads)
+    installed = installed_app_names(applications)
+    xcode_installed = any(name.lower().startswith("xcode") for name in installed)
     count = 0
     for path in sorted(candidates):
-        if path.is_symlink():
-            continue
-        suffix = path.suffix.lower()
-        installer_app = suffix == ".app" and path.is_dir() and path.stem.lower().endswith(" installer")
-        if not (suffix in (".dmg", ".pkg", ".xip") and path.is_file() or installer_app):
-            continue
-        if suffix == ".xip":
-            eligible = bool(XCODE_INSTALLER.fullmatch(path.name) and xcode_installed)
-        else:
-            eligible = matches_app(path.stem)
-        if not eligible:
+        if not installer_is_eligible(path, installed, xcode_installed):
             continue
         log(f"{'Remove' if apply else 'Would remove'} installed-app installer {path}")
         if apply:
-            if path.is_dir():
-                shutil.rmtree(path)
-            else:
-                path.unlink()
+            remove_entry(path)
         count += 1
     return count
 
@@ -275,6 +292,16 @@ def remove_browser_caches(apply):
     return count
 
 
+def valid_job_prefixes(jobs):
+    return isinstance(jobs, list) and all(isinstance(p, str) and DEVICE_PREFIX.fullmatch(p) for p in jobs)
+
+
+def valid_preview(preview):
+    return bool(isinstance(preview, dict) and set(preview) == {"device", "namespace"}
+                and isinstance(preview["device"], str) and DEVICE_PREFIX.fullmatch(preview["device"])
+                and isinstance(preview["namespace"], str) and NAMESPACE.fullmatch(preview["namespace"]))
+
+
 def simulator_config():
     """Operator-declared job prefixes and preview namespaces; absent means none."""
     path = HOME / ".config/morpheus-factory/simulators.json"
@@ -286,11 +313,7 @@ def simulator_config():
         raise RuntimeError(f"Cannot read {path}: {error}") from None
     jobs = data.get("jobDevices", [])
     previews = data.get("previews", [])
-    if not isinstance(jobs, list) or not all(isinstance(p, str) and DEVICE_PREFIX.fullmatch(p) for p in jobs) \
-            or not isinstance(previews, list) or not all(
-                isinstance(p, dict) and set(p) == {"device", "namespace"} and isinstance(p["device"], str)
-                and DEVICE_PREFIX.fullmatch(p["device"]) and isinstance(p["namespace"], str) and NAMESPACE.fullmatch(p["namespace"])
-                for p in previews):
+    if not valid_job_prefixes(jobs) or not isinstance(previews, list) or not all(map(valid_preview, previews)):
         raise RuntimeError(f"Invalid {path}: jobDevices are name prefixes; previews are {{device, namespace}}")
     return jobs, [(p["device"], p["namespace"]) for p in previews]
 
@@ -352,10 +375,8 @@ def update_worker_lease(udid, minutes, release):
         log(f"Leased simulator {udid} for {minutes} minutes")
 
 
-def remove_old_simulators(qa_days, job_days, apply):
-    if not shutil.which("xcrun"):
-        log("xcrun unavailable; skipping simulators")
-        return 0
+def simulator_inventories():
+    """The default device set, plus XCTest's clone set when it exists."""
     inventories = [([], json.loads(subprocess.check_output(
         ["xcrun", "simctl", "list", "devices", "-j"], text=True
     )))]
@@ -365,45 +386,73 @@ def remove_old_simulators(qa_days, job_days, apply):
         inventories.append((["--set", "testing"], json.loads(testing.stdout)))
     elif "Provided set path does not exist" not in testing.stderr:
         raise RuntimeError("Cannot inventory XCTest simulator set")
-    devices_root = HOME / "Library/Developer/CoreSimulator/Devices"
-    jobs, previews = simulator_config()
-    now = time.time()
-    processes = subprocess.check_output(["ps", "ax", "-o", "command="], text=True)
-    build_active = subprocess.run(["pgrep", "-f", "[x]codebuild"],
-                                  stdout=subprocess.DEVNULL).returncode == 0
+    return inventories
+
+
+class SimulatorSweep:
+    """Host facts read once per sweep, and the per-device deletion verdict."""
+
+    def __init__(self, qa_days, job_days):
+        self.qa_days, self.job_days = qa_days, job_days
+        self.devices_root = HOME / "Library/Developer/CoreSimulator/Devices"
+        self.jobs, self.previews = simulator_config()
+        self.now = time.time()
+        self.processes = subprocess.check_output(["ps", "ax", "-o", "command="], text=True)
+        self.build_active = subprocess.run(["pgrep", "-f", "[x]codebuild"],
+                                           stdout=subprocess.DEVNULL).returncode == 0
+
+    def stale(self, device, days):
+        directory = Path(device.get("dataPath") or self.devices_root / device["udid"])
+        if not directory.is_dir() or directory.is_symlink():
+            return False
+        return directory.stat().st_mtime < self.now - days * DAY
+
+    def protection(self, device, namespace, is_qa, is_job):
+        """Why an old, unowned-looking device must stay, or None to delete it."""
+        name, udid = device["name"], device["udid"]
+        if udid in self.processes or name in self.processes:
+            return "referenced by a live process"
+        if worker_lease_is_active(udid, self.now):
+            return "worker lease"
+        if is_qa and preview_is_owned(device, self.now, namespace):
+            return "preview lease or supervisor"
+        if is_job and self.build_active:
+            return "build activity on host"
+        return None
+
+    def verdict(self, device):
+        """None to delete; "" to pass over silently; otherwise the logged protection."""
+        name, _ = device["name"], device["udid"]  # both required, as simctl always reports them
+        namespace = preview_namespace(name, self.previews)
+        is_qa = namespace is not None
+        is_job = is_job_device(name, self.jobs)
+        if not (is_qa or is_job) or device["state"] != "Shutdown":
+            return ""
+        if not self.stale(device, self.qa_days if is_qa else self.job_days):
+            return ""
+        return self.protection(device, namespace, is_qa, is_job)
+
+
+def remove_old_simulators(qa_days, job_days, apply):
+    if not shutil.which("xcrun"):
+        log("xcrun unavailable; skipping simulators")
+        return 0
+    inventories = simulator_inventories()
+    sweep = SimulatorSweep(qa_days, job_days)
     count = 0
     for selector, inventory in inventories:
         for device in (d for group in inventory["devices"].values() for d in group):
-            name, udid = device["name"], device["udid"]
-            namespace = preview_namespace(name, previews)
-            is_qa = namespace is not None
-            is_job = is_job_device(name, jobs)
-            if not (is_qa or is_job) or device["state"] != "Shutdown":
+            verdict = sweep.verdict(device)
+            if verdict:
+                log(f"Protect {device['name']} ({device['udid']}): {verdict}")
+            if verdict is not None:
                 continue
-            directory = Path(device.get("dataPath") or devices_root / udid)
-            if not directory.is_dir() or directory.is_symlink():
-                continue
-            days = qa_days if is_qa else job_days
-            if directory.stat().st_mtime >= now - days * DAY:
-                continue
-            if udid in processes or name in processes:
-                log(f"Protect {name} ({udid}): referenced by a live process")
-                continue
-            if worker_lease_is_active(udid, now):
-                log(f"Protect {name} ({udid}): worker lease")
-                continue
-            if is_qa and preview_is_owned(device, now, namespace):
-                log(f"Protect {name} ({udid}): preview lease or supervisor")
-                continue
-            if is_job and build_active:
-                log(f"Protect {name} ({udid}): build activity on host")
-                continue
-            run(["xcrun", "simctl", *selector, "delete", udid], apply)
+            run(["xcrun", "simctl", *selector, "delete", device["udid"]], apply)
             count += 1
     return count
 
 
-def parse_arguments():
+def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--apply", action="store_true", help="perform eligible manual cleanup; Spotlight still requires storage pressure")
@@ -423,11 +472,6 @@ def parse_arguments():
     args = parser.parse_args()
     if sys.platform != "darwin":
         parser.error("macOS required")
-    validate_cleanup_args(parser, args)
-    return parser, args
-
-
-def validate_cleanup_args(parser, args):
     if (args.simulator_days < 2 or args.build_days < 7 or args.job_simulator_days < 2
             or args.trash_days < 30):
         parser.error("retention is too short")
@@ -437,18 +481,11 @@ def validate_cleanup_args(parser, args):
         parser.error("minimum free percentage must be 5–50")
     if not 1 <= args.lease_minutes <= 1440:
         parser.error("lease minutes must be 1–1440")
+    return parser, args
 
 
-def main():
-    parser, args = parse_arguments()
-    if args.lease_udid or args.release_udid:
-        try:
-            update_worker_lease(args.lease_udid or args.release_udid, args.lease_minutes,
-                                bool(args.release_udid))
-        except ValueError as error:
-            parser.error(str(error))
-        return 0
-    apply = args.apply or args.watch
+def storage_state(args, apply):
+    """Free space, pressure floor, watchdog target and whether a watch run is healthy."""
     target = None
     healthy_watch = False
     if args.watch:
@@ -463,8 +500,11 @@ def main():
         floor, _ = watch_limits(total, args.min_free_gb, args.min_free_percent)
         log(f"Development cleanup: {'apply' if apply else 'dry run'}; "
             f"{available:.1f} GiB free; pressure floor {floor} GiB")
-    pressure = available < floor
+    return available, floor, target, healthy_watch
 
+
+def cleanup_stages(args, apply, target, pressure):
+    """Least disruptive first; pressure adds the Spotlight and recent-build fallbacks."""
     def simulators():
         count = remove_old_simulators(args.simulator_days, args.job_simulator_days, apply)
         log(f"Unowned shutdown QA and CI/CD simulators: {count}")
@@ -603,7 +643,11 @@ def main():
             ("Spotlight", lambda: reset_large_spotlight_index(apply)),
             ("recent DerivedData", lambda: derived_data(1, "Fallback")),
         ])
+    return stages
 
+
+def run_stages_locked(stages, healthy_watch, target):
+    """Stage failures, or None when another cleanup holds the lock."""
     lock_dir = HOME / ".local/state/morpheus-factory"
     lock_dir.mkdir(parents=True, exist_ok=True)
     with (lock_dir / "storage-watchdog.lock").open("a+") as lock:
@@ -611,13 +655,26 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             log("Another cleanup is running; skipping")
-            return 0
-        failures = execute_stages(stages[:1] if healthy_watch else stages,
-                                  None if healthy_watch else target, lambda: space_gib()[0])
-    return report_cleanup_result(failures, available, apply and pressure, floor)
+            return None
+        return execute_stages(stages[:1] if healthy_watch else stages,
+                              None if healthy_watch else target, lambda: space_gib()[0])
 
 
-def report_cleanup_result(failures, available, pressure_applied, floor):
+def main():
+    parser, args = parse_args()
+    if args.lease_udid or args.release_udid:
+        try:
+            update_worker_lease(args.lease_udid or args.release_udid, args.lease_minutes,
+                                bool(args.release_udid))
+        except ValueError as error:
+            parser.error(str(error))
+        return 0
+    apply = args.apply or args.watch
+    available, floor, target, healthy_watch = storage_state(args, apply)
+    pressure = available < floor
+    failures = run_stages_locked(cleanup_stages(args, apply, target, pressure), healthy_watch, target)
+    if failures is None:
+        return 0
     if failures:
         for failure in failures:
             log("ERROR " + failure)
@@ -625,10 +682,9 @@ def report_cleanup_result(failures, available, pressure_applied, floor):
     ending_free, _ = space_gib()
     log(f"Cleanup result: {ending_free:.1f} GiB free "
         f"({ending_free - available:+.1f} GiB during this run)")
-    if pressure_applied:
-        if ending_free < floor:
-            log("ERROR Free space remains below the reserve after eligible cleanup")
-            return 2
+    if apply and pressure and ending_free < floor:
+        log("ERROR Free space remains below the reserve after eligible cleanup")
+        return 2
     log("Cleanup complete")
     return 0
 

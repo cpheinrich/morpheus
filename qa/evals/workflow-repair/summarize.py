@@ -19,6 +19,52 @@ def read_private(path):
         path.chmod(previous)
 
 
+def tally_trace(values, trace_path):
+    trace = read_private(trace_path)
+    if trace is None:
+        receipt = read_private(trace_path.parent / "receipt.json")
+        if not receipt or receipt.get("termination") != "not-started":
+            values["unknownUsage"] += 1
+        return
+    values["calls"] += 1
+    usage = trace.get("usage", [])
+    if not usage:
+        values["unknownUsage"] += 1
+    for usage_row in usage:
+        if not all(type(usage_row.get(k)) is int for k in ["input_tokens", "output_tokens"]):
+            values["unknownUsage"] += 1
+            continue
+        values["inputTokens"] += usage_row["input_tokens"]
+        values["outputTokens"] += usage_row["output_tokens"]
+
+
+def tally_attempts(values, root, row):
+    """Elapsed time and token usage for the initial attempt and any continuation, including manager calls."""
+    for suffix, score_key in [("", "initial"), ("-continuation", "continuation")]:
+        attempt = row.get(score_key)
+        episode = root / "episodes" / (row["id"] + suffix)
+        if attempt is None and suffix and not episode.exists():
+            continue
+        elapsed = ((attempt or {}).get("metadata") or {}).get("elapsedSeconds")
+        values["unknownElapsed"] += int(elapsed is None)
+        values["seconds"] += elapsed or 0
+        traces = [episode / "trace.json"]
+        manager = episode / "manager" / "trace.json"
+        if (not suffix and row["arm"] in ("P", "F")) or manager.is_file():
+            traces.append(manager)
+        for trace_path in traces:
+            tally_trace(values, trace_path)
+
+
+def paired_outcomes(cases):
+    paired = {"bothPass": 0, "bothFail": 0, "FOnly": 0, "AOnly": 0}
+    for values in cases.values():
+        if "A" in values and "F" in values:
+            paired[("bothPass" if values["A"] else "FOnly") if values["F"] else
+                   ("AOnly" if values["A"] else "bothFail")] += 1
+    return paired
+
+
 def summarize(root):
     root = Path(root)
     rows = read_private(root / "scores-locked.json")
@@ -36,41 +82,8 @@ def summarize(root):
         values["handoffs"] += int(bool(final and final["handoffMaterialPresent"]))
         if not row["repeat"]:
             cases.setdefault(row["case"], {})[row["arm"]] = bool(final and final["repairPassed"])
-        for suffix, score_key in [("", "initial"), ("-continuation", "continuation")]:
-            attempt = row.get(score_key)
-            episode = root / "episodes" / (row["id"] + suffix)
-            if attempt is None and suffix and not episode.exists():
-                continue
-            elapsed = ((attempt or {}).get("metadata") or {}).get("elapsedSeconds")
-            values["unknownElapsed"] += int(elapsed is None)
-            values["seconds"] += elapsed or 0
-            traces = [episode / "trace.json"]
-            manager = episode / "manager" / "trace.json"
-            if (not suffix and row["arm"] in ("P", "F")) or manager.is_file():
-                traces.append(manager)
-            for trace_path in traces:
-                trace = read_private(trace_path)
-                if trace is None:
-                    receipt = read_private(trace_path.parent / "receipt.json")
-                    if not receipt or receipt.get("termination") != "not-started":
-                        values["unknownUsage"] += 1
-                    continue
-                values["calls"] += 1
-                usage = trace.get("usage", [])
-                if not usage:
-                    values["unknownUsage"] += 1
-                for usage_row in usage:
-                    if not all(type(usage_row.get(k)) is int for k in ["input_tokens", "output_tokens"]):
-                        values["unknownUsage"] += 1
-                        continue
-                    values["inputTokens"] += usage_row["input_tokens"]
-                    values["outputTokens"] += usage_row["output_tokens"]
-    paired = {"bothPass": 0, "bothFail": 0, "FOnly": 0, "AOnly": 0}
-    for values in cases.values():
-        if "A" in values and "F" in values:
-            paired[("bothPass" if values["A"] else "FOnly") if values["F"] else
-                   ("AOnly" if values["A"] else "bothFail")] += 1
-    return {"arms": arms, "paired": paired,
+        tally_attempts(values, root, row)
+    return {"arms": arms, "paired": paired_outcomes(cases),
             "costComparisonComplete": all(v["unknownUsage"] == 0 for v in arms.values()),
             "limits": "Descriptive screening on six incident-inspired cases; unknown usage is excluded from token sums, not priced at zero."}
 

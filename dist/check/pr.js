@@ -127,11 +127,74 @@ export function hasSection(body, heading) {
 export async function checkPr(ctx) {
     const findings = [];
     const { body, branch, changedFiles, productDir } = ctx;
-    // Dependabot cannot write a human PR body or claim a roadmap item. Waive
-    // those authoring conventions only when both independent facts agree: the
-    // exact GitHub App login opened it, and every changed file is a recognized
-    // dependency manifest or lockfile. A bot-named account or a source change
-    // gets the normal checks plus an explicit scope failure.
+    const botWaiver = appWaiver(ctx, findings);
+    if (botWaiver)
+        return botWaiver;
+    if (!hasNoSubstantiveChange(changedFiles)) {
+        findings.push(...(ctx.agentReview ?? [{ level: "error", rule: "agent-review", message: "Independent review evidence was not verified." }]));
+    }
+    const source = changedFiles.filter((f) => SOURCE.test(f) && !TEST.test(f));
+    const tests = changedFiles.filter((f) => TEST.test(f));
+    const docs = changedFiles.filter((f) => DOCS.test(f) && !GENERATED.test(f));
+    findings.push(...testsWithSource(body, source, tests), ...bodySections(body));
+    findings.push(...checkVisualEvidence({
+        body,
+        changedFiles,
+        // Direct callers predating the policy are legacy manifests, not proof
+        // that evidence is disabled. The CLI supplies an explicit invalid state
+        // when morpheus.json itself cannot be read.
+        policy: ctx.visualEvidence ?? { state: "absent" },
+    }));
+    // A branch naming a roadmap item must move that item to review.
+    //
+    // Both failures below name the command that fixes them. The rule against
+    // hand-naming was already documented when it broke three times — what was
+    // missing was the recovery, at the moment someone is looking at the error.
+    const id = roadmapIdFromBranch(branch);
+    findings.push(...reviewWaiver(body), ...claimedWork(id, branch, changedFiles, body));
+    if (!isRecordsOnly(changedFiles))
+        findings.push(...(await roadmapLinkage(ctx, id, branch, productDir)));
+    // The freshness protocol, from the outside. A warning rather than an error:
+    // a trunk that moved mid-branch is nobody's mistake, and blocking on it
+    // would fail PRs for something outside the author's control at write time.
+    // The local gate is where refusal belongs; this is where it becomes visible
+    // to whoever reads the check.
+    const staleContext = (ctx.trunkChanges ?? []).filter((f) => CANONICAL.test(f));
+    if (staleContext.length) {
+        findings.push({
+            level: "warning",
+            rule: "context-drift",
+            message: `Canonical records changed on the base branch while this one was open: ` +
+                `${staleContext.join(", ")}. Merge the base and re-read them — ` +
+                `\`morpheus context refresh\` prints what landed.`,
+        });
+    }
+    // Behaviour changes should land with the docs that describe them.
+    const changedPublicApi = source.some((f) => /\/index\.ts$/.test(f));
+    if (changedPublicApi && docs.length === 0) {
+        findings.push({
+            level: "warning",
+            rule: "docs-with-api",
+            message: "A public entry point changed but no documentation did.",
+        });
+    }
+    return findings;
+}
+/**
+ * Dependabot cannot write a human PR body or claim a roadmap item. Waive
+ * those authoring conventions only when both independent facts agree: the
+ * exact GitHub App login opened it, and every changed file is a recognized
+ * dependency manifest or lockfile. A bot-named account or a source change
+ * gets the normal checks plus an explicit scope failure.
+ *
+ * The private Morpheus Security App gets the same narrow authoring waiver,
+ * but only for a marked dependency-only PR. The marker prevents an App PR
+ * created for another purpose from inheriting this exception.
+ *
+ * Returns the whole result when a waiver applies; otherwise adds any scope failure.
+ */
+function appWaiver(ctx, findings) {
+    const { body, changedFiles } = ctx;
     if (ctx.author === DEPENDABOT_LOGIN) {
         if (isDependencyOnly(changedFiles)) {
             return [
@@ -148,9 +211,6 @@ export async function checkPr(ctx) {
             message: "Dependabot changed a path outside the dependency manifest allowlist; refusing the bot waiver.",
         });
     }
-    // The private Morpheus Security App gets the same narrow authoring waiver,
-    // but only for a marked dependency-only PR. The marker prevents an App PR
-    // created for another purpose from inheriting this exception.
     if (ctx.author === MORPHEUS_SECURITY_LOGIN) {
         if (hasSecurityMarker(body) && isSecurityDependencyOnly(changedFiles)) {
             return [{
@@ -172,33 +232,34 @@ export async function checkPr(ctx) {
             message: "Morpheus Security PR is unmarked or changes a path outside the dependency manifest allowlist.",
         });
     }
-    if (!hasNoSubstantiveChange(changedFiles)) {
-        findings.push(...(ctx.agentReview ?? [{ level: "error", rule: "agent-review", message: "Independent review evidence was not verified." }]));
-    }
-    const source = changedFiles.filter((f) => SOURCE.test(f) && !TEST.test(f));
-    const tests = changedFiles.filter((f) => TEST.test(f));
-    const docs = changedFiles.filter((f) => DOCS.test(f) && !GENERATED.test(f));
-    // Tests must accompany source changes, unless explicitly justified.
+    return undefined;
+}
+/** Tests must accompany source changes, unless explicitly justified. */
+function testsWithSource(body, source, tests) {
     const testsReason = waiverReason(body, "skip-tests");
     const testsWaived = testsReason !== null && isRealReason(testsReason);
     if (source.length > 0 && tests.length === 0 && !testsWaived) {
-        findings.push({
-            level: "error",
-            rule: "tests-with-source",
-            message: `${source.length} source file(s) changed with no test changes. Add tests, ` +
-                `or put "skip-tests: <reason>" in the PR body.` +
-                (testsReason !== null
-                    ? `\n    "${testsReason}" is not a reason — say why these changes cannot be tested.`
-                    : ""),
-        });
+        return [{
+                level: "error",
+                rule: "tests-with-source",
+                message: `${source.length} source file(s) changed with no test changes. Add tests, ` +
+                    `or put "skip-tests: <reason>" in the PR body.` +
+                    (testsReason !== null
+                        ? `\n    "${testsReason}" is not a reason — say why these changes cannot be tested.`
+                        : ""),
+            }];
     }
     else if (source.length > 0 && tests.length === 0 && testsWaived) {
-        findings.push({
-            level: "waived",
-            rule: "tests-with-source",
-            message: `tests waived — "${testsReason}"`,
-        });
+        return [{
+                level: "waived",
+                rule: "tests-with-source",
+                message: `tests waived — "${testsReason}"`,
+            }];
     }
+    return [];
+}
+function bodySections(body) {
+    const findings = [];
     // A test plan is how a human knows what to verify on the preview.
     if (!hasSection(body, "Test plan")) {
         findings.push({
@@ -216,38 +277,22 @@ export async function checkPr(ctx) {
             message: 'No "## Open questions" section. Write "None" explicitly rather than omitting it.',
         });
     }
-    findings.push(...checkVisualEvidence({
-        body,
-        changedFiles,
-        // Direct callers predating the policy are legacy manifests, not proof
-        // that evidence is disabled. The CLI supplies an explicit invalid state
-        // when morpheus.json itself cannot be read.
-        policy: ctx.visualEvidence ?? { state: "absent" },
-    }));
-    // A branch naming a roadmap item must move that item to review.
-    //
-    // Both failures below name the command that fixes them. The rule against
-    // hand-naming was already documented when it broke three times — what was
-    // missing was the recovery, at the moment someone is looking at the error.
-    const id = roadmapIdFromBranch(branch);
-    // Merging a branch that stakes an id marks that item shipped. So a PR on one
-    // must have done that item's work — and a PR that changes only records and
-    // board bookkeeping demonstrably has not.
-    //
-    // Waivable, because a few items genuinely deliver a decision rather than
-    // code: MO-003's whole outcome was "do not publish, use a git dependency",
-    // recorded in decisions.md. Stating the reason is cheap; the default must be
-    // refusal, since the cost of a wrong shipped is that nobody looks again.
-    // The third waiver, reported here for the same reason the other two are:
-    // it is honoured by `review delivery` (a required check downstream), and a
-    // waiver the conventions reader never sees is a waiver swallowed. Validity
-    // is checked here too, so a non-reason surfaces before the delivery job
-    // refuses it. Read from visible prose — a documented example must not waive.
-    //
-    // It waives the *legacy delivery* check only. Read as "agent review waived",
-    // the line was taken for the mechanism CI recognises, and an agent told its
-    // human so while the independent-review rule below went on failing (#248).
-    // The message therefore names what it does not cover.
+    return findings;
+}
+/**
+ * The third waiver, reported here for the same reason the other two are:
+ * it is honoured by `review delivery` (a required check downstream), and a
+ * waiver the conventions reader never sees is a waiver swallowed. Validity
+ * is checked here too, so a non-reason surfaces before the delivery job
+ * refuses it. Read from visible prose — a documented example must not waive.
+ *
+ * It waives the *legacy delivery* check only. Read as "agent review waived",
+ * the line was taken for the mechanism CI recognises, and an agent told its
+ * human so while the independent-review rule below went on failing (#248).
+ * The message therefore names what it does not cover.
+ */
+function reviewWaiver(body) {
+    const findings = [];
     const reviewReason = waiverReason(visibleProse(body), "review-waived");
     if (reviewReason !== null && isRealReason(reviewReason)) {
         findings.push({
@@ -265,6 +310,20 @@ export async function checkPr(ctx) {
                 `Say why merging without the review is right.`,
         });
     }
+    return findings;
+}
+/**
+ * Merging a branch that stakes an id marks that item shipped. So a PR on one
+ * must have done that item's work — and a PR that changes only records and
+ * board bookkeeping demonstrably has not.
+ *
+ * Waivable, because a few items genuinely deliver a decision rather than
+ * code: MO-003's whole outcome was "do not publish, use a git dependency",
+ * recorded in decisions.md. Stating the reason is cheap; the default must be
+ * refusal, since the cost of a wrong shipped is that nobody looks again.
+ */
+function claimedWork(id, branch, changedFiles, body) {
+    const findings = [];
     const recordsReason = waiverReason(body, "records-only");
     const recordsWaived = recordsReason !== null && isRealReason(recordsReason);
     if (id && hasNoSubstantiveChange(changedFiles)) {
@@ -289,11 +348,13 @@ export async function checkPr(ctx) {
             });
         }
     }
-    if (isRecordsOnly(changedFiles)) {
-        // Nothing to claim, so nothing more to require — the borrowing case is
-        // already covered above.
-    }
-    else if (!id) {
+    return findings;
+}
+/** A branch must stake an existing item that closes (or keeps open) its issues and is in review. */
+async function roadmapLinkage(ctx, id, branch, productDir) {
+    const findings = [];
+    const body = ctx.body;
+    if (!id) {
         findings.push({
             level: "warning",
             rule: "branch-name",
@@ -364,30 +425,6 @@ export async function checkPr(ctx) {
                 });
             }
         }
-    }
-    // The freshness protocol, from the outside. A warning rather than an error:
-    // a trunk that moved mid-branch is nobody's mistake, and blocking on it
-    // would fail PRs for something outside the author's control at write time.
-    // The local gate is where refusal belongs; this is where it becomes visible
-    // to whoever reads the check.
-    const staleContext = (ctx.trunkChanges ?? []).filter((f) => CANONICAL.test(f));
-    if (staleContext.length) {
-        findings.push({
-            level: "warning",
-            rule: "context-drift",
-            message: `Canonical records changed on the base branch while this one was open: ` +
-                `${staleContext.join(", ")}. Merge the base and re-read them — ` +
-                `\`morpheus context refresh\` prints what landed.`,
-        });
-    }
-    // Behaviour changes should land with the docs that describe them.
-    const changedPublicApi = source.some((f) => /\/index\.ts$/.test(f));
-    if (changedPublicApi && docs.length === 0) {
-        findings.push({
-            level: "warning",
-            rule: "docs-with-api",
-            message: "A public entry point changed but no documentation did.",
-        });
     }
     return findings;
 }

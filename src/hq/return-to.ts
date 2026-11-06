@@ -98,7 +98,11 @@ export function safeReturnTo(
   if (!raw.startsWith("/") || raw.startsWith("//")) return fallback;
   if (raw.includes("\\") || CONTROL_OR_SPACE.test(raw)) return fallback;
 
-  const path = trimTrailingSlashes(raw.split(/[?#]/)[0] ?? "");
+  return pathAllowed(trimTrailingSlashes(raw.split(/[?#]/)[0] ?? ""), base, deny) ? raw : fallback;
+}
+
+/** Whether a same-origin path stays under `base`, has no dot-segment, and is not a denied (sign-in) subtree. */
+function pathAllowed(path: string, base: string, deny: string[]): boolean {
 
   // A dot-segment makes the prefix check meaningless, because the browser
   // resolves the path *after* this function has approved it: `/hq/../admin`
@@ -109,19 +113,17 @@ export function safeReturnTo(
   // Rejected rather than normalised: normalising changes what the caller gets
   // back, and a redirect target containing `..` is a hand-written URL or an
   // attack, never something a working app produced.
-  if (path.split("/").some(isDotSegment)) return fallback;
+  if (path.split("/").some(isDotSegment)) return false;
 
   // `/hqevil` must not pass a check for `/hq`, so the separator is required.
   // A root base admits every path — the prefix test cannot express that, since
   // `startsWith("//")` was already rejected above and would silently reject
   // everything instead.
-  if (base !== "/" && path !== base && !path.startsWith(`${base}/`)) return fallback;
+  if (base !== "/" && path !== base && !path.startsWith(`${base}/`)) return false;
 
   // Returning to the sign-in page bounces the visitor straight back to it.
   // Matched as a subtree rather than exactly: a sign-in flow with sub-routes
   // — `/hq/sign-in/verify` — bounces exactly the same way, and an exact match
   // would cover the parent while silently missing every step under it.
-  if (deny.some((denied) => path === denied || path.startsWith(`${denied}/`))) return fallback;
-
-  return raw;
+  return !deny.some((denied) => path === denied || path.startsWith(`${denied}/`));
 }

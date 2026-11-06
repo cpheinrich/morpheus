@@ -13,6 +13,22 @@ function normalizedRemote(remote) {
     const ssh = trimmed.match(/^git@github\.com:([\w.-]+\/[\w.-]+)$/);
     return ssh?.[1] ?? null;
 }
+/** A tracked meeting note's path and filename from one `ls-tree -z` line; null for README or non-Markdown; throws on anything unexpected. */
+function meetingNotePath(line, prefix) {
+    const tab = line.indexOf("\t");
+    const entry = line.slice(0, tab);
+    const path = line.slice(tab + 1);
+    if (!path.endsWith(".md") || /\/readme\.md$/i.test(path))
+        return null;
+    const filename = path.slice(prefix.length);
+    if (tab < 0 ||
+        !entry.startsWith("100644 blob ") ||
+        !path.startsWith(prefix) ||
+        !/^[\w.-]+\.md$/.test(filename)) {
+        throw new Error(`Unexpected meeting path/type: ${path}`);
+    }
+    return { path, filename };
+}
 /** Read immutable Git objects; uncommitted files never acquire a committed source label. */
 export async function readCanonicalRecords(source, ref, config) {
     if (!/^[\w./-]+$/.test(ref) || ref.startsWith("-") || ref.includes("..")) {
@@ -35,18 +51,10 @@ export async function readCanonicalRecords(source, ref, config) {
         for (const line of git("ls-tree", "-rz", revision, "--", config.canonical.directory)
             .split("\0")
             .filter(Boolean)) {
-            const tab = line.indexOf("\t");
-            const entry = line.slice(0, tab);
-            const path = line.slice(tab + 1);
-            if (!path.endsWith(".md") || /\/readme\.md$/i.test(path))
+            const note = meetingNotePath(line, prefix);
+            if (!note)
                 continue;
-            const filename = path.slice(prefix.length);
-            if (tab < 0 ||
-                !entry.startsWith("100644 blob ") ||
-                !path.startsWith(prefix) ||
-                !/^[\w.-]+\.md$/.test(filename)) {
-                throw new Error(`Unexpected meeting path/type: ${path}`);
-            }
+            const { path, filename } = note;
             const raw = git("show", `${revision}:${path}`);
             raws.set(filename, { raw, path });
             await writeFile(join(directory, filename), raw);

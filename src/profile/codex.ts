@@ -98,13 +98,7 @@ export class CodexTranscript {
   push(line: string): void {
     this.lineNo++;
     if (line.trim() === "") return;
-    let o: Json | null;
-    try {
-      o = obj(JSON.parse(line));
-    } catch {
-      this.issues.push({ file: this.options.file, line: this.lineNo, message: "unparseable JSON" });
-      return;
-    }
+    const o = this.parse(line);
     if (!o) return;
     const at = typeof o.timestamp === "string" ? Date.parse(o.timestamp) : NaN;
     if (!Number.isNaN(at)) this.timestamps.push(at);
@@ -115,17 +109,31 @@ export class CodexTranscript {
         this.meta ??= payload;
         break;
       case "turn_context":
-        this.model = str(payload.model) ?? this.model;
-        this.effort = str(payload.effort) ?? str(obj(obj(payload.collaboration_mode)?.settings)?.reasoning_effort) ?? this.effort;
-        this.turnCwd ??= str(payload.cwd);
-        if (!this.models.includes(this.model)) this.models.push(this.model);
-        if (this.effort && !this.efforts.includes(this.effort)) this.efforts.push(this.effort);
+        this.turnContext(payload);
         break;
       case "event_msg":
         if (payload.type === "token_count") this.tokenCount(payload);
         else if (payload.type === "item_completed") this.item(payload, Number.isNaN(at) ? null : at);
         break;
     }
+  }
+
+  /** The line as a JSON object; an unparseable line is recorded as an issue, a non-object skipped. */
+  private parse(line: string): Json | null {
+    try {
+      return obj(JSON.parse(line));
+    } catch {
+      this.issues.push({ file: this.options.file, line: this.lineNo, message: "unparseable JSON" });
+      return null;
+    }
+  }
+
+  private turnContext(payload: Json): void {
+    this.model = str(payload.model) ?? this.model;
+    this.effort = str(payload.effort) ?? str(obj(obj(payload.collaboration_mode)?.settings)?.reasoning_effort) ?? this.effort;
+    this.turnCwd ??= str(payload.cwd);
+    if (!this.models.includes(this.model)) this.models.push(this.model);
+    if (this.effort && !this.efforts.includes(this.effort)) this.efforts.push(this.effort);
   }
 
   /**
@@ -156,45 +164,9 @@ export class CodexTranscript {
     if (!item) return;
     const completed = typeof payload.completed_at_ms === "number" ? payload.completed_at_ms : lineAt;
     if (completed === null) return;
-    let tool: string;
-    let phase: Phase;
-    let command: string | null = null;
-    let duration: number | null = durationMs(item.duration);
-    switch (item.type) {
-      case "CommandExecution": {
-        const raw = shellCommand(item.command);
-        tool = "exec_command";
-        phase = raw ? classifyCommand(raw) : "other";
-        command = raw ? truncateCommand(raw) : null;
-        break;
-      }
-      case "McpToolCall":
-        tool = `mcp__${str(item.server) ?? "unknown"}__${str(item.tool) ?? "unknown"}`;
-        phase = classifyTool(tool, null);
-        break;
-      case "DynamicToolCall":
-        tool = `mcp__${str(item.namespace) ?? "dynamic"}__${str(item.tool) ?? "unknown"}`;
-        phase = classifyTool(tool, null);
-        break;
-      case "FileChange":
-        tool = "FileChange";
-        phase = "edit";
-        break;
-      case "Extension":
-        tool = str(item.kind) === "web.search" ? "WebSearch" : `extension:${str(item.kind) ?? "unknown"}`;
-        phase = classifyTool(tool, null);
-        duration ??= typeof item.durationMs === "number" ? item.durationMs : null;
-        break;
-      case "CollabAgentToolCall": {
-        const name = str(item.tool) ?? "unknown";
-        tool = `collab:${name}`;
-        phase = /wait/.test(name) ? "wait" : "subagent";
-        if (duration === null && typeof payload.started_at_ms === "number") duration = Math.max(0, completed - payload.started_at_ms);
-        break;
-      }
-      default:
-        return;
-    }
+    const call = toolCall(item, payload, completed);
+    if (!call) return;
+    const { tool, phase, command, duration } = call;
     const start = duration === null ? completed : completed - duration;
     if (credible(duration)) this.busy.push({ start, end: completed });
     this.spans.push({
@@ -219,13 +191,7 @@ export class CodexTranscript {
       if (this.lineNo > 0) this.issues.push({ file, line: null, message: "no session_meta with an id" });
       return { session: null, spans: [], issues: this.issues };
     }
-    const source = obj(meta.source);
-    const subagent = obj(source?.subagent);
-    const spawn = obj(subagent?.thread_spawn);
-    const parentSessionId = str(meta.parent_thread_id) ?? str(spawn?.parent_thread_id) ?? null;
-    const isSidechain = Boolean(subagent) || meta.thread_source === "subagent";
-    const agentType = str(meta.agent_nickname) ?? str(meta.agent_path) ?? str(subagent?.other) ?? (spawn ? "thread_spawn" : null);
-    const role: Role = !isSidechain ? "main" : REVIEW.test(`${agentType ?? ""} ${str(meta.agent_path) ?? ""}`) ? "reviewer" : "subagent";
+    const { parentSessionId, isSidechain, agentType, role } = lineage(meta);
     const cwd = str(meta.cwd) ?? this.turnCwd;
     const repo = deriveRepo(cwd, this.options.roots, this.options.home);
     const branch = str(obj(meta.git)?.branch);
@@ -263,6 +229,59 @@ export class CodexTranscript {
     };
     return { session, spans, issues: this.issues };
   }
+}
+
+/** Parent thread, sidechain flag, agent type and role from a session's meta. */
+function lineage(meta: Json): { parentSessionId: string | null; isSidechain: boolean; agentType: string | null; role: Role } {
+  const source = obj(meta.source);
+  const subagent = obj(source?.subagent);
+  const spawn = obj(subagent?.thread_spawn);
+  const parentSessionId = str(meta.parent_thread_id) ?? str(spawn?.parent_thread_id) ?? null;
+  const isSidechain = Boolean(subagent) || meta.thread_source === "subagent";
+  const agentType = str(meta.agent_nickname) ?? str(meta.agent_path) ?? str(subagent?.other) ?? (spawn ? "thread_spawn" : null);
+  const role: Role = !isSidechain ? "main" : REVIEW.test(`${agentType ?? ""} ${str(meta.agent_path) ?? ""}`) ? "reviewer" : "subagent";
+  return { parentSessionId, isSidechain, agentType, role };
+}
+
+type ToolCall = { tool: string; phase: Phase; command: string | null; duration: number | null };
+
+/** A completed item as a tool span, or null for an item kind that is not a tool call. */
+function toolCall(item: Json, payload: Json, completed: number): ToolCall | null {
+  const duration: number | null = durationMs(item.duration);
+  switch (item.type) {
+    case "CommandExecution": {
+      const raw = shellCommand(item.command);
+      return { tool: "exec_command", phase: raw ? classifyCommand(raw) : "other", command: raw ? truncateCommand(raw) : null, duration };
+    }
+    case "McpToolCall":
+      return namedTool(`mcp__${str(item.server) ?? "unknown"}__${str(item.tool) ?? "unknown"}`, duration);
+    case "DynamicToolCall":
+      return namedTool(`mcp__${str(item.namespace) ?? "dynamic"}__${str(item.tool) ?? "unknown"}`, duration);
+    case "FileChange":
+      return { tool: "FileChange", phase: "edit", command: null, duration };
+    case "Extension":
+      return extensionCall(item, duration);
+    case "CollabAgentToolCall":
+      return collabCall(item, payload, completed, duration);
+    default:
+      return null;
+  }
+}
+
+function extensionCall(item: Json, duration: number | null): ToolCall {
+  const tool = str(item.kind) === "web.search" ? "WebSearch" : `extension:${str(item.kind) ?? "unknown"}`;
+  return namedTool(tool, duration ?? (typeof item.durationMs === "number" ? item.durationMs : null));
+}
+
+/** A collaboration call; without its own duration it is measured from the payload's start. */
+function collabCall(item: Json, payload: Json, completed: number, duration: number | null): ToolCall {
+  const name = str(item.tool) ?? "unknown";
+  const measured = duration === null && typeof payload.started_at_ms === "number" ? Math.max(0, completed - payload.started_at_ms) : duration;
+  return { tool: `collab:${name}`, phase: /wait/.test(name) ? "wait" : "subagent", command: null, duration: measured };
+}
+
+function namedTool(tool: string, duration: number | null): ToolCall {
+  return { tool, phase: classifyTool(tool, null), command: null, duration };
 }
 
 export function parseCodexTranscript(text: string, options: CodexParseOptions): ParsedSession {

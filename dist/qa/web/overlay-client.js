@@ -125,25 +125,43 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     var identity = JSON.stringify([kind, describe(root).attributes, heading ? semanticText(heading) : ""]);
     return { root: root, kind: kind, identity: identity.slice(0, 2000) };
   }
-  function captureContext(el, createdAt) {
-    var win = el.ownerDocument.defaultView, doc = el.ownerDocument, view = currentView(doc), ancestors = [], scroll = [], state = [], node = el.parentElement;
+  function contextAncestors(el, view) {
+    var ancestors = [], node = el.parentElement;
     while (node && ancestors.length < 6) { ancestors.push(describe(node)); if (node === view.root) break; node = node.parentElement; }
-    node = el;
+    return ancestors;
+  }
+  function scrollPositions(el) {
+    var scroll = [], node = el;
     while (node && scroll.length < 8) {
       if (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth) scroll.push({ selector: short(cssPath(node)), x: node.scrollLeft, y: node.scrollTop });
       node = node.parentElement;
     }
+    return scroll;
+  }
+  function controlValue(c) {
+    if (c.matches("select")) return c.selectedOptions && c.selectedOptions[0] ? c.selectedOptions[0].textContent : "";
+    if (c.matches("video")) return (c.paused ? "paused" : "playing") + " at " + Math.floor(c.currentTime) + "s";
+    if (c.matches("input")) return "checked";
+    return ["aria-selected", "aria-pressed", "aria-expanded", "aria-checked", "aria-busy"].filter(function (a) { return c.hasAttribute(a); }).map(function (a) { return a + "=" + c.getAttribute(a); }).join(" ") || semanticText(c);
+  }
+  function stateEntry(c) {
+    var kind = c.tagName.toLowerCase(), label = c.getAttribute("aria-label") || c.getAttribute("name") || semanticText(c), value = "";
+    if (c.matches("input[type=search]")) { kind = "search"; value = c.value; }
+    else value = controlValue(c);
+    return { kind: kind, label: short(label), value: short(value) };
+  }
+  function viewState(view) {
+    var state = [];
     var candidates = view.root.querySelectorAll('[aria-selected=true],[aria-pressed=true],[aria-expanded],[aria-checked],input:checked,select,input[type=search],[role=tab][aria-selected=true],[aria-busy=true],[role=alert],video');
     for (var i = 0; i < candidates.length && state.length < 15; i++) {
       var c = candidates[i]; if (!visible(c)) continue;
-      var kind = c.tagName.toLowerCase(), label = c.getAttribute("aria-label") || c.getAttribute("name") || semanticText(c), value = "";
-      if (c.matches("input[type=search]")) { kind = "search"; value = c.value; }
-      else if (c.matches("select")) value = c.selectedOptions && c.selectedOptions[0] ? c.selectedOptions[0].textContent : "";
-      else if (c.matches("video")) value = (c.paused ? "paused" : "playing") + " at " + Math.floor(c.currentTime) + "s";
-      else if (c.matches("input")) value = "checked";
-      else value = ["aria-selected", "aria-pressed", "aria-expanded", "aria-checked", "aria-busy"].filter(function (a) { return c.hasAttribute(a); }).map(function (a) { return a + "=" + c.getAttribute(a); }).join(" ") || semanticText(c);
-      state.push({ kind: kind, label: short(label), value: short(value) });
+      state.push(stateEntry(c));
     }
+    return state;
+  }
+  function captureContext(el, createdAt) {
+    var win = el.ownerDocument.defaultView, doc = el.ownerDocument, view = currentView(doc);
+    var ancestors = contextAncestors(el, view), scroll = scrollPositions(el), state = viewState(view);
     state.push({ kind: "theme", label: "color-scheme", value: short(win.getComputedStyle(doc.documentElement).colorScheme) });
     return { version: 1, scope: el === doc.body || el === doc.documentElement ? "page" : "element", capturedAt: createdAt, route: routeFor(win), target: describe(el), ancestors: ancestors, view: { kind: view.kind, identity: view.identity, root: describe(view.root) }, state: state, scroll: scroll, viewport: { width: win.innerWidth, height: win.innerHeight, scrollX: win.scrollX, scrollY: win.scrollY }, limitations: ["Bounded semantic HTML; no application stores or hidden/control values.", "Embedded frames, shadow DOM and media pixels are not captured."] };
   }
@@ -181,9 +199,11 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
       }
       style.setProperty("animation", "none", "important"); style.setProperty("transition", "none", "important");
     }
-    function copy(node) {
-      if (node.nodeType === 3) return snapshotDoc.createTextNode(node.textContent);
-      if (!isElement(node) || node === ui || node.matches("script,style,link,meta,base,noscript,animate,animateTransform,animateMotion,set")) return null;
+    function skipped(node) {
+      return !isElement(node) || node === ui || node.matches("script,style,link,meta,base,noscript,animate,animateTransform,animateMotion,set");
+    }
+    // The node's box and computed style, or null when it cannot paint in this viewport.
+    function paintable(node) {
       if (performance.now() > deadline) throw new Error("Viewport freeze exceeded 120 ms work limit");
       var r = node.getBoundingClientRect();
       // An offscreen subtree cannot paint here unless overflow permits a visible descendant.
@@ -192,13 +212,18 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
       var cs = win.getComputedStyle(node);
       if (cs.display === "none" || cs.visibility === "hidden") return null;
       if (++count > 4000) throw new Error("Visible DOM exceeds capture limit");
-      // Keep offscreen boxes in normal flow even when overflow clips their children.
-      // Dropping a preceding diagram/scroller moves later text upward before the
-      // root's original scroll transform, producing an otherwise valid blank JPEG.
-      var omission = node.matches("iframe,object,embed") && !off ? "Embedded media omitted" : node.shadowRoot && !off ? "Shadow DOM omitted" : null;
-      var clone;
-      if (node.matches("img,canvas,video") && !off) {
-        try {
+      return { r: r, off: off, cs: cs };
+    }
+    // Keep offscreen boxes in normal flow even when overflow clips their children.
+    // Dropping a preceding diagram/scroller moves later text upward before the
+    // root's original scroll transform, producing an otherwise valid blank JPEG.
+    function omissionFor(node, off) {
+      if (off) return null;
+      if (node.matches("iframe,object,embed")) return "Embedded media omitted";
+      return node.shadowRoot ? "Shadow DOM omitted" : null;
+    }
+    function mediaClone(node, r, omission) {
+      try {
         var canvas = document.createElement("canvas");
         // Keep source aspect ratio: object-fit is applied by the clone, not by drawImage.
         var sourceWidth = node.naturalWidth || node.videoWidth || node.width || r.width;
@@ -208,31 +233,41 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
         if (node.matches("video") && node.readyState < 2) throw new Error("Video has no decoded placement frame");
         if (node.matches("img") && (!node.complete || !node.naturalWidth)) throw new Error("Image has not loaded at placement");
         canvas.getContext("2d").drawImage(node, 0, 0, canvas.width, canvas.height);
-        clone = snapshotDoc.createElement("img"); clone.src = canvas.toDataURL("image/png");
-        } catch (e) { omission = "Unloaded or cross-origin " + node.tagName.toLowerCase() + " pixels omitted"; clone = snapshotDoc.createElement("div"); }
-      } else {
-        clone = node.namespaceURI === "http://www.w3.org/2000/svg" ? snapshotDoc.createElementNS(node.namespaceURI, node.tagName) : snapshotDoc.createElement(node.matches("html,body") || node.tagName.indexOf("-") >= 0 ? "div" : node.tagName.toLowerCase());
-        // SVG geometry is data; executable/event/navigation attributes are never copied.
-        if (node.namespaceURI === "http://www.w3.org/2000/svg") Array.prototype.forEach.call(node.attributes, function (a) { if (!/^on|href|src/i.test(a.name) && !/href/i.test(a.name)) clone.setAttribute(a.name, a.value); else if (/href/i.test(a.name) && /^#[A-Za-z0-9_-]+$/.test(a.value)) clone.setAttribute(a.name, a.value); });
-      }
+        var clone = snapshotDoc.createElement("img"); clone.src = canvas.toDataURL("image/png");
+        return { clone: clone, omission: omission };
+      } catch (e) { return { clone: snapshotDoc.createElement("div"), omission: "Unloaded or cross-origin " + node.tagName.toLowerCase() + " pixels omitted" }; }
+    }
+    function plainClone(node) {
+      var svg = node.namespaceURI === "http://www.w3.org/2000/svg";
+      var clone = svg ? snapshotDoc.createElementNS(node.namespaceURI, node.tagName) : snapshotDoc.createElement(node.matches("html,body") || node.tagName.indexOf("-") >= 0 ? "div" : node.tagName.toLowerCase());
+      // SVG geometry is data; executable/event/navigation attributes are never copied.
+      if (svg) Array.prototype.forEach.call(node.attributes, function (a) { if (!/^on|href|src/i.test(a.name) && !/href/i.test(a.name)) clone.setAttribute(a.name, a.value); else if (/href/i.test(a.name) && /^#[A-Za-z0-9_-]+$/.test(a.value)) clone.setAttribute(a.name, a.value); });
+      return clone;
+    }
+    function omittedClone(cs, omission) {
+      var clone = snapshotDoc.createElement("div");
       freezeStyle(cs, clone.style);
-      if (omission) {
-        clone = snapshotDoc.createElement("div");
-        freezeStyle(cs, clone.style);
-        clone.style.setProperty("background", "#ddd", "important"); clone.style.setProperty("color", "#333", "important"); clone.style.setProperty("font-size", "14px", "important");
-        clone.textContent = omission;
-        if (omitted.indexOf(omission) < 0 && omitted.length < 4) omitted.push(omission);
-      } else if (node.matches("input,textarea,select") || privateField(node)) {
-        clone = snapshotDoc.createElement("div");
-        freezeStyle(cs, clone.style);
-        clone.textContent = privateField(node) ? "" : node.matches("select") ? (node.selectedOptions[0] ? node.selectedOptions[0].textContent : "") : node.value;
-      } else if (!off || node === doc.documentElement || node === doc.body) {
+      clone.style.setProperty("background", "#ddd", "important"); clone.style.setProperty("color", "#333", "important"); clone.style.setProperty("font-size", "14px", "important");
+      clone.textContent = omission;
+      if (omitted.indexOf(omission) < 0 && omitted.length < 4) omitted.push(omission);
+      return clone;
+    }
+    function fieldClone(node, cs) {
+      var clone = snapshotDoc.createElement("div");
+      freezeStyle(cs, clone.style);
+      clone.textContent = privateField(node) ? "" : node.matches("select") ? (node.selectedOptions[0] ? node.selectedOptions[0].textContent : "") : node.value;
+      return clone;
+    }
+    // Form values are never copied, and an offscreen box keeps its size but not its children.
+    function filledClone(node, box, clone, omission) {
+      if (omission) return omittedClone(box.cs, omission);
+      if (node.matches("input,textarea,select") || privateField(node)) return fieldClone(node, box.cs);
+      if (!box.off || node === doc.documentElement || node === doc.body) {
         for (var child = node.firstChild; child; child = child.nextSibling) { var c = copy(child); if (c) clone.appendChild(c); }
       }
-      clone.setAttribute("data-qa-frozen", "");
-      if (cs.position === "fixed") clone.style.setProperty("transform", "translate(" + win.scrollX + "px," + win.scrollY + "px) " + (cs.transform === "none" ? "" : cs.transform), "important");
-      // Root scroll is already applied to frozen below; only nested scrollers need child translation.
-      if (node !== doc.scrollingElement && (node.scrollTop || node.scrollLeft)) scrolls.push([clone, node.scrollLeft, node.scrollTop]);
+      return clone;
+    }
+    function freezePseudos(node, clone) {
       ["::before", "::after"].forEach(function (pseudo) {
         var ps = win.getComputedStyle(node, pseudo);
         if (!ps.content || ps.content === "none" || ps.content === "normal") return;
@@ -241,6 +276,24 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
         freezeStyle(ps, pseudoStyle);
         rules.push("." + id + pseudo + "{" + pseudoStyle.cssText + "}");
       });
+    }
+    function finishClone(node, cs, clone) {
+      clone.setAttribute("data-qa-frozen", "");
+      if (cs.position === "fixed") clone.style.setProperty("transform", "translate(" + win.scrollX + "px," + win.scrollY + "px) " + (cs.transform === "none" ? "" : cs.transform), "important");
+      // Root scroll is already applied to frozen below; only nested scrollers need child translation.
+      if (node !== doc.scrollingElement && (node.scrollTop || node.scrollLeft)) scrolls.push([clone, node.scrollLeft, node.scrollTop]);
+      freezePseudos(node, clone);
+    }
+    function copy(node) {
+      if (node.nodeType === 3) return snapshotDoc.createTextNode(node.textContent);
+      if (skipped(node)) return null;
+      var box = paintable(node);
+      if (!box) return null;
+      var omission = omissionFor(node, box.off);
+      var made = node.matches("img,canvas,video") && !box.off ? mediaClone(node, box.r, omission) : { clone: plainClone(node), omission: omission };
+      freezeStyle(box.cs, made.clone.style);
+      var clone = filledClone(node, box, made.clone, made.omission);
+      finishClone(node, box.cs, clone);
       return clone;
     }
     Array.prototype.forEach.call(doc.styleSheets, function (sheet) { try { Array.prototype.forEach.call(sheet.cssRules, function (rule) { if (rule.type === 5) rules.push(rule.cssText.replace(/url\((['"]?)([^'")]+)\1\)/g, function (m, q, url) { return "url(" + q + new URL(url, sheet.href || doc.baseURI).href + q + ")"; })); }); } catch (e) { /* unreadable font sheets remain a renderer limitation */ } });
@@ -509,39 +562,51 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     if (anchor.page && anchor.page.url) { try { anchor.page.url = safeUrl({ location: new URL(anchor.page.url) }); } catch (e) { anchor.page.url = "unknown legacy URL"; } }
     return { id: p.id, n: p.n, anchor: anchor, text: String(p.text || ""), el: null, byPage: !!p.byPage, createdAt: p.createdAt, webContext: p.webContext, identity: p.identity };
   }
+  // Give the intact source an opaque identity before importing. A durable consumed-index
+  // record prevents replay even if cleanup fails or the imported comment is later sent.
+  function stampLegacy(key, saved, state) {
+    if (/^[A-Za-z0-9-]{8,64}$/.test(saved.migrationId || "")) return;
+    saved.migrationId = "legacy-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    sessionStorage.setItem(key, JSON.stringify(saved));
+    state.raw = sessionStorage.getItem(key);
+  }
+  function admitLegacyPins(saved, id, consumed, state) {
+    for (var i = 0; i < saved.pins.length; i++) {
+      if (consumed.indexOf(i) >= 0) continue;
+      var source = saved.pins[i];
+      if (!source || !source.anchor || typeof source.n !== "number" || pins.length >= 30) break;
+      var p = restoredPin(source); p.id = id + "-" + i; p.n = nextN++;
+      pins.push(p); consumed.push(i);
+      // Persist each admitted comment and its replay guard before removing any source data.
+      if (!persist()) { pins.pop(); consumed.pop(); nextN--; persist(); break; }
+      state.changed = true;
+    }
+  }
+  // False when the source holds no pins (its status is already rendered).
+  function migrateLegacy(key, state) {
+    try {
+      var saved = JSON.parse(state.raw);
+      if (!saved || !Array.isArray(saved.pins) || !saved.pins.length) { renderStatus(); return false; }
+      stampLegacy(key, saved, state);
+      var id = saved.migrationId, consumed = legacyConsumed[id] || [];
+      legacyConsumed[id] = consumed;
+      admitLegacyPins(saved, id, consumed, state);
+      if (consumed.length === saved.pins.length) {
+        if (persist()) sessionStorage.removeItem(key);
+      } else legacyImportWarning = "Legacy draft retained: Send/delete current comments to make room, then return to this route.";
+    } catch (e) { legacyImportWarning = "Legacy draft retained: browser storage could not complete migration. Keep this tab open."; }
+    return true;
+  }
   function importLegacy() {
     var key = "morpheus-qa:" + pagePath(site.win), raw;
     try { raw = sessionStorage.getItem(key); } catch (e) { return; }
     if (legacyAttempt && legacyAttempt.key === key && legacyAttempt.raw === raw && legacyAttempt.revision === draftRevision) return;
     legacyImportWarning = "";
     if (raw) {
-      try {
-        var saved = JSON.parse(raw);
-        if (!saved || !Array.isArray(saved.pins) || !saved.pins.length) { renderStatus(); return; }
-        // Give the intact source an opaque identity before importing. A durable consumed-index
-        // record prevents replay even if cleanup fails or the imported comment is later sent.
-        if (!/^[A-Za-z0-9-]{8,64}$/.test(saved.migrationId || "")) {
-          saved.migrationId = "legacy-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
-          sessionStorage.setItem(key, JSON.stringify(saved));
-          raw = sessionStorage.getItem(key);
-        }
-        var id = saved.migrationId, consumed = legacyConsumed[id] || [], changed = false;
-        legacyConsumed[id] = consumed;
-        for (var i = 0; i < saved.pins.length; i++) {
-          if (consumed.indexOf(i) >= 0) continue;
-          var source = saved.pins[i];
-          if (!source || !source.anchor || typeof source.n !== "number" || pins.length >= 30) break;
-          var p = restoredPin(source); p.id = id + "-" + i; p.n = nextN++;
-          pins.push(p); consumed.push(i);
-          // Persist each admitted comment and its replay guard before removing any source data.
-          if (!persist()) { pins.pop(); consumed.pop(); nextN--; persist(); break; }
-          changed = true;
-        }
-        if (consumed.length === saved.pins.length) {
-          if (persist()) sessionStorage.removeItem(key);
-        } else legacyImportWarning = "Legacy draft retained: Send/delete current comments to make room, then return to this route.";
-      } catch (e) { legacyImportWarning = "Legacy draft retained: browser storage could not complete migration. Keep this tab open."; }
-      if (changed) render();
+      var state = { raw: raw, changed: false };
+      if (!migrateLegacy(key, state)) return;
+      raw = state.raw;
+      if (state.changed) render();
     }
     legacyAttempt = { key: key, raw: raw, revision: draftRevision };
     // Migration retries refresh durable warnings without replacing the latest action result.
@@ -578,25 +643,35 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     placementStatusEl.textContent = image && image.status === "failed" ? "Placement image unavailable: " + image.error + ". HTML evidence is saved; you can Send this comment." : "";
   }
 
+  function pinTarget(p, view, doc) {
+    if (p.webContext.scope !== "element") return p.webContext.scope === "view" ? view.root : doc.body;
+    if (p.el && p.el.ownerDocument === doc && p.el.isConnected) return p.el;
+    return p.anchor.element ? doc.querySelector(p.anchor.element.selector) : null;
+  }
+  function pinPoint(p, el) {
+    var r = el.getBoundingClientRect(), whole = p.webContext.scope !== "element";
+    var point = { x: r.left + r.width * (whole ? 0.5 : p.anchor.element.offsetX), y: r.top + r.height * (whole ? 0.5 : p.anchor.element.offsetY) };
+    if (p.webContext.scope === "page" || p.byPage) point = { x: p.anchor.x - site.win.scrollX, y: p.anchor.y - site.win.scrollY };
+    return point;
+  }
+  // Inside the viewport and, for an element pin, not covered by an unrelated element.
+  function pinShowsAt(p, el, doc, point) {
+    if (point.x < 0 || point.y < 0 || point.x > site.win.innerWidth || point.y > site.win.innerHeight) return false;
+    var hit = doc.elementFromPoint ? doc.elementFromPoint(point.x, point.y) : null;
+    return !(p.webContext.scope === "element" && hit && !el.contains(hit) && !hit.contains(el));
+  }
   function position(p) {
     p.marker.hidden = true;
     if (!site || !p.webContext || p.anchor.page.url !== safeUrl(site.win)) return;
     var view = currentView(site.doc);
     if (view.identity !== p.webContext.view.identity) return;
-    var x, y, doc = site.doc;
-    var el = p.webContext.scope !== "element" ? (p.webContext.scope === "view" ? view.root : doc.body) : p.el && p.el.ownerDocument === doc && p.el.isConnected ? p.el : (p.anchor.element ? doc.querySelector(p.anchor.element.selector) : null);
+    var doc = site.doc, el = pinTarget(p, view, doc);
     // A recycled selector or detached modal must never fall back to page coordinates.
     if (!el || !visible(el) || (p.webContext.scope === "element" && fingerprint(el) !== p.identity)) return;
-    if (el) {
-      var r = el.getBoundingClientRect();
-      x = r.left + r.width * (p.webContext.scope !== "element" ? 0.5 : p.anchor.element.offsetX); y = r.top + r.height * (p.webContext.scope !== "element" ? 0.5 : p.anchor.element.offsetY);
-    } else { x = p.anchor.x - site.win.scrollX; y = p.anchor.y - site.win.scrollY; }
-    if (p.webContext.scope === "page" || p.byPage) { x = p.anchor.x - site.win.scrollX; y = p.anchor.y - site.win.scrollY; }
-    if (x < 0 || y < 0 || x > site.win.innerWidth || y > site.win.innerHeight) return;
-    var hit = doc.elementFromPoint ? doc.elementFromPoint(x, y) : null;
-    if (p.webContext.scope === "element" && hit && !el.contains(hit) && !hit.contains(el)) return;
+    var point = pinPoint(p, el);
+    if (!pinShowsAt(p, el, doc, point)) return;
     p.marker.hidden = false;
-    p.marker.style.left = (x + site.offsetX) + "px"; p.marker.style.top = (y + site.offsetY) + "px";
+    p.marker.style.left = (point.x + site.offsetX) + "px"; p.marker.style.top = (point.y + site.offsetY) + "px";
   }
   function renderPins() {
     pinsLayer.textContent = "";

@@ -74,9 +74,8 @@ export class Pool {
     return this.allocate(args.profile, () => this.startTurn(args, hq));
   }
   async startTurn(args, hq = null) {
-    if (!hq && !TASK_ID.test(args.threadId ?? "")) throw new Error("Invalid Codex task id");
-    if (typeof args.prompt !== "string" || !args.prompt.trim() || args.prompt.length > 200000)
-      throw new Error("A bounded prompt is required");
+    assertCallerTask(hq, args.threadId, "Invalid Codex task id");
+    assertBoundedPrompt(args.prompt);
     const { pool, api } = await this.context();
     const profile = pool.profiles[args.profile];
     if (!profile) throw new Error("Unknown pool profile");
@@ -94,13 +93,9 @@ export class Pool {
       project, issueId: null, turns: 1, supervisionReplies: 0,
     };
     await atomic(join(dir, "conversation.json"), conversation);
-    if (!hq) {
-      const threads = await readJSON(threadIndex(args.threadId), { conversations: [] });
-      threads.conversations.push(id);
-      await atomic(threadIndex(args.threadId), threads);
-    }
+    if (!hq) await indexThread(args.threadId, id);
     // Journal before the external mutation; an unknown outcome is observed, never reposted.
-    const turn = { n: 1, kind: "start", ...(hq ? { actor: hq.identity.actor, operationId: hq.identity.operationId } : {}), prompt: args.prompt, promptSha256: sha256(args.prompt), state: "posting", createdAt: Date.now() };
+    const turn = { n: 1, kind: "start", ...hqStamp(hq), prompt: args.prompt, promptSha256: sha256(args.prompt), state: "posting", createdAt: Date.now() };
     await atomic(turnPath(id, 1), turn);
     if (hq) { await hq.admit(conversation, pool); await hq.recordTurn(id, 1); }
     await this.submitIssue(pool, api, conversation, turn);
@@ -146,45 +141,22 @@ export class Pool {
     const c = await this.conversation(conversationId);
     const n = c.turns;
     const turn = await readJSON(turnPath(c.id, n), null);
-    let run = await readJSON(runPath(c.id, n), null);
+    const run = await readJSON(runPath(c.id, n), null);
     const session = await readJSON(sessionPath(c.id), null);
     const cursor = await readJSON(cursorPath(c.id), null);
     const disposition = await readJSON(dispositionPath(c.id, n), null);
     const hostProof = await readJSON(reconcilePath(c.id, n), null);
     const fold = cursor?.turn === n ? cursor.fold : null;
-    // A runner that died without finishing cannot renew the remote lease; the remote
-    // stops itself, and the next admission on this account reconciles it over SSH.
-    let runnerLost = false;
-    // Only a runner proven gone counts as lost; an unreadable process table is not proof.
-    if (run && !run.finished && run.runnerPid) {
-      const seen = await identityStatus(run.runnerPid);
-      runnerLost = seen.state === "absent" || (seen.state === "alive" && !!run.runnerIdentity && seen.identity !== run.runnerIdentity);
-    }
-    let state;
-    if (!turn) state = "unknown";
-    else if (run?.finished) state = run.state;
-    else if (runnerLost) state = "runner_lost";
-    else if (run) state = run.question ? "needs_input" : run.state === "claimed" || run.state === "starting" ? "starting" : "running";
-    else state = { submitted: "queued", rejected: "rejected" }[turn.state] ?? "submission_unknown";
+    const lost = await runnerLost(run);
     // A rejected submission created nothing upstream, so nothing can still launch.
-    const terminal = !!run?.finished || runnerLost || (!run && turn?.state === "rejected");
+    const terminal = !!run?.finished || lost || (!run && turn?.state === "rejected");
     return {
       conversationId: c.id, threadId: c.threadId, profile: c.profile, provider: c.provider, issueId: c.issueId,
-      turn: n, submission: turn?.state ?? null, submissionError: turn?.error ?? null, state, terminal,
-      paperclipRunId: run?.paperclipRunId ?? null, remoteRun: run?.runUuid ?? null,
-      host: run?.remote?.hostId ?? null,
-      requested: run?.requested ?? (run?.remote ? { model: run.remote.model, effort: run.remote.effort } : null),
-      observed: run?.observed ?? null, usage: run?.usage ?? null,
-      // The controller's own evidence stays as recorded; later host proof sits beside it.
-      termination: runnerLost ? "unknown" : run?.termination ?? null, stopReason: run?.stopReason ?? null,
-      hostTermination: hostProof ? { state: hostProof.state, runUuid: hostProof.runUuid, provenAt: hostProof.provenAt } : null,
-      disposition: disposition ? { status: disposition.status, state: disposition.state, runId: disposition.runId } : null,
-      category: run?.category ?? null,
-      question: run && !run.finished && run.question ? { id: run.question.id, toolName: run.question.toolName, input: run.question.input } : null,
-      result: run?.result ?? fold?.result ?? null,
-      nativeSession: session?.session ?? null, sessionDrift: session?.drift === true,
-      progress: fold?.progress ?? "", sequence: fold?.sequence ?? 0,
-      log: cursor ? { runId: cursor.runId, offset: cursor.offset, source: cursor.source ?? "paperclip" } : null,
+      turn: n, submission: turn?.state ?? null, submissionError: turn?.error ?? null, state: turnState(turn, run, lost), terminal,
+      ...runView(run, lost),
+      ...proofView(hostProof, disposition),
+      ...outcomeView(run, fold),
+      ...logView(session, fold, cursor),
       supervisionReplies: c.supervisionReplies, capabilities: capabilities(c.provider),
     };
   }
@@ -197,38 +169,11 @@ export class Pool {
     if (!cursor || cursor.turn !== n || cursor.runId !== run.paperclipRunId)
       cursor = { turn: n, runId: run.paperclipRunId, offset: 0, stdout: "", fold: { progress: "", sequence: 0 } };
     for (let page = 0; page < 16; page++) {
-      let response;
-      try {
-        response = await api.get(`/heartbeat-runs/${cursor.runId}/log?offset=${cursor.offset}&limitBytes=${LOG_PAGE}`);
-        cursor.source = "paperclip";
-      } catch (error) {
-        cursor.source = `unavailable: ${error.message}`;
-        break;
-      }
+      const fetched = await fetchLogPage(api, cursor);
+      if (!fetched) break;
+      const { response } = fetched;
       const content = typeof response?.content === "string" ? response.content : "";
-      const complete = content.lastIndexOf("\n");
-      if (complete < 0) break;
-      // Consume whole NDJSON records only; a record cut by the byte range is read again.
-      const consumed = content.slice(0, complete + 1);
-      cursor.offset += Buffer.byteLength(consumed);
-      for (const record of consumed.split("\n")) {
-        if (!record.trim()) continue;
-        let entry;
-        try {
-          entry = JSON.parse(record);
-        } catch {
-          continue;
-        }
-        if (entry.stream !== "stdout" || typeof entry.chunk !== "string") continue;
-        cursor.stdout += entry.chunk;
-        let end;
-        while ((end = cursor.stdout.indexOf("\n")) >= 0) {
-          const line = cursor.stdout.slice(0, end);
-          cursor.stdout = cursor.stdout.slice(end + 1);
-          foldLine(cursor.fold, c.provider, line);
-        }
-        if (cursor.stdout.length > 4 * 1024 * 1024) cursor.stdout = "";
-      }
+      if (!consumeLogContent(cursor, c.provider, content)) break;
       if (response?.nextOffset == null) break;
     }
     await atomic(cursorPath(c.id), cursor);
@@ -264,44 +209,17 @@ export class Pool {
   }
   async answer(args, hq = null) {
     if (!["codex", "user"].includes(args.source)) throw new Error("Invalid answer source");
-    if (!hq && !TASK_ID.test(args.threadId ?? "")) throw new Error("Pass the current Codex task id");
+    assertCallerTask(hq, args.threadId, "Pass the current Codex task id");
     const c = await this.conversation(args.conversationId);
     if (hq) await hq.admit(c);
     else await this.control(args.threadId, c);
     const n = c.turns;
-    // The answer journal is checked first, so a duplicate is reported as such whether or
-    // not the provider has already moved past the question.
-    if (await readJSON(join(answersDir(c.id), `q-${sha256(`${n}:${args.questionId}`).slice(0, 32)}.json`), null))
-      throw new Error("This question was already answered");
-    const run = await readJSON(runPath(c.id, n), null);
-    if (!run || run.finished || !run.question)
-      throw new Error("No live question; for a needs_input result, send a follow-up with replySource and replyReason.");
-    if (run.question.id !== args.questionId) throw new Error("Stale question id");
-    if (run.question.toolName !== "AskUserQuestion" && args.source !== "user")
-      throw new Error("Tool permission requests require user approval; this bridge only delegates clarification judgment.");
-    const config = await configRead();
-    if (args.source === "codex" && c.supervisionReplies >= config.maxSupervisionReplies)
-      throw new Error("Supervision limit reached. Escalate to the user.");
-    if (args.source === "codex" && !args.reason) throw new Error("Record why this clarification does not require the user.");
+    const run = await liveQuestion(args, c, n);
+    await assertSupervisionAllowed(args, c);
     if (hq) await hq.recordTurn(c.id, n);
-    try {
-      await writeFile(
-        join(answersDir(c.id), `q-${sha256(`${n}:${args.questionId}`).slice(0, 32)}.json`),
-        JSON.stringify({ turn: n, questionId: args.questionId, threadId: hq ? null : args.threadId, ...(hq ? { actor: hq.identity.actor, operationId: hq.identity.operationId } : {}), source: args.source, reason: args.reason, answers: args.answers, allow: args.allow !== false, at: Date.now() }),
-        { flag: "wx", mode: 0o600 },
-      );
-    } catch (error) {
-      if (error.code === "EEXIST") throw new Error("This question was already answered");
-      throw error;
-    }
-    const response = {
-      behavior: args.allow === false ? "deny" : "allow",
-      ...(args.allow === false
-        ? { message: args.reason || "Denied" }
-        : { updatedInput: { ...run.question.input, ...(args.answers ? { answers: args.answers } : {}) } }),
-    };
+    await journalAnswer(args, c, n, hq);
     // Atomic: the relay only ever sees a complete control (its .tmp name is ignored).
-    await atomic(controlFile(c.id), { type: "answer", turn: n, ...(hq ? { actor: hq.identity.actor, operationId: hq.identity.operationId } : {}), message: { type: "control_response", response: { subtype: "success", request_id: args.questionId, response } } });
+    await atomic(controlFile(c.id), { type: "answer", turn: n, ...hqStamp(hq), message: { type: "control_response", response: { subtype: "success", request_id: args.questionId, response: answerResponse(args, run) } } });
     await atomic(join(conversationDir(c.id), "conversation.json"), {
       ...(await readJSON(join(conversationDir(c.id), "conversation.json"))),
       supervisionReplies: args.source === "user" ? 0 : c.supervisionReplies + 1,
@@ -323,36 +241,26 @@ export class Pool {
     }
   }
   async continueTurn(args, hq = null) {
-    if (!hq && !TASK_ID.test(args.threadId ?? "")) throw new Error("Pass the current Codex task id");
-    if (typeof args.prompt !== "string" || !args.prompt.trim() || args.prompt.length > 200000)
-      throw new Error("A bounded prompt is required");
+    assertCallerTask(hq, args.threadId, "Pass the current Codex task id");
+    assertBoundedPrompt(args.prompt);
     const c = await this.conversation(args.conversationId);
     const previous = await this.status({ conversationId: c.id });
-    if (!previous.terminal)
-      throw new Error("The current turn is still active. Follow-ups are delivered at a turn boundary: wait for it, answer its question, or stop it first.");
-    if (previous.sessionDrift) throw new Error("Native session drift was recorded; start a new pool conversation.");
-    if (!c.issueId) throw new Error("The conversation's Paperclip issue is not linked; reattach to observe it first.");
+    assertContinuable(previous, c);
     const { pool, api } = await this.context();
-    const profile = pool.profiles[c.profile];
-    if (!profile || bindingDigest(c.profile, profile) !== c.bindingSha256)
-      throw new Error("The pool profile changed since this conversation started; start a new conversation.");
+    const profile = boundProfile(c, pool);
     // The caller's own live authority admits the turn; the original task and project
     // still apply, so another session cannot revive a conversation whose owner is off.
     if (hq) await hq.admit(c, pool);
     else await this.admit(args.threadId, profile.permission, c);
     const unsettled = await this.unsettled(c, api);
     if (unsettled) throw new Error(unsettled);
-    const continuation = previous.state === "needs_input" || previous.result?.outcome === "needs_input";
-    if (continuation && (!["codex", "user"].includes(args.replySource) || !args.replyReason))
-      throw new Error("Resuming a question requires replySource and replyReason.");
-    const replies = continuation && args.replySource === "codex" ? c.supervisionReplies + 1 : 0;
-    if (replies > (await configRead()).maxSupervisionReplies) throw new Error("Supervision limit reached. Escalate to the user.");
+    const replies = await supervisionReplies(previous, args, c);
     await this.assertProfileIdle(c.profile, c.id);
     const n = c.turns + 1;
     const turn = {
       n, kind: "followup", prompt: args.prompt, promptSha256: sha256(args.prompt), state: "posting",
       replySource: args.replySource ?? null, replyReason: args.replyReason ?? null,
-      coordinatorThreadId: hq ? null : args.threadId, ...(hq ? { actor: hq.identity.actor, operationId: hq.identity.operationId } : {}), createdAt: Date.now(),
+      coordinatorThreadId: hq ? null : args.threadId, ...hqStamp(hq), createdAt: Date.now(),
     };
     await atomic(turnPath(c.id, n), turn);
     const stored = await readJSON(join(conversationDir(c.id), "conversation.json"));
@@ -409,44 +317,40 @@ export class Pool {
     return { ...(await this.status({ conversationId })), stopping: true, paperclipCancel: cancel };
   }
   async reattach(args) {
-    if (!args.conversationId) {
-      if (!TASK_ID.test(args.threadId ?? "")) throw new Error("Pass conversationId or the current Codex task id");
-      const { conversations } = await readJSON(threadIndex(args.threadId), { conversations: [] });
-      return { threadId: args.threadId, conversations: await Promise.all(conversations.slice(-10).reverse().map((id) => this.status({ conversationId: id }))) };
-    }
+    if (!args.conversationId) return this.threadConversations(args);
     const c = await this.conversation(args.conversationId);
     const { pool, api } = await this.context();
     const n = c.turns;
     const turn = await readJSON(turnPath(c.id, n), null);
     const claimed = await readJSON(runPath(c.id, n), null);
-    let observed = null;
     if (args.retry === true) {
       // A resend is an admission: verify the caller now, before any external write.
       if (!TASK_ID.test(args.threadId ?? "")) throw new Error("A retry needs the current Codex task id");
-      const profile = pool.profiles[c.profile];
-      if (!profile || bindingDigest(c.profile, profile) !== c.bindingSha256)
-        throw new Error("The pool profile changed since this conversation started; start a new conversation.");
+      const profile = boundProfile(c, pool);
       await this.admit(args.threadId, profile.permission, c);
     }
-    if (turn && ["posting", "unknown"].includes(turn.state) && !claimed) {
-      observed = await this.observe(pool, api, c, turn);
-      if (!observed && args.retry === true) {
-        // An explicit retry reuses the same idempotency key / request id, and the turn
-        // claim still admits at most one provider launch.
-        if (n === 1) await this.submitIssue(pool, api, c, turn);
-        else if (c.issueId) await this.submitComment(api, c, turn);
-      }
-    }
+    const observed = turn && ["posting", "unknown"].includes(turn.state) && !claimed
+      ? await this.observeOrResend(pool, api, c, turn, args.retry === true)
+      : null;
     if (c.issueId) await observeDisposition(api, c.id, c.issueId).catch(() => null);
     await this.pull(await this.conversation(c.id), api);
-    // Observation only: a parked follow-up shows the exact upstream hold to recover.
-    const blocker = c.issueId ? (await api.get(`/issues/${c.issueId}`).catch(() => null))?.executionBlocker : null;
-    const parked = blocker ? {
-      recoveryActionId: blocker.recoveryActionId ?? null, runId: blocker.runId ?? null, cause: blocker.cause ?? null,
-      nextAction: typeof blocker.nextAction === "string" ? blocker.nextAction.slice(0, 500) : null,
-      savedMessageCount: blocker.savedMessageCount ?? null,
-    } : null;
+    const parked = await parkedBlocker(api, c);
     return { ...(await this.status({ conversationId: c.id })), observed, parked };
+  }
+  async threadConversations(args) {
+    if (!TASK_ID.test(args.threadId ?? "")) throw new Error("Pass conversationId or the current Codex task id");
+    const { conversations } = await readJSON(threadIndex(args.threadId), { conversations: [] });
+    return { threadId: args.threadId, conversations: await Promise.all(conversations.slice(-10).reverse().map((id) => this.status({ conversationId: id }))) };
+  }
+  async observeOrResend(pool, api, c, turn, retry) {
+    const observed = await this.observe(pool, api, c, turn);
+    if (!observed && retry) {
+      // An explicit retry reuses the same idempotency key / request id, and the turn
+      // claim still admits at most one provider launch.
+      if (c.turns === 1) await this.submitIssue(pool, api, c, turn);
+      else if (c.issueId) await this.submitComment(api, c, turn);
+    }
+    return observed;
   }
   async observe(pool, api, c, turn) {
     try {
@@ -496,16 +400,10 @@ export class Pool {
     const c = await this.conversation(args.conversationId);
     if (!c.issueId) throw new Error("The conversation's Paperclip issue is not linked; reattach first.");
     const { pool, api } = await this.context();
-    const profile = pool.profiles[c.profile];
-    if (!profile || bindingDigest(c.profile, profile) !== c.bindingSha256)
-      throw new Error("The pool profile changed since this conversation started; start a new conversation.");
+    const profile = boundProfile(c, pool);
     await this.admit(args.threadId, profile.permission, c);
     const issue = await api.get(`/issues/${c.issueId}`);
-    let blocker = issue?.executionBlocker ?? null;
-    if (!blocker) {
-      const active = (await api.get(`/issues/${c.issueId}/recovery-actions`))?.active;
-      if (active) blocker = { recoveryActionId: active.id, runId: active.evidence?.runId ?? active.evidence?.sourceRunId, cause: active.cause, agentId: issue?.assigneeAgentId };
-    }
+    const blocker = await recoveryBlocker(api, c, issue);
     if (!blocker) return { recovered: false, state: "no_execution_blocker" };
     const sourceRunId = blocker.runId ?? null;
     const operator = (reason) => ({
@@ -513,38 +411,14 @@ export class Pool {
       cause: blocker.cause ?? null, sourceRunId, issueId: c.issueId,
       nextAction: typeof blocker.nextAction === "string" ? blocker.nextAction.slice(0, 500) : null,
     });
-    if (blocker.cause !== "legacy_execution_requires_reconciliation")
-      return operator("only a generic process run's legacy reconciliation is recovered automatically");
-    if (!blocker.recoveryActionId || !sourceRunId) return operator("the blocker names no recovery action or source run");
-    if (issue.assigneeAgentId !== c.agentId || (blocker.agentId && blocker.agentId !== c.agentId))
-      return operator("the issue or the blocked run belongs to another agent");
-    let turn = null;
-    for (let n = c.turns; n >= 1 && !turn; n--) {
-      const run = await readJSON(runPath(c.id, n), null);
-      if (run?.paperclipRunId === sourceRunId) turn = { n, run };
-    }
+    const refusal = blockerRefusal(blocker, issue, c, sourceRunId);
+    if (refusal) return operator(refusal);
+    const turn = await blockedTurn(c, sourceRunId);
     if (!turn) return operator("the blocked run is not a turn of this conversation");
     const proof = await readJSON(reconcilePath(c.id, turn.n), null);
     if (!["verified", "not-started"].includes(turn.run.termination) && proof?.state !== "terminated")
       return operator("the blocked turn's termination is not proven; run pool.reconcile first");
-    const actionOutcome = turn.run.termination === "not-started" ? "not_performed" : "mixed";
-    const outcomeEvidence = [
-      `Pool conversation ${c.id} turn ${turn.n}, Paperclip run ${sourceRunId}.`,
-      `Controller record: state ${turn.run.state ?? "unknown"}, termination ${turn.run.termination ?? "unknown"}.`,
-      proof ? `Host reconcile proved run ${proof.runUuid} terminated at ${new Date(proof.provenAt).toISOString()}.` : "The host receipt verified termination.",
-      actionOutcome === "mixed" ? "The provider was stopped mid-turn; partial workspace effects are possible." : "No provider process was launched.",
-    ].join(" ");
-    try {
-      const result = await api.post(`/issues/${c.issueId}/recovery-actions/resolve`, {
-        actionId: blocker.recoveryActionId, outcome: "restored", sourceIssueStatus: "todo",
-        resolutionNote: "Pool host termination proven; continue the committed follow-up.",
-        executionReconciliation: { runId: sourceRunId, providerStopped: true, actionOutcome, outcomeEvidence },
-      });
-      return { recovered: true, state: result?.replayed ? "already_resolved" : "resolved", recoveryActionId: blocker.recoveryActionId, sourceRunId, actionOutcome };
-    } catch (error) {
-      // An uncertain resolve is safe to repeat: Paperclip replays a settled action.
-      return { recovered: false, state: error.unknown ? "unknown" : "rejected", error: error.message, recoveryActionId: blocker.recoveryActionId, sourceRunId };
-    }
+    return resolveRecovery(api, c, blocker, sourceRunId, turn, proof);
   }
   // Operator repair: prune account reservations whose turns are proven ended.
   async reconcile() {
@@ -576,6 +450,216 @@ export class Pool {
     if (method === "reconcile") return this.reconcile();
     if (method === "recover") return this.recover(args);
     throw new Error("Unknown pool operation");
+  }
+}
+const hqStamp = (hq) => (hq ? { actor: hq.identity.actor, operationId: hq.identity.operationId } : {});
+function assertCallerTask(hq, threadId, message) {
+  if (!hq && !TASK_ID.test(threadId ?? "")) throw new Error(message);
+}
+function assertBoundedPrompt(prompt) {
+  if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 200000)
+    throw new Error("A bounded prompt is required");
+}
+// The profile this conversation was bound to, unchanged since it started.
+function boundProfile(c, pool) {
+  const profile = pool.profiles[c.profile];
+  if (!profile || bindingDigest(c.profile, profile) !== c.bindingSha256)
+    throw new Error("The pool profile changed since this conversation started; start a new conversation.");
+  return profile;
+}
+async function indexThread(threadId, id) {
+  const threads = await readJSON(threadIndex(threadId), { conversations: [] });
+  threads.conversations.push(id);
+  await atomic(threadIndex(threadId), threads);
+}
+// A runner that died without finishing cannot renew the remote lease; the remote
+// stops itself, and the next admission on this account reconciles it over SSH.
+// Only a runner proven gone counts as lost; an unreadable process table is not proof.
+async function runnerLost(run) {
+  if (!run || run.finished || !run.runnerPid) return false;
+  const seen = await identityStatus(run.runnerPid);
+  return seen.state === "absent" || (seen.state === "alive" && !!run.runnerIdentity && seen.identity !== run.runnerIdentity);
+}
+function turnState(turn, run, lost) {
+  if (!turn) return "unknown";
+  if (run?.finished) return run.state;
+  if (lost) return "runner_lost";
+  if (run) return run.question ? "needs_input" : run.state === "claimed" || run.state === "starting" ? "starting" : "running";
+  return { submitted: "queued", rejected: "rejected" }[turn.state] ?? "submission_unknown";
+}
+function runView(run, lost) {
+  return {
+    paperclipRunId: run?.paperclipRunId ?? null, remoteRun: run?.runUuid ?? null,
+    host: run?.remote?.hostId ?? null,
+    requested: run?.requested ?? (run?.remote ? { model: run.remote.model, effort: run.remote.effort } : null),
+    observed: run?.observed ?? null, usage: run?.usage ?? null,
+    // The controller's own evidence stays as recorded; later host proof sits beside it.
+    termination: lost ? "unknown" : run?.termination ?? null, stopReason: run?.stopReason ?? null,
+  };
+}
+function proofView(hostProof, disposition) {
+  return {
+    hostTermination: hostProof ? { state: hostProof.state, runUuid: hostProof.runUuid, provenAt: hostProof.provenAt } : null,
+    disposition: disposition ? { status: disposition.status, state: disposition.state, runId: disposition.runId } : null,
+  };
+}
+function outcomeView(run, fold) {
+  return {
+    category: run?.category ?? null,
+    question: run && !run.finished && run.question ? { id: run.question.id, toolName: run.question.toolName, input: run.question.input } : null,
+    result: run?.result ?? fold?.result ?? null,
+  };
+}
+function logView(session, fold, cursor) {
+  return {
+    nativeSession: session?.session ?? null, sessionDrift: session?.drift === true,
+    progress: fold?.progress ?? "", sequence: fold?.sequence ?? 0,
+    log: cursor ? { runId: cursor.runId, offset: cursor.offset, source: cursor.source ?? "paperclip" } : null,
+  };
+}
+// One page of the run log, or null when Paperclip cannot be read (recorded on the cursor).
+async function fetchLogPage(api, cursor) {
+  try {
+    const response = await api.get(`/heartbeat-runs/${cursor.runId}/log?offset=${cursor.offset}&limitBytes=${LOG_PAGE}`);
+    cursor.source = "paperclip";
+    return { response };
+  } catch (error) {
+    cursor.source = `unavailable: ${error.message}`;
+    return null;
+  }
+}
+// Consume whole NDJSON records only; a record cut by the byte range is read again.
+// False when the page holds no complete record.
+function consumeLogContent(cursor, provider, content) {
+  const complete = content.lastIndexOf("\n");
+  if (complete < 0) return false;
+  const consumed = content.slice(0, complete + 1);
+  cursor.offset += Buffer.byteLength(consumed);
+  for (const record of consumed.split("\n")) foldLogRecord(cursor, provider, record);
+  return true;
+}
+function foldLogRecord(cursor, provider, record) {
+  if (!record.trim()) return;
+  let entry;
+  try {
+    entry = JSON.parse(record);
+  } catch {
+    return;
+  }
+  if (entry.stream !== "stdout" || typeof entry.chunk !== "string") return;
+  cursor.stdout += entry.chunk;
+  let end;
+  while ((end = cursor.stdout.indexOf("\n")) >= 0) {
+    const line = cursor.stdout.slice(0, end);
+    cursor.stdout = cursor.stdout.slice(end + 1);
+    foldLine(cursor.fold, provider, line);
+  }
+  if (cursor.stdout.length > 4 * 1024 * 1024) cursor.stdout = "";
+}
+const answerFile = (c, n, questionId) => join(answersDir(c.id), `q-${sha256(`${n}:${questionId}`).slice(0, 32)}.json`);
+// The answer journal is checked first, so a duplicate is reported as such whether or
+// not the provider has already moved past the question.
+async function liveQuestion(args, c, n) {
+  if (await readJSON(answerFile(c, n, args.questionId), null))
+    throw new Error("This question was already answered");
+  const run = await readJSON(runPath(c.id, n), null);
+  if (!run || run.finished || !run.question)
+    throw new Error("No live question; for a needs_input result, send a follow-up with replySource and replyReason.");
+  if (run.question.id !== args.questionId) throw new Error("Stale question id");
+  if (run.question.toolName !== "AskUserQuestion" && args.source !== "user")
+    throw new Error("Tool permission requests require user approval; this bridge only delegates clarification judgment.");
+  return run;
+}
+async function assertSupervisionAllowed(args, c) {
+  const config = await configRead();
+  if (args.source === "codex" && c.supervisionReplies >= config.maxSupervisionReplies)
+    throw new Error("Supervision limit reached. Escalate to the user.");
+  if (args.source === "codex" && !args.reason) throw new Error("Record why this clarification does not require the user.");
+}
+async function journalAnswer(args, c, n, hq) {
+  try {
+    await writeFile(
+      answerFile(c, n, args.questionId),
+      JSON.stringify({ turn: n, questionId: args.questionId, threadId: hq ? null : args.threadId, ...hqStamp(hq), source: args.source, reason: args.reason, answers: args.answers, allow: args.allow !== false, at: Date.now() }),
+      { flag: "wx", mode: 0o600 },
+    );
+  } catch (error) {
+    if (error.code === "EEXIST") throw new Error("This question was already answered");
+    throw error;
+  }
+}
+function answerResponse(args, run) {
+  return {
+    behavior: args.allow === false ? "deny" : "allow",
+    ...(args.allow === false
+      ? { message: args.reason || "Denied" }
+      : { updatedInput: { ...run.question.input, ...(args.answers ? { answers: args.answers } : {}) } }),
+  };
+}
+function assertContinuable(previous, c) {
+  if (!previous.terminal)
+    throw new Error("The current turn is still active. Follow-ups are delivered at a turn boundary: wait for it, answer its question, or stop it first.");
+  if (previous.sessionDrift) throw new Error("Native session drift was recorded; start a new pool conversation.");
+  if (!c.issueId) throw new Error("The conversation's Paperclip issue is not linked; reattach to observe it first.");
+}
+// Supervision replies after this turn: a codex reply to a question counts, anything else resets.
+async function supervisionReplies(previous, args, c) {
+  const continuation = previous.state === "needs_input" || previous.result?.outcome === "needs_input";
+  if (continuation && (!["codex", "user"].includes(args.replySource) || !args.replyReason))
+    throw new Error("Resuming a question requires replySource and replyReason.");
+  const replies = continuation && args.replySource === "codex" ? c.supervisionReplies + 1 : 0;
+  if (replies > (await configRead()).maxSupervisionReplies) throw new Error("Supervision limit reached. Escalate to the user.");
+  return replies;
+}
+// Observation only: a parked follow-up shows the exact upstream hold to recover.
+async function parkedBlocker(api, c) {
+  const blocker = c.issueId ? (await api.get(`/issues/${c.issueId}`).catch(() => null))?.executionBlocker : null;
+  return blocker ? {
+    recoveryActionId: blocker.recoveryActionId ?? null, runId: blocker.runId ?? null, cause: blocker.cause ?? null,
+    nextAction: typeof blocker.nextAction === "string" ? blocker.nextAction.slice(0, 500) : null,
+    savedMessageCount: blocker.savedMessageCount ?? null,
+  } : null;
+}
+async function recoveryBlocker(api, c, issue) {
+  const blocker = issue?.executionBlocker ?? null;
+  if (blocker) return blocker;
+  const active = (await api.get(`/issues/${c.issueId}/recovery-actions`))?.active;
+  if (!active) return null;
+  return { recoveryActionId: active.id, runId: active.evidence?.runId ?? active.evidence?.sourceRunId, cause: active.cause, agentId: issue?.assigneeAgentId };
+}
+function blockerRefusal(blocker, issue, c, sourceRunId) {
+  if (blocker.cause !== "legacy_execution_requires_reconciliation")
+    return "only a generic process run's legacy reconciliation is recovered automatically";
+  if (!blocker.recoveryActionId || !sourceRunId) return "the blocker names no recovery action or source run";
+  if (issue.assigneeAgentId !== c.agentId || (blocker.agentId && blocker.agentId !== c.agentId))
+    return "the issue or the blocked run belongs to another agent";
+  return null;
+}
+async function blockedTurn(c, sourceRunId) {
+  for (let n = c.turns; n >= 1; n--) {
+    const run = await readJSON(runPath(c.id, n), null);
+    if (run?.paperclipRunId === sourceRunId) return { n, run };
+  }
+  return null;
+}
+async function resolveRecovery(api, c, blocker, sourceRunId, turn, proof) {
+  const actionOutcome = turn.run.termination === "not-started" ? "not_performed" : "mixed";
+  const outcomeEvidence = [
+    `Pool conversation ${c.id} turn ${turn.n}, Paperclip run ${sourceRunId}.`,
+    `Controller record: state ${turn.run.state ?? "unknown"}, termination ${turn.run.termination ?? "unknown"}.`,
+    proof ? `Host reconcile proved run ${proof.runUuid} terminated at ${new Date(proof.provenAt).toISOString()}.` : "The host receipt verified termination.",
+    actionOutcome === "mixed" ? "The provider was stopped mid-turn; partial workspace effects are possible." : "No provider process was launched.",
+  ].join(" ");
+  try {
+    const result = await api.post(`/issues/${c.issueId}/recovery-actions/resolve`, {
+      actionId: blocker.recoveryActionId, outcome: "restored", sourceIssueStatus: "todo",
+      resolutionNote: "Pool host termination proven; continue the committed follow-up.",
+      executionReconciliation: { runId: sourceRunId, providerStopped: true, actionOutcome, outcomeEvidence },
+    });
+    return { recovered: true, state: result?.replayed ? "already_resolved" : "resolved", recoveryActionId: blocker.recoveryActionId, sourceRunId, actionOutcome };
+  } catch (error) {
+    // An uncertain resolve is safe to repeat: Paperclip replays a settled action.
+    return { recovered: false, state: error.unknown ? "unknown" : "rejected", error: error.message, recoveryActionId: blocker.recoveryActionId, sourceRunId };
   }
 }
 // 4xx means Paperclip refused the request, so nothing was created; 409 can mean an

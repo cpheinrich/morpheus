@@ -138,6 +138,19 @@ export function cachedVisibility(cache: CacheFile, repo: string, now: Date): GhV
   return entry.visibility === "PUBLIC" || entry.visibility === "PRIVATE" || entry.visibility === "INTERNAL" ? entry.visibility : null;
 }
 
+/** One `gh` answer: the visibility, or the first line of why there is none. */
+async function askVisibility(runner: CommandRunner, root: string, repo: string): Promise<{ visibility: GhVisibility | null; failure: string | undefined }> {
+  // Host-qualified, so a `GH_HOST` pointing at an enterprise server cannot answer for a
+  // same-named repository there.
+  const result = await runner("gh", ["repo", "view", `github.com/${repo}`, "--json", "visibility"], root)
+    .catch((error: unknown): CommandResult => ({ code: 1, stdout: "", stderr: String(error) }));
+  const visibility = result.code === 0 ? parseGhVisibility(result.stdout) : null;
+  const failure = result.code !== 0
+    ? (result.stderr || result.stdout || `exit ${result.code}`).trim().split("\n")[0]
+    : visibility ? undefined : "gh returned no visibility";
+  return { visibility, failure };
+}
+
 /**
  * Read each repository's visibility (cache first), and decide. Never throws:
  * every failure is a reason to keep the rescue local.
@@ -159,18 +172,11 @@ export async function publishVerdict(
   for (const repo of repos) {
     const cached = cachedVisibility(stored, repo, now);
     if (cached) { answers.push([repo, cached, undefined]); continue; }
-    // Host-qualified, so a `GH_HOST` pointing at an enterprise server cannot answer for a
-    // same-named repository there.
-    const result = await runner("gh", ["repo", "view", `github.com/${repo}`, "--json", "visibility"], root)
-      .catch((error: unknown): CommandResult => ({ code: 1, stdout: "", stderr: String(error) }));
-    const visibility = result.code === 0 ? parseGhVisibility(result.stdout) : null;
+    const { visibility, failure } = await askVisibility(runner, root, repo);
     if (visibility) {
       stored.repos[repo] = { visibility, checkedAt: now.toISOString() };
       dirty = true;
     }
-    const failure = result.code !== 0
-      ? (result.stderr || result.stdout || `exit ${result.code}`).trim().split("\n")[0]
-      : visibility ? undefined : "gh returned no visibility";
     answers.push([repo, visibility, failure]);
   }
   if (dirty && cache) await cache.write(`${JSON.stringify(stored, null, 2)}\n`).catch(() => undefined);

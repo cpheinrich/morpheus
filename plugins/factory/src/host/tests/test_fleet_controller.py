@@ -107,26 +107,38 @@ class FakeRepo:
 
     def command(self, argv, **kwargs):
         self.calls.append(argv)
-        if argv[:2] == ["gh", "pr"] and argv[2] == "list":
-            return json.dumps(self.prs)
-        if argv[:2] == ["gh", "pr"] and argv[2] == "create":
-            return "https://github.com/example-org/example-app/pull/700"
-        if "ls-tree" in argv:
-            return "\n".join(self.files if "-r" in argv else (path for path in self.files if path.startswith(".github/workflows/")))
-        if "ls-remote" in argv:
-            return self.remote_branch
-        if "worktree" in argv and "add" in argv:
-            worktree = Path(argv[argv.index("--detach") + 1])
-            for path, body in self.files.items():
-                (worktree / path).parent.mkdir(parents=True, exist_ok=True)
-                (worktree / path).write_text(body)
-            (worktree / "untracked.yml").write_text("xcode-version: '26.6'\n")
-            return ""
-        if "ls-files" in argv:
-            return "\n".join(self.files)
-        if "add" in argv and "--" in argv:
-            worktree = Path(argv[2])
-            self.added = {path: (worktree / path).read_text() for path in argv[argv.index("--") + 1:]}
+        # First matching route answers, in the order the real commands are distinguished.
+        for matches, answer in self.routes():
+            if matches(argv):
+                return answer(argv)
+        return ""
+
+    def routes(self):
+        gh_pr = lambda action: lambda argv: argv[:2] == ["gh", "pr"] and argv[2] == action
+        return [
+            (gh_pr("list"), lambda argv: json.dumps(self.prs)),
+            (gh_pr("create"), lambda argv: "https://github.com/example-org/example-app/pull/700"),
+            (lambda argv: "ls-tree" in argv, self.ls_tree),
+            (lambda argv: "ls-remote" in argv, lambda argv: self.remote_branch),
+            (lambda argv: "worktree" in argv and "add" in argv, self.add_worktree),
+            (lambda argv: "ls-files" in argv, lambda argv: "\n".join(self.files)),
+            (lambda argv: "add" in argv and "--" in argv, self.stage),
+        ]
+
+    def ls_tree(self, argv):
+        return "\n".join(self.files if "-r" in argv else (path for path in self.files if path.startswith(".github/workflows/")))
+
+    def add_worktree(self, argv):
+        worktree = Path(argv[argv.index("--detach") + 1])
+        for path, body in self.files.items():
+            (worktree / path).parent.mkdir(parents=True, exist_ok=True)
+            (worktree / path).write_text(body)
+        (worktree / "untracked.yml").write_text("xcode-version: '26.6'\n")
+        return ""
+
+    def stage(self, argv):
+        worktree = Path(argv[2])
+        self.added = {path: (worktree / path).read_text() for path in argv[argv.index("--") + 1:]}
         return ""
 
     def git_file(self, repo, ref, path):

@@ -183,9 +183,82 @@ export async function savePrepared(repo: string, record: JobRecord) {
   await writeFile(path, `${JSON.stringify(record, null, 2)}\n`, { flag: "wx", mode: 0o600 });
   return path;
 }
-export async function operate(repo: string, path: string, input: {
+type OperateInput = {
   command: "submit" | "link" | "status" | "reconcile"; token: string; issueId?: string; evidence?: string;
-}, transport: Transport = fetch) {
+};
+type JournalEntry = z.infer<typeof Journal>;
+
+async function readJournal(journalPath: string): Promise<JournalEntry | undefined> {
+  try { return Journal.parse(JSON.parse(await readFile(journalPath, "utf8"))); }
+  catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
+  return undefined;
+}
+
+// The single POST for this job: journaled before the request, and never repeated once its outcome is unknown.
+async function submitIssue(repo: string, path: string, original: string, record: JobRecord, input: OperateInput,
+  transport: Transport, journalPath: string, journal: JournalEntry | undefined, planHash: string): Promise<string> {
+  if (journal) throw new Error("previous POST outcome is unknown; observe upstream and link its exact issue ID, never repost");
+  // The immutable intent must survive losing this worktree before an external mutation.
+  const committed = execFileSync("git", ["show", `HEAD:${path}`], { cwd: repo, env: gitSubprocessEnv(), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  if (committed !== original) throw new Error("commit the prepared job before submission");
+  let entry: JournalEntry = { planHash, state: "posting" };
+  await replace(journalPath, entry);
+  try {
+    const created = await json(await request(transport, record.plan.target.baseUrl, `/companies/${record.plan.target.companyId}/issues`, input.token, issueBody(record.plan)));
+    const issueId = uuid.parse(created.id);
+    // Kept on the entry first, so a failed journal write still records the created issue as unknown.
+    entry = { ...entry, issueId };
+    await replace(journalPath, entry);
+    return issueId;
+  } catch {
+    await replace(journalPath, { ...entry, state: "unknown" });
+    throw new Error("POST outcome unknown; inspect upstream and link the exact issue ID; no automatic retry");
+  }
+}
+
+function linkedIssue(input: OperateInput, issueId: string | undefined): string {
+  const candidate = uuid.parse(input.issueId);
+  if (issueId && candidate !== issueId) throw new Error("cannot replace an existing issue linkage");
+  return candidate;
+}
+
+async function verifyReconcile(repo: string, record: JobRecord, issueId: string, issue: { status: string }, input: OperateInput) {
+  if (!input.evidence) throw new Error("explicit independently verified evidence receipt required");
+  const receipt = Verification.parse(JSON.parse(await readFile(await contained(repo, input.evidence), "utf8")));
+  await source(repo, git(repo, ["rev-parse", "HEAD"]), input.evidence, record.plan.repository);
+  if (receipt.issueId !== issueId || receipt.sourceSha !== record.plan.sourceSha ||
+      issue.status !== (receipt.outcome === "blocked" ? "blocked" : "done")) throw new Error("receipt identity or upstream status mismatch");
+  for (const ref of receipt.evidence) {
+    const committed = await source(repo, git(repo, ["rev-parse", "HEAD"]), ref.path, record.plan.repository);
+    if (committed.sha256 !== ref.sha256) throw new Error("evidence digest mismatch");
+  }
+  const verification = { receipt, observedStatus: issue.status };
+  if (record.verification && JSON.stringify(record.verification) !== JSON.stringify(verification)) throw new Error("verification is immutable; create a new job for new evidence");
+  record.verification = verification;
+}
+
+async function operateLocked(repo: string, path: string, abs: string, original: string, record: JobRecord,
+  input: OperateInput, transport: Transport, journalPath: string) {
+  await assertIsolation(record.plan, input.token, transport);
+  const journal = await readJournal(journalPath);
+  const planHash = hash(JSON.stringify(record.plan));
+  if (journal && journal.planHash !== planHash) throw new Error("operation already belongs to different immutable input");
+  if (record.issueId && journal?.issueId && record.issueId !== journal.issueId) throw new Error("journal and Git issue linkage conflict");
+  let issueId = record.issueId ?? journal?.issueId;
+  if (input.command === "submit" && !issueId) issueId = await submitIssue(repo, path, original, record, input, transport, journalPath, journal, planHash);
+  if (input.command === "link") issueId = linkedIssue(input, issueId);
+  if (!issueId) throw new Error("no issue linkage; submit or link an observed exact issue ID");
+  const issue = await readIssue(record.plan, issueId, input.token, transport);
+  if (input.command === "status") return { operationId: record.plan.operationId, issueId, status: issue.status, delivery: "Morpheus PR/review/CI/merge required" };
+  record.issueId = issueId;
+  if (input.command === "reconcile") await verifyReconcile(repo, record, issueId, issue, input);
+  await replace(journalPath, { planHash, state: "linked", issueId });
+  if (await readFile(abs, "utf8") !== original) throw new Error("record changed during operation; preserve the journal and reconcile");
+  await replace(abs, record);
+  return record;
+}
+
+export async function operate(repo: string, path: string, input: OperateInput, transport: Transport = fetch) {
   const abs = await contained(repo, path);
   const original = await readFile(abs, "utf8");
   const record = RecordSchema.parse(JSON.parse(original));
@@ -198,57 +271,6 @@ export async function operate(repo: string, path: string, input: {
   const lock = `${journalPath}.lock`;
   try { await mkdir(lock); } catch { throw new Error("job is locked; inspect the previous operator before removing a stale lock"); }
   try {
-    await assertIsolation(record.plan, input.token, transport);
-    let journal: z.infer<typeof Journal> | undefined;
-    try { journal = Journal.parse(JSON.parse(await readFile(journalPath, "utf8"))); }
-    catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
-    const planHash = hash(JSON.stringify(record.plan));
-    if (journal && journal.planHash !== planHash) throw new Error("operation already belongs to different immutable input");
-    if (record.issueId && journal?.issueId && record.issueId !== journal.issueId) throw new Error("journal and Git issue linkage conflict");
-    let issueId = record.issueId ?? journal?.issueId;
-    if (input.command === "submit" && !issueId) {
-      if (journal) throw new Error("previous POST outcome is unknown; observe upstream and link its exact issue ID, never repost");
-      // The immutable intent must survive losing this worktree before an external mutation.
-      const committed = execFileSync("git", ["show", `HEAD:${path}`], { cwd: repo, env: gitSubprocessEnv(), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-      if (committed !== original) throw new Error("commit the prepared job before submission");
-      journal = { planHash, state: "posting" };
-      await replace(journalPath, journal);
-      try {
-        const created = await json(await request(transport, record.plan.target.baseUrl, `/companies/${record.plan.target.companyId}/issues`, input.token, issueBody(record.plan)));
-        issueId = uuid.parse(created.id);
-        journal = { ...journal, issueId };
-        await replace(journalPath, journal);
-      } catch {
-        await replace(journalPath, { ...journal, state: "unknown" });
-        throw new Error("POST outcome unknown; inspect upstream and link the exact issue ID; no automatic retry");
-      }
-    }
-    if (input.command === "link") {
-      const candidate = uuid.parse(input.issueId);
-      if (issueId && candidate !== issueId) throw new Error("cannot replace an existing issue linkage");
-      issueId = candidate;
-    }
-    if (!issueId) throw new Error("no issue linkage; submit or link an observed exact issue ID");
-    const issue = await readIssue(record.plan, issueId, input.token, transport);
-    if (input.command === "status") return { operationId: record.plan.operationId, issueId, status: issue.status, delivery: "Morpheus PR/review/CI/merge required" };
-    record.issueId = issueId;
-    if (input.command === "reconcile") {
-      if (!input.evidence) throw new Error("explicit independently verified evidence receipt required");
-      const receipt = Verification.parse(JSON.parse(await readFile(await contained(repo, input.evidence), "utf8")));
-      await source(repo, git(repo, ["rev-parse", "HEAD"]), input.evidence, record.plan.repository);
-      if (receipt.issueId !== issueId || receipt.sourceSha !== record.plan.sourceSha ||
-          issue.status !== (receipt.outcome === "blocked" ? "blocked" : "done")) throw new Error("receipt identity or upstream status mismatch");
-      for (const ref of receipt.evidence) {
-        const committed = await source(repo, git(repo, ["rev-parse", "HEAD"]), ref.path, record.plan.repository);
-        if (committed.sha256 !== ref.sha256) throw new Error("evidence digest mismatch");
-      }
-      const verification = { receipt, observedStatus: issue.status };
-      if (record.verification && JSON.stringify(record.verification) !== JSON.stringify(verification)) throw new Error("verification is immutable; create a new job for new evidence");
-      record.verification = verification;
-    }
-    await replace(journalPath, { planHash, state: "linked", issueId });
-    if (await readFile(abs, "utf8") !== original) throw new Error("record changed during operation; preserve the journal and reconcile");
-    await replace(abs, record);
-    return record;
+    return await operateLocked(repo, path, abs, original, record, input, transport, journalPath);
   } finally { await rm(lock, { recursive: true }); }
 }

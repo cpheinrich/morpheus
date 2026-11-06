@@ -120,6 +120,26 @@ child.stdin.on("error", () => {});
 process.stdout.on("error", () => {});
 child.on("close", (code) => process.exit(code ?? 255));
 `;
+function reconciliationAccepted(body, hold) {
+  const r = body.executionReconciliation;
+  return body.outcome === "restored" && body.sourceIssueStatus === "todo" && r?.runId === hold.runId && r?.providerStopped === true &&
+    ["completed", "not_performed", "mixed"].includes(r?.actionOutcome) && (r?.outcomeEvidence ?? "").trim().length >= 20;
+}
+// The fake's API, matched in order; the first route whose method and path match answers.
+const PAPERCLIP_ROUTES = [
+  { method: "POST", pattern: /^\/companies\/([^/]+)\/issues$/, answer(m, request) { return this.createIssue(m, request); } },
+  { method: "GET", pattern: /^\/companies\/[^/]+\/issues$/, answer() { return this.json(200, [...this.issues.values()]); } },
+  // Shaped on the live readback: the active projection is empty while GET /issues/:id
+  // still reports a resolved automatic no-replay hold as executionBlocker.
+  { method: "GET", pattern: /^\/issues\/[^/]+\/recovery-actions$/, answer() { return this.json(200, { active: null, actions: [] }); } },
+  { method: "POST", pattern: /^\/issues\/([^/]+)\/recovery-actions\/resolve$/, answer(m, request) { return this.resolveRecovery(m, request); } },
+  { method: "GET", pattern: /^\/issues\/([^/]+)$/, answer(m) { return this.issues.has(m[1]) ? this.json(200, this.issues.get(m[1])) : this.json(404, {}); } },
+  { method: "PATCH", pattern: /^\/issues\/([^/]+)$/, answer(m, request) { return this.patchIssue(m, request); } },
+  { method: null, pattern: /^\/issues\/([^/]+)\/comments$/, answer(m, request) { return this.issueComments(m, request); } },
+  { method: "GET", pattern: /^\/heartbeat-runs\/([^/]+)\/issues$/, answer(m) { return this.json(200, this.runIssues.has(m[1]) ? [{ issueId: this.runIssues.get(m[1]) }] : []); } },
+  { method: "GET", pattern: /^\/heartbeat-runs\/([^/]+)\/log$/, answer(m, request) { return this.runLog(m, request); } },
+  { method: "POST", pattern: /^\/heartbeat-runs\/([^/]+)\/cancel$/, answer(m) { return this.cancelRun(m); } },
+];
 export class FakePaperclip {
   constructor(companyId) {
     this.companyId = companyId;
@@ -154,82 +174,79 @@ export class FakePaperclip {
       throw new TypeError("fetch failed");
     }
     if (typeof injected === "number") return this.json(injected, { error: "injected" });
-    let m;
-    if (method === "POST" && (m = /^\/companies\/([^/]+)\/issues$/.exec(path))) {
-      if (body.idempotencyKey && this.keys.has(body.idempotencyKey)) return this.json(201, { id: this.keys.get(body.idempotencyKey) });
-      const id = randomUUID();
-      this.issues.set(id, { id, companyId: m[1], ...body });
-      if (body.idempotencyKey) this.keys.set(body.idempotencyKey, id);
-      if (injected === "throw-after") throw new TypeError("fetch failed");
-      return this.json(201, { id });
-    }
-    if (method === "GET" && /^\/companies\/[^/]+\/issues$/.test(path)) return this.json(200, [...this.issues.values()]);
-    // Shaped on the live readback: the active projection is empty while GET /issues/:id
-    // still reports a resolved automatic no-replay hold as executionBlocker.
-    if (method === "GET" && /^\/issues\/[^/]+\/recovery-actions$/.test(path)) return this.json(200, { active: null, actions: [] });
-    if (method === "POST" && (m = /^\/issues\/([^/]+)\/recovery-actions\/resolve$/.exec(path))) {
-      const issue = this.issues.get(m[1]);
-      const hold = issue?.executionBlocker;
-      const r = body.executionReconciliation;
-      if (runId) return this.json(403, { error: "Board access required" });
-      if (!hold && issue?.releasedHolds?.includes(body.actionId)) return this.json(200, { replayed: true });
-      if (!hold || hold.recoveryActionId !== body.actionId) return this.json(404, { error: "Active recovery action not found" });
-      if (body.outcome !== "restored" || body.sourceIssueStatus !== "todo" || r?.runId !== hold.runId || r?.providerStopped !== true ||
-          !["completed", "not_performed", "mixed"].includes(r?.actionOutcome) || (r?.outcomeEvidence ?? "").trim().length < 20)
-        return this.json(409, { error: "Reconcile the recorded execution and its action outcomes before continuing this task." });
-      issue.executionBlocker = null;
-      (issue.releasedHolds ??= []).push(body.actionId);
-      issue.status = "todo";
-      return this.json(200, { issue });
-    }
-    if (method === "GET" && (m = /^\/issues\/([^/]+)$/.exec(path))) return this.issues.has(m[1]) ? this.json(200, this.issues.get(m[1])) : this.json(404, {});
-    if (method === "PATCH" && (m = /^\/issues\/([^/]+)$/.exec(path))) {
-      // One transaction: status and the run-attributed comment land together.
-      const issue = this.issues.get(m[1]);
-      if (!issue) return this.json(404, {});
-      if (runId && body.unblockDescriptor && body.unblockDescriptor.owner?.agentId !== issue.assigneeAgentId)
-        return this.json(403, { error: "Agents may only name themselves as an unblock owner" });
-      if (body.status === "blocked" && issue.status !== "blocked" && !body.unblockDescriptor)
-        return this.json(422, { error: "Entering blocked requires unresolved blockers, a pending interaction/approval, or unblockDescriptor" });
-      if (body.status) issue.status = body.status;
-      if (Object.hasOwn(body, "unblockDescriptor")) issue.unblockDescriptor = body.unblockDescriptor;
-      if (body.comment) this.addComment(m[1], { body: body.comment }, runId);
-      if (injected === "throw-after") throw new TypeError("fetch failed");
-      return this.json(200, issue);
-    }
-    if ((m = /^\/issues\/([^/]+)\/comments$/.exec(path))) {
-      const list = this.comments.get(m[1]) ?? [];
-      if (method === "GET") return this.json(200, list);
-      const issue = this.issues.get(m[1]);
-      // Paperclip honors clientRequestId only for user actors, never for agent runs.
-      const replay = !runId && body.clientRequestId && list.find((c) => c.clientRequestId === body.clientRequestId);
-      if (!replay) {
-        this.addComment(m[1], body, runId);
-        if (issue && (body.resume || body.reopen) && issue.status !== "todo") issue.status = "todo";
-        // An operator cancel holds a plain comment wake; explicit resume is a new turn.
-        if (issue && !runId && (body.resume || !issue.holdAfterCancel) && !["done", "cancelled"].includes(issue.status)) {
-          this.wakes.push({ issueId: m[1], resume: body.resume === true });
-          if (body.resume) issue.holdAfterCancel = false;
-        }
-      }
-      if (injected === "throw-after") throw new TypeError("fetch failed");
-      return this.json(201, (this.comments.get(m[1]) ?? []).at(-1));
-    }
-    if (method === "GET" && (m = /^\/heartbeat-runs\/([^/]+)\/issues$/.exec(path)))
-      return this.json(200, this.runIssues.has(m[1]) ? [{ issueId: this.runIssues.get(m[1]) }] : []);
-    if (method === "GET" && (m = /^\/heartbeat-runs\/([^/]+)\/log$/.exec(path))) {
-      const all = Buffer.from(this.logs.get(m[1]) ?? "");
-      const offset = Number(u.searchParams.get("offset") ?? 0);
-      const limit = Number(u.searchParams.get("limitBytes") ?? 65536);
-      const slice = all.subarray(offset, offset + limit);
-      return this.json(200, { content: slice.toString("utf8"), nextOffset: offset + limit < all.length ? offset + limit : undefined });
-    }
-    if (method === "POST" && (m = /^\/heartbeat-runs\/([^/]+)\/cancel$/.exec(path))) {
-      const issue = this.issues.get(this.runIssues.get(m[1]));
-      if (issue) issue.holdAfterCancel = true;
-      return this.json(200, { ok: true });
+    const request = { u, path, method, body, runId, injected };
+    for (const route of PAPERCLIP_ROUTES) {
+      if (route.method && route.method !== method) continue;
+      const m = route.pattern.exec(path);
+      if (m) return route.answer.call(this, m, request);
     }
     return this.json(404, {});
+  }
+  createIssue(m, { body, injected }) {
+    if (body.idempotencyKey && this.keys.has(body.idempotencyKey)) return this.json(201, { id: this.keys.get(body.idempotencyKey) });
+    const id = randomUUID();
+    this.issues.set(id, { id, companyId: m[1], ...body });
+    if (body.idempotencyKey) this.keys.set(body.idempotencyKey, id);
+    if (injected === "throw-after") throw new TypeError("fetch failed");
+    return this.json(201, { id });
+  }
+  resolveRecovery(m, { body, runId }) {
+    const issue = this.issues.get(m[1]);
+    const hold = issue?.executionBlocker;
+    if (runId) return this.json(403, { error: "Board access required" });
+    if (!hold && issue?.releasedHolds?.includes(body.actionId)) return this.json(200, { replayed: true });
+    if (!hold || hold.recoveryActionId !== body.actionId) return this.json(404, { error: "Active recovery action not found" });
+    if (!reconciliationAccepted(body, hold))
+      return this.json(409, { error: "Reconcile the recorded execution and its action outcomes before continuing this task." });
+    issue.executionBlocker = null;
+    (issue.releasedHolds ??= []).push(body.actionId);
+    issue.status = "todo";
+    return this.json(200, { issue });
+  }
+  // One transaction: status and the run-attributed comment land together.
+  patchIssue(m, { body, runId, injected }) {
+    const issue = this.issues.get(m[1]);
+    if (!issue) return this.json(404, {});
+    if (runId && body.unblockDescriptor && body.unblockDescriptor.owner?.agentId !== issue.assigneeAgentId)
+      return this.json(403, { error: "Agents may only name themselves as an unblock owner" });
+    if (body.status === "blocked" && issue.status !== "blocked" && !body.unblockDescriptor)
+      return this.json(422, { error: "Entering blocked requires unresolved blockers, a pending interaction/approval, or unblockDescriptor" });
+    if (body.status) issue.status = body.status;
+    if (Object.hasOwn(body, "unblockDescriptor")) issue.unblockDescriptor = body.unblockDescriptor;
+    if (body.comment) this.addComment(m[1], { body: body.comment }, runId);
+    if (injected === "throw-after") throw new TypeError("fetch failed");
+    return this.json(200, issue);
+  }
+  issueComments(m, { method, body, runId, injected }) {
+    const list = this.comments.get(m[1]) ?? [];
+    if (method === "GET") return this.json(200, list);
+    const issue = this.issues.get(m[1]);
+    // Paperclip honors clientRequestId only for user actors, never for agent runs.
+    const replay = !runId && body.clientRequestId && list.find((c) => c.clientRequestId === body.clientRequestId);
+    if (!replay) this.acceptComment(m[1], issue, body, runId);
+    if (injected === "throw-after") throw new TypeError("fetch failed");
+    return this.json(201, (this.comments.get(m[1]) ?? []).at(-1));
+  }
+  acceptComment(issueId, issue, body, runId) {
+    this.addComment(issueId, body, runId);
+    if (issue && (body.resume || body.reopen) && issue.status !== "todo") issue.status = "todo";
+    // An operator cancel holds a plain comment wake; explicit resume is a new turn.
+    if (issue && !runId && (body.resume || !issue.holdAfterCancel) && !["done", "cancelled"].includes(issue.status)) {
+      this.wakes.push({ issueId, resume: body.resume === true });
+      if (body.resume) issue.holdAfterCancel = false;
+    }
+  }
+  runLog(m, { u }) {
+    const all = Buffer.from(this.logs.get(m[1]) ?? "");
+    const offset = Number(u.searchParams.get("offset") ?? 0);
+    const limit = Number(u.searchParams.get("limitBytes") ?? 65536);
+    const slice = all.subarray(offset, offset + limit);
+    return this.json(200, { content: slice.toString("utf8"), nextOffset: offset + limit < all.length ? offset + limit : undefined });
+  }
+  cancelRun(m) {
+    const issue = this.issues.get(this.runIssues.get(m[1]));
+    if (issue) issue.holdAfterCancel = true;
+    return this.json(200, { ok: true });
   }
   applyDelayed() {
     for (const { path, body, runId } of this.delayed.splice(0)) {

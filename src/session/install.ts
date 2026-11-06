@@ -218,6 +218,55 @@ async function writeJson(path: string, value: Json): Promise<void> {
   await writeFile(path, JSON.stringify(value, null, 2) + "\n", "utf8");
 }
 
+async function createHookFile(path: string, rel: string, content: string, write: boolean, pollGuard: boolean): Promise<Repair> {
+  if (write) {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, content, "utf8");
+  }
+  return {
+    target: rel,
+    outcome: "created",
+    detail: pollGuard ? "Wrote the session-start hook and the CI poll guard." : "Wrote the session-start hook.",
+  };
+}
+
+type Merged = { blocked: string } | { done: string[] };
+
+/** Adds the session shim to `hooks.SessionStart`, replacing a legacy direct brief; names what it did. */
+function mergeSessionShim(block: Json): Merged {
+  const sessionStart = block["SessionStart"];
+  if (sessionStart !== undefined && !Array.isArray(sessionStart)) {
+    return { blocked: 'Left untouched — its "hooks.SessionStart" is not an array.' };
+  }
+  const entries: unknown[] = Array.isArray(sessionStart) ? sessionStart : [];
+  if (alreadyWired(entries)) return { done: [] };
+  const legacy = withoutLegacyBrief(entries);
+  block["SessionStart"] = [...legacy.entries, sessionStartBlock().SessionStart[0]];
+  return { done: [
+    legacy.removed
+      ? "Replaced the legacy direct brief with the version-independent session shim."
+      : entries.length > 0
+        ? "Added the Morpheus session shim alongside the SessionStart hooks already there."
+        : "Added the session-start hook, keeping the rest of the file.",
+  ] };
+}
+
+/** Appends one kind of hook to every event it needs and is not yet wired on. */
+function mergeWanted(block: Json, wanted: WantedBlocks): Merged {
+  const missing: string[] = [];
+  for (const [event, entriesToAdd] of Object.entries(wanted.blocks())) {
+    const current = block[event];
+    if (current !== undefined && !Array.isArray(current)) {
+      return { blocked: `Left untouched — its "hooks.${event}" is not an array.` };
+    }
+    const list: unknown[] = Array.isArray(current) ? current : [];
+    if (alreadyWired(list, wanted.marker)) continue;
+    block[event] = [...list, ...(entriesToAdd as unknown[])];
+    missing.push(event);
+  }
+  return { done: missing.length ? [`Added ${wanted.label} (${missing.join(", ")}) beside any hooks already there.`] : [] };
+}
+
 /**
  * Install the hook into one file, merging rather than replacing.
  *
@@ -244,17 +293,7 @@ async function ensureHook(
     };
   }
 
-  if (found.kind === "absent") {
-    if (write) {
-      await mkdir(dirname(path), { recursive: true });
-      await writeFile(path, template(pollGuard), "utf8");
-    }
-    return {
-      target: rel,
-      outcome: "created",
-      detail: pollGuard ? "Wrote the session-start hook and the CI poll guard." : "Wrote the session-start hook.",
-    };
-  }
+  if (found.kind === "absent") return createHookFile(path, rel, template(pollGuard), write, pollGuard);
 
   const doc = found.value;
   const hooks = doc["hooks"];
@@ -266,50 +305,18 @@ async function ensureHook(
     };
   }
   const block: Json = isObject(hooks) ? { ...hooks } : {};
-  const sessionStart = block["SessionStart"];
-  if (sessionStart !== undefined && !Array.isArray(sessionStart)) {
-    return {
-      target: rel,
-      outcome: "blocked",
-      detail: 'Left untouched — its "hooks.SessionStart" is not an array.',
-    };
-  }
-  const entries: unknown[] = Array.isArray(sessionStart) ? sessionStart : [];
-  const done: string[] = [];
-  if (!alreadyWired(entries)) {
-    const legacy = withoutLegacyBrief(entries);
-    block["SessionStart"] = [...legacy.entries, sessionStartBlock().SessionStart[0]];
-    done.push(
-      legacy.removed
-        ? "Replaced the legacy direct brief with the version-independent session shim."
-        : entries.length > 0
-          ? "Added the Morpheus session shim alongside the SessionStart hooks already there."
-          : "Added the session-start hook, keeping the rest of the file.",
-    );
-  }
-
+  const merged = mergeSessionShim(block);
+  if ("blocked" in merged) return { target: rel, outcome: "blocked", detail: merged.blocked };
+  const done = merged.done;
   // Every event checked before anything is written, so a malformed one leaves
   // the file exactly as it was rather than half-repaired. Each kind of hook is
   // found by its own marker, so one already wired is never added twice, and
   // entries are appended — a project's own hooks on the same event keep running.
   const wantedAll: WantedBlocks[] = [{ blocks: readBlocks, ...READ_HOOK }, ...(pollGuard ? [POLL_GUARD] : [])];
   for (const wanted of wantedAll) {
-    const missing: string[] = [];
-    for (const [event, entriesToAdd] of Object.entries(wanted.blocks())) {
-      const current = block[event];
-      if (current !== undefined && !Array.isArray(current)) {
-        return {
-          target: rel,
-          outcome: "blocked",
-          detail: `Left untouched — its "hooks.${event}" is not an array.`,
-        };
-      }
-      const list: unknown[] = Array.isArray(current) ? current : [];
-      if (alreadyWired(list, wanted.marker)) continue;
-      block[event] = [...list, ...(entriesToAdd as unknown[])];
-      missing.push(event);
-    }
-    if (missing.length) done.push(`Added ${wanted.label} (${missing.join(", ")}) beside any hooks already there.`);
+    const added = mergeWanted(block, wanted);
+    if ("blocked" in added) return { target: rel, outcome: "blocked", detail: added.blocked };
+    done.push(...added.done);
   }
 
   if (!done.length) {

@@ -26,13 +26,17 @@ function target(state, input) {
     const siblings = Object.values(state.agents).filter(item => item.intentId === intent.id);
     invariant(siblings.filter(item => item.state !== "complete").length === 1 && Number.isSafeInteger(work.strategy) && work.strategy > 0 && siblings.every(item => item === work || item.state === "complete" && item.strategy < work.strategy), "Diagnostic target is not the unique latest repair work");
     invariant(work.taskDigest === evidence.taskDigest && typeof work.task === "string" && hash(work.task) === evidence.taskDigest, "Diagnostic repair task digest differs");
+    assertFailedExecution(intent, evidence);
+    invariant(Array.isArray(work.evidence) && work.evidence.every(item => typeof item === "string") && work.evidence.filter(item => item === input.encoded).length <= 1, "Diagnostic repair evidence is malformed or duplicated");
+    return work;
+}
+/** The evidence names the intent's latest failed attempt and its exact, already-bound execution. */
+function assertFailedExecution(intent, evidence) {
     const attempt = intent.attempts.at(-1);
     invariant(attempt?.id === evidence.attemptId && attempt.status === "failed", "Diagnostic requires the latest failed attempt");
     invariant(intent.source === evidence.sourceSha && attempt.sourceSha === evidence.sourceSha && attempt.controlSha === evidence.controlSha && attempt.dispatchEffectId === evidence.dispatchEffectId, "Diagnostic execution identity differs from the current immutable attempt");
     // Failed attempts must already own both run fields. Never bind a new run here.
     invariant(attempt.runId === evidence.runId && attempt.runAttempt === evidence.runAttempt, "Diagnostic requires the exact already-bound Actions run attempt");
-    invariant(Array.isArray(work.evidence) && work.evidence.every(item => typeof item === "string") && work.evidence.filter(item => item === input.encoded).length <= 1, "Diagnostic repair evidence is malformed or duplicated");
-    return work;
 }
 function append(state, input) {
     const work = target(state, input);

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { quotaUsed } from "./state.js";
-import { QuotaReadError } from "./quota-reader.js";
+import { QuotaReadError, readerFailure } from "./quota-reader.js";
 const READ_MS = 60_000, CLEANUP_FUSE_MS = 3_000, INIT_ID = "morpheus-cd-init", USAGE_ID = "morpheus-cd-usage";
 export const CLAUDE_USAGE_SOURCE = "Claude Code get_usage";
 /**
@@ -71,32 +71,16 @@ export function claudeSessionProblem(reply, account) {
  * every entry not scoped to another model, and the configured family's weekly entry, which must exist.
  */
 export function normalizeClaudeUsage(reply, account, model, observedAt) {
-    check(record(reply), "returned no usage object");
-    check(reply.subscription_type === account.subscription, "reported a different subscription");
-    check(reply.rate_limits_available === true, "reported plan limits unavailable");
-    const limits = reply.rate_limits;
-    check(record(limits), "returned no plan limits");
-    // The analysed build strips limits[] from its seeded (up to one hour old) fallback answer.
-    check(Array.isArray(limits.limits), "answer was not freshly read");
-    const extra = limits.extra_usage;
-    check(record(extra) && extra.is_enabled === false, "paid extra usage is enabled or unknown");
+    const limits = freshPlanLimits(reply, account);
     const family = claudeModelFamily(model);
     check(family, "has no known quota family for the configured model");
-    const rows = limits.limits, windows = [], kinds = [];
-    for (const row of rows) {
-        check(record(row) && typeof row.kind === "string" && row.kind.length > 0 && (row.scope === null || row.scope === undefined || record(row.scope)), "returned malformed plan rows");
-        const scoped = record(row.scope) && record(row.scope.model) ? row.scope.model.display_name : undefined;
-        check(scoped === undefined || typeof scoped === "string", "returned malformed plan rows");
-        const ownFamily = scoped !== undefined && scoped.trim().toLowerCase() === family;
-        if (scoped !== undefined && !ownFamily)
+    const windows = [], kinds = [];
+    for (const row of limits.limits) {
+        const window = planWindow(row, family, observedAt);
+        if (!window)
             continue;
-        check(finite(row.percent), "returned an invalid plan window");
-        // An unused window may carry no reset; at exactly 0 % it cannot block, so give it a short synthetic reset.
-        const reset = typeof row.resets_at === "string" ? Date.parse(row.resets_at) : row.resets_at === null && row.percent === 0 ? Date.parse(observedAt) + 300_000 : NaN;
-        check(Number.isFinite(reset), "returned an invalid plan window");
-        const id = `${row.kind}${ownFamily ? `:${family}` : ""}${record(row.scope) && typeof row.scope.surface === "string" ? `:${row.scope.surface}` : ""}`;
-        windows.push({ id, usedPercent: row.percent, resetsAt: new Date(reset).toISOString() });
-        kinds.push(ownFamily ? `${row.kind}:family` : row.kind);
+        windows.push(window.window);
+        kinds.push(window.kind);
     }
     check(kinds.includes("session") && kinds.includes("weekly_all") && kinds.includes("weekly_scoped:family"), "listed no session, weekly or model-family window");
     // Tripwire: the rows must agree with the windows they repeat, so a change of scale or meaning fails closed.
@@ -107,6 +91,45 @@ export function normalizeClaudeUsage(reply, account, model, observedAt) {
     const snapshot = { observedAt, source: CLAUDE_USAGE_SOURCE, windows, model };
     check(quotaUsed(snapshot, observedAt) !== undefined, "returned unknown or expired telemetry");
     return snapshot;
+}
+/** The bound subscription's freshly read plan limits, with paid extra usage known to be disabled. */
+function freshPlanLimits(reply, account) {
+    check(record(reply), "returned no usage object");
+    check(reply.subscription_type === account.subscription, "reported a different subscription");
+    check(reply.rate_limits_available === true, "reported plan limits unavailable");
+    const limits = reply.rate_limits;
+    check(record(limits), "returned no plan limits");
+    // The analysed build strips limits[] from its seeded (up to one hour old) fallback answer.
+    check(Array.isArray(limits.limits), "answer was not freshly read");
+    const extra = limits.extra_usage;
+    check(record(extra) && extra.is_enabled === false, "paid extra usage is enabled or unknown");
+    return limits;
+}
+/** One plan row as a window, or undefined when it is scoped to another model family. */
+function planWindow(row, family, observedAt) {
+    const { kind, scope, scoped } = planRow(row);
+    const ownFamily = scoped !== undefined && scoped.trim().toLowerCase() === family;
+    if (scoped !== undefined && !ownFamily)
+        return undefined;
+    const percent = row.percent;
+    check(finite(percent), "returned an invalid plan window");
+    const reset = windowReset(row.resets_at, percent, observedAt);
+    const id = `${kind}${ownFamily ? `:${family}` : ""}${scope && typeof scope.surface === "string" ? `:${scope.surface}` : ""}`;
+    return { window: { id, usedPercent: percent, resetsAt: new Date(reset).toISOString() }, kind: ownFamily ? `${kind}:family` : kind };
+}
+/** A row's kind, optional scope and the model family name it is scoped to, if any. */
+function planRow(row) {
+    check(record(row) && typeof row.kind === "string" && row.kind.length > 0 && (row.scope === null || row.scope === undefined || record(row.scope)), "returned malformed plan rows");
+    const scope = record(row.scope) ? row.scope : undefined;
+    const scoped = scope && record(scope.model) ? scope.model.display_name : undefined;
+    check(scoped === undefined || typeof scoped === "string", "returned malformed plan rows");
+    return { kind: row.kind, scope, scoped };
+}
+function windowReset(resetsAt, percent, observedAt) {
+    // An unused window may carry no reset; at exactly 0 % it cannot block, so give it a short synthetic reset.
+    const reset = typeof resetsAt === "string" ? Date.parse(resetsAt) : resetsAt === null && percent === 0 ? Date.parse(observedAt) + 300_000 : NaN;
+    check(Number.isFinite(reset), "returned an invalid plan window");
+    return reset;
 }
 /** One fresh read through the CLI's own sign-in, under the existing private-group reader supervisor. No model turn. */
 export async function claudeQuota(command, account, model, environment, observedAt) {
@@ -119,154 +142,189 @@ export async function claudeQuota(command, account, model, environment, observed
     }
 }
 function readUsage(command, account, model, env, observedAt, cwd) {
-    return new Promise((resolve, reject) => {
-        const started = Date.now();
-        let phase = "initialize", buffer = "", control = "", controlBytes = 0, cleanup = false, cleanupSeen = false, settled = false, stopping = false, value;
-        let fuse;
+    return new Promise((resolve, reject) => new UsageRead(account, model, observedAt, resolve, reject).start(command, env, cwd));
+}
+/** One supervised `initialize` then `get_usage` exchange; the helper's control channel reports reader exit and group cleanup. */
+class UsageRead {
+    account;
+    model;
+    observedAt;
+    resolve;
+    reject;
+    started = Date.now();
+    phase = "initialize";
+    buffer = "";
+    control = "";
+    controlBytes = 0;
+    cleanup = false;
+    cleanupSeen = false;
+    settled = false;
+    stopping = false;
+    value;
+    fuse;
+    timer;
+    child;
+    constructor(account, model, observedAt, resolve, reject) {
+        this.account = account;
+        this.model = model;
+        this.observedAt = observedAt;
+        this.resolve = resolve;
+        this.reject = reject;
+    }
+    start(command, env, cwd) {
         const helper = fileURLToPath(new URL("./quota-reader.py", import.meta.url));
-        const child = spawn("/usr/bin/python3", [helper, String(READ_MS), command[0], ...command.slice(1), "-p", "--input-format", "stream-json",
+        const child = this.child = spawn("/usr/bin/python3", [helper, String(READ_MS), command[0], ...command.slice(1), "-p", "--input-format", "stream-json",
             "--output-format", "stream-json", "--verbose", "--no-session-persistence", ...CLAUDE_ISOLATION_ARGS, "--tools", ""], { cwd, env, stdio: ["pipe", "pipe", "pipe", "pipe"] });
-        const diagnostic = (reason) => new QuotaReadError(`Claude usage ${reason} (phase=${phase} elapsedMs=${Math.max(0, Date.now() - started)})`);
-        const stop = () => {
-            if (stopping)
-                return;
-            stopping = true;
-            child.stdin.end();
-            child.kill("SIGTERM");
-            fuse = setTimeout(() => { child.kill("SIGKILL"); fail("cleanup unknown"); }, CLEANUP_FUSE_MS);
-        };
-        const fail = (reason, error) => {
-            if (settled)
-                return;
-            settled = true;
-            clearTimeout(timer);
-            stop();
-            reject(error ?? diagnostic(reason));
-        };
-        const timer = setTimeout(() => fail("read timed out"), READ_MS);
-        const send = (id, subtype, extra = {}) => child.stdin.write(JSON.stringify({ type: "control_request", request_id: id, request: { subtype, ...extra } }) + "\n");
-        child.on("error", () => fail("reader could not start"));
-        child.stdin.on("error", () => fail("transport unavailable"));
+        this.timer = setTimeout(() => this.fail("read timed out"), READ_MS);
+        child.on("error", () => this.fail("reader could not start"));
+        child.stdin.on("error", () => this.fail("transport unavailable"));
         // CLI stderr is untrusted provider text: drain it, never keep it.
         child.stderr.resume();
-        child.stdio[3].on("data", (bytes) => {
-            controlBytes += bytes.byteLength;
-            if (controlBytes > 256) {
-                fail("cleanup unknown");
+        child.stdio[3].on("data", (bytes) => this.onControl(bytes));
+        child.stdout.on("data", (bytes) => this.onStdout(bytes));
+        child.on("close", code => this.onClose(code));
+        this.send(INIT_ID, "initialize");
+    }
+    diagnostic(reason) { return new QuotaReadError(`Claude usage ${reason} (phase=${this.phase} elapsedMs=${Math.max(0, Date.now() - this.started)})`); }
+    stop() {
+        if (this.stopping)
+            return;
+        this.stopping = true;
+        this.child.stdin.end();
+        this.child.kill("SIGTERM");
+        this.fuse = setTimeout(() => { this.child.kill("SIGKILL"); this.fail("cleanup unknown"); }, CLEANUP_FUSE_MS);
+    }
+    fail(reason, error) {
+        if (this.settled)
+            return;
+        this.settled = true;
+        clearTimeout(this.timer);
+        this.stop();
+        this.reject(error ?? this.diagnostic(reason));
+    }
+    send(id, subtype, extra = {}) {
+        this.child.stdin.write(JSON.stringify({ type: "control_request", request_id: id, request: { subtype, ...extra } }) + "\n");
+    }
+    onControl(bytes) {
+        this.controlBytes += bytes.byteLength;
+        if (this.controlBytes > 256) {
+            this.fail("cleanup unknown");
+            return;
+        }
+        this.control += String(bytes);
+        while (this.control.includes("\n")) {
+            const end = this.control.indexOf("\n"), line = this.control.slice(0, end);
+            this.control = this.control.slice(end + 1);
+            let status;
+            try {
+                status = JSON.parse(line);
+            }
+            catch {
+                this.fail("cleanup unknown");
                 return;
             }
-            control += String(bytes);
-            while (control.includes("\n")) {
-                const end = control.indexOf("\n"), line = control.slice(0, end);
-                control = control.slice(end + 1);
-                let status;
-                try {
-                    status = JSON.parse(line);
-                }
-                catch {
-                    fail("cleanup unknown");
-                    return;
-                }
-                if (!record(status)) {
-                    fail("cleanup unknown");
-                    return;
-                }
-                const keys = Object.keys(status);
-                if (keys.length === 1 && ["terminated", "unknown"].includes(status.cleanup)) {
-                    if (cleanupSeen) {
-                        fail("cleanup unknown");
-                        return;
-                    }
-                    cleanupSeen = true;
-                    cleanup = status.cleanup === "terminated";
-                }
-                else if (keys.length === 2 && status.reader === "spawn-failed" && Number.isInteger(status.errno) && Number(status.errno) >= 0 && Number(status.errno) <= 4095) {
-                    if (!stopping && !settled)
-                        fail(`reader could not start (errno=${status.errno})`);
-                }
-                else if (keys.length === 2 && status.reader === "exited" && Number.isInteger(status.code) && Number(status.code) >= -255 && Number(status.code) <= 255) {
-                    if (!stopping && !settled)
-                        fail(`reader exited (code=${status.code})`);
-                }
-                else if (keys.length === 1 && status.reader === "status-unavailable") {
-                    if (!stopping && !settled)
-                        fail("reader status unavailable");
-                }
-                else {
-                    fail("cleanup unknown");
-                    return;
-                }
-            }
-        });
-        child.stdout.on("data", (bytes) => {
-            if (stopping || settled)
-                return;
-            buffer += String(bytes);
-            if (buffer.length > 1_048_576) {
-                fail("response unavailable");
+            if (!this.controlStatus(status)) {
+                this.fail("cleanup unknown");
                 return;
             }
-            while (buffer.includes("\n") && !stopping && !settled) {
-                const end = buffer.indexOf("\n"), line = buffer.slice(0, end);
-                buffer = buffer.slice(end + 1);
-                let message;
-                try {
-                    message = JSON.parse(line);
-                }
-                catch {
-                    continue;
-                }
-                if (!record(message) || message.type !== "control_response" || !record(message.response))
-                    continue;
-                const response = message.response, expected = phase === "initialize" ? INIT_ID : USAGE_ID;
-                if (response.request_id !== expected)
-                    continue;
-                if (response.subtype !== "success") {
-                    fail("request refused");
-                    return;
-                }
-                if (phase === "initialize") {
-                    const problem = claudeSessionProblem(response.response, account);
-                    if (problem) {
-                        fail("binding", new QuotaReadError(`${problem}; retain budget wait`));
-                        return;
-                    }
-                    // Only an analysed build bound to the account is asked for usage.
-                    phase = "usage";
-                    send(USAGE_ID, "get_usage", { skip_behaviors: true });
-                    continue;
-                }
-                try {
-                    value = normalizeClaudeUsage(response.response, account, model, observedAt);
-                }
-                catch (error) {
-                    fail("invalid", error instanceof QuotaReadError ? error : undefined);
-                    return;
-                }
-                phase = "cleanup";
-                stop();
-            }
-        });
-        child.on("close", code => {
-            clearTimeout(fuse);
-            if (!cleanup || control.length !== 0 || code !== 0) {
-                if (!settled)
-                    fail("cleanup unknown");
-                else
-                    console.error(diagnostic("cleanup unknown").message);
+        }
+    }
+    /** Applies one helper status line; false when it is malformed or a repeated cleanup report. */
+    controlStatus(status) {
+        if (!record(status))
+            return false;
+        const keys = Object.keys(status), live = !this.stopping && !this.settled;
+        if (keys.length === 1 && ["terminated", "unknown"].includes(status.cleanup)) {
+            if (this.cleanupSeen)
+                return false;
+            this.cleanupSeen = true;
+            this.cleanup = status.cleanup === "terminated";
+            return true;
+        }
+        const failure = readerFailure(status, keys.length, "reader");
+        if (failure === undefined)
+            return false;
+        if (live)
+            this.fail(failure);
+        return true;
+    }
+    onStdout(bytes) {
+        if (this.stopping || this.settled)
+            return;
+        this.buffer += String(bytes);
+        if (this.buffer.length > 1_048_576) {
+            this.fail("response unavailable");
+            return;
+        }
+        while (this.buffer.includes("\n") && !this.stopping && !this.settled) {
+            const end = this.buffer.indexOf("\n"), line = this.buffer.slice(0, end);
+            this.buffer = this.buffer.slice(end + 1);
+            const response = this.expectedResponse(line);
+            if (!response)
+                continue;
+            if (response.subtype !== "success") {
+                this.fail("request refused");
                 return;
             }
-            if (settled)
+            if (!this.accept(response.response))
                 return;
-            if (Date.now() - started >= READ_MS || !value) {
-                fail("returned unknown or expired telemetry");
-                return;
+        }
+    }
+    /** The control response this phase is waiting for, if the line is one. */
+    expectedResponse(line) {
+        let message;
+        try {
+            message = JSON.parse(line);
+        }
+        catch {
+            return undefined;
+        }
+        if (!record(message) || message.type !== "control_response" || !record(message.response))
+            return undefined;
+        return message.response.request_id === (this.phase === "initialize" ? INIT_ID : USAGE_ID) ? message.response : undefined;
+    }
+    /** Advances on a successful reply: bind, then ask for usage, then keep the value and stop. False once the read has failed. */
+    accept(reply) {
+        if (this.phase === "initialize") {
+            const problem = claudeSessionProblem(reply, this.account);
+            if (problem) {
+                this.fail("binding", new QuotaReadError(`${problem}; retain budget wait`));
+                return false;
             }
-            settled = true;
-            clearTimeout(timer);
-            resolve(value);
-        });
-        send(INIT_ID, "initialize");
-    });
+            // Only an analysed build bound to the account is asked for usage.
+            this.phase = "usage";
+            this.send(USAGE_ID, "get_usage", { skip_behaviors: true });
+            return true;
+        }
+        try {
+            this.value = normalizeClaudeUsage(reply, this.account, this.model, this.observedAt);
+        }
+        catch (error) {
+            this.fail("invalid", error instanceof QuotaReadError ? error : undefined);
+            return false;
+        }
+        this.phase = "cleanup";
+        this.stop();
+        return true;
+    }
+    onClose(code) {
+        clearTimeout(this.fuse);
+        if (!this.cleanup || this.control.length !== 0 || code !== 0) {
+            if (!this.settled)
+                this.fail("cleanup unknown");
+            else
+                console.error(this.diagnostic("cleanup unknown").message);
+            return;
+        }
+        if (this.settled)
+            return;
+        if (Date.now() - this.started >= READ_MS || !this.value) {
+            this.fail("returned unknown or expired telemetry");
+            return;
+        }
+        this.settled = true;
+        clearTimeout(this.timer);
+        this.resolve(this.value);
+    }
 }
 //# sourceMappingURL=claude-quota.js.map

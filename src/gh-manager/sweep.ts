@@ -180,15 +180,17 @@ export function parseMarker(body: string): ManagerMarker | undefined {
   if (!match) return undefined;
   try {
     const raw = JSON.parse(match[1]!) as Partial<ManagerMarker>;
-    if (typeof raw.head !== "string" || typeof raw.verdict !== "string" || typeof raw.attempts !== "number" || typeof raw.at !== "string") return undefined;
-    if (!VERDICTS.includes(raw.verdict)) return undefined;
-    if (raw.cleared !== undefined && typeof raw.cleared !== "string") return undefined;
-    if (raw.updated !== undefined && typeof raw.updated !== "string") return undefined;
-    if (raw.triage !== undefined && typeof raw.triage !== "boolean") return undefined;
+    if (!wellFormedMarker(raw)) return undefined;
     return { head: raw.head, verdict: raw.verdict, attempts: raw.attempts, at: raw.at, ...(raw.cleared ? { cleared: raw.cleared } : {}), ...(raw.updated ? { updated: raw.updated } : {}), ...(raw.triage ? { triage: true } : {}) };
   } catch {
     return undefined;
   }
+}
+
+function wellFormedMarker(raw: Partial<ManagerMarker>): raw is ManagerMarker {
+  if (typeof raw.head !== "string" || typeof raw.verdict !== "string" || typeof raw.attempts !== "number" || typeof raw.at !== "string") return false;
+  if (!VERDICTS.includes(raw.verdict)) return false;
+  return (raw.cleared === undefined || typeof raw.cleared === "string") && (raw.updated === undefined || typeof raw.updated === "string") && (raw.triage === undefined || typeof raw.triage === "boolean");
 }
 
 function summarize(checks: PullRequestFacts["checks"]): { failing: string[]; pending: string[]; cancelled: string[] } {
@@ -201,8 +203,25 @@ function summarize(checks: PullRequestFacts["checks"]): { failing: string[]; pen
   };
 }
 
+type Routes = (route: Route, reason: string, detail: string) => Routed;
+type CheckSummary = ReturnType<typeof summarize>;
+
 /** Route one pull request. Pure: `now` is passed in. */
 export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, now: Date): Routed {
+  const attempts = ordinaryAttempts(pr);
+  const routed: Routes = (route, reason, detail) => ({ number: pr.number, title: pr.title, headSha: pr.headSha, route, reason, detail, attempts });
+  const early = admissionRoute(pr, policy, now, routed) ?? staleRoute(pr, policy, now, routed);
+  if (early) return early;
+  const checks = summarize(pr.checks);
+  const reviewed = pr.labels.includes("agent-reviewed") || pr.labels.includes(MANAGER_REVIEWED_LABEL);
+  const mergeable = !checks.failing.length && pr.mergeable !== "CONFLICTING";
+  if (pr.autoMerge && mergeable) return autoMergeRoute(pr, policy, checks, routed);
+  if (reviewed && !pr.isDraft && mergeable) return reviewedRoute(pr, policy, checks, attempts, routed);
+  return needsWorkRoute(pr, policy, checks, reviewed, attempts, routed);
+}
+
+/** Sessions already spent on the ordinary path for this pull request. */
+function ordinaryAttempts(pr: PullRequestFacts): number {
   const marker = pr.marker;
   // A human answering an escalation — by pushing, or by removing the label to say "try again" —
   // is a new situation; the budget starts again.
@@ -210,9 +229,11 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
   // A triage marker was about a draft. Whoever marks it ready, a person or triage itself, the
   // ordinary path starts with its own full budget rather than inheriting triage's sessions.
   const triaged = marker?.triage === true || marker?.verdict === "ready" || marker?.verdict === "dormant";
-  const attempts = marker && !reopened && !triaged ? marker.attempts : 0;
-  const routed = (route: Route, reason: string, detail: string): Routed => ({ number: pr.number, title: pr.title, headSha: pr.headSha, route, reason, detail, attempts });
+  return marker && !reopened && !triaged ? marker.attempts : 0;
+}
 
+/** Authors the manager never acts for, and branch names it will not carry into a brief. */
+function authorRoute(pr: PullRequestFacts, routed: Routes): Routed | undefined {
   if (BOT_LANES.has(pr.author)) return routed("skip", "bot-lane", `${pr.author} has its own maintainer`);
   const trusted = TRUSTED_ASSOCIATIONS.has(pr.authorAssociation) || TRUSTED_PERMISSIONS.has(pr.authorPermission ?? "");
   if (!trusted || pr.isCrossRepository) {
@@ -221,6 +242,14 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
   }
   // The branch name is the one piece of author-controlled text the brief has to carry.
   if (!SAFE_REF.test(pr.headRefName)) return routed("skip", "unsafe-branch-name", "the branch name has characters the manager will not put in a brief");
+  return undefined;
+}
+
+/** Who and what the manager will not act on, work in progress, standing escalations, and recently active branches. */
+function admissionRoute(pr: PullRequestFacts, policy: GhManagerPolicy, now: Date, routed: Routes): Routed | undefined {
+  const marker = pr.marker;
+  const refused = authorRoute(pr, routed);
+  if (refused) return refused;
   if (isRescuedTrunkDraft(pr)) return routeRescuedTrunk(pr, policy, now, routed);
   if (isWorkInProgress(pr)) return pr.autoMerge
     ? routed("hold", "wip-auto-merge", "work in progress; cancelling queued auto-merge")
@@ -228,11 +257,9 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
   if (pr.labels.includes(NEEDS_HUMAN_LABEL) && marker?.head === pr.headSha) {
     return routed("skip", "escalated", "waiting on a human since the last run; a new push reopens it");
   }
-
   if (pr.labels.includes(INCOMPLETE_LABEL) && marker?.head === pr.headSha) {
     return routed("skip", "incomplete", "marked incomplete against its roadmap item; a new push reopens it");
   }
-
   // The later of the commit date and the day the pull request opened: a commit can be made long
   // before it is pushed, and its date alone would call a branch quiet minutes after it appeared.
   const age = now.getTime() - Math.max(Date.parse(pr.headCommittedAt), Date.parse(pr.createdAt));
@@ -243,50 +270,54 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
   if (!managerUpdate && (!Number.isFinite(age) || age < quiet * HOUR)) {
     return routed("skip", "active", `head commit is under ${quiet}h old; an author may still be driving it`);
   }
+  return undefined;
+}
 
-  if (pr.labels.includes(STALE_LABEL) && marker?.verdict === "warn-stale" && marker.head === pr.headSha) {
-    const warned = now.getTime() - Date.parse(marker.at);
-    if (Number.isFinite(warned) && warned >= policy.closeGraceDays * DAY) {
-      return policy.actions.close
-        ? routed("close", "stale-grace-expired", `no activity for ${policy.closeGraceDays} days after the stale warning`)
-        : routed("skip", "close-disabled", "stale, but closing is disabled by policy");
-    }
-    return routed("skip", "stale-grace", "stale warning posted; inside the grace period");
+function staleRoute(pr: PullRequestFacts, policy: GhManagerPolicy, now: Date, routed: Routes): Routed | undefined {
+  const marker = pr.marker;
+  if (!(pr.labels.includes(STALE_LABEL) && marker?.verdict === "warn-stale" && marker.head === pr.headSha)) return undefined;
+  const warned = now.getTime() - Date.parse(marker.at);
+  if (Number.isFinite(warned) && warned >= policy.closeGraceDays * DAY) {
+    return policy.actions.close
+      ? routed("close", "stale-grace-expired", `no activity for ${policy.closeGraceDays} days after the stale warning`)
+      : routed("skip", "close-disabled", "stale, but closing is disabled by policy");
   }
+  return routed("skip", "stale-grace", "stale warning posted; inside the grace period");
+}
 
-  const { failing, pending, cancelled } = summarize(pr.checks);
-  const reviewed = pr.labels.includes("agent-reviewed") || pr.labels.includes(MANAGER_REVIEWED_LABEL);
-
-  if (pr.autoMerge && !failing.length && pr.mergeable !== "CONFLICTING") {
-    if (cancelled.length && policy.actions.merge) return routed("merge", "rerun-cancelled", `auto-merge is on but ${cancelled.length} check(s) were cancelled; rerunning them`);
-    if (pr.behind && policy.actions.merge) {
-      // Tried on this exact head already and the head did not move: GitHub refused the update.
-      // Escalate once; retrying would post the same two comments every run for ever.
-      if (marker?.updated === pr.headSha) return routed("escalate", "update-refused", "GitHub refused to bring this branch up to date with its base. A likely cause is that the merge from trunk carries a workflow change, which the manager's App is not permitted to push. Merge the base into the branch by hand; auto-merge is still queued");
-      return routed("merge", "update-behind", "auto-merge is on but the branch is behind its base; bringing it up to date");
-    }
-    return routed("skip", "waiting", pending.length ? `auto-merge is on; ${pending.length} check(s) running` : "auto-merge is on and checks are green; GitHub merges it");
+/** Auto-merge is queued and nothing is failing: rerun cancelled checks, update a branch that is behind, or wait for GitHub. */
+function autoMergeRoute(pr: PullRequestFacts, policy: GhManagerPolicy, { pending, cancelled }: CheckSummary, routed: Routes): Routed {
+  if (cancelled.length && policy.actions.merge) return routed("merge", "rerun-cancelled", `auto-merge is on but ${cancelled.length} check(s) were cancelled; rerunning them`);
+  if (pr.behind && policy.actions.merge) {
+    // Tried on this exact head already and the head did not move: GitHub refused the update.
+    // Escalate once; retrying would post the same two comments every run for ever.
+    if (pr.marker?.updated === pr.headSha) return routed("escalate", "update-refused", "GitHub refused to bring this branch up to date with its base. A likely cause is that the merge from trunk carries a workflow change, which the manager's App is not permitted to push. Merge the base into the branch by hand; auto-merge is still queued");
+    return routed("merge", "update-behind", "auto-merge is on but the branch is behind its base; bringing it up to date");
   }
+  return routed("skip", "waiting", pending.length ? `auto-merge is on; ${pending.length} check(s) running` : "auto-merge is on and checks are green; GitHub merges it");
+}
 
-  if (reviewed && !pr.isDraft && !failing.length && pr.mergeable !== "CONFLICTING") {
-    if (pending.length) return routed("skip", "checks-running", `reviewed; ${pending.length} check(s) still running`);
-    if (policy.sessionBeforeMerge && policy.actions.merge && !(marker?.verdict === "merge" && marker.head === pr.headSha)) {
-      // Not when a session already decided to merge this exact head: that was the look.
-      if (attempts >= policy.maxAttemptsPerPullRequest) return routed("escalate", "attempts-spent", `${attempts} session(s) already spent without landing it`);
-      return routed("session", "confirm-before-merge", "reviewed and green; checking it was not left open on purpose before merging");
-    }
-    // UNKNOWN is GitHub not having computed it yet. Auto-merge is safe to enable either way: it
-    // merges only once every requirement holds.
-    return policy.actions.merge
-      ? routed("merge", "reviewed-and-green", cancelled.length ? `reviewed; rerunning ${cancelled.length} cancelled check(s) and enabling auto-merge` : "reviewed, checks green, auto-merge was never enabled")
-      : routed("skip", "merge-disabled", "ready to merge, but merging is disabled by policy");
+/** Reviewed, ready and not failing: wait for checks, confirm once in a session if policy asks, then enable auto-merge. */
+function reviewedRoute(pr: PullRequestFacts, policy: GhManagerPolicy, { pending, cancelled }: CheckSummary, attempts: number, routed: Routes): Routed {
+  const marker = pr.marker;
+  if (pending.length) return routed("skip", "checks-running", `reviewed; ${pending.length} check(s) still running`);
+  if (policy.sessionBeforeMerge && policy.actions.merge && !(marker?.verdict === "merge" && marker.head === pr.headSha)) {
+    // Not when a session already decided to merge this exact head: that was the look.
+    if (attempts >= policy.maxAttemptsPerPullRequest) return routed("escalate", "attempts-spent", `${attempts} session(s) already spent without landing it`);
+    return routed("session", "confirm-before-merge", "reviewed and green; checking it was not left open on purpose before merging");
   }
+  // UNKNOWN is GitHub not having computed it yet. Auto-merge is safe to enable either way: it
+  // merges only once every requirement holds.
+  return policy.actions.merge
+    ? routed("merge", "reviewed-and-green", cancelled.length ? `reviewed; rerunning ${cancelled.length} cancelled check(s) and enabling auto-merge` : "reviewed, checks green, auto-merge was never enabled")
+    : routed("skip", "merge-disabled", "ready to merge, but merging is disabled by policy");
+}
 
+function needsWorkRoute(pr: PullRequestFacts, policy: GhManagerPolicy, { failing }: CheckSummary, reviewed: boolean, attempts: number, routed: Routes): Routed {
   if (attempts >= policy.maxAttemptsPerPullRequest) {
     return routed("escalate", "attempts-spent", `${attempts} session(s) already spent without landing it`);
   }
   if (!policy.actions.review && !policy.actions.repair) return routed("skip", "sessions-disabled", "needs work, but review and repair are disabled by policy");
-
   const why = [
     pr.isDraft ? "draft" : "",
     pr.mergeable === "CONFLICTING" ? "conflicts with the base" : "",
@@ -334,11 +365,8 @@ function routeWorkInProgress(pr: PullRequestFacts, policy: GhManagerPolicy, now:
   if (!policy.actions.triage) return routed("skip", "work-in-progress", waiting);
   // Each skip needs the label and the marker's verdict for this head to agree: a label left over
   // from an earlier head, or from a different verdict, must not stop the next classification.
-  const verdict = sameHead ? marker?.verdict : undefined;
-  if (verdict === "escalate" && pr.labels.includes(NEEDS_HUMAN_LABEL)) return routed("skip", "escalated", "waiting on a human since the last run; a new push reopens it");
-  if (verdict === "incomplete" && pr.labels.includes(INCOMPLETE_LABEL)) return routed("skip", "incomplete", "triaged as incomplete; the handoff is on the pull request. A new push or removing the label re-triages it");
-  if (verdict === "dormant" && pr.labels.includes(DORMANT_LABEL)) return routed("skip", "dormant", "triaged as dormant; a new push or removing the label re-triages it");
-  if (verdict === "ready") return routed("skip", "triaged-ready", "triaged as complete but left as it is (WIP name, or undraft disabled); a new push re-triages it");
+  const settled = triageSettled(pr, sameHead ? marker?.verdict : undefined, routed);
+  if (settled) return settled;
 
   const age = now.getTime() - Math.max(Date.parse(pr.headCommittedAt), Date.parse(pr.createdAt));
   if (!Number.isFinite(age) || age < policy.draftQuietHours * HOUR) {
@@ -350,6 +378,15 @@ function routeWorkInProgress(pr: PullRequestFacts, policy: GhManagerPolicy, now:
   }
   const kind = pr.isDraft ? "draft" : "WIP branch or title";
   return routed("session", TRIAGE_REASON, `${kind} quiet for ${policy.draftQuietHours}h or more; triage only: ready, incomplete or dormant`);
+}
+
+/** A verdict already recorded for this head whose label still stands. */
+function triageSettled(pr: PullRequestFacts, verdict: string | undefined, routed: Routes): Routed | undefined {
+  if (verdict === "escalate" && pr.labels.includes(NEEDS_HUMAN_LABEL)) return routed("skip", "escalated", "waiting on a human since the last run; a new push reopens it");
+  if (verdict === "incomplete" && pr.labels.includes(INCOMPLETE_LABEL)) return routed("skip", "incomplete", "triaged as incomplete; the handoff is on the pull request. A new push or removing the label re-triages it");
+  if (verdict === "dormant" && pr.labels.includes(DORMANT_LABEL)) return routed("skip", "dormant", "triaged as dormant; a new push or removing the label re-triages it");
+  if (verdict === "ready") return routed("skip", "triaged-ready", "triaged as complete but left as it is (WIP name, or undraft disabled); a new push re-triages it");
+  return undefined;
 }
 
 /**

@@ -117,6 +117,15 @@ export function parseCapacity(raw: unknown): Parsed {
   return { ok: true, observedAt, groups };
 }
 
+function parseWindow(entry: unknown): QuotaWindow | null {
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return null;
+  const window = entry as Record<string, unknown>;
+  const id = window.id;
+  const usedPercent = number(window.usedPercent);
+  if (typeof id !== "string" || id === "" || usedPercent === null || usedPercent > 100) return null;
+  return { id, usedPercent, resetsAt: typeof window.resetsAt === "string" ? window.resetsAt : "" };
+}
+
 function parseGroup(value: unknown): GroupUsage | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
@@ -129,13 +138,11 @@ function parseGroup(value: unknown): GroupUsage | null {
   const windowsRaw = record.windows;
   if (!Array.isArray(windowsRaw)) return null;
   const windows: QuotaWindow[] = [];
+  // One malformed window rejects the whole group: partial quota is not proof of capacity.
   for (const entry of windowsRaw) {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return null;
-    const window = entry as Record<string, unknown>;
-    const id = window.id;
-    const usedPercent = number(window.usedPercent);
-    if (typeof id !== "string" || id === "" || usedPercent === null || usedPercent > 100) return null;
-    windows.push({ id, usedPercent, resetsAt: typeof window.resetsAt === "string" ? window.resetsAt : "" });
+    const window = parseWindow(entry);
+    if (window === null) return null;
+    windows.push(window);
   }
   return { inFlight, maxConcurrency, healthyAccounts, windows };
 }

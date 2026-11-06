@@ -36,22 +36,12 @@ export async function codexMemoryEnabled(client, task) {
     return false;
   }
 }
-export async function memoryContext(config, task, owner) {
-  if (!["claude", "codex"].includes(owner))
-    throw new Error("Invalid memory owner");
-  if (
-    !config.memorySharing ||
-    task.memoryEnabled !== true ||
-    process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY === "1"
-  )
-    return [];
-  const claudeHome =
-    process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+function memorySettingsPaths(claudeHome, start) {
   const settings = [
     join(claudeHome, "settings.json"),
     "/Library/Application Support/ClaudeCode/managed-settings.json",
   ];
-  let cwd = task.cwd;
+  let cwd = start;
   while (cwd) {
     settings.push(
       join(cwd, ".claude", "settings.json"),
@@ -61,8 +51,11 @@ export async function memoryContext(config, task, owner) {
     if (parent === cwd) break;
     cwd = parent;
   }
-  // A disabled value in any scope suppresses sharing conservatively. Custom stores
-  // require explicit paths; they are never discovered by scanning unrelated projects.
+  return settings;
+}
+// A disabled value in any scope suppresses sharing conservatively (null). Custom stores
+// require explicit paths; they are never discovered by scanning unrelated projects.
+async function customMemoryRoots(settings) {
   const customRoots = [];
   for (const file of settings) {
     let value;
@@ -72,31 +65,26 @@ export async function memoryContext(config, task, owner) {
       if (e.code === "ENOENT") continue;
       throw e;
     }
-    if (value.autoMemoryEnabled === false) return [];
+    if (value.autoMemoryEnabled === false) return null;
     if (value.autoMemoryDirectory)
       customRoots.push(
         value.autoMemoryDirectory.replace(/^~\//, homedir() + "/"),
       );
   }
-  const selected = config.memorySources[task.project]?.[owner] ?? [];
-  const rootPaths =
-    owner === "codex"
-      ? [join(process.env.CODEX_HOME || join(homedir(), ".codex"), "memories")]
-      : [join(claudeHome, "projects"), ...customRoots];
-  const roots = (
-    await Promise.all(rootPaths.map((p) => realpath(p).catch(() => null)))
-  ).filter(Boolean);
+  return customRoots;
+}
+function insideAnyRoot(roots, path) {
+  return roots.some((root) => {
+    const rel = relative(root, path);
+    return rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel);
+  });
+}
+async function readMemoryFiles(selected, roots, owner) {
   let budget = 16000;
   const result = [];
   for (const file of selected.slice(0, 12)) {
     const path = await realpath(file);
-    if (
-      !roots.some((root) => {
-        const rel = relative(root, path);
-        return rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel);
-      }) ||
-      !path.endsWith(".md")
-    )
+    if (!insideAnyRoot(roots, path) || !path.endsWith(".md"))
       throw new Error(
         "Memory source must be a selected Markdown file inside its owner memory store.",
       );
@@ -108,4 +96,27 @@ export async function memoryContext(config, task, owner) {
     if (budget <= 0) break;
   }
   return result;
+}
+export async function memoryContext(config, task, owner) {
+  if (!["claude", "codex"].includes(owner))
+    throw new Error("Invalid memory owner");
+  if (
+    !config.memorySharing ||
+    task.memoryEnabled !== true ||
+    process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY === "1"
+  )
+    return [];
+  const claudeHome =
+    process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+  const customRoots = await customMemoryRoots(memorySettingsPaths(claudeHome, task.cwd));
+  if (customRoots === null) return [];
+  const selected = config.memorySources[task.project]?.[owner] ?? [];
+  const rootPaths =
+    owner === "codex"
+      ? [join(process.env.CODEX_HOME || join(homedir(), ".codex"), "memories")]
+      : [join(claudeHome, "projects"), ...customRoots];
+  const roots = (
+    await Promise.all(rootPaths.map((p) => realpath(p).catch(() => null)))
+  ).filter(Boolean);
+  return readMemoryFiles(selected, roots, owner);
 }

@@ -161,12 +161,8 @@ def selectable(identifier):
     return '/' in identifier or identifier.endswith(')')
 
 
-def read_results(bundle, keep=None):
-    """Each test's results by -only-testing identifier, the bundles that could not start, and
-    whether every failure names one of them.
-
-    None when the bundle cannot be read: an unknown outcome is never a pass.
-    """
+def export_results(bundle, keep=None):
+    """xcresulttool's tests and summary documents, or None when either cannot be read."""
     exported = {}
     for kind in ('tests', 'summary'):
         done = subprocess.run(['xcrun', 'xcresulttool', 'get', 'test-results', kind, '--path', str(bundle)],
@@ -179,6 +175,12 @@ def read_results(bundle, keep=None):
             return None
         if keep:
             (keep / f'{kind}.json').write_text(done.stdout)
+    return exported
+
+
+def tree_outcomes(tree):
+    """Results by selectable test id (None for an unidentified case), and bundles with a failure
+    that names no selectable test."""
     tests, broken = {}, set()
 
     def visit(node, target):
@@ -196,11 +198,14 @@ def read_results(bundle, keep=None):
         else:
             tests.setdefault(None, []).append('Unidentified')
 
-    for node in exported['tests'].get('testNodes') or []:
+    for node in tree.get('testNodes') or []:
         visit(node, None)
-    failed = {test for test, outcomes in tests.items() if any(o not in PASSING | {'Skipped'} for o in outcomes)}
+    return tests, broken
+
+
+def summary_failures(summary):
     reported, reported_broken = set(), set()
-    for f in exported['summary'].get('testFailures', []):
+    for f in summary.get('testFailures', []):
         target, name = f.get('targetName'), f.get('testIdentifierString')
         if not (target and name):
             reported.add(None)
@@ -208,6 +213,21 @@ def read_results(bundle, keep=None):
             reported.add(f'{target}/{name}')
         else:
             reported_broken.add(target)
+    return reported, reported_broken
+
+
+def read_results(bundle, keep=None):
+    """Each test's results by -only-testing identifier, the bundles that could not start, and
+    whether every failure names one of them.
+
+    None when the bundle cannot be read: an unknown outcome is never a pass.
+    """
+    exported = export_results(bundle, keep)
+    if exported is None:
+        return None
+    tests, broken = tree_outcomes(exported['tests'])
+    failed = {test for test, outcomes in tests.items() if any(o not in PASSING | {'Skipped'} for o in outcomes)}
+    reported, reported_broken = summary_failures(exported['summary'])
     # A failure Xcode reports without naming a test or a bundle in the tree (a crash, say) cannot
     # be rerun selectively, so it must never be retried away.
     attributed = None not in failed and None not in reported and reported <= failed and reported_broken <= broken
@@ -293,13 +313,109 @@ def erase(device):
     return erased.returncode == 0
 
 
-def main():
-    results, logs = Path(os.environ['RESULTS']), Path(os.environ['LOGS'])
+def attempt_limit():
     attempts = max(int(os.environ.get('TEST_ITERATIONS') or 0), 1)  # Validated before the build.
     device = DEVICE.match(os.environ.get('MORPHEUS_IOS_DESTINATION', ''))
     if attempts > 1 and not device:
         print('::notice::Retries need the job-owned iOS simulator, so this run has one attempt.', flush=True)
         attempts = 1
+    return attempts, device
+
+
+class Retries:
+    """Failing tests and unstarted bundles across attempts, and what each retry recovered."""
+
+    def __init__(self, record, results, logs, device):
+        self.record, self.results, self.logs, self.device = record, results, logs, device
+        self.passed_on, self.history, self.started, self.grafts = {}, {}, {}, {}
+
+    def first_attempt(self, lanes):
+        timing = {}
+        self.status, self.tested = run(1, first_selection(lanes), self.results, self.logs, timing)
+        self.first = read_results(self.results / 'Tests.xcresult') if self.status else None
+        attributed = self.first and self.first['attributed']
+        self.failing = sorted(self.first['failed']) if attributed else []
+        self.broken = sorted(self.first['broken']) if attributed else []
+        self.record['attempts'].append({'attempt': 1, 'resultBundle': 'Tests.xcresult', 'selection': 'caller',
+                                        'exitCode': self.status, 'failed': self.failing, 'failedBundles': self.broken,
+                                        'timing': timing})
+        self.unexplained = self.status != 0 and not self.failing and not self.broken
+        if self.unexplained and self.tested:
+            print('::error::xcodebuild failed without a failure that names a test, so nothing was retried.', flush=True)
+        unbounded = [bundle for bundle in self.broken if bundle_selection(bundle) is None]
+        if unbounded:
+            print(f"::error::{', '.join(unbounded)} could not start, and the caller selected no tests in it to retry.",
+                  flush=True)
+            self.unexplained = True
+
+    def selection(self):
+        # A bundle's selection already covers its own tests.
+        selected = [test for test in self.failing if test.split('/')[0] not in self.broken]
+        selected += [test for bundle in self.broken for test in bundle_selection(bundle)]
+        return selected
+
+    def note_passes(self, attempt, outcome):
+        for test in self.failing:
+            if outcome and all(o in PASSING for o in outcome['tests'].get(test, ['Missing'])):
+                self.passed_on[test] = attempt
+            self.history.setdefault(test, []).append('Passed' if test in self.passed_on else 'Failed')
+        self.failing = [test for test in self.failing if test not in self.passed_on]
+
+    def note_started(self, attempt, outcome):
+        for bundle in self.broken:
+            ran = [test for test in (outcome['tests'] if outcome else {}) if test and test.startswith(bundle + '/')]
+            # A retry that ran none of the bundle's tests has not started it, whatever it exits.
+            if ran and bundle not in outcome['broken']:
+                self.started[bundle] = attempt
+                self.grafts[bundle] = next(node for node in bundle_nodes(outcome['tree']) if node.get('name') == bundle)
+                # Its tests ran for the first time here: a failure among them is retried like any.
+                self.failing = sorted(set(self.failing) | {test for test in ran if test in outcome['failed']})
+        self.broken = [bundle for bundle in self.broken if bundle not in self.started]
+
+    def retry(self, attempt):
+        """One clean retry; False when the simulator could not be erased, which ends retrying."""
+        directory = f'attempt-{attempt}'
+        selected = self.selection()
+        entry = {'attempt': attempt, 'resultBundle': f'{directory}/Tests.xcresult', 'selection': selected}
+        if self.broken:
+            entry['bundles'] = self.broken
+        self.record['attempts'].append(entry)
+        if not erase(self.device.group(1)):
+            entry['simulator'] = 'erase failed'
+            return False
+        entry['simulator'] = 'erased'
+        self.status, self.tested = run(attempt, retry_selection(selected), self.results / directory, self.logs / directory)
+        entry['exitCode'] = self.status
+        outcome = read_results(self.results / directory / 'Tests.xcresult', keep=self.results / directory)
+        self.note_passes(attempt, outcome)
+        self.note_started(attempt, outcome)
+        entry['failed'], entry['failedBundles'] = self.failing, self.broken
+        if self.status and (not outcome or not outcome['attributed'] or not (self.failing or self.broken)):
+            if self.tested:
+                print(f'::error::Attempt {attempt} failed without a failure that names a retried test.', flush=True)
+            self.unexplained = True
+        return True
+
+    def finish(self):
+        """Record the outcome; True when every failure passed on a retry."""
+        record = self.record
+        # Only a test seen passing counts: one missing from a retry's results is still failing.
+        passed = not self.failing and not self.broken and not self.unexplained
+        record['result'] = 'passed' if passed else 'failed'
+        record['flaky'] = [{'id': test, 'passedOnAttempt': attempt} for test, attempt in sorted(self.passed_on.items())]
+        record['recoveredBundles'] = [{'bundle': bundle, 'ranOnAttempt': attempt} for bundle, attempt in sorted(self.started.items())]
+        record['failed'] = [] if passed else self.failing
+        record['failedBundles'] = [] if passed else self.broken
+        if passed and (self.passed_on or self.started):
+            for name, exported in zip(('tests', 'summary'), combine(self.first, self.history, self.grafts)):
+                (self.results / f'{name}.json').write_text(json.dumps(exported, indent=2) + '\n')
+        (self.results / 'test-attempts.json').write_text(json.dumps(record, indent=2) + '\n')
+        return passed
+
+
+def main():
+    results, logs = Path(os.environ['RESULTS']), Path(os.environ['LOGS'])
+    attempts, device = attempt_limit()
 
     try:
         lanes = host_lanes()
@@ -313,113 +429,63 @@ def main():
         record['simulatorLanes'] = lanes
         print(f'::notice::The runner host declares {lanes} simulator lane(s): attempt 1 runs with Xcode\'s '
               f'parallel testing {"on, at most 2 workers" if lanes == 2 else "off"}.', flush=True)
-    timing = {}
-    status, tested = run(1, first_selection(lanes), results, logs, timing)
-    first = read_results(results / 'Tests.xcresult') if status else None
-    attributed = first and first['attributed']
-    failing = sorted(first['failed']) if attributed else []
-    broken = sorted(first['broken']) if attributed else []
-    record['attempts'].append({'attempt': 1, 'resultBundle': 'Tests.xcresult', 'selection': 'caller',
-                               'exitCode': status, 'failed': failing, 'failedBundles': broken, 'timing': timing})
-    unexplained = status != 0 and not failing and not broken
-    if unexplained and tested:
-        print('::error::xcodebuild failed without a failure that names a test, so nothing was retried.', flush=True)
-    unbounded = [bundle for bundle in broken if bundle_selection(bundle) is None]
-    if unbounded:
-        print(f"::error::{', '.join(unbounded)} could not start, and the caller selected no tests in it to retry.",
-              flush=True)
-        unexplained = True
-
-    passed_on, history, started, grafts = {}, {}, {}, {}
+    retries = Retries(record, results, logs, device)
+    retries.first_attempt(lanes)
     for attempt in range(2, attempts + 1):
-        if not (failing or broken) or unexplained:
+        if not (retries.failing or retries.broken) or retries.unexplained:
             break
-        directory = f'attempt-{attempt}'
-        # A bundle's selection already covers its own tests.
-        selected = [test for test in failing if test.split('/')[0] not in broken]
-        selected += [test for bundle in broken for test in bundle_selection(bundle)]
-        entry = {'attempt': attempt, 'resultBundle': f'{directory}/Tests.xcresult', 'selection': selected}
-        if broken:
-            entry['bundles'] = broken
-        record['attempts'].append(entry)
-        if not erase(device.group(1)):
-            entry['simulator'] = 'erase failed'
+        if not retries.retry(attempt):
             break
-        entry['simulator'] = 'erased'
-        status, tested = run(attempt, retry_selection(selected), results / directory, logs / directory)
-        entry['exitCode'] = status
-        outcome = read_results(results / directory / 'Tests.xcresult', keep=results / directory)
-        for test in failing:
-            if outcome and all(o in PASSING for o in outcome['tests'].get(test, ['Missing'])):
-                passed_on[test] = attempt
-            history.setdefault(test, []).append('Passed' if test in passed_on else 'Failed')
-        failing = [test for test in failing if test not in passed_on]
-        for bundle in broken:
-            ran = [test for test in (outcome['tests'] if outcome else {}) if test and test.startswith(bundle + '/')]
-            # A retry that ran none of the bundle's tests has not started it, whatever it exits.
-            if ran and bundle not in outcome['broken']:
-                started[bundle] = attempt
-                grafts[bundle] = next(node for node in bundle_nodes(outcome['tree']) if node.get('name') == bundle)
-                # Its tests ran for the first time here: a failure among them is retried like any.
-                failing = sorted(set(failing) | {test for test in ran if test in outcome['failed']})
-        broken = [bundle for bundle in broken if bundle not in started]
-        entry['failed'], entry['failedBundles'] = failing, broken
-        if status and (not outcome or not outcome['attributed'] or not (failing or broken)):
-            if tested:
-                print(f'::error::Attempt {attempt} failed without a failure that names a retried test.', flush=True)
-            unexplained = True
-
-    # Only a test seen passing counts: one missing from a retry's results is still failing.
-    passed = not failing and not broken and not unexplained
-    record['result'] = 'passed' if passed else 'failed'
-    record['flaky'] = [{'id': test, 'passedOnAttempt': attempt} for test, attempt in sorted(passed_on.items())]
-    record['recoveredBundles'] = [{'bundle': bundle, 'ranOnAttempt': attempt} for bundle, attempt in sorted(started.items())]
-    record['failed'] = [] if passed else failing
-    record['failedBundles'] = [] if passed else broken
-    if passed and (passed_on or started):
-        for name, exported in zip(('tests', 'summary'), combine(first, history, grafts)):
-            (results / f'{name}.json').write_text(json.dumps(exported, indent=2) + '\n')
-    (results / 'test-attempts.json').write_text(json.dumps(record, indent=2) + '\n')
+    passed = retries.finish()
     report(record)
-    return 0 if passed else (status or 1)
+    return 0 if passed else (retries.status or 1)
 
 
 def escape(text):
     return text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
 
 
-def report(record):
+def annotate(record):
     flaky, failed, retried = record['flaky'], record['failed'], len(record['attempts']) > 1
-    recovered, stuck = record['recoveredBundles'], record['failedBundles']
     for test in flaky:
         print(f"::warning title=Flaky iOS test::{escape(test['id'])} failed, then passed on a clean "
               f"retry (attempt {test['passedOnAttempt']} of {record['maxAttempts']}).", flush=True)
-    for bundle in recovered:
+    for bundle in record['recoveredBundles']:
         print(f"::warning title=iOS test bundle did not start::{escape(bundle['bundle'])} could not start on attempt 1, "
               f"then ran on a clean retry (attempt {bundle['ranOnAttempt']} of {record['maxAttempts']}).", flush=True)
     for test in failed if retried else []:
         print(f"::error title=Failing iOS test::{escape(test)} failed all {len(record['attempts'])} attempts.", flush=True)
-    for bundle in stuck:
+    for bundle in record['failedBundles']:
         print(f"::error title=iOS test bundle did not start::{escape(bundle)} ran none of its tests in "
               f"{len(record['attempts'])} attempt(s): its test runner or host app could not start.", flush=True)
+
+
+def summary_rows(record):
+    flaky, failed = record['flaky'], record['failed']
+    recovered, stuck = record['recoveredBundles'], record['failedBundles']
+    rows = ['### iOS test retries', '',
+            f"Failed tests were retried in a freshly erased simulator, up to {record['maxAttempts']} attempts in total.", '']
+    if flaky:
+        rows += ['**Flaky:** failed, then passed on a clean retry. A warning, not a failure.', '']
+        rows += [f"- `{t['id']}` passed on attempt {t['passedOnAttempt']}" for t in flaky] + ['']
+    if recovered:
+        rows += ['**Could not start, then ran on a clean retry:** a warning, not a failure.', '']
+        rows += [f"- `{b['bundle']}` ran on attempt {b['ranOnAttempt']}" for b in recovered] + ['']
+    if failed:
+        rows += ['**Failed every attempt:** these fail the job.', ''] + [f'- `{t}`' for t in failed] + ['']
+    if stuck:
+        rows += ['**Could not start in any attempt:** these fail the job.', ''] + [f'- `{b}`' for b in stuck] + ['']
+    return rows
+
+
+def report(record):
+    annotate(record)
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
-            out.write(f"flaky-tests={json.dumps([t['id'] for t in flaky], separators=(',', ':'))}\n")
-    if os.environ.get('GITHUB_STEP_SUMMARY') and retried:
-        rows = ['### iOS test retries', '',
-                f"Failed tests were retried in a freshly erased simulator, up to {record['maxAttempts']} attempts in total.", '']
-        if flaky:
-            rows += ['**Flaky:** failed, then passed on a clean retry. A warning, not a failure.', '']
-            rows += [f"- `{t['id']}` passed on attempt {t['passedOnAttempt']}" for t in flaky] + ['']
-        if recovered:
-            rows += ['**Could not start, then ran on a clean retry:** a warning, not a failure.', '']
-            rows += [f"- `{b['bundle']}` ran on attempt {b['ranOnAttempt']}" for b in recovered] + ['']
-        if failed:
-            rows += ['**Failed every attempt:** these fail the job.', ''] + [f'- `{t}`' for t in failed] + ['']
-        if stuck:
-            rows += ['**Could not start in any attempt:** these fail the job.', ''] + [f'- `{b}`' for b in stuck] + ['']
+            out.write(f"flaky-tests={json.dumps([t['id'] for t in record['flaky']], separators=(',', ':'))}\n")
+    if os.environ.get('GITHUB_STEP_SUMMARY') and len(record['attempts']) > 1:
         with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-            summary.write('\n'.join(rows) + '\n')
+            summary.write('\n'.join(summary_rows(record)) + '\n')
 
 
 if __name__ == '__main__':
