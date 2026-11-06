@@ -142,6 +142,8 @@ and dropped the functions after it. The canary's `attributes.*` and `valueless.*
 bounds as well as CCN for that reason. Known forms still misread: an element used directly as an
 attribute value without braces (`icon=<i />`) loses the functions after it; a valueless attribute
 literally named `extends` is read as a TypeScript type parameter; and a valueless attribute is only
-recognised where an expression is expected. Older tags (`morpheus-analyzer-2026-11-06` at
+recognised where an expression is expected. At least one further JSX form, not yet identified,
+still runs a function on past its end. On Lakina it makes `SaasBottomUp.tsx` `CompanyDetail`
+measure 99–184 at CCN 17 and drops `SaasBottomUp`, so this list is not complete. Older tags (`morpheus-analyzer-2026-11-06` at
 `7f14ea5`, `-ts` at `484bbd05`, `-tsx` at `3b53c116`) stay in place and are never moved. Python 3.9
 is the floor both wheels declare; a test holds the pin to it.
