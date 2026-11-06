@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseOnboarding, renderOnboarding, setState, type TaskStatus } from "../src/onboarding/state.js";
-import { collectStatus, detectedStatus, summarise } from "../src/onboarding/status.js";
+import { collectStatus, detectedStatus, formatStatus, summarise } from "../src/onboarding/status.js";
 import { firebaseGoogleAuthReady, TASKS, projectLabel, tasksFor, type Task } from "../src/onboarding/tasks.js";
 import { appendOpenItem } from "../src/inbox/append.js";
 import { TEAM_RESERVED } from "../src/paths.js";
@@ -343,6 +343,8 @@ describe("a detector that could not answer", () => {
     expect(secondMd).toContain("— `could not check`");
     expect(secondMd).not.toContain("— `detected`");
     expect(summarise([second]).unknown).toBe(1);
+    // `morpheus init status` prints the same thing in the terminal.
+    expect(formatStatus([second], "Evo", "hq/onboarding.md")).toContain("could not check — ");
   });
 
   it("says detected only when the detector answered", () => {
