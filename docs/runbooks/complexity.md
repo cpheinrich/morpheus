@@ -9,6 +9,7 @@ you are enrolling a project or moving the analyzer pin.
 morpheus complexity install --check   # once per device; install if it is not operational
 morpheus complexity install           # idempotent: pinned Lizard commit + hash-locked wheels
 morpheus complexity check             # after each changed function family
+morpheus complexity prompt            # the refactoring prompt to use on a finding
 ```
 
 `check` measures every function whose lines your changes touch since the merge base with the trunk
@@ -23,11 +24,35 @@ check could not run — no analyzer, a broken venv, no merge base, invalid polic
 pass.
 
 `--all` measures every tracked or untracked in-scope file (a baseline inventory); `--json` prints
-the full report; `--ci` adds GitHub annotations and a job summary, measures tracked files only (the
+the full report, including `files[].functions[]`: every function Lizard found in each measured file
+(`longName`, `start`, `end`, `ccn`, `cognitive`, `nloc`), flagged or not, with `targeted` true where
+the check judged it; `--ci` adds GitHub annotations and a job summary, measures tracked files only (the
 CI workspace also holds the workflow's `.morpheus/` checkout of Morpheus), and in `enforce` implies
 `--all`.
 
+## Refactoring a finding
+
+Use the canonical prompt, `morpheus complexity prompt`, for every refactor a finding prompts. It
+ships with the CLI, so every project reads the same version; change it in Morpheus
+(`src/complexity/refactoring-prompt.md`), never in a project copy. Give it the task's inputs, which
+its first section lists with defaults. For routine work the declared scope is the function families
+your change touches and the acceptance commands are their focused tests; a baseline refactor
+declares the project's whole `complexity` scope. Neither needs the whole repository's full suite
+unless the task says so.
+
+After each changed family, run `check` again and inspect the whole family by hand: the entry
+function, every helper you added or changed, its enclosing function and its tests. A new helper
+counts the same as the function it came from. For the before/after metrics the prompt asks for, run
+`check --json` on the final source and `check --all --json` in a detached worktree at the base, and
+read the same family's rows from `files` on both sides. A `*global*` row is the file's top-level
+code, not a family member: keep it out of family totals on both sides and report it separately when
+the change moved top-level code. Report the check's summary and the family
+metrics for review.
+
 ## Policy: `morpheus.json` → `complexity`
+
+Illustrative format only: the example exception is historical, since the current pin includes
+Lizard PR 558's enum-case fix (see [Moving the pin](#moving-the-pin)), so do not copy it.
 
 ```json
 "complexity": {

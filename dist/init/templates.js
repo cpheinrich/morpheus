@@ -127,7 +127,8 @@ from the stale binary. \`morpheus self check\` is the read-only freshness check.
 
 Before structural code discovery or a code change, run \`morpheus codebase-memory install --check\`
 and \`morpheus complexity install --check\`; install whichever is not operational.
-**Run \`morpheus complexity check\` after each changed function family**; report it for review.
+**Run \`morpheus complexity check\` after each changed function family**, inspect it by hand and
+refactor findings with \`morpheus complexity prompt\`; report it for review.
 A worktree needs its own exact-checkout index even when the main clone is indexed; installing is an
 explicit device action, never an npm lifecycle script or hook download. Detail:
 [device bootstrap](${MORPHEUS_REPO}/blob/main/docs/runbooks/device-bootstrap.md).`;
@@ -809,18 +810,18 @@ its branch, test it, open a PR and merge it. A trusted author can authorize the 
 cannot waive the records or review path. Never edit or release directly from a transcript.
 
 **An external mutation ships with an exact target and proof.** Prefer a pasted one-shot CLI command
-with explicit account, project and full resource identifiers; console prose is fallback only. Put
-the caller-perspective verification probe and expected result beside the mutation. Upload, archive
-or deploy success proves delivery, not acceptance: close the item only with evidence of the
-requested user-visible result. Release jobs must depend on
+with explicit account, project and full resource identifiers (console prose is fallback only), with
+the caller-perspective verification probe and expected result beside it. Upload, archive or deploy
+success proves delivery, not acceptance: close the item only with evidence of the user-visible
+result. Release jobs must depend on
 \`cpheinrich/morpheus/.github/workflows/release-preflight.yml@main\` and check out its \`sha\` output.
 Do not extract a recurring production probe until a second project needs the same one.
 
 **Build vs. borrow — check before writing a generic module.** Before implementing anything not
-specific to this product's domain — parsing, diffing, scheduling, retries, rate limiting, fuzzy
+specific to this domain — parsing, diffing, scheduling, retries, rate limiting, fuzzy
 search, date handling, CLI plumbing — make one quick search of the registry for a maintained
 package; check its last publish and dependency footprint. **Propose, don't decide silently — in
-either direction:** an open (❗) inbox item when the choice shapes the architecture, a PR-body line
+either direction:** a ❗ inbox item when the choice shapes the architecture, a PR-body line
 ("considered X, built instead because Y") when small. **Prefer lightweight:**
 a framework pulled in to save 60 lines is worse than the 60 lines; build when the need is under
 ~100 lines, domain-specific, or every candidate is unmaintained. Record the outcome in
@@ -877,7 +878,7 @@ the rule only with \`enabled: false\` and a substantive \`reason\` in the manife
 
 **Before opening a PR**, run \`morpheus pm index\` and commit any one-time roadmap README migration
 or generated goal/request index changes. The roadmap README is static after that migration. CI runs
-the same check and will fail otherwise.
+the same check.
 
 **Append a worklog entry** to \`.agent/worklog/YYYY-MM-DD-slug.md\`, including dead ends and the
 ticket's subject \`tags\`. CI/CD and infrastructure work uses \`[engineering, devops]\` plus relevant
@@ -888,7 +889,7 @@ tags. Read matches with \`pm tagged devops\`.
 Run the tests for the files you changed and their direct dependents, filtered to them, while
 iterating. **CI runs the full suites and must pass before merge.** Run a full suite locally at most
 once per PR, and only when you touched shared code; never re-run an unchanged suite to see whether
-it passes this time. Record the focused commands, and why that scope was selected, in the PR test
+it passes this time. Record the focused commands, and why that scope, in the PR test
 plan and worklog.
 
 - **iOS:** focused tests only, with the repository's build/test wrapper and explicit test

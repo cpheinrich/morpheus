@@ -1,4 +1,4 @@
-import { type Evaluation, type Finding } from "./evaluate.js";
+import { type Evaluation, type Finding, type MeasuredFile } from "./evaluate.js";
 import { type LizardPin } from "./pin.js";
 import { type ComplexityConfig } from "./policy.js";
 export interface CheckOptions {
@@ -30,6 +30,8 @@ export type CheckReport = {
     delta: string[];
     evaluation: Evaluation;
     findings: Finding[];
+    /** Every measured function, flagged or not, for before/after family metrics. */
+    files: MeasuredFile[];
     lizardVersion: string | null;
     exitCode: 0 | 1;
 };

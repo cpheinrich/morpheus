@@ -1,4 +1,4 @@
-import { appendFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import { projectConfig, runCheck } from "../complexity/check.js";
 import { annotations, formatReport, stepSummary } from "../complexity/format.js";
 import { formatStatus, installLizard, toolStatus } from "../complexity/install.js";
@@ -46,5 +46,11 @@ async function reportToGitHub(report) {
     const summary = process.env["GITHUB_STEP_SUMMARY"];
     if (summary)
         await appendFile(summary, stepSummary(report));
+}
+/** The canonical refactoring prompt, shipped beside this module so every installed CLI prints the same text. */
+export const PROMPT_PATH = new URL("../complexity/refactoring-prompt.md", import.meta.url);
+export async function prompt() {
+    process.stdout.write(await readFile(PROMPT_PATH, "utf8"));
+    return 0;
 }
 //# sourceMappingURL=complexity.js.map
