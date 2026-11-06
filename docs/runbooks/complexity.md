@@ -44,10 +44,15 @@ After each changed family, run `check` again and inspect the whole family by han
 function, every helper you added or changed, its enclosing function and its tests. A new helper
 counts the same as the function it came from. For the before/after metrics the prompt asks for, run
 `check --json` on the final source and `check --all --json` in a detached worktree at the base, and
-read the same family's rows from `files` on both sides. Report the check's summary and the family
+read the same family's rows from `files` on both sides. A `*global*` row is the file's top-level
+code, not a family member: keep it out of family totals on both sides and report it separately when
+the change moved top-level code. Report the check's summary and the family
 metrics for review.
 
 ## Policy: `morpheus.json` → `complexity`
+
+Illustrative format only: the example exception is historical, since the current pin includes
+Lizard PR 558's enum-case fix (see [Moving the pin](#moving-the-pin)), so do not copy it.
 
 ```json
 "complexity": {

@@ -24,7 +24,9 @@ Give the agent this prompt plus the task's own values. Anything not supplied tak
 Metrics for step 13: `morpheus complexity check --json` lists every function in each measured file
 (`files[].functions[]`: `longName`, `start`, `end`, `ccn`, `cognitive`, `nloc`, and `targeted` when
 the check judged it). Run it on the final source, and with `--all --json` in a detached worktree at
-the base revision, then take the same family's rows from both.
+the base revision, then take the same family's rows from both. A row named `*global*` is the file's
+top-level code, not a family member: leave it out of family totals on both sides, and report it
+separately when the change moved top-level code.
 
 ## Task inputs
 
