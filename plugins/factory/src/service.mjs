@@ -383,6 +383,38 @@ function claudeRootArgv({ worker, codexSession, claudeSession, selection, permis
     ? codexArgs(codexSession, selection, permission, decision.gateway ?? null)
     : claudeArgs(claudeSession, selection, permission.name, roots);
 }
+// Bridge operations by method name. A Map, so an inherited name such as "constructor" is unknown.
+const BRIDGE_OPERATIONS = new Map([
+  ["config", (m, args) => m.configure(args)],
+  ["codex.view", async (m, args) => m.viewer.open(await m.codexRunId(args))],
+  ["codex.status", async (m, args) => m.status(await m.codexRunId(args))],
+  ["codex.wait", async (m, args) => m.wait(await m.codexRunId(args), args.seconds)],
+  ["codex.stop", async (m, args) => m.cancel(await m.codexRunId(args))],
+  ["view", (m, args) => m.viewer.open(args.runId)],
+  ["ping", () => ({ ready: true, installationId })],
+  ["shutdown", (m) => m.shutdown()],
+  ["factory.inspect", (m, args) => m.factoryInspect(args)],
+  ["factory.delegate", (m, args) => m.factoryDelegate(args)],
+  ["factory.status", (m, args) => m.factoryRun(args)],
+  ["factory.wait", (m, args) => m.factoryWait(args)],
+  ["factory.answer", (m, args) => m.factoryAnswer(args)],
+  ["factory.stop", (m, args) => m.factoryStop(args)],
+  ["inspect", (m, args) => m.inspect(args.threadId, args.operation)],
+  ["start", (m, args) => m.start(args)],
+  ["status", (m, args) => m.status(args.runId)],
+  ["wait", (m, args) => m.wait(args.runId, args.seconds)],
+  ["answer", (m, args) => m.answer(args)],
+  ["stop", (m, args) => m.cancel(args.runId)],
+  ["override", (m, args) => m.setOverride(args.threadId, args.executor)],
+  ["codex.inspect", (m, args) => m.claudeInspect(args.sessionId, args.operation)],
+  ["codex.start", (m, args) => m.codexStart(args)],
+  ["codex.answer", (m, args) => m.claudeAnswer(args)],
+  ["codex.hook", (m, args) => m.codexHook(args)],
+  ["codex.override", (m, args) => m.setOverride(claudeTaskId(args.sessionId), args.executor)],
+  ["codex.memories", (m, args) => m.claudeMemories(args)],
+  ["memories", (m, args) => m.codexMemories(args)],
+  ["hook", (m, args) => m.rootHook(args)],
+]);
 export class Manager {
   runs = new Map();
   taskMutations = new Map();
@@ -1365,135 +1397,109 @@ export class Manager {
     });
   }
   async dispatch(method, args = {}) {
-    if (method === "config") {
-      if (!args.value) return configRead();
-      const value = await configWrite(args.value);
-      if (value.mode === "off") {
-        for (const run of this.runs.values())
-          if (!run.terminal) await this.cancel(run.id);
-        await this.pool.stopAll().catch(() => {});
-      }
-      return value;
-    }
-    if (method === "codex.view")
-      return this.viewer.open(await this.codexRunId(args));
-    if (method === "codex.status")
-      return this.status(await this.codexRunId(args));
-    if (method === "codex.wait")
-      return this.wait(await this.codexRunId(args), args.seconds);
-    if (method === "codex.stop")
-      return this.cancel(await this.codexRunId(args));
-    if (method === "view") return this.viewer.open(args.runId);
-    if (method === "ping") return { ready: true, installationId };
-    if (method === "shutdown") {
-      this.draining = true;
-      try {
-        if (this.busy)
-          throw new Error("A Claude delegation is starting; retry the upgrade.");
-        if ([...this.runs.values()].some((run) => !run.terminal))
-          throw new Error("Active Claude runs prevent a bridge upgrade.");
-        for (const id of (await readdir(join(home(), "runs"))).filter((id) =>
-          /^[0-9a-f-]{36}$/.test(id),
-        )) {
-          const path = join(runDir(id), "process.json");
-          const owned = await readJSON(path, null);
-          if (!["starting", "running"].includes(owned?.state)) continue;
-          const ownership = await this.processOwnership(owned);
-          if (ownership === "live")
-            throw new Error("An owned Claude process prevents a bridge upgrade.");
-          if (ownership === "unknown")
-            throw new Error(
-              "Claude process ownership could not be verified; bridge upgrade refused.",
-            );
-          await atomic(path, {
-            ...owned,
-            state: "exited",
-            reason: "Recorded process identities are no longer live",
-          });
-        }
-        return { stopping: true };
-      } catch (error) {
-        this.draining = false;
-        throw error;
-      }
-    }
+    const handler = BRIDGE_OPERATIONS.get(method);
+    if (handler) return handler(this, args);
     // Remote pool turns are owned by Paperclip's runner, not this service.
     if (method.startsWith("hq.")) return this.hq.dispatch(method.slice(3), args);
     if (method.startsWith("pool.")) return this.pool.dispatch(method.slice(5), args);
-    if (method === "factory.inspect") return this.factoryInspect(args);
-    if (method === "factory.delegate") return this.factoryDelegate(args);
-    if (method === "factory.status") return this.factoryRun(args);
-    if (method === "factory.wait") return this.factoryWait(args);
-    if (method === "factory.answer") return this.factoryAnswer(args);
-    if (method === "factory.stop") return this.factoryStop(args);
-    if (method === "inspect")
-      return this.inspect(args.threadId, args.operation);
-    if (method === "start") return this.start(args);
-    if (method === "status") return this.status(args.runId);
-    if (method === "wait") return this.wait(args.runId, args.seconds);
-    if (method === "answer") return this.answer(args);
-    if (method === "stop") return this.cancel(args.runId);
-    if (method === "override") {
-      return this.setOverride(args.threadId, args.executor);
+    throw new Error("Unknown bridge operation");
+  }
+  async configure(args) {
+    if (!args.value) return configRead();
+    const value = await configWrite(args.value);
+    if (value.mode === "off") {
+      for (const run of this.runs.values())
+        if (!run.terminal) await this.cancel(run.id);
+      await this.pool.stopAll().catch(() => {});
     }
-    if (method === "codex.inspect")
-      return this.claudeInspect(args.sessionId, args.operation);
-    if (method === "codex.start") return this.codexStart(args);
-    // A gateway Claude worker can ask live; its Claude coordinator answers here.
-    if (method === "codex.answer") {
-      const runId = await this.codexRunId(args);
-      const run = await this.status(runId);
-      if (run.threadId !== claudeTaskId(args.sessionId))
-        throw new Error("The requested run belongs to another Claude session.");
-      return this.answer({ ...args, runId });
+    return value;
+  }
+  // Drain for an upgrade only when nothing owned by this service can still be running.
+  async shutdown() {
+    this.draining = true;
+    try {
+      if (this.busy)
+        throw new Error("A Claude delegation is starting; retry the upgrade.");
+      if ([...this.runs.values()].some((run) => !run.terminal))
+        throw new Error("Active Claude runs prevent a bridge upgrade.");
+      await this.retireRecordedProcesses();
+      return { stopping: true };
+    } catch (error) {
+      this.draining = false;
+      throw error;
     }
-    if (method === "codex.hook") return this.codexHook(args);
-    if (method === "codex.override") {
-      return this.setOverride(claudeTaskId(args.sessionId), args.executor);
-    }
-    if (method === "codex.memories") {
-      const { task } = await this.claudeInspect(args.sessionId);
-      task.memoryEnabled = (await configRead()).memorySharing;
-      return memoryContext(await configRead(), task, args.owner);
-    }
-    if (method === "memories") {
-      const { task } = await this.inspect(args.threadId);
-      task.memoryEnabled = await codexMemoryEnabled(await this.client(), task);
-      return memoryContext(await configRead(), task, args.owner);
-    }
-    if (method === "hook") {
-      const config = await configRead();
-      if (config.mode === "off") return {};
-      if (args.event === "PreToolUse") return this.guard(args.threadId, args);
-      const task = await taskRead(args.threadId);
-      if (["Interrupt", "SessionEnd"].includes(args.event)) {
-        if (task.runId) {
-          const r = await this.status(task.runId);
-          if (!r.terminal && (args.event === "Interrupt" || !r.background))
-            await this.cancel(task.runId);
-        }
-        return {};
-      }
-      let s;
-      try {
-        s = await this.inspect(args.threadId);
-      } catch (e) {
-        return this.sessionHook(
-          "codex",
-          args,
-          { additionalContext: `Factory tools are unavailable: ${e.message}. Do not infer permissions or allowance.` },
-          this.active(config, task, { failure: e.message }),
+  }
+  async retireRecordedProcesses() {
+    for (const id of (await readdir(join(home(), "runs"))).filter((id) =>
+      /^[0-9a-f-]{36}$/.test(id),
+    )) {
+      const path = join(runDir(id), "process.json");
+      const owned = await readJSON(path, null);
+      if (!["starting", "running"].includes(owned?.state)) continue;
+      const ownership = await this.processOwnership(owned);
+      if (ownership === "live")
+        throw new Error("An owned Claude process prevents a bridge upgrade.");
+      if (ownership === "unknown")
+        throw new Error(
+          "Claude process ownership could not be verified; bridge upgrade refused.",
         );
+      await atomic(path, {
+        ...owned,
+        state: "exited",
+        reason: "Recorded process identities are no longer live",
+      });
+    }
+  }
+  // A gateway Claude worker can ask live; its Claude coordinator answers here.
+  async claudeAnswer(args) {
+    const runId = await this.codexRunId(args);
+    const run = await this.status(runId);
+    if (run.threadId !== claudeTaskId(args.sessionId))
+      throw new Error("The requested run belongs to another Claude session.");
+    return this.answer({ ...args, runId });
+  }
+  async claudeMemories(args) {
+    const { task } = await this.claudeInspect(args.sessionId);
+    task.memoryEnabled = (await configRead()).memorySharing;
+    return memoryContext(await configRead(), task, args.owner);
+  }
+  async codexMemories(args) {
+    const { task } = await this.inspect(args.threadId);
+    task.memoryEnabled = await codexMemoryEnabled(await this.client(), task);
+    return memoryContext(await configRead(), task, args.owner);
+  }
+  async rootHook(args) {
+    const config = await configRead();
+    if (config.mode === "off") return {};
+    if (args.event === "PreToolUse") return this.guard(args.threadId, args);
+    const task = await taskRead(args.threadId);
+    if (["Interrupt", "SessionEnd"].includes(args.event)) {
+      if (task.runId) {
+        const r = await this.status(task.runId);
+        if (!r.terminal && (args.event === "Interrupt" || !r.background))
+          await this.cancel(task.runId);
       }
+      return {};
+    }
+    let s;
+    try {
+      s = await this.inspect(args.threadId);
+    } catch (e) {
       return this.sessionHook(
         "codex",
         args,
-        { additionalContext: `Factory tools are available for this Codex root task. Use factory_inspect and factory_delegate when delegation is useful or the user requests it; do not call them when the user requests local work. The root remains responsible for the brief, supervision and verification. Current binding/availability: ${JSON.stringify({ binding: s.binding, route: s.route })}.` },
-        this.active(config, s.task, { inspected: s }),
+        { additionalContext: `Factory tools are unavailable: ${e.message}. Do not infer permissions or allowance.` },
+        this.active(config, task, { failure: e.message }),
       );
     }
-    throw new Error("Unknown bridge operation");
+    return this.sessionHook(
+      "codex",
+      args,
+      { additionalContext: `Factory tools are available for this Codex root task. Use factory_inspect and factory_delegate when delegation is useful or the user requests it; do not call them when the user requests local work. The root remains responsible for the brief, supervision and verification. Current binding/availability: ${JSON.stringify({ binding: s.binding, route: s.route })}.` },
+      this.active(config, s.task, { inspected: s }),
+    );
   }
+
 }
 const workspaceView = (task) => ({
   cwd: task.primaryCwd ?? null,
