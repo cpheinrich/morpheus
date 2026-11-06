@@ -28,10 +28,21 @@ function ownsQuotaReader() {
 }
 function finish(code) {
     // Quota failure returns immediately; its owned reader still drains and cleans up.
-    if (ownsQuotaReader())
+    if (ownsQuotaReader()) {
         process.exitCode = code;
-    else
-        process.exit(code);
+        return;
+    }
+    // Every other command exits even if a handle lingers. Node writes pipes
+    // asynchronously on macOS, so exiting at once cuts output at the pipe
+    // buffer (64 KiB); an empty write calls back only after everything queued
+    // before it, so exit when both streams have flushed.
+    let pending = 2;
+    const exit = () => {
+        if (--pending === 0)
+            process.exit(code);
+    };
+    process.stdout.write("", exit);
+    process.stderr.write("", exit);
 }
 main
     .then(finish)
