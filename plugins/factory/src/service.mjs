@@ -415,6 +415,19 @@ const BRIDGE_OPERATIONS = new Map([
   ["memories", (m, args) => m.codexMemories(args)],
   ["hook", (m, args) => m.rootHook(args)],
 ]);
+// The working directory a slot is pinned to (null for a new fresh slot) and its checkout map:
+// the primary map, a resumed fresh run's own map, or an empty one.
+async function slotWorkspace(task, fresh, previous, primaryMap) {
+  if (!fresh) return { anchor: task.primaryCwd ?? null, map: primaryMap };
+  if (previous?.fresh !== true) return { anchor: null, map: {} };
+  return { anchor: previous.cwd, map: previous.workspace ?? (await legacyMap(previous.cwd)) };
+}
+// Without an anchor the first target is the working directory; with one, the root's own
+// checkout is never added implicitly, so a moved root cannot widen the workspace silently.
+function workspaceTargets(anchor, cwd, rootCwd, repos) {
+  const first = anchor ? (cwd ? [cwd] : []) : [cwd || rootCwd];
+  return [...first, ...repos];
+}
 export class Manager {
   runs = new Map();
   taskMutations = new Map();
@@ -1218,16 +1231,8 @@ export class Manager {
   async workspace(task, { fresh, previous, cwd, repos = [], rootCwd, runId }) {
     const primaryMap =
       task.workspace ?? (task.primaryCwd ? await legacyMap(task.primaryCwd) : {});
-    const resumed = fresh && previous?.fresh === true;
-    const anchor = fresh ? (resumed ? previous.cwd : null) : task.primaryCwd ?? null;
-    const map = !fresh
-      ? primaryMap
-      : resumed
-        ? previous.workspace ?? (await legacyMap(previous.cwd))
-        : {};
-    // Without an anchor the first target is the working directory; with one, the root's own
-    // checkout is never added implicitly, so a moved root cannot widen the workspace silently.
-    const targets = [...(anchor ? (cwd ? [cwd] : []) : [cwd || rootCwd]), ...repos];
+    const { anchor, map } = await slotWorkspace(task, fresh, previous, primaryMap);
+    const targets = workspaceTargets(anchor, cwd, rootCwd, repos);
     const resolved = await resolveWorkspace({
       taskId: task.id,
       slot: fresh ? `fresh-${runId.slice(0, 8)}` : "primary",

@@ -149,6 +149,15 @@ async function stopRequested(conversationId, n) {
   }
   return false;
 }
+function adoptReceipt(record, receipt, refused) {
+  Object.assign(record, {
+    state: receipt.state, termination: receipt.termination, exitCode: receipt.exitCode ?? null,
+    stopReason: receipt.stopReason ?? null, result: receipt.result ?? null, error: receipt.error ?? null,
+    requested: receipt.requested ?? null, observed: receipt.observed ?? null, usage: receipt.usage ?? null,
+    category: refused?.category ?? null,
+  });
+  return Number.isInteger(receipt.code) ? receipt.code : RUNNER_EXIT.unknown;
+}
 // The pool profile bound to this Paperclip agent, or a refusal code already reported.
 async function boundProfile(env, say) {
   const runId = env.PAPERCLIP_RUN_ID;
@@ -422,15 +431,7 @@ class RunnerTurn {
   async outcome(exitCode) {
     const { record, seen, runUuid } = this;
     const receipt = seen.receipt;
-    if (receipt && receipt.runUuid === runUuid) {
-      Object.assign(record, {
-        state: receipt.state, termination: receipt.termination, exitCode: receipt.exitCode ?? null,
-        stopReason: receipt.stopReason ?? null, result: receipt.result ?? null, error: receipt.error ?? null,
-        requested: receipt.requested ?? null, observed: receipt.observed ?? null, usage: receipt.usage ?? null,
-        category: seen.refused?.category ?? null,
-      });
-      return Number.isInteger(receipt.code) ? receipt.code : RUNNER_EXIT.unknown;
-    }
+    if (receipt && receipt.runUuid === runUuid) return adoptReceipt(record, receipt, seen.refused);
     if (seen.refused) {
       // Refused before the host wrote any receipt (configuration or binding).
       Object.assign(record, { state: "refused", termination: "not-started", category: seen.refused.category, stopReason: `${seen.refused.category}: ${seen.refused.detail}` });
@@ -460,10 +461,14 @@ class RunnerTurn {
     return code;
   }
 }
-export async function runTurn({
+function runnerOptions({
   env = process.env, out = process.stdout, err = process.stderr, fetchImpl = globalThis.fetch,
   spawnImpl = spawn, signals = process, heartbeatMs, pollMs = 200, stopGraceMs = 12000,
 } = {}) {
+  return { env, out, err, fetchImpl, spawnImpl, signals, heartbeatMs, pollMs, stopGraceMs };
+}
+export async function runTurn(options = {}) {
+  const { env, out, err, fetchImpl, spawnImpl, signals, heartbeatMs, pollMs, stopGraceMs } = runnerOptions(options);
   const say = (kind, extra = {}) => out.write(JSON.stringify({ pool: "runner", kind, ...extra }) + "\n");
   const bound = await boundProfile(env, say);
   if (bound.code !== undefined) return bound.code;
@@ -475,7 +480,10 @@ export async function runTurn({
   const reason = run.noopReason();
   if (reason) return run.noop(reason);
   if (!(await run.claim())) return run.noop("turn already claimed");
-  const refused = (await run.bindingRefusal()) ?? (await run.reserve()) ?? (await run.spawnHost());
-  if (refused !== undefined) return refused;
+  // Each admission step either passes (undefined) or has already recorded its refusal.
+  for (const step of [() => run.bindingRefusal(), () => run.reserve(), () => run.spawnHost()]) {
+    const refused = await step();
+    if (refused !== undefined) return refused;
+  }
   return run.finish(await run.outcome(await run.awaitHost()));
 }
