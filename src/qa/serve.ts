@@ -296,138 +296,143 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
   const hid = udid ? await openHidBridge(previewOrigin, udid) : null;
   const screenIdentity = new QaScreenIdentity();
 
+  // One handler per method and path; each sends its whole response.
+  const routes: Record<string, (req: IncomingMessage, res: ServerResponse) => void | Promise<void>> = {
+    "GET /": (req, res) => {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(pageHtml({ previewUrl, streamPath, axPath, project }));
+      return;
+    },
+    "GET /health": (req, res) => {
+      sendJson(res, 200, {
+        ok: true,
+        previewUrl,
+        streamUrl: discovered,
+        axEnabled: axPath !== null,
+        project,
+        root: options.root,
+      });
+      return;
+    },
+    "GET /proxy/stream.mjpeg": (req, res) => {
+      if (!discovered) {
+        sendJson(res, 404, { error: "No MJPEG stream discovered for this preview" });
+        return;
+      }
+      proxyRequest(discovered, req, res);
+      return;
+    },
+    "GET /proxy/ax": (req, res) => {
+      if (!axPath || !udid) {
+        sendJson(res, 404, { error: "No simulator discovered for accessibility data" });
+        return;
+      }
+      proxyRequest(`${previewOrigin}/ax?device=${encodeURIComponent(udid)}`, req, res);
+      return;
+    },
+    "GET /api/ax": async (req, res) => {
+      if (!axPath || !udid) {
+        sendJson(res, 404, { error: "No simulator discovered for accessibility data" });
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-store",
+        Connection: "keep-alive",
+      });
+      let closed = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      res.on("close", () => {
+        closed = true;
+        if (timer) clearTimeout(timer);
+      });
+      const poll = async () => {
+        if (closed) return;
+        try {
+          const snapshot = screenIdentity.observe(await currentQaAxSnapshot(udid));
+          if (!closed) res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
+        } catch {
+          if (!closed) res.write(`data: ${JSON.stringify({ screen: { width: 1, height: 1 }, screenId: null, elements: [], errors: ["Accessibility unavailable"] })}\n\n`);
+        } finally {
+          if (!closed) timer = setTimeout(() => { void poll(); }, 500);
+        }
+      };
+      void poll();
+      return;
+    },
+    "POST /api/touch": async (req, res) => {
+      if (!hid) {
+        sendJson(res, 503, { error: "No HID bridge (stream/udid undiscovered)" });
+        return;
+      }
+      const raw = JSON.parse((await readBody(req)).toString("utf8")) as {
+        type?: string;
+        normX?: number;
+        normY?: number;
+      };
+      if (raw.type !== "begin" && raw.type !== "move" && raw.type !== "end") {
+        sendJson(res, 400, { error: "type must be begin|move|end" });
+        return;
+      }
+      const normX = Number(raw.normX);
+      const normY = Number(raw.normY);
+      if (!Number.isFinite(normX) || !Number.isFinite(normY)) {
+        sendJson(res, 400, { error: "normX/normY required" });
+        return;
+      }
+      const x = Math.min(1, Math.max(0, normX));
+      const y = Math.min(1, Math.max(0, normY));
+      screenIdentity.noteTouch(raw.type, x, y);
+      hid.sendTouch(raw.type, x, y);
+      res.writeHead(204);
+      res.end();
+      return;
+    },
+    "POST /api/key": async (req, res) => {
+      if (!hid) {
+        sendJson(res, 503, { error: "No HID bridge (stream/udid undiscovered)" });
+        return;
+      }
+      const raw = JSON.parse((await readBody(req)).toString("utf8")) as {
+        type?: string;
+        code?: string;
+      };
+      if (raw.type !== "down" && raw.type !== "up") {
+        sendJson(res, 400, { error: "type must be down|up" });
+        return;
+      }
+      const body = hidKeyBody(raw.type, String(raw.code ?? ""));
+      if (!body) {
+        sendJson(res, 400, { error: "unsupported key code" });
+        return;
+      }
+      hid.sendKey(body.type, body.usage);
+      res.writeHead(204);
+      res.end();
+      return;
+    },
+    "POST /api/batches": async (req, res) => {
+      const raw = JSON.parse((await readBody(req)).toString("utf8")) as PostedBatch;
+      try {
+        const { id, path, pendingCount, wakeConfigured, responderActive } = await recordBatch(options.root, project, raw, { url: previewUrl, kind: "serve-sim" });
+        sendJson(res, 201, { id, path, pendingCount, wakeConfigured, responderActive });
+      } catch (error) {
+        if (error instanceof BatchRejected) { sendJson(res, 400, { error: error.message }); return; }
+        throw error;
+      }
+      return;
+    },
+  };
+
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       const bound = server.address();
       const boundPort = bound && typeof bound !== "string" ? bound.port : options.port;
       if (refuseCrossOriginPost(req, res, boundPort)) return;
-      if (req.method === "GET" && url.pathname === "/") {
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-        res.end(pageHtml({ previewUrl, streamPath, axPath, project }));
-        return;
-      }
-      if (req.method === "GET" && url.pathname === "/health") {
-        sendJson(res, 200, {
-          ok: true,
-          previewUrl,
-          streamUrl: discovered,
-          axEnabled: axPath !== null,
-          project,
-          root: options.root,
-        });
-        return;
-      }
-      if (req.method === "GET" && url.pathname === "/proxy/stream.mjpeg") {
-        if (!discovered) {
-          sendJson(res, 404, { error: "No MJPEG stream discovered for this preview" });
-          return;
-        }
-        proxyRequest(discovered, req, res);
-        return;
-      }
-      if (req.method === "GET" && url.pathname === "/proxy/ax") {
-        if (!axPath || !udid) {
-          sendJson(res, 404, { error: "No simulator discovered for accessibility data" });
-          return;
-        }
-        proxyRequest(`${previewOrigin}/ax?device=${encodeURIComponent(udid)}`, req, res);
-        return;
-      }
-      if (req.method === "GET" && url.pathname === "/api/ax") {
-        if (!axPath || !udid) {
-          sendJson(res, 404, { error: "No simulator discovered for accessibility data" });
-          return;
-        }
-        res.writeHead(200, {
-          "Content-Type": "text/event-stream; charset=utf-8",
-          "Cache-Control": "no-store",
-          Connection: "keep-alive",
-        });
-        let closed = false;
-        let timer: ReturnType<typeof setTimeout> | null = null;
-        res.on("close", () => {
-          closed = true;
-          if (timer) clearTimeout(timer);
-        });
-        const poll = async () => {
-          if (closed) return;
-          try {
-            const snapshot = screenIdentity.observe(await currentQaAxSnapshot(udid));
-            if (!closed) res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
-          } catch {
-            if (!closed) res.write(`data: ${JSON.stringify({ screen: { width: 1, height: 1 }, screenId: null, elements: [], errors: ["Accessibility unavailable"] })}\n\n`);
-          } finally {
-            if (!closed) timer = setTimeout(() => { void poll(); }, 500);
-          }
-        };
-        void poll();
-        return;
-      }
-      if (req.method === "POST" && url.pathname === "/api/touch") {
-        if (!hid) {
-          sendJson(res, 503, { error: "No HID bridge (stream/udid undiscovered)" });
-          return;
-        }
-        const raw = JSON.parse((await readBody(req)).toString("utf8")) as {
-          type?: string;
-          normX?: number;
-          normY?: number;
-        };
-        if (raw.type !== "begin" && raw.type !== "move" && raw.type !== "end") {
-          sendJson(res, 400, { error: "type must be begin|move|end" });
-          return;
-        }
-        const normX = Number(raw.normX);
-        const normY = Number(raw.normY);
-        if (!Number.isFinite(normX) || !Number.isFinite(normY)) {
-          sendJson(res, 400, { error: "normX/normY required" });
-          return;
-        }
-        const x = Math.min(1, Math.max(0, normX));
-        const y = Math.min(1, Math.max(0, normY));
-        screenIdentity.noteTouch(raw.type, x, y);
-        hid.sendTouch(raw.type, x, y);
-        res.writeHead(204);
-        res.end();
-        return;
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/key") {
-        if (!hid) {
-          sendJson(res, 503, { error: "No HID bridge (stream/udid undiscovered)" });
-          return;
-        }
-        const raw = JSON.parse((await readBody(req)).toString("utf8")) as {
-          type?: string;
-          code?: string;
-        };
-        if (raw.type !== "down" && raw.type !== "up") {
-          sendJson(res, 400, { error: "type must be down|up" });
-          return;
-        }
-        const body = hidKeyBody(raw.type, String(raw.code ?? ""));
-        if (!body) {
-          sendJson(res, 400, { error: "unsupported key code" });
-          return;
-        }
-        hid.sendKey(body.type, body.usage);
-        res.writeHead(204);
-        res.end();
-        return;
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/batches") {
-        const raw = JSON.parse((await readBody(req)).toString("utf8")) as PostedBatch;
-        try {
-          const { id, path, pendingCount, wakeConfigured, responderActive } = await recordBatch(options.root, project, raw, { url: previewUrl, kind: "serve-sim" });
-          sendJson(res, 201, { id, path, pendingCount, wakeConfigured, responderActive });
-        } catch (error) {
-          if (error instanceof BatchRejected) { sendJson(res, 400, { error: error.message }); return; }
-          throw error;
-        }
-        return;
-      }
+      const key = `${req.method} ${url.pathname}`;
+      const route = Object.hasOwn(routes, key) ? routes[key] : undefined;
+      if (route) { await route(req, res); return; }
       sendJson(res, 404, { error: "not found" });
     } catch (err) {
       sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
