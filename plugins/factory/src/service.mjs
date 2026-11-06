@@ -236,6 +236,153 @@ function runRecord({ id, worker, task, workspace, sessionKey, fresh, decision, s
     dispatch: args.dispatch ?? null,
   };
 }
+const sameRouteAs = (worker, decision, cwd, fresh) => (run) =>
+  run.executor === worker &&
+  (run.gateway ?? null) === (decision.gateway?.name ?? null) &&
+  run.cwd === cwd &&
+  run.fresh === fresh;
+// A resumable provider conversation only for a resumed isolated run or the primary slot.
+function claudeRootSessions(worker, previous, fresh, task, sessionKey, legacySessionKey) {
+  const resumable = previous?.fresh === true || !fresh;
+  return {
+    codexSession:
+      worker === "codex" && resumable
+        ? (previous?.codexSession ??
+          task.codexSessions?.[sessionKey] ??
+          task.codexSessions?.[legacySessionKey] ??
+          null)
+        : null,
+    claudeSession:
+      worker === "claude" && resumable
+        ? (previous?.claudeSession ??
+          task.sessions?.[sessionKey] ??
+          task.sessions?.[legacySessionKey] ??
+          null)
+        : null,
+  };
+}
+// Codex exec cannot ask mid-run, so its every question arrives as needs_input; a
+// Claude worker can also ask live, answered through codex.answer.
+function claudeRootReplies(previous, args, task, config) {
+  const continuation = previous?.state === "needs_input";
+  if (
+    continuation &&
+    (!["claude", "user"].includes(args.replySource) || !args.replyReason)
+  )
+    throw new Error(
+      "Resuming a question requires replySource and replyReason.",
+    );
+  const priorReplies =
+    task.supervisionRepliesByCwd?.[task.cwd] ??
+    task.supervisionReplies ??
+    0;
+  const replies =
+    continuation && args.replySource === "claude"
+      ? priorReplies + 1
+      : 0;
+  if (replies > config.maxSupervisionReplies)
+    throw new Error("Supervision limit reached. Escalate to the user.");
+  return replies;
+}
+// A Claude worker inherits the session's own model, effort and permission mode, so
+// it can never be wider than the coordinator.
+function claudeRootSelection(worker, config, session, args) {
+  return worker === "codex"
+    ? codexSelection(config, session, { model: args.model, effort: args.effort })
+    : {
+        model: args.model ?? session.model ?? config.modelFallback ?? "opus",
+        effort:
+          config.effortMap[args.effort ?? session.effort] ??
+          session.effort ??
+          "high",
+      };
+}
+async function claudeRootPrompt(worker, config, task, args, workspace) {
+  // Claude's own memory switches are checked inside memoryContext.
+  task.memoryEnabled = config.memorySharing;
+  // Shared memory is the other agent's store, so a same-provider worker gets none.
+  const memories =
+    worker === "codex" ? await memoryContext(config, task, "claude") : [];
+  const brief = withWorkspace(args.prompt, workspace.map, task.cwd);
+  return worker === "codex"
+    ? codexHandoff(brief, memories, "Claude Code")
+    : handoff(brief, memories, "Claude Code");
+}
+function claudeRootRecord({ id, worker, task, args, workspace, sessionKey, fresh, decision, selection, permission, codexSession, claudeSession }) {
+  return {
+    id,
+    executor: worker,
+    threadId: task.id,
+    sessionId: args.sessionId,
+    cwd: task.cwd,
+    workspace: workspace.map,
+    dirs: workspace.dirs,
+    sessionKey,
+    workerSlot: fresh ? "fresh" : "primary",
+    fresh,
+    gateway: decision.gateway?.name ?? null,
+    host: hostname(),
+    selection,
+    permissions: permission.name,
+    background: args.background === true,
+    createdAt: Date.now(),
+    state: "starting",
+    terminal: false,
+    question: null,
+    result: null,
+    codexSession,
+    claudeSession,
+    replySource: args.replySource,
+    replyReason: args.replyReason,
+    dispatch: args.dispatch ?? null,
+  };
+}
+function recordClaudeRootStart(current, { id, config, replies, task, fresh, decision, workspace }) {
+  current.runId = id;
+  current.runIds = [...new Set([...(current.runIds ?? []), id])];
+  current.memoryEnabled = config.memorySharing;
+  current.supervisionReplies = replies;
+  current.supervisionRepliesByCwd = {
+    ...current.supervisionRepliesByCwd,
+    [task.cwd]: replies,
+  };
+  if (!fresh) {
+    current.workerBinding ??= bindingFor(decision);
+    current.primaryCwd ??= task.cwd;
+    current.workspace = workspace.map;
+  }
+}
+function verifiedSession(task) {
+  const session = task.session;
+  if (!session?.cwd || !session.permissionMode)
+    throw new Error(
+      "No verified Claude session settings yet. The plugin's hooks record them; trust the hooks and send a message first.",
+    );
+  return session;
+}
+// A reply must take the route of the run that asked; otherwise the primary slot resumes
+// the latest run on the same route.
+function sameRouteRun(previous, runs, sameRoute, fresh, decision) {
+  if (previous && previous.state === "needs_input" && !sameRoute(previous))
+    throw new Error(routeChanged(previous, decision));
+  if (!fresh)
+    previous ??= [...runs.active, ...runs.recent].find(sameRoute);
+  return previous;
+}
+async function claudeRootEnv(worker, task, decision, config) {
+  return withoutReferencedSecrets(
+    (worker === "codex"
+      ? await checkCodex(task.cwd, undefined, decision.gateway ?? null)
+      : await checkClaude(task.cwd, undefined, decision.gateway ?? null)
+    ).env,
+    config,
+  );
+}
+function claudeRootArgv({ worker, codexSession, claudeSession, selection, permission, decision, roots }) {
+  return worker === "codex"
+    ? codexArgs(codexSession, selection, permission, decision.gateway ?? null)
+    : claudeArgs(claudeSession, selection, permission.name, roots);
+}
 export class Manager {
   runs = new Map();
   taskMutations = new Map();
@@ -933,215 +1080,103 @@ export class Manager {
       throw new Error("Another delegation is starting; retry shortly.");
     this.busy = true;
     try {
-      const config = await configRead();
-      const { task, runs, route: decision } = await this.claudeInspect(
-        args.sessionId,
-        args.operation,
-      );
-      if (decision.unavailable) throw new Error(decision.reason);
-      if (!delegates(decision, "claude")) throw new Error(decision.reason);
-      // A Claude session delegates to Codex (native or gateway) or to Claude behind a gateway.
-      const worker = decision.executor;
-      const session = task.session;
-      if (!session?.cwd || !session.permissionMode)
-        throw new Error(
-          "No verified Claude session settings yet. The plugin's hooks record them; trust the hooks and send a message first.",
-        );
-      const replying = args.replySource != null || args.replyReason != null;
-      let previous = null;
-      if (args.runId) {
-        previous = await this.status(args.runId);
-        if (previous.threadId !== task.id)
-          throw new Error("The requested run belongs to another Claude session.");
-        if (args.cwd && (await projectIdentity(args.cwd)).cwd !== previous.cwd)
-          throw new Error("The requested run belongs to a different working directory.");
-      }
-      if (replying) {
-        const awaiting = [...runs.active, ...runs.recent].filter(
-          (run) => run.state === "needs_input",
-        );
-        if (previous && previous.state !== "needs_input")
-          throw new Error(`Run ${previous.id} is not awaiting input.`);
-        if (!previous && awaiting.length === 0)
-          throw new Error("no run is awaiting input.");
-        if (!previous && awaiting.length > 1)
-          throw new Error(
-            `runId is required because multiple runs are awaiting input: ${awaiting.map((run) => run.id).join(", ")}`,
-          );
-        previous ??= awaiting[0];
-      }
-      // A reply to an isolated run stays isolated even when the caller omits fresh=true.
-      // It may resume that run's provider conversation, but never promote it into or replace
-      // the root session's primary worker conversation.
-      const fresh = args.fresh === true || previous?.fresh === true;
-      if (fresh && !task.workerBinding)
-        throw new Error(
-          "A fresh worker requires an established primary worker binding; delegate once without fresh=true first.",
-        );
-      const id = randomUUID();
-      const workspace = await this.workspace(task, {
-        fresh,
-        previous,
-        cwd: args.cwd || previous?.cwd,
-        repos: args.repos,
-        rootCwd: session.cwd,
-        runId: id,
-      });
-      task.cwd = workspace.cwd;
-      const sessionKey = fresh ? null : sessionKeyFor(task.cwd);
-      const legacySessionKey = legacySessionKeyFor(task.cwd, decision.gateway);
-      const sameRoute = (run) =>
-        run.executor === worker &&
-        (run.gateway ?? null) === (decision.gateway?.name ?? null) &&
-        run.cwd === task.cwd &&
-        run.fresh === fresh;
-      if (previous && previous.state === "needs_input" && !sameRoute(previous))
-        throw new Error(routeChanged(previous, decision));
-      if (!fresh)
-        previous ??= [...runs.active, ...runs.recent].find(sameRoute);
-      const codexSession =
-        worker === "codex" && (previous?.fresh === true || !fresh)
-          ? (previous?.codexSession ??
-            task.codexSessions?.[sessionKey] ??
-            task.codexSessions?.[legacySessionKey] ??
-            null)
-          : null;
-      const claudeSession =
-        worker === "claude" && (previous?.fresh === true || !fresh)
-          ? (previous?.claudeSession ??
-            task.sessions?.[sessionKey] ??
-            task.sessions?.[legacySessionKey] ??
-            null)
-          : null;
-      // Codex exec cannot ask mid-run, so its every question arrives as needs_input; a
-      // Claude worker can also ask live, answered through codex.answer.
-      const continuation = previous?.state === "needs_input";
-      if (
-        continuation &&
-        (!["claude", "user"].includes(args.replySource) || !args.replyReason)
-      )
-        throw new Error(
-          "Resuming a question requires replySource and replyReason.",
-        );
-      const priorReplies =
-        task.supervisionRepliesByCwd?.[task.cwd] ??
-        task.supervisionReplies ??
-        0;
-      const replies =
-        continuation && args.replySource === "claude"
-          ? priorReplies + 1
-          : 0;
-      if (replies > config.maxSupervisionReplies)
-        throw new Error("Supervision limit reached. Escalate to the user.");
-      this.assertOneWriter(workspace.dirs, config);
-      await this.recoverOrphans(task, workspace.dirs);
-      const roots = extraRoots(workspace.map, task.cwd);
-      // A Claude worker inherits the session's own model, effort and permission mode, so
-      // it can never be wider than the coordinator.
-      const selection =
-        worker === "codex"
-          ? codexSelection(config, session, { model: args.model, effort: args.effort })
-          : {
-              model: args.model ?? session.model ?? config.modelFallback ?? "opus",
-              effort:
-                config.effortMap[args.effort ?? session.effort] ??
-                session.effort ??
-                "high",
-            };
-      const permission =
-        worker === "codex"
-          ? codexPermission(session.permissionMode, roots)
-          : { name: session.permissionMode };
-      const env = withoutReferencedSecrets(
-        (worker === "codex"
-          ? await checkCodex(task.cwd, undefined, decision.gateway ?? null)
-          : await checkClaude(task.cwd, undefined, decision.gateway ?? null)
-        ).env,
-        config,
-      );
-      const latestTask = await taskRead(task.id);
-      const disabled = disabledRepository(await configRead(), { ...latestTask, project: task.project }, workspace.map);
-      if (disabled)
-        throw new Error(`Delegation was disabled during preflight: ${disabled}`);
-      if (this.draining)
-        throw new Error("Bridge upgrade is in progress; retry afterward.");
-      await mkdir(runDir(id), { mode: 0o700 });
-      // Claude's own memory switches are checked inside memoryContext.
-      task.memoryEnabled = config.memorySharing;
-      // Shared memory is the other agent's store, so a same-provider worker gets none.
-      const memories =
-        worker === "codex" ? await memoryContext(config, task, "claude") : [];
-      const brief = withWorkspace(args.prompt, workspace.map, task.cwd);
-      const prompt =
-        worker === "codex"
-          ? await codexHandoff(brief, memories, "Claude Code")
-          : await handoff(brief, memories, "Claude Code");
-      const record = {
-        id,
-        executor: worker,
-        threadId: task.id,
-        sessionId: args.sessionId,
-        cwd: task.cwd,
-        workspace: workspace.map,
-        dirs: workspace.dirs,
-        sessionKey,
-        workerSlot: fresh ? "fresh" : "primary",
-        fresh,
-        gateway: decision.gateway?.name ?? null,
-        host: hostname(),
-        selection,
-        permissions: permission.name,
-        background: args.background === true,
-        createdAt: Date.now(),
-        state: "starting",
-        terminal: false,
-        question: null,
-        result: null,
-        codexSession,
-        claudeSession,
-        replySource: args.replySource,
-        replyReason: args.replyReason,
-        dispatch: args.dispatch ?? null,
-      };
-      await this.launch(
-        record,
-        {
-          runId: id,
-          argv:
-            worker === "codex"
-              ? codexArgs(codexSession, selection, permission, decision.gateway ?? null)
-              : claudeArgs(claudeSession, selection, permission.name, roots),
-          cwd: task.cwd,
-          prompt,
-          ...(worker === "codex" ? { input: "text" } : {}),
-          background: record.background,
-          graceSeconds: config.disconnectGraceSeconds,
-          maxRunSeconds: config.maxRunSeconds,
-        },
-        env,
-        config,
-      );
-      // Starts are serialized (busy), so nothing can claim these between check and claim.
-      await claimCheckouts(task.id, workspace.claims);
-      await this.mutateTask(task.id, (current) => {
-        current.runId = id;
-        current.runIds = [...new Set([...(current.runIds ?? []), id])];
-        current.memoryEnabled = config.memorySharing;
-        current.supervisionReplies = replies;
-        current.supervisionRepliesByCwd = {
-          ...current.supervisionRepliesByCwd,
-          [task.cwd]: replies,
-        };
-        if (!fresh) {
-          current.workerBinding ??= bindingFor(decision);
-          current.primaryCwd ??= task.cwd;
-          current.workspace = workspace.map;
-        }
-      });
-      return this.begin(id);
+      return await this.claudeRootStart(args);
     } finally {
       this.busy = false;
     }
+  }
+  // The run a Claude-rooted delegation continues: the named run, or for a reply the one
+  // run awaiting input.
+  async claudeReplyTarget(args, task, runs) {
+    const replying = args.replySource != null || args.replyReason != null;
+    let previous = null;
+    if (args.runId) {
+      previous = await this.status(args.runId);
+      if (previous.threadId !== task.id)
+        throw new Error("The requested run belongs to another Claude session.");
+      if (args.cwd && (await projectIdentity(args.cwd)).cwd !== previous.cwd)
+        throw new Error("The requested run belongs to a different working directory.");
+    }
+    if (!replying) return previous;
+    const awaiting = [...runs.active, ...runs.recent].filter(
+      (run) => run.state === "needs_input",
+    );
+    if (previous && previous.state !== "needs_input")
+      throw new Error(`Run ${previous.id} is not awaiting input.`);
+    if (!previous && awaiting.length === 0)
+      throw new Error("no run is awaiting input.");
+    if (!previous && awaiting.length > 1)
+      throw new Error(
+        `runId is required because multiple runs are awaiting input: ${awaiting.map((run) => run.id).join(", ")}`,
+      );
+    return previous ?? awaiting[0];
+  }
+  async claudeRootStart(args) {
+    const config = await configRead();
+    const { task, runs, route: decision } = await this.claudeInspect(
+      args.sessionId,
+      args.operation,
+    );
+    if (decision.unavailable) throw new Error(decision.reason);
+    if (!delegates(decision, "claude")) throw new Error(decision.reason);
+    // A Claude session delegates to Codex (native or gateway) or to Claude behind a gateway.
+    const worker = decision.executor;
+    const session = verifiedSession(task);
+    let previous = await this.claudeReplyTarget(args, task, runs);
+    // A reply to an isolated run stays isolated even when the caller omits fresh=true.
+    // It may resume that run's provider conversation, but never promote it into or replace
+    // the root session's primary worker conversation.
+    const fresh = args.fresh === true || previous?.fresh === true;
+    if (fresh && !task.workerBinding)
+      throw new Error(
+        "A fresh worker requires an established primary worker binding; delegate once without fresh=true first.",
+      );
+    const id = randomUUID();
+    const workspace = await this.workspace(task, {
+      fresh,
+      previous,
+      cwd: args.cwd || previous?.cwd,
+      repos: args.repos,
+      rootCwd: session.cwd,
+      runId: id,
+    });
+    task.cwd = workspace.cwd;
+    const sessionKey = fresh ? null : sessionKeyFor(task.cwd);
+    previous = sameRouteRun(previous, runs, sameRouteAs(worker, decision, task.cwd, fresh), fresh, decision);
+    const { codexSession, claudeSession } = claudeRootSessions(worker, previous, fresh, task, sessionKey, legacySessionKeyFor(task.cwd, decision.gateway));
+    const replies = claudeRootReplies(previous, args, task, config);
+    this.assertOneWriter(workspace.dirs, config);
+    await this.recoverOrphans(task, workspace.dirs);
+    const roots = extraRoots(workspace.map, task.cwd);
+    const selection = claudeRootSelection(worker, config, session, args);
+    const permission =
+      worker === "codex"
+        ? codexPermission(session.permissionMode, roots)
+        : { name: session.permissionMode };
+    const env = await claudeRootEnv(worker, task, decision, config);
+    await this.assertStillEnabled(task, workspace);
+    await mkdir(runDir(id), { mode: 0o700 });
+    const prompt = await claudeRootPrompt(worker, config, task, args, workspace);
+    const record = claudeRootRecord({ id, worker, task, args, workspace, sessionKey, fresh, decision, selection, permission, codexSession, claudeSession });
+    await this.launch(
+      record,
+      {
+        runId: id,
+        argv: claudeRootArgv({ worker, codexSession, claudeSession, selection, permission, decision, roots }),
+        cwd: task.cwd,
+        prompt,
+        ...(worker === "codex" ? { input: "text" } : {}),
+        background: record.background,
+        graceSeconds: config.disconnectGraceSeconds,
+        maxRunSeconds: config.maxRunSeconds,
+      },
+      env,
+      config,
+    );
+    // Starts are serialized (busy), so nothing can claim these between check and claim.
+    await claimCheckouts(task.id, workspace.claims);
+    await this.mutateTask(task.id, (current) => recordClaudeRootStart(current, { id, config, replies, task, fresh, decision, workspace }));
+    return this.begin(id);
   }
   // Resolves this delegation's checkouts. The primary conversation keeps one working directory
   // and a persistent map of task-owned checkouts; adding or naming another repository joins that
