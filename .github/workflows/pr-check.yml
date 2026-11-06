@@ -317,10 +317,22 @@ jobs:
           if git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null; then
             git checkout --quiet --detach "$EXPECTED_HEAD"
           fi
-          # Only an explicit or defaulted `advisory` is non-blocking. Anything else, a typo such as
-          # "Enforce" or a block that is not an object included, enforces: the CLI then refuses the
-          # invalid policy (exit 2) and the step fails, instead of a project believing it enforces.
-          mode="$(jq -r 'if has("complexity") then (if (.complexity | type) == "object" then (.complexity.mode // "advisory" | tostring) else "invalid" end) else "" end' morpheus.json 2> /dev/null || true)"
+          # Only `advisory`, written or defaulted by an absent `mode` key, is non-blocking. Any other
+          # value (a typo such as "Enforce", "", null, false, a number or a non-object block) is
+          # invalid and enforces: the CLI then refuses the policy (exit 2) and the step fails,
+          # rather than a project believing it enforces. Only an absent block (or manifest) means
+          # not enrolled; a manifest jq cannot read is reported as unreadable, never as unenrolled.
+          if [ ! -e morpheus.json ]; then
+            echo "No morpheus.json: not enrolled, nothing checked."
+            exit 0
+          fi
+          if ! mode="$(jq -r 'if has("complexity") | not then ""
+            elif (.complexity | type) != "object" then "invalid"
+            elif (.complexity | has("mode")) | not then "advisory"
+            elif .complexity.mode == "advisory" or .complexity.mode == "enforce" then .complexity.mode
+            else "invalid" end' morpheus.json)"; then
+            mode="unreadable"
+          fi
           if [ -z "$mode" ]; then
             echo "morpheus.json has no complexity block: not enrolled, nothing checked."
             exit 0

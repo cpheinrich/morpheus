@@ -73,9 +73,11 @@ low-cognitive mapping is still over the CCN limit: refactor it or record a seman
 
 ## Enrolment
 
-In CI only `advisory`, written or defaulted, is non-blocking. Any other `mode` value, a typo such as
-`Enforce` included, is treated as enforcing, and the invalid policy then fails the step rather than
-leaving a project believing it enforces.
+In CI only `advisory`, written or defaulted by an absent `mode` key, is non-blocking. Any other
+`mode` value (a typo such as `Enforce`, an empty string, `null`, `false`, a number), a `complexity`
+value that is not an object, or a `morpheus.json` that cannot be parsed is treated as enforcing, and
+the invalid policy then fails the step rather than leaving a project believing it enforces. Only an
+absent block or manifest means not enrolled.
 
 A new project's manifest starts `advisory`. An existing project enrols with a reviewed edit to its
 own `morpheus.json`; nothing here enrols other repositories. CI runs inside the required `pr /

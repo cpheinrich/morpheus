@@ -3617,14 +3617,14 @@ describe("pr-check complexity step", () => {
   });
 
   /** Runs the step's own script against a stub CLI that exits as told and logs its arguments. */
-  async function runStep(complexity: unknown, codes: { install?: number; check?: number }) {
+  async function runStep(complexity: unknown, codes: { install?: number; check?: number }, manifestText?: string) {
     const tmp = await mkdtemp(join(tmpdir(), "pr-complexity-"));
     try {
       const git = (...args: string[]) => execFileAsync("git", args, { cwd: tmp }).then((r) => r.stdout.trim());
       await git("init", "-q", "-b", "main");
       await git("config", "user.email", "t@example.com");
       await git("config", "user.name", "T");
-      await writeFile(join(tmp, "morpheus.json"), JSON.stringify(complexity === undefined ? {} : { complexity }));
+      await writeFile(join(tmp, "morpheus.json"), manifestText ?? JSON.stringify(complexity === undefined ? {} : { complexity }));
       await git("add", ".");
       await git("commit", "-qm", "head");
       const head = await git("rev-parse", "HEAD");
@@ -3685,11 +3685,18 @@ describe("pr-check complexity step", () => {
   });
 
   it("fails closed on a mode that is not exactly advisory, and on a block that is not an object", async () => {
-    for (const block of [{ mode: "Enforce" }, { mode: "enforced" }, { mode: 5 }, true]) {
+    const invalid = [{ mode: "Enforce" }, { mode: "enforced" }, { mode: 5 }, { mode: "" }, { mode: null }, { mode: false },
+      { mode: 0 }, { mode: [] }, { mode: {} }, true, null, "advisory", []];
+    for (const block of invalid) {
       const out = await runStep(block, { check: 2 });
       expect(out.code, JSON.stringify(block)).toBe(1);
       expect(out.stdout).toContain("not advisory");
     }
+    // A manifest jq cannot read is reported as such and fails; it is never "not enrolled".
+    const unreadable = await runStep(undefined, { check: 2 }, "{ not json");
+    expect(unreadable.code).toBe(1);
+    expect(unreadable.stdout).not.toContain("not enrolled");
+    expect(unreadable.stdout).toContain("mode is 'unreadable'");
     // An explicit advisory with some other invalid field still only warns.
     expect((await runStep({ mode: "advisory", ccn: "x" }, { check: 2 })).code).toBe(0);
   });
