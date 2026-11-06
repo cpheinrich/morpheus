@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -259,14 +260,31 @@ def app_is_running(app_names):
                for name in app_names)
 
 
+def app_cache_path_is_safe(cache):
+    """Reject links from the cache through HOME; OS aliases above HOME are unrelated."""
+    home = Path(os.path.abspath(HOME))
+    try:
+        cache.relative_to(home)
+    except ValueError:
+        return False
+    if cache == home:
+        return False
+    for ancestor in (cache, *cache.parents):
+        if stat.S_ISLNK(ancestor.lstat().st_mode):
+            return False
+        if ancestor == home:
+            return True
+    return False
+
+
 def remove_app_cache_contents(root, cache_names, app_names, apply):
     if app_is_running(app_names):
         log(f"{app_names[0]} running; skipping its application caches")
         return 0
     count = 0
     for name in cache_names:
-        cache = root / name
-        if not cache.is_dir() or cache.is_symlink():
+        cache = Path(os.path.abspath(root / name))
+        if not cache.is_dir() or not app_cache_path_is_safe(cache):
             continue
         for path in cache.iterdir():
             log(f"{'Remove' if apply else 'Would remove'} application cache {path}")

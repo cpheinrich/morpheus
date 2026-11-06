@@ -117,3 +117,32 @@ codebase-memory bootstrap on Evo could not verify an exact-checkout index; known
 paths were read directly with no graph-completeness claim. The stale local CLI was updated
 through supported self-update. No Mini/Studio config/service/source mutation or deletion,
 manual CI dispatch, upload or Apple action. Fresh independent review per PR remains root-owned.
+
+## Independent review turn 1 — blocked on M634-001
+
+Root relayed the initial independent review by Factory review f09c35d0-d672-4189-8752-5bdd42a6ac5a,
+native session 01a1b2ef-32de-7e20-9ea2-8abf940a0fbc, against reviewed 8835797f and base 93ecbae1.
+M634-001 is substantive: a symlink at BraveSoftware or an ancestor can redirect a closed-app
+cache sweep into Application Support and delete the browser profile. The reviewer reproduced
+the attempted deletion safely. The initial verdict remains blocked; no conditional clearance
+was given. Root retains the measured turn duration and will supply it for the structured
+review record; no elapsed time or clearance is invented here.
+
+Response prepared for the same reviewer's follow-up: normalize the actual cache path lexically,
+require it strictly below HOME, then lstat every component from that path through HOME and
+refuse symlinks before iterating its contents. Inspections above HOME are intentionally excluded,
+so a macOS /var alias or another alias above a fixture home does not create a false refusal.
+Inspection errors propagate to the existing stage failure handling, before deletion. The
+closed-app guard and fixed cache allowlist remain unchanged. Host and Evo source untouched.
+
+New temporary-fixture regressions reproduced four failures before the fix (three profile
+aliases and an outside-HOME root). Final 26 cleanup tests pass: profile bytes survive a link
+at the root, Caches, Library and final cache child; HOME itself and outside paths stay; an
+explicit alias above HOME still permits ordinary cache deletion and preserves profile state.
+Existing running-app and normal closed-cache deletion checks remain. Before/after logs are
+in the private handoff. git diff --check passes. Complexity passes advisory at CCN 15; the
+existing cache helper's cognitive 19 is unchanged from the saved pre-fix metrics and now
+reported because the helper is touched. No policy/exclusion change or optional refactor.
+
+M634-001 is addressed by the author but requires reviewer verification before disposition as
+resolved or clearance. No merge, label, host install/change/deletion or manual dispatch.

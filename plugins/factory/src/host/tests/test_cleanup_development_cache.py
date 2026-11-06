@@ -268,7 +268,7 @@ class SimulatorOwnershipTests(unittest.TestCase):
             self.assertEqual(run.call_args_list[1].args[0][-3:], ["-i", "on", "/System/Volumes/Data"])
 
     def test_agent_cache_cleanup_requires_closed_app_and_preserves_session_state(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory() as directory, patch.object(cleanup, "HOME", Path(directory)):
             root = Path(directory)
             cache = root / "Cache"
             cache.mkdir()
@@ -322,6 +322,59 @@ class SimulatorOwnershipTests(unittest.TestCase):
                 self.assertEqual(cleanup.remove_browser_caches(True), 0)
             self.assertTrue(all(path.is_dir() and not (path / "data").exists() for path in caches))
             self.assertTrue(all((path / "data").read_bytes() == b"preserve or cache" for path in profiles))
+
+    def test_browser_cache_symlink_root_and_ancestors_preserve_profile(self):
+        cases = [
+            ("Library/Caches/BraveSoftware", "Library/Application Support/BraveSoftware", "Brave-Browser"),
+            ("Library/Caches", "Library/Application Support", "BraveSoftware/Brave-Browser"),
+            ("Library", "profile-library", "Caches/BraveSoftware/Brave-Browser"),
+            ("Library/Caches/BraveSoftware/Brave-Browser", "Library/Application Support/BraveSoftware/Brave-Browser", ""),
+        ]
+        for link_name, target_name, suffix in cases:
+            with self.subTest(link=link_name), tempfile.TemporaryDirectory() as directory, \
+                 patch.object(cleanup, "HOME", Path(directory)), \
+                 patch.object(cleanup, "app_is_running", return_value=False):
+                home = Path(directory)
+                target = home / target_name
+                profile = target / suffix / "Default"
+                profile.mkdir(parents=True)
+                (profile / "Cookies").write_bytes(b"synthetic persistent profile")
+                link = home / link_name
+                link.parent.mkdir(parents=True, exist_ok=True)
+                link.symlink_to(target, target_is_directory=True)
+                self.assertEqual(cleanup.remove_browser_caches(True), 0)
+                self.assertEqual((profile / "Cookies").read_bytes(), b"synthetic persistent profile")
+                self.assertTrue(link.is_symlink())
+
+    def test_app_cache_outside_home_or_home_itself_is_preserved(self):
+        for relative, name in [("outside", "Cache"), ("home", "")]:
+            with self.subTest(root=relative), tempfile.TemporaryDirectory() as directory, \
+                 patch.object(cleanup, "HOME", Path(directory) / "home"), \
+                 patch.object(cleanup, "app_is_running", return_value=False):
+                root = Path(directory) / relative
+                cache = root / name
+                cache.mkdir(parents=True)
+                (cache / "data").write_bytes(b"protected data")
+                self.assertEqual(cleanup.remove_app_cache_contents(root, (name,), ("Claude",), True), 0)
+                self.assertEqual((cache / "data").read_bytes(), b"protected data")
+
+    def test_alias_above_home_does_not_prevent_normal_cache_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(cleanup, "app_is_running", return_value=False):
+            parent = Path(directory) / "physical"
+            home = parent / "home"
+            cache = home / "Library/Caches/Codex"
+            cache.mkdir(parents=True)
+            (cache / "generated").write_bytes(b"cache")
+            profile = home / "Library/Application Support/Codex"
+            profile.mkdir(parents=True)
+            (profile / "state").write_bytes(b"profile")
+            alias = Path(directory) / "alias"
+            alias.symlink_to(parent, target_is_directory=True)
+            with patch.object(cleanup, "HOME", alias / "home"):
+                self.assertEqual(cleanup.remove_browser_caches(True), 1)
+            self.assertFalse((cache / "generated").exists())
+            self.assertEqual((profile / "state").read_bytes(), b"profile")
 
     def test_worker_lease_protects_device_until_expiry(self):
         udid = "11111111-2222-3333-4444-555555555555"
