@@ -759,41 +759,65 @@ function firstLine(error: unknown): string {
 
 /** The one-line-plus-detail report `context brief` prints after a rescue attempt. */
 export function formatRescue(result: RescueResult, trunk: string): string[] {
-  const lines: string[] = [];
-  if (result.outcome === "rescued" && result.keptLocal !== undefined) {
-    const branch = shellQuote(result.wipBranch);
-    lines.push(`Moved ${result.dirt.tracked.length} uncommitted tracked file(s) from dirty trunk to local branch ${result.wipBranch}; trunk reset to its last commit.`);
-    lines.push(`  Not pushed, and no PR opened: ${result.keptLocal}. The edits exist only in this clone.`);
-    lines.push(...diffstatLines(result.diffstat).map((l) => `    ${l}`));
-    lines.push(`  Recover them with git switch ${branch}, or git cherry-pick ${branch} onto another branch.`);
-    lines.push(`  To publish deliberately: git push ${shellQuote(result.remote)} ${branch}, then gh pr create --draft --head ${branch}.`);
-  } else if (result.outcome === "rescued") {
-    const n = result.dirt.tracked.length;
-    const where = result.prUrl ? `draft PR ${result.prUrl}` : `branch ${result.wipBranch}`;
-    lines.push(`Moved ${n} uncommitted tracked file(s) from dirty trunk to ${where}; trunk reset to its last commit.`);
-    if (!result.pushed) lines.push(`  ! Push failed (${result.pushError ?? "unknown"}). The edits are safe on local branch ${result.wipBranch}; push it with: git push ${result.remote} ${result.wipBranch}`);
-    else if (!result.prUrl) lines.push(`  ! Pushed ${result.wipBranch}, but the draft PR was not opened (${result.prError ?? "unknown"}). Open it with: gh pr create --draft --head ${result.wipBranch}`);
-  } else if (result.outcome === "churn") {
-    lines.push(`Reset ${result.churn.length} tracked file(s) of IDE churn on trunk instead of opening a rescue PR (${describeChurn(result.churn)}); recoverable with git checkout ${result.commit.slice(0, 12)} -- <path> until Git prunes it.`);
-  } else if (result.outcome === "duplicate") {
-    lines.push(result.prUrl
-      ? `Same tracked edits were already rescued in open PR ${result.prUrl} (${result.existingBranch}); trunk reset without another PR.`
-      : `Same tracked edits are already on local branch ${result.existingBranch}; trunk reset without another branch.`);
-    lines.push("  ! Repeated generator edits: commit the form the tool writes, or stop opening this trunk checkout in that tool.");
-  } else if (result.outcome === "skipped") {
-    lines.push(`!!! TRUNK CHECKOUT IS DIRTY AND WAS NOT RESCUED: ${result.reason}.`);
-    lines.push(`    ${result.dirt.tracked.length} tracked edit(s) block fast-forwarding ${trunk}:`);
-    for (const p of result.dirt.tracked.slice(0, 10)) lines.push(`      ${p}`);
-    if (result.dirt.tracked.length > 10) lines.push(`      … and ${result.dirt.tracked.length - 10} more`);
-    lines.push("    Resolve it, then rerun morpheus context brief; it moves tracked trunk edits to a wip/trunk-* branch. Never discard them.");
+  return [...outcomeLines(result, trunk), ...untrackedLines(result)];
+}
+
+function outcomeLines(result: RescueResult, trunk: string): string[] {
+  if (result.outcome === "rescued") return result.keptLocal !== undefined ? localRescueLines(result) : publishedRescueLines(result);
+  if (result.outcome === "churn") {
+    return [`Reset ${result.churn.length} tracked file(s) of IDE churn on trunk instead of opening a rescue PR (${describeChurn(result.churn)}); recoverable with git checkout ${result.commit.slice(0, 12)} -- <path> until Git prunes it.`];
   }
-  if (result.dirt.untracked.length) {
-    lines.push(`Untracked files left in place (never committed automatically): ${result.dirt.untracked.length}.`);
-    if (result.orphans.length) {
-      lines.push("  Build output whose source no longer exists — safe to delete:");
-      for (const p of result.orphans.slice(0, 10)) lines.push(`    rm ${shellQuote(p)}`);
-      if (result.orphans.length > 10) lines.push(`    … and ${result.orphans.length - 10} more`);
-    }
+  if (result.outcome === "duplicate") {
+    return [
+      result.prUrl
+        ? `Same tracked edits were already rescued in open PR ${result.prUrl} (${result.existingBranch}); trunk reset without another PR.`
+        : `Same tracked edits are already on local branch ${result.existingBranch}; trunk reset without another branch.`,
+      "  ! Repeated generator edits: commit the form the tool writes, or stop opening this trunk checkout in that tool.",
+    ];
+  }
+  if (result.outcome === "skipped") return skippedLines(result, trunk);
+  return [];
+}
+
+type Rescued = Extract<RescueResult, { outcome: "rescued" }>;
+
+function localRescueLines(result: Rescued): string[] {
+  const branch = shellQuote(result.wipBranch);
+  return [
+    `Moved ${result.dirt.tracked.length} uncommitted tracked file(s) from dirty trunk to local branch ${result.wipBranch}; trunk reset to its last commit.`,
+    `  Not pushed, and no PR opened: ${result.keptLocal}. The edits exist only in this clone.`,
+    ...diffstatLines(result.diffstat).map((l) => `    ${l}`),
+    `  Recover them with git switch ${branch}, or git cherry-pick ${branch} onto another branch.`,
+    `  To publish deliberately: git push ${shellQuote(result.remote)} ${branch}, then gh pr create --draft --head ${branch}.`,
+  ];
+}
+
+function publishedRescueLines(result: Rescued): string[] {
+  const where = result.prUrl ? `draft PR ${result.prUrl}` : `branch ${result.wipBranch}`;
+  const lines = [`Moved ${result.dirt.tracked.length} uncommitted tracked file(s) from dirty trunk to ${where}; trunk reset to its last commit.`];
+  if (!result.pushed) lines.push(`  ! Push failed (${result.pushError ?? "unknown"}). The edits are safe on local branch ${result.wipBranch}; push it with: git push ${result.remote} ${result.wipBranch}`);
+  else if (!result.prUrl) lines.push(`  ! Pushed ${result.wipBranch}, but the draft PR was not opened (${result.prError ?? "unknown"}). Open it with: gh pr create --draft --head ${result.wipBranch}`);
+  return lines;
+}
+
+function skippedLines(result: Extract<RescueResult, { outcome: "skipped" }>, trunk: string): string[] {
+  const tracked = result.dirt.tracked;
+  return [
+    `!!! TRUNK CHECKOUT IS DIRTY AND WAS NOT RESCUED: ${result.reason}.`,
+    `    ${tracked.length} tracked edit(s) block fast-forwarding ${trunk}:`,
+    ...tracked.slice(0, 10).map((p) => `      ${p}`),
+    ...(tracked.length > 10 ? [`      … and ${tracked.length - 10} more`] : []),
+    "    Resolve it, then rerun morpheus context brief; it moves tracked trunk edits to a wip/trunk-* branch. Never discard them.",
+  ];
+}
+
+function untrackedLines(result: RescueResult): string[] {
+  if (!result.dirt.untracked.length) return [];
+  const lines = [`Untracked files left in place (never committed automatically): ${result.dirt.untracked.length}.`];
+  if (result.orphans.length) {
+    lines.push("  Build output whose source no longer exists — safe to delete:");
+    for (const p of result.orphans.slice(0, 10)) lines.push(`    rm ${shellQuote(p)}`);
+    if (result.orphans.length > 10) lines.push(`    … and ${result.orphans.length - 10} more`);
   }
   return lines;
 }
