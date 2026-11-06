@@ -129,21 +129,31 @@ Swift, TSX, JSX and TypeScript that exercise the pinned parser fixes) measure ex
 Tests install the previous pins and assert the canary refuses each, so a pin move whose canary would not
 notice a regression back fails.
 
-The current pin is the `cpheinrich/lizard` tag `morpheus-analyzer-2026-11-06-jsx-boolean`
-(`541623c0`): upstream master `4f6979da` plus open upstream PRs 556 (Swift computed and closure
-properties), 558 (enum cases), 559 (string interpolation), 560 (JSX text, at `24c6ff3`) and 562
+The current pin is the `cpheinrich/lizard` tag `morpheus-analyzer-2026-11-06-jsx-text-slash`
+(`b57041bf`): upstream master `4f6979da` plus open upstream PRs 556 (Swift computed and closure
+properties), 558 (enum cases), 559 (string interpolation), 560 (JSX text, at `d2d52d9`) and 562
 (template literal types inside TypeScript interface and object-type bodies, which earlier builds
 read as closing the body, folding every later function in the file into `*global*`). Return to plain
 upstream once all five merge. PR 560's later commits also read three JSX attribute forms inside
 children: a spread (`{...x}`) and a hyphenated name (`data-state`, `aria-hidden`), fixed at
 `bb9efad`, and a valueless attribute after a braced one (`margin={{ top: 6 }} accessibilityLayer`),
 fixed at `24c6ff3`. Earlier pins abandoned the tag there, ran the enclosing function on past its end
-and dropped the functions after it. The canary's `attributes.*` and `valueless.*` files record line
-bounds as well as CCN for that reason. Known forms still misread: an element used directly as an
-attribute value without braces (`icon=<i />`) loses the functions after it; a valueless attribute
-literally named `extends` is read as a TypeScript type parameter; and a valueless attribute is only
-recognised where an expression is expected. At least one further JSX form, not yet identified,
-still runs a function on past its end. On Lakina it makes `SaasBottomUp.tsx` `CompanyDetail`
-measure 99–184 at CCN 17 and drops `SaasBottomUp`, so this list is not complete. Older tags (`morpheus-analyzer-2026-11-06` at
-`7f14ea5`, `-ts` at `484bbd05`, `-tsx` at `3b53c116`) stay in place and are never moved. Python 3.9
-is the floor both wheels declare; a test holds the pin to it.
+and dropped the functions after it. At `d2d52d9` a slash in JSX text (`At 9% / 11%`) no longer
+swallows the next closing tag: Lizard's regex pre-scan is not JSX-aware and read `/ 11%</th` as a
+regex literal, which unbalanced the elements once PR 560 read children as text. In `.jsx` and `.tsx`
+a literal may now not end at a `<` that starts a closing tag; JavaScript and TypeScript are
+unchanged, and a real regex such as `/</g` is still read as one. The canary's `attributes.*`,
+`valueless.*` and `slash-text.*` files record line bounds as well as CCN for that reason. Known
+forms still misread: an element used directly as an attribute value without braces (`icon=<i />`)
+loses the functions after it; a `key={...}` attribute ends an enclosing expression-bodied arrow early
+(the canary's `rows.map` arrow measures one line); a valueless attribute literally named `extends`
+is read as a TypeScript type parameter; a valueless attribute is only recognised where an expression
+is expected; and in `.jsx`/`.tsx` an unescaped `/a</b>/` is not read as a regex (a valid literal must
+escape that slash anyway). The list is what has been found, not a proof that no other form misreads.
+
+The previous pin, `541623c0` (`-jsx-boolean`), has the slash fault. On Lakina it made
+`SaasBottomUp.tsx` `CompanyDetail` measure 99–184 at CCN 17 and dropped `SaasBottomUp`; a reduced
+copy of that file measures correctly at `b57041bf`, and rescanning the real file at this pin is
+part of the adopting change's acceptance (its worklog has the result). Older tags (`morpheus-analyzer-2026-11-06`
+at `7f14ea5`, `-ts` at `484bbd05`, `-tsx` at `3b53c116`, `-jsx-boolean` at `541623c0`) stay in place
+and are never moved. Python 3.9 is the floor both wheels declare; a test holds the pin to it.

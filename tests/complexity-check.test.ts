@@ -317,6 +317,8 @@ describe("installation", () => {
       "attributes.tsx Row 1 1-3", "attributes.tsx Grid 3 4-11", "attributes.tsx Card 2 12-14", "attributes.tsx after 2 15-15",
       "attributes.jsx Row 1 1-3", "attributes.jsx Grid 3 4-11", "attributes.jsx Card 2 12-14", "attributes.jsx after 2 15-15",
       "valueless.tsx Chart 2 1-9", "valueless.tsx after 2 10-10", "valueless.jsx Chart 2 1-9", "valueless.jsx after 2 10-10",
+      "slash-text.tsx Rates 2 1-7", "slash-text.tsx escape 2 8-8", "slash-text.tsx after 2 9-9",
+      "slash-text.jsx Rates 2 1-7", "slash-text.jsx escape 2 8-8", "slash-text.jsx after 2 9-9",
     ]);
   });
 
@@ -336,6 +338,17 @@ describe("installation", () => {
     expect(result).toEqual({
       ok: false,
       reason: "canary canary.ts choose measured no such function; the pinned build gives CCN 4, cognitive 1",
+    });
+    expect(await toolStatus(previous, env)).toMatchObject({ state: "broken", reason: result.ok ? "" : result.reason });
+  }, 300_000);
+
+  it("refuses 541623c, whose regex pre-scan reads a slash in JSX text as a literal through the next closing tag", async () => {
+    // 541623c (tag morpheus-analyzer-2026-11-06-jsx-boolean) measures slash-text.tsx as Rates 1-9 CCN 4 and no escape or after.
+    const previous = { ...LIZARD_PIN, commit: "541623c0b98e8b5687ef5713d2ffbfb76ec17de0" };
+    const result = await installLizard(previous, env);
+    expect(result).toEqual({
+      ok: false,
+      reason: "canary slash-text.tsx Rates measured CCN 4, cognitive 3, lines 1-9; the pinned build gives CCN 2, cognitive 1, lines 1-7",
     });
     expect(await toolStatus(previous, env)).toMatchObject({ state: "broken", reason: result.ok ? "" : result.reason });
   }, 300_000);
