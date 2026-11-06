@@ -123,57 +123,94 @@ async function ensureVisualEvidencePolicy(path: string): Promise<VisualEvidenceU
 
 export const KIND_DIRS = EXPECTED;
 
+interface ScaffoldContext { root: string; seed: Seed; written: string[]; skipped: string[]; notes: string[]; put: ReturnType<typeof scaffoldWriter> }
+
 export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   const written: string[] = [];
   const skipped: string[] = [];
   const notes: string[] = [];
+  const ctx: ScaffoldContext = { root, seed, written, skipped, notes, put: scaffoldWriter(root, written, skipped) };
+  const { put } = ctx;
+  await scaffoldInstructions(ctx);
 
-  const put = scaffoldWriter(root, written, skipped);
+  // --- agent memory ---------------------------------------------------------
+  await put(".agent/README.md", t.agentReadme());
+  await put(".agent/decisions.md", t.decisions(seed));
+  await put(".agent/learned.md", t.learned());
 
-  const prepareRules = async (path: string): Promise<string | undefined> => {
-    const existing = await readFile(join(root, path), "utf8").catch(() => null);
-    if (existing === null) {
-      await put(path, renderFirestoreRules());
-      if (!written.includes(path)) {
-        notes.push(
-          `Could not read or create the rules file ${path}; left its CI check off. ` +
-            "Verify the file and permissions before enabling hq-rules-path.",
-        );
-        return undefined;
-      }
-      const configWarning = written.includes("firebase.json")
-        ? " This run also created firebase.json, so the next Firebase deploy will use this file."
-        : "";
+  // --- shared product contracts --------------------------------------------
+  //
+  // Product event meaning is shared across deployed surfaces, even when the
+  // transports differ. Keep that contract outside apps/ so web, mobile and
+  // backend clients cannot silently invent incompatible names and properties.
+  if (seed.kind !== "internal") await scaffoldProductContracts(ctx);
+
+  // Git does not track empty directories, so each carries a README explaining
+  // itself. Without one the directory silently does not exist on clone — which
+  // is exactly how Evo shipped without a worklog.
+  await put(".agent/worklog/README.md", t.worklogReadme());
+  await put(".agent/inbox-archive/README.md", t.inboxArchiveReadme());
+
+  const dirs = KIND_DIRS[seed.kind];
+  await scaffoldHq(ctx, dirs);
+
+  // The company layout declares this as the deployed data gate, and every
+  // documented `hq rules` command names it. Scaffold the deny-by-default
+  // starter so the first CI check is meaningful and its remedy is executable.
+  const rulesPath = seed.kind === "company" ? await scaffoldFirestoreRules(ctx) : undefined;
+  await scaffoldDirReadmes(ctx, dirs);
+  await scaffoldCi(ctx, rulesPath);
+  await scaffoldIosNightly(ctx);
+  await scaffoldGitignore(ctx, dirs);
+  await scaffoldIndexes(root, dirs);
+  return { written, skipped, notes };
+}
+
+async function prepareRules({ root, written, skipped, notes, put }: ScaffoldContext, path: string): Promise<string | undefined> {
+  const existing = await readFile(join(root, path), "utf8").catch(() => null);
+  if (existing === null) {
+    await put(path, renderFirestoreRules());
+    if (!written.includes(path)) {
       notes.push(
-        `Created the deployed rules file ${path} with deny-by-default starter policy.` +
-          configWarning +
-          " Review its match blocks before the next Firebase deploy.",
-      );
-      return path;
-    }
-
-    const update = updateRoleHelpers(existing);
-    if (!update) {
-      skipped.push(`${path} (rules file has no complete generated role marker block)`);
-      notes.push(
-        `Kept the deployed rules file ${path} and did not enable its generated CI check because ` +
-          "it has no " +
-          "complete generated role marker block. Review `morpheus hq rules --print`, add the " +
-          "block inside the database match scope, then enable hq-rules-path.",
+        `Could not read or create the rules file ${path}; left its CI check off. ` +
+          "Verify the file and permissions before enabling hq-rules-path.",
       );
       return undefined;
     }
-
-    skipped.push(path);
-    if (update.changed) {
-      notes.push(
-        `${path} has stale generated role helpers. Run ` +
-          `\`morpheus hq rules --rules-path ${path}\` before the first PR.`,
-      );
-    }
+    const configWarning = written.includes("firebase.json")
+      ? " This run also created firebase.json, so the next Firebase deploy will use this file."
+      : "";
+    notes.push(
+      `Created the deployed rules file ${path} with deny-by-default starter policy.` +
+        configWarning +
+        " Review its match blocks before the next Firebase deploy.",
+    );
     return path;
-  };
+  }
 
+  const update = updateRoleHelpers(existing);
+  if (!update) {
+    skipped.push(`${path} (rules file has no complete generated role marker block)`);
+    notes.push(
+      `Kept the deployed rules file ${path} and did not enable its generated CI check because ` +
+        "it has no " +
+        "complete generated role marker block. Review `morpheus hq rules --print`, add the " +
+        "block inside the database match scope, then enable hq-rules-path.",
+    );
+    return undefined;
+  }
+
+  skipped.push(path);
+  if (update.changed) {
+    notes.push(
+      `${path} has stale generated role helpers. Run ` +
+        `\`morpheus hq rules --rules-path ${path}\` before the first PR.`,
+    );
+  }
+  return path;
+}
+
+async function scaffoldInstructions({ root, seed, written, skipped, notes, put }: ScaffoldContext): Promise<void> {
   // --- the manifest and the instructions -----------------------------------
   await put("morpheus.json", t.manifest(seed));
   const visualPolicy = await ensureVisualEvidencePolicy(join(root, "morpheus.json"));
@@ -231,81 +268,67 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     }
   }
 
-  // --- agent memory ---------------------------------------------------------
-  await put(".agent/README.md", t.agentReadme());
-  await put(".agent/decisions.md", t.decisions(seed));
-  await put(".agent/learned.md", t.learned());
+}
 
-  // --- shared product contracts --------------------------------------------
-  //
-  // Product event meaning is shared across deployed surfaces, even when the
-  // transports differ. Keep that contract outside apps/ so web, mobile and
-  // backend clients cannot silently invent incompatible names and properties.
-  if (seed.kind !== "internal") {
-    const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
-    let discovery: Awaited<ReturnType<typeof findAnalyticsContracts>> | null = null;
-    try {
-      discovery = await findAnalyticsContracts(schemaDir);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        discovery = { contracts: [], unreadable: [] };
-      } else {
-        skipped.push(`${ANALYTICS_SCHEMA_DIRECTORY}/ (could not inspect)`);
-        notes.push(
-          `Could not inspect ${ANALYTICS_SCHEMA_DIRECTORY}/, so no analytics contract was written. ` +
-            "Fix the directory or its permissions before re-running init.",
-        );
-      }
-    }
-
-    if (discovery?.unreadable.length) {
-      skipped.push(
-        ...discovery.unreadable.map((name) => `${ANALYTICS_SCHEMA_DIRECTORY}/${name} (unreadable)`),
-      );
+async function scaffoldProductContracts({ root, seed, written, skipped, notes, put }: ScaffoldContext): Promise<void> {
+  const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
+  let discovery: Awaited<ReturnType<typeof findAnalyticsContracts>> | null = null;
+  try {
+    discovery = await findAnalyticsContracts(schemaDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      discovery = { contracts: [], unreadable: [] };
+    } else {
+      skipped.push(`${ANALYTICS_SCHEMA_DIRECTORY}/ (could not inspect)`);
       notes.push(
-        `Could not inspect ${discovery.unreadable.join(", ")} in ${ANALYTICS_SCHEMA_DIRECTORY}/, ` +
-          "so no analytics contract was written. Fix or remove the unreadable files before re-running init.",
+        `Could not inspect ${ANALYTICS_SCHEMA_DIRECTORY}/, so no analytics contract was written. ` +
+          "Fix the directory or its permissions before re-running init.",
       );
-    } else if (discovery !== null && discovery.contracts.length > 0) {
-      for (const name of discovery.contracts) {
-        skipped.push(`${ANALYTICS_SCHEMA_DIRECTORY}/${name}`);
-      }
-      notes.push(
-        `Kept the existing analytics contract${discovery.contracts.length === 1 ? "" : "s"}: ` +
-          discovery.contracts.map((name) => `${ANALYTICS_SCHEMA_DIRECTORY}/${name}`).join(", ") +
-          ".",
-      );
-    } else if (discovery !== null) {
-      await put(ANALYTICS_SCHEMA_PATH, t.analyticsSchema());
-      if (written.includes(ANALYTICS_SCHEMA_PATH)) {
-        notes.push(
-          `Created ${ANALYTICS_SCHEMA_PATH} as the provider-neutral product event contract. ` +
-            "Populate ProjectAnalyticsEvents before treating analytics setup as complete. This " +
-            "scaffold is not an importable runtime package until the project adds package metadata.",
-        );
-      }
     }
-    if (discovery !== null) {
-      await put("packages/shared/README.md", t.sharedReadme());
-      await put("packages/shared/schema/README.md", t.sharedSchemaReadme());
-    }
-
-    // Marketing starts with durable briefs, not a provider account or a one-off prompt. These
-    // files are intentionally independent: an established project may already have one real
-    // strategy while still needing the other two, and init must preserve every existing record.
-    await put("hq/marketing/analytics.md", t.marketingAnalytics(seed));
-    await put("hq/marketing/launch-plan.md", t.marketingLaunchPlan(seed));
-    await put("hq/marketing/seo/strategy.md", t.marketingSeoStrategy(seed));
   }
 
-  // Git does not track empty directories, so each carries a README explaining
-  // itself. Without one the directory silently does not exist on clone — which
-  // is exactly how Evo shipped without a worklog.
-  await put(".agent/worklog/README.md", t.worklogReadme());
-  await put(".agent/inbox-archive/README.md", t.inboxArchiveReadme());
+  if (discovery?.unreadable.length) {
+    skipped.push(
+      ...discovery.unreadable.map((name) => `${ANALYTICS_SCHEMA_DIRECTORY}/${name} (unreadable)`),
+    );
+    notes.push(
+      `Could not inspect ${discovery.unreadable.join(", ")} in ${ANALYTICS_SCHEMA_DIRECTORY}/, ` +
+        "so no analytics contract was written. Fix or remove the unreadable files before re-running init.",
+    );
+  } else if (discovery !== null && discovery.contracts.length > 0) {
+    for (const name of discovery.contracts) {
+      skipped.push(`${ANALYTICS_SCHEMA_DIRECTORY}/${name}`);
+    }
+    notes.push(
+      `Kept the existing analytics contract${discovery.contracts.length === 1 ? "" : "s"}: ` +
+        discovery.contracts.map((name) => `${ANALYTICS_SCHEMA_DIRECTORY}/${name}`).join(", ") +
+        ".",
+    );
+  } else if (discovery !== null) {
+    await put(ANALYTICS_SCHEMA_PATH, t.analyticsSchema());
+    if (written.includes(ANALYTICS_SCHEMA_PATH)) {
+      notes.push(
+        `Created ${ANALYTICS_SCHEMA_PATH} as the provider-neutral product event contract. ` +
+          "Populate ProjectAnalyticsEvents before treating analytics setup as complete. This " +
+          "scaffold is not an importable runtime package until the project adds package metadata.",
+      );
+    }
+  }
+  if (discovery !== null) {
+    await put("packages/shared/README.md", t.sharedReadme());
+    await put("packages/shared/schema/README.md", t.sharedSchemaReadme());
+  }
 
+  // Marketing starts with durable briefs, not a provider account or a one-off prompt. These
+  // files are intentionally independent: an established project may already have one real
+  // strategy while still needing the other two, and init must preserve every existing record.
+  await put("hq/marketing/analytics.md", t.marketingAnalytics(seed));
+  await put("hq/marketing/launch-plan.md", t.marketingLaunchPlan(seed));
+  await put("hq/marketing/seo/strategy.md", t.marketingSeoStrategy(seed));
+}
+
+async function scaffoldHq({ root, seed, written, skipped, put }: ScaffoldContext, dirs: readonly string[]): Promise<void> {
   // --- hq -------------------------------------------------------------------
-  const dirs = KIND_DIRS[seed.kind];
   if (dirs.some((d) => d.startsWith("hq/"))) await put("hq/README.md", t.hqReadme(seed));
 
   // A visual-first brand is a project primitive, not an optional wizard a
@@ -351,45 +374,47 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     await put(`${MEETING_NOTES_DIR}/README.md`, t.meetingNotesReadme());
   }
 
-  // The company layout declares this as the deployed data gate, and every
-  // documented `hq rules` command names it. Scaffold the deny-by-default
-  // starter so the first CI check is meaningful and its remedy is executable.
-  let rulesPath: string | undefined;
-  if (seed.kind === "company") {
-    const canonicalRules = "infra/firebase/firestore.rules";
-    const firebaseConfig = await readOptional(join(root, "firebase.json"));
-    const configured =
-      firebaseConfig.kind === "content"
-        ? configuredFirestoreRules(firebaseConfig.content)
-        : null;
-    if (configured?.kind === "path") {
-      rulesPath = await prepareRules(configured.path);
-    } else if (firebaseConfig.kind === "unreadable") {
-      const reason = `firebase.json could not be read: ${firebaseConfig.message}`;
-      skipped.push(`${canonicalRules} (${reason})`);
-      notes.push(
-        `${reason}. Left the Firestore gate alone and did not guess a rules path; fix or ` +
-          "confirm the configuration.",
-      );
-    } else if (firebaseConfig.kind === "content") {
-      const reason =
-        configured?.kind === "invalid"
-          ? `firebase.json could not be parsed: ${configured.message}`
-          : "firebase.json does not name one string Firestore rules path";
-      skipped.push(`${canonicalRules} (${reason})`);
-      notes.push(`${reason}. Kept the configuration and did not guess a path; fix or confirm it.`);
-    } else if (await exists(join(root, "firestore.rules"))) {
-      skipped.push(`${canonicalRules} (root firestore.rules already exists)`);
-      notes.push(
-        "Kept the existing root firestore.rules and did not create a second rules file. " +
-          "Set hq-rules-path to the file Firebase actually deploys.",
-      );
-    } else {
-      await put("firebase.json", t.firebaseConfig(canonicalRules));
-      rulesPath = await prepareRules(canonicalRules);
-    }
-  }
+}
 
+/** Prepares the Firestore rules file a company deploys, returning its path when its CI check can be wired. */
+async function scaffoldFirestoreRules(ctx: ScaffoldContext): Promise<string | undefined> {
+  const { root, skipped, notes, put } = ctx;
+  const canonicalRules = "infra/firebase/firestore.rules";
+  const firebaseConfig = await readOptional(join(root, "firebase.json"));
+  const configured =
+    firebaseConfig.kind === "content"
+      ? configuredFirestoreRules(firebaseConfig.content)
+      : null;
+  if (configured?.kind === "path") {
+    return prepareRules(ctx, configured.path);
+  } else if (firebaseConfig.kind === "unreadable") {
+    const reason = `firebase.json could not be read: ${firebaseConfig.message}`;
+    skipped.push(`${canonicalRules} (${reason})`);
+    notes.push(
+      `${reason}. Left the Firestore gate alone and did not guess a rules path; fix or ` +
+        "confirm the configuration.",
+    );
+  } else if (firebaseConfig.kind === "content") {
+    const reason =
+      configured?.kind === "invalid"
+        ? `firebase.json could not be parsed: ${configured.message}`
+        : "firebase.json does not name one string Firestore rules path";
+    skipped.push(`${canonicalRules} (${reason})`);
+    notes.push(`${reason}. Kept the configuration and did not guess a path; fix or confirm it.`);
+  } else if (await exists(join(root, "firestore.rules"))) {
+    skipped.push(`${canonicalRules} (root firestore.rules already exists)`);
+    notes.push(
+      "Kept the existing root firestore.rules and did not create a second rules file. " +
+        "Set hq-rules-path to the file Firebase actually deploys.",
+    );
+  } else {
+    await put("firebase.json", t.firebaseConfig(canonicalRules));
+    return prepareRules(ctx, canonicalRules);
+  }
+  return undefined;
+}
+
+async function scaffoldDirReadmes({ root, seed, put }: ScaffoldContext, dirs: readonly string[]): Promise<void> {
   // Remaining expected directories get a placeholder so they survive a clone.
   for (const dir of dirs) {
     if (dir.startsWith(".agent/") || dir.startsWith("hq/product/") || dir === INBOX_DIR) continue;
@@ -423,6 +448,9 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     if (!(await exists(join(root, readme)))) await put(readme, write(seed));
   }
 
+}
+
+async function scaffoldCi({ root, notes, put }: ScaffoldContext, rulesPath: string | undefined): Promise<void> {
   // --- ci -------------------------------------------------------------------
   //
   // Only wire the Node job into a project that is one. `node-ci` runs
@@ -461,6 +489,9 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     );
   }
 
+}
+
+async function scaffoldIosNightly({ root, skipped, notes, put }: ScaffoldContext): Promise<void> {
   // --- ios nightly release --------------------------------------------------
   //
   // Only for a repository that actually has an Xcode project. Every value in
@@ -501,6 +532,9 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     }
   }
 
+}
+
+async function scaffoldGitignore({ root, written, skipped }: ScaffoldContext, dirs: readonly string[]): Promise<void> {
   // --- gitignore ------------------------------------------------------------
   const ignorePath = join(root, ".gitignore");
   const existing = await readFile(ignorePath, "utf8").catch(() => "");
@@ -527,6 +561,9 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     written.push(existing ? ".gitignore (appended)" : ".gitignore");
   }
 
+}
+
+async function scaffoldIndexes(root: string, dirs: readonly string[]): Promise<void> {
   // Generate only the low-churn goal and request indexes. The roadmap README
   // stays static: agents, Morpheus commands and `/hq` all parse its item files
   // directly, while a generated table made every status transition rewrite a
@@ -551,5 +588,4 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     }
   }
 
-  return { written, skipped, notes };
 }
