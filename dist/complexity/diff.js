@@ -13,7 +13,7 @@ async function git(root, args) {
  * tree: committed, staged, unstaged and untracked work alike, because the
  * local check runs before anything is committed.
  */
-export async function changedFiles(root, base) {
+export async function changedFiles(root, base, untrackedToo = true) {
     const mb = await git(root, ["merge-base", base, "HEAD"]);
     if (mb.code !== 0)
         return { ok: false, reason: `no merge base between ${base} and HEAD: ${mb.stderr.trim() || "unknown"}` };
@@ -21,7 +21,7 @@ export async function changedFiles(root, base) {
     const status = await git(root, ["diff", "-z", "--name-status", "-M", "--no-ext-diff", "--no-textconv", "--ignore-submodules=all", mergeBase, "--"]);
     if (status.code !== 0)
         return { ok: false, reason: `git diff failed: ${status.stderr.trim()}` };
-    const untracked = await git(root, ["ls-files", "-z", "--others", "--exclude-standard"]);
+    const untracked = untrackedToo ? await git(root, ["ls-files", "-z", "--others", "--exclude-standard"]) : { code: 0, stdout: "", stderr: "" };
     if (untracked.code !== 0)
         return { ok: false, reason: `git ls-files failed: ${untracked.stderr.trim()}` };
     const files = [];
@@ -87,8 +87,8 @@ export function parseHunkRanges(diff) {
     return ranges;
 }
 /** Every file in the working tree that Git tracks or would track, for `--all`. */
-export async function allFiles(root) {
-    const listed = await git(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--deduplicate"]);
+export async function allFiles(root, untrackedToo = true) {
+    const listed = await git(root, ["ls-files", "-z", "--cached", ...(untrackedToo ? ["--others", "--exclude-standard"] : []), "--deduplicate"]);
     const gone = await git(root, ["ls-files", "-z", "--deleted"]);
     if (listed.code !== 0 || gone.code !== 0)
         return { ok: false, reason: `git ls-files failed: ${listed.stderr.trim() || gone.stderr.trim()}` };

@@ -37,14 +37,14 @@ function notRun(reason, enrolled, mode) {
 async function scope(opts, config) {
     const base = opts.base ?? (await trunkRef(opts.root));
     if (opts.all) {
-        const listed = await allFiles(opts.root);
+        const listed = await allFiles(opts.root, opts.untracked ?? true);
         if (!listed.ok)
             return listed;
         const targets = new Map(listed.files.filter((p) => inScope(config, p)).map((p) => [p, "all"]));
         const mb = await run("git", ["merge-base", base, "HEAD"], { cwd: opts.root, env: gitSubprocessEnv() });
         return { ok: true, targets, mergeBase: mb.code === 0 ? mb.stdout.trim() : null };
     }
-    const changes = await changedFiles(opts.root, base);
+    const changes = await changedFiles(opts.root, base, opts.untracked ?? true);
     if (!changes.ok)
         return changes;
     const inside = changes.files.filter((f) => inScope(config, f.path));

@@ -2,6 +2,7 @@ import { appendFile, cp, mkdtemp, readdir, readFile, symlink, writeFile } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
+import { check as cliCheck } from "../src/cli/complexity.js";
 import { runCheck, type CheckReport } from "../src/complexity/check.js";
 import { packetSummary } from "../src/complexity/format.js";
 import { installLizard, toolchainFor, toolStatus } from "../src/complexity/install.js";
@@ -206,6 +207,31 @@ describe("complexity check against the real pinned Lizard", () => {
       "out.js was not read: symlink, not followed",
     ]);
     expect(rules(report)).not.toContain("ccn-over");
+  });
+
+  it("leaves untracked files, such as CI's own .morpheus checkout, out when told to", async () => {
+    const root = await repo({ "morpheus.json": enforce });
+    await put(root, { ".morpheus/src/big.js": jsFunction("big", 30), "mine.js": jsFunction("mine", 2) });
+    for (const all of [false, true]) {
+      const local = await runCheck({ root, base: "main", all, env });
+      expect(local.state === "ran" && local.exitCode, `local all=${all}`).toBe(1);
+      const ci = await runCheck({ root, base: "main", all, untracked: false, env });
+      if (ci.state !== "ran") throw new Error(ci.reason);
+      expect(ci.exitCode, `ci all=${all}`).toBe(0);
+      expect(ci.findings.some((f) => f.path?.startsWith(".morpheus/"))).toBe(false);
+    }
+    // The CLI's --ci path is the one that turns untracked files off.
+    const saved = { tools: process.env["MORPHEUS_TOOLS_DIR"], summary: process.env["GITHUB_STEP_SUMMARY"] };
+    process.env["MORPHEUS_TOOLS_DIR"] = TOOLS;
+    delete process.env["GITHUB_STEP_SUMMARY"];
+    try {
+      expect(await cliCheck(root, { base: "main", all: false, json: true, ci: true })).toBe(0);
+      expect(await cliCheck(root, { base: "main", all: false, json: true, ci: false })).toBe(1);
+    } finally {
+      if (saved.tools === undefined) delete process.env["MORPHEUS_TOOLS_DIR"];
+      else process.env["MORPHEUS_TOOLS_DIR"] = saved.tools;
+      if (saved.summary !== undefined) process.env["GITHUB_STEP_SUMMARY"] = saved.summary;
+    }
   });
 
   it("refuses an invalid policy instead of falling back to defaults", async () => {

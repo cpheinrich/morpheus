@@ -23,7 +23,9 @@ check could not run — no analyzer, a broken venv, no merge base, invalid polic
 pass.
 
 `--all` measures every tracked or untracked in-scope file (a baseline inventory); `--json` prints
-the full report; `--ci` adds GitHub annotations and a job summary and, in `enforce`, implies `--all`.
+the full report; `--ci` adds GitHub annotations and a job summary, measures tracked files only (the
+CI workspace also holds the workflow's `.morpheus/` checkout of Morpheus), and in `enforce` implies
+`--all`.
 
 ## Policy: `morpheus.json` → `complexity`
 

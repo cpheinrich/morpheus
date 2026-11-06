@@ -3,6 +3,12 @@ import { type LizardPin } from "./pin.js";
 import { type ComplexityConfig } from "./policy.js";
 export interface CheckOptions {
     root: string;
+    /**
+     * Measure untracked files too (default). CI turns this off: its workspace holds only the
+     * commit plus what the workflow put there, such as the `.morpheus/` checkout of Morpheus
+     * itself, which is not the project's code.
+     */
+    untracked?: boolean;
     /** The ref to compare with; the project's trunk when absent. */
     base?: string;
     all: boolean;

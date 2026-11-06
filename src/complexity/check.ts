@@ -10,6 +10,12 @@ import { inScope, policyDelta, readConfig, type ComplexityConfig } from "./polic
 
 export interface CheckOptions {
   root: string;
+  /**
+   * Measure untracked files too (default). CI turns this off: its workspace holds only the
+   * commit plus what the workflow put there, such as the `.morpheus/` checkout of Morpheus
+   * itself, which is not the project's code.
+   */
+  untracked?: boolean;
   /** The ref to compare with; the project's trunk when absent. */
   base?: string;
   all: boolean;
@@ -63,13 +69,13 @@ function notRun(reason: string, enrolled: boolean, mode: string): CheckReport {
 async function scope(opts: CheckOptions, config: ComplexityConfig): Promise<Scoped> {
   const base = opts.base ?? (await trunkRef(opts.root));
   if (opts.all) {
-    const listed = await allFiles(opts.root);
+    const listed = await allFiles(opts.root, opts.untracked ?? true);
     if (!listed.ok) return listed;
     const targets = new Map<string, Target>(listed.files.filter((p) => inScope(config, p)).map((p) => [p, "all"]));
     const mb = await run("git", ["merge-base", base, "HEAD"], { cwd: opts.root, env: gitSubprocessEnv() });
     return { ok: true, targets, mergeBase: mb.code === 0 ? mb.stdout.trim() : null };
   }
-  const changes = await changedFiles(opts.root, base);
+  const changes = await changedFiles(opts.root, base, opts.untracked ?? true);
   if (!changes.ok) return changes;
   const inside = changes.files.filter((f: ChangedFile) => inScope(config, f.path));
   return { ok: true, targets: new Map(inside.map((f) => [f.path, f])), mergeBase: changes.mergeBase };

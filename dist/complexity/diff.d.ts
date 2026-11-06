@@ -19,7 +19,7 @@ export type ChangeSet = {
  * tree: committed, staged, unstaged and untracked work alike, because the
  * local check runs before anything is committed.
  */
-export declare function changedFiles(root: string, base: string): Promise<ChangeSet>;
+export declare function changedFiles(root: string, base: string, untrackedToo?: boolean): Promise<ChangeSet>;
 export interface NameStatus {
     status: string;
     path: string;
@@ -33,7 +33,7 @@ export declare function parseNameStatus(out: string): NameStatus[];
  */
 export declare function parseHunkRanges(diff: string): [number, number][];
 /** Every file in the working tree that Git tracks or would track, for `--all`. */
-export declare function allFiles(root: string): Promise<{
+export declare function allFiles(root: string, untrackedToo?: boolean): Promise<{
     ok: true;
     files: string[];
 } | {

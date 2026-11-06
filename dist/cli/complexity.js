@@ -27,7 +27,7 @@ export async function install(check) {
  */
 export async function check(root, flags) {
     const all = flags.all || (flags.ci && (await enforcing(root)));
-    const report = await runCheck({ root, all, ...(flags.base ? { base: flags.base } : {}) });
+    const report = await runCheck({ root, all, untracked: !flags.ci, ...(flags.base ? { base: flags.base } : {}) });
     if (flags.json)
         console.log(JSON.stringify(report, null, 2));
     else
