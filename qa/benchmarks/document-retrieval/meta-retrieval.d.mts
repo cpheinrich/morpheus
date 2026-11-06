@@ -1,0 +1,11 @@
+export type Passage = {path: string; text: string; fromLine: number; [key: string]: unknown};
+export type Retrieval = {mode: string; intent?: string; ms: number; passages: Passage[]};
+export type Retriever = {setup: {indexMs: number; documents: number; units: number}; retrieve(question: string): Retrieval};
+export const DEFAULT_META: Record<string, any>;
+export function recordType(path: string): string;
+export function recordDate(path: string, data: Record<string, unknown>): string | null;
+export function sections(body: string, minChars?: number): {heading: string; startLine: number; text: string}[];
+export function tokenize(text: string): string[];
+export function queryIntent(question: string): 'current' | 'historical';
+export function createMetaRetriever(corpus: string, options?: Record<string, unknown>): Retriever;
+export function createPlainRetriever(corpus: string, options?: {limit?: number; maxChars?: number}): Retriever;

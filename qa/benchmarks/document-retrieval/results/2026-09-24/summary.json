@@ -1,0 +1,597 @@
+{
+  "frozen": {
+    "timestamp": "2026-09-24T10:42:35.678Z",
+    "fixtureSha256": "da4535bb2b38ce0a649e1c8523c3336cebe4f3f991ac96190ccee75d26903e12",
+    "protocolSha256": "086fe4baf6044f69390834c9f8280d5dc22dedd1d8e577c34df4236966f7c381"
+  },
+  "corpora": [
+    {
+      "project": "lakina",
+      "revision": "a539b3669138aec1551856204a5bec8380c3febd",
+      "files": 702,
+      "bytes": 2316041,
+      "snapshotSha256": "cbb3f3279ad8e2054040e4d0492400c5068154eb88cbef78473131d077ae99d3",
+      "updateMs": 586.4815000000001,
+      "embedMs": 31817.175792,
+      "chunks": 1287
+    },
+    {
+      "project": "evo",
+      "revision": "2ef3839114f05cf038b46e9b84445d125f360977",
+      "files": 437,
+      "bytes": 1363609,
+      "snapshotSha256": "9c16eda74ea7aa2f3ca1a80938de59000d2ade2d2df93ef6917bc7d5ea97c329",
+      "updateMs": 348.88129200000003,
+      "embedMs": 20012.225,
+      "chunks": 815
+    }
+  ],
+  "engines": [
+    {
+      "project": "lakina",
+      "mode": "bm25",
+      "n": 30,
+      "recall5": 0.8,
+      "recall10": 0.8,
+      "mrr": 0.691111111111111,
+      "medianMs": 0.580415999999996,
+      "p95Ms": 1.0604456499999997,
+      "firstQueryMs": 1.1844579999999993,
+      "errors": 0
+    },
+    {
+      "project": "lakina",
+      "mode": "vector",
+      "n": 30,
+      "recall5": 0.7166666666666667,
+      "recall10": 0.75,
+      "mrr": 0.6583333333333333,
+      "medianMs": 11.55677049999997,
+      "p95Ms": 13.84253520000002,
+      "firstQueryMs": 1281.986875,
+      "errors": 0
+    },
+    {
+      "project": "lakina",
+      "mode": "hybrid",
+      "n": 30,
+      "recall5": 0.7666666666666667,
+      "recall10": 0.8,
+      "mrr": 0.7533333333333334,
+      "medianMs": 15.985145500000044,
+      "p95Ms": 17.97076059999999,
+      "firstQueryMs": 1182.820291,
+      "errors": 0
+    },
+    {
+      "project": "lakina",
+      "mode": "rerank",
+      "n": 30,
+      "recall5": 0.7666666666666667,
+      "recall10": 0.8,
+      "mrr": 0.7533333333333334,
+      "medianMs": 5224.948958500005,
+      "p95Ms": 8283.239848100004,
+      "firstQueryMs": 6649.835999999999,
+      "errors": 0
+    },
+    {
+      "project": "lakina",
+      "mode": "full",
+      "n": 30,
+      "recall5": 0.7666666666666667,
+      "recall10": 0.7666666666666667,
+      "mrr": 0.638888888888889,
+      "medianMs": 10251.439186999996,
+      "p95Ms": 18862.56390015,
+      "firstQueryMs": 21965.860416,
+      "errors": 0
+    },
+    {
+      "project": "evo",
+      "mode": "bm25",
+      "n": 30,
+      "recall5": 0.6666666666666666,
+      "recall10": 0.7666666666666667,
+      "mrr": 0.38976190476190475,
+      "medianMs": 0.506875000000008,
+      "p95Ms": 1.191212649999995,
+      "firstQueryMs": 1.296999999999997,
+      "errors": 0
+    },
+    {
+      "project": "evo",
+      "mode": "vector",
+      "n": 30,
+      "recall5": 0.4666666666666667,
+      "recall10": 0.6,
+      "mrr": 0.3409259259259259,
+      "medianMs": 10.39060399999994,
+      "p95Ms": 14.734777049999998,
+      "firstQueryMs": 1302.609875,
+      "errors": 0
+    },
+    {
+      "project": "evo",
+      "mode": "hybrid",
+      "n": 30,
+      "recall5": 0.6333333333333333,
+      "recall10": 0.7666666666666667,
+      "mrr": 0.40183862433862433,
+      "medianMs": 15.785875499999861,
+      "p95Ms": 18.302060600000104,
+      "firstQueryMs": 1190.115667,
+      "errors": 0
+    },
+    {
+      "project": "evo",
+      "mode": "rerank",
+      "n": 30,
+      "recall5": 0.6666666666666666,
+      "recall10": 0.7666666666666667,
+      "mrr": 0.41587301587301595,
+      "medianMs": 4084.399583500006,
+      "p95Ms": 5192.14361495,
+      "firstQueryMs": 4523.342084,
+      "errors": 0
+    },
+    {
+      "project": "evo",
+      "mode": "full",
+      "n": 30,
+      "recall5": 0.7,
+      "recall10": 0.8,
+      "mrr": 0.5978174603174603,
+      "medianMs": 7816.569583500003,
+      "p95Ms": 14510.131812349995,
+      "firstQueryMs": 8785.222666,
+      "errors": 0
+    }
+  ],
+  "agents": [
+    {
+      "project": "lakina",
+      "arm": "baseline",
+      "n": 30,
+      "recall": 1,
+      "completeEvidence": 30,
+      "completed": 30,
+      "timeouts": 0,
+      "errors": 0,
+      "medianMs": 37526.369208499964,
+      "p95Ms": 59898.71108124989,
+      "meanToolCalls": 3.1333333333333333,
+      "meanToolOutputChars": 25188.066666666666,
+      "qmdUsed": 0,
+      "usageRows": 30,
+      "medianInputTokens": 75004.5,
+      "medianCachedInputTokens": 66240,
+      "medianUncachedInputTokens": 18362,
+      "medianOutputTokens": 833
+    },
+    {
+      "project": "lakina",
+      "arm": "qmd",
+      "n": 30,
+      "recall": 0.9666666666666667,
+      "completeEvidence": 29,
+      "completed": 30,
+      "timeouts": 0,
+      "errors": 0,
+      "medianMs": 38570.530042,
+      "p95Ms": 65011.64761060007,
+      "meanToolCalls": 4.233333333333333,
+      "meanToolOutputChars": 27454.1,
+      "qmdUsed": 26,
+      "usageRows": 30,
+      "medianInputTokens": 82157.5,
+      "medianCachedInputTokens": 69440,
+      "medianUncachedInputTokens": 22630.5,
+      "medianOutputTokens": 835.5
+    },
+    {
+      "project": "evo",
+      "arm": "baseline",
+      "n": 30,
+      "recall": 1,
+      "completeEvidence": 30,
+      "completed": 30,
+      "timeouts": 0,
+      "errors": 0,
+      "medianMs": 37614.09200049995,
+      "p95Ms": 55341.90296644995,
+      "meanToolCalls": 3.433333333333333,
+      "meanToolOutputChars": 28277.2,
+      "qmdUsed": 0,
+      "usageRows": 30,
+      "medianInputTokens": 77141.5,
+      "medianCachedInputTokens": 69184,
+      "medianUncachedInputTokens": 17782,
+      "medianOutputTokens": 791
+    },
+    {
+      "project": "evo",
+      "arm": "qmd",
+      "n": 30,
+      "recall": 0.9666666666666667,
+      "completeEvidence": 29,
+      "completed": 30,
+      "timeouts": 0,
+      "errors": 0,
+      "medianMs": 40840.277312499995,
+      "p95Ms": 58552.404062350055,
+      "meanToolCalls": 4,
+      "meanToolOutputChars": 21984.1,
+      "qmdUsed": 28,
+      "usageRows": 30,
+      "medianInputTokens": 80905,
+      "medianCachedInputTokens": 68288,
+      "medianUncachedInputTokens": 12814,
+      "medianOutputTokens": 867
+    }
+  ],
+  "pairs": [
+    {
+      "project": "lakina",
+      "n": 30,
+      "improved": 0,
+      "tied": 29,
+      "worse": 1,
+      "meanRecallDelta": -0.03333333333333333,
+      "medianMsDelta": 1876.3535830000765,
+      "msDeltaQ1": 330.3115522500593,
+      "msDeltaQ3": 5705.036562500027
+    },
+    {
+      "project": "evo",
+      "n": 30,
+      "improved": 0,
+      "tied": 29,
+      "worse": 1,
+      "meanRecallDelta": -0.03333333333333333,
+      "medianMsDelta": 2868.345312499965,
+      "msDeltaQ1": 1167.3857287499704,
+      "msDeltaQ3": 7578.7304055001005
+    }
+  ],
+  "byCategory": [
+    {
+      "project": "lakina",
+      "category": "exact",
+      "arm": "baseline",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 32159.928792
+    },
+    {
+      "project": "lakina",
+      "category": "exact",
+      "arm": "qmd",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 36191.31368750002
+    },
+    {
+      "project": "lakina",
+      "category": "conceptual",
+      "arm": "baseline",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 37285.092833500006
+    },
+    {
+      "project": "lakina",
+      "category": "conceptual",
+      "arm": "qmd",
+      "n": 6,
+      "recall": 0.8333333333333334,
+      "medianMs": 36821.197395999916
+    },
+    {
+      "project": "lakina",
+      "category": "historical",
+      "arm": "baseline",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 29845.328645500005
+    },
+    {
+      "project": "lakina",
+      "category": "historical",
+      "arm": "qmd",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 38135.04854199989
+    },
+    {
+      "project": "lakina",
+      "category": "changed",
+      "arm": "baseline",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 46032.95454200008
+    },
+    {
+      "project": "lakina",
+      "category": "changed",
+      "arm": "qmd",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 49400.62100000004
+    },
+    {
+      "project": "lakina",
+      "category": "operational",
+      "arm": "baseline",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 39953.07520850003
+    },
+    {
+      "project": "lakina",
+      "category": "operational",
+      "arm": "qmd",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 43877.38260399969
+    },
+    {
+      "project": "evo",
+      "category": "exact",
+      "arm": "baseline",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 36133.093125000014
+    },
+    {
+      "project": "evo",
+      "category": "exact",
+      "arm": "qmd",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 38925.24997950002
+    },
+    {
+      "project": "evo",
+      "category": "conceptual",
+      "arm": "baseline",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 42032.92437500006
+    },
+    {
+      "project": "evo",
+      "category": "conceptual",
+      "arm": "qmd",
+      "n": 6,
+      "recall": 0.8333333333333334,
+      "medianMs": 44468.211458000005
+    },
+    {
+      "project": "evo",
+      "category": "historical",
+      "arm": "baseline",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 33926.103562500095
+    },
+    {
+      "project": "evo",
+      "category": "historical",
+      "arm": "qmd",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 37671.41074999992
+    },
+    {
+      "project": "evo",
+      "category": "changed",
+      "arm": "baseline",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 45038.74656250002
+    },
+    {
+      "project": "evo",
+      "category": "changed",
+      "arm": "qmd",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 48562.66197899985
+    },
+    {
+      "project": "evo",
+      "category": "operational",
+      "arm": "baseline",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 34442.30352099985
+    },
+    {
+      "project": "evo",
+      "category": "operational",
+      "arm": "qmd",
+      "n": 6,
+      "recall": 1,
+      "medianMs": 36320.403500000015
+    }
+  ],
+  "deliveryBudgets": [
+    {
+      "project": "lakina",
+      "arm": "baseline",
+      "seconds": 15,
+      "n": 30,
+      "deliveredRecall": 0
+    },
+    {
+      "project": "lakina",
+      "arm": "baseline",
+      "seconds": 30,
+      "n": 30,
+      "deliveredRecall": 0.16666666666666666
+    },
+    {
+      "project": "lakina",
+      "arm": "baseline",
+      "seconds": 60,
+      "n": 30,
+      "deliveredRecall": 0.9333333333333333
+    },
+    {
+      "project": "lakina",
+      "arm": "baseline",
+      "seconds": 120,
+      "n": 30,
+      "deliveredRecall": 1
+    },
+    {
+      "project": "lakina",
+      "arm": "qmd",
+      "seconds": 15,
+      "n": 30,
+      "deliveredRecall": 0
+    },
+    {
+      "project": "lakina",
+      "arm": "qmd",
+      "seconds": 30,
+      "n": 30,
+      "deliveredRecall": 0.06666666666666667
+    },
+    {
+      "project": "lakina",
+      "arm": "qmd",
+      "seconds": 60,
+      "n": 30,
+      "deliveredRecall": 0.8666666666666667
+    },
+    {
+      "project": "lakina",
+      "arm": "qmd",
+      "seconds": 120,
+      "n": 30,
+      "deliveredRecall": 0.9666666666666667
+    },
+    {
+      "project": "evo",
+      "arm": "baseline",
+      "seconds": 15,
+      "n": 30,
+      "deliveredRecall": 0
+    },
+    {
+      "project": "evo",
+      "arm": "baseline",
+      "seconds": 30,
+      "n": 30,
+      "deliveredRecall": 0.16666666666666666
+    },
+    {
+      "project": "evo",
+      "arm": "baseline",
+      "seconds": 60,
+      "n": 30,
+      "deliveredRecall": 0.9666666666666667
+    },
+    {
+      "project": "evo",
+      "arm": "baseline",
+      "seconds": 120,
+      "n": 30,
+      "deliveredRecall": 1
+    },
+    {
+      "project": "evo",
+      "arm": "qmd",
+      "seconds": 15,
+      "n": 30,
+      "deliveredRecall": 0
+    },
+    {
+      "project": "evo",
+      "arm": "qmd",
+      "seconds": 30,
+      "n": 30,
+      "deliveredRecall": 0
+    },
+    {
+      "project": "evo",
+      "arm": "qmd",
+      "seconds": 60,
+      "n": 30,
+      "deliveredRecall": 0.9
+    },
+    {
+      "project": "evo",
+      "arm": "qmd",
+      "seconds": 120,
+      "n": 30,
+      "deliveredRecall": 0.9666666666666667
+    }
+  ],
+  "transcriptAudit": {
+    "runs": 120,
+    "invalidSourceQuotes": 0,
+    "qmdModeViolations": 0,
+    "otherMcpCalls": 0,
+    "queryModes": {
+      "lex+vec": 9,
+      "lex": 2,
+      "vec": 43
+    }
+  },
+  "postHoc": {
+    "note": "Author audit, not blind ground truth. Original frozen scores are unchanged.",
+    "adjudications": [
+      {
+        "id": "E07",
+        "arm": "qmd",
+        "strictRecall": 0,
+        "auditedRecall": 1,
+        "classification": "unlabeled-equivalent"
+      },
+      {
+        "id": "L08",
+        "arm": "qmd",
+        "strictRecall": 0,
+        "auditedRecall": 1,
+        "classification": "unlabeled-equivalent"
+      }
+    ],
+    "agents": [
+      {
+        "project": "lakina",
+        "arm": "baseline",
+        "n": 30,
+        "recall": 1,
+        "completeEvidence": 30,
+        "unadjudicatedCompletedMisses": 0
+      },
+      {
+        "project": "lakina",
+        "arm": "qmd",
+        "n": 30,
+        "recall": 1,
+        "completeEvidence": 30,
+        "unadjudicatedCompletedMisses": 0
+      },
+      {
+        "project": "evo",
+        "arm": "baseline",
+        "n": 30,
+        "recall": 1,
+        "completeEvidence": 30,
+        "unadjudicatedCompletedMisses": 0
+      },
+      {
+        "project": "evo",
+        "arm": "qmd",
+        "n": 30,
+        "recall": 1,
+        "completeEvidence": 30,
+        "unadjudicatedCompletedMisses": 0
+      }
+    ]
+  }
+}
