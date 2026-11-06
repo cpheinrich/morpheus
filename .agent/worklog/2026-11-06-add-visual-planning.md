@@ -44,14 +44,9 @@ relationships; existing-project AGENTS adoption is explicit because skills sync 
   internal-project entrypoints. Byte equality tests exercise both provider files, the generated
   guide, descriptions, every scaffold kind, idempotent sync and preservation of authored content.
 
-These are distribution assertions, not measured agent compliance. The acceptance file contains
-architecture, pipeline, state, trivial-edit and changed-design cases. The author's early sketch
-is one observed planning artifact, not independent behavior evidence. A fresh gateway evaluation
-must execute representative cases and retain actual outputs/order before claiming behavior passes.
-This worker cannot launch another agent or recursively invoke Factory under its delegated run
-instructions. Codex must launch the fresh independent gateway reviewer and evaluation, then return
-findings and real session/timing evidence. No self-review record, agent-reviewed label or auto-merge
-has been fabricated. This is a review handoff, not a request for new human authorization.
+Distribution assertions establish delivery separately from the bounded synthetic behavior results
+below. The author supplied an early conversation sketch before implementation; independent gateway
+runs then exercised the representative cases without an explicit request for a diagram.
 
 ## Discovery evidence
 
@@ -68,6 +63,47 @@ refresh used the documented MORPHEUS_READ_EVIDENCE=off assertion escape and reco
 
 Draft PR: https://github.com/cpheinrich/morpheus/pull/633 (created through the GitHub app tool).
 
-Pending a fresh gateway reviewer launched by Codex, because this worker run prohibits launching
-another agent. PR remains draft with auto-merge off. Review record belongs here after real findings,
-runner session identity and measured timing are available.
+Independent gateway review cleared the exact implementation commit with no findings. The reviewer passed 114 focused tests, typecheck and diff checks, and confirmed the retained distribution diagram matches the source. No fixes, disagreement or follow-up were needed. Rendered pixels were not inspected; no application UI changed.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "96e3c360b69e96d2d9c2f4449f57dd387b1521f0",
+  "reviewed": "13c12083f8c8e8e56498fbf6e57928bd4b35da57",
+  "covered": "13c12083f8c8e8e56498fbf6e57928bd4b35da57",
+  "authorSession": "01a1b2c8-ad52-7820-b7cd-ae613d70d32e",
+  "reviewerSession": "01a1b2d2-7d11-7140-a98f-4b45b78bfcde",
+  "risk": "normal",
+  "elapsedMinutes": 1.2469333333333332,
+  "timing": {
+    "source": "runner",
+    "durationMs": 74816,
+    "evidence": "Factory gateway run 552a2d33-5cf0-42bb-b342-fb4c7b5c96cc; Codex session 01a1b2d2-7d11-7140-a98f-4b45b78bfcde, turn 01a1b2d2-7fa6-70e1-926b-e25a8d0bf470 task_complete event: duration_ms=74816. Supervisor inspected native transcript task_started/task_complete boundaries."
+  },
+  "outcome": "cleared",
+  "summary": "Independent gateway review cleared the exact implementation commit with no findings. The reviewer passed 114 focused tests, typecheck and diff checks, and confirmed the retained distribution diagram matches the source. No fixes, disagreement or follow-up were needed. Rendered pixels were not inspected; no application UI changed.",
+  "findings": []
+}
+```
+
+## Bounded behavioral evaluation
+
+Five actual synthetic requests passed their observable acceptance checks under gateway Codex.
+Supervision retained the complete outputs privately and inspected them; this author inspected the
+returned outputs and timing evidence before recording them. The reviewer was a separate session.
+
+| Case | Observed result | Factory run |
+|---|---|---|
+| Move image processing to a background worker | Current/proposed sequence diagrams appeared early, with assumptions and durable handoffs. | ebe21d8a-8f4d-487c-b764-29de0f7b6718 |
+| Correct one spelling error | Returned the corrected sentence with no diagram or approval pause. | b26fe0de-600c-4ce4-be54-b822b9ac9c88 |
+| Release pipeline | Early flowchart distinguished upload acceptance from asynchronous availability readback and failures. | 80db1d1a-f01d-401a-9496-1848e5cfae9f |
+| Cancellation model | Proposed state diagram distinguished requested cancellation, confirmed stop, failure and success, with race semantics. | ad0aa0c1-e381-4d00-adbc-f21c574c72f1 |
+| Change callback design to polling | Resumed the architecture session, replaced the diagram and removed callbacks from the final proposed design. | 5428849c-8b9f-4bdd-bc38-648665561b8e |
+
+Limits: synthetic planning-only tasks performed no implementation or external effects. They prove
+observed planning responses for these cases, not reliable automatic routing or production compliance.
+Rendered pixels were not verified. Some global guide probes failed because the installed CLI
+predated this PR; workers read the canonical source as directed. One isolated compiled-CLI probe
+also lacked dependencies. Complete context certification was not established in some planning
+runs because their combined record output was truncated. Independent code review used exact-SHA
+source, focused tests and typecheck; these evaluation limits do not claim additional review coverage.
