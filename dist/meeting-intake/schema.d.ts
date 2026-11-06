@@ -4,7 +4,7 @@ export declare const meetingSlug: z.ZodString;
 export declare const DiscoveryNote: z.ZodObject<{
     id: z.ZodString;
     title: z.ZodString;
-    occurred: z.ZodPreprocess<z.ZodISODateTime>;
+    occurred: z.ZodPreprocess<z.ZodISODateTime, unknown>;
     attendees: z.ZodArray<z.ZodString>;
     recorded_by: z.ZodString;
     source: z.ZodEnum<{
@@ -21,7 +21,7 @@ export declare const DiscoveryNote: z.ZodObject<{
     duration_minutes: z.ZodOptional<z.ZodNumber>;
     roadmap: z.ZodDefault<z.ZodArray<z.ZodString>>;
     redacted: z.ZodDefault<z.ZodBoolean>;
-    created: z.ZodPreprocess<z.ZodISODate>;
+    created: z.ZodPreprocess<z.ZodISODate, unknown>;
     discovery_version: z.ZodUnion<readonly [z.ZodLiteral<1>, z.ZodLiteral<2>]>;
     projects: z.ZodArray<z.ZodString>;
     topics: z.ZodArray<z.ZodString>;
