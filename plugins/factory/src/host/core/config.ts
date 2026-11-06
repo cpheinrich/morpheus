@@ -58,76 +58,14 @@ export function parseConfig(raw: unknown): { ok: true; config: FactoryConfig } |
 
   if (!isRecord(raw)) return { ok: false, issues: [{ path: "", message: "configuration must be an object" }] };
 
-  const brokerRaw = raw.broker;
-  let broker: BrokerConfig = { kind: "native" };
-  if (!isRecord(brokerRaw)) {
-    add("broker", "must be an object with a kind");
-  } else {
-    const kind = brokerRaw.kind;
-    if (kind !== "sub2api" && kind !== "native") {
-      add("broker.kind", 'must be "sub2api" or "native"');
-    } else {
-      broker = { kind };
-      if (kind === "sub2api") {
-        const baseUrl = brokerRaw.baseUrl;
-        if (!isNonEmptyString(baseUrl)) {
-          add("broker.baseUrl", "is required when broker.kind is sub2api");
-        } else if (!isAllowedOrigin(baseUrl)) {
-          add("broker.baseUrl", "must be an https URL, or http on localhost");
-        } else {
-          broker.baseUrl = baseUrl.replace(/\/+$/, "");
-        }
-
-        const gatewayBaseUrl = brokerRaw.gatewayBaseUrl;
-        if (gatewayBaseUrl === undefined) {
-          broker.gatewayBaseUrl = broker.baseUrl;
-        } else if (!isNonEmptyString(gatewayBaseUrl)) {
-          add("broker.gatewayBaseUrl", "must be a URL when present");
-        } else if (!isAllowedOrigin(gatewayBaseUrl)) {
-          add("broker.gatewayBaseUrl", "must be an https URL, or http on localhost");
-        } else {
-          broker.gatewayBaseUrl = gatewayBaseUrl.replace(/\/+$/, "");
-        }
-      }
-      if (brokerRaw.timeoutMs !== undefined) {
-        if (typeof brokerRaw.timeoutMs !== "number" || !Number.isFinite(brokerRaw.timeoutMs) || brokerRaw.timeoutMs <= 0) {
-          add("broker.timeoutMs", "must be a positive number");
-        } else {
-          broker.timeoutMs = brokerRaw.timeoutMs;
-        }
-      }
-    }
-  }
+  const broker = parseBroker(raw.broker, add);
 
   const degradedMode = raw.degradedMode;
   if (degradedMode !== "native" && degradedMode !== "refuse") {
     add("degradedMode", 'must be "native" or "refuse"');
   }
 
-  const policyRaw = raw.policy;
-  const policy: Policy = { stopAtPercent: 90, requireKnownQuota: true };
-  if (policyRaw === undefined) {
-    // Defaults are intentional: an operator who configures nothing still gets
-    // a conservative gate rather than unbounded admission.
-  } else if (!isRecord(policyRaw)) {
-    add("policy", "must be an object");
-  } else {
-    if (policyRaw.stopAtPercent !== undefined) {
-      const value = policyRaw.stopAtPercent;
-      if (typeof value !== "number" || !(value > 0 && value <= 100)) {
-        add("policy.stopAtPercent", "must be greater than 0 and at most 100");
-      } else {
-        policy.stopAtPercent = value;
-      }
-    }
-    if (policyRaw.requireKnownQuota !== undefined) {
-      if (typeof policyRaw.requireKnownQuota !== "boolean") {
-        add("policy.requireKnownQuota", "must be a boolean");
-      } else {
-        policy.requireKnownQuota = policyRaw.requireKnownQuota;
-      }
-    }
-  }
+  const policy = parsePolicy(raw.policy, add);
 
   const hosts = parseHosts(raw.hosts, add);
   const hostIds = new Set(hosts.map((host) => host.id));
@@ -138,6 +76,81 @@ export function parseConfig(raw: unknown): { ok: true; config: FactoryConfig } |
 
   if (issues.length > 0) return { ok: false, issues };
   return { ok: true, config: { broker, degradedMode: degradedMode as FactoryConfig["degradedMode"], policy, profiles, hosts } };
+}
+
+type AddIssue = (path: string, message: string) => void;
+
+/** A trailing-slash-free origin, or undefined after reporting why the value is unusable. */
+function parseOrigin(value: unknown, path: string, missing: string, add: AddIssue): string | undefined {
+  if (!isNonEmptyString(value)) {
+    add(path, missing);
+  } else if (!isAllowedOrigin(value)) {
+    add(path, "must be an https URL, or http on localhost");
+  } else {
+    return value.replace(/\/+$/, "");
+  }
+  return undefined;
+}
+
+function parseSub2apiOrigins(brokerRaw: Record<string, unknown>, broker: BrokerConfig, add: AddIssue): void {
+  const baseUrl = parseOrigin(brokerRaw.baseUrl, "broker.baseUrl", "is required when broker.kind is sub2api", add);
+  if (baseUrl !== undefined) broker.baseUrl = baseUrl;
+  if (brokerRaw.gatewayBaseUrl === undefined) {
+    broker.gatewayBaseUrl = broker.baseUrl;
+    return;
+  }
+  const gatewayBaseUrl = parseOrigin(brokerRaw.gatewayBaseUrl, "broker.gatewayBaseUrl", "must be a URL when present", add);
+  if (gatewayBaseUrl !== undefined) broker.gatewayBaseUrl = gatewayBaseUrl;
+}
+
+function parseBroker(brokerRaw: unknown, add: AddIssue): BrokerConfig {
+  if (!isRecord(brokerRaw)) {
+    add("broker", "must be an object with a kind");
+    return { kind: "native" };
+  }
+  const kind = brokerRaw.kind;
+  if (kind !== "sub2api" && kind !== "native") {
+    add("broker.kind", 'must be "sub2api" or "native"');
+    return { kind: "native" };
+  }
+  const broker: BrokerConfig = { kind };
+  if (kind === "sub2api") parseSub2apiOrigins(brokerRaw, broker, add);
+  const timeoutMs = brokerRaw.timeoutMs;
+  if (timeoutMs !== undefined) {
+    if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      add("broker.timeoutMs", "must be a positive number");
+    } else {
+      broker.timeoutMs = timeoutMs;
+    }
+  }
+  return broker;
+}
+
+function parsePolicy(policyRaw: unknown, add: AddIssue): Policy {
+  const policy: Policy = { stopAtPercent: 90, requireKnownQuota: true };
+  // Defaults are intentional: an operator who configures nothing still gets
+  // a conservative gate rather than unbounded admission.
+  if (policyRaw === undefined) return policy;
+  if (!isRecord(policyRaw)) {
+    add("policy", "must be an object");
+    return policy;
+  }
+  if (policyRaw.stopAtPercent !== undefined) {
+    const value = policyRaw.stopAtPercent;
+    if (typeof value !== "number" || !(value > 0 && value <= 100)) {
+      add("policy.stopAtPercent", "must be greater than 0 and at most 100");
+    } else {
+      policy.stopAtPercent = value;
+    }
+  }
+  if (policyRaw.requireKnownQuota !== undefined) {
+    if (typeof policyRaw.requireKnownQuota !== "boolean") {
+      add("policy.requireKnownQuota", "must be a boolean");
+    } else {
+      policy.requireKnownQuota = policyRaw.requireKnownQuota;
+    }
+  }
+  return policy;
 }
 
 function parseHosts(raw: unknown, add: (path: string, message: string) => void): Host[] {
@@ -185,6 +198,60 @@ function parseHosts(raw: unknown, add: (path: string, message: string) => void):
   return hosts;
 }
 
+function profileFieldsValid(entry: Record<string, unknown>, path: string, add: AddIssue): boolean {
+  let valid = true;
+  if (!PROVIDERS.includes(entry.provider as ProviderId)) {
+    valid = false;
+    add(`${path}.provider`, `must be one of ${PROVIDERS.join(", ")}`);
+  }
+  if (!PERMISSIONS.includes(entry.permission as Permission)) {
+    valid = false;
+    add(`${path}.permission`, `must be one of ${PERMISSIONS.join(", ")}`);
+  }
+  if (!isNonEmptyString(entry.group)) {
+    valid = false;
+    add(`${path}.group`, "is required");
+  }
+  if (!isNonEmptyString(entry.model)) {
+    valid = false;
+    add(`${path}.model`, "is required");
+  }
+  return valid;
+}
+
+function applyKeyRef(keyRef: unknown, profile: Profile, path: string, add: AddIssue): boolean {
+  if (keyRef === undefined) return true;
+  if (!isNonEmptyString(keyRef) || !/^(env|secret):\S+$/.test(keyRef)) {
+    add(`${path}.keyRef`, 'must be a reference like "env:NAME" or "secret:path", never a key');
+    return false;
+  }
+  profile.keyRef = keyRef;
+  return true;
+}
+
+function applyProfileHosts(raw: unknown, profile: Profile, hostIds: Set<string>, path: string, add: AddIssue): boolean {
+  if (raw === undefined) return true;
+  if (!Array.isArray(raw)) {
+    add(`${path}.hosts`, "must be an array of host ids");
+    return false;
+  }
+  let valid = true;
+  const hosts: string[] = [];
+  for (const [i, hostId] of raw.entries()) {
+    if (!isNonEmptyString(hostId)) {
+      valid = false;
+      add(`${path}.hosts[${i}]`, "must be a host id");
+    } else if (!hostIds.has(hostId)) {
+      valid = false;
+      add(`${path}.hosts[${i}]`, `unknown host "${hostId}"`);
+    } else {
+      hosts.push(hostId);
+    }
+  }
+  profile.hosts = hosts;
+  return valid;
+}
+
 function parseProfiles(raw: unknown, hostIds: Set<string>, add: (path: string, message: string) => void): Profile[] {
   if (!Array.isArray(raw)) {
     add("profiles", "must be an array");
@@ -201,70 +268,21 @@ function parseProfiles(raw: unknown, hostIds: Set<string>, add: (path: string, m
     seen.add(id);
 
     // Report every field problem on one pass: an operator repairing a catalog
-    // should not have to re-run validation after each fix.
-    let valid = true;
-
-    const provider = entry.provider;
-    if (!PROVIDERS.includes(provider as ProviderId)) {
-      valid = false;
-      add(`${path}.provider`, `must be one of ${PROVIDERS.join(", ")}`);
-    }
-
-    const permission = entry.permission;
-    if (!PERMISSIONS.includes(permission as Permission)) {
-      valid = false;
-      add(`${path}.permission`, `must be one of ${PERMISSIONS.join(", ")}`);
-    }
-
-    if (!isNonEmptyString(entry.group)) {
-      valid = false;
-      add(`${path}.group`, "is required");
-    }
-
-    if (!isNonEmptyString(entry.model)) {
-      valid = false;
-      add(`${path}.model`, "is required");
-    }
-
+    // should not have to re-run validation after each fix. Each check runs, so
+    // none may short-circuit another.
+    const fieldsValid = profileFieldsValid(entry, path, add);
     const profile: Profile = {
       id,
-      provider: provider as ProviderId,
+      provider: entry.provider as ProviderId,
       group: entry.group as string,
       model: entry.model as string,
-      permission: permission as Permission,
+      permission: entry.permission as Permission,
     };
     if (isNonEmptyString(entry.effort)) profile.effort = entry.effort;
     if (isNonEmptyString(entry.brokerUser)) profile.brokerUser = entry.brokerUser;
-
-    if (entry.keyRef !== undefined) {
-      if (!isNonEmptyString(entry.keyRef) || !/^(env|secret):\S+$/.test(entry.keyRef)) {
-        valid = false;
-        add(`${path}.keyRef`, 'must be a reference like "env:NAME" or "secret:path", never a key');
-      } else {
-        profile.keyRef = entry.keyRef;
-      }
-    }
-
-    if (entry.hosts !== undefined) {
-      if (!Array.isArray(entry.hosts)) {
-        valid = false;
-        add(`${path}.hosts`, "must be an array of host ids");
-      } else {
-        const hosts: string[] = [];
-        for (const [i, hostId] of entry.hosts.entries()) {
-          if (!isNonEmptyString(hostId)) {
-            valid = false;
-            add(`${path}.hosts[${i}]`, "must be a host id");
-          } else if (!hostIds.has(hostId)) {
-            valid = false;
-            add(`${path}.hosts[${i}]`, `unknown host "${hostId}"`);
-          } else {
-            hosts.push(hostId);
-          }
-        }
-        profile.hosts = hosts;
-      }
-    }
+    const keyRefValid = applyKeyRef(entry.keyRef, profile, path, add);
+    const hostsValid = applyProfileHosts(entry.hosts, profile, hostIds, path, add);
+    const valid = fieldsValid && keyRefValid && hostsValid;
 
     if (valid) profiles.push(profile);
   });

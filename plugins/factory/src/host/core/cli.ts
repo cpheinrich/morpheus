@@ -12,7 +12,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { parseConfig } from "./config.js";
+import { parseConfig, type FactoryConfig } from "./config.js";
 import { createBroker } from "./brokers/index.js";
 import { plan } from "./plan.js";
 import type { RunRequest } from "./types.js";
@@ -33,6 +33,52 @@ const CONFIG = 78;
 
 type Flags = Record<string, string>;
 
+async function loadConfig(flags: Flags): Promise<FactoryConfig | null> {
+  const configPath = resolve(flags.config ?? process.env.FACTORY_CONFIG ?? "factory.json");
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(configPath, "utf8"));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "unreadable";
+    process.stderr.write(`factory: cannot read ${configPath}: ${detail}\n`);
+    return null;
+  }
+  const parsed = parseConfig(raw);
+  if (!parsed.ok) {
+    process.stderr.write(`factory: ${configPath} is invalid\n`);
+    for (const issue of parsed.issues) process.stderr.write(`  ${issue.path || "(root)"}: ${issue.message}\n`);
+    return null;
+  }
+  return parsed.config;
+}
+
+function printJson(value: unknown): number {
+  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+  return 0;
+}
+
+async function runPlan(flags: Flags, config: FactoryConfig): Promise<number> {
+  if (flags.task === undefined || flags.task === "" || flags.profile === undefined || flags.profile === "") {
+    process.stderr.write("factory: plan requires --task and --profile\n");
+    return CONFIG;
+  }
+  const request: RunRequest = { task: flags.task, profile: flags.profile };
+  if (flags.host !== undefined) request.host = flags.host;
+  if (flags.workspace !== undefined) request.workspace = flags.workspace;
+
+  const broker = createBroker(config.broker);
+  const result = await plan(request, config, broker);
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  return result.ok ? 0 : REFUSED;
+}
+
+// A Map, not an object literal, so a command such as "constructor" is unknown.
+const COMMANDS = new Map<string, (flags: Flags, config: FactoryConfig) => number | Promise<number>>([
+  ["profiles", (_flags, config) => printJson(config.profiles)],
+  ["hosts", (_flags, config) => printJson(config.hosts)],
+  ["plan", runPlan],
+]);
+
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   const flags = parseFlags(rest);
@@ -42,48 +88,12 @@ async function main(argv: string[]): Promise<number> {
     return command === undefined ? CONFIG : 0;
   }
 
-  const configPath = resolve(flags.config ?? process.env.FACTORY_CONFIG ?? "factory.json");
-  let raw: unknown;
-  try {
-    raw = JSON.parse(await readFile(configPath, "utf8"));
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : "unreadable";
-    process.stderr.write(`factory: cannot read ${configPath}: ${detail}\n`);
-    return CONFIG;
-  }
-
-  const parsed = parseConfig(raw);
-  if (!parsed.ok) {
-    process.stderr.write(`factory: ${configPath} is invalid\n`);
-    for (const issue of parsed.issues) process.stderr.write(`  ${issue.path || "(root)"}: ${issue.message}\n`);
-    return CONFIG;
-  }
-  const config = parsed.config;
-
-  if (command === "profiles") {
-    process.stdout.write(`${JSON.stringify(config.profiles, null, 2)}\n`);
-    return 0;
-  }
-
-  if (command === "hosts") {
-    process.stdout.write(`${JSON.stringify(config.hosts, null, 2)}\n`);
-    return 0;
-  }
-
-  if (command === "plan") {
-    if (flags.task === undefined || flags.task === "" || flags.profile === undefined || flags.profile === "") {
-      process.stderr.write("factory: plan requires --task and --profile\n");
-      return CONFIG;
-    }
-    const request: RunRequest = { task: flags.task, profile: flags.profile };
-    if (flags.host !== undefined) request.host = flags.host;
-    if (flags.workspace !== undefined) request.workspace = flags.workspace;
-
-    const broker = createBroker(config.broker);
-    const result = await plan(request, config, broker);
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    return result.ok ? 0 : REFUSED;
-  }
+  // The configuration is read before the command is resolved, so an unknown
+  // command still reports an unreadable or invalid configuration first.
+  const config = await loadConfig(flags);
+  if (config === null) return CONFIG;
+  const handler = COMMANDS.get(command);
+  if (handler !== undefined) return handler(flags, config);
 
   process.stderr.write(`factory: unknown command "${command}"\n\n${USAGE}`);
   return CONFIG;
