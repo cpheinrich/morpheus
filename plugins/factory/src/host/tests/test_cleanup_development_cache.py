@@ -18,6 +18,20 @@ spec.loader.exec_module(cleanup)
 
 
 class SimulatorOwnershipTests(unittest.TestCase):
+    def test_invalid_retention_and_reserve_arguments_refuse_before_cleanup(self):
+        for option, value in [("--build-days", "6"), ("--simulator-days", "1"),
+                              ("--job-simulator-days", "1"), ("--trash-days", "29"),
+                              ("--min-free-gb", "9"), ("--min-free-percent", "4"),
+                              ("--min-free-percent", "51"), ("--lease-minutes", "0"),
+                              ("--lease-minutes", "1441")]:
+            with self.subTest(option=option, value=value), \
+                 patch.object(cleanup.sys, "argv", ["cleanup", option, value]), \
+                 patch.object(cleanup, "space_gib") as space:
+                with self.assertRaises(SystemExit) as result:
+                    cleanup.main()
+                self.assertEqual(result.exception.code, 2)
+                space.assert_not_called()
+
     def test_watchdog_reserve_scales_with_disk_and_stops_at_target(self):
         self.assertEqual(cleanup.watch_limits(460), (69, 99))
         self.assertEqual(cleanup.watch_limits(931), (140, 170))
@@ -28,6 +42,17 @@ class SimulatorOwnershipTests(unittest.TestCase):
                   ("second", lambda: calls.append("second"))]
         self.assertEqual(cleanup.execute_stages(stages, 80, lambda: next(free)), [])
         self.assertEqual(calls, ["first"])
+
+    def test_cleanup_failure_reports_error_before_final_space_probe(self):
+        with patch.object(cleanup, "space_gib") as space, patch.object(cleanup, "log") as log:
+            self.assertEqual(cleanup.report_cleanup_result(["stage: denied"], 50, True, 70), 1)
+            log.assert_called_once_with("ERROR stage: denied")
+            space.assert_not_called()
+
+    def test_cleanup_result_accepts_floor_boundary_but_reports_below_it(self):
+        for ending, expected in [(70, 0), (69.9, 2)]:
+            with self.subTest(ending=ending), patch.object(cleanup, "space_gib", return_value=(ending, 460)):
+                self.assertEqual(cleanup.report_cleanup_result([], 50, True, 70), expected)
 
     def test_healthy_watchdog_only_checks_trash(self):
         with tempfile.TemporaryDirectory() as directory, \
@@ -269,6 +294,28 @@ class SimulatorOwnershipTests(unittest.TestCase):
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse((code / ".metadata_never_index").exists())
+
+    def test_browser_cache_roots_preserve_profiles_and_skip_running_apps(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(cleanup, "HOME", Path(directory)):
+            home = Path(directory)
+            caches = [home / "Library/Caches/BraveSoftware/Brave-Browser",
+                      home / "Library/Caches/BraveSoftware/Brave-Browser-headless",
+                      home / "Library/Caches/Codex"]
+            profiles = [home / "Library/Application Support/BraveSoftware/Brave-Browser",
+                        home / "Library/Application Support/Codex",
+                        home / "Library/Application Support/Claude/vm_bundles"]
+            for path in caches + profiles:
+                path.mkdir(parents=True)
+                (path / "data").write_bytes(b"preserve or cache")
+            with patch.object(cleanup, "app_is_running", return_value=True):
+                self.assertEqual(cleanup.remove_browser_caches(True), 0)
+            with patch.object(cleanup, "app_is_running", return_value=False):
+                self.assertEqual(cleanup.remove_browser_caches(False), 3)
+                self.assertTrue(all((path / "data").exists() for path in caches))
+                self.assertEqual(cleanup.remove_browser_caches(True), 3)
+                self.assertEqual(cleanup.remove_browser_caches(True), 0)
+            self.assertTrue(all(path.is_dir() and not (path / "data").exists() for path in caches))
+            self.assertTrue(all((path / "data").read_bytes() == b"preserve or cache" for path in profiles))
 
     def test_worker_lease_protects_device_until_expiry(self):
         udid = "11111111-2222-3333-4444-555555555555"

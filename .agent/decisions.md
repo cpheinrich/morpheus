@@ -1,5 +1,16 @@
 # Decisions
 
+**CI cache retirement stays with the dispatcher owner and runs offline** — 2026-11-06.
+MO-26-11-06-13.51.37. Actual disk use found retired slot and image-pool cache disks as well
+as unreferenced images. Keep the development watchdog out of Tart storage: share the
+dispatcher's exact cache-path function with its owner's explicit offline pruner, retain
+every mountable repo/slot disk, and require unloaded admission, no running VM and closed-file
+proof before unlinking generated disks. Unknown state preserves data. Extend only measured
+closed-app OS cache roots in the watchdog; retain build guards because their protected
+category was empty. No new schedule, generic framework, dependency or host-size default.
+Host-specific capacity and simulator lanes remain operator config; source review and actual
+runtime qualification precede calling the requested host change complete.
+
 **Findings are refactored with one canonical prompt shipped in the CLI** — 2026-11-05.
 MO-26-11-05-23.15.42. Chris's rollout mandate makes the tested refactoring prompt part of every
 project's complexity workflow. It is one Markdown asset beside the analyzer runner, copied by

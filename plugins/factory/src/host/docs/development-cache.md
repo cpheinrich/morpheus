@@ -22,6 +22,7 @@ they are one machine's, and shared APFS blocks and snapshots make them a poor gu
 | Tart per-repo cache disks | Keep active repo/slot disks. |
 | MorpheusCD runtime/state | Keep; includes durable CD data and checkouts, not classified as cache. |
 | Claude app support | Keep the VM bundle and session data. Named browser, code and GPU caches can be cleared under pressure while Claude is closed. |
+| Brave and Codex browser caches | Clear only `~/Library/Caches/BraveSoftware/{Brave-Browser,Brave-Browser-headless}` and `~/Library/Caches/Codex` while their apps are closed. Keep profiles under Application Support. |
 | Spotlight index | The watchdog resets an oversized index under pressure after applying development-root exclusions. |
 | Apple consumer apps and audio content | iMovie, GarageBand, Keynote, Pages and Numbers, plus orphaned GarageBand/Logic/Apple Loops content; both worker setup and pressure cleanup use the same guarded helper. |
 | Downloads installers | Remove Xcode `.xip` files and `.dmg`/`.pkg` installers whose names match installed apps, regardless of file age. Keep unrelated downloads. |
@@ -143,8 +144,12 @@ per job and deletes the VM afterward. Its sparse cache disks persist by
 repository and slot to retain DerivedData and SwiftPM checkouts; the golden
 image persists across jobs. Those host files are owned by the dispatcher, not
 CoreSimulator, and this cleanup script does not remove them. An old cache disk
-must be reset through the CI host's operating procedure after confirming its
-slot is idle; an age check alone would race the dispatcher.
+must be retired through the CI host's `prune-caches.mjs` after draining and unloading
+the dispatcher. That owner command keeps disks the configured repositories and slots can
+mount, proves candidates closed and requires no running Tart VM. `prune-images.mjs`
+owns unreferenced golden images. Neither is part of the general watchdog: an age check
+alone would race the dispatcher. After a slot or image-pool change, run their dry-run
+plans and compare actual available space before and after the supported maintenance.
 
 Future factory workers can register a device lease with
 `morpheus-development-cleanup --lease-udid UUID --lease-minutes 720`, renew it

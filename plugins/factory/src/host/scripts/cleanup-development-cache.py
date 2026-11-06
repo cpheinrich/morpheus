@@ -262,6 +262,19 @@ def remove_app_cache_contents(root, cache_names, app_names, apply):
     return count
 
 
+def remove_browser_caches(apply):
+    """Only OS cache roots, never the adjacent browser profiles or sessions."""
+    count = remove_app_cache_contents(
+        HOME / "Library/Caches/BraveSoftware", ("Brave-Browser", "Brave-Browser-headless"),
+        ("Brave Browser", "Brave Browser Headless"), apply,
+    )
+    count += remove_app_cache_contents(
+        HOME / "Library/Caches", ("Codex",), ("ChatGPT", "Codex"), apply,
+    )
+    log(f"Brave and Codex browser cache entries: {count}")
+    return count
+
+
 def simulator_config():
     """Operator-declared job prefixes and preview namespaces; absent means none."""
     path = HOME / ".config/morpheus-factory/simulators.json"
@@ -390,7 +403,7 @@ def remove_old_simulators(qa_days, job_days, apply):
     return count
 
 
-def main():
+def parse_arguments():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--apply", action="store_true", help="perform eligible manual cleanup; Spotlight still requires storage pressure")
@@ -410,6 +423,11 @@ def main():
     args = parser.parse_args()
     if sys.platform != "darwin":
         parser.error("macOS required")
+    validate_cleanup_args(parser, args)
+    return parser, args
+
+
+def validate_cleanup_args(parser, args):
     if (args.simulator_days < 2 or args.build_days < 7 or args.job_simulator_days < 2
             or args.trash_days < 30):
         parser.error("retention is too short")
@@ -419,6 +437,10 @@ def main():
         parser.error("minimum free percentage must be 5–50")
     if not 1 <= args.lease_minutes <= 1440:
         parser.error("lease minutes must be 1–1440")
+
+
+def main():
+    parser, args = parse_arguments()
     if args.lease_udid or args.release_udid:
         try:
             update_worker_lease(args.lease_udid or args.release_udid, args.lease_minutes,
@@ -572,6 +594,7 @@ def main():
         ("pnpm", lambda: package_cache("pnpm", ["pnpm", "store", "prune"])),
         ("npm", lambda: package_cache("npm", ["npm", "cache", "clean", "--force"])),
         ("agent application caches", agent_app_caches),
+        ("browser caches", lambda: remove_browser_caches(apply)),
         ("worktrees", worktrees),
     ])
     if pressure:
@@ -591,6 +614,10 @@ def main():
             return 0
         failures = execute_stages(stages[:1] if healthy_watch else stages,
                                   None if healthy_watch else target, lambda: space_gib()[0])
+    return report_cleanup_result(failures, available, apply and pressure, floor)
+
+
+def report_cleanup_result(failures, available, pressure_applied, floor):
     if failures:
         for failure in failures:
             log("ERROR " + failure)
@@ -598,7 +625,7 @@ def main():
     ending_free, _ = space_gib()
     log(f"Cleanup result: {ending_free:.1f} GiB free "
         f"({ending_free - available:+.1f} GiB during this run)")
-    if apply and pressure:
+    if pressure_applied:
         if ending_free < floor:
             log("ERROR Free space remains below the reserve after eligible cleanup")
             return 2
