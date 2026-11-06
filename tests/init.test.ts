@@ -178,6 +178,20 @@ describe("morpheus init", () => {
     expect(result.written).toContain("morpheus.json (visual evidence policy added)");
   });
 
+  it("enrols a new project in advisory complexity, and never enrols an established manifest", async () => {
+    await scaffold(dir, SEED);
+    expect((JSON.parse(await read("morpheus.json")) as { complexity: unknown }).complexity).toEqual({ mode: "advisory" });
+    const agents = await read("AGENTS.md");
+    expect(agents).toContain("and `morpheus complexity install --check`; install whichever is not operational.");
+    expect(agents).toContain("**Run `morpheus complexity check` after each changed function family**; report it for review.");
+    expect(await read("README.md")).toContain("morpheus complexity install --check");
+
+    const established = await mkdtemp(join(tmpdir(), "init-established-"));
+    await writeFile(join(established, "morpheus.json"), `${JSON.stringify({ name: "Existing", prefix: "EX", kind: "company" })}\n`);
+    await scaffold(established, SEED);
+    expect(JSON.parse(await readFile(join(established, "morpheus.json"), "utf8"))).not.toHaveProperty("complexity");
+  });
+
   it("preserves a repository's explicit visual-evidence opt-out", async () => {
     const reason = "This repository has no rendered user interface.";
     await writeFile(

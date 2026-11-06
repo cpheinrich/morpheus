@@ -76,6 +76,8 @@ export function reviewPacket(opts) {
     else {
         lines.push("Acceptance: none declared — review against the ticket context and the PR description. That is a supported state, not a gap to fill by creating an item.");
     }
+    if (opts.complexity)
+        lines.push(opts.complexity);
     return lines.join("\n");
 }
 //# sourceMappingURL=packet.js.map

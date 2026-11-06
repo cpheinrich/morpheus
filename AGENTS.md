@@ -82,9 +82,9 @@ pnpm morpheus wait-ci <pr>         # block once on CI, then a digest of failures
 Startup's `.morpheus/session-start.sh` diagnoses the CLI. Only when no device preference is saved
 and startup reports automatic updates unconfigured, ask exactly: **"Morpheus is stale. Enable
 automatic updates after pulls on this device?"** Do not infer consent; an existing choice is
-honoured, never re-asked. Before structural code discovery run
-`morpheus codebase-memory install --check`, and `morpheus codebase-memory install` if it is not
-operational. **Read [`device-bootstrap.md`](docs/runbooks/device-bootstrap.md)** for what yes and no
+honoured, never re-asked. Before structural code discovery or a code change, run
+`morpheus codebase-memory install --check` and `morpheus complexity install --check`; install
+whichever is not operational. **Read [`device-bootstrap.md`](docs/runbooks/device-bootstrap.md)** for what yes and no
 run and for anything the shim reports.
 
 ## Context freshness
@@ -214,6 +214,9 @@ touched shared core (`src/pm/`, `src/check/`, `src/session/`, `src/review/`,
 `src/init/templates.ts`). Never re-run an unchanged suite to see whether it passes this time.
 Record the focused commands, and why that scope, in the test plan.
 
+**Complexity:** after each changed function family run `morpheus complexity check`; report its
+summary before review ([`complexity.md`](docs/runbooks/complexity.md)).
+
 **Before opening a PR**, run `pnpm typecheck`, the focused tests, `pnpm compile` and
 `pnpm morpheus pm index`, and commit any generated changes. CI runs the same checks.
 
@@ -274,9 +277,8 @@ Match the surrounding code. This codebase favours:
 - Explicit types at boundaries; inference inside
 - Errors surfaced as data (`ParseIssue[]`) rather than thrown, so one bad input cannot abort a
   batch — see `src/pm/parse.ts`
-- Comments that explain *why*, not *what*. The backward-compatible YAML-date preprocessing in
-  `src/pm/schema.ts` is the model: it accepts `Date` values produced by older parsers, and that is
-  not obvious from the current parser's string output.
+- Comments that explain *why*, not *what*; the YAML-date preprocessing in `src/pm/schema.ts` is
+  the model.
 
 ## Things that have bitten us
 

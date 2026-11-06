@@ -9,6 +9,8 @@ import { LOCAL_REVIEW_PROMPT } from "../review/local-prompt.js";
 import { committedConfig, git, reviewRecordLine, reviewRequired, verifyReviewRecord } from "../review/local.js";
 import { buildReviewPrompt } from "../review/prompt.js";
 import { projectCommands, reviewPacket } from "../review/packet.js";
+import { runCheck } from "../complexity/check.js";
+import { packetSummary } from "../complexity/format.js";
 /**
  * `morpheus review prompt` — assemble the rung 2 reviewer prompt and print it.
  * `morpheus review needed` — decide whether it is worth spending a review.
@@ -187,6 +189,7 @@ export async function prepareReview(productDir, root, base) {
                 head,
                 ticket: { id: ctx.id, title: ctx.title, intent: ctx.intent, acceptance: ctx.acceptance, missingAcceptance: ctx.missingAcceptance },
                 commands: await projectCommands(root),
+                complexity: packetSummary(await runCheck({ root, base, all: false })),
             }));
         console.log("\nWorklog record template (replace placeholders; never mark an unfinished review complete):");
         console.log("```morpheus-review\n" + JSON.stringify({ version: 2, base: fork, reviewed: head, covered: head, authorSession: "AUTHOR_SESSION", reviewerSession: "RUNNER_ISSUED_REVIEWER_SESSION_ID", risk: "normal", elapsedMinutes: 0, timing: { source: "runner", durationMs: 0, evidence: "Replace with this turn's runner result reference and measured duration." }, outcome: "incomplete", summary: "Replace with the actual review summary and repeat it as a paragraph.", findings: [] }, null, 2) + "\n```");

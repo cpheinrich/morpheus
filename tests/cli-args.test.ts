@@ -13,7 +13,7 @@ describe("CLI argument compatibility", () => {
   });
   it("preserves defaults and special-value consumption", () => {
     expect(parseArgs([])).toEqual({ dir: "hq/product", base: "origin/main", check: false, dryRun: false,
-      all: false, offline: false, full: false, requiredOnly: false, json: false, dispatch: false, print: false,
+      all: false, offline: false, full: false, ci: false, requiredOnly: false, json: false, dispatch: false, print: false,
       openBrowser: true, provision: true, waitlist: true, hq: true, worktree: false, nul: false,
       baseGiven: false,
       positional: [], authors: [], isbns: [], tags: [] });

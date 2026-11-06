@@ -1469,6 +1469,25 @@ disabled choice without installing code. The provider SessionStart files call th
 replacing the legacy direct `context brief` hook. No package lifecycle or session hook infers
 consent.
 
+### 7.12a Function complexity is measured by one pinned analyzer, earliest by the agent
+
+Every project measures cyclomatic (CCN) and cognitive complexity with the same Lizard, pinned in
+`src/complexity/pin.ts` by commit and hash-locked wheels, installed like codebase-memory: an explicit
+`morpheus complexity install` on a trusted device (a venv under `~/.morpheus/tools`, keyed by the
+whole pin), never an install side effect. Every check runs a canary through the installed runtime,
+so a stale stamp or broken venv reads as "not run", never as a pass.
+
+The primary check is the agent's: `morpheus complexity check` after each changed function family,
+over the functions its committed, staged, unstaged and untracked changes touch. `review prepare`
+puts the actual result in the packet. CI is the backstop, a step inside the required `pr /
+conventions` job, enrolled by a `complexity` block in `morpheus.json`: `advisory` reports and never
+fails, `enforce` measures every in-scope file and fails on CCN over the limit, an unmeasurable file
+in a language Lizard reads, or a stale exception. Cognitive complexity only warns. In-source
+suppressions are neutralised and reported rather than obeyed; the only ways to narrow the bar are
+`exclude` and a narrow, reasoned `exceptions` entry, both printed in every report, and a change to
+the block within a pull request is shown as a before/after warning. Detail:
+[`docs/runbooks/complexity.md`](docs/runbooks/complexity.md).
+
 ### 7.13 The GitHub Manager is the backstop for a loop whose author has left
 
 Author-managed review (§9) has one failure it cannot recover from by itself: the authoring session
