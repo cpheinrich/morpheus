@@ -44,32 +44,33 @@ export function createConnector({ directory, companyId, controllerId, connectorI
       ...(journal.state === 'unknown' ? { unknown: true } : { result: journal.result }) });
     await write({ ...journal, state: 'acked' });
   }
-  async function apply(operationId: string) {
-    const existing = await read(operationId);
-    if (existing && existing.state !== 'prepared') {
-      if (existing.state === 'receipt' || existing.state === 'unknown') await ack(existing);
-      // An interrupted local apply is never replayed, even if no response was saved.
-      else if (existing.state === 'applying') await ack({ ...existing, state: 'unknown' });
-      return;
+  // A journal past `prepared` is only acknowledged: an interrupted local apply is never
+  // replayed, even if no response was saved.
+  async function settle(existing: Journal) {
+    if (existing.state === 'receipt' || existing.state === 'unknown') await ack(existing);
+    else if (existing.state === 'applying') await ack({ ...existing, state: 'unknown' });
+  }
+  // For a journal left `prepared`: the claimed command to apply, or `done` when the server
+  // already settled it.
+  async function reclaim(operationId: string, existing: Journal): Promise<{ done: boolean; prepared: Command | null }> {
+    const observed = await backend('inspect', { operationId }) as Command;
+    if (observed.requestHash !== existing.requestHash) throw new Error('Connector journal binding changed');
+    if (observed.state === 'completed' || observed.state === 'rejected' || observed.state === 'unknown') {
+      await write({ ...existing, state: 'acked' }); return { done: true, prepared: null };
     }
-    let prepared: Command | null = null;
-    if (existing) {
-      const observed = await backend('inspect', { operationId }) as Command;
-      if (observed.requestHash !== existing.requestHash) throw new Error('Connector journal binding changed');
-      if (observed.state === 'completed' || observed.state === 'rejected' || observed.state === 'unknown') {
-        await write({ ...existing, state: 'acked' }); return;
-      }
-      if (observed.state === 'applying') { await ack({ ...existing, state: 'unknown' }); return; }
-      // prepared is durable proof that no local bridge invocation began. The
-      // server will fence a stale claim; its fresh actor check still runs below.
-      prepared = await backend('claim', { operationId }) as Command | null;
-      if (!prepared && observed.state === 'claimed' && observed.fence === existing.fence) prepared = observed;
-    }
-    const command = prepared ?? await backend('claim', { operationId }) as Command | null;
-    if (!command) return;
+    if (observed.state === 'applying') { await ack({ ...existing, state: 'unknown' }); return { done: true, prepared: null }; }
+    // prepared is durable proof that no local bridge invocation began. The
+    // server will fence a stale claim; its fresh actor check still runs below.
+    let prepared = await backend('claim', { operationId }) as Command | null;
+    if (!prepared && observed.state === 'claimed' && observed.fence === existing.fence) prepared = observed;
+    return { done: false, prepared };
+  }
+  function assertOwnCommand(command: Command, operationId: string): asserts command is Command & { fence: string } {
     if (command.companyId !== companyId || command.controllerId !== controllerId || command.operationId !== operationId || command.state !== 'claimed' || !command.fence ||
         command.request.operationId !== operationId || command.request.companyId !== companyId ||
         command.requestHash !== digest({ request: command.request, actorUid: command.actor.uid })) throw new Error('Connector received a foreign or corrupt command');
+  }
+  async function execute(command: Command & { fence: string }, operationId: string) {
     let journal: Journal = { version: 1, operationId, requestHash: command.requestHash, fence: command.fence, state: 'prepared' };
     await write(journal);
     await backend('beginApply', { operationId, fence: command.fence });
@@ -84,6 +85,20 @@ export function createConnector({ directory, companyId, controllerId, connectorI
       journal = { ...journal, state: 'unknown' }; await write(journal);
     }
     await ack(journal);
+  }
+  async function apply(operationId: string) {
+    const existing = await read(operationId);
+    if (existing && existing.state !== 'prepared') return settle(existing);
+    let prepared: Command | null = null;
+    if (existing) {
+      const reclaimed = await reclaim(operationId, existing);
+      if (reclaimed.done) return;
+      prepared = reclaimed.prepared;
+    }
+    const command = prepared ?? await backend('claim', { operationId }) as Command | null;
+    if (!command) return;
+    assertOwnCommand(command, operationId);
+    await execute(command, operationId);
   }
   return {
     async tick(signal?: AbortSignal) {
