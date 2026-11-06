@@ -457,6 +457,15 @@ export async function claims(
     items.filter((i) => i.data.status === "blocked").map((i) => [i.data.id, i.data.needs]),
   );
 
+  printClaimRows(all, blocked, staleDays);
+
+  await printUnsentRecords(cwd, [...blocked.keys()], productDir);
+  return 0;
+}
+
+type Claim = Awaited<ReturnType<typeof listClaims>>[number];
+/** One row per claim, sized from the data, then the stale and blocked tallies. */
+function printClaimRows(all: Claim[], blocked: Map<string, string | undefined>, staleDays: number): void {
   // Sized from the data, not a constant. The widths were picked for `MO-045`
   // and a timestamp id is twenty characters, so every row after the first long
   // one lost its columns.
@@ -487,7 +496,9 @@ export async function claims(
   if (blocked.size) {
     console.log(`${blocked.size} blocked (⊘) — waiting on an answer, not on an agent.`);
   }
+}
 
+async function printUnsentRecords(cwd: string, blockedIds: string[], productDir: string): Promise<void> {
   // An offline `pm block` writes its records and skips the push, and its only
   // other trace is a yellow line that has already scrolled past. A block
   // nobody can see is not a block, so the state has to be visible somewhere
@@ -495,7 +506,7 @@ export async function claims(
   // already has the board in hand.
   const { paths: unsent, unavailable } = await unsentBlockRecords(
     cwd,
-    [...blocked.keys()],
+    blockedIds,
     productDir,
   );
   if (unavailable) {
@@ -511,7 +522,6 @@ export async function claims(
     for (const p of unsent) console.log(`  ${p}`);
     console.log(`\x1b[33mCommit and push all of them, including the inbox entry.\x1b[0m`);
   }
-  return 0;
 }
 
 /**
@@ -610,6 +620,14 @@ export async function unsentBlockRecords(
 
   const candidates = [...new Set([...dirty, ...unpushed])].filter(Boolean);
   const named = candidates.filter((path) => ids.some((id) => path.toLowerCase().includes(id)));
+  const indexPath = await roadmapIndexPath(rootDir, productDir);
+  const indexes = candidates.filter((path) => path === indexPath);
+  const inboxes = await unsentInboxes(candidates.filter((path) => !named.includes(path)), ids, rootDir, lines);
+
+  return { paths: [...new Set([...named, ...indexes, ...inboxes])].sort(), unavailable: false };
+}
+
+async function roadmapIndexPath(rootDir: string, productDir: string): Promise<string> {
   // `pm block` refreshes this generated view after changing the item. Its path
   // carries no item id, so the ordinary record matcher cannot discover it.
   const productRoot = isAbsolute(productDir) ? productDir : join(rootDir, productDir);
@@ -619,14 +637,15 @@ export async function unsentBlockRecords(
     comparableRoot,
     join(comparableProduct, "roadmap", "README.md"),
   ).replaceAll("\\", "/");
-  const indexes = candidates.filter((path) => path === indexPath);
+  return indexPath;
+}
 
+async function unsentInboxes(candidates: string[], ids: string[], rootDir: string, lines: (args: string[]) => Promise<string[] | null>): Promise<string[]> {
   // An inbox has no id in its path, so ask its contents instead. `hq/team/`
   // also holds the roster, a README and meeting notes, none of which are ever
   // an escalation.
   const inboxes: string[] = [];
   for (const path of candidates) {
-    if (named.includes(path)) continue;
     const name = basename(path).toLowerCase();
     if (dirname(path) !== INBOX_DIR || !name.endsWith(".md") || TEAM_RESERVED.has(name)) continue;
 
@@ -651,8 +670,7 @@ export async function unsentBlockRecords(
       : "";
     if (here.some((id) => !pushed.includes(id))) inboxes.push(path);
   }
-
-  return { paths: [...new Set([...named, ...indexes, ...inboxes])].sort(), unavailable: false };
+  return inboxes;
 }
 
 /**
@@ -683,18 +701,7 @@ export async function block(
 ): Promise<BlockOutcome> {
   const nothing = (code: number): BlockOutcome => ({ code, written: [] });
 
-  if (!id) {
-    console.error('Usage: morpheus pm block MO-051 --needs "what would unblock this"');
-    return nothing(1);
-  }
-  if (!opts.needs?.trim()) {
-    console.error(
-      'A --needs is required: morpheus pm block MO-051 --needs "which model, and whose\n' +
-        'subscription pays for it".\n\n' +
-        '"Blocked on Chris" is not a need — say what would actually unblock it.',
-    );
-    return nothing(1);
-  }
+  if (!blockArgumentsValid(id, opts.needs)) return nothing(1);
 
   const policy = await projectPolicy(root);
   const trunk = await resolveTrunk(root, policy.trunk);
@@ -709,18 +716,8 @@ export async function block(
     return nothing(1);
   }
 
-  const owners = opts.owner ? [] : await inboxOwners(root);
-  const owner = opts.owner ?? (owners.length === 1 ? owners[0] : undefined);
-  if (!owner) {
-    const found = owners.length
-      ? ` Found ${owners.length} inboxes: ${owners.join(", ")}.`
-      : " Found no person inboxes.";
-    console.error(
-      `Could not tell whose inbox this belongs in.${found}\n` +
-        "Pass --owner <github-handle>, or leave exactly one person inbox under hq/team/.",
-    );
-    return nothing(1);
-  }
+  const owner = await blockOwner(root, opts.owner);
+  if (!owner) return nothing(1);
 
   try {
     const r = await blockItem({
@@ -738,34 +735,7 @@ export async function block(
     for (const p of r.written) console.log(`  wrote ${p}`);
     if (r.inboxCreated) console.log(`  (created a new inbox for ${owner})`);
 
-    if (opts.push === false) {
-      // Offline. The records are written, which is what keeps `pm block`
-      // reachable when a session most needs it — but a block nobody can see
-      // is not yet a block, and saying so is the difference between a
-      // deferred step and a silently dropped one.
-      console.log(
-        "\x1b[33mOffline: written to disk and not pushed. The block is not visible to other\n" +
-          "sessions yet — commit and push it when you reconnect.\x1b[0m",
-      );
-    } else {
-      const outcome = await commitRecords(
-        root,
-        r.written,
-        `chore(${r.id}): blocked — ${opts.needs.trim().slice(0, 60)}`,
-      );
-      if (outcome === "pushed") {
-        console.log("Committed and pushed — the block is visible to every other session.");
-      } else if (outcome === "committed") {
-        console.log(
-          "\x1b[33mCommitted, but the push failed — the block is not visible to other sessions.\n" +
-            "Push when you can; `morpheus pm claims` will keep saying so.\x1b[0m",
-        );
-      } else {
-        console.log(
-          "\x1b[33mCommitted nothing: not a git repo, or the commit failed. The records are on disk.\x1b[0m",
-        );
-      }
-    }
+    await publishBlock(root, r.id, r.written, opts.needs, opts.push);
 
     console.log(
       `\nThe branch stays claimed. When answered: \`morpheus pm unblock ${r.id}\`.`,
@@ -786,6 +756,71 @@ export async function block(
       return nothing(1);
     }
     throw err;
+  }
+}
+
+function blockArgumentsValid(id: string, needs: string | undefined): needs is string {
+  if (!id) {
+    console.error('Usage: morpheus pm block MO-051 --needs "what would unblock this"');
+    return false;
+  }
+  if (!needs?.trim()) {
+    console.error(
+      'A --needs is required: morpheus pm block MO-051 --needs "which model, and whose\n' +
+        'subscription pays for it".\n\n' +
+        '"Blocked on Chris" is not a need — say what would actually unblock it.',
+    );
+    return false;
+  }
+  return true;
+}
+
+/** The inbox the block belongs in: the one given, or the only person inbox. */
+async function blockOwner(root: string, explicit: string | undefined): Promise<string | undefined> {
+  const owners = explicit ? [] : await inboxOwners(root);
+  const owner = explicit ?? (owners.length === 1 ? owners[0] : undefined);
+  if (!owner) {
+    const found = owners.length
+      ? ` Found ${owners.length} inboxes: ${owners.join(", ")}.`
+      : " Found no person inboxes.";
+    console.error(
+      `Could not tell whose inbox this belongs in.${found}\n` +
+        "Pass --owner <github-handle>, or leave exactly one person inbox under hq/team/.",
+    );
+    return undefined;
+  }
+  return owner;
+}
+
+/** Commits and pushes the block's records, or says plainly that it is on this machine only. */
+async function publishBlock(root: string, id: string, written: string[], needs: string, push: boolean | undefined): Promise<void> {
+  if (push === false) {
+    // Offline. The records are written, which is what keeps `pm block`
+    // reachable when a session most needs it — but a block nobody can see
+    // is not yet a block, and saying so is the difference between a
+    // deferred step and a silently dropped one.
+    console.log(
+      "\x1b[33mOffline: written to disk and not pushed. The block is not visible to other\n" +
+        "sessions yet — commit and push it when you reconnect.\x1b[0m",
+    );
+  } else {
+    const outcome = await commitRecords(
+      root,
+      written,
+      `chore(${id}): blocked — ${needs.trim().slice(0, 60)}`,
+    );
+    if (outcome === "pushed") {
+      console.log("Committed and pushed — the block is visible to every other session.");
+    } else if (outcome === "committed") {
+      console.log(
+        "\x1b[33mCommitted, but the push failed — the block is not visible to other sessions.\n" +
+          "Push when you can; `morpheus pm claims` will keep saying so.\x1b[0m",
+      );
+    } else {
+      console.log(
+        "\x1b[33mCommitted nothing: not a git repo, or the commit failed. The records are on disk.\x1b[0m",
+      );
+    }
   }
 }
 
