@@ -125,13 +125,25 @@ Lizard imports at load. A move reaches every consumer's CI at once, because they
 each enforcing consumer, and update `CANARY_EXPECTED` only if the canary's measurement legitimately
 changed. Every status check proves the install three ways: the checkout is the pinned commit with no
 local modification, Python loaded Lizard from that checkout, and the canary files (JavaScript, plus
-Swift, TSX and TypeScript that exercise the pinned parser fixes) measure exactly as recorded. A test
-installs the previous pin and asserts the canary refuses it, so a pin move whose canary would not
+Swift, TSX, JSX and TypeScript that exercise the pinned parser fixes) measure exactly as recorded.
+Tests install the previous pins and assert the canary refuses each, so a pin move whose canary would not
 notice a regression back fails.
 
-The current pin is the `cpheinrich/lizard` tag `morpheus-analyzer-2026-11-06-ts` (`484bbd05`):
-upstream master `4f6979da` plus open upstream PRs 556 (Swift computed and closure properties), 558
-(enum cases), 559 (string interpolation), 560 (JSX text) and 562 (template literal types inside
-TypeScript interface and object-type bodies, which earlier builds read as closing the body, folding
-every later function in the file into `*global*`). Return to plain upstream once all five merge. The
-previous tag, `morpheus-analyzer-2026-11-06` (`7f14ea5`), stays in place and is never moved. Python 3.9 is the floor both wheels declare; a test holds the pin to it.
+The current pin is the `cpheinrich/lizard` tag `morpheus-analyzer-2026-11-06-jsx-boolean`
+(`541623c0`): upstream master `4f6979da` plus open upstream PRs 556 (Swift computed and closure
+properties), 558 (enum cases), 559 (string interpolation), 560 (JSX text, at `24c6ff3`) and 562
+(template literal types inside TypeScript interface and object-type bodies, which earlier builds
+read as closing the body, folding every later function in the file into `*global*`). Return to plain
+upstream once all five merge. PR 560's later commits also read three JSX attribute forms inside
+children: a spread (`{...x}`) and a hyphenated name (`data-state`, `aria-hidden`), fixed at
+`bb9efad`, and a valueless attribute after a braced one (`margin={{ top: 6 }} accessibilityLayer`),
+fixed at `24c6ff3`. Earlier pins abandoned the tag there, ran the enclosing function on past its end
+and dropped the functions after it. The canary's `attributes.*` and `valueless.*` files record line
+bounds as well as CCN for that reason. Known forms still misread: an element used directly as an
+attribute value without braces (`icon=<i />`) loses the functions after it; a valueless attribute
+literally named `extends` is read as a TypeScript type parameter; and a valueless attribute is only
+recognised where an expression is expected. At least one further JSX form, not yet identified,
+still runs a function on past its end. On Lakina it makes `SaasBottomUp.tsx` `CompanyDetail`
+measure 99–184 at CCN 17 and drops `SaasBottomUp`, so this list is not complete. Older tags (`morpheus-analyzer-2026-11-06` at
+`7f14ea5`, `-ts` at `484bbd05`, `-tsx` at `3b53c116`) stay in place and are never moved. Python 3.9
+is the floor both wheels declare; a test holds the pin to it.

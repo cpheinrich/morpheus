@@ -1,4 +1,4 @@
-import { type LizardPin } from "./pin.js";
+import { CANARY_EXPECTED, type LizardPin } from "./pin.js";
 export interface RunResult {
     code: number;
     stdout: string;
@@ -32,6 +32,23 @@ export type ToolStatus = {
  * was installed; this is the proof it still works.
  */
 export declare function toolStatus(pin?: LizardPin, env?: NodeJS.ProcessEnv): Promise<ToolStatus>;
+interface CanaryOutput {
+    lizardVersion?: string | null;
+    lizardFile?: string;
+    python?: string;
+    files?: {
+        path: string;
+        functions?: {
+            name: string;
+            start: number;
+            end: number;
+            ccn: number;
+            cognitive: number;
+        }[];
+    }[];
+}
+/** One canary row's verdict: null when it measured as recorded, else the reason. */
+export declare function canaryMismatch(parsed: CanaryOutput, want: (typeof CANARY_EXPECTED)[number]): string | null;
 export type InstallResult = {
     ok: true;
     status: ToolStatus;
@@ -49,3 +66,4 @@ export type InstallResult = {
 export declare function installLizard(pin?: LizardPin, env?: NodeJS.ProcessEnv): Promise<InstallResult>;
 export declare function checkPython(python: string, pin: LizardPin): Promise<string | null>;
 export declare function formatStatus(status: ToolStatus): string;
+export {};

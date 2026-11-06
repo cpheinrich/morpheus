@@ -76,7 +76,7 @@ interface CanaryOutput {
   lizardVersion?: string | null;
   lizardFile?: string;
   python?: string;
-  files?: { path: string; functions?: { name: string; ccn: number; cognitive: number }[] }[];
+  files?: { path: string; functions?: { name: string; start: number; end: number; ccn: number; cognitive: number }[] }[];
 }
 
 function canaryVerdict(toolchain: Toolchain, stdout: string): ToolStatus {
@@ -103,11 +103,15 @@ function sameDir(file: string | undefined, dir: string): boolean {
   }
 }
 
-function canaryMismatch(parsed: CanaryOutput, want: (typeof CANARY_EXPECTED)[number]): string | null {
+/** One canary row's verdict: null when it measured as recorded, else the reason. */
+export function canaryMismatch(parsed: CanaryOutput, want: (typeof CANARY_EXPECTED)[number]): string | null {
   const row = parsed.files?.find((f) => f.path === want.path)?.functions?.find((f) => f.name === want.name);
-  if (row && row.ccn === want.ccn && row.cognitive === want.cognitive) return null;
-  const got = row ? `CCN ${row.ccn}, cognitive ${row.cognitive}` : "no such function";
-  return `canary ${want.path} ${want.name} measured ${got}; the pinned build gives CCN ${want.ccn}, cognitive ${want.cognitive}`;
+  const span = (start: number, end: number) => (want.lines ? `, lines ${start}-${end}` : "");
+  const boundsMatch = !want.lines || (row?.start === want.lines[0] && row.end === want.lines[1]);
+  if (row && row.ccn === want.ccn && row.cognitive === want.cognitive && boundsMatch) return null;
+  const got = row ? `CCN ${row.ccn}, cognitive ${row.cognitive}${span(row.start, row.end)}` : "no such function";
+  const expected = `CCN ${want.ccn}, cognitive ${want.cognitive}${want.lines ? span(...want.lines) : ""}`;
+  return `canary ${want.path} ${want.name} measured ${got}; the pinned build gives ${expected}`;
 }
 
 function firstLine(text: string): string {
