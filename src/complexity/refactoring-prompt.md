@@ -32,9 +32,9 @@ branch wrote the code, it is before the refactor, not before the feature or at t
 is not a zero. A targeted check of an unchanged tree measures nothing, so a cleanup of untouched
 code takes its before rows from the supplied candidate report at the same source and pin, or
 reports them as unavailable; a family member in a file the before report did not measure is
-reported as unmeasured, not new. A row named `*global*` is the file's top-level code, not a family
-member: leave it out of family totals on both sides, and report it separately when the change moved
-top-level code.
+reported as unmeasured, not new, unless the refactor's diff created it. A row named `*global*` is
+the file's top-level code, not a family member: leave it out of family totals on both sides, and
+report it separately when the change moved top-level code.
 
 ## Task inputs
 
@@ -46,7 +46,7 @@ Preserve supported behavior while making the code easier to understand, change a
 
 ## Before editing
 
-1. Freeze the base source and analyzer versions. Enumerate the complete declared scope, exclusions and every recognized function over the limit. Separate application/tooling, tests, generated/vendor and unsupported syntax. State analyzer coverage limitations; do not infer complete language coverage from a successful parse.
+1. Freeze the pre-edit source (the candidate report's revision, not necessarily the base revision) and analyzer versions. Enumerate the complete declared scope, exclusions and every recognized function over the limit. Separate application/tooling, tests, generated/vendor and unsupported syntax. State analyzer coverage limitations; do not infer complete language coverage from a successful parse.
 2. Read each candidate's complete body and relevant callers, callees, types, tests and invariants. Identify the particular duplication, nesting or mixed responsibility worth improving. Derive the design from source; no function-specific recipe is supplied.
 3. Identify existing behavior tests and add missing characterization assertions before moving important logic. Assert actual values, ordering, errors, state and boundary behavior. A no-throw or nonempty assertion rarely establishes preservation.
 
