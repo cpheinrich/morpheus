@@ -575,78 +575,86 @@ export class Manager {
         (run.background || Date.now() - run.lastLease < run.grace)
       )
         this.send(run, { type: "heartbeat" });
-      let file;
-      try {
-        file = await open(join(runDir(run.id), "events.jsonl"), "r");
-      } catch (e) {
-        if (e.code !== "ENOENT") throw e;
-      }
-      if (file) {
-        try {
-          const buffer = Buffer.alloc(65536);
-          const { bytesRead } = await file.read(
-            buffer,
-            0,
-            buffer.length,
-            run.offset,
-          );
-          run.offset += bytesRead;
-          run.partial += run.decoder.write(buffer.subarray(0, bytesRead));
-          if (run.partial.length > 4 * 1024 * 1024)
-            throw new Error("Claude emitted an oversized event");
-          let end;
-          while ((end = run.partial.indexOf("\n")) >= 0) {
-            const line = run.partial.slice(0, end);
-            run.partial = run.partial.slice(end + 1);
-            if (line.trim()) await this.event(run, JSON.parse(line));
-          }
-        } finally {
-          await file.close();
-        }
-      }
+      await this.readEvents(run);
       const processState = await readJSON(
         join(runDir(run.id), "process.json"),
         null,
       );
-      if (run.guardianExited && processState?.state === "running") {
-        if (!(await stopOrphan(processState))) {
-          run.state = "cleanup_pending";
-          run.error = "Could not verify orphan cleanup; replacement is blocked";
-          clearInterval(run.timer);
-          await atomic(join(runDir(run.id), "run.json"), this.public(run));
-          return;
-        }
-        await atomic(join(runDir(run.id), "process.json"), {
-          ...processState,
-          state: "exited",
-          reason: "Guardian lost; owned group cleaned",
-        });
-      }
-      if (processState?.state === "exited" || run.guardianExited) {
-        // Wait for the last file bytes to be consumed before assigning the final outcome.
-        const size = await import("node:fs/promises").then((fs) =>
-          fs
-            .stat(join(runDir(run.id), "events.jsonl"))
-            .then((s) => s.size)
-            .catch(() => 0),
-        );
-        if (run.offset < size) return;
-        run.terminal = true;
-        if (run.stopping || processState?.interrupted)
-          run.state = "interrupted";
-        else if (
-          !run.result ||
-          (processState?.exitCode && processState.exitCode !== 0)
-        )
-          run.state = "failed";
-        clearInterval(run.timer);
-        run.guardian.stdin.destroy();
-        await atomic(join(runDir(run.id), "run.json"), this.public(run));
-        this.runs.delete(run.id);
-      }
+      if (run.guardianExited && processState?.state === "running" && !(await this.cleanOrphan(run, processState))) return;
+      if (processState?.state === "exited" || run.guardianExited) await this.settleRun(run, processState);
     } finally {
       run.ticking = false;
     }
+  }
+  // Fold the next chunk of the guardian's event log into the run.
+  async readEvents(run) {
+    let file;
+    try {
+      file = await open(join(runDir(run.id), "events.jsonl"), "r");
+    } catch (e) {
+      if (e.code !== "ENOENT") throw e;
+      return;
+    }
+    try {
+      const buffer = Buffer.alloc(65536);
+      const { bytesRead } = await file.read(
+        buffer,
+        0,
+        buffer.length,
+        run.offset,
+      );
+      run.offset += bytesRead;
+      run.partial += run.decoder.write(buffer.subarray(0, bytesRead));
+      if (run.partial.length > 4 * 1024 * 1024)
+        throw new Error("Claude emitted an oversized event");
+      let end;
+      while ((end = run.partial.indexOf("\n")) >= 0) {
+        const line = run.partial.slice(0, end);
+        run.partial = run.partial.slice(end + 1);
+        if (line.trim()) await this.event(run, JSON.parse(line));
+      }
+    } finally {
+      await file.close();
+    }
+  }
+  // The guardian died with its group still recorded as running: clean it, or block
+  // replacement (false) when cleanup cannot be verified.
+  async cleanOrphan(run, processState) {
+    if (!(await stopOrphan(processState))) {
+      run.state = "cleanup_pending";
+      run.error = "Could not verify orphan cleanup; replacement is blocked";
+      clearInterval(run.timer);
+      await atomic(join(runDir(run.id), "run.json"), this.public(run));
+      return false;
+    }
+    await atomic(join(runDir(run.id), "process.json"), {
+      ...processState,
+      state: "exited",
+      reason: "Guardian lost; owned group cleaned",
+    });
+    return true;
+  }
+  async settleRun(run, processState) {
+    // Wait for the last file bytes to be consumed before assigning the final outcome.
+    const size = await import("node:fs/promises").then((fs) =>
+      fs
+        .stat(join(runDir(run.id), "events.jsonl"))
+        .then((s) => s.size)
+        .catch(() => 0),
+    );
+    if (run.offset < size) return;
+    run.terminal = true;
+    if (run.stopping || processState?.interrupted)
+      run.state = "interrupted";
+    else if (
+      !run.result ||
+      (processState?.exitCode && processState.exitCode !== 0)
+    )
+      run.state = "failed";
+    clearInterval(run.timer);
+    run.guardian.stdin.destroy();
+    await atomic(join(runDir(run.id), "run.json"), this.public(run));
+    this.runs.delete(run.id);
   }
   async event(run, event) {
     if (run.executor === "codex") return this.codexEvent(run, event);
