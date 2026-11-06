@@ -85,6 +85,8 @@ export interface Flags {
   /** `wait-ci --workflow`: only runs for this commit. */
   sha?: string;
   full: boolean;
+  /** `complexity check`: GitHub annotations and job summary; enforce measures every file. */
+  ci: boolean;
   json: boolean;
   dispatch: boolean;
   print: boolean;
@@ -156,6 +158,7 @@ const booleanOptions: Record<string, (flags: Flags) => void> = {
   "--worktree": (flags) => { flags.worktree = true; },
   "--nul": (flags) => { flags.nul = true; },
   "--full": (flags) => { flags.full = true; },
+  "--ci": (flags) => { flags.ci = true; },
   "--dispatch": (flags) => { flags.dispatch = true; },
   "--required-only": (flags) => { flags.requiredOnly = true; },
 };
@@ -184,6 +187,7 @@ export function parseArgs(argv: string[]): Flags {
     all: false,
     offline: false,
     full: false,
+    ci: false,
     requiredOnly: false,
     json: false,
     dispatch: false,

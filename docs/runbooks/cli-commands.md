@@ -50,4 +50,6 @@ pnpm morpheus context status       # what the current lease says, and how old it
 pnpm morpheus context install      # wire the session-start hooks — run it once per project
 pnpm morpheus codebase-memory install         # trusted-device bootstrap, safe to re-run
 pnpm morpheus codebase-memory install --check # verify operational mode without changing it
+pnpm morpheus complexity install [--check]     # pinned Lizard analyzer; --check runs its canary — see complexity.md
+pnpm morpheus complexity check [--all] [--base <ref>] [--json] [--ci]  # functions your changes touch, against morpheus.json complexity
 ```

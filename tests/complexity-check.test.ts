@@ -1,0 +1,227 @@
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { beforeAll, describe, expect, it } from "vitest";
+import { runCheck, type CheckReport } from "../src/complexity/check.js";
+import { packetSummary } from "../src/complexity/format.js";
+import { installLizard, toolchainFor, toolStatus } from "../src/complexity/install.js";
+import { LIZARD_PIN, pinKey } from "../src/complexity/pin.js";
+import { jsFunction, put, repo } from "./complexity-helpers.js";
+
+/**
+ * These run the real pinned Lizard: a mock would prove the plumbing and not
+ * the measurement the policy is about. The install is shared across runs
+ * (keyed on the pin, proved by the canary each time) and needs network once.
+ */
+const TOOLS = process.env["MORPHEUS_TEST_TOOLS_DIR"] || join(tmpdir(), "morpheus-complexity-test-tools");
+const env = { ...process.env, MORPHEUS_TOOLS_DIR: TOOLS };
+
+beforeAll(async () => {
+  const result = await installLizard(LIZARD_PIN, env);
+  if (!result.ok) throw new Error(`could not install the pinned Lizard: ${result.reason}`);
+}, 300_000);
+
+const manifest = (complexity?: unknown) => JSON.stringify({ name: "t", prefix: "T", ...(complexity ? { complexity } : {}) });
+const enforce = manifest({ mode: "enforce" });
+// Spelled in pieces so this file does not trip the check it tests.
+const MARKER = "GENERATED" + " CODE";
+const FORGIVE = "lizard" + " forgive";
+
+async function check(root: string, opts: { all?: boolean } = {}): Promise<Extract<CheckReport, { state: "ran" }>> {
+  const report = await runCheck({ root, base: "main", all: opts.all ?? false, env });
+  if (report.state !== "ran") throw new Error(`did not run: ${report.reason}`);
+  return report;
+}
+
+const rules = (r: Extract<CheckReport, { state: "ran" }>, severity?: string) =>
+  r.findings.filter((f) => !severity || f.severity === severity).map((f) => f.rule);
+
+describe("complexity check against the real pinned Lizard", () => {
+  it("passes CCN 15 and fails CCN 16 in enforce, at the boundary", async () => {
+    const root = await repo({ "morpheus.json": enforce });
+    await put(root, { "at.js": jsFunction("atLimit", 15) });
+    expect((await check(root)).exitCode).toBe(0);
+    await put(root, { "over.js": jsFunction("overLimit", 16) });
+    const report = await check(root);
+    expect(report.exitCode).toBe(1);
+    expect(report.findings.find((f) => f.rule === "ccn-over")).toMatchObject({ severity: "error", path: "over.js", line: 1 });
+    expect(report.findings.find((f) => f.rule === "ccn-over")?.message).toContain("CCN 16 (limit 15)");
+  });
+
+  it("reports the same over-limit function as a warning in advisory, exit 0", async () => {
+    const root = await repo({ "morpheus.json": manifest({ mode: "advisory" }) });
+    await put(root, { "over.js": jsFunction("overLimit", 16) });
+    const report = await check(root);
+    expect(report.exitCode).toBe(0);
+    expect(rules(report, "warning")).toContain("ccn-over");
+  });
+
+  it("warns on cognitive 16 and never fails on it, even in enforce", async () => {
+    const nested = "function deep(a) {\n  if (a) { if (a > 1) { if (a > 2) { if (a > 3) { if (a > 4) { return 5; } } } } }\n  if (a < 0) return -1;\n  return 0;\n}\n";
+    const root = await repo({ "morpheus.json": enforce });
+    await put(root, { "deep.js": nested });
+    const report = await check(root);
+    expect(report.findings.find((f) => f.rule === "cognitive-over")?.message).toContain("cognitive complexity 16");
+    expect(report.exitCode).toBe(0);
+  });
+
+  it("measures only touched functions, and an untouched over-limit neighbour stays silent", async () => {
+    const root = await repo({ "morpheus.json": enforce, "m.js": jsFunction("old", 20) + jsFunction("small", 2) });
+    await put(root, { "m.js": jsFunction("old", 20) + jsFunction("small", 3) });
+    const report = await check(root);
+    expect(report.exitCode).toBe(0);
+    expect(report.evaluation.targeted).toBeGreaterThanOrEqual(1);
+    expect(report.evaluation.inTouchedFiles).toBe(3); // old, small and *global*
+    expect((await check(root, { all: true })).exitCode).toBe(1);
+  });
+
+  it("notes Markdown, Metal and image changes as coverage, never failing enforce", async () => {
+    const root = await repo({ "morpheus.json": enforce });
+    await put(root, { "docs/a.md": "# x\n", "Shader.metal": "kernel void k() {}\n", "logo.png": Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2]) });
+    const report = await check(root);
+    expect(report.exitCode).toBe(0);
+    expect(report.findings.find((f) => f.rule === "coverage")?.message).toBe(
+      "3 file(s) in a language Lizard does not read were not measured: .metal×1, .md×1, .png×1",
+    );
+  });
+
+  it("fails enforce, and only warns in advisory, on a supported file that is not UTF-8", async () => {
+    const bad = Buffer.concat([Buffer.from("function f() { return '"), Buffer.from([0xff, 0xfe]), Buffer.from("'; }\n")]);
+    const enforced = await repo({ "morpheus.json": enforce });
+    await put(enforced, { "bad.js": bad });
+    const report = await check(enforced);
+    expect(report.exitCode).toBe(1);
+    expect(report.findings.find((f) => f.rule === "unmeasured")?.message).toContain("decode-error");
+    const advised = await repo({ "morpheus.json": manifest({ mode: "advisory" }) });
+    await put(advised, { "bad.js": bad });
+    expect((await check(advised)).exitCode).toBe(0);
+  });
+
+  it("measures past a generated-code marker string and fails the over-limit function after it", async () => {
+    const root = await repo({ "morpheus.json": enforce });
+    await put(root, { "g.js": `const banner = "${MARKER}";\n${jsFunction("after", 16)}` });
+    const report = await check(root);
+    expect(report.findings.find((f) => f.rule === "directive")).toMatchObject({ severity: "warning", line: 1 });
+    expect(report.findings.find((f) => f.rule === "ccn-over")?.message).toContain("after ( a ) has CCN 16");
+    expect(report.exitCode).toBe(1);
+  });
+
+  it("measures past a generated-code marker in a comment, which stock Lizard stops at", async () => {
+    const root = await repo({ "morpheus.json": enforce });
+    await put(root, { "c.js": `// ${MARKER}\n${jsFunction("hidden", 16)}` });
+    const report = await check(root);
+    expect(report.findings.find((f) => f.rule === "ccn-over")?.message).toContain("hidden ( a ) has CCN 16");
+    expect(report.exitCode).toBe(1);
+  });
+
+  it("measures a function after a forgive comment and fails it", async () => {
+    const root = await repo({ "morpheus.json": enforce });
+    await put(root, { "f.js": `// #${FORGIVE}\n${jsFunction("forgiven", 16)}` });
+    const report = await check(root);
+    expect(report.findings.find((f) => f.rule === "directive")).toMatchObject({ severity: "warning", line: 1 });
+    expect(report.findings.find((f) => f.rule === "ccn-over")?.message).toContain("forgiven ( a ) has CCN 16");
+  });
+
+  it("keeps CRLF line numbers aligned with the diff", async () => {
+    const crlf = (jsFunction("first", 2) + jsFunction("second", 17)).replace(/\n/g, "\r\n");
+    const root = await repo({ "morpheus.json": enforce, "w.js": crlf });
+    await put(root, { "w.js": crlf.replace("if (a === 0) return 0;\r\n  return -1;", "if (a === 0) return 9;\r\n  return -1;") });
+    const report = await check(root);
+    // Only `first` (line 2) changed; `second` (CCN 17) starts on line 5 and is untouched.
+    expect(rules(report)).not.toContain("ccn-over");
+  });
+
+  it("does not treat an untouched file's exception as stale in a targeted run, and judges it under --all", async () => {
+    const exception = { path: "legacy.js", longName: "legacy ( a )", ccn: 18, kind: "semantic", reason: "A protocol table kept flat on purpose.", ref: "MO-26-11-05-21.48.00" };
+    const root = await repo({ "morpheus.json": manifest({ mode: "enforce", exceptions: [exception] }), "legacy.js": jsFunction("legacy", 18) });
+    await put(root, { "other.js": jsFunction("other", 2) });
+    const targeted = await check(root);
+    expect(targeted.findings.find((f) => f.path === "legacy.js")?.message).toContain("not evaluated");
+    expect(targeted.exitCode).toBe(0);
+    const all = await check(root, { all: true });
+    expect(all.findings.filter((f) => f.path === "legacy.js" && f.severity !== "warning").map((f) => f.rule)).toEqual(["exception"]);
+    expect(all.exitCode).toBe(0);
+  });
+
+  it("fails an exception that the function has grown past", async () => {
+    const exception = { path: "legacy.js", longName: "legacy ( a )", ccn: 18, kind: "semantic", reason: "A protocol table kept flat on purpose.", ref: "MO-26-11-05-21.48.00" };
+    const root = await repo({ "morpheus.json": manifest({ mode: "enforce", exceptions: [exception] }), "legacy.js": jsFunction("legacy", 18) });
+    await put(root, { "legacy.js": jsFunction("legacy", 19) });
+    const report = await check(root);
+    expect(report.findings.find((f) => f.rule === "stale-exception")?.message).toContain("measured CCN 19 exceeds the recorded 18");
+    expect(report.exitCode).toBe(1);
+  });
+
+  it("shows a policy change between the merge base and the tree", async () => {
+    const root = await repo({ "morpheus.json": enforce });
+    await put(root, { "morpheus.json": manifest({ mode: "enforce", exclude: ["over.js"] }), "over.js": jsFunction("o", 30) });
+    const report = await check(root);
+    expect(report.exitCode).toBe(0);
+    expect(report.delta[0]).toBe("complexity policy changed in this range");
+    expect(report.delta[1]).toContain('"mode":"enforce"}');
+    expect(report.delta[2]).toContain('"exclude":["over.js"]');
+    expect(packetSummary(report)).toContain('"exclude":["over.js"]');
+  });
+
+  it("is not-run, exit 2, when nothing is installed — in advisory as well", async () => {
+    const root = await repo({ "morpheus.json": manifest({ mode: "advisory" }) });
+    const empty = await mkdtemp(join(tmpdir(), "no-tools-"));
+    const report = await runCheck({ root, base: "main", all: false, env: { ...process.env, MORPHEUS_TOOLS_DIR: empty } });
+    expect(report).toMatchObject({ state: "not-run", exitCode: 2 });
+    expect(packetSummary(report)).toMatch(/^Complexity: NOT RUN — not installed/);
+  });
+
+  it("refuses an invalid policy instead of falling back to defaults", async () => {
+    const root = await repo({ "morpheus.json": manifest({ mode: "strict" }) });
+    const report = await runCheck({ root, base: "main", all: false, env });
+    expect(report).toMatchObject({ state: "not-run", exitCode: 2 });
+  });
+});
+
+describe("installation", () => {
+  it("names the directory by the whole pin, so a dependency bump never reuses a venv", () => {
+    const bumped = { ...LIZARD_PIN, requirements: [...LIZARD_PIN.requirements.slice(0, 1), "pathspec==1.1.2 --hash=sha256:00"] };
+    expect(pinKey(bumped)).not.toBe(pinKey(LIZARD_PIN));
+    expect(toolchainFor(bumped, env).dir).not.toBe(toolchainFor(LIZARD_PIN, env).dir);
+  });
+
+  it("reads a hand-written stamp over a broken venv as broken, not ready", async () => {
+    const fake = await mkdtemp(join(tmpdir(), "fake-tools-"));
+    const { dir } = toolchainFor(LIZARD_PIN, { MORPHEUS_TOOLS_DIR: fake });
+    await put(dir, { "ready.json": "{}", "venv/bin/python": "#!/bin/sh\nexit 1\n" });
+    const status = await toolStatus(LIZARD_PIN, { MORPHEUS_TOOLS_DIR: fake });
+    expect(status.state).toBe("broken");
+    const root = await repo({ "morpheus.json": enforce });
+    expect(await runCheck({ root, base: "main", all: false, env: { ...process.env, MORPHEUS_TOOLS_DIR: fake } })).toMatchObject({ state: "not-run", exitCode: 2 });
+  });
+
+  it("fails an unreachable commit and leaves no stamp behind", async () => {
+    const source = await repo({ "lizard.py": "" });
+    const fake = await mkdtemp(join(tmpdir(), "unreachable-tools-"));
+    const pin = { ...LIZARD_PIN, repository: source, commit: "0123456789abcdef0123456789abcdef01234567" };
+    const result = await installLizard(pin, { ...process.env, MORPHEUS_TOOLS_DIR: fake });
+    expect(result.ok).toBe(false);
+    expect(await readdir(join(fake, "lizard")).catch(() => [])).toEqual([]);
+  });
+
+  it("holds the pin to a Python floor no lower than its wheels declare", async () => {
+    const site = join(toolchainFor(LIZARD_PIN, env).dir, "venv", "lib");
+    const [pythonDir] = await readdir(site);
+    const packages = join(site, pythonDir!, "site-packages");
+    const metadata = (await readdir(packages)).filter((d) => d.endsWith(".dist-info") && /^(pygments|pathspec)-/i.test(d));
+    expect(metadata).toHaveLength(2);
+    for (const info of metadata) {
+      const text = await readFile(join(packages, info, "METADATA"), "utf8");
+      const [, major, minor] = /^Requires-Python: >=(\d+)\.(\d+)/m.exec(text) ?? [];
+      expect(major, `${info} Requires-Python`).toBeDefined();
+      const [floorMajor, floorMinor] = LIZARD_PIN.pythonFloor;
+      expect(Number(major) * 100 + Number(minor), info).toBeLessThanOrEqual(floorMajor * 100 + floorMinor);
+    }
+  });
+
+  it("starts nothing through a shell", async () => {
+    const source = await readFile(join(import.meta.dirname, "../src/complexity/install.ts"), "utf8");
+    expect(source).not.toMatch(/shell:\s*true|\bexec\(|execSync/);
+  });
+});
+

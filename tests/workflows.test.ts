@@ -3094,7 +3094,9 @@ describe("local review metadata", () => {
     // Everything else, the checks above all, runs only for a run that is not superseded.
     expect(rest.length).toBeGreaterThan(0);
     for (const step of rest) expect(step.if, step.name ?? step.uses).toBe(NOT_SUPERSEDED);
-    expect(rest.at(-1)?.name).toBe("Check PR conventions");
+    expect(rest.at(-2)?.name).toBe("Check PR conventions");
+    // Complexity follows, so it can never hide a conventions failure.
+    expect(rest.at(-1)?.name).toBe("Check function complexity");
     // Cancelling `head` would turn the required job red, exactly as 790ae1ff found for cancelled runs.
     expect(head.concurrency).toBeUndefined();
     expect(head["timeout-minutes"]).toBeGreaterThan(0);
@@ -3585,5 +3587,100 @@ describe("shared workflows do not float under a consumer's pin", () => {
       expect(concurrency?.group, job).toBe(`firebase-tests-${job}-\${{ inputs.concurrency-key || github.ref }}`);
       expect(concurrency?.["cancel-in-progress"], job).toBe("${{ inputs.concurrency-key == '' }}");
     }
+  });
+});
+
+describe("pr-check complexity step", () => {
+  type Step = { name?: string; if?: string; run?: string; env?: Record<string, string> };
+  const steps = async () =>
+    (await read("pr-check.yml") as unknown as { jobs: { conventions: { steps: Step[] } } }).jobs.conventions.steps;
+  const complexityStep = async () => {
+    const step = (await steps()).find((s) => s.name === "Check function complexity");
+    expect(step?.run).toBeDefined();
+    return step!;
+  };
+
+  it("runs inside the required conventions job, after the conventions check, only when not superseded", async () => {
+    const names = (await steps()).map((s) => s.name);
+    expect(names.indexOf("Check function complexity")).toBe(names.indexOf("Check PR conventions") + 1);
+    const step = await complexityStep();
+    expect(step.if).toBe("needs.head.outputs.superseded-by == ''");
+    expect(step.run).not.toContain("${{");
+    expect(step.env).toMatchObject({ EXPECTED_HEAD: "${{ github.event.pull_request.head.sha }}", BASE_REF: "${{ github.base_ref }}" });
+  });
+
+  it("reuses the conventions step's pr-head block verbatim", async () => {
+    const block = (run: string) => /^# >>> pr-head$.*?^# <<< pr-head$/ms.exec(run)?.[0];
+    const conventions = (await steps()).find((s) => s.name === "Check PR conventions")!.run!;
+    expect(block((await complexityStep()).run!)).toBe(block(conventions));
+    expect(block(conventions)).toBeDefined();
+  });
+
+  /** Runs the step's own script against a stub CLI that exits as told and logs its arguments. */
+  async function runStep(complexity: unknown, codes: { install?: number; check?: number }) {
+    const tmp = await mkdtemp(join(tmpdir(), "pr-complexity-"));
+    try {
+      const git = (...args: string[]) => execFileAsync("git", args, { cwd: tmp }).then((r) => r.stdout.trim());
+      await git("init", "-q", "-b", "main");
+      await git("config", "user.email", "t@example.com");
+      await git("config", "user.name", "T");
+      await writeFile(join(tmp, "morpheus.json"), JSON.stringify(complexity === undefined ? {} : { complexity }));
+      await git("add", ".");
+      await git("commit", "-qm", "head");
+      const head = await git("rev-parse", "HEAD");
+      await mkdir(join(tmp, ".morpheus/dist/cli"), { recursive: true });
+      await writeFile(join(tmp, ".morpheus/dist/cli/index.js"), [
+        "const fs = require('node:fs');",
+        "fs.appendFileSync(process.env.STUB_LOG, process.argv.slice(2).join(' ') + '\\n');",
+        "process.exit(Number(process.argv[3] === 'install' ? process.env.STUB_INSTALL : process.env.STUB_CHECK));",
+      ].join("\n"));
+      await writeFile(join(tmp, ".morpheus/package.json"), '{"type":"commonjs"}');
+      const log = join(tmp, "calls.log");
+      const summary = join(tmp, "summary.md");
+      await writeFile(log, "");
+      await writeFile(summary, "");
+      const run = (await complexityStep()).run!;
+      const result = await execFileAsync("bash", ["-c", run], {
+        cwd: tmp,
+        env: { ...process.env, EXPECTED_HEAD: head, PR_NUMBER: "7", BASE_REF: "main", STUB_LOG: log, GITHUB_STEP_SUMMARY: summary,
+          STUB_INSTALL: String(codes.install ?? 0), STUB_CHECK: String(codes.check ?? 0) },
+      }).then((r) => ({ code: 0, stdout: r.stdout }), (e: { code: number; stdout: string }) => ({ code: e.code, stdout: e.stdout }));
+      return { ...result, calls: (await readFile(log, "utf8")).trim().split("\n").filter(Boolean), summary: await readFile(summary, "utf8") };
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  }
+
+  it("skips a project with no complexity block without installing anything", async () => {
+    const out = await runStep(undefined, {});
+    expect(out.code).toBe(0);
+    expect(out.calls).toEqual([]);
+    expect(out.stdout).toContain("not enrolled");
+  });
+
+  it("installs, then checks in CI mode against the PR base", async () => {
+    const out = await runStep({ mode: "enforce" }, {});
+    expect(out.code).toBe(0);
+    expect(out.calls).toEqual(["complexity install", "complexity check --ci --base origin/main"]);
+  });
+
+  it("never fails advisory: a blocking finding, a check that could not run, or a failed install all warn", async () => {
+    for (const codes of [{ check: 1 }, { check: 2 }, { install: 1 }]) {
+      const out = await runStep({ mode: "advisory" }, codes);
+      expect(out.code, JSON.stringify(codes)).toBe(0);
+      expect(out.stdout).toMatch(/::warning::Function complexity exited [12]; advisory mode/);
+      expect(out.summary).toContain("Complexity (advisory): exited");
+    }
+    // A block without a mode is advisory, the schema default.
+    expect((await runStep({}, { check: 1 })).code).toBe(0);
+  });
+
+  it("fails enforce on a blocking finding, a check that could not run, and a failed install", async () => {
+    for (const codes of [{ check: 1 }, { check: 2 }, { install: 1 }]) {
+      const out = await runStep({ mode: "enforce" }, codes);
+      expect(out.code, JSON.stringify(codes)).toBe(1);
+      expect(out.stdout).toContain("::error::Function complexity failed");
+    }
+    expect((await runStep({ mode: "enforce" }, { install: 1 })).calls).toEqual(["complexity install"]);
   });
 });

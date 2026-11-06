@@ -68,6 +68,8 @@ export function reviewPacket(opts: {
   head: string;
   ticket: PacketTicket;
   commands: string[];
+  /** `morpheus complexity check` on the range, or why it did not run; never just the command. */
+  complexity?: string;
 }): string {
   const { ticket } = opts;
   const lines = [
@@ -93,5 +95,6 @@ export function reviewPacket(opts: {
       "Acceptance: none declared — review against the ticket context and the PR description. That is a supported state, not a gap to fill by creating an item.",
     );
   }
+  if (opts.complexity) lines.push(opts.complexity);
   return lines.join("\n");
 }

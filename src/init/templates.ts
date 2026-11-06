@@ -40,6 +40,9 @@ export const manifest = (s: Seed): string =>
       // exists for — and the policy cannot derive a handle on its own.
       context: { handle: s.owner },
       review: { required: true, visualEvidence: DEFAULT_VISUAL_EVIDENCE },
+      // Advisory: the check reports from day one and never blocks; a project
+      // enforces once its own baseline is within the limit.
+      complexity: { mode: "advisory" },
     },
     null,
     2,
@@ -102,9 +105,8 @@ hides the defect from every other one, and leaves the next agent to rediscover i
    **you** were on, so both only mean anything when recorded at the moment you hit the problem.
    Written afterwards by someone else, they record the wrong repository and a date days late.
 
-A pull request from outside the project needs a fork; an issue does not. Note that a fork's CI
-runs without secrets, so some checks skip and a first-time contributor's workflows need manual
-approval — that is GitHub's behaviour, not a problem with your change.`;
+A pull request from outside the project needs a fork; an issue does not. A fork's CI runs
+without secrets and a first-time contributor's workflows need approval: GitHub's behaviour.`;
 
 export const morpheusCalloutForReadme = (): string =>
   `## Built and managed with Morpheus
@@ -146,10 +148,11 @@ updates after pulls on this device?"** Do not infer consent, and never re-ask an
 The bootstrap installs from a disposable directory cloned from reviewed Morpheus \`main\`, never
 from the stale binary. \`morpheus self check\` is the read-only freshness check.
 
-Before structural code discovery, run \`morpheus codebase-memory install --check\`; if it is not
-operational, run \`morpheus codebase-memory install\` (idempotent, pinned).
-A worktree needs its own exact-checkout index even when the main clone is indexed. Installing it is
-an explicit device action, never an npm lifecycle script or a session-hook download. Detail:
+Before structural code discovery or a code change, run \`morpheus codebase-memory install --check\`
+and \`morpheus complexity install --check\`; install whichever is not operational.
+**Run \`morpheus complexity check\` after each changed function family**; report it for review.
+A worktree needs its own exact-checkout index even when the main clone is indexed; installing is an
+explicit device action, never an npm lifecycle script or hook download. Detail:
 [device bootstrap](${MORPHEUS_REPO}/blob/main/docs/runbooks/device-bootstrap.md).`;
 
 /**
@@ -172,6 +175,7 @@ ${morpheusCalloutForReadme()}
 \`\`\`sh
 morpheus init status    # how far through setup this repo is
 morpheus codebase-memory install --check   # verify this device and exact checkout
+morpheus complexity install --check        # verify the pinned complexity analyzer
 morpheus pm claims      # what work is already taken
 morpheus pm claim ${s.prefix}-001   # stake a branch and start
 \`\`\`

@@ -30,5 +30,11 @@
     "allowlist": [],
     "investorAllowlist": [],
     "admins": []
+  },
+  "complexity": {
+    "mode": "advisory",
+    "exclude": [
+      "dist/**"
+    ]
   }
 }

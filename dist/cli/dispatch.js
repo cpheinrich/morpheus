@@ -26,6 +26,7 @@ import { check as contextCheck, guard, install as contextInstall, refresh as con
 import { GATED, offlineDeclared } from "../session/gate.js";
 import { noteWrite } from "../session/context.js";
 import { install as codebaseMemoryInstall } from "./codebase-memory.js";
+import { check as complexityCheck, install as complexityInstall } from "./complexity.js";
 import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
 import { autoUpdate as selfAutoUpdate, check as selfCheck, ensure as selfEnsure, install as selfInstall, update as selfUpdate, } from "./self.js";
 import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
@@ -84,6 +85,20 @@ async function dispatchCodebaseMemory({ flags, command }) {
         return codebaseMemoryInstall(process.cwd(), flags.check);
     }
     console.error(`Unknown codebase-memory command "${command}".\n\n${HELP}`);
+    return 1;
+}
+async function dispatchComplexity({ flags, command }) {
+    if (command === "install")
+        return complexityInstall(flags.check);
+    if (command === "check") {
+        return complexityCheck(process.cwd(), {
+            ...(flags.baseGiven ? { base: flags.base } : {}),
+            all: flags.all,
+            json: flags.json,
+            ci: flags.ci,
+        });
+    }
+    console.error(`Unknown complexity command "${command ?? ""}".\n\n${HELP}`);
     return 1;
 }
 async function dispatchHeartbeat({ flags, dir }) {
@@ -566,6 +581,7 @@ const groups = {
     "doctor": dispatchDoctor,
     "ios": dispatchIos,
     "codebase-memory": dispatchCodebaseMemory,
+    "complexity": dispatchComplexity,
     "heartbeat": dispatchHeartbeat,
     "gh-manager": dispatchGhManager,
     "voice": dispatchVoice,
