@@ -39,6 +39,45 @@ export async function sessionHookInput() {
     });
     return parseSessionInput(raw, process.env.CODEX_THREAD_ID);
 }
+function printPreparation(prepared) {
+    console.log(`Fetched ${prepared.trunk} at ${prepared.sha}.`);
+    if (prepared.rescue)
+        for (const line of formatRescue(prepared.rescue, prepared.trunk))
+            console.log(line);
+    if (prepared.fastForwardError)
+        console.log(`!!! Could not fast-forward clean trunk: ${prepared.fastForwardError.split("\n")[0]} Move or delete the named untracked file(s), then rerun morpheus context brief.`);
+    if (prepared.advanced)
+        console.log("Fast-forwarded clean local trunk. Read the updated records before refreshing context.");
+}
+/** Binds and names the checkout's task, a prepared but unclaimed one, or says there is none. */
+async function reportTask(prepared, binding, sessionId) {
+    if (prepared.task) {
+        await bindTask(prepared.root, prepared.task, sessionId);
+        console.log(`Existing task: ${prepared.task}. Continue it here only if it is the requested task; a new request must claim its own worktree.`);
+    }
+    else if (binding?.pending) {
+        console.log(`Prepared task: ${binding.task}, not claimed yet. Read and refresh here, then run pm claim ${binding.task}.`);
+    }
+    else {
+        console.log("No implementation task is associated with this checkout. Investigation needs no new worktree. Use morpheus pm claim <ID> when new implementation starts, or morpheus pm resume <ID> for existing work.");
+    }
+}
+/** Trunk lag, the records to read from this checkout, and how to keep the session's task association. */
+async function printReadInstructions(prepared, sessionId) {
+    if (prepared.behind) {
+        for (const line of formatLag(prepared.lag, prepared.trunk, new Date()))
+            console.log(line);
+        console.log(`Existing edits were preserved. Integrate trunk explicitly before certifying context; inspect latest source with git show ${prepared.sha}:<path>.`);
+    }
+    console.log("Use this absolute directory for subsequent commands. A hook cannot change its parent agent's working directory.");
+    console.log("Read AGENTS.md and required context records from the chosen checkout:");
+    const policy = await projectPolicy(prepared.root);
+    for (const path of policy.requiredInputs ?? CANONICAL_INPUTS)
+        console.log(`  ${join(prepared.root, path)}`);
+    if (sessionId)
+        console.log(`To retain this session's task association, pass --session-id ${"'" + sessionId.replaceAll("'", "'\\''") + "'"} to pm claim or pm resume (Codex also supplies CODEX_THREAD_ID automatically).`);
+    console.log("Then run morpheus context refresh there. No receipt is issued by startup.");
+}
 export async function startSession(root, input, opts = {}) {
     try {
         // Even a failed fetch must not leave another session's receipt usable.
@@ -50,38 +89,10 @@ export async function startSession(root, input, opts = {}) {
         if (binding && binding.root !== root)
             await endTerm(binding.root);
         const prepared = await prepareRepository(binding?.root ?? root, opts.offline, opts.rescue ?? {});
-        console.log(`Fetched ${prepared.trunk} at ${prepared.sha}.`);
-        if (prepared.rescue)
-            for (const line of formatRescue(prepared.rescue, prepared.trunk))
-                console.log(line);
-        if (prepared.fastForwardError)
-            console.log(`!!! Could not fast-forward clean trunk: ${prepared.fastForwardError.split("\n")[0]} Move or delete the named untracked file(s), then rerun morpheus context brief.`);
-        if (prepared.advanced)
-            console.log("Fast-forwarded clean local trunk. Read the updated records before refreshing context.");
+        printPreparation(prepared);
         console.log(`WORK IN: ${prepared.root}`);
-        if (prepared.task) {
-            await bindTask(prepared.root, prepared.task, input.sessionId);
-            console.log(`Existing task: ${prepared.task}. Continue it here only if it is the requested task; a new request must claim its own worktree.`);
-        }
-        else if (binding?.pending) {
-            console.log(`Prepared task: ${binding.task}, not claimed yet. Read and refresh here, then run pm claim ${binding.task}.`);
-        }
-        else {
-            console.log("No implementation task is associated with this checkout. Investigation needs no new worktree. Use morpheus pm claim <ID> when new implementation starts, or morpheus pm resume <ID> for existing work.");
-        }
-        if (prepared.behind) {
-            for (const line of formatLag(prepared.lag, prepared.trunk, new Date()))
-                console.log(line);
-            console.log(`Existing edits were preserved. Integrate trunk explicitly before certifying context; inspect latest source with git show ${prepared.sha}:<path>.`);
-        }
-        console.log("Use this absolute directory for subsequent commands. A hook cannot change its parent agent's working directory.");
-        console.log("Read AGENTS.md and required context records from the chosen checkout:");
-        const policy = await projectPolicy(prepared.root);
-        for (const path of policy.requiredInputs ?? CANONICAL_INPUTS)
-            console.log(`  ${join(prepared.root, path)}`);
-        if (input.sessionId)
-            console.log(`To retain this session's task association, pass --session-id ${"'" + input.sessionId.replaceAll("'", "'\\''") + "'"} to pm claim or pm resume (Codex also supplies CODEX_THREAD_ID automatically).`);
-        console.log("Then run morpheus context refresh there. No receipt is issued by startup.");
+        await reportTask(prepared, binding, input.sessionId);
+        await printReadInstructions(prepared, input.sessionId);
         console.log("");
         return await brief(prepared.root, opts);
     }

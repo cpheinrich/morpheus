@@ -65,15 +65,16 @@ function asEntry(value) {
             return null;
         return { v: 1, kind: "live", at: e["at"], session: e["session"], provider: e["provider"] };
     }
-    if (e["kind"] !== "read")
-        return null;
+    return e["kind"] === "read" ? asReadEntry(e, e["at"], e["session"]) : null;
+}
+function asReadEntry(e, at, session) {
     if (!isText(e["record"]) || !isText(e["fingerprint"]) || !isText(e["via"]))
         return null;
     const { from, to, lines } = e;
     if (!isCount(from) || !isCount(to) || !isCount(lines) || from < 1 || to < from || to > lines)
         return null;
     return {
-        v: 1, kind: "read", at: e["at"], session: e["session"], record: e["record"],
+        v: 1, kind: "read", at, session, record: e["record"],
         fingerprint: e["fingerprint"], from, to, lines, via: e["via"],
     };
 }
@@ -190,6 +191,24 @@ const nonSpace = (line) => line.replace(/\s/g, "").length;
  * make this quadratic) and then extend backwards over matching blank lines, so
  * a record's blank lines are still creditable as part of a real run.
  */
+/**
+ * The matching run through record line `j` and output line `i`: forward while lines agree, back
+ * over agreeing blank lines, with its non-space character count. Zero-based, inclusive.
+ */
+function matchedRun(recordLines, outputLines, i, j) {
+    let end = 0;
+    while (i + end < outputLines.length && j + end < recordLines.length && outputLines[i + end] === recordLines[j + end])
+        end++;
+    let back = 0;
+    while (i - back - 1 >= 0 && j - back - 1 >= 0 && !recordLines[j - back - 1].trim() && outputLines[i - back - 1] === recordLines[j - back - 1])
+        back++;
+    const from = j - back;
+    const to = j + end - 1;
+    let chars = 0;
+    for (let k = from; k <= to; k++)
+        chars += nonSpace(recordLines[k]);
+    return { from, to, end, chars };
+}
 export function creditRuns(recordLines, outputLines) {
     if (!recordLines.length || !outputLines.length)
         return [];
@@ -217,20 +236,10 @@ export function creditRuns(recordLines, outputLines) {
         for (const j of starts) {
             if ((covered.get(i - j) ?? -1) >= i)
                 continue;
-            let end = 0;
-            while (i + end < outputLines.length && j + end < recordLines.length && outputLines[i + end] === recordLines[j + end])
-                end++;
-            let back = 0;
-            while (i - back - 1 >= 0 && j - back - 1 >= 0 && !recordLines[j - back - 1].trim() && outputLines[i - back - 1] === recordLines[j - back - 1])
-                back++;
-            covered.set(i - j, i + end - 1);
-            const from = j - back;
-            const to = j + end - 1;
-            let chars = 0;
-            for (let k = from; k <= to; k++)
-                chars += nonSpace(recordLines[k]);
-            if (chars >= threshold && chars > 0)
-                runs.push({ from: from + 1, to: to + 1 });
+            const run = matchedRun(recordLines, outputLines, i, j);
+            covered.set(i - j, i + run.end - 1);
+            if (run.chars >= threshold && run.chars > 0)
+                runs.push({ from: run.from + 1, to: run.to + 1 });
         }
     }
     return mergeRanges(runs);

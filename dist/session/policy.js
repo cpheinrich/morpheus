@@ -3,15 +3,20 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { CANONICAL_INPUTS } from "./lease.js";
 const asStrings = (v) => Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
-export async function projectPolicy(root) {
-    let config = {};
+/** `morpheus.json`'s `context` block, `{}` when it has none, or null when the manifest cannot be read. */
+async function contextConfig(root) {
     try {
         const manifest = JSON.parse(await readFile(join(root, "morpheus.json"), "utf8"));
-        config = manifest.context ?? {};
+        return manifest.context ?? {};
     }
     catch {
-        return {};
+        return null;
     }
+}
+export async function projectPolicy(root) {
+    const config = await contextConfig(root);
+    if (!config)
+        return {};
     const trunk = typeof config.trunk === "string" && config.trunk ? { trunk: config.trunk } : {};
     const raw = Array.isArray(config.requiredInputs) ? config.requiredInputs : null;
     const declared = raw ? asStrings(raw) : null;

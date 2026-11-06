@@ -95,219 +95,226 @@ function parseServeArgs(argv) {
     return { preview, port, root, streamUrl, project, axEnabled };
 }
 export async function dispatchQaComments(root, command, rest, projectFlag) {
-    if (command === "pending" || command === undefined) {
-        let projectRoot = root;
-        try {
-            const taken = takeRootFlag(rest, root);
-            projectRoot = taken.root;
-        }
-        catch (err) {
-            console.error(err instanceof Error ? err.message : String(err));
-            return 1;
-        }
-        const listings = await listPending(projectRoot);
-        for (const item of listings) {
-            console.log(`${item.id}\t${item.commentCount}\t${item.project}\t${item.createdAt}\t${item.path}`);
-        }
-        return 0;
-    }
-    if (command === "show") {
-        let projectRoot = root;
-        let args = rest;
-        try {
-            const taken = takeRootFlag(rest, root);
-            projectRoot = taken.root;
-            args = taken.rest;
-        }
-        catch (err) {
-            console.error(err instanceof Error ? err.message : String(err));
-            return 1;
-        }
-        const id = args[0];
-        if (!id) {
-            console.error(`Which batch?\n\n${USAGE}`);
-            return 1;
-        }
-        const found = await showBatch(projectRoot, id);
-        if (!found) {
-            console.error(`No QA comment batch "${id}" under local/qa-comments/.`);
-            return 1;
-        }
-        console.log(JSON.stringify(found.batch, null, 2));
-        return 0;
-    }
-    if (command === "claim") {
-        try {
-            const taken = takeRootFlag(rest, root);
-            const { agent, rest: args } = takeAgentFlag(taken.rest);
-            if (!agent || args.length)
-                throw new Error(`claim requires --agent <identity> and no batch id.\n\n${USAGE}`);
-            const claim = await claimNextBatch(taken.root, agent);
-            if (claim)
-                console.log(`${claim.id}\t${claim.agent}\t${claim.claimedAt}`);
-            return 0;
-        }
-        catch (error) {
-            console.error(error instanceof Error ? error.message : String(error));
-            return 1;
-        }
-    }
-    if (command === "release") {
-        try {
-            const taken = takeRootFlag(rest, root);
-            const { agent, rest: args } = takeAgentFlag(taken.rest);
-            const force = args.includes("--force");
-            const ids = args.filter((arg) => arg !== "--force");
-            if ((!agent && !force) || ids.length !== 1 || ids[0]?.startsWith("-")) {
-                throw new Error(`release requires one batch id and --agent <identity> (or --force).\n\n${USAGE}`);
-            }
-            const released = await releaseBatchClaim(taken.root, ids[0], agent ?? "", force);
-            if (!released)
-                throw new Error(`No claim for QA batch "${ids[0]}".`);
-            console.log(`Released ${ids[0]}`);
-            return 0;
-        }
-        catch (error) {
-            console.error(error instanceof Error ? error.message : String(error));
-            return 1;
-        }
-    }
-    if (command === "resolve") {
-        let projectRoot = root;
-        let args = rest;
-        let resolvedBy = "agent";
-        try {
-            const taken = takeRootFlag(rest, root);
-            projectRoot = taken.root;
-            const agentTaken = takeAgentFlag(taken.rest);
-            args = agentTaken.rest;
-            resolvedBy = agentTaken.agent ?? "agent";
-        }
-        catch (err) {
-            console.error(err instanceof Error ? err.message : String(err));
-            return 1;
-        }
-        if (args.length === 0) {
-            console.error(`Which batch?\n\n${USAGE}`);
-            return 1;
-        }
-        let failed = 0;
-        for (const id of args) {
-            let resolved;
-            try {
-                resolved = await resolveBatch(projectRoot, id, resolvedBy);
-            }
-            catch (error) {
-                if (!(error instanceof BatchClaimedError))
-                    throw error;
-                console.error(error.message);
-                failed += 1;
-                continue;
-            }
-            if (!resolved) {
-                console.error(`No QA comment batch "${id}" under local/qa-comments/.`);
-                failed += 1;
-                continue;
-            }
-            console.log(`Resolved ${resolved.id}`);
-        }
-        return failed === 0 ? 0 : 1;
-    }
-    if (command === "responder") {
-        try {
-            const taken = takeRootFlag(rest, root);
-            const action = taken.rest[0] ?? "status";
-            const confirmed = action === "recover" && taken.rest[1] === "--confirm-no-agent-process";
-            if (taken.rest.length > (confirmed ? 2 : 1) || !["start", "status", "stop", "recover"].includes(action)) {
-                throw new Error(`Unknown responder action.\n\n${USAGE}`);
-            }
-            if (action === "status") {
-                const marker = await responderStatus(taken.root);
-                if (!marker)
-                    console.log("No QA responder running.");
-                else if (await isResponderActive(taken.root))
-                    console.log(JSON.stringify(marker, null, 2));
-                else
-                    console.log(`Stale QA responder marker (pid ${marker.pid}). Verify no agent process is editing, then run responder recover --confirm-no-agent-process.`);
-            }
-            else if (action === "stop") {
-                console.log(await requestResponderStop(taken.root) ? "QA responder will stop after the current batch." : "No QA responder running.");
-            }
-            else if (action === "recover") {
-                console.log(await recoverStoppedResponder(taken.root, confirmed) ? "Removed stale QA responder ownership marker." : "No QA responder marker found.");
-            }
-            else {
-                const config = await loadResponderConfig(taken.root);
-                const controller = new AbortController();
-                const onSignal = () => controller.abort();
-                process.once("SIGINT", onSignal);
-                process.once("SIGTERM", onSignal);
-                try {
-                    await runQaResponder(taken.root, config, controller.signal);
-                }
-                finally {
-                    process.off("SIGINT", onSignal);
-                    process.off("SIGTERM", onSignal);
-                }
-            }
-            return 0;
-        }
-        catch (error) {
-            console.error(error instanceof Error ? error.message : String(error));
-            return 1;
-        }
-    }
-    if (command === "serve") {
-        let opts;
-        try {
-            opts = parseServeArgs(rest);
-        }
-        catch (err) {
-            console.error(err instanceof Error ? err.message : String(err));
-            return 1;
-        }
-        if (!opts.preview) {
-            console.error(`--preview <url> is required.\n\n${USAGE}`);
-            return 1;
-        }
-        const projectRoot = opts.root ?? root;
-        try {
-            const server = await startQaCommentServer({
-                root: projectRoot,
-                previewUrl: opts.preview,
-                port: opts.port,
-                axEnabled: opts.axEnabled,
-                ...(opts.streamUrl ? { streamUrl: opts.streamUrl } : {}),
-                ...(opts.project ?? projectFlag ? { project: opts.project ?? projectFlag } : {}),
-                onListen: (info) => {
-                    console.log(`QA comments overlay: ${info.url}`);
-                    console.log(`Preview upstream:    ${opts.preview}`);
-                    console.log(`Batches write to:    ${projectRoot}/local/qa-comments/pending/`);
-                    if (info.streamUrl)
-                        console.log(`Stream proxied from: ${info.streamUrl}`);
-                    else {
-                        console.log("No MJPEG stream — pass --stream-url or start serve-sim first.");
-                    }
-                    console.log("Open the overlay URL in a browser. Ctrl+C stops the server.");
-                },
-            });
-            await new Promise((resolve) => {
-                const stop = () => {
-                    void server.close().finally(resolve);
-                };
-                process.on("SIGINT", stop);
-                process.on("SIGTERM", stop);
-            });
-            return 0;
-        }
-        catch (err) {
-            console.error(err instanceof Error ? err.message : String(err));
-            return 1;
-        }
-    }
+    const handler = QA_COMMENTS_COMMANDS.get(command ?? "pending");
+    if (handler)
+        return handler(root, rest, projectFlag);
     console.error(`Unknown qa comments command "${command}".\n\n${USAGE}`);
     return 1;
 }
+async function qaPending(root, rest, _projectFlag) {
+    let projectRoot = root;
+    try {
+        const taken = takeRootFlag(rest, root);
+        projectRoot = taken.root;
+    }
+    catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        return 1;
+    }
+    const listings = await listPending(projectRoot);
+    for (const item of listings) {
+        console.log(`${item.id}\t${item.commentCount}\t${item.project}\t${item.createdAt}\t${item.path}`);
+    }
+    return 0;
+}
+async function qaShow(root, rest, _projectFlag) {
+    let projectRoot = root;
+    let args = rest;
+    try {
+        const taken = takeRootFlag(rest, root);
+        projectRoot = taken.root;
+        args = taken.rest;
+    }
+    catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        return 1;
+    }
+    const id = args[0];
+    if (!id) {
+        console.error(`Which batch?\n\n${USAGE}`);
+        return 1;
+    }
+    const found = await showBatch(projectRoot, id);
+    if (!found) {
+        console.error(`No QA comment batch "${id}" under local/qa-comments/.`);
+        return 1;
+    }
+    console.log(JSON.stringify(found.batch, null, 2));
+    return 0;
+}
+async function qaClaim(root, rest, _projectFlag) {
+    try {
+        const taken = takeRootFlag(rest, root);
+        const { agent, rest: args } = takeAgentFlag(taken.rest);
+        if (!agent || args.length)
+            throw new Error(`claim requires --agent <identity> and no batch id.\n\n${USAGE}`);
+        const claim = await claimNextBatch(taken.root, agent);
+        if (claim)
+            console.log(`${claim.id}\t${claim.agent}\t${claim.claimedAt}`);
+        return 0;
+    }
+    catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        return 1;
+    }
+}
+async function qaRelease(root, rest, _projectFlag) {
+    try {
+        const taken = takeRootFlag(rest, root);
+        const { agent, rest: args } = takeAgentFlag(taken.rest);
+        const force = args.includes("--force");
+        const ids = args.filter((arg) => arg !== "--force");
+        if ((!agent && !force) || ids.length !== 1 || ids[0]?.startsWith("-")) {
+            throw new Error(`release requires one batch id and --agent <identity> (or --force).\n\n${USAGE}`);
+        }
+        const released = await releaseBatchClaim(taken.root, ids[0], agent ?? "", force);
+        if (!released)
+            throw new Error(`No claim for QA batch "${ids[0]}".`);
+        console.log(`Released ${ids[0]}`);
+        return 0;
+    }
+    catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        return 1;
+    }
+}
+async function qaResolve(root, rest, _projectFlag) {
+    let projectRoot = root;
+    let args = rest;
+    let resolvedBy = "agent";
+    try {
+        const taken = takeRootFlag(rest, root);
+        projectRoot = taken.root;
+        const agentTaken = takeAgentFlag(taken.rest);
+        args = agentTaken.rest;
+        resolvedBy = agentTaken.agent ?? "agent";
+    }
+    catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        return 1;
+    }
+    if (args.length === 0) {
+        console.error(`Which batch?\n\n${USAGE}`);
+        return 1;
+    }
+    let failed = 0;
+    for (const id of args) {
+        let resolved;
+        try {
+            resolved = await resolveBatch(projectRoot, id, resolvedBy);
+        }
+        catch (error) {
+            if (!(error instanceof BatchClaimedError))
+                throw error;
+            console.error(error.message);
+            failed += 1;
+            continue;
+        }
+        if (!resolved) {
+            console.error(`No QA comment batch "${id}" under local/qa-comments/.`);
+            failed += 1;
+            continue;
+        }
+        console.log(`Resolved ${resolved.id}`);
+    }
+    return failed === 0 ? 0 : 1;
+}
+async function qaResponder(root, rest, _projectFlag) {
+    try {
+        const taken = takeRootFlag(rest, root);
+        const action = taken.rest[0] ?? "status";
+        const confirmed = action === "recover" && taken.rest[1] === "--confirm-no-agent-process";
+        if (taken.rest.length > (confirmed ? 2 : 1) || !["start", "status", "stop", "recover"].includes(action)) {
+            throw new Error(`Unknown responder action.\n\n${USAGE}`);
+        }
+        if (action === "status") {
+            const marker = await responderStatus(taken.root);
+            if (!marker)
+                console.log("No QA responder running.");
+            else if (await isResponderActive(taken.root))
+                console.log(JSON.stringify(marker, null, 2));
+            else
+                console.log(`Stale QA responder marker (pid ${marker.pid}). Verify no agent process is editing, then run responder recover --confirm-no-agent-process.`);
+        }
+        else if (action === "stop") {
+            console.log(await requestResponderStop(taken.root) ? "QA responder will stop after the current batch." : "No QA responder running.");
+        }
+        else if (action === "recover") {
+            console.log(await recoverStoppedResponder(taken.root, confirmed) ? "Removed stale QA responder ownership marker." : "No QA responder marker found.");
+        }
+        else {
+            const config = await loadResponderConfig(taken.root);
+            const controller = new AbortController();
+            const onSignal = () => controller.abort();
+            process.once("SIGINT", onSignal);
+            process.once("SIGTERM", onSignal);
+            try {
+                await runQaResponder(taken.root, config, controller.signal);
+            }
+            finally {
+                process.off("SIGINT", onSignal);
+                process.off("SIGTERM", onSignal);
+            }
+        }
+        return 0;
+    }
+    catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        return 1;
+    }
+}
+async function qaServe(root, rest, projectFlag) {
+    let opts;
+    try {
+        opts = parseServeArgs(rest);
+    }
+    catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        return 1;
+    }
+    if (!opts.preview) {
+        console.error(`--preview <url> is required.\n\n${USAGE}`);
+        return 1;
+    }
+    const projectRoot = opts.root ?? root;
+    try {
+        const server = await startQaCommentServer({
+            root: projectRoot,
+            previewUrl: opts.preview,
+            port: opts.port,
+            axEnabled: opts.axEnabled,
+            ...(opts.streamUrl ? { streamUrl: opts.streamUrl } : {}),
+            ...(opts.project ?? projectFlag ? { project: opts.project ?? projectFlag } : {}),
+            onListen: (info) => {
+                console.log(`QA comments overlay: ${info.url}`);
+                console.log(`Preview upstream:    ${opts.preview}`);
+                console.log(`Batches write to:    ${projectRoot}/local/qa-comments/pending/`);
+                if (info.streamUrl)
+                    console.log(`Stream proxied from: ${info.streamUrl}`);
+                else {
+                    console.log("No MJPEG stream — pass --stream-url or start serve-sim first.");
+                }
+                console.log("Open the overlay URL in a browser. Ctrl+C stops the server.");
+            },
+        });
+        await new Promise((resolve) => {
+            const stop = () => {
+                void server.close().finally(resolve);
+            };
+            process.on("SIGINT", stop);
+            process.on("SIGTERM", stop);
+        });
+        return 0;
+    }
+    catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        return 1;
+    }
+}
+const QA_COMMENTS_COMMANDS = new Map([
+    ["pending", qaPending], ["show", qaShow], ["claim", qaClaim], ["release", qaRelease],
+    ["resolve", qaResolve], ["responder", qaResponder], ["serve", qaServe],
+]);
 // ---------------------------------------------------------------------------------------------
 // `morpheus qa preview ios …` and `morpheus qa guide` (MO-26-10-06-15.17.01)
 const PREVIEW_USAGE = `Usage

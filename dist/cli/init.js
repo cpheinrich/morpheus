@@ -16,34 +16,16 @@ async function githubHandle(cwd) {
         return null;
     }
 }
-/**
- * Scaffold the repository, then show what is left.
- *
- * Ends in `init status` rather than a wall of "next steps" prose: the
- * checklist is the durable version of that list, and printing a second copy
- * that cannot be ticked would be the thing this command exists to replace.
- */
-export async function init(opts) {
-    const name = opts.name ?? basename(opts.root);
-    const kind = opts.kind ?? "personal";
-    if (kind !== "company" && kind !== "personal" && kind !== "internal") {
-        console.error(`Unknown kind "${kind}". Use company, personal or internal.`);
-        return 1;
-    }
+async function initPrefix(name, requested) {
     const taken = new Set((await readRegistry()).projects.map((p) => p.prefix));
-    const prefix = (opts.prefix ?? suggestPrefix(name, taken)).toUpperCase();
+    const prefix = (requested ?? suggestPrefix(name, taken)).toUpperCase();
     if (!/^[A-Z]{2,4}$/.test(prefix)) {
         console.error(`Prefix "${prefix}" must be 2-4 letters.`);
-        return 1;
+        return undefined;
     }
-    const owner = opts.owner ?? (await githubHandle(opts.root));
-    if (!owner) {
-        console.error("Could not determine a GitHub handle for the inbox.\n" +
-            "Pass --owner <handle>, or authenticate with `gh auth login`.");
-        return 1;
-    }
-    const { written, skipped, notes } = await scaffold(opts.root, { name, prefix, kind, owner });
-    console.log(`\n\x1b[1m${name}\x1b[0m \x1b[2m· ${kind} · ids ${prefix}-001\x1b[0m`);
+    return prefix;
+}
+function printScaffoldResult(written, skipped, notes) {
     if (written.length) {
         console.log(`\n\x1b[32mCreated ${written.length} file(s)\x1b[0m`);
         for (const f of written)
@@ -59,6 +41,33 @@ export async function init(opts) {
     }
     for (const n of notes)
         console.log(`\n\x1b[2m${n}\x1b[0m`);
+}
+/**
+ * Scaffold the repository, then show what is left.
+ *
+ * Ends in `init status` rather than a wall of "next steps" prose: the
+ * checklist is the durable version of that list, and printing a second copy
+ * that cannot be ticked would be the thing this command exists to replace.
+ */
+export async function init(opts) {
+    const name = opts.name ?? basename(opts.root);
+    const kind = opts.kind ?? "personal";
+    if (kind !== "company" && kind !== "personal" && kind !== "internal") {
+        console.error(`Unknown kind "${kind}". Use company, personal or internal.`);
+        return 1;
+    }
+    const prefix = await initPrefix(name, opts.prefix);
+    if (!prefix)
+        return 1;
+    const owner = opts.owner ?? (await githubHandle(opts.root));
+    if (!owner) {
+        console.error("Could not determine a GitHub handle for the inbox.\n" +
+            "Pass --owner <handle>, or authenticate with `gh auth login`.");
+        return 1;
+    }
+    const { written, skipped, notes } = await scaffold(opts.root, { name, prefix, kind, owner });
+    console.log(`\n\x1b[1m${name}\x1b[0m \x1b[2m· ${kind} · ids ${prefix}-001\x1b[0m`);
+    printScaffoldResult(written, skipped, notes);
     // Registering here rather than asking: the prefix is already decided, and a
     // collision is far cheaper to find now than after ids exist.
     //

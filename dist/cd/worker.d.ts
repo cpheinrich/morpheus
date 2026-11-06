@@ -47,13 +47,17 @@ export declare class QuotaReader {
     private retryAt;
     constructor(config: CdConfig, executor: AgentExecutor, sourceDir: string, environment?: NodeJS.ProcessEnv, fetcher?: typeof fetch);
     read(now?: string): Promise<QuotaSnapshot>;
+    private readTelemetryFile;
+    private readHostedUsage;
 }
 export declare function scheduleHosted(config: CdConfig, store: GitHubStore, now: string): Promise<void>;
 export declare function verifyRepair(config: CdConfig, store: GitHubStore, sourceDir: string, result: AgentResult): Promise<string>;
-export declare function runWorker(config: CdConfig, store: GitHubStore, sourceDir: string, options: {
+type WorkerOptions = {
     executor: AgentExecutor;
     hostId?: string;
     workId?: string;
     invocationId?: string;
     taskDigest?: string;
-}, environment?: NodeJS.ProcessEnv): Promise<unknown>;
+};
+export declare function runWorker(config: CdConfig, store: GitHubStore, sourceDir: string, options: WorkerOptions, environment?: NodeJS.ProcessEnv): Promise<unknown>;
+export {};

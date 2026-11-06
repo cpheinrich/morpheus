@@ -101,39 +101,28 @@ async function uploadGroupPreflight(config, store, identity, environment) {
     const group = await new AppleAdapter(new AppleHttp(config, environment)).group(intent.groupId);
     invariant(group.id === intent.groupId && group.appId === attempt.appId && group.internal && !group.automaticDistribution && group.testerIds.length > 0, "Upload requires the configured internal group, actual members, and disabled automatic all-build distribution");
 }
+const CD_OPTIONS = {
+    config: { type: "string" }, "source-dir": { type: "string" }, evidence: { type: "string" }, kind: { type: "string" }, phase: { type: "string" },
+    channel: { type: "string" }, source: { type: "string" }, group: { type: "string" }, validation: { type: "boolean" }, observe: { type: "boolean" },
+    "source-age-waiver": { type: "string" },
+    executor: { type: "string" }, "host-id": { type: "string" }, "work-id": { type: "string" }, "invocation-id": { type: "string" }, "task-digest": { type: "string" },
+    operation: { type: "string" }, id: { type: "string" }, request: { type: "string" }, "maximum-micros": { type: "string" }, "actual-micros": { type: "string" },
+    campaign: { type: "string" }, "cap-micros": { type: "string" }, "authorization-ref": { type: "string" },
+    authority: { type: "string" }, "authority-digest": { type: "string" },
+    help: { type: "boolean", short: "h" }, json: { type: "boolean" }, revoke: { type: "boolean" }, probe: { type: "boolean" },
+};
+const parseCdArgs = (argv) => parseArgs({ args: argv, allowPositionals: true, strict: true, options: CD_OPTIONS });
+/** A command that answers with an exit code after printing its own output. */
+class CdExit {
+    code;
+    constructor(code) {
+        this.code = code;
+    }
+}
 /** Separate parsing preserves every CD-owned flag without changing the established global grammar. */
 export async function cd(argv, environment = process.env) {
-    const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, strict: true, options: {
-            config: { type: "string" }, "source-dir": { type: "string" }, evidence: { type: "string" }, kind: { type: "string" }, phase: { type: "string" },
-            channel: { type: "string" }, source: { type: "string" }, group: { type: "string" }, validation: { type: "boolean" }, observe: { type: "boolean" },
-            "source-age-waiver": { type: "string" },
-            executor: { type: "string" }, "host-id": { type: "string" }, "work-id": { type: "string" }, "invocation-id": { type: "string" }, "task-digest": { type: "string" },
-            operation: { type: "string" }, id: { type: "string" }, request: { type: "string" }, "maximum-micros": { type: "string" }, "actual-micros": { type: "string" },
-            campaign: { type: "string" }, "cap-micros": { type: "string" }, "authorization-ref": { type: "string" },
-            authority: { type: "string" }, "authority-digest": { type: "string" },
-            help: { type: "boolean", short: "h" }, json: { type: "boolean" }, revoke: { type: "boolean" }, probe: { type: "boolean" },
-        } });
-    const sourceAuthority = values.authority !== undefined || values["authority-digest"] !== undefined;
-    if (sourceAuthority) {
-        invariant(values.authority && values["authority-digest"], "Reviewed source authority requires both --authority and --authority-digest");
-        invariant(positionals.length === 1 && positionals[0] === "budget" && values.operation === "reserve" && !values.help, "Reviewed source authority is only valid for explicit budget reserve, without help");
-        const allowed = new Set(["config", "operation", "id", "request", "maximum-micros", "authority", "authority-digest", "json"]);
-        for (const key of Object.keys(values))
-            invariant(allowed.has(key), `Reviewed source budget reserve does not accept --${key}`);
-    }
-    const spendingPolicy = values.campaign !== undefined || values["cap-micros"] !== undefined || values["authorization-ref"] !== undefined || values.operation === "spend-as-needed";
-    if (spendingPolicy) {
-        invariant(positionals.length === 1 && positionals[0] === "budget" && values.operation === "spend-as-needed" && !sourceAuthority && !values.help, "Spending policy flags are only valid for explicit budget spend-as-needed");
-        const allowed = new Set(["config", "operation", "campaign", "cap-micros", "authorization-ref", "json"]);
-        for (const key of Object.keys(values))
-            invariant(allowed.has(key), `Spending policy does not accept --${key}`);
-    }
-    if (values.kind === "repair-diagnostic") {
-        invariant(positionals.length === 1 && positionals[0] === "record" && !values.help, "Repair diagnostics require the explicit record command without help");
-        const allowed = new Set(["config", "kind", "evidence", "json"]);
-        for (const key of Object.keys(values))
-            invariant(allowed.has(key), `Repair diagnostic record does not accept --${key}`);
-    }
+    const { values, positionals } = parseCdArgs(argv);
+    const sourceAuthority = assertFlagScopes(values, positionals);
     if (values.help || !positionals.length) {
         console.log(HELP);
         return 0;
@@ -145,180 +134,203 @@ export async function cd(argv, environment = process.env) {
     const configPath = resolve(values.config ?? ".morpheus/cd.json"), config = configSchema.parse(JSON.parse(await readFile(configPath, "utf8")));
     const sourceDir = resolve(values["source-dir"] ?? environment.MORPHEUS_CD_SOURCE_DIR ?? (basename(dirname(configPath)) === ".morpheus" ? dirname(dirname(configPath)) : dirname(configPath)));
     const api = new GhApi(), store = new GitHubStore(api, config), actions = new ActionsAdapter(api, config), now = new Date().toISOString();
-    let result;
-    switch (positionals[0]) {
-        case "config":
-            result = { valid: true, configurationDigest: configurationDigest(config), config };
-            break;
-        case "quota": {
-            invariant(values.executor === "local" || values.executor === "hosted" || values.executor === "claude", "Quota probe requires --executor local|hosted|claude");
-            result = await new QuotaReader(config, values.executor, sourceDir, environment).read(now);
-            break;
-        }
-        case "init":
-            result = await store.initialize(now);
-            break;
-        case "status": {
-            const snapshot = await store.read();
-            result = { head: snapshot.head, epoch: snapshot.state.epoch, mode: config.mode, intents: status(snapshot.state, now), slots: snapshot.state.slots, agents: snapshot.state.agents, budget: snapshot.state.budget, budgetStatus: budgetStatus(snapshot.state, config), pauses: snapshot.state.pauses };
-            break;
-        }
-        case "tick": {
-            result = await new Controller(config, store, actions, new AppleAdapter(new AppleHttp(config, environment)), sourceDir).tick(now, values.observe);
-            if (config.mode === "active" && !values.observe)
-                await scheduleHosted(config, store, now);
-            break;
-        }
-        case "request": {
-            invariant(values.channel === "staging" || values.channel === "production", "Request requires staging or production channel");
-            invariant(values["source-age-waiver"] === undefined || values.validation && values.source, "Source-age waiver requires --validation and explicit --source SHA");
-            const channel = values.channel;
-            result = await store.transact(`request-${randomUUID()}`, "manual-delivery-request", now, state => {
-                const selected = values.source ? sourceAt(state, values.source) : state.sources.filter(source => channel === "staging" || Date.parse(source.mainEnteredAt) + config.channels.production.minimumAgeHours * 3_600_000 <= Date.parse(now)).at(-1);
-                invariant(selected, "No source with verified main-entry evidence is eligible");
-                invariant(values.validation || !Object.values(state.intents).some(intent => intent.channel === channel && !intent.validation && intent.state !== "delivered"), "Ordinary channel intent is already outstanding");
-                const id = `${channel}-${values.validation ? "validation" : "request"}-${randomUUID()}`;
-                const waiver = values["source-age-waiver"] === undefined ? undefined : { authorizationRef: values["source-age-waiver"], grantedAt: now };
-                return { intentId: createIntent(state, config, channel, selected, now, now, values.validation, values.group, id, waiver).id };
-            });
-            break;
-        }
-        case "verify-execution":
-            result = await verifyExecution(config, store, actions, sourceDir, environmentIdentity(environment), environment);
-            break;
-        case "claim-upload": {
-            invariant(config.mode === "active", "Observe mode cannot authorize uploads");
-            const evidence = await jsonInput(required(values.evidence, "--evidence"));
-            await verifyExecution(config, store, actions, sourceDir, evidence, environment);
-            await uploadGroupPreflight(config, store, evidence, environment);
-            try {
-                const claim = await store.transact(`upload-claim-${evidence.attemptId}`, "claim-upload", now, state => ({ uploadOperationId: claimUpload(state, config, evidence, state.intents[evidence.intentId]?.postResumeKey ? new Date().toISOString() : now) }));
-                console.log(JSON.stringify({ authorized: !claim.replayed, ...claim.result, reason: claim.replayed ? "already-claimed-reconcile-existing-operation" : "new-upload-claim" }));
-                return claim.replayed ? 3 : 0;
-            }
-            catch (error) {
-                if (/Upload already claimed|no longer current|Sibling workflow|rerun cannot reuse/.test(String(error))) {
-                    console.log(JSON.stringify({ authorized: false, reason: String(error) }));
-                    return 3;
-                }
-                throw error;
-            }
-        }
-        case "record-upload": {
-            const evidence = uploadEvidence(await jsonInput(required(values.evidence, "--evidence")));
-            result = await store.transact(`upload-record-${evidence.attemptId}-${hash(evidence).slice(0, 24)}`, "record-upload-result", now, state => { recordUpload(state, evidence, now); return { uploadOperationId: `upload:${evidence.attemptId}`, outcome: evidence.outcome, providerUploadId: evidence.providerUploadId }; });
-            break;
-        }
-        case "upload-hook": {
-            const identity = environmentIdentity(environment), phase = required(values.phase, "--phase");
-            const common = { ...identity, appId: required(environment.ASC_APP_ID, "ASC_APP_ID"), version: required(environment.MARKETING_VERSION, "MARKETING_VERSION"), buildNumber: required(environment.BUILD_NUMBER, "BUILD_NUMBER"), ipaSha256: required(environment.IPA_SHA256, "IPA_SHA256") };
-            if (phase === "before") {
-                invariant(config.mode === "active", "Observe mode cannot authorize uploads");
-                try {
-                    await verifyExecution(config, store, actions, sourceDir, identity, environment);
-                    await uploadGroupPreflight(config, store, identity, environment);
-                    const claim = await store.transact(`upload-claim-${identity.attemptId}`, "claim-upload", now, state => ({ uploadOperationId: claimUpload(state, config, common, state.intents[identity.intentId]?.postResumeKey ? new Date().toISOString() : now) }));
-                    console.log(JSON.stringify({ authorized: !claim.replayed, ...claim.result }));
-                    return claim.replayed ? 3 : 0;
-                }
-                catch (error) {
-                    if (/already claimed|no longer current|Sibling workflow|rerun cannot reuse/.test(String(error))) {
-                        console.log(JSON.stringify({ authorized: false, reason: String(error) }));
-                        return 3;
-                    }
-                    throw error;
-                }
-            }
-            invariant(phase === "resource" || phase === "after", "Upload hook phase must be before, resource or after");
-            const raw = await jsonInput(required(environment.UPLOAD_RECEIPT_PATH, "UPLOAD_RECEIPT_PATH"));
-            for (const [key, value] of Object.entries(common))
-                invariant(raw[key] === undefined || String(raw[key]) === String(value), `Upload hook ${key} mismatch`);
-            const evidence = uploadEvidence({ ...common, ...raw });
-            if (phase === "after")
-                invariant(evidence.outcome === "accepted" || evidence.outcome === "rejected", "After hook needs explicit accepted/rejected provider receipt");
-            result = await store.transact(`upload-record-${identity.attemptId}-${hash(evidence).slice(0, 24)}`, "record-upload-result", now, state => { recordUpload(state, evidence, now); return { uploadOperationId: `upload:${identity.attemptId}`, outcome: evidence.outcome, providerUploadId: evidence.providerUploadId }; });
-            break;
-        }
-        case "record": {
-            const path = required(values.evidence, "--evidence");
-            if (values.kind === "repair-diagnostic") {
-                result = await recordRepairDiagnostic(store, await repairDiagnosticInput(path));
-                break;
-            }
-            const evidence = await jsonInput(path);
-            if (values.kind === "tests") {
-                invariant(path !== "-", "Full-test evidence needs a file and its actual sibling payloads");
-                const tests = evidence;
-                await validatePayloadFiles(tests, path);
-                verifyValidator(sourceDir, tests);
-                const target = (await store.read()).state.intents[tests.intentId];
-                if (target?.postResumeKey)
-                    await verifyExecutionProvenance(config, store, actions, sourceDir, tests, environment);
-                else
-                    await verifyExecution(config, store, actions, sourceDir, tests, environment);
-                result = await store.transact(`tests-${tests.attemptId}-${hash(tests).slice(0, 24)}`, "record-full-tests", now, state => { recordTests(state, config, tests); return { attemptId: tests.attemptId, testEvidenceHash: hash(tests) }; });
-            }
-            else if (values.kind === "failure") {
-                result = await store.transact(`failure-evidence-${evidence.attemptId}-${hash(evidence).slice(0, 16)}`, "record-failure", now, state => { const { intent } = checkIdentity(state, evidence); return { workId: repairWork(state, intent.id, [JSON.stringify(evidence)], now) }; });
-            }
-            else if (values.kind === "quiescence") {
-                result = await store.transact(`quiescence-${evidence.attemptId}`, "record-executor-quiescence", now, state => {
-                    const { attempt } = checkIdentity(state, evidence);
-                    invariant(evidence.kind === "host-terminated" || evidence.kind === "hosted-terminated", "Quiescence needs executor/VM termination evidence");
-                    invariant(typeof evidence.ref === "string" && evidence.ref.length > 10 && evidence.processGroupAbsent === true && evidence.executorTerminated === true, "Job terminal status/lease expiry alone cannot establish quiescence");
-                    attempt.quiescence = { kind: evidence.kind, ref: evidence.ref, observedAt: now };
-                    return attempt.quiescence;
-                });
-            }
-            else
-                throw new Error("Record kind must be tests, failure, quiescence or repair-diagnostic");
-            break;
-        }
-        case "worker": {
-            invariant(values.executor === undefined || values.executor === "local" || values.executor === "hosted" || values.executor === "claude", "Unknown agent executor");
-            result = await runWorker(config, store, sourceDir, { executor: values.executor ?? "local", hostId: values["host-id"], workId: values["work-id"], invocationId: values["invocation-id"], taskDigest: values["task-digest"] }, environment);
-            break;
-        }
-        case "budget": {
-            if (values.operation === "spend-as-needed") {
-                const input = { campaignId: required(values.campaign, "--campaign"), capMicros: Number(required(values["cap-micros"], "--cap-micros")), authorizationRef: required(values["authorization-ref"], "--authorization-ref") };
-                // Validate before reading or writing the ledger; the transaction rechecks its live identity.
-                const policy = budgetSpendingPolicySchema.parse({ mode: "spend-as-needed", ...input, adoptedAt: now });
-                const transaction = await store.transact(`budget-policy-${hash(input)}`, "budget-spend-as-needed", now, state => setBudgetSpendingPolicy(state, config, input, now));
-                result = transaction;
-                const final = (await store.read()).state;
-                invariant(final.configurationDigest === configurationDigest(config), "Budget policy configuration differs from ledger");
-                const current = final.budget.spendingPolicy;
-                invariant(hash(current) === hash(transaction.result) && current?.campaignId === policy.campaignId && current.capMicros === policy.capMicros && current.authorizationRef === policy.authorizationRef, "Spending policy replay differs from current policy");
-                break;
-            }
-            const id = required(values.id, "--id");
-            if (values.operation === "reserve") {
-                if (sourceAuthority) {
-                    const requestPath = required(values.request, "--request"), maximum = Number(required(values["maximum-micros"], "--maximum-micros"));
-                    invariant(requestPath !== "-" && values.authority !== "-", "Reviewed source grant and request require JSON files");
-                    const request = await jsonInput(requestPath);
-                    result = await reserveReviewedSource(api, config, { grant: await jsonInput(values.authority), approvedGrantDigest: values["authority-digest"], request, reservationId: id, maximumMicros: maximum });
-                }
-                else {
-                    const request = await jsonInput(required(values.request, "--request")), maximum = Number(required(values["maximum-micros"], "--maximum-micros"));
-                    result = await store.transact(`budget-reserve-${id}`, "reserve-paid-request", now, state => { reservePaid(state, config, id, request, maximum); return { id, maximumMicros: maximum }; });
-                    const reserved = (await store.read()).state.budget.reservations[id];
-                    invariant(reserved?.digest === hash(request) && reserved.maximumMicros === maximum && reserved.status === "reserved", "Paid request reservation was replayed with changed or settled identity");
-                }
-            }
-            else if (values.operation === "settle") {
-                const actual = Number(required(values["actual-micros"], "--actual-micros"));
-                result = await store.transact(`budget-settle-${id}`, "settle-paid-request", now, state => { settlePaid(state, id, actual); return { id, actualMicros: actual }; });
-                invariant((await store.read()).state.budget.reservations[id]?.actualMicros === actual, "Paid settlement replay differs from immutable tombstone");
-            }
-            else
-                throw new Error("Budget operation must be reserve or settle");
-            break;
-        }
-        default: throw new Error(`Unknown CD command ${positionals[0]}`);
-    }
+    const command = Object.hasOwn(CD_COMMANDS, positionals[0]) ? CD_COMMANDS[positionals[0]] : undefined;
+    if (!command)
+        throw new Error(`Unknown CD command ${positionals[0]}`);
+    const result = await command({ values, config, sourceDir, api, store, actions, now, environment, sourceAuthority });
+    if (result instanceof CdExit)
+        return result.code;
     console.log(JSON.stringify(result));
     return 0;
+}
+/** Source-authority, spending-policy and repair-diagnostic flags each belong to exactly one command. Returns whether source authority was given. */
+function assertFlagScopes(values, positionals) {
+    const sourceAuthority = values.authority !== undefined || values["authority-digest"] !== undefined;
+    const only = (command, operation) => positionals.length === 1 && positionals[0] === command && (operation === undefined || values.operation === operation) && !values.help;
+    if (sourceAuthority) {
+        invariant(values.authority && values["authority-digest"], "Reviewed source authority requires both --authority and --authority-digest");
+        invariant(only("budget", "reserve"), "Reviewed source authority is only valid for explicit budget reserve, without help");
+        onlyFlags(values, ["config", "operation", "id", "request", "maximum-micros", "authority", "authority-digest", "json"], "Reviewed source budget reserve");
+    }
+    if (values.campaign !== undefined || values["cap-micros"] !== undefined || values["authorization-ref"] !== undefined || values.operation === "spend-as-needed") {
+        invariant(only("budget", "spend-as-needed") && !sourceAuthority, "Spending policy flags are only valid for explicit budget spend-as-needed");
+        onlyFlags(values, ["config", "operation", "campaign", "cap-micros", "authorization-ref", "json"], "Spending policy");
+    }
+    if (values.kind === "repair-diagnostic") {
+        invariant(only("record"), "Repair diagnostics require the explicit record command without help");
+        onlyFlags(values, ["config", "kind", "evidence", "json"], "Repair diagnostic record");
+    }
+    return sourceAuthority;
+}
+function onlyFlags(values, allowed, command) {
+    const set = new Set(allowed);
+    for (const key of Object.keys(values))
+        invariant(set.has(key), `${command} does not accept --${key}`);
+}
+const CLAIM_REFUSED = /Upload already claimed|no longer current|Sibling workflow|rerun cannot reuse/;
+const HOOK_CLAIM_REFUSED = /already claimed|no longer current|Sibling workflow|rerun cannot reuse/;
+const CD_COMMANDS = {
+    config: async ({ config }) => ({ valid: true, configurationDigest: configurationDigest(config), config }),
+    quota: async ({ values, config, sourceDir, environment, now }) => {
+        invariant(values.executor === "local" || values.executor === "hosted" || values.executor === "claude", "Quota probe requires --executor local|hosted|claude");
+        return new QuotaReader(config, values.executor, sourceDir, environment).read(now);
+    },
+    init: async ({ store, now }) => store.initialize(now),
+    status: async ({ config, store, now }) => { const snapshot = await store.read(); return { head: snapshot.head, epoch: snapshot.state.epoch, mode: config.mode, intents: status(snapshot.state, now), slots: snapshot.state.slots, agents: snapshot.state.agents, budget: snapshot.state.budget, budgetStatus: budgetStatus(snapshot.state, config), pauses: snapshot.state.pauses }; },
+    tick: async ({ values, config, store, actions, sourceDir, environment, now }) => {
+        const result = await new Controller(config, store, actions, new AppleAdapter(new AppleHttp(config, environment)), sourceDir).tick(now, values.observe);
+        if (config.mode === "active" && !values.observe)
+            await scheduleHosted(config, store, now);
+        return result;
+    },
+    request: requestDelivery,
+    "verify-execution": async ({ config, store, actions, sourceDir, environment }) => verifyExecution(config, store, actions, sourceDir, environmentIdentity(environment), environment),
+    "claim-upload": claimUploadCommand,
+    "record-upload": async ({ values, store, now }) => {
+        const evidence = uploadEvidence(await jsonInput(required(values.evidence, "--evidence")));
+        return recordUploadResult(store, evidence.attemptId, evidence, now);
+    },
+    "upload-hook": uploadHook,
+    record: recordEvidence,
+    worker: async ({ values, config, store, sourceDir, environment }) => {
+        invariant(values.executor === undefined || values.executor === "local" || values.executor === "hosted" || values.executor === "claude", "Unknown agent executor");
+        return runWorker(config, store, sourceDir, { executor: values.executor ?? "local", hostId: values["host-id"], workId: values["work-id"], invocationId: values["invocation-id"], taskDigest: values["task-digest"] }, environment);
+    },
+    budget: budgetCommand,
+};
+async function requestDelivery({ values, config, store, now }) {
+    invariant(values.channel === "staging" || values.channel === "production", "Request requires staging or production channel");
+    invariant(values["source-age-waiver"] === undefined || values.validation && values.source, "Source-age waiver requires --validation and explicit --source SHA");
+    const channel = values.channel;
+    return store.transact(`request-${randomUUID()}`, "manual-delivery-request", now, state => {
+        const selected = values.source ? sourceAt(state, values.source) : state.sources.filter(source => channel === "staging" || Date.parse(source.mainEnteredAt) + config.channels.production.minimumAgeHours * 3_600_000 <= Date.parse(now)).at(-1);
+        invariant(selected, "No source with verified main-entry evidence is eligible");
+        invariant(values.validation || !Object.values(state.intents).some(intent => intent.channel === channel && !intent.validation && intent.state !== "delivered"), "Ordinary channel intent is already outstanding");
+        const id = `${channel}-${values.validation ? "validation" : "request"}-${randomUUID()}`;
+        const waiver = values["source-age-waiver"] === undefined ? undefined : { authorizationRef: values["source-age-waiver"], grantedAt: now };
+        return { intentId: createIntent(state, config, channel, selected, now, now, values.validation, values.group, id, waiver).id };
+    });
+}
+/** Claims the upload once; a replay answers 3 so the caller reconciles the existing operation instead of uploading. */
+async function claimAndReport({ config, store, now }, identity, evidence, detail) {
+    const claim = await store.transact(`upload-claim-${identity.attemptId}`, "claim-upload", now, state => ({ uploadOperationId: claimUpload(state, config, evidence, state.intents[identity.intentId]?.postResumeKey ? new Date().toISOString() : now) }));
+    console.log(JSON.stringify({ authorized: !claim.replayed, ...claim.result, ...(detail ? { reason: claim.replayed ? "already-claimed-reconcile-existing-operation" : "new-upload-claim" } : {}) }));
+    return new CdExit(claim.replayed ? 3 : 0);
+}
+/** A refusal that means "this attempt can no longer upload" answers 3 instead of failing. */
+function refusedClaim(error, refused) {
+    if (!refused.test(String(error)))
+        throw error;
+    console.log(JSON.stringify({ authorized: false, reason: String(error) }));
+    return new CdExit(3);
+}
+async function claimUploadCommand(ctx) {
+    invariant(ctx.config.mode === "active", "Observe mode cannot authorize uploads");
+    const evidence = await jsonInput(required(ctx.values.evidence, "--evidence"));
+    // Verification and preflight failures propagate here; only the claim's own refusals answer 3.
+    await verifyExecution(ctx.config, ctx.store, ctx.actions, ctx.sourceDir, evidence, ctx.environment);
+    await uploadGroupPreflight(ctx.config, ctx.store, evidence, ctx.environment);
+    try {
+        return await claimAndReport(ctx, evidence, evidence, true);
+    }
+    catch (error) {
+        return refusedClaim(error, CLAIM_REFUSED);
+    }
+}
+async function uploadHook(ctx) {
+    const { values, config, store, environment, now } = ctx;
+    const identity = environmentIdentity(environment), phase = required(values.phase, "--phase");
+    const common = { ...identity, appId: required(environment.ASC_APP_ID, "ASC_APP_ID"), version: required(environment.MARKETING_VERSION, "MARKETING_VERSION"), buildNumber: required(environment.BUILD_NUMBER, "BUILD_NUMBER"), ipaSha256: required(environment.IPA_SHA256, "IPA_SHA256") };
+    if (phase === "before") {
+        invariant(config.mode === "active", "Observe mode cannot authorize uploads");
+        try {
+            await verifyExecution(config, store, ctx.actions, ctx.sourceDir, identity, environment);
+            await uploadGroupPreflight(config, store, identity, environment);
+            return await claimAndReport(ctx, identity, common, false);
+        }
+        catch (error) {
+            return refusedClaim(error, HOOK_CLAIM_REFUSED);
+        }
+    }
+    invariant(phase === "resource" || phase === "after", "Upload hook phase must be before, resource or after");
+    const raw = await jsonInput(required(environment.UPLOAD_RECEIPT_PATH, "UPLOAD_RECEIPT_PATH"));
+    for (const [key, value] of Object.entries(common))
+        invariant(raw[key] === undefined || String(raw[key]) === String(value), `Upload hook ${key} mismatch`);
+    const evidence = uploadEvidence({ ...common, ...raw });
+    if (phase === "after")
+        invariant(evidence.outcome === "accepted" || evidence.outcome === "rejected", "After hook needs explicit accepted/rejected provider receipt");
+    return recordUploadResult(store, identity.attemptId, evidence, now);
+}
+async function recordUploadResult(store, attemptId, evidence, now) {
+    return store.transact(`upload-record-${attemptId}-${hash(evidence).slice(0, 24)}`, "record-upload-result", now, state => { recordUpload(state, evidence, now); return { uploadOperationId: `upload:${attemptId}`, outcome: evidence.outcome, providerUploadId: evidence.providerUploadId }; });
+}
+async function recordEvidence(ctx) {
+    const { values, store, now } = ctx;
+    const path = required(values.evidence, "--evidence");
+    if (values.kind === "repair-diagnostic")
+        return recordRepairDiagnostic(store, await repairDiagnosticInput(path));
+    const evidence = await jsonInput(path);
+    if (values.kind === "tests")
+        return recordTestEvidence(ctx, path, evidence);
+    if (values.kind === "failure")
+        return store.transact(`failure-evidence-${evidence.attemptId}-${hash(evidence).slice(0, 16)}`, "record-failure", now, state => { const { intent } = checkIdentity(state, evidence); return { workId: repairWork(state, intent.id, [JSON.stringify(evidence)], now) }; });
+    if (values.kind === "quiescence")
+        return store.transact(`quiescence-${evidence.attemptId}`, "record-executor-quiescence", now, state => {
+            const { attempt } = checkIdentity(state, evidence);
+            invariant(evidence.kind === "host-terminated" || evidence.kind === "hosted-terminated", "Quiescence needs executor/VM termination evidence");
+            invariant(typeof evidence.ref === "string" && evidence.ref.length > 10 && evidence.processGroupAbsent === true && evidence.executorTerminated === true, "Job terminal status/lease expiry alone cannot establish quiescence");
+            attempt.quiescence = { kind: evidence.kind, ref: evidence.ref, observedAt: now };
+            return attempt.quiescence;
+        });
+    throw new Error("Record kind must be tests, failure, quiescence or repair-diagnostic");
+}
+async function recordTestEvidence({ config, store, actions, sourceDir, environment, now }, path, tests) {
+    invariant(path !== "-", "Full-test evidence needs a file and its actual sibling payloads");
+    await validatePayloadFiles(tests, path);
+    verifyValidator(sourceDir, tests);
+    const target = (await store.read()).state.intents[tests.intentId];
+    if (target?.postResumeKey)
+        await verifyExecutionProvenance(config, store, actions, sourceDir, tests, environment);
+    else
+        await verifyExecution(config, store, actions, sourceDir, tests, environment);
+    return store.transact(`tests-${tests.attemptId}-${hash(tests).slice(0, 24)}`, "record-full-tests", now, state => { recordTests(state, config, tests); return { attemptId: tests.attemptId, testEvidenceHash: hash(tests) }; });
+}
+async function budgetCommand(ctx) {
+    const { values, store, now } = ctx;
+    if (values.operation === "spend-as-needed")
+        return adoptSpendingPolicy(ctx);
+    const id = required(values.id, "--id");
+    if (values.operation === "reserve")
+        return ctx.sourceAuthority ? reserveWithAuthority(ctx, id) : reserveOrdinary(ctx, id);
+    if (values.operation !== "settle")
+        throw new Error("Budget operation must be reserve or settle");
+    const actual = Number(required(values["actual-micros"], "--actual-micros"));
+    const result = await store.transact(`budget-settle-${id}`, "settle-paid-request", now, state => { settlePaid(state, id, actual); return { id, actualMicros: actual }; });
+    invariant((await store.read()).state.budget.reservations[id]?.actualMicros === actual, "Paid settlement replay differs from immutable tombstone");
+    return result;
+}
+async function adoptSpendingPolicy({ values, config, store, now }) {
+    const input = { campaignId: required(values.campaign, "--campaign"), capMicros: Number(required(values["cap-micros"], "--cap-micros")), authorizationRef: required(values["authorization-ref"], "--authorization-ref") };
+    // Validate before reading or writing the ledger; the transaction rechecks its live identity.
+    const policy = budgetSpendingPolicySchema.parse({ mode: "spend-as-needed", ...input, adoptedAt: now });
+    const transaction = await store.transact(`budget-policy-${hash(input)}`, "budget-spend-as-needed", now, state => setBudgetSpendingPolicy(state, config, input, now));
+    const final = (await store.read()).state;
+    invariant(final.configurationDigest === configurationDigest(config), "Budget policy configuration differs from ledger");
+    const current = final.budget.spendingPolicy;
+    invariant(hash(current) === hash(transaction.result) && current?.campaignId === policy.campaignId && current.capMicros === policy.capMicros && current.authorizationRef === policy.authorizationRef, "Spending policy replay differs from current policy");
+    return transaction;
+}
+async function reserveWithAuthority({ values, api, config }, id) {
+    const requestPath = required(values.request, "--request"), maximum = Number(required(values["maximum-micros"], "--maximum-micros"));
+    invariant(requestPath !== "-" && values.authority !== "-", "Reviewed source grant and request require JSON files");
+    const request = await jsonInput(requestPath);
+    return reserveReviewedSource(api, config, { grant: await jsonInput(values.authority), approvedGrantDigest: values["authority-digest"], request, reservationId: id, maximumMicros: maximum });
+}
+async function reserveOrdinary({ values, config, store, now }, id) {
+    const request = await jsonInput(required(values.request, "--request")), maximum = Number(required(values["maximum-micros"], "--maximum-micros"));
+    const result = await store.transact(`budget-reserve-${id}`, "reserve-paid-request", now, state => { reservePaid(state, config, id, request, maximum); return { id, maximumMicros: maximum }; });
+    const reserved = (await store.read()).state.budget.reservations[id];
+    invariant(reserved?.digest === hash(request) && reserved.maximumMicros === maximum && reserved.status === "reserved", "Paid request reservation was replayed with changed or settled identity");
+    return result;
 }
 //# sourceMappingURL=cli.js.map

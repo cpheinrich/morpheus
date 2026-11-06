@@ -10,9 +10,9 @@ export declare const Decision: z.ZodObject<{
         ready: "ready";
         incomplete: "incomplete";
         close: "close";
+        wait: "wait";
         escalate: "escalate";
         dormant: "dormant";
-        wait: "wait";
     }>;
     summary: z.ZodString;
     reasoning: z.ZodString;

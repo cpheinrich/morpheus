@@ -175,22 +175,26 @@ export function pageHtml(opts) {
   }
   let latestAx = null;
   let currentScreenId = null;
+  // A stable accessibility id within 80pt of the point, scored by distance then size.
+  function axCandidate(e, x, y) {
+    const r = e.frame;
+    if (!r || r.width <= 0 || r.height <= 0) return null;
+    const dx = Math.max(r.x - x, 0, x - r.x - r.width);
+    const dy = Math.max(r.y - y, 0, y - r.y - r.height);
+    const distance = Math.hypot(dx, dy);
+    if (distance > 80) return null;
+    // Tree paths are recycled by native lazy lists and cannot identify an item.
+    if (typeof e.id !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]*$/.test(e.id) || e.id.startsWith('_Tt')) return null;
+    return { score: distance * 10 + Math.sqrt(r.width * r.height), id: e.id, path: e.path, label: e.label || '', dx: x - r.x, dy: y - r.y };
+  }
   function nearestAxAnchor(snapshot, normX, normY) {
     if (!snapshot || !snapshot.screen || !snapshot.elements) return null;
     const x = normX * snapshot.screen.width;
     const y = normY * snapshot.screen.height;
     let best = null;
     for (const e of snapshot.elements) {
-      const r = e.frame;
-      if (!r || r.width <= 0 || r.height <= 0) continue;
-      const dx = Math.max(r.x - x, 0, x - r.x - r.width);
-      const dy = Math.max(r.y - y, 0, y - r.y - r.height);
-      const distance = Math.hypot(dx, dy);
-      if (distance > 80) continue;
-      // Tree paths are recycled by native lazy lists and cannot identify an item.
-      if (typeof e.id !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]*$/.test(e.id) || e.id.startsWith('_Tt')) continue;
-      const score = distance * 10 + Math.sqrt(r.width * r.height);
-      if (!best || score < best.score) best = { score, id: e.id, path: e.path, label: e.label || '', dx: x - r.x, dy: y - r.y };
+      const candidate = axCandidate(e, x, y);
+      if (candidate && (!best || candidate.score < best.score)) best = candidate;
     }
     return best ? { id: best.id, path: best.path, label: best.label, dx: best.dx, dy: best.dy } : null;
   }
