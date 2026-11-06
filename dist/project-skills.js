@@ -2,7 +2,7 @@ import { link, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import matter from "@11ty/gray-matter";
-import { agenticCtoPointerSkill, brandReviewSkill, chiefProductOfficerPointerSkill, commentQaSkill, devopsEngineerPointerSkill, meetingIntakeSkill, motionDesignExplorationSkill, researchEngineerPointerSkill, vpDesignPointerSkill, websiteInitSkill, } from "./init/templates.js";
+import { agenticCtoPointerSkill, brandReviewSkill, chiefProductOfficerPointerSkill, commentQaSkill, devopsEngineerPointerSkill, meetingIntakeSkill, motionDesignExplorationSkill, researchEngineerPointerSkill, vpDesignPointerSkill, visualDesignPointerSkill, websiteInitSkill, } from "./init/templates.js";
 import { AGENTIC_CTO_SKILL, DEVOPS_ENGINEER_SKILL, RESEARCH_ENGINEER_SKILL, } from "./cto/skill.js";
 import { CHIEF_PRODUCT_OFFICER_SKILL, VP_DESIGN_SKILL } from "./product/skill.js";
 const ALL_KINDS = ["company", "personal", "internal"];
@@ -15,6 +15,15 @@ const USER_FACING_KINDS = ["company", "personal"];
  * the loader's routing text as the one source of truth.
  */
 export const PROJECT_SKILLS = [
+    {
+        name: "visual-design",
+        providers: ["agents", "claude"],
+        kinds: ALL_KINDS,
+        distribution: "pointer",
+        canonical: true,
+        guide: "morpheus skills guide visual-design",
+        render: visualDesignPointerSkill,
+    },
     {
         name: "motion-design-exploration",
         providers: ["agents"],

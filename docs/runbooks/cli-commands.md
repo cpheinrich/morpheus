@@ -36,6 +36,7 @@ pnpm morpheus brand finalize --selection "Name" # promote a reviewed direction i
 pnpm morpheus init                 # scaffold a project — safe to re-run, never overwrites
 pnpm morpheus init status          # how far through project setup this repo is
 pnpm morpheus cto guide [mandate|provenance]  # the agentic-CTO skill other projects' pointers name
+pnpm morpheus skills guide visual-design    # shared early diagram planning procedure
 pnpm morpheus cto guide research-engineer[/record|/provenance]  # the research-engineer skill under it
 pnpm morpheus web init             # provision and scaffold the website: waitlist + /hq sign-in
 pnpm morpheus web add-consumer-auth # consumer accounts: staging project, auth plumbing, three suites

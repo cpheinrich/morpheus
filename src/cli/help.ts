@@ -80,6 +80,7 @@ Usage
   morpheus init status      [--offline]
   morpheus init done | doing | todo <task-id>
   morpheus skills list      [--json] — discover reusable Morpheus project skills
+  morpheus skills guide visual-design — early diagrams for relationship-heavy planning
   morpheus skills sync      [--check] — add missing loader-native skill entrypoints;
                             existing project-owned skill files are never overwritten
   morpheus meeting-intake guide
