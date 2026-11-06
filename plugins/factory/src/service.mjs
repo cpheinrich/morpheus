@@ -147,6 +147,95 @@ function pinnedRoute(config, task, gateways, operation, primary) {
 }
 const routeChanged = (previous, decision) =>
   `Run ${previous.id} asked its question on ${previous.gateway ? `the ${previous.gateway} gateway (${previous.executor})` : `native ${previous.executor}`}, but routing now chooses: ${decision.reason}. Reply once that route is chosen again, or start a new handoff without replySource.`;
+// The provider conversation a run resumes: the previous run's, else (for the primary
+// slot) the one recorded for this checkout, under its current or legacy key.
+function resumedSessions(worker, previous, fresh, task, sessionKey, legacySessionKey) {
+  const recorded = (sessions) => (!fresh ? sessions?.[sessionKey] || sessions?.[legacySessionKey] || null : null);
+  return {
+    claude: worker === "claude" ? previous?.claudeSession ?? recorded(task.sessions) : null,
+    codex: worker === "codex" ? previous?.codexSession ?? recorded(task.codexSessions) : null,
+  };
+}
+// Supervision replies after this run; a reply resumes the conversation that asked, so it
+// must take the same route and say who answered and why.
+function continuationReplies({ previous, continuation, worker, decision, args, task, config }) {
+  if (previous && !previous.terminal)
+    throw new Error(
+      "This task already has an active run. Resume monitoring it instead.",
+    );
+  if (
+    continuation &&
+    (previous.executor !== worker ||
+      (previous.gateway ?? null) !== (decision.gateway?.name ?? null))
+  )
+    throw new Error(routeChanged(previous, decision));
+  if (
+    continuation &&
+    (!["codex", "user"].includes(args.replySource) || !args.replyReason)
+  )
+    throw new Error(
+      "Resuming a question requires replySource and replyReason.",
+    );
+  const replies =
+    continuation && args.replySource === "codex"
+      ? task.supervisionReplies + 1
+      : 0;
+  if (replies > config.maxSupervisionReplies)
+    throw new Error("Supervision limit reached. Escalate to the user.");
+  return replies;
+}
+// A Codex worker runs the coordinator's own model and effort; the sandbox follows the
+// same approval mapping, never wider (full access only for a never-approve task).
+function workerSelection(worker, config, snapshot, args) {
+  return worker === "claude"
+    ? modelSelection(config, snapshot, { model: args.model, effort: args.effort })
+    : {
+        model: args.model ?? snapshot.model,
+        effort: codexRootEffort(args.effort ?? snapshot.reasoningEffort),
+      };
+}
+async function workerEnv(worker, task, decision, config) {
+  return withoutReferencedSecrets(
+    (worker === "claude"
+      ? await checkClaude(task.cwd, undefined, decision.gateway ?? null)
+      : await checkCodex(task.cwd, undefined, decision.gateway ?? null)
+    ).env,
+    config,
+  );
+}
+function workerArgv({ worker, task, codexSession, selection, permissions, roots, codexSandbox, decision }) {
+  return worker === "claude"
+    ? claudeArgs(task.claudeSession, selection, permissions, roots)
+    : codexArgs(codexSession, selection, codexSandbox, decision.gateway ?? null);
+}
+function runRecord({ id, worker, task, workspace, sessionKey, fresh, decision, selection, permissions, codexSandbox, codexSession, args }) {
+  return {
+    id,
+    executor: worker,
+    threadId: task.id,
+    cwd: task.cwd,
+    workspace: workspace.map,
+    dirs: workspace.dirs,
+    sessionKey,
+    workerSlot: fresh ? "fresh" : "primary",
+    fresh,
+    gateway: decision.gateway?.name ?? null,
+    host: hostname(),
+    selection,
+    permissions: codexSandbox?.name ?? permissions,
+    background: args.background === true,
+    createdAt: Date.now(),
+    state: "starting",
+    terminal: false,
+    question: null,
+    result: null,
+    claudeSession: task.claudeSession,
+    codexSession,
+    replySource: args.replySource,
+    replyReason: args.replyReason,
+    dispatch: args.dispatch ?? null,
+  };
+}
 export class Manager {
   runs = new Map();
   taskMutations = new Map();
@@ -258,185 +347,117 @@ export class Manager {
       throw new Error("Another delegation is starting; retry shortly.");
     this.busy = true;
     try {
-      const config = await configRead();
-      const {
-        task,
-        snapshot,
-        route: decision,
-      } = await this.inspect(args.threadId, args.operation);
-      if (decision.unavailable) throw new Error(decision.reason);
-      if (!delegates(decision, "codex")) throw new Error(decision.reason);
-      // A Codex task delegates to Claude (native or gateway) or to Codex behind a gateway.
-      const worker = decision.executor;
-      let previous = args.runId
-        ? await this.statusFor(task.id, args.runId)
-        : !args.fresh && task.runId
-          ? await this.status(task.runId)
-          : null;
-      // runId is a compatibility pointer to the latest run of either slot. An ordinary
-      // delegation must not inherit a fresh run unless the coordinator selected it explicitly.
-      if (!args.runId && previous?.fresh) previous = null;
-      const continuation =
-        previous?.state === "needs_input" || !!previous?.question;
-      // A reply to an isolated run inherits its checkout and provider conversation. The
-      // coordinator need not repeat fresh=true, and omitting it must never promote the reply.
-      const fresh = args.fresh === true || previous?.fresh === true;
-      if (fresh && !task.workerBinding)
-        throw new Error(
-          "A fresh worker requires an established primary worker binding; delegate once without fresh=true first.",
-        );
-      // Targets are explicit: the root's own checkout (or `cwd`) and `repos`. Each resolves to
-      // a checkout this task owns; the root's starting repository no longer limits the others.
-      const id = randomUUID();
-      const workspace = await this.workspace(task, {
-        fresh,
-        previous,
-        cwd: args.cwd || previous?.cwd,
-        repos: args.repos,
-        rootCwd: snapshot.cwd,
-        runId: id,
-      });
-      task.cwd = workspace.cwd;
-      const sessionKey = fresh ? null : sessionKeyFor(task.cwd);
-      const legacySessionKey = legacySessionKeyFor(task.cwd, decision.gateway);
-      task.claudeSession =
-        worker === "claude"
-          ? previous?.claudeSession ??
-            (!fresh
-              ? task.sessions?.[sessionKey] || task.sessions?.[legacySessionKey] || null
-              : null)
-          : null;
-      const codexSession =
-        worker === "codex"
-          ? previous?.codexSession ??
-            (!fresh
-              ? task.codexSessions?.[sessionKey] || task.codexSessions?.[legacySessionKey] || null
-              : null)
-          : null;
-      if (previous && !previous.terminal)
-        throw new Error(
-          "This task already has an active run. Resume monitoring it instead.",
-        );
-      // A reply resumes the conversation that asked, so it must take the same route.
-      if (
-        continuation &&
-        (previous.executor !== worker ||
-          (previous.gateway ?? null) !== (decision.gateway?.name ?? null))
-      )
-        throw new Error(routeChanged(previous, decision));
-      if (
-        continuation &&
-        (!["codex", "user"].includes(args.replySource) || !args.replyReason)
-      )
-        throw new Error(
-          "Resuming a question requires replySource and replyReason.",
-        );
-      const replies =
-        continuation && args.replySource === "codex"
-          ? task.supervisionReplies + 1
-          : 0;
-      if (replies > config.maxSupervisionReplies)
-        throw new Error("Supervision limit reached. Escalate to the user.");
-      this.assertOneWriter(workspace.dirs, config);
-      await this.recoverOrphans(task, workspace.dirs);
-      const permissions = permissionMode(snapshot);
-      // A Codex worker runs the coordinator's own model and effort; the sandbox follows the
-      // same approval mapping, never wider (full access only for a never-approve task).
-      const selection =
-        worker === "claude"
-          ? modelSelection(config, snapshot, { model: args.model, effort: args.effort })
-          : {
-              model: args.model ?? snapshot.model,
-              effort: codexRootEffort(args.effort ?? snapshot.reasoningEffort),
-            };
-      const roots = extraRoots(workspace.map, task.cwd);
-      const codexSandbox = worker === "codex" ? codexPermission(permissions, roots) : null;
-      const env = withoutReferencedSecrets(
-        (worker === "claude"
-          ? await checkClaude(task.cwd, undefined, decision.gateway ?? null)
-          : await checkCodex(task.cwd, undefined, decision.gateway ?? null)
-        ).env,
-        config,
-      );
-      const latestTask = await taskRead(task.id);
-      const disabled = disabledRepository(await configRead(), { ...latestTask, project: task.project }, workspace.map);
-      if (disabled)
-        throw new Error(`Delegation was disabled during preflight: ${disabled}`);
-      if (this.draining)
-        throw new Error("Bridge upgrade is in progress; retry afterward.");
-      const dir = runDir(id);
-      await mkdir(dir, { mode: 0o700 });
-      task.memoryEnabled =
-        config.memorySharing &&
-        (await codexMemoryEnabled(await this.client(), task));
-      // Shared memory is the other agent's store, so a same-provider worker gets none.
-      const memories =
-        worker === "claude" ? await memoryContext(config, task, "codex") : [];
-      const brief = withWorkspace(args.prompt, workspace.map, task.cwd);
-      const prompt =
-        worker === "claude"
-          ? await handoff(brief, memories, "Codex")
-          : await codexHandoff(brief, memories, "Codex");
-      const record = {
-        id,
-        executor: worker,
-        threadId: task.id,
-        cwd: task.cwd,
-        workspace: workspace.map,
-        dirs: workspace.dirs,
-        sessionKey,
-        workerSlot: fresh ? "fresh" : "primary",
-        fresh,
-        gateway: decision.gateway?.name ?? null,
-        host: hostname(),
-        selection,
-        permissions: codexSandbox?.name ?? permissions,
-        background: args.background === true,
-        createdAt: Date.now(),
-        state: "starting",
-        terminal: false,
-        question: null,
-        result: null,
-        claudeSession: task.claudeSession,
-        codexSession,
-        replySource: args.replySource,
-        replyReason: args.replyReason,
-        dispatch: args.dispatch ?? null,
-      };
-      await this.launch(
-        record,
-        {
-          runId: id,
-          argv:
-            worker === "claude"
-              ? claudeArgs(task.claudeSession, selection, permissions, roots)
-              : codexArgs(codexSession, selection, codexSandbox, decision.gateway ?? null),
-          cwd: task.cwd,
-          prompt,
-          ...(worker === "codex" ? { input: "text" } : {}),
-          background: record.background,
-          graceSeconds: config.disconnectGraceSeconds,
-          maxRunSeconds: config.maxRunSeconds,
-        },
-        env,
-        config,
-      );
-      // Starts are serialized (busy), so nothing can claim these between check and claim.
-      await claimCheckouts(task.id, workspace.claims);
-      await this.mutateTask(task.id, (current) => {
-        current.runId = id;
-        current.runIds = [...new Set([...(current.runIds ?? []), id])];
-        current.supervisionReplies = replies;
-        if (!fresh) {
-          current.workerBinding ??= bindingFor(decision);
-          current.primaryCwd ??= task.cwd;
-          current.workspace = workspace.map;
-        }
-      });
-      return this.begin(id);
+      return await this.startRun(args);
     } finally {
       this.busy = false;
     }
+  }
+  // runId is a compatibility pointer to the latest run of either slot. An ordinary
+  // delegation must not inherit a fresh run unless the coordinator selected it explicitly.
+  async previousRun(task, args) {
+    if (args.runId) return this.statusFor(task.id, args.runId);
+    const previous = !args.fresh && task.runId ? await this.status(task.runId) : null;
+    return previous?.fresh ? null : previous;
+  }
+  // Fails when delegation was switched off, for this task or a target repository, or the
+  // bridge began draining, while preflight ran.
+  async assertStillEnabled(task, workspace) {
+    const latestTask = await taskRead(task.id);
+    const disabled = disabledRepository(await configRead(), { ...latestTask, project: task.project }, workspace.map);
+    if (disabled)
+      throw new Error(`Delegation was disabled during preflight: ${disabled}`);
+    if (this.draining)
+      throw new Error("Bridge upgrade is in progress; retry afterward.");
+  }
+  async workerPrompt(worker, config, task, args, workspace) {
+    task.memoryEnabled =
+      config.memorySharing &&
+      (await codexMemoryEnabled(await this.client(), task));
+    // Shared memory is the other agent's store, so a same-provider worker gets none.
+    const memories =
+      worker === "claude" ? await memoryContext(config, task, "codex") : [];
+    const brief = withWorkspace(args.prompt, workspace.map, task.cwd);
+    return worker === "claude"
+      ? handoff(brief, memories, "Codex")
+      : codexHandoff(brief, memories, "Codex");
+  }
+  async startRun(args) {
+    const config = await configRead();
+    const {
+      task,
+      snapshot,
+      route: decision,
+    } = await this.inspect(args.threadId, args.operation);
+    if (decision.unavailable) throw new Error(decision.reason);
+    if (!delegates(decision, "codex")) throw new Error(decision.reason);
+    // A Codex task delegates to Claude (native or gateway) or to Codex behind a gateway.
+    const worker = decision.executor;
+    const previous = await this.previousRun(task, args);
+    const continuation =
+      previous?.state === "needs_input" || !!previous?.question;
+    // A reply to an isolated run inherits its checkout and provider conversation. The
+    // coordinator need not repeat fresh=true, and omitting it must never promote the reply.
+    const fresh = args.fresh === true || previous?.fresh === true;
+    if (fresh && !task.workerBinding)
+      throw new Error(
+        "A fresh worker requires an established primary worker binding; delegate once without fresh=true first.",
+      );
+    // Targets are explicit: the root's own checkout (or `cwd`) and `repos`. Each resolves to
+    // a checkout this task owns; the root's starting repository no longer limits the others.
+    const id = randomUUID();
+    const workspace = await this.workspace(task, {
+      fresh,
+      previous,
+      cwd: args.cwd || previous?.cwd,
+      repos: args.repos,
+      rootCwd: snapshot.cwd,
+      runId: id,
+    });
+    task.cwd = workspace.cwd;
+    const sessionKey = fresh ? null : sessionKeyFor(task.cwd);
+    const sessions = resumedSessions(worker, previous, fresh, task, sessionKey, legacySessionKeyFor(task.cwd, decision.gateway));
+    task.claudeSession = sessions.claude;
+    const codexSession = sessions.codex;
+    const replies = continuationReplies({ previous, continuation, worker, decision, args, task, config });
+    this.assertOneWriter(workspace.dirs, config);
+    await this.recoverOrphans(task, workspace.dirs);
+    const permissions = permissionMode(snapshot);
+    const selection = workerSelection(worker, config, snapshot, args);
+    const roots = extraRoots(workspace.map, task.cwd);
+    const codexSandbox = worker === "codex" ? codexPermission(permissions, roots) : null;
+    const env = await workerEnv(worker, task, decision, config);
+    await this.assertStillEnabled(task, workspace);
+    await mkdir(runDir(id), { mode: 0o700 });
+    const prompt = await this.workerPrompt(worker, config, task, args, workspace);
+    const record = runRecord({ id, worker, task, workspace, sessionKey, fresh, decision, selection, permissions, codexSandbox, codexSession, args });
+    await this.launch(
+      record,
+      {
+        runId: id,
+        argv: workerArgv({ worker, task, codexSession, selection, permissions, roots, codexSandbox, decision }),
+        cwd: task.cwd,
+        prompt,
+        ...(worker === "codex" ? { input: "text" } : {}),
+        background: record.background,
+        graceSeconds: config.disconnectGraceSeconds,
+        maxRunSeconds: config.maxRunSeconds,
+      },
+      env,
+      config,
+    );
+    // Starts are serialized (busy), so nothing can claim these between check and claim.
+    await claimCheckouts(task.id, workspace.claims);
+    await this.mutateTask(task.id, (current) => {
+      current.runId = id;
+      current.runIds = [...new Set([...(current.runIds ?? []), id])];
+      current.supervisionReplies = replies;
+      if (!fresh) {
+        current.workerBinding ??= bindingFor(decision);
+        current.primaryCwd ??= task.cwd;
+        current.workspace = workspace.map;
+      }
+    });
+    return this.begin(id);
   }
   // Pool admission keeps the bridge's local invariants: no launch while draining or
   // disabled (globally, for the task, or for its project), verified live settings of
