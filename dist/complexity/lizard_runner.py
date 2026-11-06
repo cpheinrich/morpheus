@@ -22,7 +22,7 @@ import sys
 # Spelled in pieces so this file does not report itself.
 DIRECTIVE = re.compile("lizard" + " forgive|GENERATED" + " CODE")
 
-# Known measurements of the pinned build (pin.ts CANARY_EXPECTED). The Swift and TSX files exercise
+# Known measurements of the pinned build (pin.ts CANARY_EXPECTED). The Swift, TSX and TS files exercise
 # the fork's fixes, so an upstream or older Lizard measures them differently and fails the canary.
 CANARY = {
     "canary.js": """function canary(a, b) {
@@ -57,6 +57,26 @@ struct Gauge {
 
 export function Notice(props: { show: boolean }) {
   return <p>If this and that, or else while case: {props.show && "yes"}</p>;
+}
+""",
+    # Template literal types inside interface and object-type bodies; compiles under tsc --strict.
+    "canary.ts": """type Prefix = `x-${string}`;
+interface Options {
+  kind?: Extract<string, `x-${string}`>;
+  name: `id-${number}`;
+  tag: Map<string, Array<`t-${Uppercase<`k${string}`>}`>>;
+  nested: `a-${`b-${string}`}`;
+}
+type Shape = { label: `s-${string}`; size?: number };
+interface Tagged extends Array<`e-${string}`> { first: Prefix; }
+function choose(x: boolean, o: Options): string {
+  if (x) return `${o.name ? 'a' : 'b'}`;
+  return o.kind ?? '';
+}
+class Box {
+  run(s: Shape, t: Tagged): number {
+    return s.size && t.length ? 1 : 0;
+  }
 }
 """,
 }
