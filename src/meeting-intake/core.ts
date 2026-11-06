@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { isoDatetimeWithOptionalSeconds } from "../iso-datetime.js";
 import {
   DiscoveryNote,
   meetingSlug,
@@ -232,7 +233,7 @@ export function completionNotice(
     .parse(record.delivery);
   const note = z
     .object({
-      occurred: z.iso.datetime({ offset: true }),
+      occurred: isoDatetimeWithOptionalSeconds({ offset: true }),
       projects: z.array(meetingSlug).min(1),
       hqUrl: z.url(),
       noteSha256: z.string().regex(/^[a-f0-9]{64}$/),

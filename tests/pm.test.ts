@@ -18,7 +18,7 @@ import {
 import { create, index, linkIssue as linkIssueCli } from "../src/cli/pm.js";
 import { createItem, nextId } from "../src/pm/new-item.js";
 import { linkIssue, parseIssueNumber } from "../src/pm/issues.js";
-import { Goal, isoDate, RoadmapItem } from "../src/pm/schema.js";
+import { Goal, isoDate, isoDateTime, RoadmapItem } from "../src/pm/schema.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -126,6 +126,13 @@ describe("schema", () => {
     // The day as written, not the UTC day (2026-08-04 here) — the same
     // wall-clock choice `isoDateTime` makes for offsets.
     expect(isoDate.parse("2026-08-03T20:00:00-07:00")).toBe("2026-08-03");
+  });
+
+  it("preserves qualified minute-precision timestamps", () => {
+    expect(isoDate.parse("2026-11-02T12:34Z")).toBe("2026-11-02");
+    expect(isoDate.parse("2026-11-02T12:34+00:00")).toBe("2026-11-02");
+    expect(isoDateTime.parse("2026-11-02T12:34Z")).toBe("2026-11-02T12:34Z");
+    expect(isoDateTime.parse("2026-11-02T12:34+00:00")).toBe("2026-11-02T12:34+00:00");
   });
 
   it("still normalises a plain date and a legacy Date", () => {

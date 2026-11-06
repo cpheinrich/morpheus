@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { isoDatetimeWithOptionalSeconds } from "../iso-datetime.js";
 import { DiscoveryNote, meetingSlug, validateNotePolicy, } from "./schema.js";
 const fullRevision = /^[a-f0-9]{40}$/;
 function notePathPattern(directory) {
@@ -168,7 +169,7 @@ export function completionNotice(record, config) {
         .parse(record.delivery);
     const note = z
         .object({
-        occurred: z.iso.datetime({ offset: true }),
+        occurred: isoDatetimeWithOptionalSeconds({ offset: true }),
         projects: z.array(meetingSlug).min(1),
         hqUrl: z.url(),
         noteSha256: z.string().regex(/^[a-f0-9]{64}$/),
