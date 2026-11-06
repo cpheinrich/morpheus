@@ -146,3 +146,55 @@ reported because the helper is touched. No policy/exclusion change or optional r
 
 M634-001 is addressed by the author but requires reviewer verification before disposition as
 resolved or clearance. No merge, label, host install/change/deletion or manual dispatch.
+
+## Completed independent source review
+
+Initial review blocked on substantive M634-001: symlinked cache roots could delete a browser profile. The author added HOME-bounded component checks and regressions; the same reviewer independently verified five focused regressions and cleared exact 9cf28d0d on turn 2.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "93ecbae133c1b074003ed207ffbac482e45b8ef3",
+  "reviewed": "8835797f0a93b8e8dab05966a2146323eea2bd59",
+  "covered": "9cf28d0dbb6d8ceb6ca89af49d0a0cd5447e1e05",
+  "authorSession": "01a1b2d7-73a4-70e0-8973-b0a48013902b",
+  "reviewerSession": "01a1b2ef-32de-7e20-9ea2-8abf940a0fbc",
+  "risk": "high",
+  "elapsedMinutes": 0.8630333333333333,
+  "timing": {
+    "source": "clock",
+    "durationMs": 51782,
+    "evidence": "Root-measured UTC 2026-11-06T22:16:22.461Z to 2026-11-06T22:17:14.243Z; Factory run f09c35d0-d672-4189-8752-5bdd42a6ac5a; native session 01a1b2ef-32de-7e20-9ea2-8abf940a0fbc."
+  },
+  "outcome": "complete",
+  "summary": "Initial review blocked on substantive M634-001: symlinked cache roots could delete a browser profile. The author added HOME-bounded component checks and regressions; the same reviewer independently verified five focused regressions and cleared exact 9cf28d0d on turn 2.",
+  "findings": [
+    {
+      "id": "M634-001",
+      "severity": "substantive",
+      "description": "A symlink at the new Brave cache root or its ancestors can redirect cleanup into Application Support and delete a browser profile.",
+      "paths": [
+        "plugins/factory/src/host/scripts/cleanup-development-cache.py",
+        "plugins/factory/src/host/tests/test_cleanup_development_cache.py"
+      ],
+      "disposition": "fixed",
+      "response": "Committed 9cf28d0d: normalize the actual cache path, require a strict HOME descendant and lstat every component through HOME before content traversal. Profile-preservation and ordinary-deletion regressions pass; the same reviewer cleared the fix on turn 2."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "01a1b2ef-32de-7e20-9ea2-8abf940a0fbc",
+      "commit": "9cf28d0dbb6d8ceb6ca89af49d0a0cd5447e1e05",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.6857,
+      "timing": {
+        "source": "clock",
+        "durationMs": 41142,
+        "evidence": "Root-measured UTC 2026-11-06T22:22:49.377Z to 2026-11-06T22:23:30.519Z; Factory run 8a205619-9374-42db-9c03-4bfaeaac5862; native session 01a1b2ef-32de-7e20-9ea2-8abf940a0fbc."
+      },
+      "summary": "Same reviewer independently ran five focused regressions, verified the bounded symlink protection and cleared M634-001 at exact 9cf28d0d."
+    }
+  ]
+}
+```
+
