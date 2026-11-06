@@ -66,6 +66,8 @@ refresh used the documented MORPHEUS_READ_EVIDENCE=off assertion escape and reco
 
 ## Independent review
 
+Draft PR: https://github.com/cpheinrich/morpheus/pull/633 (created through the GitHub app tool).
+
 Pending a fresh gateway reviewer launched by Codex, because this worker run prohibits launching
 another agent. PR remains draft with auto-merge off. Review record belongs here after real findings,
 runner session identity and measured timing are available.
