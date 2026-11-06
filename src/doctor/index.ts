@@ -355,25 +355,66 @@ export interface DoctorOptions {
   codexHome?: string;
 }
 
+type Add = (severity: Severity, check: string, message: string) => void;
+type ManifestData = z.infer<typeof Manifest>;
+
 export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   const { root } = opts;
   const findings: Finding[] = [];
-  const add = (severity: Severity, check: string, message: string) =>
-    findings.push({ severity, check, message });
+  const add: Add = (severity, check, message) => { findings.push({ severity, check, message }); };
+  const manifest = await readManifest(root, add);
+  if (!manifest) return findings; // Everything else keys off the manifest.
+  const { prefix, kind } = manifestIdentity(manifest, add);
+  const raw = checkContextShape(manifest, add);
+  const { handle, handleReported } = await checkContextHandle(root, raw, add);
+  await checkSessionScripts(root, add);
+  await checkProviderHooks(root, add);
+  // Wired is not running for Codex: it skips every hook nobody trusted with
+  // `/hooks`, silently. Read-only — trusting is the user's decision, and the
+  // desktop app rewrites ~/.codex/config.toml itself.
+  for (const finding of codexTrustFindings(await codexTrustReport(root, opts.codexHome))) {
+    add(finding.severity, finding.check, finding.message);
+  }
 
-  // --- manifest -----------------------------------------------------------
-  let manifest: z.infer<typeof Manifest> | null = null;
+  await checkInstructions(root, add);
+  await checkRequiredInputs(root, add);
+  // The handle check names the same file when a declared inbox is absent, and
+  // its message is the more useful of the two because it names the fix.
+  // Reporting one condition twice cuts against the rule two commits back: an
+  // operator whose gate is shut should not read past redundant lines to find
+  // the one that names it.
+  await checkRequiredRecords(root, add, handleReported ? [`hq/team/${handle!}.md`] : []);
+
+  const declaredTrunk = typeof raw["trunk"] === "string" ? raw["trunk"] : undefined;
+  const remoteTrunkSha = await checkTrunk(root, declaredTrunk, opts.offline === true, add);
+  await checkTrunkCheckout(root, declaredTrunk, remoteTrunkSha ?? null, add);
+
+  const inherited = checkInherits(manifest, add);
+  await checkStructure(root, kind, inherited, add);
+  if (kind !== "internal") {
+    await checkMarketingBriefs(root, inherited, add);
+    await checkAnalyticsContract(root, add);
+  }
+  await checkRegistry(root, manifest, prefix, add);
+  await checkContent(root, prefix, add);
+  await checkInboxes(root, add);
+  return findings;
+}
+
+async function readManifest(root: string, add: Add): Promise<ManifestData | null> {
   try {
-    manifest = Manifest.parse(JSON.parse(await readFile(join(root, "morpheus.json"), "utf8")));
+    return Manifest.parse(JSON.parse(await readFile(join(root, "morpheus.json"), "utf8")));
   } catch (err) {
     add(
       "error",
       "manifest",
       `morpheus.json missing or invalid — ${err instanceof Error ? err.message.split("\n")[0] : err}`,
     );
-    return findings; // Everything else keys off the manifest.
+    return null;
   }
+}
 
+function manifestIdentity(manifest: ManifestData, add: Add): { prefix: string | undefined; kind: Kind | undefined } {
   // Narrowed like `kind` is, and the narrowed value is what everything
   // downstream reads. Reporting the bad field while still *using* it turned
   // one true error into eighty-two: `"mo"` is truthy, so the id-prefix loop
@@ -413,6 +454,10 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     );
   }
 
+  return { prefix, kind };
+}
+
+function checkContextShape(manifest: ManifestData, add: Add): Record<string, unknown> {
   // --- context freshness ---------------------------------------------------
   // Adoption reporting, not enforcement. `doctor` never writes, so it says
   // which projects have the protocol wired and which are still open.
@@ -449,6 +494,10 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     }
   }
 
+  return raw;
+}
+
+async function checkContextHandle(root: string, raw: Record<string, unknown>, add: Add): Promise<{ handle: string | undefined; handleReported: boolean }> {
   const handle = typeof raw["handle"] === "string" ? raw["handle"] : undefined;
   // Whether the handle check *fired*, not whether a handle was declared. It
   // only fires when the inbox is **absent** — an inbox that exists and cannot
@@ -479,6 +528,10 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
         "inbox a human replies in. Run `morpheus context install`.",
     );
   }
+  return { handle, handleReported };
+}
+
+async function checkSessionScripts(root: string, add: Add): Promise<void> {
   for (const [rel, marker] of [
     [MORPHEUS_BOOTSTRAP, BOOTSTRAP_MARKER],
     [MORPHEUS_SESSION_START, SESSION_START_MARKER],
@@ -494,6 +547,9 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     }
   }
 
+}
+
+async function checkProviderHooks(root: string, add: Add): Promise<void> {
   // Read, not merely stat'd. A settings file that exists but wires nothing is
   // the "check skips what is absent and reports the empty thing as correct"
   // shape — and it would report the hook adopted in exactly the projects
@@ -549,13 +605,9 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     );
   }
 
-  // Wired is not running for Codex: it skips every hook nobody trusted with
-  // `/hooks`, silently. Read-only — trusting is the user's decision, and the
-  // desktop app rewrites ~/.codex/config.toml itself.
-  for (const finding of codexTrustFindings(await codexTrustReport(root, opts.codexHome))) {
-    add(finding.severity, finding.check, finding.message);
-  }
+}
 
+async function checkInstructions(root: string, add: Add): Promise<void> {
   // The scaffold's AGENTS.md is written once; guidance added to the template
   // later reaches a project only by hand. Name each rule that never arrived.
   const instructions = await readFile(join(root, "AGENTS.md"), "utf8").catch(() => null);
@@ -570,6 +622,9 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     }
   }
 
+}
+
+async function checkRequiredInputs(root: string, add: Add): Promise<void> {
   const { droppedInputs } = await projectPolicy(root);
   if (droppedInputs?.length) {
     add(
@@ -582,17 +637,9 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     );
   }
 
-  // The handle check names the same file when a declared inbox is absent, and
-  // its message is the more useful of the two because it names the fix.
-  // Reporting one condition twice cuts against the rule two commits back: an
-  // operator whose gate is shut should not read past redundant lines to find
-  // the one that names it.
-  await checkRequiredRecords(root, add, handleReported ? [`hq/team/${handle!}.md`] : []);
+}
 
-  const declaredTrunk = typeof raw["trunk"] === "string" ? raw["trunk"] : undefined;
-  const remoteTrunkSha = await checkTrunk(root, declaredTrunk, opts.offline === true, add);
-  await checkTrunkCheckout(root, declaredTrunk, remoteTrunkSha ?? null, add);
-
+function checkInherits(manifest: ManifestData, add: Add): Set<string> {
   // --- structure ----------------------------------------------------------
   const inheritsRaw = manifest.inherits;
   const inherits =
@@ -604,6 +651,10 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   }
   const inherited = new Set(Object.keys(inherits).map((k) => `hq/${k}`));
 
+  return inherited;
+}
+
+async function checkStructure(root: string, kind: Kind | undefined, inherited: Set<string>, add: Add): Promise<void> {
   for (const dir of EXPECTED[kind ?? "personal"]) {
     if ([...inherited].some((parent) => dir === parent || dir.startsWith(`${parent}/`))) {
       continue; // owned by a parent project, including the whole declared subtree
@@ -618,80 +669,86 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     }
   }
 
-  if (kind !== "internal") {
-    for (const [path, marker] of MARKETING_BRIEFS) {
-      if ([...inherited].some((parent) => path === parent || path.startsWith(`${parent}/`))) {
-        continue;
-      }
-      const content = await readFile(join(root, path), "utf8").catch(() => null);
-      if (content === null) {
-        add(
-          "warning",
-          "marketing",
-          `Missing ${path} — run morpheus init to add the project-owned initialization brief.`,
-        );
-      } else if (content.includes(`morpheus:template ${marker}`)) {
-        add(
-          "warning",
-          "marketing",
-          `${path} is still the initialization scaffold — replace it with current project evidence before treating this area as ready.`,
-        );
-      }
-    }
+}
 
-    const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
-    let discovery: Awaited<ReturnType<typeof findAnalyticsContracts>> | null = null;
-    try {
-      discovery = await findAnalyticsContracts(schemaDir);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        discovery = { contracts: [], unreadable: [] };
-      } else {
-        add(
-          "warning",
-          "analytics",
-          `Could not inspect ${ANALYTICS_SCHEMA_DIRECTORY}/ for an analytics contract.`,
-        );
-      }
+async function checkMarketingBriefs(root: string, inherited: Set<string>, add: Add): Promise<void> {
+  for (const [path, marker] of MARKETING_BRIEFS) {
+    if ([...inherited].some((parent) => path === parent || path.startsWith(`${parent}/`))) {
+      continue;
     }
-    if (discovery?.unreadable.length) {
+    const content = await readFile(join(root, path), "utf8").catch(() => null);
+    if (content === null) {
       add(
         "warning",
-        "analytics",
-        `Could not read analytics schema candidate${discovery.unreadable.length === 1 ? "" : "s"}: ${discovery.unreadable.join(", ")}. Contract state is unknown.`,
+        "marketing",
+        `Missing ${path} — run morpheus init to add the project-owned initialization brief.`,
       );
-    } else if (discovery !== null && discovery.contracts.length === 0) {
+    } else if (content.includes(`morpheus:template ${marker}`)) {
       add(
         "warning",
-        "analytics",
-        `Missing analytics contract in ${ANALYTICS_SCHEMA_DIRECTORY}/ — run morpheus init or add the provider-neutral schema.`,
+        "marketing",
+        `${path} is still the initialization scaffold — replace it with current project evidence before treating this area as ready.`,
       );
-    } else if (discovery !== null && discovery.contracts.length > 1) {
-      add(
-        "warning",
-        "analytics",
-        `Multiple analytics contracts found in ${ANALYTICS_SCHEMA_DIRECTORY}/: ${discovery.contracts.join(", ")}. Keep one canonical vocabulary.`,
-      );
-    } else if (discovery !== null) {
-      const analytics = await readFile(join(schemaDir, discovery.contracts[0]!), "utf8").catch(
-        () => null,
-      );
-      if (analytics === null) {
-        add(
-          "warning",
-          "analytics",
-          `Could not read analytics contract ${discovery.contracts[0]}.`,
-        );
-      } else if (analytics.includes(EMPTY_ANALYTICS_EVENT_MAP)) {
-        add(
-          "warning",
-          "analytics",
-          "Analytics contract is still the empty scaffold — populate ProjectAnalyticsEvents before launch.",
-        );
-      }
     }
   }
 
+}
+
+async function checkAnalyticsContract(root: string, add: Add): Promise<void> {
+  const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
+  let discovery: Awaited<ReturnType<typeof findAnalyticsContracts>> | null = null;
+  try {
+    discovery = await findAnalyticsContracts(schemaDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      discovery = { contracts: [], unreadable: [] };
+    } else {
+      add(
+        "warning",
+        "analytics",
+        `Could not inspect ${ANALYTICS_SCHEMA_DIRECTORY}/ for an analytics contract.`,
+      );
+    }
+  }
+  if (discovery?.unreadable.length) {
+    add(
+      "warning",
+      "analytics",
+      `Could not read analytics schema candidate${discovery.unreadable.length === 1 ? "" : "s"}: ${discovery.unreadable.join(", ")}. Contract state is unknown.`,
+    );
+  } else if (discovery !== null && discovery.contracts.length === 0) {
+    add(
+      "warning",
+      "analytics",
+      `Missing analytics contract in ${ANALYTICS_SCHEMA_DIRECTORY}/ — run morpheus init or add the provider-neutral schema.`,
+    );
+  } else if (discovery !== null && discovery.contracts.length > 1) {
+    add(
+      "warning",
+      "analytics",
+      `Multiple analytics contracts found in ${ANALYTICS_SCHEMA_DIRECTORY}/: ${discovery.contracts.join(", ")}. Keep one canonical vocabulary.`,
+    );
+  } else if (discovery !== null) {
+    const analytics = await readFile(join(schemaDir, discovery.contracts[0]!), "utf8").catch(
+      () => null,
+    );
+    if (analytics === null) {
+      add(
+        "warning",
+        "analytics",
+        `Could not read analytics contract ${discovery.contracts[0]}.`,
+      );
+    } else if (analytics.includes(EMPTY_ANALYTICS_EVENT_MAP)) {
+      add(
+        "warning",
+        "analytics",
+        "Analytics contract is still the empty scaffold — populate ProjectAnalyticsEvents before launch.",
+      );
+    }
+  }
+}
+
+async function checkRegistry(root: string, manifest: ManifestData, prefix: string | undefined, add: Add): Promise<void> {
   // --- registry -----------------------------------------------------------
   const reg = await readRegistry();
   const entry = reg.projects.find((p) => p.path === root);
@@ -705,6 +762,9 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     );
   }
 
+}
+
+async function checkContent(root: string, prefix: string | undefined, add: Add): Promise<void> {
   // --- content ------------------------------------------------------------
   const productDir = join(root, "hq/product");
   if (await exists(productDir)) {
@@ -723,6 +783,9 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     }
   }
 
+}
+
+async function checkInboxes(root: string, add: Add): Promise<void> {
   const inboxDir = join(root, INBOX_DIR);
   if (await exists(inboxDir)) {
     const { readdir } = await import("node:fs/promises");
@@ -748,7 +811,6 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     }
   }
 
-  return findings;
 }
 
 export function formatFindings(findings: Finding[], label?: string): string {
