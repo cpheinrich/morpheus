@@ -45,6 +45,26 @@ export interface PreviewOptions {
 export const OVERLAY_PORT_OFFSET = 256;
 export const DEFAULT_TTL_MINUTES = 240;
 
+/** Validates and applies one value flag; each throws the message the CLI prints. */
+const VALUE_FLAGS: Record<string, (options: PreviewOptions, value: string, modes: Record<string, PreviewMode>) => void> = {
+  "--ttl-minutes": (options, value) => {
+    if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 1440) throw new Error("TTL must be 1–1440 minutes.");
+    options.ttlMinutes = Number(value);
+  },
+  "--port": (options, value) => {
+    if (!/^\d+$/.test(value) || Number(value) < 1024 || Number(value) + OVERLAY_PORT_OFFSET > 65535) throw new Error(`Port must be an integer from 1024 to ${65535 - OVERLAY_PORT_OFFSET}.`);
+    options.port = Number(value);
+  },
+  "--mode": (options, value, modes) => {
+    if (!modes[value]) throw new Error(`Unknown mode "${value}". Declared: ${Object.keys(modes).join(", ")}.`);
+    options.mode = value;
+  },
+  "--ssh-host": (options, value) => {
+    if (!/^[\w.@-]+$/.test(value)) throw new Error("SSH host must be a hostname or user@hostname (or an SSH config alias).");
+    options.sshHost = value;
+  },
+};
+
 export function parsePreviewArgs(argv: string[], modes: Record<string, PreviewMode>): PreviewOptions {
   const args = [...argv];
   const options: PreviewOptions = { command: "start", build: true };
@@ -60,19 +80,7 @@ export function parsePreviewArgs(argv: string[], modes: Record<string, PreviewMo
     else if (["--port", "--ssh-host", "--ttl-minutes", "--mode"].includes(flag)) {
       const value = args.shift();
       if (!value || value.startsWith("-")) throw new Error(`Missing value for ${flag}`);
-      if (flag === "--ttl-minutes") {
-        if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 1440) throw new Error("TTL must be 1–1440 minutes.");
-        options.ttlMinutes = Number(value);
-      } else if (flag === "--port") {
-        if (!/^\d+$/.test(value) || Number(value) < 1024 || Number(value) + OVERLAY_PORT_OFFSET > 65535) throw new Error(`Port must be an integer from 1024 to ${65535 - OVERLAY_PORT_OFFSET}.`);
-        options.port = Number(value);
-      } else if (flag === "--mode") {
-        if (!modes[value]) throw new Error(`Unknown mode "${value}". Declared: ${Object.keys(modes).join(", ")}.`);
-        options.mode = value;
-      } else {
-        if (!/^[\w.@-]+$/.test(value)) throw new Error("SSH host must be a hostname or user@hostname (or an SSH config alias).");
-        options.sshHost = value;
-      }
+      VALUE_FLAGS[flag]!(options, value, modes);
     } else throw new Error(`Unknown option: ${flag}`);
   }
   return options;
