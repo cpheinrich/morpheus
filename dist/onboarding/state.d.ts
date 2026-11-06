@@ -18,6 +18,11 @@ export interface TaskStatus {
     state: TaskState;
     /** Set by detection rather than by hand. */
     detected: boolean;
+    /**
+     * Detection ran but could not answer, so `state` is the recorded one. It must
+     * still read as "could not check": a recorded `[ ]` is not a detected "not done".
+     */
+    unchecked?: boolean;
     /** Anything the owner wrote under the task. */
     note?: string;
 }
