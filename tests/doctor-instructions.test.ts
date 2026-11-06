@@ -29,7 +29,7 @@ describe("instruction anchors", () => {
       "## Local testing: focused first",
       "**Refresh again only when a gated command refuses**, and then re-read.",
     ].join("\n");
-    expect(names(evo)).toEqual(["wait-ci", "wait-ci for workflow runs", "simplicity first", "five review turns"]);
+    expect(names(evo)).toEqual(["wait-ci", "wait-ci for workflow runs", "simplicity first", "five review turns", "early visual planning"]);
     expect(names("# agents\n")).toEqual(INSTRUCTION_ANCHORS.map((a) => a.name));
   });
 
@@ -41,13 +41,14 @@ describe("instruction anchors", () => {
       "only when a gated command refuses. **Simplicity",
       "first.** **Five turns run",
       "without anyone's approval.**",
+      "Before implementation, use `morpheus skills guide visual-design`.",
     ].join("\n");
     expect(names(wrapped)).toEqual([]);
-    expect(names("Break loops. morpheus wait-ci --runner; focused first; refresh only on refusal. Simplicity first. Five turns run without anyone's approval.")).toEqual(["wait-ci for workflow runs"]);
-    expect(names("Break loops. morpheus wait-ci --workflow x; focused first; refresh whenever. Refusals happen. Simplicity first. Five turns run without anyone's approval.")).toEqual(["refresh on refusal"]);
-    expect(names("Break loops. morpheus wait-ci --run 1; focused first; refresh only on refusal. Keep it simple. Five turns run without anyone's approval.")).toEqual(["simplicity first"]);
+    expect(names("Before implementation use morpheus skills guide visual-design. Break loops. morpheus wait-ci --runner; focused first; refresh only on refusal. Simplicity first. Five turns run without anyone's approval.")).toEqual(["wait-ci for workflow runs"]);
+    expect(names("Before implementation use morpheus skills guide visual-design. Break loops. morpheus wait-ci --workflow x; focused first; refresh whenever. Refusals happen. Simplicity first. Five turns run without anyone's approval.")).toEqual(["refresh on refusal"]);
+    expect(names("Before implementation use morpheus skills guide visual-design. Break loops. morpheus wait-ci --run 1; focused first; refresh only on refusal. Keep it simple. Five turns run without anyone's approval.")).toEqual(["simplicity first"]);
     // The three-turn wording Evo, Lakina and Darwin were scaffolded with is not the rule.
-    expect(names("Break loops. morpheus wait-ci --workflow x; focused first; refresh only on refusal. Simplicity first. The third turn is a ceiling.")).toEqual(["five review turns"]);
+    expect(names("Before implementation use morpheus skills guide visual-design. Break loops. morpheus wait-ci --workflow x; focused first; refresh only on refusal. Simplicity first. The third turn is a ceiling.")).toEqual(["five review turns"]);
   });
 });
 
@@ -76,6 +77,7 @@ describe("doctor reports instruction and poll-guard drift", () => {
       `AGENTS.md lacks the template's "wait-ci for workflow runs" guidance — add ${INSTRUCTION_ANCHORS[1]!.add}. Source: \`agents()\` in Morpheus's src/init/templates.ts.`,
       `AGENTS.md lacks the template's "simplicity first" guidance — add ${INSTRUCTION_ANCHORS[5]!.add}. Source: \`agents()\` in Morpheus's src/init/templates.ts.`,
       `AGENTS.md lacks the template's "five review turns" guidance — add ${INSTRUCTION_ANCHORS[6]!.add}. Source: \`agents()\` in Morpheus's src/init/templates.ts.`,
+      `AGENTS.md lacks the template's "early visual planning" guidance — add ${INSTRUCTION_ANCHORS[7]!.add}. Source: \`agents()\` in Morpheus's src/init/templates.ts.`,
     ]);
 
     await installContext(root, { write: true, handle: "nobody" });

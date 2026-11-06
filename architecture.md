@@ -533,6 +533,18 @@ needed.
   two skill directories and `morpheus cto guide` prints them; `morpheus init` gives every project
   kind a one-file pointer to that command, while `morpheus skills sync` adds it to an older project.
   Morpheus's `references/provenance.md` traces each rule to the direction it came from.
+- **`visual-design`** supports early planning when relationships clarify architecture,
+  workflows/pipelines, async handoffs, state transitions, ownership or substantial alternatives.
+  Before implementation, agents sketch and show useful relationships, distinguish current from
+  proposed, label assumptions and update retained diagrams after material design changes. Trivial
+  self-contained edits need none. The canonical `.agents/skills/visual-design/SKILL.md` is mirrored
+  for Claude and printed by `morpheus skills guide visual-design`; both providers in every project
+  kind receive pointers through the existing registry. New scaffold instructions include the early
+  trigger; `doctor` warns when older instructions lack it. Existing projects adopt that guidance
+  explicitly alongside `skills sync`, which never overwrites authored files. Review asks about
+  usefulness and accuracy as an advisory question, with substantive inaccuracies handled normally;
+  there is no new approval pause, artifact requirement or merge gate. See
+  [the rollout procedure](docs/visual-planning.md).
 - **`research-engineer`** is the first individual-contributor skill under the CTO: hands-on ML and
   algorithm research that frames the problem, benchmarks before building, iterates in rounds,
   decides on paired evidence against measured noise and leaves a reproducible record. It is held

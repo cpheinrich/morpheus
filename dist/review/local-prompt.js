@@ -32,6 +32,10 @@ Transcript evidence must use explicit turn boundaries, never inferred idle-gap c
 
 Find concrete defects and unneeded complexity, not open-ended redesigns or linter preferences.
 Check requirements, error paths, absent inputs, security boundaries and integration assumptions.
+Ask, as an advisory question, whether an early diagram would have helped explain the design and
+whether retained diagrams are useful and accurate. Skip trivial self-contained changes; missing
+or cosmetic diagrams never block. Substantive inaccuracies follow the ordinary correctness and
+documentation rules. This creates no approval pause, required artifact or merge gate.
 Prefer the simplest change that meets the requirements: when the same behaviour needs fewer parts
 or fewer lines, name the simpler version as a finding. A gate, approval step, state, option or
 mechanism that the requirements do not need is substantive; a local simplification is minor.

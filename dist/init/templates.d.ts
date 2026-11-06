@@ -222,3 +222,5 @@ export declare const devopsEngineerPointerSkill: () => string;
 export declare const chiefProductOfficerPointerSkill: () => string;
 /** The VP of Design role under the CPO, using the same canonical-guide distribution path. */
 export declare const vpDesignPointerSkill: () => string;
+/** Early planning stays visible even before the installed canonical guide is read. */
+export declare const visualDesignPointerSkill: () => string;
