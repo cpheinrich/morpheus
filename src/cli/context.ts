@@ -65,41 +65,43 @@ async function printUnread(root: string, unread: readonly Requirement[], mode: E
   }
 
   const changed = unread.filter((r) => r.reason === "changed");
-  if (changed.length) {
-    const budget = mode.kind === "recorded" && mode.provider === "claude" ? PRINT_BUDGET.claude : PRINT_BUDGET.other;
-    const contents = new Map((await readRecords(root, changed.map((r) => r.id))).map((r) => [r.id, r.content]));
-    let spent = 0;
-    let truncated = false;
-    console.log("");
-    console.log("The changed lines follow. Where the read hook can see this output, it counts as reading them:");
-    for (const r of changed) {
-      const lines = contentLines(contents.get(r.id) ?? "");
-      for (const block of mergeRanges(r.missing.map((m) => printable(lines, m)))) {
-        const text = lines.slice(block.from - 1, block.to);
-        const size = Buffer.byteLength(text.join("\n"), "utf8");
-        if (spent + size > budget) { truncated = true; continue; }
-        spent += size;
-        console.log(`── ${r.id} · lines ${formatRanges([block])} ──`);
-        for (const line of text) console.log(line);
-      }
-      for (const hunk of r.hunks ?? []) {
-        if (!hunk.removed.length) continue;
-        const size = Buffer.byteLength(hunk.removed.join("\n"), "utf8");
-        if (spent + size > budget) { truncated = true; continue; }
-        spent += size;
-        console.log(`── ${r.id} · removed before line ${hunk.from} ──`);
-        for (const line of hunk.removed) console.log(`- ${line}`);
-      }
-    }
-    if (truncated) console.log("── (more changed lines than fit here — read the ranges above) ──");
-  }
-
+  if (changed.length) await printChangedLines(root, changed, mode);
   console.log("");
   console.log("Read what is unread with the Read tool (offset/limit ranges add up), or `sed -n 'A,Bp' <path>`");
   console.log("with nothing piped or redirected — shell output over 20 KB (8 KB in Codex) is not credited, so");
   console.log("read large records in ranges — then run `morpheus context refresh` again.");
   console.log("Only if reads you demonstrably made are still not counted is the hook failing: then");
   console.log("`MORPHEUS_READ_EVIDENCE=off morpheus context refresh` certifies by assertion, and the receipt says so.");
+}
+
+/** The changed lines themselves, within the provider's print budget, so this output is the reading. */
+async function printChangedLines(root: string, changed: readonly Requirement[], mode: EvidenceMode): Promise<void> {
+  const budget = mode.kind === "recorded" && mode.provider === "claude" ? PRINT_BUDGET.claude : PRINT_BUDGET.other;
+  const contents = new Map((await readRecords(root, changed.map((r) => r.id))).map((r) => [r.id, r.content]));
+  let spent = 0;
+  let truncated = false;
+  console.log("");
+  console.log("The changed lines follow. Where the read hook can see this output, it counts as reading them:");
+  for (const r of changed) {
+    const lines = contentLines(contents.get(r.id) ?? "");
+    for (const block of mergeRanges(r.missing.map((m) => printable(lines, m)))) {
+      const text = lines.slice(block.from - 1, block.to);
+      const size = Buffer.byteLength(text.join("\n"), "utf8");
+      if (spent + size > budget) { truncated = true; continue; }
+      spent += size;
+      console.log(`── ${r.id} · lines ${formatRanges([block])} ──`);
+      for (const line of text) console.log(line);
+    }
+    for (const hunk of r.hunks ?? []) {
+      if (!hunk.removed.length) continue;
+      const size = Buffer.byteLength(hunk.removed.join("\n"), "utf8");
+      if (spent + size > budget) { truncated = true; continue; }
+      spent += size;
+      console.log(`── ${r.id} · removed before line ${hunk.from} ──`);
+      for (const line of hunk.removed) console.log(`- ${line}`);
+    }
+  }
+  if (truncated) console.log("── (more changed lines than fit here — read the ranges above) ──");
 }
 
 /** One or two lines saying how this receipt established reading. */
@@ -138,7 +140,6 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
   const wt = await worktreeRoot(root);
   const policy = await projectPolicy(wt);
   const trunk = await resolveTrunk(wt, policy.trunk);
-  const trunkRef = `${trunk.remote}/${trunk.branch}`;
 
   const result = await takeReceipt(root);
   const { lease, issue, written, trunkMissing, evidence } = result;
@@ -175,11 +176,31 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
     return 0;
   }
 
+  await printTrunkDelta(wt, trunk, previous, lease.receipt.remoteSha);
+
+  if (previous) printMovedRecords(previous, lease.receipt, evidence.mode);
+
+  if (issue) console.log(`! ${issue}`);
+  for (const line of evidenceSummary(evidence.mode, evidence.requirements)) console.log(line);
+
+  if (lease.status === "fresh") {
+    console.log(`${OK} Context receipt taken — ${lease.receipt.inputs.length} records, trunk ${lease.receipt.remoteSha.slice(0, 7)}.`);
+    console.log(`  Good for ${LEASE_TTL_MS / 60_000} minutes; governed actions will re-check after that.`);
+    return 0;
+  }
+
+  printNotCertified(lease, trunkMissing);
+  return 1;
+}
+
+/** What reached the trunk: everything since an unverified previous receipt, or what landed since the last one. */
+async function printTrunkDelta(wt: string, trunk: Awaited<ReturnType<typeof resolveTrunk>>, previous: ContextReceipt | undefined, remoteSha: string): Promise<void> {
+  const trunkRef = `${trunk.remote}/${trunk.branch}`;
   // The previous receipt was taken without a verified trunk, so there is no
   // range to show — and silence here lands on the one path where the gate has
   // just said "the remote advanced; determine the canonical delta". Saying
   // there is no baseline is the answer; showing nothing is not.
-  if (previous && !previous.remoteSha && lease.receipt.remoteSha) {
+  if (previous && !previous.remoteSha && remoteSha) {
     // Answered, not delegated. Printing `git log HEAD..origin/main` here would
     // name a **local remote-tracking ref** that nothing on this path has
     // fetched — the exact stale-local-ref failure `trunkSha` cites as the
@@ -187,7 +208,7 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
     // from whenever the user last fetched, the SHA asserted one line above
     // would not appear in its output, and on a fork with a declared but
     // never-fetched upstream it fails outright. `trunkLog` fetches.
-    const behind = await trunkLog(wt, trunk, "HEAD", lease.receipt.remoteSha);
+    const behind = await trunkLog(wt, trunk, "HEAD", remoteSha);
     console.log(`Your previous receipt was taken without a verified trunk (${trunkRef}).`);
     if (behind === null) {
       // Not "nothing there". The fetch after a spell offline is the call that
@@ -210,10 +231,10 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
   // one passed this guard and asked git for a range with a defaulted side.
   if (
     previous?.remoteSha &&
-    lease.receipt.remoteSha &&
-    lease.receipt.remoteSha !== previous.remoteSha
+    remoteSha &&
+    remoteSha !== previous.remoteSha
   ) {
-    const log = await trunkLog(wt, trunk, previous.remoteSha, lease.receipt.remoteSha);
+    const log = await trunkLog(wt, trunk, previous.remoteSha, remoteSha);
     if (log === null) {
       // The sibling symptom: this branch used to print nothing at all while
       // the two SHAs genuinely differed.
@@ -236,39 +257,32 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
       console.log("");
     }
   }
+}
 
   // Compared receipt-to-receipt, the same way the trunk half compares SHAs —
   // **not** from `before.lease.changedInputs`. A stored lease inside its term
   // comes back unmodified and a fresh one has `changedInputs: []` by
   // construction, so reading the verdict meant a refresh within five minutes
   // of the last one silently re-certified whatever moved during the term.
-  if (previous) {
-    const was = new Map(previous.inputs.map((i) => [i.id, i.fingerprint]));
-    const moved = lease.receipt.inputs
-      .filter((i) => was.has(i.id) && was.get(i.id) !== i.fingerprint)
-      .map((i) => i.id);
-    const added = lease.receipt.inputs.filter((i) => !was.has(i.id)).map((i) => i.id);
+function printMovedRecords(previous: ContextReceipt, receipt: ContextReceipt, mode: EvidenceMode): void {
+  const was = new Map(previous.inputs.map((i) => [i.id, i.fingerprint]));
+  const moved = receipt.inputs
+    .filter((i) => was.has(i.id) && was.get(i.id) !== i.fingerprint)
+    .map((i) => i.id);
+  const added = receipt.inputs.filter((i) => !was.has(i.id)).map((i) => i.id);
 
-    if (moved.length || added.length) {
-      console.log(
-        evidence.mode.kind === "recorded"
-          ? "Records that moved since your last receipt — the read log covers what changed:"
-          : "Records that moved since your last receipt — re-read what you rely on:",
-      );
-      for (const id of [...moved, ...added].sort()) console.log(`  ${id}`);
-      console.log("");
-    }
+  if (moved.length || added.length) {
+    console.log(
+      mode.kind === "recorded"
+        ? "Records that moved since your last receipt — the read log covers what changed:"
+        : "Records that moved since your last receipt — re-read what you rely on:",
+    );
+    for (const id of [...moved, ...added].sort()) console.log(`  ${id}`);
+    console.log("");
   }
+}
 
-  if (issue) console.log(`! ${issue}`);
-  for (const line of evidenceSummary(evidence.mode, evidence.requirements)) console.log(line);
-
-  if (lease.status === "fresh") {
-    console.log(`${OK} Context receipt taken — ${lease.receipt.inputs.length} records, trunk ${lease.receipt.remoteSha.slice(0, 7)}.`);
-    console.log(`  Good for ${LEASE_TTL_MS / 60_000} minutes; governed actions will re-check after that.`);
-    return 0;
-  }
-
+function printNotCertified(lease: SessionLease, trunkMissing: { remote: string; branch: string } | undefined): void {
   // A refresh that cannot certify is not a failure to report as success. The
   // usual cause is a record that is missing or unreadable, which no amount of
   // re-reading fixes.
@@ -287,7 +301,6 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
   } else if (lease.status === "unknown") {
     console.log(`  The trunk could not be reached. MORPHEUS_OFFLINE=1 permits local work.`);
   }
-  return 1;
 }
 
 /** Exit non-zero when context is not fresh. For hooks and scripts. */
@@ -334,12 +347,7 @@ export async function status(root: string, offline = offlineDeclared()): Promise
   // behaviour: `gate` returns ok for a fresh lease before the offline branch
   // is reached. `doctor --offline` says so correctly because it genuinely
   // skipped a check it would otherwise have run.
-  if (offline && observed) {
-    console.log(`  Offline declared: the trunk was not asked about, so "unknown" is assumed.`);
-    if (lease.status !== "fresh") {
-      console.log(`  Local work is permitted on a clean delta; external actions are not.`);
-    }
-  }
+  if (offline && observed) printOfflineVerdict(lease.status);
   return lease.status === "fresh" ? 0 : 1;
 }
 
@@ -419,36 +427,7 @@ export async function brief(root: string, opts: BriefOptions = {}): Promise<numb
   const moved = previous ? await sinceReceipt(root, previous.receipt, now) : null;
   const morpheus = await morpheusPromise;
 
-  if (morpheus.fresh === false) {
-    const installed = morpheus.installedSha?.slice(0, 7) ?? "unknown";
-    const current = morpheus.remoteSha?.slice(0, 7) ?? "unknown";
-    const preference =
-      opts.autoUpdatePreference ?? (await readAutoUpdateConfig()).preference;
-    console.log(`! Morpheus CLI is not current (${installed} → ${current}).`);
-    if (preference === "unconfigured") {
-      console.log(
-        'Before starting work, ask the user: "Morpheus is stale. Enable automatic updates after pulls on this device?"',
-      );
-      console.log(
-        "If yes, run `morpheus self auto-update enable`. If no, run " +
-          "`morpheus self auto-update disable` so the choice is remembered.",
-      );
-    } else if (preference === "enabled") {
-      console.log(
-        "Automatic updates are enabled but this install remains stale. Run `morpheus self ensure`; " +
-          "it will not touch active source work.",
-      );
-    } else if (preference === "disabled") {
-      console.log(
-        "Automatic updates are disabled on this device. Run `morpheus self update` to update once.",
-      );
-    } else {
-      console.log(
-        "The auto-update preference is invalid. Run `morpheus self auto-update status` to inspect it.",
-      );
-    }
-    console.log("");
-  }
+  if (morpheus.fresh === false) await printStaleMorpheus(morpheus, opts.autoUpdatePreference);
 
   if (previous) {
     console.log(
@@ -460,39 +439,82 @@ export async function brief(root: string, opts: BriefOptions = {}): Promise<numb
   }
   const lease = moved;
 
-  // Split, not flattened. `unresolvableInputs` is a subset of `changedInputs`,
-  // so listing them together and closing with "run refresh" answers a record
-  // that re-reading cannot fix with the one instruction that cannot fix it —
-  // the loop `ContextFreshnessError` splits the two to prevent. This is the
-  // first thing an agent reads in a session, so it is the surface where the
-  // distinction matters most.
-  const stuck = lease?.unresolvableInputs ?? [];
-  const readable = (lease?.changedInputs ?? []).filter((id) => !stuck.includes(id));
-
-  if (readable.length) {
-    console.log("These canonical records are unread or have moved:");
-    for (const id of readable) console.log(`  ${id}`);
-  } else if (!stuck.length) {
-    console.log("Read `.agent/decisions.md` and `.agent/learned.md` before starting work.");
-  }
-
-  if (stuck.length) {
-    console.log("");
-    console.log("These cannot be read at all — repair them; refreshing will not clear it:");
-    for (const id of stuck) console.log(`  ${id}`);
-  }
-
-  console.log("");
-  if (readable.length || !stuck.length) {
-    console.log("Then run `morpheus context refresh`. Claiming work, filing items, blocking and");
-    console.log("granting access are refused until you do. Where the read hook is wired, refresh");
-    console.log("certifies only what this session's reads cover; refresh again whenever you like —");
-    console.log("unchanged state just extends the receipt.");
-  } else {
-    console.log("Claiming work, filing items, blocking and granting access stay refused until");
-    console.log("those records are readable.");
-  }
+  printUnreadRecords(lease);
   return 0;
+}
+
+/** Offline was declared and the trunk genuinely went unasked: say what that permits. */
+function printOfflineVerdict(status: SessionLease["status"]): void {
+  console.log(`  Offline declared: the trunk was not asked about, so "unknown" is assumed.`);
+  if (status !== "fresh") {
+    console.log(`  Local work is permitted on a clean delta; external actions are not.`);
+  }
+}
+
+async function printStaleMorpheus(morpheus: MorpheusInstallStatus, autoUpdatePreference: AutoUpdatePreference | undefined): Promise<void> {
+  const installed = morpheus.installedSha?.slice(0, 7) ?? "unknown";
+  const current = morpheus.remoteSha?.slice(0, 7) ?? "unknown";
+  const preference =
+    autoUpdatePreference ?? (await readAutoUpdateConfig()).preference;
+  console.log(`! Morpheus CLI is not current (${installed} → ${current}).`);
+  if (preference === "unconfigured") {
+    console.log(
+      'Before starting work, ask the user: "Morpheus is stale. Enable automatic updates after pulls on this device?"',
+    );
+    console.log(
+      "If yes, run `morpheus self auto-update enable`. If no, run " +
+        "`morpheus self auto-update disable` so the choice is remembered.",
+    );
+  } else if (preference === "enabled") {
+    console.log(
+      "Automatic updates are enabled but this install remains stale. Run `morpheus self ensure`; " +
+        "it will not touch active source work.",
+    );
+  } else if (preference === "disabled") {
+    console.log(
+      "Automatic updates are disabled on this device. Run `morpheus self update` to update once.",
+    );
+  } else {
+    console.log(
+      "The auto-update preference is invalid. Run `morpheus self auto-update status` to inspect it.",
+    );
+  }
+  console.log("");
+}
+
+function printUnreadRecords(lease: SessionLease | null): void {
+// Split, not flattened. `unresolvableInputs` is a subset of `changedInputs`,
+// so listing them together and closing with "run refresh" answers a record
+// that re-reading cannot fix with the one instruction that cannot fix it —
+// the loop `ContextFreshnessError` splits the two to prevent. This is the
+// first thing an agent reads in a session, so it is the surface where the
+// distinction matters most.
+const stuck = lease?.unresolvableInputs ?? [];
+const readable = (lease?.changedInputs ?? []).filter((id) => !stuck.includes(id));
+
+if (readable.length) {
+  console.log("These canonical records are unread or have moved:");
+  for (const id of readable) console.log(`  ${id}`);
+} else if (!stuck.length) {
+  console.log("Read `.agent/decisions.md` and `.agent/learned.md` before starting work.");
+}
+
+if (stuck.length) {
+  console.log("");
+  console.log("These cannot be read at all — repair them; refreshing will not clear it:");
+  for (const id of stuck) console.log(`  ${id}`);
+}
+
+console.log("");
+if (readable.length || !stuck.length) {
+  console.log("Then run `morpheus context refresh`. Claiming work, filing items, blocking and");
+  console.log("granting access are refused until you do. Where the read hook is wired, refresh");
+  console.log("certifies only what this session's reads cover; refresh again whenever you like —");
+  console.log("unchanged state just extends the receipt.");
+} else {
+  console.log("Claiming work, filing items, blocking and granting access stay refused until");
+  console.log("those records are readable.");
+}
 }
 
 /**
