@@ -17,12 +17,17 @@ export const ExceptionSchema = z.strictObject({
     /** An upstream issue or PR for a false positive; the review or decision for a semantic one. */
     ref: z.string().min(3),
 });
+/**
+ * minimatch reads a leading `!` as negating the whole pattern, so `!(ops)/**` in `exclude` would
+ * exclude everything outside `ops/`. Refused rather than reinterpreted.
+ */
+const Glob = z.string().min(1).refine((g) => !g.startsWith("!"), "a leading ! negates the whole pattern; name the directories instead");
 export const ComplexityConfigSchema = z.strictObject({
     mode: z.enum(["advisory", "enforce"]).default("advisory"),
     ccn: z.number().int().positive().default(15),
     cognitiveWarn: z.number().int().positive().default(15),
-    include: z.array(z.string().min(1)).default(["**"]),
-    exclude: z.array(z.string().min(1)).default([]),
+    include: z.array(Glob).default(["**"]),
+    exclude: z.array(Glob).default([]),
     exceptions: z.array(ExceptionSchema).default([]),
 });
 /** Parse the `complexity` block out of a manifest's text; `null` text means no manifest. */

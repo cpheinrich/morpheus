@@ -11,7 +11,7 @@ export interface FunctionRow {
 }
 export interface FileResult {
     path: string;
-    status: "measured" | "unsupported" | "unmeasured";
+    status: "measured" | "unsupported" | "unmeasured" | "skipped";
     error?: string;
     directives?: {
         line: number;

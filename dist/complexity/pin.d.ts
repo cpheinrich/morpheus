@@ -26,13 +26,17 @@ export declare const LIZARD_PIN: LizardPin;
  */
 export declare function pinKey(pin: LizardPin): string;
 /**
- * What the canary snippet in `lizard_runner.py` must measure as. A wrong
- * Lizard, a venv whose interpreter vanished after an upgrade, or a stamp
- * written by hand all fail this, which is why every check runs it rather than
- * trusting `ready.json`.
+ * What the canary files in `lizard_runner.py` must measure as. The Swift and
+ * TSX rows exercise the pinned fixes (computed properties, enum cases,
+ * condition-list commas, string interpolation, JSX text, generic functions);
+ * upstream `4f6979da` measures `label` not at all, the Swift top level at CCN
+ * 4 and `Notice` at 4. A wrong Lizard, a venv whose interpreter vanished after
+ * an upgrade, or a stamp written by hand all fail this, which is why every
+ * check runs it rather than trusting `ready.json`.
  */
-export declare const CANARY_EXPECTED: {
-    readonly name: "canary";
-    readonly ccn: 6;
-    readonly cognitive: 8;
-};
+export declare const CANARY_EXPECTED: readonly {
+    path: string;
+    name: string;
+    ccn: number;
+    cognitive: number;
+}[];

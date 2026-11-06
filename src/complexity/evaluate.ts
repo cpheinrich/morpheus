@@ -14,7 +14,7 @@ export interface FunctionRow {
 
 export interface FileResult {
   path: string;
-  status: "measured" | "unsupported" | "unmeasured";
+  status: "measured" | "unsupported" | "unmeasured" | "skipped";
   error?: string;
   directives?: { line: number; text: string }[];
   functions?: FunctionRow[];
@@ -63,6 +63,7 @@ export function evaluate(config: ComplexityConfig, results: FileResult[], target
   const unsupported: string[] = [];
   for (const file of results) {
     if (file.status === "unsupported") unsupported.push(file.path);
+    else if (file.status === "skipped") findings.push({ rule: "coverage", severity: "note", path: file.path, message: `${file.path} was not read: ${file.error ?? "skipped"}` });
     else if (file.status === "unmeasured") findings.push({ rule: "unmeasured", severity: "error", path: file.path, message: `${file.path} has a language Lizard reads but was not measured (${file.error ?? "unknown"})` });
     else evaluateFile(config, file, targets.get(file.path) ?? "all", evaluation);
   }

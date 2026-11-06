@@ -78,6 +78,7 @@ conventions` job, so enforcing needs no branch-protection change. Before switchi
 `enforce`, run `morpheus complexity check --all` on the exact tree that will merge: the enrolled
 scope must already be within the limit, or every unrelated PR goes red.
 
+Symlinks are never followed (Git stores a link, not the file), so a changed symlink is a note.
 Coverage limits are reported, not hidden: shell, Metal, Firestore rules, inline HTML scripts and
 other languages Lizard does not read are listed as notes.
 
@@ -88,4 +89,10 @@ reachable (never one that is rewritten), and exact wheel hashes for `pygments` a
 Lizard imports at load. A move reaches every consumer's CI at once, because they call
 `pr-check.yml@main`. Before merging one, run `morpheus complexity check --all` with the new pin on
 each enforcing consumer, and update `CANARY_EXPECTED` only if the canary's measurement legitimately
-changed. Python 3.9 is the floor both wheels declare; a test holds the pin to it.
+changed. Every status check proves the install three ways: the checkout is the pinned commit with no
+local modification, Python loaded Lizard from that checkout, and the canary files (JavaScript, plus
+Swift and TSX that exercise the pinned parser fixes) measure exactly as recorded.
+
+The current pin is the `cpheinrich/lizard` tag `morpheus-analyzer-2026-11-06`: upstream master
+`4f6979da` plus open upstream PRs 556 (Swift computed and closure properties), 558 (enum cases),
+559 (string interpolation) and 560 (JSX text). Return to plain upstream once all four merge. Python 3.9 is the floor both wheels declare; a test holds the pin to it.

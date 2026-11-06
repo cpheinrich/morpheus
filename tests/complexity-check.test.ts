@@ -1,11 +1,11 @@
-import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { appendFile, cp, mkdtemp, readdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { runCheck, type CheckReport } from "../src/complexity/check.js";
 import { packetSummary } from "../src/complexity/format.js";
 import { installLizard, toolchainFor, toolStatus } from "../src/complexity/install.js";
-import { LIZARD_PIN, pinKey } from "../src/complexity/pin.js";
+import { CANARY_EXPECTED, LIZARD_PIN, pinKey } from "../src/complexity/pin.js";
 import { jsFunction, put, repo } from "./complexity-helpers.js";
 
 /**
@@ -171,6 +171,21 @@ describe("complexity check against the real pinned Lizard", () => {
     expect(packetSummary(report)).toMatch(/^Complexity: NOT RUN — not installed/);
   });
 
+  it("never follows a symlink, inside or outside the repository", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "outside-"));
+    await writeFile(join(outside, "secret.js"), jsFunction("secret", 30));
+    const root = await repo({ "morpheus.json": enforce, "real.js": jsFunction("real", 2) });
+    await symlink(join(outside, "secret.js"), join(root, "out.js"));
+    await symlink("real.js", join(root, "in.js"));
+    const report = await check(root);
+    expect(report.exitCode).toBe(0);
+    expect(report.findings.filter((f) => f.rule === "coverage").map((f) => f.message).sort()).toEqual([
+      "in.js was not read: symlink, not followed",
+      "out.js was not read: symlink, not followed",
+    ]);
+    expect(rules(report)).not.toContain("ccn-over");
+  });
+
   it("refuses an invalid policy instead of falling back to defaults", async () => {
     const root = await repo({ "morpheus.json": manifest({ mode: "strict" }) });
     const report = await runCheck({ root, base: "main", all: false, env });
@@ -217,6 +232,24 @@ describe("installation", () => {
       const [floorMajor, floorMinor] = LIZARD_PIN.pythonFloor;
       expect(Number(major) * 100 + Number(minor), info).toBeLessThanOrEqual(floorMajor * 100 + floorMinor);
     }
+  });
+
+  it("reads a copy whose Lizard source was modified as broken, though its canary would still pass", async () => {
+    const copy = await mkdtemp(join(tmpdir(), "edited-tools-"));
+    const original = toolchainFor(LIZARD_PIN, env).dir;
+    const edited = toolchainFor(LIZARD_PIN, { MORPHEUS_TOOLS_DIR: copy }).dir;
+    await cp(original, edited, { recursive: true, verbatimSymlinks: true });
+    expect((await toolStatus(LIZARD_PIN, { MORPHEUS_TOOLS_DIR: copy })).state).toBe("ok");
+    await appendFile(join(edited, "src", "lizard.py"), "\n# edited\n");
+    expect(await toolStatus(LIZARD_PIN, { MORPHEUS_TOOLS_DIR: copy })).toMatchObject({ state: "broken", reason: "Lizard source has local modifications" });
+  });
+
+  it("checks the pinned fork's fixes, not just a JavaScript sample", () => {
+    // Upstream 4f6979da measures no `label` function, the Swift top level at CCN 4 and Notice at 4.
+    expect(CANARY_EXPECTED.map((r) => `${r.path} ${r.name} ${r.ccn}`)).toEqual([
+      "canary.js canary 6", "canary.swift label 3", "canary.swift check 4", "canary.swift *global* 1",
+      "canary.tsx pick 2", "canary.tsx Notice 2",
+    ]);
   });
 
   it("starts nothing through a shell", async () => {

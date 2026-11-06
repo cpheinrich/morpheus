@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { gitSubprocessEnv } from "../git-env.js";
 import { CANARY_EXPECTED, LIZARD_PIN, pinKey } from "./pin.js";
@@ -32,10 +33,23 @@ export async function toolStatus(pin = LIZARD_PIN, env = process.env) {
     const stamp = await readFile(join(toolchain.dir, "ready.json"), "utf8").catch(() => null);
     if (stamp === null)
         return { state: "missing", toolchain, reason: `not installed for this pin (${toolchain.dir})` };
+    const source = await sourceIdentity(toolchain.lizard, pin);
+    if (source)
+        return { state: "broken", toolchain, reason: source };
     const result = await run(toolchain.python, ["-I", "-B", RUNNER_PATH, "--lizard", toolchain.lizard, "--canary"]);
     if (result.code !== 0)
         return { state: "broken", toolchain, reason: `canary did not run: ${firstLine(result.stderr)}` };
     return canaryVerdict(toolchain, result.stdout);
+}
+/** The checkout must be the pinned commit, unmodified: the canary samples behaviour, this proves the source. */
+async function sourceIdentity(src, pin) {
+    const head = await run("git", ["-C", src, "rev-parse", "HEAD"], { env: gitSubprocessEnv() });
+    if (head.code !== 0 || head.stdout.trim() !== pin.commit)
+        return `Lizard source is ${head.stdout.trim() || "unreadable"}, not the pinned ${pin.commit}`;
+    const dirty = await run("git", ["-C", src, "status", "--porcelain", "--untracked-files=all"], { env: gitSubprocessEnv() });
+    if (dirty.code !== 0 || dirty.stdout.trim() !== "")
+        return "Lizard source has local modifications";
+    return null;
 }
 function canaryVerdict(toolchain, stdout) {
     let parsed;
@@ -45,12 +59,30 @@ function canaryVerdict(toolchain, stdout) {
     catch {
         return { state: "broken", toolchain, reason: "canary printed no JSON" };
     }
-    const row = parsed.files?.[0]?.functions?.find((f) => f.name === CANARY_EXPECTED.name);
-    if (!row || row.ccn !== CANARY_EXPECTED.ccn || row.cognitive !== CANARY_EXPECTED.cognitive) {
-        const got = row ? `CCN ${row.ccn}, cognitive ${row.cognitive}` : "no canary function";
-        return { state: "broken", toolchain, reason: `canary measured ${got}; expected CCN ${CANARY_EXPECTED.ccn}, cognitive ${CANARY_EXPECTED.cognitive}` };
+    if (!sameDir(parsed.lizardFile, toolchain.lizard)) {
+        return { state: "broken", toolchain, reason: `Lizard loaded from ${parsed.lizardFile ?? "an unknown path"}, not the pinned checkout` };
     }
+    const mismatch = CANARY_EXPECTED.map((want) => canaryMismatch(parsed, want)).find(Boolean);
+    if (mismatch)
+        return { state: "broken", toolchain, reason: mismatch };
     return { state: "ok", toolchain, lizardVersion: parsed.lizardVersion ?? null, python: parsed.python ?? "unknown" };
+}
+function sameDir(file, dir) {
+    if (!file)
+        return false;
+    try {
+        return dirname(file) === realpathSync(dir);
+    }
+    catch {
+        return false;
+    }
+}
+function canaryMismatch(parsed, want) {
+    const row = parsed.files?.find((f) => f.path === want.path)?.functions?.find((f) => f.name === want.name);
+    if (row && row.ccn === want.ccn && row.cognitive === want.cognitive)
+        return null;
+    const got = row ? `CCN ${row.ccn}, cognitive ${row.cognitive}` : "no such function";
+    return `canary ${want.path} ${want.name} measured ${got}; the pinned build gives CCN ${want.ccn}, cognitive ${want.cognitive}`;
 }
 function firstLine(text) {
     return text.trim().split("\n").filter(Boolean).pop() ?? "no output";

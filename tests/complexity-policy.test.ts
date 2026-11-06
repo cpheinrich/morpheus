@@ -26,6 +26,15 @@ describe("readConfig", () => {
   });
 });
 
+describe("globs", () => {
+  it("refuses a leading ! that would negate a whole exclude pattern", () => {
+    const read = readConfig(JSON.stringify({ complexity: { exclude: ["!(ops)/**/*.test.js"] } }));
+    expect(read.ok).toBe(false);
+    expect(read.ok ? "" : read.reason).toContain("a leading ! negates the whole pattern");
+    expect(readConfig(JSON.stringify({ complexity: { exclude: ["**/@(e2e|__tests__)/!(helpers)/**"] } })).ok).toBe(true);
+  });
+});
+
 describe("scope", () => {
   it("applies include, then exclude, including dotfiles", () => {
     const c = config({ include: ["apps/**", ".github/**"], exclude: ["apps/generated/**"] });

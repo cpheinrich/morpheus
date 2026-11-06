@@ -23,6 +23,8 @@ export function evaluate(config, results, targets) {
     for (const file of results) {
         if (file.status === "unsupported")
             unsupported.push(file.path);
+        else if (file.status === "skipped")
+            findings.push({ rule: "coverage", severity: "note", path: file.path, message: `${file.path} was not read: ${file.error ?? "skipped"}` });
         else if (file.status === "unmeasured")
             findings.push({ rule: "unmeasured", severity: "error", path: file.path, message: `${file.path} has a language Lizard reads but was not measured (${file.error ?? "unknown"})` });
         else

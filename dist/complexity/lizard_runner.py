@@ -15,14 +15,17 @@ line keeps its number and the whole file is measured; the hit is reported.
 """
 import argparse
 import json
+import os
 import re
 import sys
 
 # Spelled in pieces so this file does not report itself.
 DIRECTIVE = re.compile("lizard" + " forgive|GENERATED" + " CODE")
 
-CANARY_PATH = "canary.js"
-CANARY_SOURCE = """function canary(a, b) {
+# Known measurements of the pinned build (pin.ts CANARY_EXPECTED). The Swift and TSX files exercise
+# the fork's fixes, so an upstream or older Lizard measures them differently and fails the canary.
+CANARY = {
+    "canary.js": """function canary(a, b) {
   if (a && b) {
     for (const x of a) {
       if (x) { return 1; }
@@ -30,7 +33,33 @@ CANARY_SOURCE = """function canary(a, b) {
   }
   return a ? 2 : 3;
 }
-"""
+""",
+    "canary.swift": """enum Mode {
+  case fast, slow
+  case off
+}
+
+struct Gauge {
+  var level: Int
+  var label: String {
+    if level > 9 { return "high" }
+    return "level \\(level > 5 ? "mid" : "low")"
+  }
+  func check(a: Int?, b: Int) -> Bool {
+    guard let a = a, a > b, b > 0 else { return false }
+    return true
+  }
+}
+""",
+    "canary.tsx": """export function pick<T>(a: T | null, b: T): T {
+  return a ?? b;
+}
+
+export function Notice(props: { show: boolean }) {
+  return <p>If this and that, or else while case: {props.show && "yes"}</p>;
+}
+""",
+}
 
 
 def neutralise(text):
@@ -80,9 +109,22 @@ def read_text(path):
         return None, "decode-error: byte %d is not UTF-8" % error.start
 
 
-def analyse_path(analyzer, get_reader_for, path):
+def outside(path, root):
+    """A symlink, or a path that resolves outside the repository, is never read: Git stores a
+    link as its target string, and following it could measure (or read) a file elsewhere."""
+    if os.path.islink(path):
+        return "symlink, not followed"
+    if not os.path.realpath(path).startswith(root + os.sep):
+        return "resolves outside the repository"
+    return None
+
+
+def analyse_path(analyzer, get_reader_for, path, root):
     if get_reader_for(path) is None:
         return {"path": path, "status": "unsupported"}
+    skipped = outside(path, root)
+    if skipped is not None:
+        return {"path": path, "status": "skipped", "error": skipped}
     text, error = read_text(path)
     if error is not None:
         return {"path": path, "status": "unmeasured", "error": error}
@@ -110,11 +152,13 @@ def main():
 
     analyzer = lizard.FileAnalyzer(lizard.get_extensions(["cognitive", "outside"]))
     if args.canary:
-        files = [measure(analyzer, CANARY_PATH, CANARY_SOURCE)]
+        files = [measure(analyzer, path, source) for path, source in CANARY.items()]
     else:
         paths = json.load(sys.stdin)
-        files = [analyse_path(analyzer, get_reader_for, p) for p in paths]
-    json.dump({"lizardVersion": lizard_version(), "python": sys.version.split()[0], "files": files}, sys.stdout)
+        root = os.path.realpath(os.getcwd())
+        files = [analyse_path(analyzer, get_reader_for, p, root) for p in paths]
+    identity = {"lizardVersion": lizard_version(), "lizardFile": os.path.realpath(lizard.__file__), "python": sys.version.split()[0]}
+    json.dump(dict(identity, files=files), sys.stdout)
     sys.stdout.write("\n")
 
 
