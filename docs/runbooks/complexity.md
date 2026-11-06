@@ -152,8 +152,9 @@ is expected; and in `.jsx`/`.tsx` an unescaped `/a</b>/` is not read as a regex 
 escape that slash anyway). The list is what has been found, not a proof that no other form misreads.
 
 The previous pin, `541623c0` (`-jsx-boolean`), has the slash fault. On Lakina it made
-`SaasBottomUp.tsx` `CompanyDetail` measure 99–184 at CCN 17 and dropped `SaasBottomUp`; a reduced
-copy of that file measures correctly at `b57041bf`, and rescanning the real file at this pin is
-part of the adopting change's acceptance (its worklog has the result). Older tags (`morpheus-analyzer-2026-11-06`
+`SaasBottomUp.tsx` `CompanyDetail` measure 99–184 at CCN 17 and dropped `SaasBottomUp`. At
+`b57041bf` the real file measures `CompanyDetail` 99–156 at CCN 14 and `SaasBottomUp` 158–184 at
+CCN 4. Lakina still has functions with misread bounds at this pin (`marketCells` absorbs six DCF
+helpers, each at most CCN 15 alone), so the fix is bounded, not complete. Older tags (`morpheus-analyzer-2026-11-06`
 at `7f14ea5`, `-ts` at `484bbd05`, `-tsx` at `3b53c116`, `-jsx-boolean` at `541623c0`) stay in place
 and are never moved. Python 3.9 is the floor both wheels declare; a test holds the pin to it.
