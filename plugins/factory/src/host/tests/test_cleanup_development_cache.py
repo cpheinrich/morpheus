@@ -44,15 +44,21 @@ class SimulatorOwnershipTests(unittest.TestCase):
         self.assertEqual(calls, ["first"])
 
     def test_cleanup_failure_reports_error_before_final_space_probe(self):
-        with patch.object(cleanup, "space_gib") as space, patch.object(cleanup, "log") as log:
-            self.assertEqual(cleanup.report_cleanup_result(["stage: denied"], 50, True, 70), 1)
-            log.assert_called_once_with("ERROR stage: denied")
-            space.assert_not_called()
+        with patch.object(cleanup, "space_gib", return_value=(50, 461)) as space, \
+             patch.object(cleanup.sys, "argv", ["cleanup", "--watch"]), \
+             patch.object(cleanup, "run_stages_locked", return_value=["stage: denied"]), \
+             patch.object(cleanup, "log") as log:
+            self.assertEqual(cleanup.main(), 1)
+            log.assert_any_call("ERROR stage: denied")
+            space.assert_called_once()
 
     def test_cleanup_result_accepts_floor_boundary_but_reports_below_it(self):
         for ending, expected in [(70, 0), (69.9, 2)]:
-            with self.subTest(ending=ending), patch.object(cleanup, "space_gib", return_value=(ending, 460)):
-                self.assertEqual(cleanup.report_cleanup_result([], 50, True, 70), expected)
+            with self.subTest(ending=ending), \
+                 patch.object(cleanup, "space_gib", side_effect=[(50, 461), (ending, 461)]), \
+                 patch.object(cleanup.sys, "argv", ["cleanup", "--watch"]), \
+                 patch.object(cleanup, "run_stages_locked", return_value=[]):
+                self.assertEqual(cleanup.main(), expected)
 
     def test_healthy_watchdog_only_checks_trash(self):
         with tempfile.TemporaryDirectory() as directory, \

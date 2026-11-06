@@ -86,3 +86,34 @@ commands and rollback. The current consumer manual workflow has no exclusive-hos
 supervisor must choose an authorized routing mechanism before dispatch, or attest actual Mini
 assignment from provider evidence without claiming forced placement. A CI success, actual
 two-worker proof, free-space delta and service health are still owed. The item stays in review.
+
+## Continued source preparation — supersedes the routing gap above
+
+The supervisor extended the owned checkout map to Evo and clarified qualification acceptance:
+normal all-unit CI is sufficient, with an exclusive Mini label, actual 8-vCPU/16-GiB guest,
+host lanes 2 and native YES/max2. Report observed worker count; no full suite or scope override
+to force two clones. Evo EV-26-11-06-14.05.11 implements the optional manual runner label and
+corrects current serial-only guidance. PR routing, hosted recovery, selection, pre-test/evidence
+pins and read-only permissions stay unchanged. The routing gap above is resolved.
+
+Reliability integration stays at the existing owner boundary: host-setup install.sh attempts
+the same cache retirement after unloading admission, before restarting. Active VMs or uncertain
+ownership defer cleanup with a message and never block adoption/startup. The installer fixture
+proves ordering and a refused prune followed by successful startup (6 service tests pass).
+No new schedule/state or auto-stop mechanism. Images stay explicit until replacement
+qualification removes the rollback need; the general hourly watchdog still does not own Tart.
+
+Morpheus trunk advanced to 5c76acac (visual guidance), then 93ecbae1 (reviewed complexity
+baseline). Both were merged, not rebased. Resolved the record-only conflict by preserving both
+entries. For the cleanup conflict, kept the full reviewed trunk refactor and reapplied only the
+browser-cache helper/stage. This supersedes this branch's earlier argument/result extraction
+and metrics: final production diff against 93ecbae1 is only the browser-cache addition.
+Adapted result/boundary tests to canonical main. All 23 cleanup tests pass; final complexity
+passes without findings. No alternate refactor or policy weakening remains.
+
+Evo's 18 focused workflow/pipeline/reference tests and actionlint pass. Its complexity check
+passes enforce CCN 15. No native suite locally because no app code changed. Supported
+codebase-memory bootstrap on Evo could not verify an exact-checkout index; known YAML/test
+paths were read directly with no graph-completeness claim. The stale local CLI was updated
+through supported self-update. No Mini/Studio config/service/source mutation or deletion,
+manual CI dispatch, upload or Apple action. Fresh independent review per PR remains root-owned.
