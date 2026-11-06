@@ -313,8 +313,20 @@ describe("installation", () => {
     expect(CANARY_EXPECTED.map((r) => `${r.path} ${r.name} ${r.ccn}`)).toEqual([
       "canary.js canary 6", "canary.swift label 3", "canary.swift check 4", "canary.swift *global* 1",
       "canary.tsx pick 2", "canary.tsx Notice 2",
+      "canary.ts choose 4", "canary.ts run 3", "canary.ts *global* 1",
     ]);
   });
+
+  it("refuses the previous pin, whose TypeScript reader folds functions after a template literal type into *global*", async () => {
+    // 7f14ea5 (tag morpheus-analyzer-2026-11-06) measures canary.ts as one *global* row, CCN 6.
+    const previous = { ...LIZARD_PIN, commit: "7f14ea5c31ea3201c8c83eb2e0a89d1740e79edd" };
+    const result = await installLizard(previous, env);
+    expect(result).toEqual({
+      ok: false,
+      reason: "canary canary.ts choose measured no such function; the pinned build gives CCN 4, cognitive 1",
+    });
+    expect(await toolStatus(previous, env)).toMatchObject({ state: "broken", reason: result.ok ? "" : result.reason });
+  }, 300_000);
 
   it("starts nothing through a shell", async () => {
     const source = await readFile(join(import.meta.dirname, "../src/complexity/install.ts"), "utf8");

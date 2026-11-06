@@ -125,8 +125,13 @@ Lizard imports at load. A move reaches every consumer's CI at once, because they
 each enforcing consumer, and update `CANARY_EXPECTED` only if the canary's measurement legitimately
 changed. Every status check proves the install three ways: the checkout is the pinned commit with no
 local modification, Python loaded Lizard from that checkout, and the canary files (JavaScript, plus
-Swift and TSX that exercise the pinned parser fixes) measure exactly as recorded.
+Swift, TSX and TypeScript that exercise the pinned parser fixes) measure exactly as recorded. A test
+installs the previous pin and asserts the canary refuses it, so a pin move whose canary would not
+notice a regression back fails.
 
-The current pin is the `cpheinrich/lizard` tag `morpheus-analyzer-2026-11-06`: upstream master
-`4f6979da` plus open upstream PRs 556 (Swift computed and closure properties), 558 (enum cases),
-559 (string interpolation) and 560 (JSX text). Return to plain upstream once all four merge. Python 3.9 is the floor both wheels declare; a test holds the pin to it.
+The current pin is the `cpheinrich/lizard` tag `morpheus-analyzer-2026-11-06-ts` (`484bbd05`):
+upstream master `4f6979da` plus open upstream PRs 556 (Swift computed and closure properties), 558
+(enum cases), 559 (string interpolation), 560 (JSX text) and 562 (template literal types inside
+TypeScript interface and object-type bodies, which earlier builds read as closing the body, folding
+every later function in the file into `*global*`). Return to plain upstream once all five merge. The
+previous tag, `morpheus-analyzer-2026-11-06` (`7f14ea5`), stays in place and is never moved. Python 3.9 is the floor both wheels declare; a test holds the pin to it.
