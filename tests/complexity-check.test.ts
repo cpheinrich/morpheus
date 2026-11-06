@@ -6,7 +6,7 @@ import { runCheck, type CheckReport } from "../src/complexity/check.js";
 import { packetSummary } from "../src/complexity/format.js";
 import { installLizard, toolchainFor, toolStatus } from "../src/complexity/install.js";
 import { CANARY_EXPECTED, LIZARD_PIN, pinKey } from "../src/complexity/pin.js";
-import { jsFunction, put, repo } from "./complexity-helpers.js";
+import { git, jsFunction, put, repo } from "./complexity-helpers.js";
 
 /**
  * These run the real pinned Lizard: a mock would prove the plumbing and not
@@ -141,6 +141,28 @@ describe("complexity check against the real pinned Lizard", () => {
     const all = await check(root, { all: true });
     expect(all.findings.filter((f) => f.path === "legacy.js" && f.severity !== "warning").map((f) => f.rule)).toEqual(["exception"]);
     expect(all.exitCode).toBe(0);
+  });
+
+  it("calls an exception for a deleted or renamed file stale under --all, and leaves it unevaluated when targeted", async () => {
+    const exception = { path: "legacy.js", longName: "legacy ( a )", ccn: 18, kind: "semantic", reason: "A protocol table kept flat on purpose.", ref: "MO-26-11-05-21.48.00" };
+    const excluded = { ...exception, path: "vendor/old.js" };
+    const root = await repo({
+      "morpheus.json": manifest({ mode: "enforce", exclude: ["vendor/**"], exceptions: [exception, excluded] }),
+      "legacy.js": jsFunction("legacy", 18),
+    });
+    git(root, "mv", "legacy.js", "renamed.js");
+    const targeted = await check(root);
+    expect(targeted.findings.find((f) => f.path === "legacy.js")).toMatchObject({ rule: "exception", severity: "note" });
+    // A pure rename changes no line, so the targeted run measures nothing at the new path.
+    expect(targeted.findings.find((f) => f.rule === "ccn-over")).toBeUndefined();
+    const all = await check(root, { all: true });
+    // Exceptions match by exact path, so the function at its new path is not covered.
+    expect(all.findings.find((f) => f.rule === "ccn-over")?.path).toBe("renamed.js");
+    expect(all.findings.find((f) => f.path === "legacy.js")).toMatchObject({ rule: "stale-exception", severity: "error" });
+    expect(all.findings.find((f) => f.path === "legacy.js")?.message).toContain("no longer exists (deleted or renamed)");
+    // An excluded path is out of scope, so its exception is only noted.
+    expect(all.findings.find((f) => f.path === "vendor/old.js")).toMatchObject({ rule: "exception", severity: "note" });
+    expect(all.exitCode).toBe(1);
   });
 
   it("fails an exception that the function has grown past", async () => {

@@ -1,6 +1,6 @@
 import { extname } from "node:path";
 import type { ChangedFile } from "./diff.js";
-import type { ComplexityConfig, ComplexityException } from "./policy.js";
+import { inScope, type ComplexityConfig, type ComplexityException } from "./policy.js";
 
 export interface FunctionRow {
   name: string;
@@ -57,7 +57,9 @@ function hasLineOutside(lo: number, hi: number, functions: FunctionRow[]): boole
   return false;
 }
 
-export function evaluate(config: ComplexityConfig, results: FileResult[], targets: Map<string, Target>): Evaluation {
+export type Scope = "changed" | "all";
+
+export function evaluate(config: ComplexityConfig, results: FileResult[], targets: Map<string, Target>, scope: Scope = "changed"): Evaluation {
   const findings: Finding[] = [];
   const evaluation: Evaluation = { findings, targeted: 0, inTouchedFiles: 0, measuredFiles: 0 };
   const unsupported: string[] = [];
@@ -68,7 +70,7 @@ export function evaluate(config: ComplexityConfig, results: FileResult[], target
     else evaluateFile(config, file, targets.get(file.path) ?? "all", evaluation);
   }
   if (unsupported.length) findings.push(coverageNote(unsupported));
-  findings.push(...exceptionFindings(config, results, targets));
+  findings.push(...exceptionFindings(config, results, targets, scope));
   return evaluation;
 }
 
@@ -113,20 +115,25 @@ function coverageNote(paths: string[]): Finding {
 /**
  * An exception is judged only where its file was analysed in this run; in a
  * targeted run an untouched file's exception is "not evaluated", never stale.
+ * A run over every file (`all`) has seen the whole tree, so an exception whose
+ * in-scope file is not there (deleted or renamed) is stale: left in place it
+ * would silently cover a later file recreated at that path.
  */
-export function exceptionFindings(config: ComplexityConfig, results: FileResult[], targets: Map<string, Target>): Finding[] {
+export function exceptionFindings(config: ComplexityConfig, results: FileResult[], targets: Map<string, Target>, scope: Scope = "changed"): Finding[] {
   const measured = new Map(results.filter((r) => r.status === "measured").map((r) => [r.path, r.functions ?? []]));
   const findings: Finding[] = [];
   for (const exception of config.exceptions) {
     const functions = measured.get(exception.path);
-    if (!functions) {
-      if (!targets.has(exception.path)) findings.push(note(exception, "not evaluated: its file was not analysed in this run"));
-      else findings.push(stale(exception, "its file was not measured"));
-      continue;
-    }
-    findings.push(judgeException(config, exception, functions.filter((f) => f.longName === exception.longName)));
+    if (functions) findings.push(judgeException(config, exception, functions.filter((f) => f.longName === exception.longName)));
+    else findings.push(unanalysed(config, exception, targets.has(exception.path), scope));
   }
   return findings;
+}
+
+function unanalysed(config: ComplexityConfig, exception: ComplexityException, targeted: boolean, scope: Scope): Finding {
+  if (targeted) return stale(exception, "its file was not measured");
+  if (scope === "all" && inScope(config, exception.path)) return stale(exception, "its file no longer exists (deleted or renamed); remove or move the exception");
+  return note(exception, "not evaluated: its file was not analysed in this run");
 }
 
 function judgeException(config: ComplexityConfig, exception: ComplexityException, matches: FunctionRow[]): Finding {

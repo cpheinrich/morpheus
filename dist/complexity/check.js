@@ -22,7 +22,7 @@ export async function runCheck(opts) {
     const measured = await measure(opts.root, tool.toolchain.python, tool.toolchain.lizard, [...scoped.targets.keys()]);
     if (!measured.ok)
         return notRun(measured.reason, enrolled, config.mode);
-    const evaluation = evaluate(config, measured.files, scoped.targets);
+    const evaluation = evaluate(config, measured.files, scoped.targets, opts.all ? "all" : "changed");
     const findings = applyMode(config, evaluation.findings);
     const delta = scoped.mergeBase ? policyDelta(await baseBlock(opts.root, scoped.mergeBase), read.raw) : [];
     const exitCode = findings.some((f) => f.severity === "error") ? 1 : 0;

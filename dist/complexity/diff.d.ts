@@ -10,7 +10,6 @@ export type ChangeSet = {
     ok: true;
     mergeBase: string;
     files: ChangedFile[];
-    deleted: string[];
 } | {
     ok: false;
     reason: string;

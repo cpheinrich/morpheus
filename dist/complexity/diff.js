@@ -25,12 +25,10 @@ export async function changedFiles(root, base) {
     if (untracked.code !== 0)
         return { ok: false, reason: `git ls-files failed: ${untracked.stderr.trim()}` };
     const files = [];
-    const deleted = [];
     for (const entry of parseNameStatus(status.stdout)) {
-        if (entry.status === "D") {
-            deleted.push(entry.path);
+        // A deleted file has no lines left to measure.
+        if (entry.status === "D")
             continue;
-        }
         if (entry.status === "A") {
             files.push({ path: entry.path, whole: true, ranges: [] });
             continue;
@@ -42,7 +40,7 @@ export async function changedFiles(root, base) {
     }
     for (const path of untracked.stdout.split("\0").filter(Boolean))
         files.push({ path, whole: true, ranges: [] });
-    return { ok: true, mergeBase, files, deleted };
+    return { ok: true, mergeBase, files };
 }
 /** `--name-status -z`: a status, then one path, or two for a rename or copy. */
 export function parseNameStatus(out) {

@@ -3683,4 +3683,14 @@ describe("pr-check complexity step", () => {
     }
     expect((await runStep({ mode: "enforce" }, { install: 1 })).calls).toEqual(["complexity install"]);
   });
+
+  it("fails closed on a mode that is not exactly advisory, and on a block that is not an object", async () => {
+    for (const block of [{ mode: "Enforce" }, { mode: "enforced" }, { mode: 5 }, true]) {
+      const out = await runStep(block, { check: 2 });
+      expect(out.code, JSON.stringify(block)).toBe(1);
+      expect(out.stdout).toContain("not advisory");
+    }
+    // An explicit advisory with some other invalid field still only warns.
+    expect((await runStep({ mode: "advisory", ccn: "x" }, { check: 2 })).code).toBe(0);
+  });
 });

@@ -1,4 +1,5 @@
 import { extname } from "node:path";
+import { inScope } from "./policy.js";
 const GLOBAL = "*global*";
 /** Code outside every function is Lizard's `*global*` row; Evo's baseline scores it too. */
 export function isTouched(fn, target, all) {
@@ -16,7 +17,7 @@ function hasLineOutside(lo, hi, functions) {
     }
     return false;
 }
-export function evaluate(config, results, targets) {
+export function evaluate(config, results, targets, scope = "changed") {
     const findings = [];
     const evaluation = { findings, targeted: 0, inTouchedFiles: 0, measuredFiles: 0 };
     const unsupported = [];
@@ -32,7 +33,7 @@ export function evaluate(config, results, targets) {
     }
     if (unsupported.length)
         findings.push(coverageNote(unsupported));
-    findings.push(...exceptionFindings(config, results, targets));
+    findings.push(...exceptionFindings(config, results, targets, scope));
     return evaluation;
 }
 function evaluateFile(config, file, target, evaluation) {
@@ -74,22 +75,28 @@ function coverageNote(paths) {
 /**
  * An exception is judged only where its file was analysed in this run; in a
  * targeted run an untouched file's exception is "not evaluated", never stale.
+ * A run over every file (`all`) has seen the whole tree, so an exception whose
+ * in-scope file is not there (deleted or renamed) is stale: left in place it
+ * would silently cover a later file recreated at that path.
  */
-export function exceptionFindings(config, results, targets) {
+export function exceptionFindings(config, results, targets, scope = "changed") {
     const measured = new Map(results.filter((r) => r.status === "measured").map((r) => [r.path, r.functions ?? []]));
     const findings = [];
     for (const exception of config.exceptions) {
         const functions = measured.get(exception.path);
-        if (!functions) {
-            if (!targets.has(exception.path))
-                findings.push(note(exception, "not evaluated: its file was not analysed in this run"));
-            else
-                findings.push(stale(exception, "its file was not measured"));
-            continue;
-        }
-        findings.push(judgeException(config, exception, functions.filter((f) => f.longName === exception.longName)));
+        if (functions)
+            findings.push(judgeException(config, exception, functions.filter((f) => f.longName === exception.longName)));
+        else
+            findings.push(unanalysed(config, exception, targets.has(exception.path), scope));
     }
     return findings;
+}
+function unanalysed(config, exception, targeted, scope) {
+    if (targeted)
+        return stale(exception, "its file was not measured");
+    if (scope === "all" && inScope(config, exception.path))
+        return stale(exception, "its file no longer exists (deleted or renamed); remove or move the exception");
+    return note(exception, "not evaluated: its file was not analysed in this run");
 }
 function judgeException(config, exception, matches) {
     if (matches.length === 0)

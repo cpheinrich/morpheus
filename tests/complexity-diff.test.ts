@@ -72,14 +72,13 @@ describe("changedFiles", () => {
     expect(byPath["new file.js"]).toEqual({ path: "new file.js", whole: true, ranges: [] });
   });
 
-  it("records a pure deletion as the gap it leaves, and a deleted file as deleted", async () => {
+  it("records a pure deletion as the gap it leaves, and nothing for a deleted file", async () => {
     const root = await repo({ "a.js": lines(20), "gone.js": "x\n" });
     await put(root, { "a.js": lines(20).replace("line 10\nline 11\nline 12\n", "") });
     await rm(join(root, "gone.js"));
     const changes = await changedFiles(root, "main");
     if (!changes.ok) throw new Error(changes.reason);
     expect(changes.files).toEqual([{ path: "a.js", whole: false, ranges: [[9, 10]] }]);
-    expect(changes.deleted).toEqual(["gone.js"]);
   });
 
   it("maps a rename with edits to its new path and only the edited lines", async () => {
@@ -133,6 +132,6 @@ describe("changedFiles", () => {
   it("reports nothing changed as an empty list, not a failure", async () => {
     const root = await repo({ "a.js": lines(3) });
     await rename(join(root, "a.js"), join(root, "a.js"));
-    expect(await changedFiles(root, "main")).toMatchObject({ ok: true, files: [], deleted: [] });
+    expect(await changedFiles(root, "main")).toMatchObject({ ok: true, files: [] });
   });
 });

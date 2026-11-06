@@ -317,7 +317,10 @@ jobs:
           if git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null; then
             git checkout --quiet --detach "$EXPECTED_HEAD"
           fi
-          mode="$(jq -r 'if (.complexity | type) == "object" then (.complexity.mode // "advisory") else "" end' morpheus.json 2> /dev/null || true)"
+          # Only an explicit or defaulted `advisory` is non-blocking. Anything else, a typo such as
+          # "Enforce" or a block that is not an object included, enforces: the CLI then refuses the
+          # invalid policy (exit 2) and the step fails, instead of a project believing it enforces.
+          mode="$(jq -r 'if has("complexity") then (if (.complexity | type) == "object" then (.complexity.mode // "advisory" | tostring) else "invalid" end) else "" end' morpheus.json 2> /dev/null || true)"
           if [ -z "$mode" ]; then
             echo "morpheus.json has no complexity block: not enrolled, nothing checked."
             exit 0
@@ -330,8 +333,8 @@ jobs:
           if [ "$rc" -eq 0 ]; then
             exit 0
           fi
-          if [ "$mode" = "enforce" ]; then
-            echo "::error::Function complexity failed (exit $rc) and this project enforces it."
+          if [ "$mode" != "advisory" ]; then
+            echo "::error::Function complexity failed (exit $rc) and this project's mode is '$mode', not advisory."
             exit 1
           fi
           echo "::warning::Function complexity exited $rc; advisory mode reports it and never fails this job."

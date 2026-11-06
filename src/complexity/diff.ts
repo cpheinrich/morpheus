@@ -10,7 +10,7 @@ export interface ChangedFile {
   ranges: [number, number][];
 }
 
-export type ChangeSet = { ok: true; mergeBase: string; files: ChangedFile[]; deleted: string[] } | { ok: false; reason: string };
+export type ChangeSet = { ok: true; mergeBase: string; files: ChangedFile[] } | { ok: false; reason: string };
 
 /**
  * Plain `git`, never the user's diff configuration: an external diff tool or
@@ -36,12 +36,9 @@ export async function changedFiles(root: string, base: string): Promise<ChangeSe
   if (untracked.code !== 0) return { ok: false, reason: `git ls-files failed: ${untracked.stderr.trim()}` };
 
   const files: ChangedFile[] = [];
-  const deleted: string[] = [];
   for (const entry of parseNameStatus(status.stdout)) {
-    if (entry.status === "D") {
-      deleted.push(entry.path);
-      continue;
-    }
+    // A deleted file has no lines left to measure.
+    if (entry.status === "D") continue;
     if (entry.status === "A") {
       files.push({ path: entry.path, whole: true, ranges: [] });
       continue;
@@ -51,7 +48,7 @@ export async function changedFiles(root: string, base: string): Promise<ChangeSe
     files.push(hunks);
   }
   for (const path of untracked.stdout.split("\0").filter(Boolean)) files.push({ path, whole: true, ranges: [] });
-  return { ok: true, mergeBase, files, deleted };
+  return { ok: true, mergeBase, files };
 }
 
 export interface NameStatus {

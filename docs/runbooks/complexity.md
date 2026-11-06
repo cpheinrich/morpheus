@@ -51,7 +51,7 @@ the full report; `--ci` adds GitHub annotations and a job summary and, in `enfor
 |---|---|---|
 | CCN over `ccn` in a touched function (all functions under `--ci`) | warning | **error** |
 | a file in a language Lizard reads that failed to decode or analyse | warning | **error** |
-| exception stale: function gone, ambiguous `longName`, or measured CCN above the recorded one | warning | **error** |
+| exception stale: function gone, ambiguous `longName`, measured CCN above the recorded one, or (under `--all`) its file gone | warning | **error** |
 | cognitive over `cognitiveWarn` | warning | warning |
 | exception looser than measured, or no longer needed | warning | warning |
 | `lizard forgive` / `GENERATED CODE` text (neutralised, file measured in full) | warning | warning |
@@ -64,13 +64,18 @@ is printed in every report. An exception is narrow by construction: one function
 Lizard's `longName` (a Swift file has several `init`s), the CCN it covers (growth past it fails),
 and a reason plus a reference — an upstream issue or PR for an analyzer false positive confirmed in
 the source, or the review or decision for a semantic one. It is evaluated only where its file was
-analysed; in a targeted run an untouched file's exception is "not evaluated", never stale.
+analysed; in a targeted run an untouched file's exception is "not evaluated", never stale. Under
+`--all` (and so in enforcing CI) an exception whose in-scope file no longer exists is stale.
 
 **Cognitive complexity is advisory**, with a warning above 15 (SonarSource's long-standing default
 for the same metric). It measures nesting and reading effort; CCN counts paths. A high-CCN,
 low-cognitive mapping is still over the CCN limit: refactor it or record a semantic exception.
 
 ## Enrolment
+
+In CI only `advisory`, written or defaulted, is non-blocking. Any other `mode` value, a typo such as
+`Enforce` included, is treated as enforcing, and the invalid policy then fails the step rather than
+leaving a project believing it enforces.
 
 A new project's manifest starts `advisory`. An existing project enrols with a reviewed edit to its
 own `morpheus.json`; nothing here enrols other repositories. CI runs inside the required `pr /

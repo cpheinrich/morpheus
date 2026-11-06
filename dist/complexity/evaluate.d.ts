@@ -1,5 +1,5 @@
 import type { ChangedFile } from "./diff.js";
-import type { ComplexityConfig } from "./policy.js";
+import { type ComplexityConfig } from "./policy.js";
 export interface FunctionRow {
     name: string;
     longName: string;
@@ -37,11 +37,15 @@ export interface Evaluation {
 }
 /** Code outside every function is Lizard's `*global*` row; Evo's baseline scores it too. */
 export declare function isTouched(fn: FunctionRow, target: Target, all: FunctionRow[]): boolean;
-export declare function evaluate(config: ComplexityConfig, results: FileResult[], targets: Map<string, Target>): Evaluation;
+export type Scope = "changed" | "all";
+export declare function evaluate(config: ComplexityConfig, results: FileResult[], targets: Map<string, Target>, scope?: Scope): Evaluation;
 /**
  * An exception is judged only where its file was analysed in this run; in a
  * targeted run an untouched file's exception is "not evaluated", never stale.
+ * A run over every file (`all`) has seen the whole tree, so an exception whose
+ * in-scope file is not there (deleted or renamed) is stale: left in place it
+ * would silently cover a later file recreated at that path.
  */
-export declare function exceptionFindings(config: ComplexityConfig, results: FileResult[], targets: Map<string, Target>): Finding[];
+export declare function exceptionFindings(config: ComplexityConfig, results: FileResult[], targets: Map<string, Target>, scope?: Scope): Finding[];
 /** Advisory never blocks: its errors are reported as warnings. */
 export declare function applyMode(config: ComplexityConfig, findings: Finding[]): Finding[];
