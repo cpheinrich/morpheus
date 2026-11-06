@@ -1,4 +1,5 @@
-import { type TaskStatus } from "./state.js";
+import { type Task } from "./tasks.js";
+import { type TaskState, type TaskStatus } from "./state.js";
 /**
  * Combine what can be seen with what was recorded.
  *
@@ -24,5 +25,14 @@ export interface Summary {
     unknown: number;
     complete: boolean;
 }
+/**
+ * A detector's answer merged with what was recorded. `null` means it could not
+ * check: keep the recorded state rather than inventing a verdict, and say so —
+ * on every run, not only the first, when nothing was recorded yet.
+ */
+export declare function detectedStatus(task: Task, saved: {
+    state: TaskState;
+    note?: string;
+} | undefined, result: boolean | null): TaskStatus;
 export declare function summarise(statuses: TaskStatus[]): Summary;
 export declare function formatStatus(statuses: TaskStatus[], name: string, path: string): string;
