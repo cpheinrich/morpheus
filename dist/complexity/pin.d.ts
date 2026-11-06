@@ -30,7 +30,10 @@ export declare function pinKey(pin: LizardPin): string;
  * TSX rows exercise the pinned fixes (computed properties, enum cases,
  * condition-list commas, string interpolation, JSX text, generic functions);
  * upstream `4f6979da` measures `label` not at all, the Swift top level at CCN
- * 4 and `Notice` at 4. A wrong Lizard, a venv whose interpreter vanished after
+ * 4 and `Notice` at 4. The TypeScript rows exercise template literal types
+ * inside interface and object-type bodies (PR562): `7f14ea5` and upstream
+ * fold every later function into `*global*` (CCN 6, cognitive 3) and measure
+ * neither `choose` nor `run`. A wrong Lizard, a venv whose interpreter vanished after
  * an upgrade, or a stamp written by hand all fail this, which is why every
  * check runs it rather than trusting `ready.json`.
  */
