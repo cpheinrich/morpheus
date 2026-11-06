@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { gitSubprocessEnv } from "../git-env.js";
 import { resolveTrunk } from "../session/git.js";
 import { allFiles, changedFiles, type ChangedFile } from "./diff.js";
-import { applyMode, evaluate, type Evaluation, type FileResult, type Finding, type Target } from "./evaluate.js";
+import { applyMode, evaluate, measurements, type Evaluation, type FileResult, type Finding, type MeasuredFile, type Target } from "./evaluate.js";
 import { run, RUNNER_PATH, toolStatus } from "./install.js";
 import { LIZARD_PIN, type LizardPin } from "./pin.js";
 import { inScope, policyDelta, readConfig, type ComplexityConfig } from "./policy.js";
@@ -34,6 +34,8 @@ export type CheckReport =
       delta: string[];
       evaluation: Evaluation;
       findings: Finding[];
+      /** Every measured function, flagged or not, for before/after family metrics. */
+      files: MeasuredFile[];
       lizardVersion: string | null;
       exitCode: 0 | 1;
     };
@@ -55,7 +57,7 @@ export async function runCheck(opts: CheckOptions): Promise<CheckReport> {
   const findings = applyMode(config, evaluation.findings);
   const delta = scoped.mergeBase ? policyDelta(await baseBlock(opts.root, scoped.mergeBase), read.raw) : [];
   const exitCode = findings.some((f) => f.severity === "error") ? 1 : 0;
-  return { state: "ran", enrolled, config, scope: opts.all ? "all" : "changed", mergeBase: scoped.mergeBase, delta, evaluation, findings, lizardVersion: measured.lizardVersion, exitCode };
+  return { state: "ran", enrolled, config, scope: opts.all ? "all" : "changed", mergeBase: scoped.mergeBase, delta, evaluation, findings, files: measurements(measured.files, scoped.targets), lizardVersion: measured.lizardVersion, exitCode };
 }
 
 export async function projectConfig(root: string) {

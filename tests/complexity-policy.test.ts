@@ -99,7 +99,7 @@ describe("reporting", () => {
   const ran = (findings: { rule: string; severity: "error" | "warning" | "note"; path?: string; line?: number; message: string }[], delta: string[] = []) => ({
     state: "ran" as const, enrolled: true, config: config({ mode: "enforce", exclude: ["gen/**"] }), scope: "changed" as const,
     mergeBase: "a".repeat(40), delta, evaluation: { findings, targeted: 2, inTouchedFiles: 5, measuredFiles: 1 },
-    findings, lizardVersion: "1.25.0", exitCode: findings.some((f) => f.severity === "error") ? (1 as const) : (0 as const),
+    findings, files: [], lizardVersion: "1.25.0", exitCode: findings.some((f) => f.severity === "error") ? (1 as const) : (0 as const),
   });
 
   it("leads with the verdict, then the policy delta and every exclude", () => {

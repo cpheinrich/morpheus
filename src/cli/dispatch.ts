@@ -55,7 +55,7 @@ import {
 import { GATED, offlineDeclared } from "../session/gate.js";
 import { noteWrite } from "../session/context.js";
 import { install as codebaseMemoryInstall } from "./codebase-memory.js";
-import { check as complexityCheck, install as complexityInstall } from "./complexity.js";
+import { check as complexityCheck, install as complexityInstall, prompt as complexityPrompt } from "./complexity.js";
 import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
 import {
   autoUpdate as selfAutoUpdate,
@@ -130,6 +130,7 @@ async function dispatchCodebaseMemory({ flags, command }: Invocation): Promise<n
 
 async function dispatchComplexity({ flags, command }: Invocation): Promise<number> {
   if (command === "install") return complexityInstall(flags.check);
+  if (command === "prompt") return complexityPrompt();
   if (command === "check") {
     return complexityCheck(process.cwd(), {
       ...(flags.baseGiven ? { base: flags.base } : {}),

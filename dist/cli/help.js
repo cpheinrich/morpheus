@@ -122,6 +122,9 @@ Usage
                             measure the functions your changes touch (committed, staged,
                             unstaged, untracked) against morpheus.json complexity; exit 1 only
                             in enforce mode, 2 when it could not run
+  morpheus complexity prompt
+                            print the canonical behaviour-preserving refactoring prompt to
+                            use on a finding, with how to supply its task inputs
   morpheus self check       verify the installed CLI contains current Morpheus main
   morpheus self update      install current main from a disposable clean checkout
   morpheus self install     install this clean current-main checkout as a copied package

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { gitSubprocessEnv } from "../git-env.js";
 import { resolveTrunk } from "../session/git.js";
 import { allFiles, changedFiles } from "./diff.js";
-import { applyMode, evaluate } from "./evaluate.js";
+import { applyMode, evaluate, measurements } from "./evaluate.js";
 import { run, RUNNER_PATH, toolStatus } from "./install.js";
 import { LIZARD_PIN } from "./pin.js";
 import { inScope, policyDelta, readConfig } from "./policy.js";
@@ -26,7 +26,7 @@ export async function runCheck(opts) {
     const findings = applyMode(config, evaluation.findings);
     const delta = scoped.mergeBase ? policyDelta(await baseBlock(opts.root, scoped.mergeBase), read.raw) : [];
     const exitCode = findings.some((f) => f.severity === "error") ? 1 : 0;
-    return { state: "ran", enrolled, config, scope: opts.all ? "all" : "changed", mergeBase: scoped.mergeBase, delta, evaluation, findings, lizardVersion: measured.lizardVersion, exitCode };
+    return { state: "ran", enrolled, config, scope: opts.all ? "all" : "changed", mergeBase: scoped.mergeBase, delta, evaluation, findings, files: measurements(measured.files, scoped.targets), lizardVersion: measured.lizardVersion, exitCode };
 }
 export async function projectConfig(root) {
     return readConfig(await readFile(join(root, "morpheus.json"), "utf8").catch(() => null));

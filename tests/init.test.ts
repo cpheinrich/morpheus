@@ -183,7 +183,7 @@ describe("morpheus init", () => {
     expect((JSON.parse(await read("morpheus.json")) as { complexity: unknown }).complexity).toEqual({ mode: "advisory" });
     const agents = await read("AGENTS.md");
     expect(agents).toContain("and `morpheus complexity install --check`; install whichever is not operational.");
-    expect(agents).toContain("**Run `morpheus complexity check` after each changed function family**; report it for review.");
+    expect(agents).toContain("**Run `morpheus complexity check` after each changed function family**, inspect it by hand and\nrefactor findings with `morpheus complexity prompt`; report it for review.");
     expect(await read("README.md")).toContain("morpheus complexity install --check");
 
     const established = await mkdtemp(join(tmpdir(), "init-established-"));

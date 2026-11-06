@@ -52,4 +52,5 @@ pnpm morpheus codebase-memory install         # trusted-device bootstrap, safe t
 pnpm morpheus codebase-memory install --check # verify operational mode without changing it
 pnpm morpheus complexity install [--check]     # pinned Lizard analyzer; --check runs its canary — see complexity.md
 pnpm morpheus complexity check [--all] [--base <ref>] [--json] [--ci]  # functions your changes touch, against morpheus.json complexity
+pnpm morpheus complexity prompt                # the canonical refactoring prompt to use on a finding
 ```
