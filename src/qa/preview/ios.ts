@@ -365,8 +365,110 @@ export async function stopPreview(ctx: PreviewContext): Promise<void> {
 
 const supervisorPath = () => fileURLToPath(new URL("./supervisor.js", import.meta.url));
 
-export async function runPreview(ctx: PreviewContext, options: PreviewOptions): Promise<void> {
+interface StartRun {
+  ctx: PreviewContext; options: PreviewOptions; previous: PreviewState | null | undefined; runtime: Runtime; serveSimPath: string;
+  sim: (...args: string[]) => string; stop: () => Promise<void>; checkCancelled: () => void;
+}
+
+/** Builds (unless --no-build), boots, installs and launches the app, then starts the supervisor and waits for health. */
+async function startPreview(start: StartRun): Promise<void> {
+  const { ctx, options, previous, runtime, sim, stop, checkCancelled } = start;
   const { run, config, log } = ctx;
+  const port = options.port ?? previous?.port ?? defaultPort(ctx.key);
+  const overlayPort = port + OVERLAY_PORT_OFFSET;
+  if (previous && options.port && previous.port !== port && job(ctx)) throw new Error("Stop the current preview before changing its port.");
+  const modeName = options.mode ?? config.defaultMode;
+  const mode = config.modes[modeName]!;
+  const identity = modeBuildIdentity(config, mode);
+  // start deliberately relaunches the app; stop the old supervisor before renewing.
+  await stop();
+  checkCancelled();
+  await requireFreePort(port);
+  await requireFreePort(overlayPort);
+  checkCancelled();
+  const vars = { key: ctx.key, root: ctx.root };
+  const cmd = (argv: string[]) => argv.map((a) => expand(a, vars));
+  if (options.build && config.precheck) { const [c, ...a] = cmd(config.precheck); run(c!, a, { cwd: ctx.root, stdio: "inherit" }); }
+  const device = previewDevice(ctx, runtime, sim);
+  // Recover a prior interrupted start that booted before writing state.
+  shutdownPreview({ udid: device.udid, name: ctx.deviceName }, ctx.deviceName, sim);
+  const derived = process.env.DERIVED_DATA_PATH ?? expand(config.derivedData, vars);
+  const app = join(derived, identity.product);
+  if (options.build) {
+    log(`Building this checkout for ${ctx.deviceName}, iOS ${runtime.version}…`);
+    const [c, ...a] = cmd(identity.build);
+    run(c!, a, { cwd: ctx.root, stdio: "inherit", env: { ...process.env, DERIVED_DATA_PATH: derived, SIMULATOR_NAME: ctx.deviceName, SIMULATOR_OS: runtime.version, SIMULATOR_UDID: device.udid } });
+  }
+  if (!existsSync(app)) throw new Error(`No build at ${app}. Run start without --no-build.`);
+  verifyBuiltBundle(app, identity.bundleId, run);
+  // Record ownership before boot so a failed install/launch/readiness can clean up.
+  const pending: PreviewState = { udid: device.udid, name: ctx.deviceName, port, overlayPort, root: ctx.root, mode: mode.name, bundleId: identity.bundleId, axEnabled: options.axEnabled !== false, expiresAt: Date.now() + (options.ttlMinutes ?? DEFAULT_TTL_MINUTES) * 60000 };
+  writeState(ctx, pending);
+  try {
+    await launchSupervised(start, { device, app, mode, identity, vars, pending, cmd });
+  } catch (error) {
+    await stop();
+    throw error;
+  }
+}
+
+/** The checkout's named simulator, created on the runtime (preferring the configured iPhone type) when absent. */
+function previewDevice(ctx: PreviewContext, runtime: Runtime, sim: (...args: string[]) => string): { udid: string; name: string } {
+  const devices = (JSON.parse(sim("list", "devices", "available", "-j")).devices[runtime.identifier] ?? []) as { udid: string; name: string }[];
+  const device = devices.find((d) => d.name === ctx.deviceName);
+  if (device) return device;
+  const types = runtime.supportedDeviceTypes!.filter((d) => d.productFamily === "iPhone");
+  const type = types.find((d) => d.name === ctx.config.device.type) ?? types[0]!;
+  return { udid: sim("create", ctx.deviceName, type.identifier, runtime.identifier), name: ctx.deviceName };
+}
+
+interface Launch {
+  device: { udid: string; name: string }; app: string; mode: PreviewMode; identity: ReturnType<typeof modeBuildIdentity>;
+  vars: { key: string; root: string }; pending: PreviewState; cmd: (argv: string[]) => string[];
+}
+
+/** Boot, install and launch, record the build, start the launchd supervisor, and wait for the preview to be healthy. */
+async function launchSupervised(start: StartRun, launch: Launch): Promise<void> {
+  const { ctx, options, sim, stop, checkCancelled, serveSimPath } = start;
+  const { run } = ctx;
+  const { device, app, mode, identity, vars, pending, cmd } = launch;
+  sim("boot", device.udid);
+  sim("bootstatus", device.udid, "-b");
+  repairSimulatorInput(device.udid, run);
+  sim("bootstatus", device.udid, "-b");
+  sim("install", device.udid, app);
+  // The prepared environment goes to simctl launch only: never to state, the plist or a log.
+  const launchEnv: NodeJS.ProcessEnv = { ...process.env, ...prepareLaunchEnvironment(mode, vars, run) };
+  run("xcrun", ["simctl", "launch", "--terminate-running-process", device.udid, identity.bundleId, ...cmd(mode.args)], { env: launchEnv });
+  const revision = run("git", ["rev-parse", "--short", "HEAD"], { cwd: ctx.root });
+  const dirty = run("git", ["status", "--porcelain"], { cwd: ctx.root }) ? " (working tree changes)" : "";
+  const state: PreviewState = {
+    ...pending, mode: mode.name,
+    build: options.build ? `${revision}${dirty}, built ${new Date().toISOString()}` : "existing build products; source revision/freshness unverified (--no-build)",
+  };
+  writeState(ctx, state);
+  const plist = join(ctx.stateDir, "preview.plist");
+  writeFileSync(plist, launchPlist({
+    label: ctx.label,
+    args: [process.execPath, supervisorPath(), ctx.stateFile, serveSimPath],
+    cwd: ctx.root, log: join(ctx.stateDir, "preview.log"),
+    env: { PATH: process.env.PATH ?? "", HOME: homedir(), ...(process.env.DEVELOPER_DIR ? { DEVELOPER_DIR: process.env.DEVELOPER_DIR } : {}) },
+  }), { mode: 0o600 });
+  run("launchctl", ["bootstrap", `gui/${process.getuid!()}`, plist]);
+  for (let attempt = 0; attempt < 90; attempt++) {
+    const ready = await healthy(ctx, state);
+    checkCancelled();
+    if (ready) break;
+    await sleep(500);
+    checkCancelled();
+  }
+  if (!(await healthy(ctx, state))) { await stop(); throw new Error(`Preview failed to become healthy on ports ${pending.port}/${pending.overlayPort}. Read ${join(ctx.stateDir, "preview.log")}; a logged-in macOS desktop session is required.`); }
+  checkCancelled();
+  report(ctx, state, options);
+}
+
+export async function runPreview(ctx: PreviewContext, options: PreviewOptions): Promise<void> {
+  const { run, log } = ctx;
   const sim = (...args: string[]) => run("xcrun", ["simctl", ...args]);
   const previous = readJSON<PreviewState>(ctx.stateFile);
   if (options.command === "status") {
@@ -394,80 +496,7 @@ export async function runPreview(ctx: PreviewContext, options: PreviewOptions): 
   try {
     await withPreviewCancellation(async (checkCancelled) => {
       if (options.command === "stop") { await stop(); log(`Stopped ${previous?.mode ?? "unknown"} mode (${previous?.bundleId ?? "unknown bundle"}) for this checkout. The simulator and overlay are shut down; simulator data is retained.`); return; }
-      const port = options.port ?? previous?.port ?? defaultPort(ctx.key);
-      const overlayPort = port + OVERLAY_PORT_OFFSET;
-      if (previous && options.port && previous.port !== port && job(ctx)) throw new Error("Stop the current preview before changing its port.");
-      const modeName = options.mode ?? config.defaultMode;
-      const mode = config.modes[modeName]!;
-      const identity = modeBuildIdentity(config, mode);
-      // start deliberately relaunches the app; stop the old supervisor before renewing.
-      await stop();
-      checkCancelled();
-      await requireFreePort(port);
-      await requireFreePort(overlayPort);
-      checkCancelled();
-      const vars = { key: ctx.key, root: ctx.root };
-      const cmd = (argv: string[]) => argv.map((a) => expand(a, vars));
-      if (options.build && config.precheck) { const [c, ...a] = cmd(config.precheck); run(c!, a, { cwd: ctx.root, stdio: "inherit" }); }
-      const devices = (JSON.parse(sim("list", "devices", "available", "-j")).devices[runtime!.identifier] ?? []) as { udid: string; name: string }[];
-      let device = devices.find((d) => d.name === ctx.deviceName);
-      if (!device) {
-        const types = runtime!.supportedDeviceTypes!.filter((d) => d.productFamily === "iPhone");
-        const type = types.find((d) => d.name === config.device.type) ?? types[0]!;
-        device = { udid: sim("create", ctx.deviceName, type.identifier, runtime!.identifier), name: ctx.deviceName };
-      }
-      // Recover a prior interrupted start that booted before writing state.
-      shutdownPreview({ udid: device.udid, name: ctx.deviceName }, ctx.deviceName, sim);
-      const derived = process.env.DERIVED_DATA_PATH ?? expand(config.derivedData, vars);
-      const app = join(derived, identity.product);
-      if (options.build) {
-        log(`Building this checkout for ${ctx.deviceName}, iOS ${runtime!.version}…`);
-        const [c, ...a] = cmd(identity.build);
-        run(c!, a, { cwd: ctx.root, stdio: "inherit", env: { ...process.env, DERIVED_DATA_PATH: derived, SIMULATOR_NAME: ctx.deviceName, SIMULATOR_OS: runtime!.version, SIMULATOR_UDID: device.udid } });
-      }
-      if (!existsSync(app)) throw new Error(`No build at ${app}. Run start without --no-build.`);
-      verifyBuiltBundle(app, identity.bundleId, run);
-      // Record ownership before boot so a failed install/launch/readiness can clean up.
-      const pending: PreviewState = { udid: device.udid, name: ctx.deviceName, port, overlayPort, root: ctx.root, mode: mode.name, bundleId: identity.bundleId, axEnabled: options.axEnabled !== false, expiresAt: Date.now() + (options.ttlMinutes ?? DEFAULT_TTL_MINUTES) * 60000 };
-      writeState(ctx, pending);
-      try {
-        sim("boot", device.udid);
-        sim("bootstatus", device.udid, "-b");
-        repairSimulatorInput(device.udid, run);
-        sim("bootstatus", device.udid, "-b");
-        sim("install", device.udid, app);
-        // The prepared environment goes to simctl launch only: never to state, the plist or a log.
-        const launchEnv: NodeJS.ProcessEnv = { ...process.env, ...prepareLaunchEnvironment(mode, vars, run) };
-        run("xcrun", ["simctl", "launch", "--terminate-running-process", device.udid, identity.bundleId, ...cmd(mode.args)], { env: launchEnv });
-        const revision = run("git", ["rev-parse", "--short", "HEAD"], { cwd: ctx.root });
-        const dirty = run("git", ["status", "--porcelain"], { cwd: ctx.root }) ? " (working tree changes)" : "";
-        const state: PreviewState = {
-          ...pending, mode: mode.name,
-          build: options.build ? `${revision}${dirty}, built ${new Date().toISOString()}` : "existing build products; source revision/freshness unverified (--no-build)",
-        };
-        writeState(ctx, state);
-        const plist = join(ctx.stateDir, "preview.plist");
-        writeFileSync(plist, launchPlist({
-          label: ctx.label,
-          args: [process.execPath, supervisorPath(), ctx.stateFile, serveSim!.path],
-          cwd: ctx.root, log: join(ctx.stateDir, "preview.log"),
-          env: { PATH: process.env.PATH ?? "", HOME: homedir(), ...(process.env.DEVELOPER_DIR ? { DEVELOPER_DIR: process.env.DEVELOPER_DIR } : {}) },
-        }), { mode: 0o600 });
-        run("launchctl", ["bootstrap", `gui/${process.getuid!()}`, plist]);
-        for (let attempt = 0; attempt < 90; attempt++) {
-          const ready = await healthy(ctx, state);
-          checkCancelled();
-          if (ready) break;
-          await sleep(500);
-          checkCancelled();
-        }
-        if (!(await healthy(ctx, state))) { await stop(); throw new Error(`Preview failed to become healthy on ports ${port}/${overlayPort}. Read ${join(ctx.stateDir, "preview.log")}; a logged-in macOS desktop session is required.`); }
-        checkCancelled();
-        report(ctx, state, options);
-      } catch (error) {
-        await stop();
-        throw error;
-      }
+      await startPreview({ ctx, options, previous, runtime: runtime!, serveSimPath: serveSim!.path, sim, stop, checkCancelled });
     }, stop);
   } finally {
     rmSync(lock, { recursive: true, force: true });
