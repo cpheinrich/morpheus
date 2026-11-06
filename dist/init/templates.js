@@ -18,6 +18,7 @@ import { ctoSkillDescription } from "../cto/guide.js";
 import { AGENTIC_CTO_SKILL, RESEARCH_ENGINEER_SKILL, DEVOPS_ENGINEER_SKILL } from "../cto/skill.js";
 import { productSkillDescription } from "../product/guide.js";
 import { CHIEF_PRODUCT_OFFICER_SKILL, VP_DESIGN_SKILL } from "../product/skill.js";
+import { VISUAL_DESIGN_SKILL } from "../design/visual-design.js";
 export const manifest = (s) => JSON.stringify({
     name: s.name,
     prefix: s.prefix,
@@ -795,6 +796,11 @@ win. Add a state, option, gate or approval step only when observed behaviour pro
 a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
 tightening one; removing one is a recorded decision.
 
+**Plan visually early.** Before implementation, show useful architecture, workflow/pipeline, async,
+state, ownership or substantial-alternative diagrams with \`morpheus skills guide visual-design\`.
+Skip trivial edits; label current/proposed and assumptions, update retained Mermaid. No approval
+pause or merge gate.
+
 **Claim work before starting it:**
 
 \`\`\`sh
@@ -844,18 +850,15 @@ cannot be resumed, start a fresh one with the earlier findings. After committing
 run \`morpheus review prepare --base origin/main\`; this prints a review packet and does not
 launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
 repository access and that packet, without inheriting the author's conversation history.
-The author handles findings, follow-ups, the record, CI and merge. Do not wait for a PR monitor
-or GitHub Actions to start this review; CI checks the evidence and does not perform it.
-The author measures each turn from runner duration metadata or actual clock readings, never a
-reviewer's workload estimate. New version 2 records require timing source, milliseconds and
-evidence for every turn; compute elapsedMinutes as durationMs / 60000 without rounding.
+The author handles findings, records, CI and merge; CI and PR monitors never start this review.
+Measure each turn from runner metadata or actual clock readings, never estimates; record version 2
+timing source, milliseconds and evidence, with elapsedMinutes = durationMs / 60000.
 If no independent session can start, say so and keep the PR open with auto-merge disabled;
 never self-review.
 
 **Independent review is required before merge.** Before spawning the reviewer, read the
-[review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md): the turn
-cap, fresh-reviewer handoffs, budgets, finalization, \`humanAuthorization\`, deferrals naming a
-roadmap item, and the record fields. Record the review in the task worklog, commit
+[review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md).
+Record the review in the task worklog, commit
 it, and run \`morpheus review validate\`. Then label the PR and mark it ready, or create it labelled
 with a visible \`review-record:\` line. For CI or PR evidence, open an unlabelled draft before
 review; drafts wait instead of failing. Merge trunk rather
@@ -1857,5 +1860,19 @@ reuse the shared owner, validate responsive/accessibility states, and inspect fi
 Morpheus holds the reviewed copy and this installed CLI prints it.
 
 If \`morpheus product guide vp-design\` is unknown, run \`morpheus self update\`.
+`;
+/** Early planning stays visible even before the installed canonical guide is read. */
+export const visualDesignPointerSkill = () => `${VISUAL_DESIGN_SKILL.slice(0, VISUAL_DESIGN_SKILL.indexOf("\n---", 4) + 4)}
+
+# Visual design planning
+
+Before implementation, sketch and show relationships when they help explain architecture,
+workflows/pipelines, async handoffs, state transitions, ownership or substantial alternatives.
+Skip trivial self-contained edits. Run \`morpheus skills guide visual-design\` and follow it;
+Morpheus holds the reviewed procedure and the installed CLI prints it.
+
+Distinguish current from proposed and label assumptions. Render in the conversation or a preview;
+use fenced Mermaid for durable docs and update retained diagrams after material design changes.
+This adds no approval pause or merge gate. If the guide is unknown, run \`morpheus self update\`.
 `;
 //# sourceMappingURL=templates.js.map

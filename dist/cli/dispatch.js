@@ -34,7 +34,7 @@ import { profileExtract, profileReport } from "./profile.js";
 import { pollGuardCommand, waitCiCommand } from "./wait-ci.js";
 import { ctoGuide } from "../cto/guide.js";
 import { productGuide } from "../product/guide.js";
-import { listProjectSkills, syncProjectSkillEntrypoints } from "./skills.js";
+import { listProjectSkills, showProjectSkillGuide, syncProjectSkillEntrypoints } from "./skills.js";
 import { HELP } from "./help.js";
 async function dispatchSelf({ flags, command, rest }) {
     if (command === "check" || command === undefined)
@@ -458,7 +458,9 @@ async function dispatchProduct({ command, rest }) {
     console.error(`Unknown product command "${command ?? ""}".\n\n${HELP}`);
     return 1;
 }
-async function dispatchSkills({ flags, command }) {
+async function dispatchSkills({ flags, command, rest }) {
+    if (command === "guide")
+        return showProjectSkillGuide(rest[0]);
     if (command === "list" || command === undefined)
         return listProjectSkills(flags.json);
     if (command === "sync")

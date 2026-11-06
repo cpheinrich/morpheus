@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { check as cliCheck } from "../src/cli/complexity.js";
 import { runCheck, type CheckReport } from "../src/complexity/check.js";
 import { packetSummary } from "../src/complexity/format.js";
-import { installLizard, toolchainFor, toolStatus } from "../src/complexity/install.js";
+import { canaryMismatch, installLizard, toolchainFor, toolStatus } from "../src/complexity/install.js";
 import { CANARY_EXPECTED, LIZARD_PIN, pinKey } from "../src/complexity/pin.js";
 import { git, jsFunction, put, repo } from "./complexity-helpers.js";
 
@@ -310,11 +310,25 @@ describe("installation", () => {
 
   it("checks the pinned fork's fixes, not just a JavaScript sample", () => {
     // Upstream 4f6979da measures no `label` function, the Swift top level at CCN 4 and Notice at 4.
-    expect(CANARY_EXPECTED.map((r) => `${r.path} ${r.name} ${r.ccn}`)).toEqual([
+    expect(CANARY_EXPECTED.map((r) => `${r.path} ${r.name} ${r.ccn}${r.lines ? ` ${r.lines.join("-")}` : ""}`)).toEqual([
       "canary.js canary 6", "canary.swift label 3", "canary.swift check 4", "canary.swift *global* 1",
       "canary.tsx pick 2", "canary.tsx Notice 2",
       "canary.ts choose 4", "canary.ts run 3", "canary.ts *global* 1",
+      "attributes.tsx Row 1 1-3", "attributes.tsx Grid 3 4-11", "attributes.tsx Card 2 12-14", "attributes.tsx after 2 15-15",
+      "attributes.jsx Row 1 1-3", "attributes.jsx Grid 3 4-11", "attributes.jsx Card 2 12-14", "attributes.jsx after 2 15-15",
+      "valueless.tsx Chart 2 1-9", "valueless.tsx after 2 10-10", "valueless.jsx Chart 2 1-9", "valueless.jsx after 2 10-10",
+      "slash-text.tsx Rates 2 1-7", "slash-text.tsx escape 2 8-8", "slash-text.tsx after 2 9-9",
+      "slash-text.jsx Rates 2 1-7", "slash-text.jsx escape 2 8-8", "slash-text.jsx after 2 9-9",
     ]);
+  });
+
+  it("refuses a canary row whose bounds moved, even when its CCN and cognitive match", () => {
+    const want = CANARY_EXPECTED.find((r) => r.path === "attributes.tsx" && r.name === "Grid")!;
+    const parsed = (end: number) => ({ files: [{ path: "attributes.tsx", functions: [{ name: "Grid", start: 4, end, ccn: 3, cognitive: 2 }] }] });
+    expect(canaryMismatch(parsed(11), want)).toBeNull();
+    expect(canaryMismatch(parsed(12), want)).toBe(
+      "canary attributes.tsx Grid measured CCN 3, cognitive 2, lines 4-12; the pinned build gives CCN 3, cognitive 2, lines 4-11",
+    );
   });
 
   it("refuses the previous pin, whose TypeScript reader folds functions after a template literal type into *global*", async () => {
@@ -324,6 +338,39 @@ describe("installation", () => {
     expect(result).toEqual({
       ok: false,
       reason: "canary canary.ts choose measured no such function; the pinned build gives CCN 4, cognitive 1",
+    });
+    expect(await toolStatus(previous, env)).toMatchObject({ state: "broken", reason: result.ok ? "" : result.reason });
+  }, 300_000);
+
+  it("refuses 541623c, whose regex pre-scan reads a slash in JSX text as a literal through the next closing tag", async () => {
+    // 541623c (tag morpheus-analyzer-2026-11-06-jsx-boolean) measures slash-text.tsx as Rates 1-9 CCN 4 and no escape or after.
+    const previous = { ...LIZARD_PIN, commit: "541623c0b98e8b5687ef5713d2ffbfb76ec17de0" };
+    const result = await installLizard(previous, env);
+    expect(result).toEqual({
+      ok: false,
+      reason: "canary slash-text.tsx Rates measured CCN 4, cognitive 3, lines 1-9; the pinned build gives CCN 2, cognitive 1, lines 1-7",
+    });
+    expect(await toolStatus(previous, env)).toMatchObject({ state: "broken", reason: result.ok ? "" : result.reason });
+  }, 300_000);
+
+  it("refuses 3b53c11, whose JSX reader runs a function past a valueless attribute that follows a braced one", async () => {
+    // 3b53c11 (tag morpheus-analyzer-2026-11-06-tsx) measures valueless.tsx as Chart 1-10 CCN 3 and no after.
+    const previous = { ...LIZARD_PIN, commit: "3b53c116fe93aebea86f44cd5d001813cfc13401" };
+    const result = await installLizard(previous, env);
+    expect(result).toEqual({
+      ok: false,
+      reason: "canary valueless.tsx Chart measured CCN 3, cognitive 2, lines 1-10; the pinned build gives CCN 2, cognitive 1, lines 1-9",
+    });
+    expect(await toolStatus(previous, env)).toMatchObject({ state: "broken", reason: result.ok ? "" : result.reason });
+  }, 300_000);
+
+  it("refuses 484bbd0, whose JSX reader runs a function past a spread or hyphenated attribute and drops the next two", async () => {
+    // 484bbd0 (tag morpheus-analyzer-2026-11-06-ts) measures attributes.tsx as Row 1-3, Grid 4-15 CCN 4, and no Card or after.
+    const previous = { ...LIZARD_PIN, commit: "484bbd057c126bdb3c7a18e83e98d5114aa9a7ee" };
+    const result = await installLizard(previous, env);
+    expect(result).toEqual({
+      ok: false,
+      reason: "canary attributes.tsx Grid measured CCN 4, cognitive 3, lines 4-15; the pinned build gives CCN 3, cognitive 2, lines 4-11",
     });
     expect(await toolStatus(previous, env)).toMatchObject({ state: "broken", reason: result.ok ? "" : result.reason });
   }, 300_000);

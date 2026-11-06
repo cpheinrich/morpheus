@@ -70,7 +70,7 @@ import { profileExtract, profileReport } from "./profile.js";
 import { pollGuardCommand, waitCiCommand } from "./wait-ci.js";
 import { ctoGuide } from "../cto/guide.js";
 import { productGuide } from "../product/guide.js";
-import { listProjectSkills, syncProjectSkillEntrypoints } from "./skills.js";
+import { listProjectSkills, showProjectSkillGuide, syncProjectSkillEntrypoints } from "./skills.js";
 import { HELP } from "./help.js";
 import type { Flags } from "./args.js";
 
@@ -512,7 +512,8 @@ async function dispatchProduct({ command, rest }: Invocation): Promise<number> {
     return 1;
 }
 
-async function dispatchSkills({ flags, command }: Invocation): Promise<number> {
+async function dispatchSkills({ flags, command, rest }: Invocation): Promise<number> {
+    if (command === "guide") return showProjectSkillGuide(rest[0]);
     if (command === "list" || command === undefined) return listProjectSkills(flags.json);
     if (command === "sync") return syncProjectSkillEntrypoints(process.cwd(), flags.check);
     console.error(`Unknown skills command "${command}".\n\n${HELP}`);

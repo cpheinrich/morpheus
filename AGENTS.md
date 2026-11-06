@@ -1,7 +1,6 @@
 # Morpheus — agent instructions
 
-Read this first. `CLAUDE.md` symlinks here. Detail lives in the runbooks named by the **Read when**
-table; open one only when its trigger applies.
+Read first; `CLAUDE.md` symlinks here. Open runbooks only for their **Read when** triggers.
 
 ## What this repo is
 
@@ -116,6 +115,11 @@ win. Add a state, option, gate or approval step only when observed behaviour pro
 a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
 tightening one; removing one is a recorded decision.
 
+**Plan visually early.** Before implementation, show useful architecture, workflow/pipeline, async,
+state, ownership or substantial-alternative diagrams with `morpheus skills guide visual-design`.
+Skip trivial edits; label current/proposed and assumptions, update retained Mermaid. No approval
+pause or merge gate.
+
 **Claim before starting**, with `morpheus pm claim <ID>` — the remote branch **is** the claim.
 Never create the branch by hand. Use **one worktree per implementation task**: from a shared
 checkout `pm claim` prints a fresh worktree; read its records, refresh there, and claim again
@@ -129,11 +133,10 @@ voice and browser chat enter the same lifecycle: create or link the roadmap item
 on its branch, test it, open a PR and merge it. A trusted author can authorize the work; the
 channel cannot waive the records or review path. Never edit or release directly from a transcript.
 
-**Register every reusable skill once.** Classify each new canonical directory under
-`.agents/skills/` or `.claude/skills/` in `src/project-skills.ts` as project-facing or
-Morpheus-only; that registry drives `morpheus init`, `skills list [--json]` and `skills sync`, with
-descriptions from the rendered `SKILL.md` frontmatter. Add no second JSON catalog; tests refuse an
-unclassified directory or an unregistered provider entrypoint.
+**Register every reusable skill once.** Classify canonical `.agents/skills/` and `.claude/skills/`
+directories in `src/project-skills.ts` as project-facing or Morpheus-only. It drives scaffold,
+discovery and sync; descriptions come from rendered frontmatter. No second catalog. Tests check
+classification and provider drift.
 
 **An external mutation ships with an exact target and proof.** Prefer a pasted one-shot CLI command
 with explicit account, project and resource identifiers (console prose is fallback only), with a
@@ -181,8 +184,7 @@ item to `review` and open an unlabelled draft PR first so the reviewer sees them
 **one fresh reviewer** with repository access and that packet and no inherited history, then
 handle findings, record, CI and merge yourself. If no independent session can start, leave the PR open with
 auto-merge off — never self-review. **Read [`independent-review.md`](docs/runbooks/independent-review.md)
-before spawning the reviewer**: it defines the turn cap, fresh-reviewer handoffs, budgets, timing,
-clearance, finalization, `humanAuthorization`, record fields, `review-record:` and `agent-reviewed`. Commit the record and run `morpheus review validate` before
+before spawning or recording a review**. Commit the record and run `morpheus review validate` before
 pushing; open the PR with the label already applied (`gh pr create --label agent-reviewed`), or as a
 draft if it must exist earlier — an unlabelled draft waits instead of failing. Merge trunk rather
 than rebase after review.

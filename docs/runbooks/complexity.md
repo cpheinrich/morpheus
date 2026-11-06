@@ -30,6 +30,10 @@ the check judged it; `--ci` adds GitHub annotations and a job summary, measures 
 CI workspace also holds the workflow's `.morpheus/` checkout of Morpheus), and in `enforce` implies
 `--all`.
 
+Locally, routine work never needs `--all`: the targeted `check` is the whole loop, before and after
+a refactor. `--all` is for a baseline inventory, before switching a project to `enforce`, and when
+moving the pin. Enforcing CI measures every in-scope file anyway, as the backstop.
+
 ## Refactoring a finding
 
 Use the canonical prompt, `morpheus complexity prompt`, for every refactor a finding prompts. It
@@ -42,9 +46,13 @@ unless the task says so.
 
 After each changed family, run `check` again and inspect the whole family by hand: the entry
 function, every helper you added or changed, its enclosing function and its tests. A new helper
-counts the same as the function it came from. For the before/after metrics the prompt asks for, run
-`check --json` on the final source and `check --all --json` in a detached worktree at the base, and
-read the same family's rows from `files` on both sides. A `*global*` row is the file's top-level
+counts the same as the function it came from. For the before/after metrics the prompt asks for,
+save the `check --json` that found the candidate, with its commit and the analyzer pin, before you
+edit; run the same `check --json` on the final source; and read the same family's rows from `files`
+on both sides. Label the first side "before the refactor", not "before the PR", when your branch
+wrote the code. A missing row is unmeasured, not zero: a clean tree's targeted report is empty, so a
+cleanup of untouched code needs the candidate report that named it, or reports the before metrics
+as unavailable. A `*global*` row is the file's top-level
 code, not a family member: keep it out of family totals on both sides and report it separately when
 the change moved top-level code. Report the check's summary and the family
 metrics for review.
@@ -125,13 +133,36 @@ Lizard imports at load. A move reaches every consumer's CI at once, because they
 each enforcing consumer, and update `CANARY_EXPECTED` only if the canary's measurement legitimately
 changed. Every status check proves the install three ways: the checkout is the pinned commit with no
 local modification, Python loaded Lizard from that checkout, and the canary files (JavaScript, plus
-Swift, TSX and TypeScript that exercise the pinned parser fixes) measure exactly as recorded. A test
-installs the previous pin and asserts the canary refuses it, so a pin move whose canary would not
+Swift, TSX, JSX and TypeScript that exercise the pinned parser fixes) measure exactly as recorded.
+Tests install the previous pins and assert the canary refuses each, so a pin move whose canary would not
 notice a regression back fails.
 
-The current pin is the `cpheinrich/lizard` tag `morpheus-analyzer-2026-11-06-ts` (`484bbd05`):
-upstream master `4f6979da` plus open upstream PRs 556 (Swift computed and closure properties), 558
-(enum cases), 559 (string interpolation), 560 (JSX text) and 562 (template literal types inside
-TypeScript interface and object-type bodies, which earlier builds read as closing the body, folding
-every later function in the file into `*global*`). Return to plain upstream once all five merge. The
-previous tag, `morpheus-analyzer-2026-11-06` (`7f14ea5`), stays in place and is never moved. Python 3.9 is the floor both wheels declare; a test holds the pin to it.
+The current pin is the `cpheinrich/lizard` tag `morpheus-analyzer-2026-11-06-jsx-text-slash`
+(`b57041bf`): upstream master `4f6979da` plus open upstream PRs 556 (Swift computed and closure
+properties), 558 (enum cases), 559 (string interpolation), 560 (JSX text, at `d2d52d9`) and 562
+(template literal types inside TypeScript interface and object-type bodies, which earlier builds
+read as closing the body, folding every later function in the file into `*global*`). Return to plain
+upstream once all five merge. PR 560's later commits also read three JSX attribute forms inside
+children: a spread (`{...x}`) and a hyphenated name (`data-state`, `aria-hidden`), fixed at
+`bb9efad`, and a valueless attribute after a braced one (`margin={{ top: 6 }} accessibilityLayer`),
+fixed at `24c6ff3`. Earlier pins abandoned the tag there, ran the enclosing function on past its end
+and dropped the functions after it. At `d2d52d9` a slash in JSX text (`At 9% / 11%`) no longer
+swallows the next closing tag: Lizard's regex pre-scan is not JSX-aware and read `/ 11%</th` as a
+regex literal, which unbalanced the elements once PR 560 read children as text. In `.jsx` and `.tsx`
+a literal may now not end at a `<` that starts a closing tag; JavaScript and TypeScript are
+unchanged, and a real regex such as `/</g` is still read as one. The canary's `attributes.*`,
+`valueless.*` and `slash-text.*` files record line bounds as well as CCN for that reason. Known
+forms still misread: an element used directly as an attribute value without braces (`icon=<i />`)
+loses the functions after it; a `key={...}` attribute ends an enclosing expression-bodied arrow early
+(the canary's `rows.map` arrow measures one line); a valueless attribute literally named `extends`
+is read as a TypeScript type parameter; a valueless attribute is only recognised where an expression
+is expected; and in `.jsx`/`.tsx` an unescaped `/a</b>/` is not read as a regex (a valid literal must
+escape that slash anyway). The list is what has been found, not a proof that no other form misreads.
+
+The previous pin, `541623c0` (`-jsx-boolean`), has the slash fault. On Lakina it made
+`SaasBottomUp.tsx` `CompanyDetail` measure 99–184 at CCN 17 and dropped `SaasBottomUp`. At
+`b57041bf` the real file measures `CompanyDetail` 99–156 at CCN 14 and `SaasBottomUp` 158–184 at
+CCN 4. Lakina still has functions with misread bounds at this pin (`marketCells` absorbs six DCF
+helpers, each at most CCN 15 alone), so the fix is bounded, not complete. Older tags (`morpheus-analyzer-2026-11-06`
+at `7f14ea5`, `-ts` at `484bbd05`, `-tsx` at `3b53c116`, `-jsx-boolean` at `541623c0`) stay in place
+and are never moved. Python 3.9 is the floor both wheels declare; a test holds the pin to it.

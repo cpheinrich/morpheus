@@ -22,6 +22,53 @@ import sys
 # Spelled in pieces so this file does not report itself.
 DIRECTIVE = re.compile("lizard" + " forgive|GENERATED" + " CODE")
 
+# JSX spread attributes ({...x}) and hyphenated attribute names inside children (PR560 at bb9efad),
+# measured as both .tsx and .jsx. 484bbd0 runs Grid on to line 15 and measures neither Card nor after.
+ATTRIBUTES = """function Row(props) {
+  return <i {...props} />;
+}
+function Grid({ rows, extra, open, k }) {
+  return (
+    <div>
+      <Row {...extra} />
+      <Row {...(open ? extra : rows)} />
+      <table><tbody><tr><td key={k} data-state={open && 'on'}>x</td></tr></tbody></table>
+    </div>);
+}
+function Card({ r, href }) {
+  return <ul>{r ? <li><a href={href}>Open the result <span aria-hidden="true">↗</span></a></li> : null}</ul>;
+}
+function after(x) { if (x) { return 1 } return 2; }
+"""
+
+# A valueless JSX attribute after a braced one (PR560 at 24c6ff3), measured as both .tsx and .jsx.
+# 3b53c11 runs Chart on to line 10 and measures no after.
+VALUELESS = """function Chart({ data, wide }) {
+  return (
+    <div>
+      <chart margin={{ top: 6 }} accessibilityLayer>
+        <axis data={data} hide />
+      </chart>
+      <label x={1} flag>{wide ? 'wide' : 'narrow'}</label>
+    </div>);
+}
+function after(x) { if (x) { return 1 } return 2; }
+"""
+
+# A slash in JSX text (PR560 at d2d52d9), measured as both .tsx and .jsx. The regex pre-scan reads
+# `/ 11%</th` as a literal, swallowing the closing tag: 541623c runs Rates on to line 9 (CCN 4) and
+# measures neither escape nor after. escape keeps a real regex containing `<` (`/</g`).
+SLASH_TEXT = """function Rates({ rows }) {
+  return (
+    <table>
+      <thead><tr><th>At 9% / 11%</th><th>Share (/ total)</th><th>like-for-like</th></tr></thead>
+      <tbody>{rows.map(r => <tr key={r.id}><td>{r.ok ? 'yes' : 'no'}</td></tr>)}</tbody>
+    </table>);
+}
+function escape(s) { return s.replace(/</g, '&lt;').replace(/>/g, s && '&gt;'); }
+function after(x) { if (x) { return 1 } return 2; }
+"""
+
 # Known measurements of the pinned build (pin.ts CANARY_EXPECTED). The Swift, TSX and TS files exercise
 # the fork's fixes, so an upstream or older Lizard measures them differently and fails the canary.
 CANARY = {
@@ -79,6 +126,12 @@ class Box {
   }
 }
 """,
+    "attributes.tsx": ATTRIBUTES,
+    "attributes.jsx": ATTRIBUTES,
+    "valueless.tsx": VALUELESS,
+    "valueless.jsx": VALUELESS,
+    "slash-text.tsx": SLASH_TEXT,
+    "slash-text.jsx": SLASH_TEXT,
 }
 
 
