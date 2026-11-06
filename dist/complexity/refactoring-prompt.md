@@ -1,6 +1,6 @@
 # Behavior-preserving refactoring prompt
 
-**Version 1.5 (2026-11-05).** Printed by `morpheus complexity prompt`; the canonical copy is
+**Version 1.6 (2026-11-06).** Printed by `morpheus complexity prompt`; the canonical copy is
 `src/complexity/refactoring-prompt.md` in Morpheus. It was refined over a multi-agent pilot and a
 production baseline refactor; each revision added a rule after review found a specific
 behaviour change in a refactor that tests and metrics had passed. Change it in Morpheus, not in a
@@ -23,10 +23,18 @@ Give the agent this prompt plus the task's own values. Anything not supplied tak
 
 Metrics for step 13: `morpheus complexity check --json` lists every function in each measured file
 (`files[].functions[]`: `longName`, `start`, `end`, `ccn`, `cognitive`, `nloc`, and `targeted` when
-the check judged it). Run it on the final source, and with `--all --json` in a detached worktree at
-the base revision, then take the same family's rows from both. A row named `*global*` is the file's
-top-level code, not a family member: leave it out of family totals on both sides, and report it
-separately when the change moved top-level code.
+the check judged it). The before side is the candidate report: the `check --json` run before you
+edit, saved with its source revision (commit, and whether the tree was dirty) and analyzer pin;
+reuse an earlier report only while both still match. The after side is the same command on the
+final source. Take the same family's rows from both. Routine work needs no `--all` and no scan of a
+base checkout; `--all` is for a baseline. Label the before side for what it measured: when your
+branch wrote the code, it is before the refactor, not before the feature or at trunk. A missing row
+is not a zero. A targeted check of an unchanged tree measures nothing, so a cleanup of untouched
+code takes its before rows from the supplied candidate report at the same source and pin, or
+reports them as unavailable; a family member in a file the before report did not measure is
+reported as unmeasured, not new. A row named `*global*` is the file's top-level code, not a family
+member: leave it out of family totals on both sides, and report it separately when the change moved
+top-level code.
 
 ## Task inputs
 
@@ -58,7 +66,7 @@ Preserve supported behavior while making the code easier to understand, change a
 
 ## Required output
 
-12. Produce code and a disposition for every original candidate: refactored, retained with explicit exception, or unresolved. Re-scan the complete scope after editing so newly complex helpers and missed files cannot disappear from the report.
+12. Produce code and a disposition for every original candidate: refactored, retained with explicit exception, or unresolved. Re-scan the complete declared scope after editing (routine work: the same targeted `check`; a baseline: `--all`) so newly complex helpers and missed files cannot disappear from the report.
 13. Generate before/after CCN, cognitive and NLOC mechanically for the complete changed families. Include new/removed helpers and affected enclosing functions. Use identical family membership rules on both sides; count an unchanged helper on both sides or neither. Report added concepts/call boundaries and total size as well as entry-function scores.
 14. Save exact runnable validation and benchmark commands/scripts, source/analyzer/toolchain revisions, test IDs/counts/results, failures/retries and unrun checks. Distinguish source inspection, syntax, typecheck, harness behavior, actual unit/integration and simulator UI evidence. Do not claim equivalence from a metric or tests passed without execution.
 15. Inspect each complete changed family by hand and summarize what changed, why it should help, preservation risks and measured performance effects. Provide the reviewer the final diff, coverage/exception inventory and evidence. Follow the task's review/PR/merge instructions; a passing test suite never authorizes a merge that the human reserved for review.

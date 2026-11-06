@@ -30,6 +30,10 @@ the check judged it; `--ci` adds GitHub annotations and a job summary, measures 
 CI workspace also holds the workflow's `.morpheus/` checkout of Morpheus), and in `enforce` implies
 `--all`.
 
+Locally, routine work never needs `--all`: the targeted `check` is the whole loop, before and after
+a refactor. `--all` is for a baseline inventory, before switching a project to `enforce`, and when
+moving the pin. Enforcing CI measures every in-scope file anyway, as the backstop.
+
 ## Refactoring a finding
 
 Use the canonical prompt, `morpheus complexity prompt`, for every refactor a finding prompts. It
@@ -42,9 +46,13 @@ unless the task says so.
 
 After each changed family, run `check` again and inspect the whole family by hand: the entry
 function, every helper you added or changed, its enclosing function and its tests. A new helper
-counts the same as the function it came from. For the before/after metrics the prompt asks for, run
-`check --json` on the final source and `check --all --json` in a detached worktree at the base, and
-read the same family's rows from `files` on both sides. A `*global*` row is the file's top-level
+counts the same as the function it came from. For the before/after metrics the prompt asks for,
+save the `check --json` that found the candidate, with its commit and the analyzer pin, before you
+edit; run the same `check --json` on the final source; and read the same family's rows from `files`
+on both sides. Label the first side "before the refactor", not "before the PR", when your branch
+wrote the code. A missing row is unmeasured, not zero: a clean tree's targeted report is empty, so a
+cleanup of untouched code needs the candidate report that named it, or reports the before metrics
+as unavailable. A `*global*` row is the file's top-level
 code, not a family member: keep it out of family totals on both sides and report it separately when
 the change moved top-level code. Report the check's summary and the family
 metrics for review.
