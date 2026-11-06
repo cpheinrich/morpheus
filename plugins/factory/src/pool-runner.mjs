@@ -149,143 +149,174 @@ async function stopRequested(conversationId, n) {
   }
   return false;
 }
-export async function runTurn({
-  env = process.env, out = process.stdout, err = process.stderr, fetchImpl = globalThis.fetch,
-  spawnImpl = spawn, signals = process, heartbeatMs, pollMs = 200, stopGraceMs = 12000,
-} = {}) {
-  const say = (kind, extra = {}) => out.write(JSON.stringify({ pool: "runner", kind, ...extra }) + "\n");
+// The pool profile bound to this Paperclip agent, or a refusal code already reported.
+async function boundProfile(env, say) {
   const runId = env.PAPERCLIP_RUN_ID;
   const agentId = env.PAPERCLIP_AGENT_ID;
   if (!UUID.test(runId ?? "") || !UUID.test(agentId ?? "") || !env.PAPERCLIP_API_URL || !env.PAPERCLIP_API_KEY) {
     say("refused", { category: "paperclip_env", detail: "Paperclip run, agent, API URL and run key are required" });
-    return RUNNER_EXIT.config;
+    return { code: RUNNER_EXIT.config };
   }
   let pool;
   try {
     pool = await loadPool();
   } catch (error) {
     say("refused", { category: "profile_config", detail: error.message });
-    return RUNNER_EXIT.config;
+    return { code: RUNNER_EXIT.config };
   }
   const named = Object.entries(pool.profiles).filter(([, p]) => p.agentId === agentId);
   if (named.length !== 1) {
     say("refused", { category: "binding", detail: "this agent is not bound to exactly one pool profile" });
-    return RUNNER_EXIT.config;
+    return { code: RUNNER_EXIT.config };
   }
   const [profileName, profile] = named[0];
-  await initPool();
-  const api = paperclipClient({ baseUrl: env.PAPERCLIP_API_URL, token: env.PAPERCLIP_API_KEY, runId, fetchImpl });
-  let conversation, issue, turn, evidence;
-  try {
-    ({ conversation, issue } = await locate(api, runId, profileName, profile));
-    turn = conversation && (await readJSON(turnPath(conversation.id, conversation.turns), null));
-    evidence = turn && PENDING.has(turn.state) && (await committed(api, conversation, issue, turn, profile));
-  } catch (error) {
-    say("refused", { category: "paperclip_lookup", detail: error.message });
-    return RUNNER_EXIT.refused;
+  return { pool, profileName, profile, runId };
+}
+// One Paperclip run of the pool runner: find its committed turn, claim it once, admit it
+// on the account, relay it to the host and record the receipt and disposition.
+class RunnerTurn {
+  seen = { receipt: null, refused: null };
+  constructor({ env, out, err, say, spawnImpl, signals, heartbeatMs, pollMs, stopGraceMs }, bound, api) {
+    Object.assign(this, { env, out, err, say, spawnImpl, signals, heartbeatMs, pollMs, stopGraceMs, api });
+    Object.assign(this, bound);
   }
-  const noop = async (reason) => {
-    const disposition = await observeNoop(api, conversation, issue).catch(() => "unobserved");
-    say("noop", { reason, conversationId: conversation?.id ?? null, turn: conversation?.turns ?? null, disposition });
+  // The refusal code when the run's issue, turn or commitment cannot be read.
+  async locate() {
+    const { api, runId, profileName, profile } = this;
+    try {
+      ({ conversation: this.conversation, issue: this.issue } = await locate(api, runId, profileName, profile));
+      const { conversation, issue } = this;
+      this.turn = conversation && (await readJSON(turnPath(conversation.id, conversation.turns), null));
+      this.evidence = this.turn && PENDING.has(this.turn.state) && (await committed(api, conversation, issue, this.turn, profile));
+    } catch (error) {
+      this.say("refused", { category: "paperclip_lookup", detail: error.message });
+      return RUNNER_EXIT.refused;
+    }
+    return undefined;
+  }
+  async noop(reason) {
+    const { conversation } = this;
+    const disposition = await observeNoop(this.api, conversation, this.issue).catch(() => "unobserved");
+    this.say("noop", { reason, conversationId: conversation?.id ?? null, turn: conversation?.turns ?? null, disposition });
     return RUNNER_EXIT.ok;
-  };
-  if (!conversation) return noop("no pool turn is linked to this run's issue");
-  const n = conversation.turns;
-  if (!turn || !PENDING.has(turn.state)) return noop("no pending pool turn");
-  if (!evidence) return noop("the pending turn is not committed upstream yet");
+  }
+  // Why this run launches nothing, or null when it holds a committed pending turn.
+  noopReason() {
+    if (!this.conversation) return "no pool turn is linked to this run's issue";
+    if (!this.turn || !PENDING.has(this.turn.state)) return "no pending pool turn";
+    if (!this.evidence) return "the pending turn is not committed upstream yet";
+    return null;
+  }
   // The single launch attempt for this turn. A duplicate wake, a recovery wake or an
   // explicitly resent request finds the claim and never reaches a provider.
-  try {
-    await mkdir(claimPath(conversation.id, n), { mode: 0o700 });
-  } catch (error) {
-    if (error.code !== "EEXIST") throw error;
-    return noop("turn already claimed");
+  async claim() {
+    const { conversation, profileName, runId } = this;
+    const n = conversation.turns;
+    try {
+      await mkdir(claimPath(conversation.id, n), { mode: 0o700 });
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      return false;
+    }
+    this.n = n;
+    this.runnerIdentity = await identity(process.pid);
+    this.record = {
+      conversationId: conversation.id, turn: n, profile: profileName, paperclipRunId: runId,
+      runnerPid: process.pid, runnerIdentity: this.runnerIdentity, claimedAt: Date.now(), state: "claimed", finished: false,
+    };
+    await this.save();
+    this.say("claimed", { conversationId: conversation.id, turn: n, profile: profileName });
+    return true;
   }
-  const runnerIdentity = await identity(process.pid);
-  const record = {
-    conversationId: conversation.id, turn: n, profile: profileName, paperclipRunId: runId,
-    runnerPid: process.pid, runnerIdentity, claimedAt: Date.now(), state: "claimed", finished: false,
-  };
-  const save = () => atomic(runPath(conversation.id, n), record);
-  await save();
-  say("claimed", { conversationId: conversation.id, turn: n, profile: profileName });
-  const refuse = async (category, detail, code = RUNNER_EXIT.refused) => {
+  save() {
+    return atomic(runPath(this.conversation.id, this.n), this.record);
+  }
+  async refuse(category, detail, code = RUNNER_EXIT.refused) {
+    const { record } = this;
     Object.assign(record, { state: "refused", termination: "not-started", category, stopReason: `${category}: ${detail}`, endedAt: Date.now() });
-    await save();
-    record.disposition = (await dispose(api, conversation, issue.id, record, runId)).state;
+    await this.save();
+    record.disposition = (await dispose(this.api, this.conversation, this.issue.id, record, this.runId)).state;
     record.finished = true;
-    await save();
-    say("refused", { category, detail, disposition: record.disposition });
+    await this.save();
+    this.say("refused", { category, detail, disposition: record.disposition });
     return code;
-  };
+  }
   // HQ pins include controller/repository identity and executable fields outside the
   // legacy desktop binding. Revalidate before account reconciliation or host effects.
-  if (conversation.hq) {
-    try {
-      await verifyHQBinding(profileName, conversation, { executionPool: pool, apiUrl: env.PAPERCLIP_API_URL, issue });
-    } catch {
-      return refuse("hq_binding_drift", "the installed HQ mapping changed or is unavailable", RUNNER_EXIT.config);
+  async bindingRefusal() {
+    const { conversation, profileName, pool, turn } = this;
+    if (conversation.hq) {
+      try {
+        await verifyHQBinding(profileName, conversation, { executionPool: pool, apiUrl: this.env.PAPERCLIP_API_URL, issue: this.issue });
+      } catch {
+        return this.refuse("hq_binding_drift", "the installed HQ mapping changed or is unavailable", RUNNER_EXIT.config);
+      }
     }
+    this.binding = bindingDigest(profileName, this.profile);
+    if (conversation.bindingSha256 !== this.binding)
+      return this.refuse("binding_drift", "the pool profile changed after this conversation started", RUNNER_EXIT.config);
+    if (sha256(turn.prompt ?? "") !== turn.promptSha256)
+      return this.refuse("intent", "turn prompt does not match its journaled digest", RUNNER_EXIT.config);
+    this.session = await readJSON(sessionPath(conversation.id), null);
+    if (this.session?.drift) return this.refuse("session_drift", "native session drift was recorded; start a new conversation");
+    return undefined;
   }
-  const binding = bindingDigest(profileName, profile);
-  if (conversation.bindingSha256 !== binding)
-    return refuse("binding_drift", "the pool profile changed after this conversation started", RUNNER_EXIT.config);
-  if (sha256(turn.prompt ?? "") !== turn.promptSha256)
-    return refuse("intent", "turn prompt does not match its journaled digest", RUNNER_EXIT.config);
-  const session = await readJSON(sessionPath(conversation.id), null);
-  if (session?.drift) return refuse("session_drift", "native session drift was recorded; start a new conversation");
-  const runUuid = randomBytes(16).toString("hex");
-  record.runUuid = runUuid;
-  const reconcile = async (entry) => {
-    const entryProfile = pool.profiles[entry.profile];
+  async reconcileEntry(entry) {
+    const entryProfile = this.pool.profiles[entry.profile];
     if (!entryProfile) return "unknown";
-    const result = await remoteCommand(entryProfile, ["reconcile", entry.runUuid], { spawnImpl, env });
+    const result = await remoteCommand(entryProfile, ["reconcile", entry.runUuid], { spawnImpl: this.spawnImpl, env: this.env });
     // Attach the later host proof beside, never over, that turn's original evidence.
     if (result?.state === "terminated" && UUID.test(entry.conversationId ?? "") && Number.isInteger(entry.turn))
       await atomic(reconcilePath(entry.conversationId, entry.turn), { state: "terminated", runUuid: entry.runUuid, provenAt: Date.now(), via: "admission" }).catch(() => {});
     return result?.state ?? "unknown";
-  };
-  let reserved;
-  try {
-    reserved = await reserveAccount(profile.account, {
-    runUuid, profile: profileName, conversationId: conversation.id, turn: n, paperclipRunId: runId,
-    runnerPid: process.pid, runnerIdentity, at: Date.now(),
-  }, reconcile);
-  } catch (error) {
-    // Nothing launched; record it so the turn is never left claimed and unrecorded.
-    return refuse("runner_error", String(error.message).split("\n")[0]);
   }
-  if (!reserved) return refuse("account_reserved", "another turn on this account is active or not yet proven stopped");
-  const stopped = await stopRequested(conversation.id, n).catch(() => false);
-  if (stopped) {
-    await releaseAccount(profile.account, runUuid);
-    return refuse("stopped", "stop requested before launch");
+  async reserve() {
+    const { profile, conversation, n } = this;
+    const runUuid = randomBytes(16).toString("hex");
+    this.runUuid = runUuid;
+    this.record.runUuid = runUuid;
+    let reserved;
+    try {
+      reserved = await reserveAccount(profile.account, {
+        runUuid, profile: this.profileName, conversationId: conversation.id, turn: n, paperclipRunId: this.runId,
+        runnerPid: process.pid, runnerIdentity: this.runnerIdentity, at: Date.now(),
+      }, (entry) => this.reconcileEntry(entry));
+    } catch (error) {
+      // Nothing launched; record it so the turn is never left claimed and unrecorded.
+      return this.refuse("runner_error", String(error.message).split("\n")[0]);
+    }
+    if (!reserved) return this.refuse("account_reserved", "another turn on this account is active or not yet proven stopped");
+    const stopped = await stopRequested(conversation.id, n).catch(() => false);
+    if (stopped) {
+      await releaseAccount(profile.account, runUuid);
+      return this.refuse("stopped", "stop requested before launch");
+    }
+    this.record.state = "starting";
+    await this.save();
+    return undefined;
   }
-  record.state = "starting";
-  await save();
-
-  const argv = transportArgv(profile, "run");
-  let child;
-  try {
-    child = spawnImpl(argv[0], argv.slice(1), { env: transportEnv(env), stdio: ["pipe", "pipe", "pipe"] });
-  } catch (error) {
-    await releaseAccount(profile.account, runUuid);
-    return refuse("transport", String(error.message).split("\n")[0]);
-  }
-  const write = (message) => {
+  write(message) {
+    const { child } = this;
     if (!child.stdin.destroyed && child.stdin.writable) child.stdin.write(JSON.stringify(message) + "\n");
-  };
-  child.stdin.on("error", () => {});
-  child.on("error", () => {});
-  write({
-    schema: ENVELOPE, runUuid, profile: profileName, bindingSha256: binding, conversationId: conversation.id,
-    turn: n, session: session?.session ?? null, prompt: turn.prompt, paperclipRunId: runId,
-  });
-  const seen = { receipt: null, refused: null };
-  const decoder = new StringDecoder("utf8");
-  let partial = "";
-  let pending = Promise.resolve();
-  const handle = async (line) => {
+  }
+  async spawnHost() {
+    const argv = transportArgv(this.profile, "run");
+    try {
+      this.child = this.spawnImpl(argv[0], argv.slice(1), { env: transportEnv(this.env), stdio: ["pipe", "pipe", "pipe"] });
+    } catch (error) {
+      await releaseAccount(this.profile.account, this.runUuid);
+      return this.refuse("transport", String(error.message).split("\n")[0]);
+    }
+    this.child.stdin.on("error", () => {});
+    this.child.on("error", () => {});
+    this.write({
+      schema: ENVELOPE, runUuid: this.runUuid, profile: this.profileName, bindingSha256: this.binding, conversationId: this.conversation.id,
+      turn: this.n, session: this.session?.session ?? null, prompt: this.turn.prompt, paperclipRunId: this.runId,
+    });
+    return undefined;
+  }
+  async handle(line) {
+    const { record } = this;
     let message;
     try {
       message = JSON.parse(line);
@@ -294,115 +325,157 @@ export async function runTurn({
     }
     if (message.pool === "accepted") {
       Object.assign(record, { state: "running", remote: message, startedAt: Date.now() });
-      await save();
+      await this.save();
     } else if (message.pool === "session") {
-      await atomic(sessionPath(conversation.id), { session: message.session, drift: message.drift === true, turn: n, at: Date.now() });
+      await atomic(sessionPath(this.conversation.id), { session: message.session, drift: message.drift === true, turn: this.n, at: Date.now() });
       record.session = message.session;
-      await save();
+      await this.save();
     } else if (message.pool === "event" && message.event?.type === "control_request") {
       const request = message.event.request ?? {};
       record.question = { id: message.event.request_id, toolName: request.tool_name ?? null, input: request.input ?? {} };
-      await save();
+      await this.save();
     } else if (message.pool === "answered") {
       if (record.question?.id === message.questionId) record.question = null;
-      await save();
-    } else if (message.pool === "refused") seen.refused = message;
-    else if (message.pool === "receipt") seen.receipt = message;
-  };
-  child.stdout.on("data", (chunk) => {
-    partial += decoder.write(chunk);
-    let end;
-    while ((end = partial.indexOf("\n")) >= 0) {
-      const line = partial.slice(0, end);
-      partial = partial.slice(end + 1);
-      if (!line.trim()) continue;
-      out.write(line + "\n");
-      pending = pending.then(() => handle(line)).catch(() => {});
-    }
-  });
-  child.stderr.on("data", (chunk) => err.write(chunk));
-  const heartbeat = setInterval(() => write({ type: "heartbeat" }), heartbeatMs ?? pool.heartbeatSeconds * 1000);
-  const sent = new Set();
-  let relaying = false;
-  const relay = setInterval(async () => {
-    if (relaying) return;
-    relaying = true;
-    try {
-      const dir = controlDir(conversation.id);
-      for (const name of (await readdir(dir).catch(() => [])).sort()) {
-        if (!name.endsWith(".json") || sent.has(name)) continue;
-        // A control that cannot be read yet is retried on the next poll, never dropped,
-        // and never allowed to take the relay (or the runner) down.
-        let control;
-        try {
-          control = await readJSON(join(dir, name), null);
-        } catch {
-          continue;
-        }
-        sent.add(name);
-        if (control?.turn !== n) continue;
-        if (control.type === "answer") write({ type: "answer", message: control.message });
-        else if (control.type === "stop") write({ type: "stop", reason: "stop" });
-        await rename(join(dir, name), join(dir, `${name}.sent`)).catch(() => {});
-      }
-    } catch {
-      // Never let one poll reject; the next poll retries.
-    } finally {
-      relaying = false;
-    }
-  }, pollMs);
-  let killTimer = null;
-  const onSignal = () => {
-    if (record.stopRequested) return;
-    record.stopRequested = "paperclip cancel or controller shutdown";
-    write({ type: "stop", reason: "cancel" });
-    killTimer = setTimeout(() => child.kill("SIGKILL"), stopGraceMs);
-  };
-  for (const name of ["SIGTERM", "SIGINT", "SIGHUP"]) signals.on(name, onSignal);
-  const exitCode = await new Promise((resolve) => child.on("close", (code) => resolve(code)));
-  clearInterval(heartbeat);
-  clearInterval(relay);
-  clearTimeout(killTimer);
-  for (const name of ["SIGTERM", "SIGINT", "SIGHUP"]) signals.off(name, onSignal);
-  if (partial.trim()) {
-    out.write(partial + "\n");
-    pending = pending.then(() => handle(partial));
+      await this.save();
+    } else if (message.pool === "refused") this.seen.refused = message;
+    else if (message.pool === "receipt") this.seen.receipt = message;
   }
-  await pending;
-  let code;
-  const receipt = seen.receipt;
-  if (receipt && receipt.runUuid === runUuid) {
-    Object.assign(record, {
-      state: receipt.state, termination: receipt.termination, exitCode: receipt.exitCode ?? null,
-      stopReason: receipt.stopReason ?? null, result: receipt.result ?? null, error: receipt.error ?? null,
-      requested: receipt.requested ?? null, observed: receipt.observed ?? null, usage: receipt.usage ?? null,
-      category: seen.refused?.category ?? null,
+  // Forward the host's stdout and fold each whole line, in order.
+  readHost() {
+    const decoder = new StringDecoder("utf8");
+    this.partial = "";
+    this.pending = Promise.resolve();
+    this.child.stdout.on("data", (chunk) => {
+      this.partial += decoder.write(chunk);
+      let end;
+      while ((end = this.partial.indexOf("\n")) >= 0) {
+        const line = this.partial.slice(0, end);
+        this.partial = this.partial.slice(end + 1);
+        if (!line.trim()) continue;
+        this.out.write(line + "\n");
+        this.pending = this.pending.then(() => this.handle(line)).catch(() => {});
+      }
     });
-    code = Number.isInteger(receipt.code) ? receipt.code : RUNNER_EXIT.unknown;
-  } else if (seen.refused) {
-    // Refused before the host wrote any receipt (configuration or binding).
-    Object.assign(record, { state: "refused", termination: "not-started", category: seen.refused.category, stopReason: `${seen.refused.category}: ${seen.refused.detail}` });
-    code = Number.isInteger(exitCode) ? exitCode : RUNNER_EXIT.refused;
-  } else {
-    // The transport ended without a receipt. Ask the host once; never assume.
-    const reconciled = await remoteCommand(profile, ["reconcile", runUuid], { spawnImpl, env });
+    this.child.stderr.on("data", (chunk) => this.err.write(chunk));
+  }
+  // Relay journaled answer/stop controls for this turn to the host.
+  startRelay() {
+    const sent = new Set();
+    let relaying = false;
+    return setInterval(async () => {
+      if (relaying) return;
+      relaying = true;
+      try {
+        await this.relayControls(sent);
+      } catch {
+        // Never let one poll reject; the next poll retries.
+      } finally {
+        relaying = false;
+      }
+    }, this.pollMs);
+  }
+  async relayControls(sent) {
+    const dir = controlDir(this.conversation.id);
+    for (const name of (await readdir(dir).catch(() => [])).sort()) {
+      if (!name.endsWith(".json") || sent.has(name)) continue;
+      // A control that cannot be read yet is retried on the next poll, never dropped,
+      // and never allowed to take the relay (or the runner) down.
+      let control;
+      try {
+        control = await readJSON(join(dir, name), null);
+      } catch {
+        continue;
+      }
+      sent.add(name);
+      if (control?.turn !== this.n) continue;
+      if (control.type === "answer") this.write({ type: "answer", message: control.message });
+      else if (control.type === "stop") this.write({ type: "stop", reason: "stop" });
+      await rename(join(dir, name), join(dir, `${name}.sent`)).catch(() => {});
+    }
+  }
+  async awaitHost() {
+    this.readHost();
+    const heartbeat = setInterval(() => this.write({ type: "heartbeat" }), this.heartbeatMs ?? this.pool.heartbeatSeconds * 1000);
+    const relay = this.startRelay();
+    let killTimer = null;
+    const onSignal = () => {
+      if (this.record.stopRequested) return;
+      this.record.stopRequested = "paperclip cancel or controller shutdown";
+      this.write({ type: "stop", reason: "cancel" });
+      killTimer = setTimeout(() => this.child.kill("SIGKILL"), this.stopGraceMs);
+    };
+    for (const name of ["SIGTERM", "SIGINT", "SIGHUP"]) this.signals.on(name, onSignal);
+    const exitCode = await new Promise((resolve) => this.child.on("close", (code) => resolve(code)));
+    clearInterval(heartbeat);
+    clearInterval(relay);
+    clearTimeout(killTimer);
+    for (const name of ["SIGTERM", "SIGINT", "SIGHUP"]) this.signals.off(name, onSignal);
+    if (this.partial.trim()) {
+      this.out.write(this.partial + "\n");
+      const rest = this.partial;
+      this.pending = this.pending.then(() => this.handle(rest));
+    }
+    await this.pending;
+    return exitCode;
+  }
+  // Record what the host reported, or ask it once when the transport ended without a receipt.
+  async outcome(exitCode) {
+    const { record, seen, runUuid } = this;
+    const receipt = seen.receipt;
+    if (receipt && receipt.runUuid === runUuid) {
+      Object.assign(record, {
+        state: receipt.state, termination: receipt.termination, exitCode: receipt.exitCode ?? null,
+        stopReason: receipt.stopReason ?? null, result: receipt.result ?? null, error: receipt.error ?? null,
+        requested: receipt.requested ?? null, observed: receipt.observed ?? null, usage: receipt.usage ?? null,
+        category: seen.refused?.category ?? null,
+      });
+      return Number.isInteger(receipt.code) ? receipt.code : RUNNER_EXIT.unknown;
+    }
+    if (seen.refused) {
+      // Refused before the host wrote any receipt (configuration or binding).
+      Object.assign(record, { state: "refused", termination: "not-started", category: seen.refused.category, stopReason: `${seen.refused.category}: ${seen.refused.detail}` });
+      return Number.isInteger(exitCode) ? exitCode : RUNNER_EXIT.refused;
+    }
+    const reconciled = await remoteCommand(this.profile, ["reconcile", runUuid], { spawnImpl: this.spawnImpl, env: this.env });
     const state = reconciled?.state;
     Object.assign(record, {
       state: "transport_lost",
       termination: state === "terminated" ? "verified" : "unknown",
       stopReason: "transport ended without a receipt",
     });
-    code = record.termination === "verified" ? RUNNER_EXIT.stopped : RUNNER_EXIT.unknown;
+    return record.termination === "verified" ? RUNNER_EXIT.stopped : RUNNER_EXIT.unknown;
   }
-  record.question = null;
-  record.endedAt = Date.now();
-  record.code = code;
-  await save();
-  // Disposed before `finished`, so no follow-up can be journaled in between.
-  record.disposition = (await dispose(api, conversation, issue.id, record, runId)).state;
-  record.finished = true;
-  await save();
-  if (["verified", "not-started"].includes(record.termination)) await releaseAccount(profile.account, runUuid);
-  say("finished", { state: record.state, termination: record.termination, code, disposition: record.disposition });
-  return code;
+  async finish(code) {
+    const { record } = this;
+    record.question = null;
+    record.endedAt = Date.now();
+    record.code = code;
+    await this.save();
+    // Disposed before `finished`, so no follow-up can be journaled in between.
+    record.disposition = (await dispose(this.api, this.conversation, this.issue.id, record, this.runId)).state;
+    record.finished = true;
+    await this.save();
+    if (["verified", "not-started"].includes(record.termination)) await releaseAccount(this.profile.account, this.runUuid);
+    this.say("finished", { state: record.state, termination: record.termination, code, disposition: record.disposition });
+    return code;
+  }
+}
+export async function runTurn({
+  env = process.env, out = process.stdout, err = process.stderr, fetchImpl = globalThis.fetch,
+  spawnImpl = spawn, signals = process, heartbeatMs, pollMs = 200, stopGraceMs = 12000,
+} = {}) {
+  const say = (kind, extra = {}) => out.write(JSON.stringify({ pool: "runner", kind, ...extra }) + "\n");
+  const bound = await boundProfile(env, say);
+  if (bound.code !== undefined) return bound.code;
+  await initPool();
+  const api = paperclipClient({ baseUrl: env.PAPERCLIP_API_URL, token: env.PAPERCLIP_API_KEY, runId: bound.runId, fetchImpl });
+  const run = new RunnerTurn({ env, out, err, say, spawnImpl, signals, heartbeatMs, pollMs, stopGraceMs }, bound, api);
+  const lookupRefusal = await run.locate();
+  if (lookupRefusal !== undefined) return lookupRefusal;
+  const reason = run.noopReason();
+  if (reason) return run.noop(reason);
+  if (!(await run.claim())) return run.noop("turn already claimed");
+  const refused = (await run.bindingRefusal()) ?? (await run.reserve()) ?? (await run.spawnHost());
+  if (refused !== undefined) return refused;
+  return run.finish(await run.outcome(await run.awaitHost()));
 }
