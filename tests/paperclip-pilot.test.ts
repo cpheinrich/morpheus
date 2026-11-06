@@ -1,7 +1,7 @@
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { tmpdir, userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -399,6 +399,38 @@ describe("paperclip worker wrapper", () => {
   });
 });
 
+type ControllerState = { companies: { id: string; name: string }[]; agents: Record<string, any>[]; posts: string[]; patches: { url: string; body: unknown }[] };
+
+// The installed Paperclip server's enrollment API, as the pilot uses it.
+function answerController(state: ControllerState, req: IncomingMessage, res: ServerResponse, body: string) {
+  const send = (value: unknown) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify(value)); };
+  if (req.method === "POST") state.posts.push(req.url!);
+  if (req.method === "GET" && req.url === "/api/companies") return send(state.companies);
+  if (req.method === "POST" && req.url === "/api/companies") { const c = { id: `c${state.companies.length + 1}`, ...JSON.parse(body) }; state.companies.push(c); return send(c); }
+  const m = req.url!.match(/^\/api\/companies\/([^/]+)\/agents$/);
+  if (m && (req.method === "GET" || req.method === "POST")) return answerAgents(state, req, body, send);
+  const retired = req.url!.match(/^\/api\/agents\/([^/]+)\/terminate$/);
+  if (retired && req.method === "POST") { const agent = state.agents.find(a => a.id === retired[1])!; agent.status = "terminated"; return send(agent); }
+  const p = req.url!.match(/^\/api\/agents\/([^/]+)\/permissions$/);
+  if (p && req.method === "PATCH") return answerPermissions(state, req, res, body, p[1]!, send);
+  res.statusCode = 404; res.end("{}");
+}
+
+function answerAgents(state: ControllerState, req: IncomingMessage, body: string, send: (value: unknown) => void) {
+  if (req.method === "GET") return send(state.agents.filter(a => a.status !== "terminated"));
+  const a = { id: `a${state.agents.length + 1}`, ...JSON.parse(body) }; state.agents.push(a); return send(a);
+}
+
+function answerPermissions(state: ControllerState, req: IncomingMessage, res: ServerResponse, body: string, agentId: string, send: (value: unknown) => void) {
+  const parsed = JSON.parse(body);
+  // The installed server's schema: canCreateAgents and canAssignTasks are required.
+  if (typeof parsed.canCreateAgents !== "boolean" || typeof parsed.canAssignTasks !== "boolean") { res.statusCode = 400; return res.end("{}"); }
+  state.patches.push({ url: req.url!, body: parsed });
+  const agent = state.agents.find(a => a.id === agentId)!;
+  agent.permissions = { canCreateAgents: parsed.canCreateAgents, canCreateSkills: parsed.canCreateSkills, canAssignTasks: parsed.canAssignTasks };
+  return send(agent);
+}
+
 describe("paperclip pilot enrollment", () => {
   let server: Server | undefined;
   afterEach(() => { server?.close(); server = undefined; });
@@ -408,28 +440,7 @@ describe("paperclip pilot enrollment", () => {
     server = createServer((req, res) => {
       let body = "";
       req.on("data", c => { body += c; });
-      req.on("end", () => {
-        const send = (value: unknown) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify(value)); };
-        if (req.method === "POST") state.posts.push(req.url!);
-        if (req.method === "GET" && req.url === "/api/companies") return send(state.companies);
-        if (req.method === "POST" && req.url === "/api/companies") { const c = { id: `c${state.companies.length + 1}`, ...JSON.parse(body) }; state.companies.push(c); return send(c); }
-        const m = req.url!.match(/^\/api\/companies\/([^/]+)\/agents$/);
-        if (m && req.method === "GET") return send(state.agents.filter(a => a.status !== "terminated"));
-        if (m && req.method === "POST") { const a = { id: `a${state.agents.length + 1}`, ...JSON.parse(body) }; state.agents.push(a); return send(a); }
-        const retired = req.url!.match(/^\/api\/agents\/([^/]+)\/terminate$/);
-        if (retired && req.method === "POST") { const agent = state.agents.find(a => a.id === retired[1])!; agent.status = "terminated"; return send(agent); }
-        const p = req.url!.match(/^\/api\/agents\/([^/]+)\/permissions$/);
-        if (p && req.method === "PATCH") {
-          const parsed = JSON.parse(body);
-          // The installed server's schema: canCreateAgents and canAssignTasks are required.
-          if (typeof parsed.canCreateAgents !== "boolean" || typeof parsed.canAssignTasks !== "boolean") { res.statusCode = 400; return res.end("{}"); }
-          state.patches.push({ url: req.url!, body: parsed });
-          const agent = state.agents.find(a => a.id === p[1])!;
-          agent.permissions = { canCreateAgents: parsed.canCreateAgents, canCreateSkills: parsed.canCreateSkills, canAssignTasks: parsed.canAssignTasks };
-          return send(agent);
-        }
-        res.statusCode = 404; res.end("{}");
-      });
+      req.on("end", () => answerController(state, req, res, body));
     });
     await new Promise<void>(r => server!.listen(0, "127.0.0.1", () => r()));
     const address = server!.address() as { port: number };
