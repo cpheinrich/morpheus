@@ -468,3 +468,31 @@ Focused commands: `node --test qa/evals/context-retrieval/*.test.mjs`,
 `morpheus complexity check`, and the documented frame, pilot, development,
 holdout and Python verification commands. Runtime setup used local pinned
 MiniSearch 7.2.0, QMD 2.8.3 and o200k_base tokenizers.
+
+### Workflow instrumentation result
+
+The final reviewed development pair used a fresh Factory GPT-6 Luna session
+per arm, medium effort and Standard speed on the MacBook Pro. Both arms saw
+the same read-only pinned Evo snapshot, could reformulate, and could make
+ordinary search and read calls. The treatment also had MiniSearch. The audit
+matched both transcripts to their exact tool traces and accepted 3/3 frozen
+evidence groups in both arms.
+
+| Arm | Factory run | Calls | Discovery payload tokens | Total input tokens | Elapsed |
+|---|---|---:|---:|---:|---:|
+| Ordinary | cc6d00c9-2814-4f36-a23d-ce6e4a72a3c9 | 4 | 5,182 | 153,696 | 23.743 s |
+| MiniSearch available | 782ec315-fbe9-4f46-ab7a-43d5aeb51b7c | 4 | 5,309 | 151,884 | 23.889 s |
+
+Five earlier diagnostic attempts were retained. Four failed the audit due
+to the Factory envelope, tool form, a malformed long command or citation
+serialization. One treatment arm passed without a valid matched control.
+The final protocol uses short per-trial commands and line-range citations
+whose exact source lines must have been exposed by a verified tool call.
+Ten workflow tests and live tool smokes passed. The observed Factory weekly
+gauge remained at 10% after the final pair. That reading does not attribute
+precise quota usage to this study.
+
+The completed pair verifies instrumentation and provides no estimate of
+workflow performance. The 150-task held-out evaluation and current mandatory
+full-read comparator remain outstanding. The workflow launch code, private
+questions, complete attempts and audit evidence stay in the local study.
