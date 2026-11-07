@@ -450,8 +450,9 @@ async function dispatchContext({ flags, command, rest }: Invocation): Promise<nu
     // question. `brief` also checks the installed CLI and is
     // a preparation step that fails visibly if current source cannot be obtained.
     const off = offlineDeclared(flags.offline);
-    if (command === "search" || command === "coverage") {
+    if (command === "search" || command === "coverage" || command === "engine") {
       const search = await import("./context-search.js");
+      if (command === "engine") return search.runContextEngine(process.cwd(), rest, flags.sessionId);
       if (command === "coverage") return search.runContextCoverage(process.cwd(), flags.json);
       return search.runContextSearch(process.cwd(), rest.join(" "), {
         json: flags.json, maxTokens: flags.maxTokens, sessionId: flags.sessionId,

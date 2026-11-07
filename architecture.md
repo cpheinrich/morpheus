@@ -919,9 +919,10 @@ session and worktree. Search excerpts are discovery aids and do not certify read
 
 Search covers the manifest's project context plus default records, roadmaps, runbooks and
 meeting notes. Tantivy indexes overlapping 16-line Markdown windows beginning every two
-lines. Cache files live under the worktree's Git metadata, keyed by the current source contents.
-Fallbacks to ripgrep are surfaced and traced. Traces live in common Git metadata so task
-worktree removal does not erase the trial record. See [the trial runbook](docs/runbooks/context-search.md).
+lines. Cache files and traces live under the worktree's ignored `local/context-search/`
+directory so sandboxed searches can acquire index locks and record timings.
+A session can pin the search engine for its checkout without changing its
+required startup records. Overrides and fallbacks are visible in traces. See [the trial runbook](docs/runbooks/context-search.md).
 
 
 Everything above assumes an agent has read the records. Nothing made it prove that. A session can
