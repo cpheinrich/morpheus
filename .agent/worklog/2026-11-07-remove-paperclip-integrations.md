@@ -96,3 +96,46 @@ alone does not remove an already-running controller or stale installed copy.
 Host parity patch scope: `plugins/factory/src/host/core/{admit.ts,cli.ts,types.ts,brokers/http.ts}`
 and `plugins/factory/src/host/docs/design.md`. Standalone and Darwin authors remain separate.
 No product-scope questions are unresolved; review, CI and installation are explicit next stages.
+
+## Independent implementation review and delivery continuation
+
+Independent high-risk source review cleared the exact implementation head with no findings or unresolved source questions. Direct Factory ownership contracts and offline history are preserved; runtime shutdown, installation and cloud cleanup were outside the review.
+
+The controller supplied the completed reviewer result and measured endpoints above. The reviewer
+ran 39 focused Factory tests and the dependency-free installer test, all 30 offline Python
+controls, synthetic offline score/summarize CLIs, frozen input verification and archive validation
+(four preserved, zero added). Mirrors/dist and source audit matched. Its optional root Vitest
+rerun could not collect because dependencies were absent in the review checkout; no test execution
+is claimed for that attempt. The author’s passing focused runs remain recorded above.
+
+The controller then authorized this author to record clearance, validate conventions, make PR644
+ready and merge only through protected exact-head checks. No source correction was needed.
+Trunk advanced by the independently merged QA composer fix (#643); Git integrated it without
+conflict or hand edits. Merge hooks were disabled for that one Git operation solely to prevent
+a managed CLI auto-install, honoring the explicit no-runtime-install boundary. Required review
+validation, conventions and CI are run explicitly; no delivery gate is waived. The original
+base/reviewed/covered hashes are preserved under the repository’s trunk-integration policy.
+
+The initial draft/install handoff above describes the earlier stage. Runtime actions remain with
+the controller; this continuation performs no installation, restart, IAM or archive mutation.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "a4eb3903645ae6dcf70687fb1ecbdd8db3652e81",
+  "reviewed": "5ec79a02b4baf8b3b92bec06c1e613c0597a723d",
+  "covered": "5ec79a02b4baf8b3b92bec06c1e613c0597a723d",
+  "authorSession": "01a1b6f8-9d27-7811-b6d2-cd475df0b052",
+  "reviewerSession": "01a1b702-0029-7f81-aadf-0bc7e09219bd",
+  "risk": "high",
+  "elapsedMinutes": 4.369783333333333,
+  "timing": {
+    "source": "clock",
+    "durationMs": 262187,
+    "evidence": "Controller clock immediately before dispatch: 2026-11-07T17:15:23.523Z; first terminal=true result: 2026-11-07T17:19:45.710Z. Factory run 4a7362b5-79e6-43cb-8869-1b8f83851ab6; reviewer session 01a1b702-0029-7f81-aadf-0bc7e09219bd. Both actual endpoints supplied by the supervising controller."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk source review cleared the exact implementation head with no findings or unresolved source questions. Direct Factory ownership contracts and offline history are preserved; runtime shutdown, installation and cloud cleanup were outside the review.",
+  "findings": []
+}
+```
