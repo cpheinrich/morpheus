@@ -27,17 +27,20 @@ Current exact guardian/worker and owned-process evidence must also exclude a liv
 The standalone package includes the unchanged canonical Python proof readers, invoked with -B.
 
 Quota defaults to stored mode. Its authenticated gateway reads use the same redirect/body bounds
-and confidential transport. HTTP stored enrollment also requires the explicit pinned tailnet binding. Explicit provider mode requires an exact positive account ID,
-subjectSha256, pinned gatewayOrigin, directEgress true and, for HTTP over the existing encrypted
-tailnet, a verified tailnetAddress. The designated local writer authenticates through its existing
-credential wrapper, reads exact account metadata and a singleton credential export in memory,
-then GETs the fixed vendor usage endpoint. Export includes proxy metadata so direct-only
-eligibility can be checked. Every authenticated hop refuses redirects and bounds decoded bytes. HTTP uses the installed `tailscale nc` client through the local daemon’s encrypted DialTCP
-connection to the enrolled peer IP, with the original Host header. Current online peer identity
-and status are checked first. There is no OS-routed socket fallback. On macOS the documented
-`TAILSCALE_BE_CLI=1` flag selects client mode, with only HOME and PATH inherited.
-See https://tailscale.com/docs/reference/tailscale-cli?tab=macos and the pinned
-v1.102.4 `cmd/tailscale/cli/nc.go` and `client/local/local.go` implementation.
+and confidential transport. HTTP stored enrollment also requires the explicit SSH binding. Explicit provider mode requires an exact positive account ID,
+subjectSha256, pinned gatewayOrigin and directEgress true. HTTP additionally requires owner-private
+ssh enrollment with the exact gateway host, existing SSH user and gatewayPort matching the origin.
+The designated local writer authenticates through its existing credential wrapper, reads exact
+account metadata and a singleton credential export in memory, then GETs the fixed vendor usage
+endpoint. Export includes proxy metadata so direct-only eligibility can be checked.
+Every authenticated hop refuses redirects and bounds decoded bytes. HTTP uses `/usr/bin/ssh -T`
+with BatchMode, StrictHostKeyChecking, a ten-second connect timeout, disabled ProxyCommand,
+ProxyJump and LocalCommand, and `-W 127.0.0.1:<gatewayPort>` to the enrolled user and host.
+Existing SSH host-key authentication binds encryption to that endpoint. Only HOME, PATH and an
+existing SSH_AUTH_SOCK may be inherited. Credentials travel in pipes, with no remote command,
+new service, trust enrollment or plaintext fallback. A legacy tailnetAddress alone cannot enable HTTP.
+Authenticated HTTPS remains supported. The earlier Tailscale nc approach was rejected because its
+Dial-Self fallback can use an OS socket. The SSH source is enrolled only on the designated writer.
 Normal OAuth identity, expiry, credential metadata, subject and owner revision are checked before
 publication. Missing, changed, expired, shadow, parent, PAT, agent or proxy-bound credentials refuse.
 No OAuth refresh, account maintenance or inference is performed. Proxy environment inheritance is

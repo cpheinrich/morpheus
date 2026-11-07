@@ -2,7 +2,6 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readProviderQuota,readStoredQuota} from '../quota.mjs';
-const exampleTailnetAddress=[100,64,0,1].join('.');
 const time=Date.parse('2026-11-07T08:00:00Z');
 const hash=value=>createHash('sha256').update(value).digest('hex');
 function fixture(provider='codex') {
@@ -80,12 +79,13 @@ test('public HTTP, origin drift and inherited proxies are rejected before login'
   const changes=[f=>f.binding.baseUrl='http://public.example',f=>f.binding.gatewayOrigin='https://other.example',f=>f.binding.directEgress=false,f=>f.options.env={HTTPS_PROXY:'PRIVATE'}];
   for(const change of changes){const f=fixture();change(f);await assert.rejects(readProviderQuota(f.binding,f.options),/unavailable/);assert.equal(f.calls.length,0);}
 });
-test('private HTTP requires the enrolled exact tailnet origin and resolved peer address',async()=>{
-  const f=fixture();Object.assign(f.binding,{baseUrl:'http://gateway.example.ts.net:8080',gatewayOrigin:'http://gateway.example.ts.net:8080',tailnetAddress:exampleTailnetAddress});
-  f.options.resolve=async()=>[{address:'203.0.113.1'}];await assert.rejects(readProviderQuota(f.binding,f.options),/unavailable/);assert.equal(f.calls.length,0);
-  f.options.resolve=async()=>[{address:exampleTailnetAddress},{address:'203.0.113.1'}];await assert.rejects(readProviderQuota(f.binding,f.options),/unavailable/);assert.equal(f.calls.length,0);
-  f.options.verifyPeer=async()=>{};f.options.httpFetch=f.options.fetchImpl;
-  f.options.resolve=async()=>[{address:exampleTailnetAddress}];assert.equal((await readProviderQuota(f.binding,f.options)).value.windows[0].name,'7d');
+test('private HTTP requires exact enrolled SSH host, user and gateway port before credentials',async()=>{
+ const f=fixture();Object.assign(f.binding,{baseUrl:'http://gateway.example.ts.net:8080',gatewayOrigin:'http://gateway.example.ts.net:8080'});
+ for(const ssh of [undefined,{host:'other.example.ts.net',user:'operator',gatewayPort:8080},{host:'gateway.example.ts.net',user:'-invalid',gatewayPort:8080},{host:'gateway.example.ts.net',user:'operator',gatewayPort:80}]){
+  f.binding.ssh=ssh;await assert.rejects(readProviderQuota(f.binding,f.options),/unavailable/);assert.equal(f.calls.length,0);
+ }
+ f.binding.ssh={host:'gateway.example.ts.net',user:'operator',gatewayPort:8080};f.options.httpFetch=f.options.fetchImpl;
+ assert.equal((await readProviderQuota(f.binding,f.options)).value.windows[0].name,'7d');
 });
 test('concurrent metadata proxy or revision change discards the retrieved observation',async()=>{
   for(const field of ['proxy_id','updated_at']) {
@@ -113,12 +113,10 @@ test('export-only OAuth markers and non-scalar expiry cannot reach provider',asy
  }
 });
 
-test('verified HTTP flow binds every gateway request to the enrolled socket transport',async()=>{
- const f=fixture();Object.assign(f.binding,{baseUrl:'http://gateway.example.ts.net:8080',gatewayOrigin:'http://gateway.example.ts.net:8080',tailnetAddress:exampleTailnetAddress});
- f.options.resolve=async()=>[{address:exampleTailnetAddress}];f.options.verifyPeer=async()=>{throw Error('unverified');};
- await assert.rejects(readProviderQuota(f.binding,f.options),/unavailable/);assert.equal(f.calls.length,0);
- let verified=0;const pinned=[];f.options.verifyPeer=async()=>{verified++;};f.options.httpFetch=(url,options,address)=>{pinned.push(address);return f.options.fetchImpl(url,options);};
- await readProviderQuota(f.binding,f.options);assert.equal(verified,1);assert.deepEqual(pinned,Array(4).fill(exampleTailnetAddress));assert.equal(f.calls.filter(c=>c.url.startsWith('https://chatgpt.com/')).length,1);
+test('HTTP flow binds every gateway request to the exact SSH transport while vendor GET uses HTTPS',async()=>{
+ const f=fixture();Object.assign(f.binding,{baseUrl:'http://gateway.example.ts.net:8080',gatewayOrigin:'http://gateway.example.ts.net:8080',ssh:{host:'gateway.example.ts.net',user:'operator',gatewayPort:8080}});
+ const forwarded=[];f.options.httpFetch=(url,options,bound)=>{forwarded.push(bound.ssh);return f.options.fetchImpl(url,options);};
+ await readProviderQuota(f.binding,f.options);assert.deepEqual(forwarded,Array(4).fill(f.binding.ssh));assert.equal(f.calls.filter(c=>c.url.startsWith('https://chatgpt.com/')).length,1);
 });
 
 test('passive stored mode cannot retain an unpinned HTTP or redirect credential path',async()=>{

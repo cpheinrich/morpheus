@@ -19,7 +19,7 @@ const source = z.discriminatedUnion('kind',[
   z.strictObject({id,kind:z.literal('github'),repositories:z.array(project).min(1).max(3),organizationTokenEnv:variable.refine(v=>!['GH_TOKEN','GITHUB_TOKEN','GH_ENTERPRISE_TOKEN','GITHUB_ENTERPRISE_TOKEN'].includes(v)).optional(),
     organizationRunners:z.array(z.strictObject({organization:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]{0,99}$/),runnerId:z.number().int().positive(),projectIds:z.array(project).min(1).max(16)}).refine(e=>e.projectIds.every(p=>p.split('/')[0]===e.organization))).max(16).optional()}),
   z.strictObject({id,kind:z.literal('quota'),emailEnv:variable,passwordEnv:variable,mode:z.enum(['stored','provider']).optional(),
-    binding:z.strictObject({id,instanceId:id,accountId:z.number().int().positive(),provider:z.enum(['codex','claude']),baseUrl:z.url(),subjectSha256:z.string().regex(/^[a-f0-9]{64}$/).optional(),gatewayOrigin:z.url().optional(),directEgress:z.literal(true).optional(),tailnetAddress:z.string().max(45).optional()})}),
+    binding:z.strictObject({id,instanceId:id,accountId:z.number().int().positive(),provider:z.enum(['codex','claude']),baseUrl:z.url(),subjectSha256:z.string().regex(/^[a-f0-9]{64}$/).optional(),gatewayOrigin:z.url().optional(),directEgress:z.literal(true).optional(),tailnetAddress:z.string().max(45).optional(),ssh:z.strictObject({host:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}$/),user:z.string().regex(/^[a-z_][a-z0-9_-]{0,31}$/),gatewayPort:z.number().int().min(1).max(65535)}).optional()})}),
 ]);
 export const configSchema = z.strictObject({version:z.literal(1),hostId:id,
   endpoint:z.url().refine(v=>{const u=new URL(v);return u.protocol==='https:' && !u.username && !u.password && !u.search && !u.hash;}),

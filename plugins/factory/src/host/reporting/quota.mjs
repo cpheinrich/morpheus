@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
-import { lookup } from 'node:dns/promises';
 import { boundedJson } from './transport.mjs';
-import {pinnedHttpRequest,verifyTailnetPeer} from './tailnet-http.mjs';
+import {sshHttpRequest,sshArguments} from './ssh-http.mjs';
 const digest = value => createHash('sha256').update(value).digest('hex');
 // Stored observations remain available for explicitly passive enrollment.
 export function storedQuota(account, binding) {
@@ -23,11 +22,11 @@ export function storedQuota(account, binding) {
 }
 export async function readStoredQuota(binding,options={}) {
   directEnvironment(options.env??process.env);
-  const {email,password,fetchImpl,resolve,verifyPeer,httpFetch}={fetchImpl:fetch,resolve:lookup,verifyPeer:verifyTailnetPeer,httpFetch:pinnedHttpRequest,...options};
+  const {email,password,fetchImpl,httpFetch}={fetchImpl:fetch,httpFetch:sshHttpRequest,...options};
   const base=new URL(binding.baseUrl);
   if(base.username||base.password||base.search||base.hash||(binding.gatewayOrigin&&base.origin!==binding.gatewayOrigin)||!Number.isSafeInteger(binding.accountId)||binding.accountId<1)throw new Error('invalid-source');
-  if(base.protocol!=='https:')await gatewayOrigin(binding,resolve);
-  const perform=await providerTransport(base,binding,{fetchImpl,verifyPeer,httpFetch});
+  if(base.protocol!=='https:')await gatewayOrigin(binding);
+  const perform=await providerTransport(base,binding,{fetchImpl,httpFetch});
   const request=(path,options={})=>perform(new URL(path,base),options);
   const login=await boundedJson(await request('/api/v1/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})}));
   const token=login.data?.access_token;
@@ -87,23 +86,16 @@ async function credentialsFor(binding, request, now) {
   usableToken(credential,now());
   return {account,credential};
 }
-function tailnetAddress(ip) {
-  const pieces=typeof ip==='string'?ip.split('.').map(Number):[];
-  return pieces.length===4&&pieces[0]===100&&pieces[1]>=64&&pieces[1]<=127&&pieces.every(v=>Number.isInteger(v)&&v>=0&&v<=255);
-}
 function baseOrigin(binding) {
   const base=new URL(binding.baseUrl);
   if(base.origin!==binding.gatewayOrigin||base.username||base.password||base.search||base.hash||base.pathname!=='/')throw new Error('unavailable');
   return base;
 }
-async function gatewayOrigin(binding, resolve) {
+async function gatewayOrigin(binding) {
   if (!Number.isSafeInteger(binding.accountId) || binding.accountId<1 || binding.directEgress!==true) throw new Error('unavailable');
   const base=baseOrigin(binding);
   if (base.protocol==='https:')return base;
-  const ip=binding.tailnetAddress;
-  if (base.protocol!=='http:' || !base.hostname.endsWith('.ts.net') || !tailnetAddress(ip)) throw new Error('unavailable');
-  const addresses=await resolve(base.hostname,{all:true});
-  if (!addresses.length||!addresses.every(row=>row.address===ip))throw new Error('unavailable');
+  sshArguments(base,binding);
   return base;
 }
 function directEnvironment(env) {
@@ -125,24 +117,24 @@ function providerWindows(provider, data, now) {
   if (!windows.size) throw new Error('unavailable');
   return [...windows.values()];
 }
-async function providerTransport(base,binding,{fetchImpl,verifyPeer,httpFetch}) {
-  if(base.protocol==='http:')await verifyPeer(base,binding.tailnetAddress);
+async function providerTransport(base,binding,{fetchImpl,httpFetch}) {
+  if(base.protocol==='http:')sshArguments(base,binding);
   return (url,options={})=>{
     const requestOptions={...options,redirect:'error',signal:AbortSignal.timeout(15000)};
     return new URL(url).origin===base.origin&&base.protocol==='http:'?
-      httpFetch(url,requestOptions,binding.tailnetAddress):fetchImpl(url,requestOptions);
+      httpFetch(url,requestOptions,binding):fetchImpl(url,requestOptions);
   };
 }
 export async function readProviderQuota(binding, options={}) {
-  const {email,password,fetchImpl,now,resolve,env,verifyPeer,httpFetch}={
-    fetchImpl:fetch,now:Date.now,resolve:lookup,env:process.env,verifyPeer:verifyTailnetPeer,httpFetch:pinnedHttpRequest,...options,
+  const {email,password,fetchImpl,now,env,httpFetch}={
+    fetchImpl:fetch,now:Date.now,env:process.env,httpFetch:sshHttpRequest,...options,
   };
   try {
     if (binding.id !== `${binding.instanceId}-${binding.accountId}` || !/^[a-f0-9]{64}$/.test(binding.subjectSha256)) throw new Error('unavailable');
     directEnvironment(env);
     if (!providerUrls[binding.provider])throw new Error('unavailable');
-    const base=await gatewayOrigin(binding,resolve);
-    const perform=await providerTransport(base,binding,{fetchImpl,verifyPeer,httpFetch});
+    const base=await gatewayOrigin(binding);
+    const perform=await providerTransport(base,binding,{fetchImpl,httpFetch});
     const login = await boundedJson(await perform(new URL('/api/v1/auth/login', base), {
       method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({email,password}),
     }));
