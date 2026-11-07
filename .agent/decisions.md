@@ -2538,3 +2538,14 @@ Pinned systeminformation5.33.19 (875133 unpacked bytes, no dependencies) supplie
 and hardware inventory rather than new platform parsers; existing Zod4.1.12 validates the closed
 wire shape. Both remain optional host dependencies, outside ordinary Morpheus installs. Source
 clearance, protected CI and real consumer enrollment/deployed acceptance remain outstanding.
+
+
+## 2026-11-06 — Complete read-only infrastructure observations
+
+Keep the existing optional reporter and bounded projection. Reuse native devicectl and the
+canonical Factory proof validator. Use native fetch for domain-specific exact-ID GitHub and
+supported provider usage reads, with shared bounded decoding. Existing pinned Zod and
+systeminformation cover the package boundary and hardware. No new production dependency,
+scheduler or control framework is required. A separate optional org-runner credential is scoped
+to enrolled identities. It does not replace repository credentials. Owner dispatcher inventory
+adds observations while preserving required state publication and existing Linux lifecycle.

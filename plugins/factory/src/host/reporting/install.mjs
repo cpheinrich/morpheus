@@ -16,8 +16,19 @@ export function plist({label,nodePath,destination,configPath,credentialWrapper})
   const args=[...(credentialWrapper ? [credentialWrapper,'run','--']:[]),nodePath,join(destination,'reporting/reporter.mjs'),'--config',configPath];
   return `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>${xml(label)}</string><key>ProgramArguments</key><array>${args.map(s=>`<string>${xml(s)}</string>`).join('')}</array><key>RunAtLoad</key><true/><key>StartInterval</key><integer>60</integer><key>ProcessType</key><string>Background</string></dict></plist>\n`;
 }
+async function copyPackage(destination,nodePath,run) {
+    const root=dirname(dirname(fileURLToPath(import.meta.url)));
+    for(const name of ['reporting','package.json','pnpm-lock.yaml','pnpm-workspace.yaml']) await cp(join(root,name),join(destination,name),{recursive:true});
+    const proofDir=join(destination,'reporting/proof');
+    await mkdir(proofDir,{mode:0o700});
+    for (const name of ['termination_proof.py','owned_processes.py']) {
+      await cp(join(root,'..',name),join(proofDir,name));
+    }
+    await run('pnpm',['install','--frozen-lockfile','--prod','--ignore-scripts'],{cwd:destination});
+    await run(nodePath,['--input-type=module','-e',`await import(${JSON.stringify(pathToFileURL(join(destination,'reporting/reporter.mjs')).href)})`],{cwd:destination});
+ }
 export async function installReporter(options,{run=exec}={}) {
-  const {destination,configPath,agentDir,nodePath,credentialWrapper,label,dryRun=true,rollback=false}=options;
+  const {destination,configPath,agentDir,nodePath,label,dryRun=true,rollback=false}=options;
   if(!/^[\w.-]{1,150}$/.test(label) || !installationPaths(options)) throw new Error('invalid-installation');
   configSchema.parse(await privateConfig(configPath));
   await outsideGit(destination);await outsideGit(dirname(configPath));
@@ -29,10 +40,7 @@ export async function installReporter(options,{run=exec}={}) {
   if(!rollback) {
     // Destination is versioned and exclusive; never replace a running package or delete old code.
     await mkdir(destination,{mode:0o700});
-    const root=dirname(dirname(fileURLToPath(import.meta.url)));
-    for(const name of ['reporting','package.json','pnpm-lock.yaml','pnpm-workspace.yaml']) await cp(join(root,name),join(destination,name),{recursive:true});
-    await run('pnpm',['install','--frozen-lockfile','--prod','--ignore-scripts'],{cwd:destination});
-    await run(nodePath,['--input-type=module','-e',`await import(${JSON.stringify(pathToFileURL(join(destination,'reporting/reporter.mjs')).href)})`],{cwd:destination});
+    await copyPackage(destination,nodePath,run);
     try { await writeFile(backup,await readFile(target),{mode:0o600}); } catch(e) {if(e.code!=='ENOENT')throw e;}
   }
   await mkdir(agentDir,{recursive:true,mode:0o700});

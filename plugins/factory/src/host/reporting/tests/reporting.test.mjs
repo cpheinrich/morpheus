@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { observeFactory } from '../factory.mjs';
+import { observeFactory as nativeObserveFactory } from '../factory.mjs';
 import { readStoredQuota, storedQuota } from '../quota.mjs';
 import { githubSnapshot } from '../github.mjs';
 import { snapshot, send, configSchema } from '../reporter.mjs';
@@ -13,6 +13,7 @@ import { parseReport, freshness } from '../protocol.mjs';
 import { installReporter } from '../install.mjs';
 import { privateConfig } from '../files.mjs';
 import { machine, dispatcher, persistentRunners } from '../sources.mjs';
+const observeFactory=options=>nativeObserveFactory({census:async()=>({identities:{},owned:{},markedRunIds:[]}),...options});
 const uuid='11111111-2222-4444-8888-555555555555';
 const at='2026-11-06T23:00:00.000Z';
 const binding={id:'gateway-a-2',instanceId:'gateway-a',accountId:2,provider:'codex',baseUrl:'https://gateway.example'};
@@ -117,6 +118,10 @@ test('configuration refuses credential-shaped inline fields and service source p
  assert.equal(configSchema.safeParse(baseConfig).success,true);
  assert.equal(configSchema.safeParse({...baseConfig,token:'PRIVATE'}).success,false);
  assert.equal(configSchema.safeParse({...baseConfig,endpoint:'https://user:secret@example.test/'}).success,false);
+ const github={id:'github',kind:'github',repositories:['example/a'],organizationTokenEnv:'INFRA_ORG_READ',organizationRunners:[{organization:'example',runnerId:18,projectIds:['example/a']}]};
+ assert.equal(configSchema.safeParse({...baseConfig,sources:[github]}).success,true);
+ assert.equal(configSchema.safeParse({...baseConfig,sources:[{...github,organizationTokenEnv:'GH_TOKEN'}]}).success,false);
+ assert.equal(configSchema.safeParse({...baseConfig,sources:[{...github,organizationRunners:[{...github.organizationRunners[0],projectIds:['foreign/private']}]}]}).success,false);
 });
 test('reporting configuration cannot be tracked in Git or reached through a file symlink',async t=>{
  const root=await temp(t);const config=join(root,'config.json');await put(config,baseConfig);
@@ -194,4 +199,27 @@ test('validated never-launched admissions need no process census, but contradict
  const invalid=await observeFactory(options);assert.equal(invalid.complete,false);assert.equal(invalid.instances[0].state,'unknown');
  await put(join(dir,'admission.json'),record);await put(join(dir,'process.json'),{runId:uuid,state:'starting'});
  const contradiction=await observeFactory(options);assert.equal(contradiction.complete,false);assert.equal(contradiction.instances[0].state,'unknown');
+});
+test('canonical wire refuses duplicate identities/projects and contradictory additive phone state',async()=>{
+ const {values}=await import('../protocol.mjs');
+ const row={projectId:'example/a',runnerId:18,online:true,busy:false,labels:[]},census={projectId:'example/a',runnerComplete:true,runnerObservedAt:at,jobComplete:true,jobObservedAt:at};
+ assert.equal(values.github.safeParse({jobs:[],runners:[row,row],orgCensus:'unavailable'}).success,false);
+ assert.equal(values.github.safeParse({jobs:[],runners:[],censuses:[census,census],orgCensus:'unavailable'}).success,false);
+ const invocation={id:'instance',invocationId:uuid,executor:'codex',accountId:null,projectIds:['example/a'],state:'running',createdAt:null,hostId:'host-a',taskId:null,model:null,effort:null};
+ assert.equal(values.factory.safeParse({complete:true,instances:[invocation,invocation],lastOutcome:null}).success,false);
+ const org={organization:'example',runnerId:18,projectIds:['example/a','example/b','example/b'],observedAt:at,readable:true,online:true,busy:false,labels:[],gap:null};
+ assert.equal(values.github.safeParse({jobs:[],runners:[],orgCensus:'unavailable',orgRunners:[org]}).success,false);
+ for(const value of [{lease:'held',ready:true,state:'busy',reasons:['lease-held']},{lease:'absent',ready:false,state:'ready',reasons:[]}])assert.equal(values.phone.safeParse(value).success,false);
+ assert.equal(values.phone.safeParse({lease:'held',ready:true}).success,true);
+});
+test('merged organization enrollment cap is rejected at configuration before collection',()=>{
+ const first={organization:'example',runnerId:18,projectIds:Array.from({length:16},(_,i)=>'example/p'+i)};
+ const config={...baseConfig,sources:[{id:'github',kind:'github',repositories:['example/a'],organizationRunners:[first,{...first,projectIds:['example/extra']}]}]};
+ assert.equal(configSchema.safeParse(config).success,false);config.sources[0].organizationRunners[1].projectIds=['example/p0'];assert.equal(configSchema.safeParse(config).success,true);
+});
+test('legacy task-derived instance IDs may repeat while invocation UUIDs remain distinct',()=>{
+ const row={id:'task-example',invocationId:uuid,executor:'codex',accountId:null,projectIds:[],state:'running',createdAt:null,hostId:'host-a',taskId:null,model:null,effort:null};
+ const report={schemaVersion:1,hostId:'host-a',samples:{factory:{...sample,kind:'factory',value:{complete:true,instances:[row,{...row,invocationId:'22222222-2222-4444-8888-555555555555'}],lastOutcome:null}}}};
+ assert.equal(parseReport(report,Date.parse(at)).samples.factory.value.instances.length,2);
+ report.samples.factory.value.instances[1].invocationId=uuid;assert.throws(()=>parseReport(report,Date.parse(at)),/invalid-report/);
 });

@@ -4,8 +4,12 @@ import { promisify } from 'node:util';
 import si from 'systeminformation';
 import { jsonFile } from './files.mjs';
 import { observeFactory } from './factory.mjs';
-import { readStoredQuota } from './quota.mjs';
+import { readStoredQuota, readProviderQuota } from './quota.mjs';
 import { githubSnapshot } from './github.mjs';
+import { observePhone } from './phone.mjs';
+import { dispatcherInventory } from './runner-inventory.mjs';
+import { readFile,lstat } from 'node:fs/promises';
+import { dirname,join } from 'node:path';
 const exec = promisify(execFile);
 async function serviceRunning(label) {
   try {
@@ -33,7 +37,19 @@ export async function dispatcher(source,{run=exec,running=serviceRunning}={}) {
     configuredSlots:c.slots,cpuPerSlot:c.cpu,memoryMbPerSlot:c.memoryMb,
     allocations:(s.slots ?? []).flatMap((slot,index)=>slot && source.projectIds.includes(slot.repo) ? [{slot:index,projectId:slot.repo,runnerId:slot.runnerId ?? null}]:[]),
     runningVms,nullSlotsAmbiguous:true,unreportedSlots:(s.slots??[]).filter(v=>v===null).length,
-    simulatorLanes:c.simulatorLanes??null,roles:source.roles,labels:c.extraLabels??[]}};
+    simulatorLanes:c.simulatorLanes??null,roles:source.roles,labels:c.extraLabels??[],...dispatcherInventory(c,s,source,active)}};
+}
+async function listenerState(metadataPath) {
+  try {
+    const service=join(dirname(metadataPath),'.service');
+    const info=await lstat(service);
+    if(!info.isFile()||info.isSymbolicLink()||info.size>4096)return 'unknown';
+    let label=(await readFile(service,'utf8')).trim();
+    if(label.startsWith('/'))label=(await exec('/usr/bin/plutil',['-extract','Label','raw','-o','-',label],{timeout:2000,maxBuffer:4096})).stdout.trim();
+    if(!/^[\w.-]{1,150}$/.test(label))return 'unknown';
+    const state=await serviceRunning(label);
+    return state===null?'unknown':state?'running':'stopped';
+  } catch {return 'unknown';}
 }
 export async function persistentRunners(source) {
   const registrations=[];let complete=true;
@@ -44,15 +60,12 @@ export async function persistentRunners(source) {
       for(const projectId of entry.projectIds) {
         const expected=entry.scope==='organization'?'/'+projectId.split('/')[0]:'/'+projectId;
         if(url.pathname.replace(/\/$/,'').toLowerCase()!==expected.toLowerCase())throw new Error('invalid-source');
-        registrations.push({runnerId:r.agentId,projectId,scope:entry.scope,roles:entry.roles,labels:entry.labels});
+        registrations.push({runnerId:r.agentId,projectId,scope:entry.scope,roles:entry.roles,labels:entry.labels,
+          ...(entry.observeListener?{listenerState:await listenerState(entry.metadataPath)}:{})});
       }
     }catch{complete=false;}
   }
   return {complete,value:{complete,registrations}};
-}
-async function phone(source) {
-  try { const {at} = await jsonFile(source.leasePath);return {sourceObservedAt:at,value:{lease:'held',ready:null}}; }
-  catch(e) { if(e.code==='ENOENT') return {value:{lease:'absent',ready:null}};throw e; }
 }
 export async function collect(source, config) {
   switch(source.kind) {
@@ -68,9 +81,9 @@ export async function collect(source, config) {
     }
     case 'dispatcher': return dispatcher(source);
     case 'runners': return persistentRunners(source);
-    case 'phone': return phone(source);
-    case 'github': return githubSnapshot(source.repositories);
-    case 'quota': return readStoredQuota(source.binding,{email:process.env[source.emailEnv],password:process.env[source.passwordEnv]});
+    case 'phone': return observePhone(source);
+    case 'github': return githubSnapshot(source.repositories,undefined,undefined,{entries:source.organizationRunners??[],tokenEnv:source.organizationTokenEnv});
+    case 'quota': return (source.mode==='provider'?readProviderQuota:readStoredQuota)(source.binding,{email:process.env[source.emailEnv],password:process.env[source.passwordEnv]});
     default: throw new Error('invalid-source');
   }
 }
