@@ -135,7 +135,7 @@ test('gateway-only launch pins args/env, stdin, exact permissions, and correlate
   assert.match(observed.prompt,/make the reversible change/);
   assert.equal(observed.argv.at(-1),'-');
   assert.equal(observed.argv.includes('make the reversible change'),false);
-  for(const arg of ['model_provider="OpenAI"','model_providers.OpenAI.base_url="https://gateway.invalid/v1"','sandbox_mode="workspace-write"','approval_policy="never"','model_reasoning_effort="medium"']) assert.ok(observed.argv.includes(arg),arg);
+  for(const arg of ['model_provider="factory-gateway"','model_providers.factory-gateway.base_url="https://gateway.invalid/v1"','model_providers.factory-gateway.env_key="OPENAI_API_KEY"','model_providers.factory-gateway.requires_openai_auth=false','service_tier="default"','sandbox_mode="workspace-write"','approval_policy="never"','model_reasoning_effort="medium"']) assert.ok(observed.argv.includes(arg),arg);
   assert.equal(observed.env.OPENAI_API_KEY,secret);
   assert.equal(observed.env.TEST_GATEWAY_KEY,undefined);
   assert.equal(observed.env.CODEX_THREAD_ID,undefined);

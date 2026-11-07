@@ -20,8 +20,10 @@ import {
   permissionMode,
   codexSelection,
   codexRootEffort,
+  codexWorkerEffort,
+  modelIdPattern,
+  MOVING_MODEL_ALIASES,
   codexPermission,
-  assertPoolAuthority,
   readGatewayQuota,
   resolveAdminCredentials,
   delegates,
@@ -55,8 +57,6 @@ import { identity, ownedProcessState, stopOrphan } from "./processes.mjs";
 import { Viewer } from "./viewer.mjs";
 import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
 import { installationId } from "./installation.mjs";
-import { Pool } from "./pool.mjs";
-import { HQPool } from "./pool-hq.mjs";
 import {
   editTargets,
   canonical,
@@ -79,6 +79,29 @@ export function previewSelection(config, snapshot) {
   } catch (error) {
     return { error: error.message };
   }
+}
+const DEFAULT_WORKER_MODELS = { codex: "gpt-6.1-sol", claude: "claude-opus-5-5" };
+function explicitModelProvider(model) {
+  if (/^(claude-|(?:opus|sonnet|haiku)$)/i.test(model ?? "")) return "claude";
+  if (/^(gpt-|codex-|o[1-9](?:-|$))/i.test(model ?? "")) return "codex";
+  return undefined;
+}
+function factoryWorkerSelection(worker, config, rootKind, rootEffort, args = {}) {
+  const model = args.model ?? DEFAULT_WORKER_MODELS[worker];
+  if (!modelIdPattern.test(model) || MOVING_MODEL_ALIASES.has(model.toLowerCase()))
+    throw new Error("Name a fixed worker model or an approved Claude family alias.");
+  const inheritedEffort = args.effort ?? rootEffort;
+  // A controller can use a model with no reasoning; the pinned Sol model starts at low.
+  const requestedEffort = model === DEFAULT_WORKER_MODELS.codex && inheritedEffort === "none"
+    ? "low"
+    : inheritedEffort;
+  const effort = worker === "claude"
+    ? config.effortMap[requestedEffort ?? "high"]
+    : rootKind === "claude"
+      ? codexWorkerEffort(config, requestedEffort)
+      : codexRootEffort(requestedEffort);
+  if (requestedEffort && !effort) throw new Error("Unsupported Factory worker effort.");
+  return { model, effort, speed: args.speed ?? "standard" };
 }
 const RECENT_RUN_LIMIT = 5;
 // The route is pinned once per root session, and so is the primary conversation's working
@@ -187,6 +210,8 @@ function continuationReplies({ previous, continuation, worker, decision, args, t
 // A Codex worker runs the coordinator's own model and effort; the sandbox follows the
 // same approval mapping, never wider (full access only for a never-approve task).
 function workerSelection(worker, config, snapshot, args) {
+  if (args.factoryDefaults)
+    return factoryWorkerSelection(worker, config, "codex", snapshot.reasoningEffort, args);
   return worker === "claude"
     ? modelSelection(config, snapshot, { model: args.model, effort: args.effort })
     : {
@@ -287,6 +312,8 @@ function claudeRootReplies(previous, args, task, config) {
 // A Claude worker inherits the session's own model, effort and permission mode, so
 // it can never be wider than the coordinator.
 function claudeRootSelection(worker, config, session, args) {
+  if (args.factoryDefaults)
+    return factoryWorkerSelection(worker, config, "claude", session.effort, args);
   return worker === "codex"
     ? codexSelection(config, session, { model: args.model, effort: args.effort })
     : {
@@ -436,13 +463,6 @@ export class Manager {
   draining = false;
   processOwnership = ownedProcessState;
   viewer = new Viewer(this);
-  pool = new Pool({
-    admit: (threadId, permission, conversation) =>
-      this.poolAdmission(threadId, permission, conversation),
-    control: (threadId, conversation) =>
-      this.poolControl(threadId, conversation),
-  });
-  hq = new HQPool(this.pool, { draining: () => this.draining });
   async client() {
     if (!this.codex) {
       this.codex = await new Codex().connect();
@@ -650,37 +670,6 @@ export class Manager {
       }
     });
     return this.begin(id);
-  }
-  // Pool admission keeps the bridge's local invariants: no launch while draining or
-  // disabled (globally, for the task, or for its project), verified live settings of
-  // the calling task, and no permission wider than that task's own sandbox.
-  async poolAdmission(threadId, permission, conversation = null) {
-    if (this.draining)
-      throw new Error("Bridge upgrade is in progress; retry afterward.");
-    await this.poolControl(threadId, conversation);
-    const config = await configRead();
-    const snapshot = await this.snapshot(threadId);
-    const identity = await projectIdentity(snapshot.cwd);
-    const task = await this.mutateTask(threadId, (current) => {
-      Object.assign(current, identity);
-    });
-    if (task.disabled || config.projects[task.project] === "off")
-      throw new Error("Delegation disabled for this task or project");
-    assertPoolAuthority(snapshot, permission);
-    return { project: task.project };
-  }
-  // Answers act on an admitted turn; they need no live snapshot, but off still wins.
-  async poolControl(threadId, conversation = null) {
-    const config = await configRead();
-    if (config.mode === "off") throw new Error("Delegation disabled");
-    const caller = await taskRead(threadId);
-    if (caller.disabled || (caller.project && config.projects[caller.project] === "off"))
-      throw new Error("Delegation disabled for this task or project");
-    if (conversation) {
-      const owner = await taskRead(conversation.threadId);
-      if (owner.disabled || (conversation.project && config.projects[conversation.project] === "off"))
-        throw new Error("Delegation is disabled for this conversation's task or project");
-    }
   }
   async recoverOrphans(task, dirs = [task.cwd]) {
     // Never launch over an orphan after a service restart. Guardian will expire its lease.
@@ -1342,19 +1331,29 @@ export class Manager {
     throw new Error("Unknown Factory root kind.");
   }
   async factoryInspect(args) {
-    if (args.rootKind === "codex")
-      return this.inspect(args.rootId, args.provider);
-    return this.claudeInspect(args.rootId, args.provider);
+    const codex = args.rootKind === "codex";
+    const status = await (codex
+      ? this.inspect(args.rootId, args.provider)
+      : this.claudeInspect(args.rootId, args.provider));
+    const rootEffort = codex ? status.snapshot?.reasoningEffort : status.session?.effort;
+    const worker = status.route?.executor;
+    if (worker) status.selection = factoryWorkerSelection(worker, await configRead(), args.rootKind, rootEffort);
+    return status;
   }
   async factoryDelegate(args) {
+    const modelProvider = explicitModelProvider(args.model);
+    if (modelProvider && args.provider && modelProvider !== args.provider)
+      throw new Error("The requested model belongs to a different worker provider.");
     const common = {
       prompt: args.prompt,
       runId: args.runId,
       cwd: args.cwd,
       repos: args.repos,
-      operation: args.provider,
+      operation: args.provider ?? modelProvider,
       model: args.model,
       effort: args.effort,
+      speed: args.speed,
+      factoryDefaults: true,
       background: args.background,
       fresh: args.fresh,
       replySource:
@@ -1404,9 +1403,6 @@ export class Manager {
   async dispatch(method, args = {}) {
     const handler = BRIDGE_OPERATIONS.get(method);
     if (handler) return handler(this, args);
-    // Remote pool turns are owned by Paperclip's runner, not this service.
-    if (method.startsWith("hq.")) return this.hq.dispatch(method.slice(3), args);
-    if (method.startsWith("pool.")) return this.pool.dispatch(method.slice(5), args);
     throw new Error("Unknown bridge operation");
   }
   async configure(args) {
@@ -1415,7 +1411,6 @@ export class Manager {
     if (value.mode === "off") {
       for (const run of this.runs.values())
         if (!run.terminal) await this.cancel(run.id);
-      await this.pool.stopAll().catch(() => {});
     }
     return value;
   }

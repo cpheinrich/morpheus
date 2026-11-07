@@ -1,5 +1,21 @@
 # Decisions
 
+## Paperclip execution is removed; offline history stays immutable — 2026-11-07
+
+MO-26-11-07-09.06.49. Chris authorized removal of active Paperclip integrations from Morpheus,
+Factory and consumers. This supersedes the pilot, explicit execution linkage, remote pool/HQ
+transport and the November 3 decision to leave legacy backend modules for separate integrations.
+Delete those execution paths; keep direct Factory gateway operations, their permission/quota/
+workspace/process ownership, optional read-only host reporting and generic Xcode/CI pools.
+Preserve tracked `.agent/paperclip*` evidence and dated history. The closeout exporter/renderer
+and append-only history workflow remain offline-only. Keep exact agent-stack manifest inputs,
+including worker instructions and the non-launching harness. Workflow-repair loses live collection
+while retaining offline grading, frozen-input checks and cached results. Current guides point to
+retirement; earlier designs are explicitly archival. No new dependency or generic module is needed:
+this is deletion plus existing dispatch and archive regression coverage. Runtime installation,
+service shutdown and configuration/credential changes remain outside this source task, pending
+controller-coordinated independent review and normal protected delivery.
+
 **CI cache retirement stays with the dispatcher owner and runs offline** — 2026-11-06.
 MO-26-11-06-13.51.37. Actual disk use found retired slot and image-pool cache disks as well
 as unreferenced images. Keep the development watchdog out of Tart storage: share the

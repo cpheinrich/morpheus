@@ -9,9 +9,8 @@ or activate it.
 
 Every worker runs **on the host where the bridge runs**, in checkouts on that host. A gateway
 provides model access through a pooled subscription; it does not run the worker anywhere
-else. Onboarding other machines as a worker fleet is out of scope. Agent-facing routing does
-not use Paperclip, and the legacy pool modules in `src/` are not exposed through the
-`factory_*` tools.
+else. Onboarding other machines as a worker fleet is out of scope. Direct delegation uses the six `factory_*` tools. Paperclip execution, internal pool/HQ
+dispatch and their legacy modules are removed.
 
 This README is the canonical reference; the `delegate` (Codex) and `delegate-to-codex`
 (Claude Code) skills are short procedures that point here.
@@ -392,22 +391,41 @@ how a credentials manager stays the single source of truth, for example
 `exec:/opt/homebrew/bin/darwin-env get FACTORY_CLAUDE_KEY`; give the command an absolute
 path, since the bridge service inherits the PATH of whichever session started it.
 
-Quota is read from the gateway's admin API with an admin login. `GET /api/v1/admin/accounts`
-finds each provider's account. An account counts as its most-used 5-hour or 7-day window
-whose reset time has not passed, judged when the response arrives.
+`factory_delegate` defaults to `gpt-6.1-sol` on Codex and `claude-opus-5-5` on Claude,
+independent of the controller's model. Standard speed applies to both workers. Specify
+`model` or `speed: "fast"` only for a user-requested override; `selection` reports the
+requested model, effort and speed. Legacy client model maps do not select models for
+`factory_delegate`. Unattended services retain their explicitly configured model.
+Codex selects a dedicated gateway provider with a required environment key and sets the
+default service tier per launch. A missing gateway key fails before any request and cannot
+fall back to the controller's Codex login. Claude workers disable Fast mode for the child
+session. These controls apply to fresh and resumed worker turns.
 
-- **Claude.** The account list's stored 5-hour figure has no reset time and sub2api only
-  refreshes it on use, so it can stay at an old value indefinitely and is never used.
-  Every inspection, start and `doctor` asks
-  `GET /api/v1/admin/accounts/<id>/usage?source=active&force=true`, which makes sub2api
-  query Anthropic. sub2api may still answer from its own short cache (about three
-  minutes), so `updatedAt` is the gateway's timestamp for that answer, not a guaranteed
-  provider measurement time. A failed read leaves Claude's quota unknown (routing treats
-  it as no headroom) and does not affect Codex.
-- **Codex.** The account list's stored snapshot, whose windows carry reset times.
-  `updatedAt` is the snapshot's own `codex_usage_updated_at`, so it can be old. The usage
-  endpoint is not called for Codex: forcing it sends a model request, and it stamps the
-  current time even when it returns an old snapshot.
+Factory reads usage from the sub2api admin API. In Simple Mode each provider
+uses one shared gateway route. Factory reads every page of the account list
+and scores a pool by its roomiest active, schedulable OAuth account with known
+usage. An account's score is its highest utilization across its active 5-hour
+and 7-day windows. Accounts on cooldown and failed usage reads contribute no
+headroom. The threshold applies to the pool score.
+
+Factory picks the worker provider and honors explicit model requests. Standard
+Claude model IDs and family aliases select Claude, and standard OpenAI model
+IDs select Codex. Specify the provider for custom model IDs. Sub2api owns OAuth,
+account selection, session stickiness and failover within the selected provider
+pool. The account that supplied the pool score can differ from the account
+that serves a request.
+
+- **Claude.** Inspection, start and `doctor` ask sub2api for
+  `GET /api/v1/admin/accounts/<id>/usage?source=active&force=true` for each
+  eligible account. Sub2api may serve a short cached answer. `updatedAt` is the
+  gateway's timestamp for the selected reading.
+- **Codex.** Factory reads stored usage windows and `codex_usage_updated_at`
+  for OAuth accounts with a known ChatGPT subscription plan. Forcing the usage endpoint would send a model
+  request. Windows whose reset times have passed are skipped.
+
+The admin references apply to one gateway origin. Use the provider's shared
+Simple Mode route for the pool score to describe the accounts the gateway can
+schedule.
 
 Each request times out after 15 seconds. Configure the admin login as references too:
 
@@ -438,7 +456,7 @@ over two minutes doing it), although the documented precedence says the token wi
 host that delegates Claude work through a gateway, run `claude auth logout`; `doctor` notes
 the combination.
 
-The selected model and effort are mapped independently at each Claude launch:
+Legacy controller-specific commands map model and effort independently at each Claude launch:
 
 | Codex selection | Claude alias |
 |---|---|
@@ -496,7 +514,7 @@ both. Start a new Claude session after installing, and review its hooks.
 - **Settings source.** Hooks record the session's working directory and permission mode from
   Claude's own hook input, its effort from `CLAUDE_EFFORT`, and its model from the latest
   assistant reply in the transcript. Until a hook has run, delegation refuses.
-- **Model and effort.** `codexModelMap` maps the Claude family (fable/opus/sonnet/haiku) to an
+- **Legacy model and effort mapping.** `codexModelMap` maps the Claude family (fable/opus/sonnet/haiku) to an
   approved `codexModels` entry; `codexEffortMap` maps effort. Unmapped values use Codex's own
   configured default rather than a guess.
 - **Permissions, never widened.** See the Claude table in

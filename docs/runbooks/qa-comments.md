@@ -179,7 +179,7 @@ follow scrolling and hide on other screens. If accessibility is unavailable or t
 stable nearby element, the captured image and comment remain valid; marker tracking is best
 effort. Send requires each pin's placement PNG, but does not require accessibility data.
 
-Header hint: *Right click to add comment. Press Esc twice to Delete*.
+Press Enter to save the pin and clear the comment box. Select the saved pin in the list or on the simulator to edit it. **Send batch** queues the saved comments for the agent.
 
 The device frame **contain-fits** the left pane (aspect ratio preserved,
 centered, 16px padding). It resizes with the window — no fixed zoom — and any

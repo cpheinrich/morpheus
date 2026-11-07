@@ -52,7 +52,7 @@ export interface Host {
 }
 
 export interface RunRequest {
-  /** Paperclip issue or run identifier. */
+  /** Caller-owned task or run identifier. */
   task: string;
   profile: string;
   /** Operator pin; bypasses placement order but never eligibility. */

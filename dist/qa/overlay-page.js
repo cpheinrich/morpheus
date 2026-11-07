@@ -407,10 +407,18 @@ export function pageHtml(opts) {
     persist();
   }
 
-  function saveOpenPin() {
+  function saveOpenPin(closeEditor = false) {
     const p = focused();
     if (!p) return;
     p.text = textEl.value;
+    if (closeEditor) {
+      focusedId = null;
+      escArmedAt = 0;
+      textEl.value = '';
+      textEl.disabled = true;
+      showPlacement(null);
+      renderPins();
+    }
     renderList();
     persist();
     setStatus('Saved pin ' + p.n + (p.text.trim() ? '' : ' (empty)'), 'ok');
@@ -616,7 +624,7 @@ export function pageHtml(opts) {
     if (ev.metaKey || ev.ctrlKey) return; // send batch
     if (ev.shiftKey) return; // newline
     ev.preventDefault();
-    saveOpenPin();
+    saveOpenPin(true);
   });
 
   window.addEventListener('keydown', (ev) => {

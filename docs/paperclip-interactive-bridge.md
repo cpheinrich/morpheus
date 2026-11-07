@@ -1,5 +1,8 @@
 # Interactive remote delegation through the existing bridge
 
+> **Retired historical design.** Paperclip execution has been removed. Commands and deployment
+> procedures below are archival, not supported operations. See [retirement](paperclip-overview.md).
+
 Native blocked transitions require an unblock route. The runner supplies a worker-owned
 `unblockDescriptor` pointing to the controlling Codex conversation, and clears it on done.
 This follows the pinned API's actual HTTP 422 guard; a question in a comment alone is insufficient.

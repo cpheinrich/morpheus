@@ -1,10 +1,8 @@
 # Design
 
-Status: imported from the original `morpheus-factory` design (v0, 2026-10-28) into the
-optional Factory plugin. It records the reasoning behind the placement/admission/broker core
-in `core/`. **Historical:** the Paperclip sections below describe the original planning
-context. The current Factory plugin does not use Paperclip; delegation runs through the
-plugin's own `factory_*` tools and gateway workers (see the plugin README).
+Status: optional Factory placement/admission/broker core in `core/`. This planner
+resolves a run specification without executing a worker. Direct delegation belongs to the
+plugin's `factory_*` tools and configured gateway workers (see the plugin README).
 
 ## The problem
 
@@ -16,47 +14,10 @@ Three things are conflated in a single-wrapper-per-machine design:
 | Host | Mac Studio, Mac mini, MacBook Pro | No |
 | Worker | provider CLI + model + effort + permission + workspace | Bound at run time |
 
-Today's pool binds all three: a profile is `{provider, account, host,
-workspace}` and the subscription's login lives on that host. That makes "one
-subscription on several machines" and "several subscriptions on one machine"
-awkward, and it makes a new machine a re-authentication chore.
-
-Factory splits the decision in two:
-
-```
-Paperclip            what runs, and when
-   │
-factory              where, and on whose capacity      ← this repo
-   │   run spec
-runner               executes one turn
-   │
-broker               request → subscription account
-```
-
-Paperclip keeps scheduling. The broker keeps credentials and account selection.
-Factory is the seam between them, and owns the only durable artifact: the run
-spec.
-
-## Why not a custom Paperclip adapter
-
-Paperclip's adapter answers *how one turn is executed* — which CLI, how it is
-spawned, how its stream is folded, how a session resumes. Factory answers *where
-and on whose capacity*. Those are orthogonal.
-
-A single `morpheus-factory` adapter would force one of two bad outcomes:
-
-- reimplement every provider's CLI driver inside the adapter, duplicating the one
-  part Paperclip already does well and that breaks whenever a CLI ships; or
-- hide provider identity from the board, so every run looks the same and nobody
-  can see which model or permission actually ran.
-
-So the factory registers **one agent per profile** under the existing `process`
-adapter, which is already qualified in Morpheus. One binary, many registrations,
-no forked adapter contract, and the board keeps per-profile observability.
-
-If Paperclip later needs factory to own the inbound answer channel — the current
-co-location constraint on the process adapter — that becomes a second entry point
-over the same core, not a rewrite of the selection logic.
+A host-bound profile combines `{provider, account, host, workspace}`. The planner
+separates placement from subscription admission, so callers can inspect a run specification
+without starting it. Brokers own credential and account selection; the generic planner
+has no controller or queue integration.
 
 ## Placement
 

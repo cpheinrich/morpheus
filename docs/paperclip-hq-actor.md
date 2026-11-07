@@ -1,5 +1,8 @@
 # Authenticated HQ actors in the existing worker pool
 
+> **Retired historical design.** Paperclip execution has been removed. Commands and deployment
+> procedures below are archival, not supported operations. See [retirement](paperclip-overview.md).
+
 `MO-26-10-25-03.51.24` adds a local admission facade to the existing `factory`
 Manager-owned Pool. The outbound Firebase connector supplies a freshly verified actor;
 this facade does not authenticate browser requests. It uses the existing private Unix

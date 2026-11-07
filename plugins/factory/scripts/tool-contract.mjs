@@ -57,7 +57,8 @@ export const factorySpecs = Object.freeze({
         .optional()
         .describe("Additional repository checkouts or original repositories this conversation may write; each resolves to a task-owned checkout."),
       provider,
-      model: z.string().optional(),
+      model: z.string().optional().describe("Use the model explicitly requested by the user. Also specify its provider for model IDs outside the usual Claude or Codex naming conventions."),
+      speed: z.enum(["standard", "fast"]).optional().describe("Defaults to Standard. Request Fast only with explicit user authorization."),
       effort: z.enum(["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]).optional(),
       background: z.boolean().default(false),
       fresh: z.boolean().default(false),

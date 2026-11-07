@@ -1535,67 +1535,21 @@ Security App-attested import candidate, records a separate App-owned result for 
 and never pushes or merges that candidate. The Security App alone reconciles it after all checks.
 [`docs/runbooks/gh-manager.md`](docs/runbooks/gh-manager.md) is authoritative.
 
-### 7.14 Paperclip is an opt-in execution pilot, not the delivery authority
+### 7.14 Paperclip execution is retired
 
-A bounded pilot runs pinned Paperclip as a loopback-only controller for host-bound Codex agents.
-Paperclip owns its queue, run lifecycle, sessions, Codex output parser and dashboard; Morpheus
-builds no second scheduler or coordinator. Morpheus contributes a narrow command wrapper and a
-host supervisor ([`scripts/paperclip-pilot/`](scripts/paperclip-pilot/README.md)). Each agent is
-bound to one host, account and workspace, with the binding held in an operator-owned config
-outside the model-writable workspace; drift is refused, never repointed. Each host keeps its own
-Codex login and sessions; only the `PAPERCLIP_*` run variables travel, on stdin. A run is admitted
-on a fresh ordinary-subscription quota read through the existing `nativeQuota`, bounded by a hard
-deadline, and its end is proved by an ownership-marker census or its slot is quarantined.
+Paperclip controllers, pool/HQ dispatch, remote runners and live evaluation collection are
+removed. Factory delegates through its six direct `factory_*` operations and configured
+gateway workers (§18.0), retaining permission, quota, workspace and process ownership checks.
+No runtime service, local configuration, credentials or database is changed by this source deletion.
 
-The boundary is deliberate. Claims, independent review, protected-branch CI and merge remain
-Morpheus's; a Paperclip task marked done is not acceptance until the operator reads its artifact
-back. The remote worker reaches the controller through a per-run loopback reverse tunnel that
-grants the local-trusted board, so the pilot is limited to two authorized hosts and to dedicated
-artifact and evaluation tasks. Real project dispatch, other machines, cross-account failover,
-controller-restart adoption and served-model attribution are unqualified until an authenticated
-deployment and prospective evidence exist. No consumer repository is migrated or auto-dispatched.
-Historical decision evaluations ([`qa/evals/agent-stack/`](qa/evals/agent-stack/README.md)) freeze
-inputs, oracles, prompts and model/effort before execution and claim no productivity gain.
-
-The opt-in [explicit linkage bridge](docs/paperclip-integration.md) binds one roadmap item to
-many immutable Paperclip job records under `.agent/paperclip/`. Each record names repository,
-claimed branch, source SHA and acceptance references; only selected job instructions are copied.
-Git owns intent, exact issue linkage and operator-verified evidence. Paperclip retains live status.
-An operation journal in the common Git directory precedes issue creation; uncertain outcomes
-observe and link exact IDs instead of reposting. Result reconciliation never advances roadmap
-status or bypasses the normal delivery loop. Its private authentication rollout helper preserves
-the existing controller/database and stages reversible configuration; real deployment, worker
-authority isolation and consumer delivery remain explicit qualification gates.
-
-Interactive remote delegation ([design](docs/paperclip-interactive-bridge.md)) lets the Codex
-desktop conversation coordinate remote Claude and Codex workers through the optional
-`factory` bridge (§18.0). One Paperclip issue is one pool conversation and each provider
-turn is one Paperclip process-adapter run; the Paperclip-spawned runner on the controller host
-claims the journaled turn, reserves the account, and holds the SSH session whose stdin is the
-remote guardian's lease. The desktop bridge only journals, reads the Paperclip run log through a
-persisted cursor and writes answer/stop controls, so its loss ends nothing. The native Runner was
-rejected for this path because it stages credentials or API tokens instead of using each host's
-own sign-in; follow-ups are turn-boundary only and live questions exist only for Claude. No
-Paperclip credential reaches a worker host. Live acceptance, including remote Claude (pending
-native sign-in), is separate from the deterministic transport tests.
-
-The opt-in [Firebase HQ transport](docs/paperclip-hq-transport.md) adds a single-company
-connection prototype for the accepted HQ design: Cloud Functions verify the current Firebase
-role or exact pre-existing verified-human mapping, private Firestore commands deliver fenced
-requests, and the Mac initiates outbound claims and publishes receipts through the existing Pool
-owner. A continuous connector renews its own Firebase identity with private refresh credentials
-and publishes one bounded, sanitized board/agent/comment observation through connector-only
-`hqPublish`; current HQ humans read it through `hqSnapshot` with server publication age and
-explicit caps. Paperclip remains the scheduler and live
-conversation authority. Applying commands are not blindly replayed after uncertainty; delivery
-receipts, native termination and Git acceptance are separate. Transport state stays outside the
-broad HQ rules namespace. The existing Mac controller remains v1; consumer deployment, actual
-continuous-authentication recovery, UI/streaming, multi-company routing and inbox migration
-require qualification. Crash-preserved local ownership locks still require operator inspection.
-The local [HQ admission facade](docs/paperclip-hq-actor.md) preserves profile/controller/repository
-pins, while [versioned closeout snapshots](docs/paperclip-closeout.md) preserve frozen input and
-verified attachment bytes without changing PM status. These prototypes are not extracted into
-the kit or installed in consumer HQs yet.
+Historical `.agent/paperclip*` evidence and dated acceptance/worklog/roadmap records remain
+append-only. The [closeout tools](docs/paperclip-closeout.md) only validate, render and export
+frozen local snapshots; they have no live acquisition or upstream mutation path. Their history
+workflow continues to reject deletion or rewriting of archived records. The frozen
+[agent-stack study](qa/evals/agent-stack/README.md) remains verifiable, including its original
+worker instructions; its harness never launches an agent. Workflow-repair retains offline
+scoring and cached results, with live collection removed. See the
+[retirement boundary](docs/paperclip-overview.md).
 
 ### 7.15 Repository-owned schedules
 
@@ -3339,9 +3293,11 @@ other agent on its native login, or either agent behind a pooled-subscription ga
 (sub2api), reached as an API with its own key. A gateway of the coordinator's own provider
 is a valid delegate because it is a separate subscription; the coordinator's own native
 login never is, because that would be circular. Before a root session is pinned, routing picks
-the gateway with the most headroom below its threshold (90% used by default, read from the
-gateway's admin API; missing or stale usage is never headroom), and otherwise the other
-provider's native login on this host. An explicit provider request prefers that provider's
+the gateway with the most headroom below its threshold (90% used by default). For a
+sub2api Simple Mode pool, this is the headroom of the roomiest schedulable OAuth account
+with usable usage data. Sub2api selects the serving account and manages OAuth, stickiness
+and failover. Without eligible gateway capacity the other provider's native login on this
+host is the fallback. An explicit provider or recognized model request prefers that provider's
 eligible gateway; for the coordinator's own provider with no eligible gateway it is refused,
 never handed to the coordinator's own login. After the first successful primary launch the
 pinned route is used as-is: an ineligible pinned gateway refuses and nothing silently switches.
@@ -4022,7 +3978,7 @@ long-lived supervising sessions. The GitHub Manager stays a PR backstop and has 
 | Rules (EV-26-10-30-14.56.33) | Evo | `firebase-deploy.yml` delivery contract (`environment`, `source-sha`, `deploy`) | now |
 | S4 (EV-26-10-30-16.14.48) | Evo | Cutover: cron on, V2 workflows and host agents off, ledger archived, receipt tags seeded, Evo #702 closed | after S3, Rules, B |
 | S5 (EV-26-10-30-16.14.52) | Evo | Delete V2 and the legacy lanes from Evo | after S4 and its soak; parallel with M1 |
-| M1 (MO-26-10-30-16.06.29) | Morpheus | Delete `src/cd`, its tests and docs, the `morpheus cd` command and V2-only upload inputs, after moving the quota reader the Paperclip pilot still loads | after S4 and its soak; parallel with S5 |
+| M1 (MO-26-10-30-16.06.29) | Morpheus | Delete `src/cd`, its tests and docs, the `morpheus cd` command and V2-only upload inputs, after confirming no remaining consumer needs its quota reader | after S4 and its soak; parallel with S5 |
 
 Acceptance for S4 is one scheduled staging and one scheduled production delivery through V3. S5 and
 M1 wait for two consecutive V3 deliveries per channel.

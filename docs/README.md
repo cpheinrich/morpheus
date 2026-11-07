@@ -8,8 +8,8 @@ here is canonical; anything rendered elsewhere is a view.
 
 - [CI scope](ci-scope.md) — which checks run for each changed path, required status
   reporting and Python compatibility versus artifact transport.
-- [Morpheus and Paperclip overview](paperclip-overview.md) — work-in-progress architecture,
-  task ownership, remote workers and interactive delegation, with diagrams.
+- [Factory delegation](../plugins/factory/README.md) — direct gateway workers and task-owned workspaces.
+- [Paperclip retirement](paperclip-overview.md) — deletion boundary and preserved offline history.
 - [CD pipeline V2](cd-pipeline-v2.md) — delivery ownership, automatic recovery and
   internal TestFlight acceptance; [RCA](cd-pipeline-v2-rca.md),
   [research](cd-pipeline-v2-research.md), [design probes](cd-pipeline-v2-validation.md).

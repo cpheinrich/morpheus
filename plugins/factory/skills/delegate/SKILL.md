@@ -37,19 +37,13 @@ never submit a local task to a different machine by guessing its project path.
    `workspace`; tell the worker which checkout holds which part of the task.
    Do not ask it to redo mutations already completed. Default background=false; true is
    only for explicit user authorization to continue after disconnection.
-4. Model and effort are read from the active Codex turn, mapped separately, and applied to
-   the next Claude invocation. A Codex model missing from `modelMap` uses the configured
-   `modelFallback` (default `opus`) automatically: do not ask the user to pick a model for
-   that, and report `selection.source`/`selection.reason` so they know what ran. Pass an
-   override only when the user names a model or effort; any explicit model id or family
-   alias they name is passed to the Claude CLI, which decides whether the subscription can
-   run it, and is never replaced by `modelFallback`. A run that fails with the CLI's
-   unrecognized-model error means that model is unavailable here: report it, and retry only
-   with an alternative the user named for that case, never a moving alias such as `best`.
-   If a `modelFallback` run itself is rejected (`selection.source` is `fallback`), or the
-   fallback is disabled or refused, report the bridge's or CLI's message; do not retry the
-   same model. Unsupported effort/permission metadata must be reported, never guessed. Full access is not permission to bypass a business approval,
-   repository review, spending, or sending rule.
+4. Factory workers default to GPT-6.1 Sol (`gpt-6.1-sol`) for Codex and Claude Opus 5.5
+   (`claude-opus-5-5`) for Claude, both at Standard speed. Effort follows the controller
+   where supported. Pass model, effort, or speed overrides only when the user requests them,
+   including on later runs covered by the same request. Check `selection` before reporting
+   what was requested. If the CLI refuses a model or speed, report the error and retry only
+   with a user-authorized alternative. Full access does not waive business approvals,
+   independent review, CI, spending, or sending rules.
 5. Call `factory_wait` (up to 25 seconds) until completion or a question. It renews the owner
    lease. Do not edit files in the worker's checkout while it is active. To take over, call
    `factory_stop` and wait until terminal. A `fresh:true` run (only after a primary launch) gets
