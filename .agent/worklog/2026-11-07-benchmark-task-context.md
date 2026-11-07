@@ -14,7 +14,7 @@ results for his review before production adoption. The primary outcome is less i
 at task startup with reliable retrieval of the decisions, lessons and architecture needed to work
 correctly. Tags guide retrieval; they must not become knowledge walls. Slightly excessive context
 is preferable to consequential omissions. Reuse the existing HQ search implementation when useful;
-QMD remains an optional comparator whose added complexity needs empirical justification.
+QMD is a required benchmark comparator. Production adoption depends on measured benefit.
 
 ## Mandate
 
@@ -303,3 +303,58 @@ sampled roadmap request existed on the selected pre-task branch revision. The dr
 intake-source verification and domain review before the 45/15 split. The six canonical Darwin
 meeting bodies were already verified separately. Their publication commits still need the
 same cutoff check when they are used as task evidence.
+
+## Budget update and current-scale calibration
+
+Chris authorized “up to 25 percent of the factory Codex workers weekly budget, and then
+whatever corresponding token budget you need for the manager of Codex session.” GPT-6 Luna
+and one fixed effort/settings bundle are the proposed matched-session configuration.
+Use included capacity only. The root manages and verifies. Treat 25% aggregate weekly
+utilization as the conservative admission threshold until engagement-level use can be
+attributed. Reserve before each batch and settle from provider records. Factory's 9% weekly
+Codex snapshot was last updated November 6 at 00:31 Pacific, before these runs. It cannot
+settle current usage. The three bounded research runs launched earlier had no per-run quota
+receipts. Further model batches wait for a current reading while local experiments proceed.
+
+Factory runs 88c43e1d-82e9-4335-b461-37cc22cf3e5d and 0b106ea2-0bd0-47a3-b7f1-9aae9ec7d059
+used the pinned Codex gateway with GPT-6 Luna on the MacBook Pro. The first delivered passage
+offset plumbing. The controller checked its limits and used the actual HQ entry point and an
+independent source-span/token check for comparison. The second verified eight candidate tasks
+and all six pinned Darwin meeting records (53 sections). Its worklog and Git sources did not
+recover the original user request for any of the eight. The controller found the earlier
+project-specific intake extractor, adapted it to both historical and current Codex event
+formats, and found 19 Codex and 13 Claude request candidates from the exact Evo project after
+excluding threads used by the earlier study and deduplicating exact requests. These still
+need incident grouping and links to independently verifiable prior evidence. The provisional
+60-group Git sample is an alternate frame for clearly labeled reconstructions.
+
+The six-case diagnostic remains separate. A second calibration reused 25 previously exposed
+questions from PR265 with 30 expected quotations that still occur at their named paths in the
+current 1436-record Evo corpus. Five old questions and six old evidence groups lacked surviving
+quotes. Retention of a quote does not prove that its advice remains current. Normalize
+whitespace only, require an exact quote in an emitted passage, and count rendered paths,
+source ranges, titles and bodies in the budget. This scores known-quote coverage, not task
+outcomes, critical recall or new holdout performance.
+
+| Method | Groups found at 2k tokens | At 5k | At 10k | At 20k |
+| --- | ---: | ---: | ---: | ---: |
+| Default HQ ranking with passage fetch | 0/30 | 0/30 | 0/30 | 0/30 |
+| Passage-body MiniSearch | 12/30 | 13/30 | 17/30 | 20/30 |
+| MiniSearch with title and heading context | 19/30 | 19/30 | 20/30 | 20/30 |
+| QMD hybrid without reranker | 5/30 | 10/30 | 10/30 | 10/30 |
+
+The same soft tag rule did not change group counts for either engine at any budget. Tested
+no tag boost, existing tags, and nested samples of 100 and 250 draft annotations. The draft
+covers 180 source files, including roadmap, worklogs, decisions, lessons, runbooks and meeting
+sections. Of 250 selected entries, 229 received proposed tags. The rules only read source
+content, not task labels. Draft tag quality is unreviewed. The current Evo-only calibration
+did not retrieve from the separate Darwin projection, so it does not measure meeting recall.
+Both engines left all eligible content searchable. Do not infer from this result that reviewed
+tags have no value for cross-domain browsing, startup rule selection or future migration.
+
+QMD 2.8.3 embedded 4673 chunks across 1436 records with zero reported errors in 179.4 s
+including first-time setup. Initial hybrid query took 1.16 s and the last four had a 40 ms
+median on the six-case run. Full QMD mode completed the six smoke queries. Its first two
+measurements included additional model downloads, and the last four had a 4.73 s median.
+Neither compares end-to-end agent time. Model binaries, scripts, raw passages, private
+request inventories and draft tags remain in private research storage.
