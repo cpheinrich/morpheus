@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { boundedJson } from './transport.mjs';
+import {pinnedHttpRequest,verifyTailnetPeer} from './tailnet-http.mjs';
 const digest = value => createHash('sha256').update(value).digest('hex');
 // Stored observations remain available for explicitly passive enrollment.
 export function storedQuota(account, binding) {
@@ -20,18 +21,18 @@ export function storedQuota(account, binding) {
   if (!sourceObservedAt || !windows.length) throw new Error('unavailable');
   return { sourceObservedAt, value: {accountId:binding.id,provider:binding.provider,windows} };
 }
-export async function readStoredQuota(binding, { email, password, fetchImpl = fetch } = {}) {
-  const base = new URL(binding.baseUrl);
-  if (base.username || base.password || base.search || base.hash) throw new Error('invalid-source');
-  const request = (path, options={}) => fetchImpl(new URL(path,base), {...options, signal:AbortSignal.timeout(10000)});
-  const login = await request('/api/v1/auth/login', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});
-  if (!login.ok) throw new Error('unavailable');
-  const token = (await login.json())?.data?.access_token;
-  if (typeof token !== 'string' || !token) throw new Error('unavailable');
-  // Exact account lookup: no first-account selection, pagination or active refresh.
-  const res = await request(`/api/v1/admin/accounts/${binding.accountId}`, { headers:{authorization:`Bearer ${token}`} });
-  if(!res.ok) throw new Error('unavailable');
-  return storedQuota((await res.json()).data,binding);
+export async function readStoredQuota(binding,options={}) {
+  const {email,password,fetchImpl,resolve,verifyPeer,httpFetch}={fetchImpl:fetch,resolve:lookup,verifyPeer:verifyTailnetPeer,httpFetch:pinnedHttpRequest,...options};
+  const base=new URL(binding.baseUrl);
+  if(base.username||base.password||base.search||base.hash||(binding.gatewayOrigin&&base.origin!==binding.gatewayOrigin)||!Number.isSafeInteger(binding.accountId)||binding.accountId<1)throw new Error('invalid-source');
+  if(base.protocol!=='https:')await gatewayOrigin(binding,resolve);
+  const perform=await providerTransport(base,binding,{fetchImpl,verifyPeer,httpFetch});
+  const request=(path,options={})=>perform(new URL(path,base),options);
+  const login=await boundedJson(await request('/api/v1/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})}));
+  const token=login.data?.access_token;
+  if(typeof token!=='string'||!token)throw new Error('unavailable');
+  const account=await boundedJson(await request(`/api/v1/admin/accounts/${binding.accountId}`,{method:'GET',headers:{authorization:`Bearer ${token}`}}));
+  return storedQuota(account.data,binding);
 }
 
 const providerUrls = {
@@ -41,20 +42,25 @@ const providerUrls = {
 function expiryTime(value) {
   if (typeof value === 'number' || (typeof value === 'string' && /^\d+$/.test(value))) {
     const numeric = Number(value);
-    return numeric < 1e12 ? numeric * 1000 : numeric;
+    const millis=numeric<1e12?numeric*1000:numeric;
+    return Number.isSafeInteger(numeric)&&numeric>0&&millis<=8640000000000000?millis:NaN;
   }
-  return Date.parse(value);
+  return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)?Date.parse(value):NaN;
 }
-function normalAccount(account, binding) {
-  const platform = binding.provider === 'claude' ? 'anthropic' : 'openai';
-  if (account?.id !== binding.accountId || account.platform !== platform || account.type !== 'oauth' ||
-      account.is_shadow || account.parent_account_id || account.proxy_id) throw new Error('unavailable');
-  const extra=account.extra??{};
-  if (extra.auth_provider === 'codex_personal_access_token' || extra.import_source === 'codex_personal_access_token' ||
-      account.credentials?.auth_mode === 'agent_identity') throw new Error('unavailable');
+function oauthIdentity(account) {
+  const extra=account?.extra??{},credentials=account?.credentials??{};
+  if(account?.type!=='oauth'||account.is_shadow||account.parent_account_id||account.proxy_id||
+    extra.auth_provider==='codex_personal_access_token'||extra.import_source==='codex_personal_access_token'||
+    (credentials.auth_mode!==undefined&&credentials.auth_mode!=='oauth'))throw new Error('unavailable');
+}
+function normalAccount(account,binding) {
+  oauthIdentity(account);
+  const platform=binding.provider==='claude'?'anthropic':'openai';
+  if(account.id!==binding.accountId||account.platform!==platform)throw new Error('unavailable');
   return account;
 }
 function boundCredential(row, account, binding) {
+  oauthIdentity(row);
   const credentials=row?.credentials;
   const subjectKey=binding.provider === 'claude'?'account_uuid':'chatgpt_account_id';
   const subject=credentials?.[subjectKey];
@@ -118,13 +124,24 @@ function providerWindows(provider, data, now) {
   if (!windows.size) throw new Error('unavailable');
   return [...windows.values()];
 }
-export async function readProviderQuota(binding, { email, password, fetchImpl = fetch, now = Date.now, resolve = lookup, env = process.env } = {}) {
+async function providerTransport(base,binding,{fetchImpl,verifyPeer,httpFetch}) {
+  if(base.protocol==='http:')await verifyPeer(base,binding.tailnetAddress);
+  return (url,options={})=>{
+    const requestOptions={...options,redirect:'error',signal:AbortSignal.timeout(15000)};
+    return new URL(url).origin===base.origin&&base.protocol==='http:'?
+      httpFetch(url,requestOptions,binding.tailnetAddress):fetchImpl(url,requestOptions);
+  };
+}
+export async function readProviderQuota(binding, options={}) {
+  const {email,password,fetchImpl,now,resolve,env,verifyPeer,httpFetch}={
+    fetchImpl:fetch,now:Date.now,resolve:lookup,env:process.env,verifyPeer:verifyTailnetPeer,httpFetch:pinnedHttpRequest,...options,
+  };
   try {
     if (binding.id !== `${binding.instanceId}-${binding.accountId}` || !/^[a-f0-9]{64}$/.test(binding.subjectSha256)) throw new Error('unavailable');
     directEnvironment(env);
     if (!providerUrls[binding.provider])throw new Error('unavailable');
     const base=await gatewayOrigin(binding,resolve);
-    const perform = (url, options = {}) => fetchImpl(url, { ...options, redirect: 'error', signal: AbortSignal.timeout(15000) });
+    const perform=await providerTransport(base,binding,{fetchImpl,verifyPeer,httpFetch});
     const login = await boundedJson(await perform(new URL('/api/v1/auth/login', base), {
       method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({email,password}),
     }));

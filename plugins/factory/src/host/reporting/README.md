@@ -26,12 +26,15 @@ separate history warnings. A canonical reconciliation hash proves only record as
 Current exact guardian/worker and owned-process evidence must also exclude a live contradiction.
 The standalone package includes the unchanged canonical Python proof readers, invoked with -B.
 
-Quota defaults to stored mode. Explicit provider mode requires an exact positive account ID,
+Quota defaults to stored mode. Its authenticated gateway reads use the same redirect/body bounds
+and confidential transport. HTTP stored enrollment also requires the explicit pinned tailnet binding. Explicit provider mode requires an exact positive account ID,
 subjectSha256, pinned gatewayOrigin, directEgress true and, for HTTP over the existing encrypted
 tailnet, a verified tailnetAddress. The designated local writer authenticates through its existing
 credential wrapper, reads exact account metadata and a singleton credential export in memory,
 then GETs the fixed vendor usage endpoint. Export includes proxy metadata so direct-only
-eligibility can be checked. Every authenticated hop refuses redirects and bounds decoded bytes.
+eligibility can be checked. Every authenticated hop refuses redirects and bounds decoded bytes. HTTP connects directly to
+the enrolled peer IP with the original Host header, verifies the connected socket address before
+flushing credentials, and checks current online Tailscale peer identity/status first.
 Normal OAuth identity, expiry, credential metadata, subject and owner revision are checked before
 publication. Missing, changed, expired, shadow, parent, PAT, agent or proxy-bound credentials refuse.
 No OAuth refresh, account maintenance or inference is performed. Proxy environment inheritance is
@@ -81,3 +84,12 @@ An enrolled phone uses bounded read-only devicectl inventory and lock facts brac
 and exact identity reads. A held lease is busy and skips the lock read. Disconnection, pairing,
 developer mode, tunnel and DDI facts describe host prerequisites. Unlock-since-boot does not
 assert current screen unlock. No connection, mount, lease acquisition or device control is issued.
+
+
+Current Factory observation takes one canonical same-user process census per source. It checks
+recorded guardian/worker identities on every terminal path and current unattended markers even
+for empty reservations. Historical proof hashes cannot suppress current live evidence. The shared
+canonical parser is reused by the existing tracker without changing its signalling/lifecycle API.
+Duplicate project entries, runner identities, census rows and invocations are refused at the wire
+boundary. Additive phone states are internally consistent while legacy v1 phone payloads remain
+accepted. Runner census reads precede optional job sampling within the bounded request budget.

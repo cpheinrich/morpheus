@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { jsonFile, directories, canonicalRoots } from './files.mjs';
 import { lstat, readdir } from 'node:fs/promises';
-import { validTerminationProof } from './proof.mjs';
+import { currentFactoryCensus, validTerminationProof } from './proof.mjs';
 const exec = promisify(execFile);
 const hash = v => createHash('sha256').update(v).digest('hex').slice(0,32);
 const outcomes = new Set(['completed','needs_input','failed','interrupted']);
@@ -46,16 +46,16 @@ async function activeInstance(r,p,binding,created,channel,options) {
   const {executor,invocationId,gateway}=binding;
   if (!['codex','claude'].includes(executor) || !invocationId) throw new Error('invalid-source');
   const current = p?.state === 'running' ? await options.lookup(p.guardianPid) : null;
-  const matched = !!p?.guardianIdentity && current === p.guardianIdentity;
+  const matched = !!p?.guardianIdentity && sameIdentity(current,p.guardianIdentity);
   const state = p?.state === 'exited' ? 'cleanup-unverified' : matched ? (r.state === 'starting' ? 'starting' : 'running') : 'unknown';
   const accountId = options.accounts[gateway] ?? null;
-  return { id: hash(options.hostId + channel + (binding.task ?? invocationId)), invocationId, executor, accountId,
+  return { id: hash(options.hostId + channel + invocationId), invocationId, executor, accountId,
     projectIds: projectsFor(binding, options.projects), state,createdAt:observedStart(r,p),hostId:options.hostId,
     taskId:binding.task??null,model:observedLabel(binding.selection?.model),
     effort:['none','minimal','low','medium','high','xhigh','max','ultra'].includes(binding.selection?.effort)?binding.selection.effort:null };
 }
 function validateInvocation(binding,p,directory) {
-  if(binding.invocationId!==basename(directory) || !['codex','claude'].includes(binding.executor))throw new Error('invalid-source');
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(binding.invocationId)||binding.invocationId!==basename(directory) || !['codex','claude'].includes(binding.executor))throw new Error('invalid-source');
   if(typeof binding.cwd!=='string' || !isAbsolute(binding.cwd))throw new Error('invalid-source');
   if(p && (p.runId!==binding.invocationId || !['starting','running','exited'].includes(p.state)))throw new Error('invalid-source');
 }
@@ -98,14 +98,18 @@ export async function ownedProcessesLive(entries,run=exec) {
   }
   return false;
 }
-async function reconciledExit(directory, p, binding, options) {
-  if (p?.state !== 'exited' || p.cleanupVerified !== false) return false;
-  const entries = [[p.guardianPid,p.guardianIdentity],[p.claudePid,p.claudeIdentity]];
-  for (const [pid,identity] of entries) {
-    if (identity && await options.lookup(pid) === identity) return false;
+const sameIdentity=(left,right)=>typeof left==='string'&&typeof right==='string'&&left.trim().split(/\s+/).join(' ')===right.trim().split(/\s+/).join(' ');
+async function currentContradiction(p,runId,options) {
+  if(options.current.markedRunIds.includes(runId))return true;
+  for(const [pid,identity] of [[p?.guardianPid,p?.guardianIdentity],[p?.claudePid,p?.claudeIdentity]]) {
+    if(identity&&(!Number.isSafeInteger(pid)||pid<=1))throw new Error('invalid-source');
+    if(identity&&sameIdentity(await options.lookup(pid),identity))return true;
   }
-  if(!await options.proof(directory,binding.invocationId))return false;
-  return !await options.ownedLive(p.ownedProcesses);
+  return Array.isArray(p?.ownedProcesses)&&p.ownedProcesses.length>0?options.ownedLive(p.ownedProcesses):false;
+}
+async function reconciledExit(directory,p,binding,options) {
+  return p?.state==='exited'&&p.cleanupVerified===false&&await options.proof(directory,binding.invocationId)&&
+    !await options.ownedLive(p.ownedProcesses);
 }
 function preparationOnly(record,names) {
   return names.length===1 && names[0]==='admission.json' && record.sessionId===null && record.state==='admitted' && !record.prelaunchFailure;
@@ -114,7 +118,7 @@ function uncertainInstance(record,instance) {
   return record.terminal===true || ['unknown','cleanup-unverified'].includes(instance.state) || !instance.projectIds.length;
 }
 async function classifyRecord(directory, channel, options, names) {
-  if (names.length === 0) return { historyIssue:{invocationId:basename(directory),reason:'empty-reservation'} };
+  if (names.length === 0) return {uncertain:options.current.markedRunIds.includes(basename(directory)),historyIssue:{invocationId:basename(directory),reason:'empty-reservation'}};
   const record=await jsonFile(join(directory,channel==='desktop'?'run.json':'admission.json'));
   const r=record.data,p=await optionalJson(join(directory,'process.json'));
   const binding=bindingFor(r,channel);
@@ -126,8 +130,9 @@ async function classifyRecord(directory, channel, options, names) {
   const outcome=(result?.admissionId===binding.invocationId?result.result?.outcome:null) ?? r.result?.outcome;
   const lastOutcome=outcomes.has(outcome)?outcome:null;
   const created=Number.isFinite(r.createdAt)?r.createdAt:Date.parse(record.at);
-  if(terminalRecord(r,p,channel))return {lastOutcome,created};
-  if (channel==='unattended' && await reconciledExit(directory,p,binding,options)) return {lastOutcome,created};
+  const live=await currentContradiction(p,binding.invocationId,options);
+  if(!live&&terminalRecord(r,p,channel))return {lastOutcome,created};
+  if (!live&&channel==='unattended' && await reconciledExit(directory,p,binding,options)) return {lastOutcome,created};
   const instance=await activeInstance(r,p,binding,created,channel,options);
   return {instance,lastOutcome,created,uncertain:uncertainInstance(r,instance)};
 }
@@ -154,11 +159,25 @@ function censusResult(rows,complete) {
   if(all.length>64||historyIssues.length>64)complete=false;
   return {complete,instances:all.slice(0,64),lastOutcome,...(historyIssues.length?{historyIssues:historyIssues.slice(0,64)}:{})};
 }
-export async function observeFactory({roots,channel,hostId,projects,accounts={},lookup=processIdentity,proof=validTerminationProof,ownedLive=ownedProcessesLive}) {
+export async function observeFactory({roots,channel,hostId,projects,accounts={},lookup,proof=validTerminationProof,ownedLive,census=currentFactoryCensus}) {
   const rows=[];let complete=true;
+  const current=await census();
+  const identityReader=lookup??(async pid=>current.identities[pid]??null),identityCache=new Map();
+  const identityLookup=pid=>{
+    if(!identityCache.has(pid))identityCache.set(pid,identityReader(pid));
+    return identityCache.get(pid);
+  };
+  const ownedLookup=ownedLive??(async entries=>{
+    if(!Array.isArray(entries)||entries.length===0||entries.length>64)throw new Error('unavailable');
+    return entries.some(row=>{
+      if(!validOwnedIdentity(row))throw new Error('unavailable');
+      return JSON.stringify(current.owned[row.pid])===JSON.stringify(row.identity);
+    });
+  });
   for(const root of await canonicalRoots(roots)) {
-    const result=await rootRecords(root,channel,{hostId,projects,accounts,lookup,proof,ownedLive});
+    const result=await rootRecords(root,channel,{hostId,projects,accounts,lookup:identityLookup,proof,ownedLive:ownedLookup,current});
     rows.push(...result.rows);complete=complete&&result.complete;
   }
+  if(channel==='unattended'&&current.markedRunIds.some(id=>!rows.some(r=>r.instance?.invocationId===id)))complete=false;
   return censusResult(rows,complete);
 }

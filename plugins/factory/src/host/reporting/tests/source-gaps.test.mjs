@@ -5,10 +5,11 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
-import {observeFactory,ownedProcessesLive} from '../factory.mjs';
+import {observeFactory as nativeObserveFactory,ownedProcessesLive} from '../factory.mjs';
 import {validTerminationProof} from '../proof.mjs';
 import {githubSnapshot} from '../github.mjs';
 import {dispatcherInventory} from '../runner-inventory.mjs';
+const observeFactory=options=>nativeObserveFactory({census:async()=>({identities:{},owned:{},markedRunIds:[]}),...options});
 const id='11111111-1111-4444-8888-111111111111',at='2026-11-07T08:00:00Z';
 const put=async(path,value)=>writeFile(path,JSON.stringify(value),{mode:0o600});
 async function root(t){const p=await mkdtemp(join(tmpdir(),'reporting-gaps-'));t.after(()=>rm(p,{recursive:true,force:true}));return p;}
@@ -31,6 +32,7 @@ test('canonical hash proof excludes a reconciled exit only without contradictory
   await put(join(dir,'reconciliation.json'),{version:1,admissionId:id,processSha256:await digest('process.json'),admissionSha256:await digest('admission.json')});
   assert.equal(await validTerminationProof(dir,id),true);
   const safe=await observeFactory(options(path,'unattended'));assert.equal(safe.complete,true);assert.deepEqual(safe.instances,[]);
+  const marked=await observeFactory({...options(path,'unattended'),census:async()=>({identities:{},owned:{},markedRunIds:[id]})});assert.equal(marked.complete,false);assert.equal(marked.instances.length,1);
   const child=await observeFactory({...options(path,'unattended'),ownedLive:async()=>true});assert.equal(child.complete,false);assert.equal(child.instances.length,1);
   const live=await observeFactory({...options(path,'unattended'),lookup:async()=> 'matching'});assert.equal(live.complete,false);assert.equal(live.instances.length,1);
   await put(join(dir,'process.json'),{runId:id,state:'exited',cleanupVerified:false,guardianPid:42,guardianIdentity:'changed'});
@@ -87,4 +89,41 @@ test('current owned identity census detects contradictions without markers or pr
   assert.equal(await ownedProcessesLive(entries,run),true);assert.deepEqual(command,['ps',['-axo','pid=,uid=,lstart=']]);
   assert.equal(await ownedProcessesLive(entries,async()=>({stdout:'42 501 Sat Nov 7 22:00:00 2026\n'})),false);
   await assert.rejects(ownedProcessesLive([],run),/unavailable/);await assert.rejects(ownedProcessesLive(entries,async()=>({stdout:'unreadable'})),/unavailable/);
+});
+test('every terminal proof path checks current exact identities and current orphan markers',async t=>{
+ const path=await root(t),dir=join(path,'runs',id);await mkdir(dir,{recursive:true});
+ await put(join(dir,'run.json'),{id,executor:'codex',cwd:'/repo/example',terminal:true});
+ for(const cleanup of [true,undefined]){
+  await put(join(dir,'process.json'),{runId:id,state:'exited',cleanupVerified:cleanup,guardianPid:42,guardianIdentity:'exact'});
+  const live=await observeFactory({...options(path),lookup:async()=> 'exact'});assert.equal(live.complete,false);assert.equal(live.instances.length,1);
+ }
+ const unattended=join(path,'unattended',id);await mkdir(unattended,{recursive:true});
+ const marked=await observeFactory({...options(path,'unattended'),census:async()=>({identities:{},owned:{},markedRunIds:[id]})});
+ assert.equal(marked.complete,false);assert.deepEqual(marked.instances,[]);assert.equal(marked.historyIssues[0].reason,'empty-reservation');
+ await assert.rejects(observeFactory({...options(path),census:async()=>{throw Error('unavailable');}}),/unavailable/);
+});
+test('runner census accounts for declared distinct valid IDs and runs before job budgets',async()=>{
+ for(const rows of [[{id:1,status:'online',busy:false,labels:[]}],[{id:1,status:'online',busy:false,labels:[]},{id:1,status:'online',busy:false,labels:[]}]]){
+  const read=githubRead();const result=await githubSnapshot(['example/a'],path=>path.includes('/runners')?{total_count:2,runners:rows}:read(path),()=>new Date(at));assert.equal(result.value.censuses[0].runnerComplete,false);
+ }
+ const calls=[];const result=await githubSnapshot(['example/a','example/b','example/c'],async path=>{calls.push(path);return path.includes('/runners')?{total_count:0,runners:[]}:path.includes('/jobs')?{total_count:0,jobs:[]}:{total_count:5,workflow_runs:Array.from({length:5},(_,i)=>({id:i+1,run_attempt:1}))};},()=>new Date(at),{
+  entries:[{organization:'example',runnerId:18,projectIds:['example/a']}],tokenEnv:'ORG_READ',env:{ORG_READ:'synthetic'},fetchImpl:async()=>{calls.push('exact-org');return Response.json({id:18,status:'online',busy:false,labels:[]});}
+ });
+ assert.deepEqual(calls.slice(0,4),['repos/example/a/actions/runners?per_page=100&page=1','repos/example/b/actions/runners?per_page=100&page=1','repos/example/c/actions/runners?per_page=100&page=1','exact-org']);assert.equal(result.value.orgRunners[0].readable,true);assert.equal(result.value.censuses.every(c=>c.runnerComplete),true);
+});
+test('canonical census reads process markers once and returns only ownership metadata',async()=>{
+ const {execFileSync}=await import('node:child_process');
+ const script=fileURLToPath(new URL('../census.py',import.meta.url));
+ const fixture=`42 1 42 ${process.getuid()} S Sat Nov 7 08:00:00 2026 tool FACTORY_WORKER_RUN_ID=${id} SECRET=PRIVATE\n`;
+ const program=`import runpy\nfrom unittest.mock import patch\nwith patch('subprocess.check_output',return_value=${JSON.stringify(fixture)}):\n runpy.run_path(${JSON.stringify(script)},run_name='__main__')`;
+ const stdout=execFileSync('python3',['-B','-c',program],{encoding:'utf8'});const value=JSON.parse(stdout);
+ assert.deepEqual(value.markedRunIds,[id]);assert.equal(value.identities['42'],'Sat Nov 7 08:00:00 2026 42 '+process.getuid());assert.equal(stdout.includes('PRIVATE'),false);assert.equal(stdout.includes('SECRET'),false);
+});
+
+test('terminal assertions cannot bypass UUID or recorded process identity shape checks',async t=>{
+ const path=await root(t),bad='------------------------------------';
+ for(const [runId,pid] of [[bad,42],[id,'42']]){
+  const dir=join(path,'runs',runId);await mkdir(dir,{recursive:true});await put(join(dir,'run.json'),{id:runId,executor:'codex',cwd:'/repo/example',terminal:true});await put(join(dir,'process.json'),{runId,state:'exited',cleanupVerified:true,guardianPid:pid,guardianIdentity:'exact'});
+ }
+ const value=await observeFactory(options(path));assert.equal(value.complete,false);assert.deepEqual(value.instances,[]);
 });

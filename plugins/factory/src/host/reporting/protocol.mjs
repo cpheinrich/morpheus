@@ -6,7 +6,8 @@ const stamp = z.iso.datetime({ offset: true });
 const number = z.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const percent = number.max(100);
 const project = z.string().regex(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/).max(150);
-const projects = z.array(project).max(16);
+const projects = z.array(project).max(16).refine(rows=>new Set(rows).size===rows.length);
+const distinct=(rows,key)=>new Set(rows.map(key)).size===rows.length;
 const outcome = z.enum(['completed', 'needs_input', 'failed', 'interrupted']);
 const label = z.string().min(1).max(160);
 const labels = z.array(label).max(20);
@@ -26,7 +27,7 @@ export const values = {
   machine: z.strictObject({ cpuPercent: percent.nullable(), memoryTotalBytes: number, memoryActiveBytes: number,
     diskAvailableBytes: number, diskTotalBytes: number, uptimeSeconds: number,
     hardwareModel:optionalLabel, chip:optionalLabel, logicalCores:number.int().positive().nullable(), osVersion:optionalLabel }),
-  factory: z.strictObject({ complete: z.boolean(), instances: z.array(instance).max(64), lastOutcome: outcome.nullable(), historyIssues:z.array(z.strictObject({invocationId:z.string().uuid(),reason:z.enum(['empty-reservation','incomplete-preparation'])})).max(64).optional() }),
+  factory: z.strictObject({ complete: z.boolean(), instances: z.array(instance).max(64).refine(rows=>distinct(rows,r=>r.invocationId)&&distinct(rows,r=>r.id)), lastOutcome: outcome.nullable(), historyIssues:z.array(z.strictObject({invocationId:z.string().uuid(),reason:z.enum(['empty-reservation','incomplete-preparation'])})).max(64).optional() }),
   routes: z.strictObject({ enabled: z.boolean(), maxConcurrent: number.int().max(64),
     routes: z.array(z.strictObject({ id, provider: z.enum(['codex','claude']), accountId: id.nullable() })).max(16) }),
   quota: z.strictObject({ accountId: id, provider: z.enum(['codex','claude']),
@@ -36,10 +37,18 @@ export const values = {
     runningVms: number.int().nullable(), nullSlotsAmbiguous: z.literal(true), unreportedSlots:number.int(), simulatorLanes:number.int().positive().nullable(), roles:labels, labels,
     inventoryComplete:z.boolean().optional(), uncertainRegistrations:z.array(z.strictObject({projectId:project,runnerId:number.int().positive().nullable()})).max(64).optional(), inventory:z.array(z.strictObject({slot:number.int(),phase:z.enum(['idle','registering','provisioning','active','deleting','unknown']),projectId:project.nullable(),runnerId:number.int().positive().nullable()})).max(32).optional() }),
   runners:z.strictObject({complete:z.boolean(),registrations:z.array(z.strictObject({runnerId:number.int().positive(),projectId:project,
-    scope:z.enum(['repository','organization']),roles:labels,labels,listenerState:z.enum(['running','stopped','unknown']).optional()})).max(64)}),
+    scope:z.enum(['repository','organization']),roles:labels,labels,listenerState:z.enum(['running','stopped','unknown']).optional()})).max(64).refine(rows=>distinct(rows,r=>r.scope+':'+r.projectId+':'+r.runnerId))}),
   github: z.strictObject({ jobs: z.array(job).max(100), runners: z.array(z.strictObject({ projectId: project, runnerId: number.int(),
-    online: z.boolean(), busy: z.boolean(), labels })).max(100), orgCensus: z.enum(['unavailable','not-requested']), orgRunners:z.array(organizationRunner).max(16).refine(rows=>new Set(rows.map(r=>r.organization+':'+r.runnerId)).size===rows.length).optional(), censuses:z.array(z.strictObject({projectId:project,runnerComplete:z.boolean(),runnerObservedAt:stamp,jobComplete:z.boolean(),jobObservedAt:stamp})).max(3).optional() }),
-  phone: z.strictObject({ lease: z.enum(['held','absent','unknown']), ready: z.boolean().nullable(),state:z.enum(['ready','busy','not-ready','unknown']).optional(),reasons:z.array(z.enum(['device-absent','not-physical','not-wired','not-paired','not-booted','developer-mode-disabled','tunnel-inactive','ddi-unavailable','passcode-required','not-unlocked-since-boot','unreported','lease-held','lease-changed','identity-changed'])).max(12).optional() }),
+    online: z.boolean(), busy: z.boolean(), labels })).max(100).refine(rows=>distinct(rows,r=>r.projectId+':'+r.runnerId)), orgCensus: z.enum(['unavailable','not-requested']), orgRunners:z.array(organizationRunner).max(16).refine(rows=>new Set(rows.map(r=>r.organization+':'+r.runnerId)).size===rows.length).optional(), censuses:z.array(z.strictObject({projectId:project,runnerComplete:z.boolean(),runnerObservedAt:stamp,jobComplete:z.boolean(),jobObservedAt:stamp})).max(3).refine(rows=>distinct(rows,r=>r.projectId)).optional() }),
+  phone: z.strictObject({ lease: z.enum(['held','absent','unknown']), ready: z.boolean().nullable(),state:z.enum(['ready','busy','not-ready','unknown']).optional(),reasons:z.array(z.enum(['device-absent','not-physical','not-wired','not-paired','not-booted','developer-mode-disabled','tunnel-inactive','ddi-unavailable','passcode-required','not-unlocked-since-boot','unreported','lease-held','lease-changed','identity-changed'])).max(12).optional() }).refine(v=>{
+    if(v.state===undefined)return v.reasons===undefined;
+    if(!Array.isArray(v.reasons))return false;
+    if(v.state==='busy')return v.lease==='held'&&v.ready===null&&v.reasons.includes('lease-held');
+    if(v.lease==='held')return false;
+    if(v.state==='ready')return v.lease==='absent'&&v.ready===true&&v.reasons.length===0;
+    if(v.state==='not-ready')return v.lease==='absent'&&v.ready===false&&v.reasons.length>0;
+    return v.ready===null;
+  }),
 };
 export const sampleSchema = z.strictObject({ kind: z.enum(Object.keys(values)), sampledAt: stamp,
   sourceObservedAt: stamp.nullable(), status: z.enum(['ok','partial','error']),

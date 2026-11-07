@@ -10,7 +10,9 @@ async function page(context,path,key,limit,recentSample=false) {
     if(++context.calls>20 || Date.now()>context.deadline)throw new Error('incomplete');
     const result=await context.read(path);
     if(!Array.isArray(result[key]) || !Number.isSafeInteger(result.total_count))throw new Error('invalid-source');
-    return {rows:result[key].slice(0,limit),complete:recentSample || result.total_count<=limit};
+    const ids=result[key].map(row=>row.id);
+    const consistent=result.total_count>=0&&result.total_count===ids.length&&ids.every(id=>Number.isSafeInteger(id)&&id>0)&&new Set(ids).size===ids.length;
+    return {rows:result[key].slice(0,limit),complete:recentSample||(consistent&&result.total_count<=limit)};
   } catch {return {rows:[],complete:false};}
 }
 async function currentRuns(context,repository) {
@@ -27,10 +29,14 @@ async function currentRuns(context,repository) {
   }
   return {rows:[...runs.values()].slice(0,5),complete:complete&&runs.size<=5};
 }
-async function projectSnapshot(context,repository,now) {
+async function runnerSnapshot(context,repository,now) {
   const listed=await page(context,`repos/${repository}/actions/runners?per_page=100&page=1`,'runners',100);
-  const runnerObservedAt=now().toISOString();
-  const runners=listed.rows.map(r=>({projectId:repository,runnerId:r.id,online:r.status==='online',busy:r.busy,labels:(r.labels??[]).map(l=>l.name).slice(0,20)}));
+  const valid=r=>Number.isSafeInteger(r.id)&&r.id>0&&['online','offline'].includes(r.status)&&typeof r.busy==='boolean'&&Array.isArray(r.labels)&&r.labels.every(l=>typeof l.name==='string');
+  const validRows=listed.rows.filter(valid);
+  return {runners:validRows.map(r=>({projectId:repository,runnerId:r.id,online:r.status==='online',busy:r.busy,labels:r.labels.map(l=>l.name).slice(0,20)})),
+    census:{projectId:repository,runnerComplete:listed.complete&&validRows.length===listed.rows.length,runnerObservedAt:now().toISOString(),jobComplete:false,jobObservedAt:now().toISOString()}};
+}
+async function projectJobs(context,repository) {
   const runs=await currentRuns(context,repository),jobs=[];let complete=runs.complete;
   for(const run of runs.rows) {
     const result=await page(context,`repos/${repository}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100&page=1`,'jobs',100);
@@ -39,18 +45,21 @@ async function projectSnapshot(context,repository,now) {
       name:j.name,currentStep:(j.steps??[]).find(s=>s.status==='in_progress')?.name??null,
       state:j.status,conclusion:j.conclusion??null,url:`https://github.com/${repository}/actions/runs/${run.id}/job/${j.id}`});
   }
-  return {jobs,runners,census:{projectId:repository,runnerComplete:listed.complete,runnerObservedAt,
-    jobComplete:complete,jobObservedAt:now().toISOString()}};
+  return {jobs,complete};
 }
 export async function githubSnapshot(repositories,read=ghRead,now=()=>new Date(),organization={}) {
   const context={calls:0,deadline:Date.now()+25000,read},jobs=[],runners=[],censuses=[];
-  for(const repo of new Set(repositories)) {
-    const value=await projectSnapshot(context,repo,now);
-    const runnerRoom=100-runners.length,jobRoom=100-jobs.length;
-    if(value.runners.length>runnerRoom)value.census.runnerComplete=false;
-    if(value.jobs.length>jobRoom)value.census.jobComplete=false;
-    jobs.push(...value.jobs.slice(0,jobRoom));runners.push(...value.runners.slice(0,runnerRoom));censuses.push(value.census);
+  const projects=[...new Set(repositories)];
+  for(const repo of projects) {
+    const value=await runnerSnapshot(context,repo,now),room=100-runners.length;
+    if(value.runners.length>room)value.census.runnerComplete=false;
+    runners.push(...value.runners.slice(0,room));censuses.push(value.census);
   }
   const orgRunners=await organizationRunners(organization.entries??[],organization.tokenEnv,{...organization,now,deadline:context.deadline,canRead:()=>++context.calls<=20});
+  for(const census of censuses) {
+    const value=await projectJobs(context,census.projectId),room=100-jobs.length;
+    census.jobComplete=value.complete&&value.jobs.length<=room;census.jobObservedAt=now().toISOString();
+    jobs.push(...value.jobs.slice(0,room));
+  }
   return {complete:censuses.every(c=>c.runnerComplete&&c.jobComplete)&&orgRunners.every(r=>r.readable),value:{jobs,runners,censuses,orgCensus:'unavailable',...(orgRunners.length?{orgRunners}:{})}};
 }

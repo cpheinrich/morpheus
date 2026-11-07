@@ -1,5 +1,5 @@
 function boundSnapshot(config,data) {
-  if(data.version!==1||data.host!==config.host||data.pool!==(config.os??'macos'))return false;
+  if(data.version!==1||data.host!==(config.host??'')||data.pool!==(config.os??'macos'))return false;
   const slots=data.slots;
   return Array.isArray(slots)&&slots.length===config.slots&&new Set(slots.map(s=>s.slot)).size===config.slots;
 }

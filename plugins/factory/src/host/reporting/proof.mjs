@@ -16,3 +16,11 @@ export async function validTerminationProof(directory, runId) {
     throw new Error('unavailable');
   }
 }
+
+export async function currentFactoryCensus(run=exec) {
+  const script=new URL('./census.py',import.meta.url);
+  const {stdout}=await run('python3',['-B',fileURLToPath(script)],{timeout:3000,maxBuffer:1048576});
+  const value=JSON.parse(stdout);
+  if(!value.identities||!value.owned||!Array.isArray(value.markedRunIds))throw new Error('unavailable');
+  return value;
+}

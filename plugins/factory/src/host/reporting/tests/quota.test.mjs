@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {readProviderQuota} from '../quota.mjs';
+import {readProviderQuota,readStoredQuota} from '../quota.mjs';
 const exampleTailnetAddress=[100,64,0,1].join('.');
 const time=Date.parse('2026-11-07T08:00:00Z');
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -50,7 +50,7 @@ const badAccounts={shadow:a=>a.is_shadow=true,parent:a=>a.parent_account_id=1,pl
 for(const [name,change] of Object.entries(badAccounts))test(`refuses ${name} account before export`,async()=>{
   const f=fixture();change(f.metadata);await assert.rejects(readProviderQuota(f.binding,f.options),/unavailable/);assert.equal(f.calls.length,2);
 });
-for(const expiry of ['unrecognized','',null,time/1000,(time-1)/1000])test(`invalid or expired token ${String(expiry)} is not sent`,async()=>{
+for(const expiry of ['unrecognized','',null,['2100-01-01T00:00:00Z'],{value:'2100-01-01T00:00:00Z'},time/1000,(time-1)/1000])test(`invalid or expired token ${String(expiry)} is not sent`,async()=>{
   const f=fixture();f.credentials.expires_at=expiry;f.metadata.credentials.expires_at=expiry;
   await assert.rejects(readProviderQuota(f.binding,f.options),/unavailable/);assert.equal(f.calls.length,3);
 });
@@ -84,6 +84,7 @@ test('private HTTP requires the enrolled exact tailnet origin and resolved peer 
   const f=fixture();Object.assign(f.binding,{baseUrl:'http://gateway.example.ts.net:8080',gatewayOrigin:'http://gateway.example.ts.net:8080',tailnetAddress:exampleTailnetAddress});
   f.options.resolve=async()=>[{address:'203.0.113.1'}];await assert.rejects(readProviderQuota(f.binding,f.options),/unavailable/);assert.equal(f.calls.length,0);
   f.options.resolve=async()=>[{address:exampleTailnetAddress},{address:'203.0.113.1'}];await assert.rejects(readProviderQuota(f.binding,f.options),/unavailable/);assert.equal(f.calls.length,0);
+  f.options.verifyPeer=async()=>{};f.options.httpFetch=f.options.fetchImpl;
   f.options.resolve=async()=>[{address:exampleTailnetAddress}];assert.equal((await readProviderQuota(f.binding,f.options)).value.windows[0].name,'7d');
 });
 test('concurrent metadata proxy or revision change discards the retrieved observation',async()=>{
@@ -104,4 +105,24 @@ test('proxy reference in the export or token expiring immediately before provide
   const expiring=fixture();expiring.credentials.expires_at=(time+1000)/1000;expiring.metadata.credentials.expires_at=expiring.credentials.expires_at;
   let clock=0;expiring.options.now=()=>time+(clock++?1000:0);
   await assert.rejects(readProviderQuota(expiring.binding,expiring.options),/unavailable/);assert.equal(expiring.calls.length,3);
+});
+
+test('export-only OAuth markers and non-scalar expiry cannot reach provider',async()=>{
+ for(const change of [f=>f.row.credentials={...f.credentials,auth_mode:'agent_identity'},f=>f.row.extra={auth_provider:'codex_personal_access_token'},f=>f.row.is_shadow=true,f=>f.row.parent_account_id=1,f=>f.row.credentials={...f.credentials,expires_at:['2100-01-01T00:00:00Z']},f=>f.row.credentials={...f.credentials,expires_at:{value:'2100-01-01T00:00:00Z'}}]){
+  const f=fixture();change(f);await assert.rejects(readProviderQuota(f.binding,f.options),/unavailable/);assert.equal(f.calls.length,3);
+ }
+});
+
+test('verified HTTP flow binds every gateway request to the enrolled socket transport',async()=>{
+ const f=fixture();Object.assign(f.binding,{baseUrl:'http://gateway.example.ts.net:8080',gatewayOrigin:'http://gateway.example.ts.net:8080',tailnetAddress:exampleTailnetAddress});
+ f.options.resolve=async()=>[{address:exampleTailnetAddress}];f.options.verifyPeer=async()=>{throw Error('unverified');};
+ await assert.rejects(readProviderQuota(f.binding,f.options),/unavailable/);assert.equal(f.calls.length,0);
+ let verified=0;const pinned=[];f.options.verifyPeer=async()=>{verified++;};f.options.httpFetch=(url,options,address)=>{pinned.push(address);return f.options.fetchImpl(url,options);};
+ await readProviderQuota(f.binding,f.options);assert.equal(verified,1);assert.deepEqual(pinned,Array(4).fill(exampleTailnetAddress));assert.equal(f.calls.filter(c=>c.url.startsWith('https://chatgpt.com/')).length,1);
+});
+
+test('passive stored mode cannot retain an unpinned HTTP or redirect credential path',async()=>{
+ const f=fixture();f.binding.baseUrl='http://public.example';await assert.rejects(readStoredQuota(f.binding,f.options));assert.equal(f.calls.length,0);
+ const g=fixture();g.options.fetchImpl=async()=>new Response('',{status:302});await assert.rejects(readStoredQuota(g.binding,g.options),/unavailable/);
+ const h=fixture();h.binding.gatewayOrigin='https://other.example';await assert.rejects(readStoredQuota(h.binding,h.options),/^Error: invalid-source$/);assert.equal(h.calls.length,0);
 });

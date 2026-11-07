@@ -23,3 +23,7 @@ test('denial, redirects, wrong identity, malformed status and oversized body pre
  const failed=[()=>new Response('private',{status:403}),()=>new Response('',{status:401}),()=>new Response('',{status:404}),()=>new Response('',{status:302}),()=>response({id:19,status:'online',busy:false,labels:[]}),()=>response({id:18,status:'unknown',busy:false,labels:[]}),()=>response({id:18,status:'online',busy:null,labels:[]}),()=>response({id:18,status:'online',busy:true,labels:[{name:null}]}),()=>response({padding:'x'.repeat(65536)}),()=>{throw Error('synthetic-token');}];
  for(const fail of failed){const [row]=await organizationRunners(entries,'ORG_READ',{...options,fetchImpl:async()=>fail()});assert.equal(row.readable,false);assert.equal(row.online,null);assert.equal(row.busy,null);assert.equal(row.gap,'unavailable');assert.equal(JSON.stringify(row).includes('synthetic-token'),false);}
 });
+test('merged project eligibility stays within the wire cap before any HTTP request',async()=>{
+ const first={organization:'example',runnerId:18,projectIds:Array.from({length:16},(_,i)=>'example/p'+i)};
+ let calls=0;await assert.rejects(organizationRunners([first,{...first,projectIds:['example/extra']}],'ORG_READ',{...options,fetchImpl:async()=>{calls++;}}));assert.equal(calls,0);
+});

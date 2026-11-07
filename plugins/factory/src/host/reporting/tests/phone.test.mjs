@@ -56,3 +56,11 @@ test('malformed inventory and lease errors fail closed before device lock read',
   const f=fixture();f.options.run=async()=>({stdout:'PRIVATE'});await assert.rejects(observePhone(source,f.options));
   const g=fixture();g.options.readLease=async()=>{throw Error('unavailable');};await assert.rejects(observePhone(source,g.options));assert.equal(g.calls.length,0);
 });
+test('a currently valid held lease survives either inventory timeout or malformed response',async()=>{
+ for(const stage of [1,2])for(const malformed of [false,true]){
+  const f=fixture(),read=f.options.run;let lists=0;f.options.readLease=async()=>({lease:'held',signature:'held'});
+  f.options.run=async(c,a)=>a[1]==='list'&&++lists===stage?(malformed?{stdout:'invalid'}:Promise.reject(Error('timeout'))):read(c,a);
+  assert.deepEqual((await observePhone(source,f.options)).value,{lease:'held',ready:null,state:'busy',reasons:['lease-held']});
+  assert.equal(f.calls.some(c=>c.args[1]==='device'),false);
+ }
+});

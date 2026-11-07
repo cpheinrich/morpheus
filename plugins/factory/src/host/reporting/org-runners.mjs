@@ -12,6 +12,7 @@ function identityEntries(entries) {
     const key=entry.organization+':'+entry.runnerId,previous=unique.get(key);
     unique.set(key,{...entry,projectIds:[...new Set([...(previous?.projectIds??[]),...entry.projectIds])]});
   }
+  if([...unique.values()].some(row=>row.projectIds.length>16))throw new Error('invalid-source');
   return [...unique.values()];
 }
 function validRunner(data,entry) {
