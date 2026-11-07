@@ -33,10 +33,11 @@ ssh enrollment with the exact gateway host, existing SSH user and gatewayPort ma
 The designated local writer authenticates through its existing credential wrapper, reads exact
 account metadata and a singleton credential export in memory, then GETs the fixed vendor usage
 endpoint. Export includes proxy metadata so direct-only eligibility can be checked.
-Every authenticated hop refuses redirects and bounds decoded bytes. HTTP uses `/usr/bin/ssh -T`
+Every authenticated hop refuses redirects and bounds decoded bytes. HTTP uses `/usr/bin/ssh -F /dev/null -T`
 with BatchMode, StrictHostKeyChecking, a ten-second connect timeout, disabled ProxyCommand,
 ProxyJump and LocalCommand, and `-W 127.0.0.1:<gatewayPort>` to the enrolled user and host.
-Existing SSH host-key authentication binds encryption to that endpoint. Only HOME, PATH and an
+Ambient SSH configuration is excluded, preserving the enrolled endpoint, port 22, default
+known-host trust and no multiplexing. Existing SSH host-key authentication binds encryption to that endpoint. Only HOME, PATH and an
 existing SSH_AUTH_SOCK may be inherited. Credentials travel in pipes, with no remote command,
 new service, trust enrollment or plaintext fallback. A legacy tailnetAddress alone cannot enable HTTP.
 Authenticated HTTPS remains supported. The earlier Tailscale nc approach was rejected because its

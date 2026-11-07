@@ -105,7 +105,7 @@ The first turn remains blocked. The following responses describe author fixes aw
   "version": 2,
   "base": "f6246740f928b3d658fc03dd34fe3c440dff5d31",
   "reviewed": "295229e600a41ff5719cdecc8ea70e63dac250c9",
-  "covered": "139ee22a1796f10c13cb18c2ce5f10f3b1d59eb5",
+  "covered": "aac5d975bde27ef3a04ac91c3c4dabf871a11e00",
   "authorSession": "01a1b323-e075-7c32-98b9-2ce4d216f0a9",
   "reviewerSession": "01a1b505-e814-7301-a1c0-d7f3de548ded",
   "risk": "high",
@@ -122,13 +122,13 @@ The first turn remains blocked. The following responses describe author fixes aw
       "id": "M-Q3",
       "turn": 1,
       "severity": "substantive",
-      "description": "Q3 \u00b7 substantive \u00b7 plugins/factory/src/host/reporting/quota.mjs:92\u2013100,126\u2013133. The private HTTP guard checks DNS, then hands the original hostname to fetch with no binding to the checked address or encrypted route. A changed DNS answer or route can send the login password and subsequent admin bearer over cleartext to a different peer. Require authenticated HTTPS or bind the actual HTTP connection to the verified encrypted Tailscale peer. The synthetic transport check confirmed every gateway request still used the hostname with no connection pin. Turn 2 retained finding. Q3 \u00b7 substantive, open \u00b7 plugins/factory/src/host/reporting/tailnet-http.mjs:6\u201328 and quota.mjs:127\u2013132. The numeric destination closes the DNS re-resolution gap. Peer status and socket.remoteAddress still leave route selection to the OS. If a competing route sends the enrolled CGNAT address outside Tailscale, the socket reports the expected destination IP and flushes the login password or admin bearer over cleartext. Require authenticated HTTPS or bind the connection itself to the encrypted peer. This remaining gap is established by source inspection. The loopback test verifies IP pinning and redirect refusal. Turn 3 verbatim evidence. Q3 \u00b7 substantive, open \u00b7 plugins/factory/src/host/reporting/tailnet-http.mjs:8\u201328 and quota.mjs:128\u2013133. The reporter checks the peer once, then opens a new `tailscale nc` connection for each gateway request. The pinned Tailscale implementation can return `Dial-Self` when the destination loses its tailnet route, and the CLI then opens a regular TCP socket. If the peer disappears between verification and a later authenticated request while a competing route can reach the same IP, the CLI can forward the HTTP credentials over that route. Require authenticated HTTPS or a conduit that refuses `Dial-Self` before forwarding any request bytes. The supplied credential-free HTTP 200 covers the healthy route. The fallback is established by the pinned source. [Tailscale daemon route decision](https://github.com/tailscale/tailscale/blob/v1.102.4/ipn/localapi/localapi.go#L1255-L1277) \u00b7 [Tailscale client fallback](https://github.com/tailscale/tailscale/blob/v1.102.4/client/local/local.go#L1107-L1125)",
+      "description": "Q3 \u00b7 substantive \u00b7 plugins/factory/src/host/reporting/quota.mjs:92\u2013100,126\u2013133. The private HTTP guard checks DNS, then hands the original hostname to fetch with no binding to the checked address or encrypted route. A changed DNS answer or route can send the login password and subsequent admin bearer over cleartext to a different peer. Require authenticated HTTPS or bind the actual HTTP connection to the verified encrypted Tailscale peer. The synthetic transport check confirmed every gateway request still used the hostname with no connection pin. Turn 2 retained finding. Q3 \u00b7 substantive, open \u00b7 plugins/factory/src/host/reporting/tailnet-http.mjs:6\u201328 and quota.mjs:127\u2013132. The numeric destination closes the DNS re-resolution gap. Peer status and socket.remoteAddress still leave route selection to the OS. If a competing route sends the enrolled CGNAT address outside Tailscale, the socket reports the expected destination IP and flushes the login password or admin bearer over cleartext. Require authenticated HTTPS or bind the connection itself to the encrypted peer. This remaining gap is established by source inspection. The loopback test verifies IP pinning and redirect refusal. Turn 3 verbatim evidence. Q3 \u00b7 substantive, open \u00b7 plugins/factory/src/host/reporting/tailnet-http.mjs:8\u201328 and quota.mjs:128\u2013133. The reporter checks the peer once, then opens a new `tailscale nc` connection for each gateway request. The pinned Tailscale implementation can return `Dial-Self` when the destination loses its tailnet route, and the CLI then opens a regular TCP socket. If the peer disappears between verification and a later authenticated request while a competing route can reach the same IP, the CLI can forward the HTTP credentials over that route. Require authenticated HTTPS or a conduit that refuses `Dial-Self` before forwarding any request bytes. The supplied credential-free HTTP 200 covers the healthy route. The fallback is established by the pinned source. [Tailscale daemon route decision](https://github.com/tailscale/tailscale/blob/v1.102.4/ipn/localapi/localapi.go#L1255-L1277) \u00b7 [Tailscale client fallback](https://github.com/tailscale/tailscale/blob/v1.102.4/client/local/local.go#L1107-L1125) Turn4 verbatim evidence. Q3 / M-Q3 \u00b7 substantive, open \u00b7 plugins/factory/src/host/reporting/ssh-http.mjs:5\u201318. The replacement removes the Tailscale plaintext fallback, but it still reads ambient OpenSSH configuration. Using the exact builder arguments and a synthetic configuration, offline `/usr/bin/ssh -G` resolved the enrolled `gateway.example.test` to `other.example.test:2222`, used `other.example.test` for host-key verification, and enabled a configured control socket while strict checking remained enabled. A matching SSH stanza can therefore send the login password or admin bearer through `-W` to the loopback service of a different trusted host. Isolate the reporter's SSH configuration from ambient host, port, host-key and multiplexing overrides. The same offline probe with `-F /dev/null` retained the enrolled hostname, port 22 and strict checking, with multiplexing disabled.",
       "paths": [
         "plugins/factory/src/host/reporting/quota.mjs",
         "plugins/factory/src/host/reporting/tailnet-http.mjs"
       ],
       "disposition": "fixed",
-      "response": "Implemented direct pinned-IP HTTP socket transport with Host preservation, connected-address validation before credential flush and current online tailnet peer identity/status. Actual loopback and wrong-peer/no-flush tests pass. HTTPS keeps authenticated native transport. Awaiting same-reviewer verification. Turn 2 response. Replaced OS-routed TCP with installed Tailscale nc through the local daemon DialTCP encrypted connection. Explicit documented TAILSCALE_BE_CLI=1 and only HOME/PATH are inherited. No socket fallback. Actual unauthenticated composed health GET returned 200 with exact online peer verification and no credentials. Synthetic pipe composition, secret-free child argv/env, redirect refusal and conduit-failure tests pass. Awaiting same-reviewer turn 3. Turn 3 response. Replaced Tailscale nc with existing authenticated SSH stdio forwarding. Strict existing host-key trust, BatchMode, disabled ProxyCommand/ProxyJump/LocalCommand, exact enrolled SSH host/user plus gateway loopback port, and no plaintext fallback. Only HOME/PATH/existing SSH_AUTH_SOCK may be inherited. Actual unauthenticated composed health returned 200 before credentials. Endpoint/argv/environment, failure, redirect and body-bound composition tests pass. Prior nc route guarantee is withdrawn. Awaiting same-reviewer turn 4."
+      "response": "Implemented direct pinned-IP HTTP socket transport with Host preservation, connected-address validation before credential flush and current online tailnet peer identity/status. Actual loopback and wrong-peer/no-flush tests pass. HTTPS keeps authenticated native transport. Awaiting same-reviewer verification. Turn 2 response. Replaced OS-routed TCP with installed Tailscale nc through the local daemon DialTCP encrypted connection. Explicit documented TAILSCALE_BE_CLI=1 and only HOME/PATH are inherited. No socket fallback. Actual unauthenticated composed health GET returned 200 with exact online peer verification and no credentials. Synthetic pipe composition, secret-free child argv/env, redirect refusal and conduit-failure tests pass. Awaiting same-reviewer turn 3. Turn 3 response. Replaced Tailscale nc with existing authenticated SSH stdio forwarding. Strict existing host-key trust, BatchMode, disabled ProxyCommand/ProxyJump/LocalCommand, exact enrolled SSH host/user plus gateway loopback port, and no plaintext fallback. Only HOME/PATH/existing SSH_AUTH_SOCK may be inherited. Actual unauthenticated composed health returned 200 before credentials. Endpoint/argv/environment, failure, redirect and body-bound composition tests pass. Prior nc route guarantee is withdrawn. Awaiting same-reviewer turn 4. Turn4 response. Added -F /dev/null to the actual SSH builder. An actual offline ssh -G test first reproduces hostile HostName/Port/HostKeyAlias/multiplexing settings without isolation, then proves the real builder keeps the enrolled hostname, port22, strict checking, default known-host trust and no mux/proxy/local command. Real composed health again returned200 with -F and no credentials. Awaiting same-reviewer final ordinary turn5."
     },
     {
       "id": "M-Q4",
@@ -139,7 +139,7 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/quota.mjs"
       ],
       "disposition": "fixed",
-      "response": "Export rows independently reject OAuth identity markers. Expiry accepts only documented scalar numeric or ISO formats. Export-only agent/PAT/shadow/parent and paired malformed array/object expiry regressions pass. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained."
+      "response": "Export rows independently reject OAuth identity markers. Expiry accepts only documented scalar numeric or ISO formats. Export-only agent/PAT/shadow/parent and paired malformed array/object expiry regressions pass. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved."
     },
     {
       "id": "M-R1",
@@ -150,7 +150,7 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/factory.mjs"
       ],
       "disposition": "fixed",
-      "response": "All terminal exclusions first inspect current guardian, worker, owned identity and marker evidence through a cached current census. Positive cleanup and legacy terminal contradictions remain partial. Historical valid prelaunch semantics are retained. Awaiting verification. Turn 2 response. Every recorded current PID is checked before terminal exclusion. Missing or unusable recorded identity remains uncertain while the PID exists. Valid mismatching original identity permits proven PID reuse. Both desktop and unattended regressions cover absent, malformed, gone and reused identities. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained."
+      "response": "All terminal exclusions first inspect current guardian, worker, owned identity and marker evidence through a cached current census. Positive cleanup and legacy terminal contradictions remain partial. Historical valid prelaunch semantics are retained. Awaiting verification. Turn 2 response. Every recorded current PID is checked before terminal exclusion. Missing or unusable recorded identity remains uncertain while the PID exists. Valid mismatching original identity permits proven PID reuse. Both desktop and unattended regressions cover absent, malformed, gone and reused identities. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved."
     },
     {
       "id": "M-F1",
@@ -163,7 +163,7 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/factory.mjs"
       ],
       "disposition": "fixed",
-      "response": "Extracted the canonical read-only process census without changing tracker signalling/lifecycle behavior. Reporter reads it once per source, returns ownership metadata only, covers unrecorded unattended markers and empty reservations, and reports unreadable census as source unavailable. Existing worker suite23 passes. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained."
+      "response": "Extracted the canonical read-only process census without changing tracker signalling/lifecycle behavior. Reporter reads it once per source, returns ownership metadata only, covers unrecorded unattended markers and empty reservations, and reports unreadable census as source unavailable. Existing worker suite23 passes. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved."
     },
     {
       "id": "M-R2A",
@@ -174,7 +174,7 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/github.mjs"
       ],
       "disposition": "fixed",
-      "response": "Declared totals must match distinct valid runner IDs. Missing, duplicate or malformed page rows remain incomplete. Regression probes pass. Awaiting verification. Turn 2 response. Omit every ambiguous duplicate ID row while retaining partial coverage for that project and the healthy repository census. The actual snapshot composition remains partial with data rather than invalidating the entire sample. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained."
+      "response": "Declared totals must match distinct valid runner IDs. Missing, duplicate or malformed page rows remain incomplete. Regression probes pass. Awaiting verification. Turn 2 response. Omit every ambiguous duplicate ID row while retaining partial coverage for that project and the healthy repository census. The actual snapshot composition remains partial with data rather than invalidating the entire sample. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved."
     },
     {
       "id": "M-R2B",
@@ -186,7 +186,7 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/org-runners.mjs"
       ],
       "disposition": "fixed",
-      "response": "Repository and exact organization runner reads precede optional job sampling. Merged eligible projects are capped before requests. Three-repository saturated-job and post-merge-cap regressions pass. Awaiting verification. Turn 2 response. Apply the shared merged organization eligibility cap at configSchema before collection. Invalid 17-project merged enrollment fails configuration without entering collection. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained."
+      "response": "Repository and exact organization runner reads precede optional job sampling. Merged eligible projects are capped before requests. Three-repository saturated-job and post-merge-cap regressions pass. Awaiting verification. Turn 2 response. Apply the shared merged organization eligibility cap at configSchema before collection. Invalid 17-project merged enrollment fails configuration without entering collection. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved."
     },
     {
       "id": "M-P1",
@@ -197,7 +197,7 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/phone.mjs"
       ],
       "disposition": "fixed",
-      "response": "Either inventory failure preserves a freshly reread held lease as busy with unknown readiness. Lock queries remain skipped while leased. Timeout and malformed-inventory regressions pass. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained."
+      "response": "Either inventory failure preserves a freshly reread held lease as busy with unknown readiness. Lock queries remain skipped while leased. Timeout and malformed-inventory regressions pass. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved."
     },
     {
       "id": "M-Q5",
@@ -208,7 +208,7 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/quota.mjs"
       ],
       "disposition": "fixed",
-      "response": "Stored quota now applies the same directEnvironment proxy refusal before any request. HTTPS_PROXY, lowercase proxy and NODE_USE_ENV_PROXY regression cases assert zero network calls. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained."
+      "response": "Stored quota now applies the same directEnvironment proxy refusal before any request. HTTPS_PROXY, lowercase proxy and NODE_USE_ENV_PROXY regression cases assert zero network calls. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved."
     }
   ],
   "followUps": [
@@ -235,6 +235,18 @@ The first turn remains blocked. The following responses describe author fixes aw
         "evidence": "infrastructure-gaps-m-source-review-turn3.json measured controller clock 2026-11-07T09:00:49.728Z through 2026-11-07T09:02:41.943Z"
       },
       "summary": "High-risk independent source review turn 3 is BLOCKED for Morpheus PR 639 at 139ee22a1796f10c13cb18c2ce5f10f3b1d59eb5. Q3 remains open. All other prior findings are resolved, with no new findings. I switched only the isolated reviewer checkout to the requested commit. No files changed. External requests were limited to public Tailscale source reads. No credentials were read, and no gateway, provider or deployment checks were run."
+    },
+    {
+      "reviewerSession": "01a1b505-e814-7301-a1c0-d7f3de548ded",
+      "commit": "aac5d975bde27ef3a04ac91c3c4dabf871a11e00",
+      "outcome": "blocked",
+      "elapsedMinutes": 0.8764,
+      "timing": {
+        "source": "clock",
+        "durationMs": 52584,
+        "evidence": "infrastructure-gaps-m-source-review-turn4.json measured controller clock 2026-11-07T09:14:32.964Z through 2026-11-07T09:15:25.548Z"
+      },
+      "summary": "High-risk independent source review turn 4 is BLOCKED for Morpheus PR 639 at aac5d975bde27ef3a04ac91c3c4dabf871a11e00. Q3 remains open because inherited SSH configuration can redirect credentials to a different trusted host. All other prior findings remain resolved. I switched only the isolated reviewer checkout. No source files changed, no external actions were taken, and no live gateway, SSH or provider calls were made."
     }
   ]
 }
@@ -307,3 +319,20 @@ All 16 selected Node tests passed. The tests used loopback or synthetic inputs a
 The validator requires at least three characters in finding IDs. The formal record namespaces the exact reviewer IDs with M-, while every raw ID and full source description remains preserved. Mapping is Q3 to M-Q3, Q4 to M-Q4, R1 to M-R1, F1 to M-F1, R2A to M-R2A, R2B to M-R2B, P1 to M-P1 and Q5 to M-Q5. Reviewer session IDs, verdicts and timings are unchanged. Reporter 88, including SSH composition and existing quota safety regressions, passes. No live provider request or runtime activation occurred.
 
 Turn-four validation passed reporter88, SSH composition4, privacy3, typecheck, compile and focused ESLint. Enforced complexity has zero CCN errors with the same four cognitive advisories. The SSH health proof used existing trust and no credentials.
+
+
+## Same-reviewer turn4 and corrections for final ordinary turn5
+
+High-risk independent source review turn 4 is BLOCKED for Morpheus PR 639 at aac5d975bde27ef3a04ac91c3c4dabf871a11e00. Q3 remains open because inherited SSH configuration can redirect credentials to a different trusted host. All other prior findings remain resolved. I switched only the isolated reviewer checkout. No source files changed, no external actions were taken, and no live gateway, SSH or provider calls were made.
+
+Q3 / M-Q3 · substantive, open · plugins/factory/src/host/reporting/ssh-http.mjs:5–18. The replacement removes the Tailscale plaintext fallback, but it still reads ambient OpenSSH configuration. Using the exact builder arguments and a synthetic configuration, offline `/usr/bin/ssh -G` resolved the enrolled `gateway.example.test` to `other.example.test:2222`, used `other.example.test` for host-key verification, and enabled a configured control socket while strict checking remained enabled. A matching SSH stanza can therefore send the login password or admin bearer through `-W` to the loopback service of a different trusted host. Isolate the reporter's SSH configuration from ambient host, port, host-key and multiplexing overrides. The same offline probe with `-F /dev/null` retained the enrolled hostname, port 22 and strict checking, with multiplexing disabled.
+
+All 42 focused quota and SSH tests passed. They cover pipe composition, secret-free child arguments and environment, SSH failure, redirects and response bounds. The separate OpenSSH probe verified effective configuration without connecting. The supplied unauthenticated health receipt recorded HTTP 200 for the healthy path. It does not cover SSH configuration overrides.
+
+Q4, R1, F1, R2A, R2B, P1 and Q5 remain resolved. Reviewed the complete turn-4 correction diff, related callers and prior review history against exact source. The canonical wire is unchanged, git diff --check passed, and the checkout is clean. No new findings. The supervising root owns elapsed-time measurement. Deployment acceptance remains separate.
+
+All four source-review outcomes remain blocked in the record. Full descriptions, original source IDs and the documented Morpheus aliases remain retained. These are author fixes awaiting the same reviewer. No runtime activation or source clearance is claimed.
+
+- Q3. Added -F /dev/null to the actual SSH builder. An actual offline ssh -G test first reproduces hostile HostName/Port/HostKeyAlias/multiplexing settings without isolation, then proves the real builder keeps the enrolled hostname, port22, strict checking, default known-host trust and no mux/proxy/local command. Real composed health again returned200 with -F and no credentials. Awaiting same-reviewer final ordinary turn5.
+
+Final-turn validation passed89 reporter cases, including five SSH tests, privacy3, distribution4, typecheck, compile and focused ESLint. Enforced complexity has zero CCN errors and four retained cognitive advisories. The actual isolated-config SSH composed health GET returned200 without credentials.
