@@ -4,7 +4,7 @@ function enrolled(entry) {
     Array.isArray(entry.projectIds)&&entry.projectIds.length>0&&entry.projectIds.length<=16&&
     entry.projectIds.every(p=>typeof p==='string'&&/^[\w.-]+\/[\w.-]+$/.test(p)&&p.split('/')[0]===entry.organization);
 }
-function identityEntries(entries) {
+export function identityEntries(entries) {
   const unique=new Map();
   if(!Array.isArray(entries)||entries.length>16)throw new Error('invalid-source');
   for(const entry of entries) {

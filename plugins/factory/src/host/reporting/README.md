@@ -32,9 +32,12 @@ subjectSha256, pinned gatewayOrigin, directEgress true and, for HTTP over the ex
 tailnet, a verified tailnetAddress. The designated local writer authenticates through its existing
 credential wrapper, reads exact account metadata and a singleton credential export in memory,
 then GETs the fixed vendor usage endpoint. Export includes proxy metadata so direct-only
-eligibility can be checked. Every authenticated hop refuses redirects and bounds decoded bytes. HTTP connects directly to
-the enrolled peer IP with the original Host header, verifies the connected socket address before
-flushing credentials, and checks current online Tailscale peer identity/status first.
+eligibility can be checked. Every authenticated hop refuses redirects and bounds decoded bytes. HTTP uses the installed `tailscale nc` client through the local daemon’s encrypted DialTCP
+connection to the enrolled peer IP, with the original Host header. Current online peer identity
+and status are checked first. There is no OS-routed socket fallback. On macOS the documented
+`TAILSCALE_BE_CLI=1` flag selects client mode, with only HOME and PATH inherited.
+See https://tailscale.com/docs/reference/tailscale-cli?tab=macos and the pinned
+v1.102.4 `cmd/tailscale/cli/nc.go` and `client/local/local.go` implementation.
 Normal OAuth identity, expiry, credential metadata, subject and owner revision are checked before
 publication. Missing, changed, expired, shadow, parent, PAT, agent or proxy-bound credentials refuse.
 No OAuth refresh, account maintenance or inference is performed. Proxy environment inheritance is

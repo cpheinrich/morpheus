@@ -1,22 +1,24 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createServer,request} from 'node:http';
-import {pinnedHttpRequest,verifyTailnetPeer} from '../tailnet-http.mjs';
+import {createServer} from 'node:http';
+import {pinnedHttpRequest,verifyTailnetPeer,tailnetSocket} from '../tailnet-http.mjs';
 import {boundedJson} from '../transport.mjs';
-test('actual HTTP socket uses the pinned address, preserves Host and never follows redirect',async t=>{
- const seen=[];const server=createServer(async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;seen.push({host:req.headers.host,auth:req.headers.authorization,body});res.writeHead(302,{location:'http://other.invalid/'});res.end('{}');});
+test('composed HTTP uses the nc pipes with no credential arguments or inherited secret environment',async t=>{
+ const {spawn}=await import('node:child_process');
+ const seen=[];const server=createServer(async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;seen.push({host:req.headers.host,auth:req.headers.authorization,body});res.end('{"data":"synthetic-result"}');});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
- const port=server.address().port;let target;
- const transport=(options,callback)=>{target=options;return request(options,callback);};
- const response=await pinnedHttpRequest(`http://unresolvable.example.ts.net:${port}/api/v1/auth/login`,{method:'POST',headers:{authorization:'synthetic-admin'},body:'synthetic-password'},'127.0.0.1',transport);
- await assert.rejects(boundedJson(response),/unavailable/);assert.equal(target.hostname,'127.0.0.1');assert.equal(target.agent,false);
- assert.deepEqual(seen,[{host:`unresolvable.example.ts.net:${port}`,auth:'synthetic-admin',body:'synthetic-password'}]);
+ const port=server.address().port,args=[];
+ const connect=(address,targetPort)=>tailnetSocket(address,targetPort,(bin,argv,opts)=>{
+  args.push({bin,argv,opts});return spawn(process.execPath,['-e',`const s=require('node:net').connect(${port},'127.0.0.1');process.stdin.pipe(s);s.pipe(process.stdout);s.on('end',()=>process.exit(0));`],opts);
+ });
+ const response=await pinnedHttpRequest(`http://gateway.example.ts.net:${port}/auth`,{method:'POST',headers:{authorization:'synthetic-admin'},body:'synthetic-password'},'synthetic-peer',connect);
+ assert.deepEqual(await boundedJson(response),{data:'synthetic-result'});assert.deepEqual(args[0].argv,['nc','synthetic-peer',String(port)]);assert.equal(Object.keys(args[0].opts.env).every(k=>['HOME','PATH','TAILSCALE_BE_CLI'].includes(k)),true);assert.equal(args[0].opts.env.TAILSCALE_BE_CLI,'1');assert.equal(args[0].opts.stdio[2],'ignore');
+ assert.deepEqual(seen,[{host:`gateway.example.ts.net:${port}`,auth:'synthetic-admin',body:'synthetic-password'}]);assert.equal(JSON.stringify(args).includes('synthetic-password'),false);assert.equal(JSON.stringify(args).includes('synthetic-admin'),false);
 });
-test('wrong connected peer sends no authenticated HTTP bytes',async()=>{
- let ended=false,destroyed=false;const {EventEmitter}=await import('node:events');
- const transport=()=>{const req=new EventEmitter();req.end=()=>{ended=true;};req.destroy=()=>{destroyed=true;req.emit('error',Error('PRIVATE'));};queueMicrotask(()=>{const socket=new EventEmitter();socket.remoteAddress='203.0.113.1';req.emit('socket',socket);socket.emit('connect');});return req;};
- await assert.rejects(pinnedHttpRequest('http://gateway.example.ts.net/auth',{method:'POST',body:'PRIVATE'},[100,64,0,1].join('.'),transport),/^Error: unavailable$/);
- assert.equal(ended,false);assert.equal(destroyed,true);
+test('conduit failure refuses the request and never falls back to an OS-routed socket',async()=>{
+ const {Duplex}=await import('node:stream');let calls=0;
+ const connect=()=>{calls++;const socket=new Duplex({read(){},write(_c,_e,callback){callback(Error('PRIVATE'));}});return socket;};
+ await assert.rejects(pinnedHttpRequest('http://unresolvable.invalid/auth',{method:'POST',body:'PRIVATE'},'synthetic-peer',connect),/^Error: unavailable$/);assert.equal(calls,1);
 });
 test('peer status must bind online tailnet identity and exact address before credentials',async()=>{
  const base=new URL('http://gateway.example.ts.net'),address=[100,64,0,1].join('.');
@@ -25,4 +27,10 @@ test('peer status must bind online tailnet identity and exact address before cre
  const peer=structuredClone(status.Peer.a);
  for(const change of [{Online:false},{DNSName:'other.example.ts.net.'},{TailscaleIPs:['203.0.113.1']}]){status.Peer.a={...peer,...change};await assert.rejects(verifyTailnetPeer(base,address,run),/unavailable/);}
  status.Peer.a=peer;status.BackendState='Stopped';await assert.rejects(verifyTailnetPeer(base,address,run),/unavailable/);
+});
+test('a gateway redirect is refused without following or forwarding credentials',async t=>{
+ const {spawn}=await import('node:child_process');let calls=0;
+ const server=createServer((_req,res)=>{calls++;res.writeHead(302,{location:'https://foreign.invalid/private'});res.end();});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));const port=server.address().port;
+ const connect=(address,targetPort)=>tailnetSocket(address,targetPort,(_bin,_argv,opts)=>spawn(process.execPath,['-e',`const s=require('node:net').connect(${port},'127.0.0.1');process.stdin.pipe(s);s.pipe(process.stdout);s.on('end',()=>process.exit(0));`],opts));
+ const response=await pinnedHttpRequest(`http://gateway.example.ts.net:${port}/auth`,{method:'GET',headers:{authorization:'synthetic-admin'}},'synthetic-peer',connect);await assert.rejects(boundedJson(response),/unavailable/);await response.body.cancel();assert.equal(calls,1);
 });

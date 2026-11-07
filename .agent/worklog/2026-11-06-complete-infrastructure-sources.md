@@ -105,7 +105,7 @@ The first turn remains blocked. The following responses describe author fixes aw
   "version": 2,
   "base": "f6246740f928b3d658fc03dd34fe3c440dff5d31",
   "reviewed": "295229e600a41ff5719cdecc8ea70e63dac250c9",
-  "covered": "295229e600a41ff5719cdecc8ea70e63dac250c9",
+  "covered": "809718bce034bfe3972cfc3b4f730b3026e2f70f",
   "authorSession": "01a1b323-e075-7c32-98b9-2ce4d216f0a9",
   "reviewerSession": "01a1b505-e814-7301-a1c0-d7f3de548ded",
   "risk": "high",
@@ -122,13 +122,13 @@ The first turn remains blocked. The following responses describe author fixes aw
       "id": "Q3",
       "turn": 1,
       "severity": "substantive",
-      "description": "Q3 \u00b7 substantive \u00b7 plugins/factory/src/host/reporting/quota.mjs:92\u2013100,126\u2013133. The private HTTP guard checks DNS, then hands the original hostname to fetch with no binding to the checked address or encrypted route. A changed DNS answer or route can send the login password and subsequent admin bearer over cleartext to a different peer. Require authenticated HTTPS or bind the actual HTTP connection to the verified encrypted Tailscale peer. The synthetic transport check confirmed every gateway request still used the hostname with no connection pin.",
+      "description": "Q3 \u00b7 substantive \u00b7 plugins/factory/src/host/reporting/quota.mjs:92\u2013100,126\u2013133. The private HTTP guard checks DNS, then hands the original hostname to fetch with no binding to the checked address or encrypted route. A changed DNS answer or route can send the login password and subsequent admin bearer over cleartext to a different peer. Require authenticated HTTPS or bind the actual HTTP connection to the verified encrypted Tailscale peer. The synthetic transport check confirmed every gateway request still used the hostname with no connection pin. Turn 2 retained finding. Q3 \u00b7 substantive, open \u00b7 plugins/factory/src/host/reporting/tailnet-http.mjs:6\u201328 and quota.mjs:127\u2013132. The numeric destination closes the DNS re-resolution gap. Peer status and socket.remoteAddress still leave route selection to the OS. If a competing route sends the enrolled CGNAT address outside Tailscale, the socket reports the expected destination IP and flushes the login password or admin bearer over cleartext. Require authenticated HTTPS or bind the connection itself to the encrypted peer. This remaining gap is established by source inspection. The loopback test verifies IP pinning and redirect refusal.",
       "paths": [
         "plugins/factory/src/host/reporting/quota.mjs",
         "plugins/factory/src/host/reporting/tailnet-http.mjs"
       ],
       "disposition": "fixed",
-      "response": "Implemented direct pinned-IP HTTP socket transport with Host preservation, connected-address validation before credential flush and current online tailnet peer identity/status. Actual loopback and wrong-peer/no-flush tests pass. HTTPS keeps authenticated native transport. Awaiting same-reviewer verification."
+      "response": "Implemented direct pinned-IP HTTP socket transport with Host preservation, connected-address validation before credential flush and current online tailnet peer identity/status. Actual loopback and wrong-peer/no-flush tests pass. HTTPS keeps authenticated native transport. Awaiting same-reviewer verification. Turn 2 response. Replaced OS-routed TCP with installed Tailscale nc through the local daemon DialTCP encrypted connection. Explicit documented TAILSCALE_BE_CLI=1 and only HOME/PATH are inherited. No socket fallback. Actual unauthenticated composed health GET returned 200 with exact online peer verification and no credentials. Synthetic pipe composition, secret-free child argv/env, redirect refusal and conduit-failure tests pass. Awaiting same-reviewer turn 3."
     },
     {
       "id": "Q4",
@@ -139,18 +139,18 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/quota.mjs"
       ],
       "disposition": "fixed",
-      "response": "Export rows independently reject OAuth identity markers. Expiry accepts only documented scalar numeric or ISO formats. Export-only agent/PAT/shadow/parent and paired malformed array/object expiry regressions pass. Awaiting verification."
+      "response": "Export rows independently reject OAuth identity markers. Expiry accepts only documented scalar numeric or ISO formats. Export-only agent/PAT/shadow/parent and paired malformed array/object expiry regressions pass. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding."
     },
     {
       "id": "R1",
       "turn": 1,
       "severity": "substantive",
-      "description": "R1 \u00b7 substantive \u00b7 plugins/factory/src/host/reporting/factory.mjs:27\u201333,125\u2013131. A validly bound exited record with cleanupVerified true, or a legacy terminal desktop record with cleanupVerified absent, returns before any current process check. Both fixtures produced complete:true and zero instances with zero lookups even though the supplied lookup would match the recorded live guardian. Check current identity before all terminal exclusions and preserve contradictory records in the census.",
+      "description": "R1 \u00b7 substantive \u00b7 plugins/factory/src/host/reporting/factory.mjs:27\u201333,125\u2013131. A validly bound exited record with cleanupVerified true, or a legacy terminal desktop record with cleanupVerified absent, returns before any current process check. Both fixtures produced complete:true and zero instances with zero lookups even though the supplied lookup would match the recorded live guardian. Check current identity before all terminal exclusions and preserve contradictory records in the census. Turn 2 retained finding. R1 \u00b7 substantive, open \u00b7 plugins/factory/src/host/reporting/factory.mjs:101\u2013108,133\u2013137 and plugins/factory/src/guardian.py:46\u201359,84\u201392. The original exact-match cases now stay partial. The canonical guardian can also write an exited, cleanup-verified refusal or spawn-failure record before setting guardianIdentity. With that record and a live census entry at its guardian PID, the observer skipped the PID and returned complete:true with zero instances. Treat a current PID with missing or unusable recorded identity as uncertain before terminal exclusion. This also leaves the earlier rollout's R1 invariant open.",
       "paths": [
         "plugins/factory/src/host/reporting/factory.mjs"
       ],
       "disposition": "fixed",
-      "response": "All terminal exclusions first inspect current guardian, worker, owned identity and marker evidence through a cached current census. Positive cleanup and legacy terminal contradictions remain partial. Historical valid prelaunch semantics are retained. Awaiting verification."
+      "response": "All terminal exclusions first inspect current guardian, worker, owned identity and marker evidence through a cached current census. Positive cleanup and legacy terminal contradictions remain partial. Historical valid prelaunch semantics are retained. Awaiting verification. Turn 2 response. Every recorded current PID is checked before terminal exclusion. Missing or unusable recorded identity remains uncertain while the PID exists. Valid mismatching original identity permits proven PID reuse. Both desktop and unattended regressions cover absent, malformed, gone and reused identities. Awaiting same-reviewer turn 3."
     },
     {
       "id": "F1",
@@ -163,30 +163,30 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/factory.mjs"
       ],
       "disposition": "fixed",
-      "response": "Extracted the canonical read-only process census without changing tracker signalling/lifecycle behavior. Reporter reads it once per source, returns ownership metadata only, covers unrecorded unattended markers and empty reservations, and reports unreadable census as source unavailable. Existing worker suite23 passes. Awaiting verification."
+      "response": "Extracted the canonical read-only process census without changing tracker signalling/lifecycle behavior. Reporter reads it once per source, returns ownership metadata only, covers unrecorded unattended markers and empty reservations, and reports unreadable census as source unavailable. Existing worker suite23 passes. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding."
     },
     {
       "id": "R2A",
       "turn": 1,
       "severity": "substantive",
-      "description": "R2A \u00b7 substantive \u00b7 plugins/factory/src/host/reporting/github.mjs:8\u201314,30\u201343. A runner page reporting total_count 2 with one row is marked complete. The fixture reproduced runnerComplete:true, allowing an omitted enrolled runner to be treated as absent. Require the complete page to account for the declared total with distinct valid runner IDs and keep inconsistent pages partial.",
+      "description": "R2A \u00b7 substantive \u00b7 plugins/factory/src/host/reporting/github.mjs:8\u201314,30\u201343. A runner page reporting total_count 2 with one row is marked complete. The fixture reproduced runnerComplete:true, allowing an omitted enrolled runner to be treated as absent. Require the complete page to account for the declared total with distinct valid runner IDs and keep inconsistent pages partial. Turn 2 retained finding. R2A \u00b7 substantive, open \u00b7 plugins/factory/src/host/reporting/github.mjs:8\u201316,32\u201337, protocol.mjs:41\u201342 and reporter.mjs:36\u201339. Short pages now become partial. Duplicate valid runner IDs also mark their project partial, but both rows still reach the wire, which rejects the whole GitHub sample. A two-project fixture reproduced status:error with a null value, discarding the healthy project's census. Omit ambiguous duplicate rows while retaining the affected project's partial flag and the healthy project.",
       "paths": [
         "plugins/factory/src/host/reporting/github.mjs"
       ],
       "disposition": "fixed",
-      "response": "Declared totals must match distinct valid runner IDs. Missing, duplicate or malformed page rows remain incomplete. Regression probes pass. Awaiting verification."
+      "response": "Declared totals must match distinct valid runner IDs. Missing, duplicate or malformed page rows remain incomplete. Regression probes pass. Awaiting verification. Turn 2 response. Omit every ambiguous duplicate ID row while retaining partial coverage for that project and the healthy repository census. The actual snapshot composition remains partial with data rather than invalidating the entire sample. Awaiting same-reviewer turn 3."
     },
     {
       "id": "R2B",
       "turn": 1,
       "severity": "substantive",
-      "description": "R2B \u00b7 substantive \u00b7 plugins/factory/src/host/reporting/github.mjs:30\u201355, plugins/factory/src/host/reporting/org-runners.mjs:7\u201315,30\u201335. Job sampling consumes the same budget before exact organization reads. With three repositories and five current runs each, a synthetic snapshot made 20 repository requests and zero organization requests despite a valid dedicated credential. Earlier job reads can also consume the deadline before a later repository runner read. Reserve runner census capacity ahead of job sampling. Apply the wire's 16-project cap after deduplication too. Two individually valid entries produced a 17-project row, which would invalidate the entire GitHub sample.",
+      "description": "R2B \u00b7 substantive \u00b7 plugins/factory/src/host/reporting/github.mjs:30\u201355, plugins/factory/src/host/reporting/org-runners.mjs:7\u201315,30\u201335. Job sampling consumes the same budget before exact organization reads. With three repositories and five current runs each, a synthetic snapshot made 20 repository requests and zero organization requests despite a valid dedicated credential. Earlier job reads can also consume the deadline before a later repository runner read. Reserve runner census capacity ahead of job sampling. Apply the wire's 16-project cap after deduplication too. Two individually valid entries produced a 17-project row, which would invalidate the entire GitHub sample. Turn 2 retained finding. R2B \u00b7 substantive, open \u00b7 plugins/factory/src/host/reporting/github.mjs:50\u201363, org-runners.mjs:7\u201316 and reporter.mjs:18\u201319,27\u201334. The budget-ordering fix is verified. The merged cap blocks organization requests, but a configuration with 17 projects across two entries for the same identity still passes configSchema. The organization reader then throws during collection and erases the already successful repository censuses. The fixture reproduced status:error with a null value. Validate the merged bound during configuration or contain invalid organization enrollment without discarding repository results.",
       "paths": [
         "plugins/factory/src/host/reporting/github.mjs",
         "plugins/factory/src/host/reporting/org-runners.mjs"
       ],
       "disposition": "fixed",
-      "response": "Repository and exact organization runner reads precede optional job sampling. Merged eligible projects are capped before requests. Three-repository saturated-job and post-merge-cap regressions pass. Awaiting verification."
+      "response": "Repository and exact organization runner reads precede optional job sampling. Merged eligible projects are capped before requests. Three-repository saturated-job and post-merge-cap regressions pass. Awaiting verification. Turn 2 response. Apply the shared merged organization eligibility cap at configSchema before collection. Invalid 17-project merged enrollment fails configuration without entering collection. Awaiting same-reviewer turn 3."
     },
     {
       "id": "P1",
@@ -197,7 +197,32 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/phone.mjs"
       ],
       "disposition": "fixed",
-      "response": "Either inventory failure preserves a freshly reread held lease as busy with unknown readiness. Lock queries remain skipped while leased. Timeout and malformed-inventory regressions pass. Awaiting verification."
+      "response": "Either inventory failure preserves a freshly reread held lease as busy with unknown readiness. Lock queries remain skipped while leased. Timeout and malformed-inventory regressions pass. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding."
+    },
+    {
+      "id": "Q5",
+      "turn": 2,
+      "severity": "substantive",
+      "description": "Q5 \u00b7 substantive, new \u00b7 plugins/factory/src/host/reporting/quota.mjs:24\u201334,108\u2013110,127\u2013142. Stored HTTPS mode enters the shared transport without the proxy guard used in provider mode. A Node subprocess with synthetic proxy environment settings sent CONNECT synthetic.invalid:443 to a loopback proxy. The proxy rejected the tunnel, so the fixture transmitted no credential bytes. Apply the no-inherited-proxy requirement to stored quota transport before any request.",
+      "paths": [
+        "plugins/factory/src/host/reporting/quota.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Stored quota now applies the same directEnvironment proxy refusal before any request. HTTPS_PROXY, lowercase proxy and NODE_USE_ENV_PROXY regression cases assert zero network calls. Awaiting same-reviewer turn 3."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "01a1b505-e814-7301-a1c0-d7f3de548ded",
+      "commit": "809718bce034bfe3972cfc3b4f730b3026e2f70f",
+      "outcome": "blocked",
+      "elapsedMinutes": 2.3776,
+      "timing": {
+        "source": "clock",
+        "durationMs": 142656,
+        "evidence": "infrastructure-gaps-m-source-review-turn2.json measured controller clock 2026-11-07T08:34:40.132Z through 2026-11-07T08:37:02.788Z"
+      },
+      "summary": "High-risk independent source review turn 2 is BLOCKED for Morpheus PR 639 at 809718bce034bfe3972cfc3b4f730b3026e2f70f. Q4, F1 and P1 are resolved. Q3, R1, R2A and R2B remain open, and Q5 is a new substantive finding. I switched only the isolated reviewer checkout to the requested commit. No files changed, and no external actions or live service calls were performed. Deployment acceptance remains unverified."
     }
   ]
 }
@@ -228,3 +253,18 @@ UUID and recorded process identity shape checks precede proof exclusion.
 The three original blocked source reviews remain recorded above with every finding and exact
 measured timing. The controller resumes the same reviewers for turn2 with a15-minute ceiling.
 Author fixes are ready for verification. Source clearance and live acceptance remain pending.
+
+
+## Same-reviewer turn 2 and corrections for turn 3
+
+High-risk independent source review turn 2 is BLOCKED for Morpheus PR 639 at 809718bce034bfe3972cfc3b4f730b3026e2f70f. Q4, F1 and P1 are resolved. Q3, R1, R2A and R2B remain open, and Q5 is a new substantive finding. I switched only the isolated reviewer checkout to the requested commit. No files changed, and no external actions or live service calls were performed. Deployment acceptance remains unverified.
+
+The initial blocked turn and all findings remain recorded. These are author responses pending independent verification. No runtime was activated in this correction stage.
+
+- Q3. Replaced OS-routed TCP with installed Tailscale nc through the local daemon DialTCP encrypted connection. Explicit documented TAILSCALE_BE_CLI=1 and only HOME/PATH are inherited. No socket fallback. Actual unauthenticated composed health GET returned 200 with exact online peer verification and no credentials. Synthetic pipe composition, secret-free child argv/env, redirect refusal and conduit-failure tests pass. Awaiting same-reviewer turn 3.
+- R1. Every recorded current PID is checked before terminal exclusion. Missing or unusable recorded identity remains uncertain while the PID exists. Valid mismatching original identity permits proven PID reuse. Both desktop and unattended regressions cover absent, malformed, gone and reused identities. Awaiting same-reviewer turn 3.
+- R2A. Omit every ambiguous duplicate ID row while retaining partial coverage for that project and the healthy repository census. The actual snapshot composition remains partial with data rather than invalidating the entire sample. Awaiting same-reviewer turn 3.
+- R2B. Apply the shared merged organization eligibility cap at configSchema before collection. Invalid 17-project merged enrollment fails configuration without entering collection. Awaiting same-reviewer turn 3.
+- Q5. Stored quota now applies the same directEnvironment proxy refusal before any request. HTTPS_PROXY, lowercase proxy and NODE_USE_ENV_PROXY regression cases assert zero network calls. Awaiting same-reviewer turn 3.
+
+Focused reporter tests passed 88 cases. Typecheck, compile, focused ESLint, index generation and exact wire parity passed. Enforced complexity has zero CCN errors and four cognitive advisories. The earlier direct OS-socket transport claim is superseded by the encrypted daemon conduit. The documented Mac client flag replaces the unsuccessful TS_BE_CLI probe. Public records remain synthetic.

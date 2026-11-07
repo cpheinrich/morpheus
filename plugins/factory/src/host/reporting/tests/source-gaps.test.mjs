@@ -127,3 +127,22 @@ test('terminal assertions cannot bypass UUID or recorded process identity shape 
  }
  const value=await observeFactory(options(path));assert.equal(value.complete,false);assert.deepEqual(value.instances,[]);
 });
+test('exited cleanup proof cannot hide a current PID without its recorded identity in either channel',async t=>{
+ const path=await root(t);
+ for(const channel of ['desktop','unattended']){
+  const dir=join(path,channel==='desktop'?'runs':'unattended',id);await mkdir(dir,{recursive:true});
+  await put(join(dir,channel==='desktop'?'run.json':'admission.json'),channel==='desktop'?{id,executor:'codex',cwd:'/repo/example',terminal:true}:{admissionId:id,binding:{cwd:'/repo/example',gateway:{provider:'codex'},jobId:'example'}});
+  await put(join(dir,'process.json'),{runId:id,state:'exited',cleanupVerified:true,guardianPid:42});
+  const live=await observeFactory({...options(path,channel),lookup:async()=> 'current'});assert.equal(live.complete,false);assert.deepEqual(live.instances,[]);
+  await put(join(dir,'process.json'),{runId:id,state:'exited',cleanupVerified:true,guardianPid:42,guardianIdentity:'malformed'});
+  const invalid=await observeFactory({...options(path,channel),lookup:async()=> 'current'});assert.equal(invalid.complete,false);
+  const gone=await observeFactory(options(path,channel));assert.equal(gone.complete,true);assert.deepEqual(gone.instances,[]);
+  await put(join(dir,'process.json'),{runId:id,state:'exited',cleanupVerified:true,guardianPid:42,guardianIdentity:'Fri Nov 6 22:00:00 2026 42 501'});
+  const reused=await observeFactory({...options(path,channel),lookup:async()=> 'different-current-identity'});assert.equal(reused.complete,true);assert.deepEqual(reused.instances,[]);
+ }
+});
+test('ambiguous duplicate server IDs are omitted without erasing a healthy repository census',async()=>{
+ const value=await githubSnapshot(['example/a','example/b'],async path=>path.includes('/runners')?{total_count:path.includes('example/a')?2:1,runners:path.includes('example/a')?[{id:18,status:'online',busy:false,labels:[]},{id:18,status:'offline',busy:true,labels:[]}]:[{id:19,status:'online',busy:false,labels:[]}]}:{total_count:0,workflow_runs:[]},()=>new Date(at));
+ assert.deepEqual(value.value.runners.map(r=>[r.projectId,r.runnerId]),[['example/b',19]]);assert.equal(value.value.censuses[0].runnerComplete,false);assert.equal(value.value.censuses[1].runnerComplete,true);
+ const {snapshot}=await import('../reporter.mjs');const report=await snapshot({hostId:'host-example',sources:[{id:'github',kind:'github'}]},{now:()=>new Date(at),read:async()=>value});assert.equal(report.samples.github.status,'partial');assert.equal(report.samples.github.value.runners[0].runnerId,19);
+});

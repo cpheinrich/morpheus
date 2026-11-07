@@ -27,7 +27,7 @@ export const values = {
   machine: z.strictObject({ cpuPercent: percent.nullable(), memoryTotalBytes: number, memoryActiveBytes: number,
     diskAvailableBytes: number, diskTotalBytes: number, uptimeSeconds: number,
     hardwareModel:optionalLabel, chip:optionalLabel, logicalCores:number.int().positive().nullable(), osVersion:optionalLabel }),
-  factory: z.strictObject({ complete: z.boolean(), instances: z.array(instance).max(64).refine(rows=>distinct(rows,r=>r.invocationId)&&distinct(rows,r=>r.id)), lastOutcome: outcome.nullable(), historyIssues:z.array(z.strictObject({invocationId:z.string().uuid(),reason:z.enum(['empty-reservation','incomplete-preparation'])})).max(64).optional() }),
+  factory: z.strictObject({ complete: z.boolean(), instances: z.array(instance).max(64).refine(rows=>distinct(rows,r=>r.invocationId)), lastOutcome: outcome.nullable(), historyIssues:z.array(z.strictObject({invocationId:z.string().uuid(),reason:z.enum(['empty-reservation','incomplete-preparation'])})).max(64).optional() }),
   routes: z.strictObject({ enabled: z.boolean(), maxConcurrent: number.int().max(64),
     routes: z.array(z.strictObject({ id, provider: z.enum(['codex','claude']), accountId: id.nullable() })).max(16) }),
   quota: z.strictObject({ accountId: id, provider: z.enum(['codex','claude']),

@@ -32,7 +32,8 @@ async function currentRuns(context,repository) {
 async function runnerSnapshot(context,repository,now) {
   const listed=await page(context,`repos/${repository}/actions/runners?per_page=100&page=1`,'runners',100);
   const valid=r=>Number.isSafeInteger(r.id)&&r.id>0&&['online','offline'].includes(r.status)&&typeof r.busy==='boolean'&&Array.isArray(r.labels)&&r.labels.every(l=>typeof l.name==='string');
-  const validRows=listed.rows.filter(valid);
+  const ids=listed.rows.map(row=>row.id);
+  const validRows=listed.rows.filter(row=>valid(row)&&ids.filter(id=>id===row.id).length===1);
   return {runners:validRows.map(r=>({projectId:repository,runnerId:r.id,online:r.status==='online',busy:r.busy,labels:r.labels.map(l=>l.name).slice(0,20)})),
     census:{projectId:repository,runnerComplete:listed.complete&&validRows.length===listed.rows.length,runnerObservedAt:now().toISOString(),jobComplete:false,jobObservedAt:now().toISOString()}};
 }

@@ -212,3 +212,14 @@ test('canonical wire refuses duplicate identities/projects and contradictory add
  for(const value of [{lease:'held',ready:true,state:'busy',reasons:['lease-held']},{lease:'absent',ready:false,state:'ready',reasons:[]}])assert.equal(values.phone.safeParse(value).success,false);
  assert.equal(values.phone.safeParse({lease:'held',ready:true}).success,true);
 });
+test('merged organization enrollment cap is rejected at configuration before collection',()=>{
+ const first={organization:'example',runnerId:18,projectIds:Array.from({length:16},(_,i)=>'example/p'+i)};
+ const config={...baseConfig,sources:[{id:'github',kind:'github',repositories:['example/a'],organizationRunners:[first,{...first,projectIds:['example/extra']}]}]};
+ assert.equal(configSchema.safeParse(config).success,false);config.sources[0].organizationRunners[1].projectIds=['example/p0'];assert.equal(configSchema.safeParse(config).success,true);
+});
+test('legacy task-derived instance IDs may repeat while invocation UUIDs remain distinct',()=>{
+ const row={id:'task-example',invocationId:uuid,executor:'codex',accountId:null,projectIds:[],state:'running',createdAt:null,hostId:'host-a',taskId:null,model:null,effort:null};
+ const report={schemaVersion:1,hostId:'host-a',samples:{factory:{...sample,kind:'factory',value:{complete:true,instances:[row,{...row,invocationId:'22222222-2222-4444-8888-555555555555'}],lastOutcome:null}}}};
+ assert.equal(parseReport(report,Date.parse(at)).samples.factory.value.instances.length,2);
+ report.samples.factory.value.instances[1].invocationId=uuid;assert.throws(()=>parseReport(report,Date.parse(at)),/invalid-report/);
+});

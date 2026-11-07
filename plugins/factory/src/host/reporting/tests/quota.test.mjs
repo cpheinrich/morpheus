@@ -126,3 +126,8 @@ test('passive stored mode cannot retain an unpinned HTTP or redirect credential 
  const g=fixture();g.options.fetchImpl=async()=>new Response('',{status:302});await assert.rejects(readStoredQuota(g.binding,g.options),/unavailable/);
  const h=fixture();h.binding.gatewayOrigin='https://other.example';await assert.rejects(readStoredQuota(h.binding,h.options),/^Error: invalid-source$/);assert.equal(h.calls.length,0);
 });
+test('stored quota refuses proxy inheritance before login or any network request',async()=>{
+ for(const env of [{HTTPS_PROXY:'http://proxy.invalid'},{NODE_USE_ENV_PROXY:'1'},{https_proxy:'http://proxy.invalid'}]){
+  const f=fixture();await assert.rejects(readStoredQuota(f.binding,{...f.options,env}),/unavailable/);assert.equal(f.calls.length,0);
+ }
+});

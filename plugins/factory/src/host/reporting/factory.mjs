@@ -99,11 +99,20 @@ export async function ownedProcessesLive(entries,run=exec) {
   return false;
 }
 const sameIdentity=(left,right)=>typeof left==='string'&&typeof right==='string'&&left.trim().split(/\s+/).join(' ')===right.trim().split(/\s+/).join(' ');
+function recordedIdentityUsable(identity) {
+  if(typeof identity!=='string')return false;
+  const words=identity.trim().split(/\s+/);
+  return words.length===7&&/^\d+$/.test(words[5])&&/^\d+$/.test(words[6])&&Number.isFinite(Date.parse(words.slice(0,5).join(' ')));
+}
 async function currentContradiction(p,runId,options) {
   if(options.current.markedRunIds.includes(runId))return true;
   for(const [pid,identity] of [[p?.guardianPid,p?.guardianIdentity],[p?.claudePid,p?.claudeIdentity]]) {
-    if(identity&&(!Number.isSafeInteger(pid)||pid<=1))throw new Error('invalid-source');
-    if(identity&&sameIdentity(await options.lookup(pid),identity))return true;
+    if((identity||pid!==undefined&&pid!==null)&&(!Number.isSafeInteger(pid)||pid<=1))throw new Error('invalid-source');
+    if(Number.isSafeInteger(pid)&&pid>1){
+      const current=await options.lookup(pid);
+      if(current&&sameIdentity(current,identity))return true;
+      if(current&&!recordedIdentityUsable(identity))throw new Error('identity-uncertain');
+    }
   }
   return Array.isArray(p?.ownedProcesses)&&p.ownedProcesses.length>0?options.ownedLive(p.ownedProcesses):false;
 }

@@ -22,6 +22,7 @@ export function storedQuota(account, binding) {
   return { sourceObservedAt, value: {accountId:binding.id,provider:binding.provider,windows} };
 }
 export async function readStoredQuota(binding,options={}) {
+  directEnvironment(options.env??process.env);
   const {email,password,fetchImpl,resolve,verifyPeer,httpFetch}={fetchImpl:fetch,resolve:lookup,verifyPeer:verifyTailnetPeer,httpFetch:pinnedHttpRequest,...options};
   const base=new URL(binding.baseUrl);
   if(base.username||base.password||base.search||base.hash||(binding.gatewayOrigin&&base.origin!==binding.gatewayOrigin)||!Number.isSafeInteger(binding.accountId)||binding.accountId<1)throw new Error('invalid-source');
