@@ -105,7 +105,7 @@ The first turn remains blocked. The following responses describe author fixes aw
   "version": 2,
   "base": "f6246740f928b3d658fc03dd34fe3c440dff5d31",
   "reviewed": "295229e600a41ff5719cdecc8ea70e63dac250c9",
-  "covered": "aac5d975bde27ef3a04ac91c3c4dabf871a11e00",
+  "covered": "460555fce0f353bac5ec1f4da852c0825b990c29",
   "authorSession": "01a1b323-e075-7c32-98b9-2ce4d216f0a9",
   "reviewerSession": "01a1b505-e814-7301-a1c0-d7f3de548ded",
   "risk": "high",
@@ -115,8 +115,8 @@ The first turn remains blocked. The following responses describe author fixes aw
     "durationMs": 183545,
     "evidence": "infrastructure-gaps-m-source-review-turn1.json measured controller clock 2026-11-07T08:00:24.851Z through 2026-11-07T08:03:28.396Z"
   },
-  "outcome": "blocked",
-  "summary": "High-risk source review BLOCKED for Morpheus PR 639 at 295229e600a41ff5719cdecc8ea70e63dac250c9, against f6246740f928b3d658fc03dd34fe3c440dff5d31. Seven substantive findings require resolution. No files changed or external actions were performed. Deployment acceptance remains outside this review.",
+  "outcome": "complete",
+  "summary": "Fifth independent review conditionally cleared the source. Q3 and all earlier findings are resolved. Reviewer-set M-Q6 was fixed within its exact three paths and verified by the required43 tests plus git diff --check. All five measured review turns remain preserved. CI and deployment acceptance remain separate.",
   "findings": [
     {
       "id": "M-Q3",
@@ -128,7 +128,7 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/tailnet-http.mjs"
       ],
       "disposition": "fixed",
-      "response": "Implemented direct pinned-IP HTTP socket transport with Host preservation, connected-address validation before credential flush and current online tailnet peer identity/status. Actual loopback and wrong-peer/no-flush tests pass. HTTPS keeps authenticated native transport. Awaiting same-reviewer verification. Turn 2 response. Replaced OS-routed TCP with installed Tailscale nc through the local daemon DialTCP encrypted connection. Explicit documented TAILSCALE_BE_CLI=1 and only HOME/PATH are inherited. No socket fallback. Actual unauthenticated composed health GET returned 200 with exact online peer verification and no credentials. Synthetic pipe composition, secret-free child argv/env, redirect refusal and conduit-failure tests pass. Awaiting same-reviewer turn 3. Turn 3 response. Replaced Tailscale nc with existing authenticated SSH stdio forwarding. Strict existing host-key trust, BatchMode, disabled ProxyCommand/ProxyJump/LocalCommand, exact enrolled SSH host/user plus gateway loopback port, and no plaintext fallback. Only HOME/PATH/existing SSH_AUTH_SOCK may be inherited. Actual unauthenticated composed health returned 200 before credentials. Endpoint/argv/environment, failure, redirect and body-bound composition tests pass. Prior nc route guarantee is withdrawn. Awaiting same-reviewer turn 4. Turn4 response. Added -F /dev/null to the actual SSH builder. An actual offline ssh -G test first reproduces hostile HostName/Port/HostKeyAlias/multiplexing settings without isolation, then proves the real builder keeps the enrolled hostname, port22, strict checking, default known-host trust and no mux/proxy/local command. Real composed health again returned200 with -F and no credentials. Awaiting same-reviewer final ordinary turn5."
+      "response": "Implemented direct pinned-IP HTTP socket transport with Host preservation, connected-address validation before credential flush and current online tailnet peer identity/status. Actual loopback and wrong-peer/no-flush tests pass. HTTPS keeps authenticated native transport. Awaiting same-reviewer verification. Turn 2 response. Replaced OS-routed TCP with installed Tailscale nc through the local daemon DialTCP encrypted connection. Explicit documented TAILSCALE_BE_CLI=1 and only HOME/PATH are inherited. No socket fallback. Actual unauthenticated composed health GET returned 200 with exact online peer verification and no credentials. Synthetic pipe composition, secret-free child argv/env, redirect refusal and conduit-failure tests pass. Awaiting same-reviewer turn 3. Turn 3 response. Replaced Tailscale nc with existing authenticated SSH stdio forwarding. Strict existing host-key trust, BatchMode, disabled ProxyCommand/ProxyJump/LocalCommand, exact enrolled SSH host/user plus gateway loopback port, and no plaintext fallback. Only HOME/PATH/existing SSH_AUTH_SOCK may be inherited. Actual unauthenticated composed health returned 200 before credentials. Endpoint/argv/environment, failure, redirect and body-bound composition tests pass. Prior nc route guarantee is withdrawn. Awaiting same-reviewer turn 4. Turn4 response. Added -F /dev/null to the actual SSH builder. An actual offline ssh -G test first reproduces hostile HostName/Port/HostKeyAlias/multiplexing settings without isolation, then proves the real builder keeps the enrolled hostname, port22, strict checking, default known-host trust and no mux/proxy/local command. Real composed health again returned200 with -F and no credentials. Awaiting same-reviewer final ordinary turn5. Fifth reviewer confirms this prior source finding remains resolved."
     },
     {
       "id": "M-Q4",
@@ -139,7 +139,7 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/quota.mjs"
       ],
       "disposition": "fixed",
-      "response": "Export rows independently reject OAuth identity markers. Expiry accepts only documented scalar numeric or ISO formats. Export-only agent/PAT/shadow/parent and paired malformed array/object expiry regressions pass. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved."
+      "response": "Export rows independently reject OAuth identity markers. Expiry accepts only documented scalar numeric or ISO formats. Export-only agent/PAT/shadow/parent and paired malformed array/object expiry regressions pass. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved. Fifth reviewer confirms this prior source finding remains resolved."
     },
     {
       "id": "M-R1",
@@ -150,7 +150,7 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/factory.mjs"
       ],
       "disposition": "fixed",
-      "response": "All terminal exclusions first inspect current guardian, worker, owned identity and marker evidence through a cached current census. Positive cleanup and legacy terminal contradictions remain partial. Historical valid prelaunch semantics are retained. Awaiting verification. Turn 2 response. Every recorded current PID is checked before terminal exclusion. Missing or unusable recorded identity remains uncertain while the PID exists. Valid mismatching original identity permits proven PID reuse. Both desktop and unattended regressions cover absent, malformed, gone and reused identities. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved."
+      "response": "All terminal exclusions first inspect current guardian, worker, owned identity and marker evidence through a cached current census. Positive cleanup and legacy terminal contradictions remain partial. Historical valid prelaunch semantics are retained. Awaiting verification. Turn 2 response. Every recorded current PID is checked before terminal exclusion. Missing or unusable recorded identity remains uncertain while the PID exists. Valid mismatching original identity permits proven PID reuse. Both desktop and unattended regressions cover absent, malformed, gone and reused identities. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved. Fifth reviewer confirms this prior source finding remains resolved."
     },
     {
       "id": "M-F1",
@@ -163,7 +163,7 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/factory.mjs"
       ],
       "disposition": "fixed",
-      "response": "Extracted the canonical read-only process census without changing tracker signalling/lifecycle behavior. Reporter reads it once per source, returns ownership metadata only, covers unrecorded unattended markers and empty reservations, and reports unreadable census as source unavailable. Existing worker suite23 passes. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved."
+      "response": "Extracted the canonical read-only process census without changing tracker signalling/lifecycle behavior. Reporter reads it once per source, returns ownership metadata only, covers unrecorded unattended markers and empty reservations, and reports unreadable census as source unavailable. Existing worker suite23 passes. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved. Fifth reviewer confirms this prior source finding remains resolved."
     },
     {
       "id": "M-R2A",
@@ -174,7 +174,7 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/github.mjs"
       ],
       "disposition": "fixed",
-      "response": "Declared totals must match distinct valid runner IDs. Missing, duplicate or malformed page rows remain incomplete. Regression probes pass. Awaiting verification. Turn 2 response. Omit every ambiguous duplicate ID row while retaining partial coverage for that project and the healthy repository census. The actual snapshot composition remains partial with data rather than invalidating the entire sample. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved."
+      "response": "Declared totals must match distinct valid runner IDs. Missing, duplicate or malformed page rows remain incomplete. Regression probes pass. Awaiting verification. Turn 2 response. Omit every ambiguous duplicate ID row while retaining partial coverage for that project and the healthy repository census. The actual snapshot composition remains partial with data rather than invalidating the entire sample. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved. Fifth reviewer confirms this prior source finding remains resolved."
     },
     {
       "id": "M-R2B",
@@ -186,7 +186,7 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/org-runners.mjs"
       ],
       "disposition": "fixed",
-      "response": "Repository and exact organization runner reads precede optional job sampling. Merged eligible projects are capped before requests. Three-repository saturated-job and post-merge-cap regressions pass. Awaiting verification. Turn 2 response. Apply the shared merged organization eligibility cap at configSchema before collection. Invalid 17-project merged enrollment fails configuration without entering collection. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved."
+      "response": "Repository and exact organization runner reads precede optional job sampling. Merged eligible projects are capped before requests. Three-repository saturated-job and post-merge-cap regressions pass. Awaiting verification. Turn 2 response. Apply the shared merged organization eligibility cap at configSchema before collection. Invalid 17-project merged enrollment fails configuration without entering collection. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved. Fifth reviewer confirms this prior source finding remains resolved."
     },
     {
       "id": "M-P1",
@@ -197,7 +197,7 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/phone.mjs"
       ],
       "disposition": "fixed",
-      "response": "Either inventory failure preserves a freshly reread held lease as busy with unknown readiness. Lock queries remain skipped while leased. Timeout and malformed-inventory regressions pass. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved."
+      "response": "Either inventory failure preserves a freshly reread held lease as busy with unknown readiness. Lock queries remain skipped while leased. Timeout and malformed-inventory regressions pass. Awaiting verification. Same reviewer turn 2 explicitly resolved this finding. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved. Fifth reviewer confirms this prior source finding remains resolved."
     },
     {
       "id": "M-Q5",
@@ -208,7 +208,29 @@ The first turn remains blocked. The following responses describe author fixes aw
         "plugins/factory/src/host/reporting/quota.mjs"
       ],
       "disposition": "fixed",
-      "response": "Stored quota now applies the same directEnvironment proxy refusal before any request. HTTPS_PROXY, lowercase proxy and NODE_USE_ENV_PROXY regression cases assert zero network calls. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved."
+      "response": "Stored quota now applies the same directEnvironment proxy refusal before any request. HTTPS_PROXY, lowercase proxy and NODE_USE_ENV_PROXY regression cases assert zero network calls. Awaiting same-reviewer turn 3. Same reviewer turn 3 confirms resolution, with earlier finding descriptions and regressions retained. Same reviewer turn4 confirms this prior finding remains resolved. Fifth reviewer confirms this prior source finding remains resolved."
+    },
+    {
+      "id": "M-Q6",
+      "turn": 5,
+      "severity": "substantive",
+      "description": "M-Q6 \u00b7 substantive, conditionally cleared \u00b7 plugins/factory/src/host/reporting/ssh-http.mjs:11\u201313. The exact builder reports `updatehostkeys true` under OpenSSH 10.3p1. An already trusted gateway authenticating with a plain key from the user's known-hosts file can advertise replacement keys after authentication, even on a forwarding-only connection. OpenSSH can then add or remove entries in the reporter user's known-hosts files. That violates the observer's read-only trust requirement. This was verified through offline effective configuration and the pinned implementation. No trust file was modified during review. [OpenSSH server notification](https://github.com/openssh/openssh-portable/blob/V_10_3_P1/sshd-session.c#L1213-L1220) \u00b7 [OpenSSH client write path](https://github.com/openssh/openssh-portable/blob/V_10_3_P1/clientloop.c#L2186-L2215)",
+      "paths": [
+        "plugins/factory/src/host/reporting/ssh-http.mjs",
+        "plugins/factory/src/host/reporting/tests/ssh-http.test.mjs",
+        "plugins/factory/src/host/reporting/README.md"
+      ],
+      "disposition": "fixed",
+      "response": "Added UpdateHostKeys=no only within the reviewer condition paths. Existing endpoint isolation, strict checking and default trust assertions remain. No SSH trust files were changed.",
+      "condition": {
+        "paths": [
+          "plugins/factory/src/host/reporting/ssh-http.mjs",
+          "plugins/factory/src/host/reporting/tests/ssh-http.test.mjs",
+          "plugins/factory/src/host/reporting/README.md"
+        ],
+        "evidence": "Reviewer-set condition for M-Q6. Add `-oUpdateHostKeys=no` to the actual SSH builder. Exact condition paths are `plugins/factory/src/host/reporting/ssh-http.mjs`, `plugins/factory/src/host/reporting/tests/ssh-http.test.mjs` and `plugins/factory/src/host/reporting/README.md`. Extend the offline effective-configuration regression to assert `updatehostkeys false` while preserving strict checking, default known-host lookup and the existing endpoint isolation assertions. Run `node --test plugins/factory/src/host/reporting/tests/{ssh-http,quota}.test.mjs` and `git diff --check`, then record the passing results as `conditionMet`. The offline probe already confirmed that the exact flag disables updates while preserving strict checking, hostname and port. Coverage may advance to the scoped fix commit once the condition is met."
+      },
+      "conditionMet": "Passed node --test plugins/factory/src/host/reporting/tests/{ssh-http,quota}.test.mjs with 43 tests. The actual offline effective-configuration test asserts updatehostkeys false with strict checking, enrolled endpoint, default known-host lookup and no mux/proxy/local command. git diff --check passed. Coverage advances only to scoped fix 460555fce0f353bac5ec1f4da852c0825b990c29."
     }
   ],
   "followUps": [
@@ -247,6 +269,18 @@ The first turn remains blocked. The following responses describe author fixes aw
         "evidence": "infrastructure-gaps-m-source-review-turn4.json measured controller clock 2026-11-07T09:14:32.964Z through 2026-11-07T09:15:25.548Z"
       },
       "summary": "High-risk independent source review turn 4 is BLOCKED for Morpheus PR 639 at aac5d975bde27ef3a04ac91c3c4dabf871a11e00. Q3 remains open because inherited SSH configuration can redirect credentials to a different trusted host. All other prior findings remain resolved. I switched only the isolated reviewer checkout. No source files changed, no external actions were taken, and no live gateway, SSH or provider calls were made."
+    },
+    {
+      "reviewerSession": "01a1b505-e814-7301-a1c0-d7f3de548ded",
+      "commit": "bd52d8473abaf69d6d5cd8216126ecfcc0f2e13c",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.8950833333333332,
+      "timing": {
+        "source": "clock",
+        "durationMs": 113705,
+        "evidence": "infrastructure-gaps-m-source-review-turn5.json measured controller clock 2026-11-07T09:27:23.329Z through 2026-11-07T09:29:17.034Z"
+      },
+      "summary": "High-risk independent source review turn 5 for Morpheus PR 639 is conditionally cleared at reviewed SHA bd52d8473abaf69d6d5cd8216126ecfcc0f2e13c. Q3 is resolved. The new substantive finding M-Q6 must be fixed and verified under the condition below before clearance takes effect. I switched only the isolated reviewer checkout. No files were changed and no live SSH, gateway, credential or provider calls were made. External requests were limited to public OpenSSH source reads."
     }
   ]
 }
@@ -336,3 +370,22 @@ All four source-review outcomes remain blocked in the record. Full descriptions,
 - Q3. Added -F /dev/null to the actual SSH builder. An actual offline ssh -G test first reproduces hostile HostName/Port/HostKeyAlias/multiplexing settings without isolation, then proves the real builder keeps the enrolled hostname, port22, strict checking, default known-host trust and no mux/proxy/local command. Real composed health again returned200 with -F and no credentials. Awaiting same-reviewer final ordinary turn5.
 
 Final-turn validation passed89 reporter cases, including five SSH tests, privacy3, distribution4, typecheck, compile and focused ESLint. Enforced complexity has zero CCN errors and four retained cognitive advisories. The actual isolated-config SSH composed health GET returned200 without credentials.
+
+
+## Fifth independent source-review outcome
+
+High-risk independent source review turn 5 for Morpheus PR 639 is conditionally cleared at reviewed SHA bd52d8473abaf69d6d5cd8216126ecfcc0f2e13c. Q3 is resolved. The new substantive finding M-Q6 must be fixed and verified under the condition below before clearance takes effect. I switched only the isolated reviewer checkout. No files were changed and no live SSH, gateway, credential or provider calls were made. External requests were limited to public OpenSSH source reads.
+
+Q3 / M-Q3 · substantive, resolved · plugins/factory/src/host/reporting/ssh-http.mjs:5–18. The actual SSH builder passes `-F /dev/null`. The offline regression verified that ambient configuration can no longer substitute the enrolled hostname, SSH port, host-key alias, proxy, local command or control socket. Strict verification and default known-host trust remain in effect.
+
+M-Q6 · substantive, conditionally cleared · plugins/factory/src/host/reporting/ssh-http.mjs:11–13. The exact builder reports `updatehostkeys true` under OpenSSH 10.3p1. An already trusted gateway authenticating with a plain key from the user's known-hosts file can advertise replacement keys after authentication, even on a forwarding-only connection. OpenSSH can then add or remove entries in the reporter user's known-hosts files. That violates the observer's read-only trust requirement. This was verified through offline effective configuration and the pinned implementation. No trust file was modified during review. [OpenSSH server notification](https://github.com/openssh/openssh-portable/blob/V_10_3_P1/sshd-session.c#L1213-L1220) · [OpenSSH client write path](https://github.com/openssh/openssh-portable/blob/V_10_3_P1/clientloop.c#L2186-L2215)
+
+Reviewer-set condition for M-Q6. Add `-oUpdateHostKeys=no` to the actual SSH builder. Exact condition paths are `plugins/factory/src/host/reporting/ssh-http.mjs`, `plugins/factory/src/host/reporting/tests/ssh-http.test.mjs` and `plugins/factory/src/host/reporting/README.md`. Extend the offline effective-configuration regression to assert `updatehostkeys false` while preserving strict checking, default known-host lookup and the existing endpoint isolation assertions. Run `node --test plugins/factory/src/host/reporting/tests/{ssh-http,quota}.test.mjs` and `git diff --check`, then record the passing results as `conditionMet`. The offline probe already confirmed that the exact flag disables updates while preserving strict checking, hostname and port. Coverage may advance to the scoped fix commit once the condition is met.
+
+All 43 focused SSH and quota tests and seven selected prior regressions passed. Q4, R1, F1, R2A, R2B, P1 and Q5 remain resolved. Reviewed the complete correction diff and related callers from exact source because the graph evidence was stale. The checkout is clean and `git diff --check` passed. The supplied credential-free HTTP 200 receipt covers healthy tunnel composition. CI and deployment acceptance remain separate, and the supervising root owns elapsed-time measurement.
+
+All five measured verdicts are retained. Initial and turns2 through4 remain blocked. The fifth is conditional clearance, effective after the exact M-Q6 condition was met.
+
+Fifth independent review conditionally cleared the source. Q3 and all earlier findings are resolved. Reviewer-set M-Q6 was fixed within its exact three paths and verified by the required43 tests plus git diff --check. All five measured review turns remain preserved. CI and deployment acceptance remain separate.
+
+The M-Q6 condition is reproduced literally in the finding. Required command passed43 cases, git diff --check passed, and the scoped fix commit is 460555fce0f353bac5ec1f4da852c0825b990c29. After this covered commit, only this named worklog changes. No sixth source turn is used.
