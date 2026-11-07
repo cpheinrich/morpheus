@@ -265,3 +265,41 @@ point-in-time source cutoff and evidence provenance. Keep holdout prompts and la
 tuning inputs, freeze the finalist before scoring, and report counts and uncertainty by task group.
 Run deterministic retrieval comparisons across all 60. Use matched GPT-6 Luna sessions for the
 downstream comparison after the settings are locked, within the authorized included quota.
+
+## Baseline, prior art and QMD comparator
+
+The primary baseline is Evo's current startup contract and normal navigation. The prescribed
+Evo-local records total 118305 tokens on the frozen snapshot, including 85530 in decisions and
+20089 in lessons. Upstream instructions and architecture bring the proxy total to 187928.
+Matched sessions should count the material actually received by the agent. Existing navigation
+includes file and history reads, exact references, and the meeting-note search when triggered.
+
+Cross full startup and compact startup with ordinary navigation and on-demand search. Within
+the compact workflow, screen plain HQ MiniSearch, contextual heading windows, soft tags and
+bounded reference expansion as separable changes. Compare QMD on the same cases and budgets
+both with and without the same soft tag signal. Preserve untagged and off-tag results. Use
+nested coverage targets of roughly 100 and 250 new annotations without selecting records using
+held-out labels. Keep the whole corpus searchable at each coverage level.
+
+QMD, OpenClaw and SWE-agent motivate broad query fallback and bounded source reads.
+Anthropic's contextual retrieval suggests preserving ancestor headings with the passage.
+Agent Retrieval Bench and NIST's relevance-judgment protocol motivate immutable base revisions,
+task-oriented evidence groups and judging candidates pooled across search methods. Iterate on
+development misses and stop after two targeted changes with no material gain, or when the
+remaining errors require a different corpus or materially heavier infrastructure.
+
+Recovered the earlier QMD SDK harness from PR265 at 9b74db196d686198f425656af7a11155d152f644.
+Its historical-query study used 437 Evo files. Verified that QMD 2.8.3 indexed 1436 records
+from the current frozen Evo manifest and returned keyword results on the six exploratory cases.
+This was an index and API smoke check with one timing per prompt. The full comparison still
+needs passage labels, QMD hybrid results and matched agent sessions. QMD is a private benchmark
+runtime. Its setup, model loading and indexing cost are part of the comparison.
+
+Factory run 0e201b45-633f-4f46-8eae-21af2cdb4243 on the MacBook Pro produced a provisional
+60-group draw from 712 roadmap items and 624 worklogs. The controller confirmed 60 distinct
+groups and mapped them to 39 pre-task first-parent Git revisions. Of 300 suggested evidence
+path occurrences, 223 blobs were identical, 9 changed and 68 were absent at the cutoff. No
+sampled roadmap request existed on the selected pre-task branch revision. The draw needs
+intake-source verification and domain review before the 45/15 split. The six canonical Darwin
+meeting bodies were already verified separately. Their publication commits still need the
+same cutoff check when they are used as task evidence.
