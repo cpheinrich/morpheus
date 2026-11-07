@@ -31,6 +31,20 @@ and no project copy can drift; no skill, catalog or generated module. `check --j
 measured function row with a `targeted` flag, so before/after family metrics come from the same
 analyzer run on base and head; no compare command or path option. No dependency.
 
+**Morpheus and Lakina block on CCN > 15; cognitive complexity stays advisory** — 2026-11-06.
+MO-26-11-06-22.44.18 (Lakina: LK-26-11-06-22.47.39). After both baseline refactors merged, Chris
+authorized switching Morpheus and Lakina to `enforce`, which supersedes "Lakina and Morpheus stay
+advisory until theirs merge" in the 2026-11-05 entry below; Evo is unchanged. Each manifest states
+`ccn: 15` and `cognitiveWarn: 15` explicitly, and the pin stays b57041bf. Morpheus keeps its one
+generated `dist/**` exclude and has no exceptions. Lakina carries exactly the dispositions approved
+with its baseline (lakinacapital#630): a semantic exception at 17 for the sealed
+`strategy/weighted.py` `__post_init__`, which is never edited or resealed to meet the limit; four
+function-specific semantic exceptions for test cases retained out of scope; and exact-path excludes
+for two immutable `.agent/artifacts` records. The two artifact excludes depart from the runbook's
+"exclude is for generated and vendored code", by Chris's explicit choice for frozen records that
+can never change. No directory-wide exclude, raised limit or new waiver. The gate stays the
+existing step in the required `pr / conventions` job: no new workflow or required check.
+
 **Function complexity uses one pinned Lizard, checked first by the agent, with CI as backstop** —
 2026-11-05. MO-26-11-05-21.48.00. Chris's rollout mandate: a reusable pinned analyzer installed by
 Morpheus, targeted checks while the change is small, review integration and a CI backstop; Evo blocks

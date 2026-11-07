@@ -32,7 +32,9 @@
     "admins": []
   },
   "complexity": {
-    "mode": "advisory",
+    "mode": "enforce",
+    "ccn": 15,
+    "cognitiveWarn": 15,
     "exclude": [
       "dist/**"
     ]
