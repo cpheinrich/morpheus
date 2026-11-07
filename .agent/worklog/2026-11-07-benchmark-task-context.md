@@ -254,3 +254,14 @@ Compare meeting-wide and section tags on the same passages. Keep title, date, so
 heading in every result, with a path to the full note. Add a case that requires multiple sections
 and another that follows a decision to its implementing or verifying PR. No new meeting
 ingestion behavior, held-out run or downstream answer trial has been completed.
+
+## November 7 benchmark sample revision
+
+Chris rejected a 12-task comparison because of overfitting risk and proposed at least 40 tasks or
+60 with a 45/15 split. Use the larger option: 45 independent historical task groups for tuning and
+15 held out. Keep the original six-case diagnostic outside this comparison. Group by incident,
+request and its follow-ups before splitting. Stratify across dates and domains. Require a usable
+point-in-time source cutoff and evidence provenance. Keep holdout prompts and labels out of the
+tuning inputs, freeze the finalist before scoring, and report counts and uncertainty by task group.
+Run deterministic retrieval comparisons across all 60. Use matched GPT-6 Luna sessions for the
+downstream comparison after the settings are locked, within the authorized included quota.
