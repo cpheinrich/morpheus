@@ -267,7 +267,7 @@ Initial source review turn1 BLOCKED; substantive findings retained and author fi
   "version": 2,
   "base": "9d411f4d72db40203495cb84712984e37aa8718a",
   "reviewed": "8d8d84e462b86be06bb60379c50ba5bb90644503",
-  "covered": "8d8d84e462b86be06bb60379c50ba5bb90644503",
+  "covered": "db50869376d7c2df65152a69547259766fad45ab",
   "authorSession": "01a1b323-e075-7c32-98b9-2ce4d216f0a9",
   "reviewerSession": "01a1b353-71c1-75a3-8d49-6f1e99d273a6",
   "risk": "high",
@@ -277,8 +277,8 @@ Initial source review turn1 BLOCKED; substantive findings retained and author fi
     "durationMs": 212000,
     "evidence": "Root clock around Factory reviewer run 723e269c-0864-424b-b036-5892275dc205: start 2026-11-07 00:05:52 UTC, terminal result acquired by 2026-11-07 00:09:24 UTC."
   },
-  "outcome": "blocked",
-  "summary": "Initial source review turn1 BLOCKED; substantive findings retained and author fixes await the same reviewer turn2. No clearance or merge readiness claimed.",
+  "outcome": "complete",
+  "summary": "Initial high-risk review was blocked; same-reviewer turn2 cleared the corrected source with all substantive findings resolved. Deployment acceptance remains separate.",
   "findings": [
     {
       "id": "MORPHEUS-R1",
@@ -289,8 +289,29 @@ Initial source review turn1 BLOCKED; substantive findings retained and author fi
         "plugins/factory/src/host/reporting/tests/reporting.test.mjs"
       ],
       "disposition": "fixed",
-      "response": "Validate invocation/directory/process/result identity before terminal exclusion; contradictory live/unknown process evidence remains visible or partial. Proven historical exits and valid never-launched admissions skip process probing. Regression coverage includes desktop and unattended, foreign proof/malformed records, unknown states, preserved historical exits and no observation writes. Recorded model/effort selection is labelled in the paired consumer. Author implementation only; reviewer verification pending."
+      "response": "Validate invocation/directory/process/result identity before terminal exclusion; contradictory live/unknown process evidence remains visible or partial. Proven historical exits and valid never-launched admissions skip process probing. Regression coverage includes desktop and unattended, foreign proof/malformed records, unknown states, preserved historical exits and no observation writes. Recorded model/effort selection is labelled in the paired consumer. Same reviewer verified resolution in turn2; no new findings."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "01a1b353-71c1-75a3-8d49-6f1e99d273a6",
+      "commit": "db50869376d7c2df65152a69547259766fad45ab",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.2,
+      "timing": {
+        "source": "clock",
+        "durationMs": 72000,
+        "evidence": "Root clock around Factory follow-up d2d232bb-0701-4a58-b16d-b5719b4762b2: start 2026-11-07 00:19:39 UTC, terminal result acquired 2026-11-07 00:20:51 UTC."
+      },
+      "scopeReason": "Resolve the initial substantive findings and verify their correction regressions; no new source scope.",
+      "summary": "CLEARED follow-up turn 2, high risk, covering db50869376d7c2df65152a69547259766fad45ab. MORPHEUS-R1 (original R1) is resolved; no new findings or unresolved source-review questions. No source files changed or external actions performed."
     }
   ]
 }
 ```
+
+## Independent review turn2 — CLEARED
+
+Initial high-risk review was blocked; same-reviewer turn2 cleared the corrected source with all substantive findings resolved. Deployment acceptance remains separate.
+
+CLEARED follow-up turn 2, high risk, covering db50869376d7c2df65152a69547259766fad45ab. MORPHEUS-R1 (original R1) is resolved; no new findings or unresolved source-review questions. No source files changed or external actions performed. Measured 72000ms; elapsedMinutes 1.2. Original blocked turn1 and substantive findings remain above. Only this named worklog changes after covered source.
