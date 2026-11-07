@@ -172,6 +172,10 @@ export function claudeArgs(session, selection, permission, addDirs = []) {
     "stream-json",
     "--verbose",
     "--include-partial-messages",
+    "--settings",
+    JSON.stringify(selection.speed === "fast"
+      ? { fastMode: true, env: { CLAUDE_CODE_DISABLE_FAST_MODE: "0" } }
+      : { env: { CLAUDE_CODE_DISABLE_FAST_MODE: "1" } }),
     "--model",
     selection.model,
     "--effort",

@@ -122,17 +122,17 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"done","str
     event: "SessionStart",
     cwd: repo,
     permissionMode: "acceptEdits",
-    model: "claude-opus-5-5",
+    model: "claude-sonnet-5-5",
     effort: "high",
   });
-  const inspected = await m.dispatch("codex.inspect", { sessionId });
+  const inspected = await m.factoryInspect({ rootKind: "claude", rootId: sessionId });
   assert.equal(inspected.route.executor, "claude");
   assert.equal(inspected.route.gateway.name, "pool");
-  const started = await m.dispatch("codex.start", { sessionId, prompt: "Paint the fence" });
+  assert.deepEqual(inspected.selection, { model: "claude-opus-5-5", effort: "high", speed: "standard" });
+  const started = await m.factoryDelegate({ rootKind: "claude", rootId: sessionId, prompt: "Paint the fence" });
   assert.equal(started.executor, "claude");
   assert.equal(started.gateway, "pool");
-  // The worker inherits the session's own model, effort and permission mode, never wider.
-  assert.deepEqual(started.selection, { model: "claude-opus-5-5", effort: "high" });
+  assert.deepEqual(started.selection, inspected.selection);
   assert.equal(started.permissions, "acceptEdits");
   const asking = await settle(m, started.id, (r) => r.question || r.terminal);
   assert.equal(asking.question?.id, "q1");
@@ -150,6 +150,9 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"done","str
   const argv = (await readFile(join(root, "argv"), "utf8")).trim().split("\n");
   assert.equal(argv[argv.indexOf("--permission-mode") + 1], "acceptEdits");
   assert.equal(argv[argv.indexOf("--model") + 1], "claude-opus-5-5");
+  assert.deepEqual(JSON.parse(argv[argv.indexOf("--settings") + 1]), {
+    env: { CLAUDE_CODE_DISABLE_FAST_MODE: "1" },
+  });
   const env = await readFile(join(root, "env"), "utf8");
   assert.match(env, new RegExp(`^ANTHROPIC_BASE_URL=${BASE}$`, "m"));
   assert.match(env, /^ANTHROPIC_AUTH_TOKEN=sk-gateway-test$/m);
@@ -203,19 +206,28 @@ echo '{"type":"turn.completed","usage":{}}'
   // The coordinating Codex task: never-approve full access, so the worker gets full access.
   m.snapshot = async () => ({
     cwd: repo,
-    model: "gpt-6.1-sol",
-    reasoningEffort: "medium",
+    model: "gpt-6-luna",
+    reasoningEffort: "none",
     sandbox: { type: "dangerFullAccess" },
     approvalPolicy: "never",
   });
-  const started = await m.start({ threadId, prompt: "Generate the image" });
+  const started = await m.factoryDelegate({ rootKind: "codex", rootId: threadId, prompt: "Generate the image" });
   assert.equal(started.executor, "codex");
   assert.equal(started.gateway, "pool");
-  assert.deepEqual(started.selection, { model: "gpt-6.1-sol", effort: "medium" });
+  assert.deepEqual(started.selection, { model: "gpt-6.1-sol", effort: "low", speed: "standard" });
   const done = await settle(m, started.id);
   assert.equal(done.state, "completed");
   const argv = (await readFile(join(root, "argv"), "utf8")).trim().split("\n");
-  assert.ok(argv.includes(`model_providers.OpenAI.base_url="${BASE}/v1"`));
+  const overrides = argv.filter((_, i) => argv[i - 1] === "-c");
+  assert.deepEqual(overrides.filter((arg) => arg.startsWith("model_provider")), [
+    'model_provider="factory-gateway"',
+    'model_providers.factory-gateway.name="Factory gateway"',
+    `model_providers.factory-gateway.base_url="${BASE}/v1"`,
+    'model_providers.factory-gateway.wire_api="responses"',
+    'model_providers.factory-gateway.env_key="OPENAI_API_KEY"',
+    'model_providers.factory-gateway.requires_openai_auth=false',
+  ]);
+  assert.ok(overrides.includes('service_tier="default"'));
   assert.equal(argv[argv.indexOf("-m") + 1], "gpt-6.1-sol");
   assert.ok(argv.includes("--dangerously-bypass-approvals-and-sandbox"));
   const env = await readFile(join(root, "env"), "utf8");
@@ -234,18 +246,22 @@ echo '{"type":"turn.completed","usage":{}}'
   // An on-request task maps to a read-only sandbox: delegation never widens permissions.
   m.snapshot = async () => ({
     cwd: repo,
-    model: "gpt-6.1-sol",
+    model: "gpt-6-astra",
     reasoningEffort: "medium",
     sandbox: { type: "dangerFullAccess" },
     approvalPolicy: "on-request",
   });
-  const second = await m.start({ threadId, prompt: "Look only" });
+  const second = await m.factoryDelegate({
+    rootKind: "codex", rootId: threadId, prompt: "Look only", model: "gpt-6.1-terra", speed: "fast",
+  });
   assert.equal(second.permissions, "read-only");
   await settle(m, second.id);
   const resumed = (await readFile(join(root, "argv"), "utf8")).trim().split("\n");
   // It resumes the gateway conversation saved by the first run.
   assert.deepEqual(resumed.slice(0, 2), ["exec", "resume"]);
   assert.ok(resumed.includes("0199bbbb-cccc-7ddd-8eee-ffff00001111"));
+  assert.ok(resumed.includes('service_tier="fast"'));
+  assert.equal(resumed[resumed.indexOf("-m") + 1], "gpt-6.1-terra");
   // A question asked on another route cannot be answered on this one: a native Claude
   // worker's needs_input stays with native Claude even though the Codex gateway is chosen.
   const asked = "0199dddd-eeee-7fff-8000-111122223333";

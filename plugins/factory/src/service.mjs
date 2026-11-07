@@ -20,6 +20,9 @@ import {
   permissionMode,
   codexSelection,
   codexRootEffort,
+  codexWorkerEffort,
+  modelIdPattern,
+  MOVING_MODEL_ALIASES,
   codexPermission,
   assertPoolAuthority,
   readGatewayQuota,
@@ -79,6 +82,24 @@ export function previewSelection(config, snapshot) {
   } catch (error) {
     return { error: error.message };
   }
+}
+const DEFAULT_WORKER_MODELS = { codex: "gpt-6.1-sol", claude: "claude-opus-5-5" };
+function factoryWorkerSelection(worker, config, rootKind, rootEffort, args = {}) {
+  const model = args.model ?? DEFAULT_WORKER_MODELS[worker];
+  if (!modelIdPattern.test(model) || MOVING_MODEL_ALIASES.has(model.toLowerCase()))
+    throw new Error("Name a fixed worker model or an approved Claude family alias.");
+  const inheritedEffort = args.effort ?? rootEffort;
+  // A controller can use a model with no reasoning; the pinned Sol model starts at low.
+  const requestedEffort = model === DEFAULT_WORKER_MODELS.codex && inheritedEffort === "none"
+    ? "low"
+    : inheritedEffort;
+  const effort = worker === "claude"
+    ? config.effortMap[requestedEffort ?? "high"]
+    : rootKind === "claude"
+      ? codexWorkerEffort(config, requestedEffort)
+      : codexRootEffort(requestedEffort);
+  if (requestedEffort && !effort) throw new Error("Unsupported Factory worker effort.");
+  return { model, effort, speed: args.speed ?? "standard" };
 }
 const RECENT_RUN_LIMIT = 5;
 // The route is pinned once per root session, and so is the primary conversation's working
@@ -187,6 +208,8 @@ function continuationReplies({ previous, continuation, worker, decision, args, t
 // A Codex worker runs the coordinator's own model and effort; the sandbox follows the
 // same approval mapping, never wider (full access only for a never-approve task).
 function workerSelection(worker, config, snapshot, args) {
+  if (args.factoryDefaults)
+    return factoryWorkerSelection(worker, config, "codex", snapshot.reasoningEffort, args);
   return worker === "claude"
     ? modelSelection(config, snapshot, { model: args.model, effort: args.effort })
     : {
@@ -287,6 +310,8 @@ function claudeRootReplies(previous, args, task, config) {
 // A Claude worker inherits the session's own model, effort and permission mode, so
 // it can never be wider than the coordinator.
 function claudeRootSelection(worker, config, session, args) {
+  if (args.factoryDefaults)
+    return factoryWorkerSelection(worker, config, "claude", session.effort, args);
   return worker === "codex"
     ? codexSelection(config, session, { model: args.model, effort: args.effort })
     : {
@@ -1342,9 +1367,14 @@ export class Manager {
     throw new Error("Unknown Factory root kind.");
   }
   async factoryInspect(args) {
-    if (args.rootKind === "codex")
-      return this.inspect(args.rootId, args.provider);
-    return this.claudeInspect(args.rootId, args.provider);
+    const codex = args.rootKind === "codex";
+    const status = await (codex
+      ? this.inspect(args.rootId, args.provider)
+      : this.claudeInspect(args.rootId, args.provider));
+    const rootEffort = codex ? status.snapshot?.reasoningEffort : status.session?.effort;
+    const worker = status.route?.executor;
+    if (worker) status.selection = factoryWorkerSelection(worker, await configRead(), args.rootKind, rootEffort);
+    return status;
   }
   async factoryDelegate(args) {
     const common = {
@@ -1355,6 +1385,8 @@ export class Manager {
       operation: args.provider,
       model: args.model,
       effort: args.effort,
+      speed: args.speed,
+      factoryDefaults: true,
       background: args.background,
       fresh: args.fresh,
       replySource:
