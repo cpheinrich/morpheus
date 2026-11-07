@@ -1,16 +1,17 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { armForBucket, contextArm, parseSearchConfig, providerSessionId, traceContext } from "../src/context-search/rollout.js";
+import { searchStateDirectory, sessionEngine, setSessionEngine } from "../src/context-search/local-state.js";
 import { runnerSession, sessionTag } from "../src/session/evidence.js";
 import { projectPolicy } from "../src/session/policy.js";
 
 const cleanup: string[] = [];
 
 async function fixture(core = ".agent/core.md"): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "morpheus-rollout-test-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "morpheus-rollout-test-")));
   cleanup.push(root);
   await mkdir(join(root, ".agent"));
   await writeFile(join(root, ".agent/core.md"), "Read the release rule before shipping.");
@@ -72,18 +73,43 @@ describe("context rollout", () => {
     expect(() => parseSearchConfig({ rollout: { id: "pilot", coreInputs: ["../secret.md"] } })).toThrow("safe Markdown files");
   });
 
-  it("retains only allowlisted telemetry in private common Git storage", async () => {
+  it("retains only allowlisted telemetry in private ignored workspace storage", async () => {
     const root = await fixture();
     execFileSync("git", ["init", "-q"], { cwd: root });
+    await writeFile(join(root, ".gitignore"), "/local/\n");
     const selected = (await findArm(root, "tantivy-bounded")).selected;
     const event = { type: "query" as const, arm: selected.arm, engine: selected.engine,
       rollout: selected.id, session: selected.session, queryMs: 12, resultCount: 3,
       query: "private prompt", excerpt: "private source" };
     await traceContext(root, event, new Date("2026-11-07T12:00:00Z"));
-    const trace = JSON.parse(await readFile(join(root, ".git/morpheus-context-traces/2026-11-07.jsonl"), "utf8"));
+    const trace = JSON.parse(await readFile(join(root, "local/context-search/traces/2026-11-07.jsonl"), "utf8"));
     expect(trace).toEqual({
       version: 1, at: "2026-11-07T12:00:00.000Z", type: "query", arm: "tantivy-bounded",
       engine: "tantivy", rollout: "pilot", session: selected.session, queryMs: 12, resultCount: 3,
     });
+  });
+
+  it("pins only the named session's search and restores the assigned engine with auto", async () => {
+    const root = await fixture();
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    await writeFile(join(root, ".gitignore"), "/local/\n");
+    const full = await findArm(root, "ripgrep-full");
+    await setSessionEngine(root, full.id, "tantivy");
+    expect(await sessionEngine(root, full.id)).toBe("tantivy");
+    expect(await sessionEngine(root, "other-session")).toBeUndefined();
+    expect(await contextArm(root, full.id)).toEqual(full.selected);
+    await setSessionEngine(root, full.id, "auto");
+    expect(await sessionEngine(root, full.id)).toBeUndefined();
+  });
+
+  it("refuses storage that could be committed or leave the worktree", async () => {
+    const root = await fixture();
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    await expect(searchStateDirectory(root, "cache")).rejects.toThrow("ignored");
+    await writeFile(join(root, ".gitignore"), "/local/\n");
+    await mkdir(join(root, "local"));
+    await mkdir(join(root, "local", "context-search"));
+    await symlink(join(root, ".agent"), join(root, "local", "context-search", "cache"));
+    await expect(searchStateDirectory(root, "cache")).rejects.toThrow("inside the worktree");
   });
 });

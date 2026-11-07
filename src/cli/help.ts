@@ -105,6 +105,7 @@ Usage
   morpheus context status   what the current lease says, and how old it is
   morpheus context brief    session start: fetches trunk, updates clean trunk, identifies task
   morpheus context search <query> [--max-tokens <n>] [--session-id <id>] [--json]
+  morpheus context engine <tantivy|ripgrep|auto> [--session-id <id>]
   morpheus context coverage [--json]
   morpheus context record-read
                             the read hook: logs a tool result's record lines (stdin JSON)

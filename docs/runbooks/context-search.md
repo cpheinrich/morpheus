@@ -16,12 +16,18 @@ and explicit `coreInputs`. Add project-specific source globs under
 startup, 20% to ripgrep with bounded startup, and 20% to ripgrep with full
 decisions and lessons. A session must use the same identity in startup,
 search and freshness operations. Use the provider session ID where available.
-Projects can pin an engine with `context.search.mode`.
+Projects can pin an engine with `context.search.mode`. To explicitly use
+Tantivy for the current session and worktree, run
+`morpheus context engine tantivy`. Run `morpheus context engine auto` to
+return to the assigned engine. If the shell lacks a provider ID, pass the
+ID printed by startup with `--session-id` to both commands. A pin changes
+search, while startup requirements still follow the assigned arm. Queries
+record any override so comparisons can exclude manually selected engines.
 
 Install `tantivy==0.27.0` in a local Python environment. The command checks
 `MORPHEUS_TANTIVY_PYTHON`, then
 `~/.morpheus/tools/context-search/bin/python`, then `python3`.
-The index is disposable per-worktree state under Git metadata. Sources
+The index is disposable per-worktree state under ignored `local/context-search/cache/`. Sources
 include decisions, lessons, worklogs, roadmap and other product records,
 project instructions, runbooks and canonical meeting notes. Add custom
 locations such as `hq/research/**/*.md` to the project manifest. Run
@@ -30,8 +36,11 @@ locations such as `hq/research/**/*.md` to the project manifest. Run
 Human-facing inboxes are outside this trial. A Firebase-based system for
 asynchronous human and agent communication is in progress.
 
-Review `morpheus-context-traces/YYYY-MM-DD.jsonl` under the Git common
-directory after a few days. Traces are local and expire after 30 days.
+Review `local/context-search/traces/YYYY-MM-DD.jsonl` in each worktree.
+Older traces remain under `morpheus-context-traces/` in common Git metadata.
+New traces are local and expire after 30 days. Worktree cleanup preserves
+the ignored directory. Copy any needed traces outside the worktree before
+removing that local data.
 Startup tokens estimate the listed required reads with `o200k_base`.
 Search time includes source discovery, local engine work and excerpt packing. Compare assigned and actual
 engine, startup load, total search time and returned tokens per session.

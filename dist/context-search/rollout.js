@@ -1,11 +1,8 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readFile, readdir, realpath, rm } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import { promisify } from "node:util";
-import { gitSubprocessEnv } from "../git-env.js";
-const exec = promisify(execFile);
+import { lstat, open, readFile, readdir, realpath, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { searchStateDirectory } from "./local-state.js";
 const DAY_MS = 86_400_000;
 const TRACE_DAYS = 30;
 const DAILY_TRACE_LIMIT = 1_048_576;
@@ -128,6 +125,7 @@ function traceLine(event, now) {
     return JSON.stringify({
         version: 1, at: now.toISOString(), type: event.type, arm: event.arm, engine: event.engine,
         actualEngine: event.actualEngine === "tantivy" || event.actualEngine === "ripgrep" ? event.actualEngine : undefined,
+        overrideEngine: event.overrideEngine === "tantivy" || event.overrideEngine === "ripgrep" ? event.overrideEngine : undefined,
         session: /^[a-f0-9]{16}$/.test(event.session ?? "") ? event.session : undefined,
         rollout: /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(event.rollout ?? "") ? event.rollout : undefined,
         startup: event.startup === "bounded" || event.startup === "full" ? event.startup : undefined,
@@ -135,23 +133,14 @@ function traceLine(event, now) {
         ...safeNumbers,
     }) + "\n";
 }
-/** Keep traces in common Git metadata, so linked task worktree cleanup leaves them available. */
+/** Keep traces in ignored workspace storage writable from the agent sandbox. */
 export async function traceContext(root, event, now = new Date()) {
     try {
         if (!["assignment", "query"].includes(event.type) ||
             !["tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"].includes(event.arm) ||
             !["tantivy", "ripgrep"].includes(event.engine))
             return;
-        const { stdout } = await exec("git", ["rev-parse", "--git-common-dir"], {
-            cwd: root, env: gitSubprocessEnv(), timeout: 3_000,
-        });
-        if (!stdout.trim())
-            return;
-        const common = await realpath(resolve(root, stdout.trim()));
-        const directory = join(common, "morpheus-context-traces");
-        await mkdir(directory, { recursive: true, mode: 0o700 });
-        if (await realpath(directory) !== directory)
-            return;
+        const directory = await searchStateDirectory(root, "traces");
         await expireTrace(directory, now);
         const file = join(directory, `${now.toISOString().slice(0, 10)}.jsonl`);
         const flags = constants.O_APPEND | constants.O_CREAT | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0);

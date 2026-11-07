@@ -33,6 +33,7 @@ export interface ContextTrace {
     engine: SearchEngine;
     /** Actual engine, when different from the assigned engine. */
     actualEngine?: SearchEngine;
+    overrideEngine?: SearchEngine;
     session?: string;
     rollout?: string;
     startup?: "bounded" | "full";
@@ -46,5 +47,5 @@ export interface ContextTrace {
     returnedTokens?: number;
     budget?: number;
 }
-/** Keep traces in common Git metadata, so linked task worktree cleanup leaves them available. */
+/** Keep traces in ignored workspace storage writable from the agent sandbox. */
 export declare function traceContext(root: string, event: ContextTrace, now?: Date): Promise<void>;
