@@ -83,7 +83,7 @@ function resultFor(output) {
 
 // One supervised process owns this journal and slot. RPC deadlines and process
 // termination are the caller's responsibility. The runner never replays a spawn.
-export function createFleetRunner({ call, execute, journalPath, capacity = () => 1 }) {
+export function createFleetRunner({ call, execute, recover = async () => false, journalPath, capacity = () => 1 }) {
   if (!isAbsolute(journalPath)) throw new Error("Factory runner journal path must be absolute.");
   let busy = false;
   let stopping = false;
@@ -141,7 +141,7 @@ export function createFleetRunner({ call, execute, journalPath, capacity = () =>
   async function completeTurn(record, task) {
     const { output, stopReason } = active;
     if (output?.terminationVerified !== true)
-      return finish(record, failed, { summary: "Worker termination could not be verified." }, false);
+      return recoverTurn(record);
     if (task.cancelRequestedAt != null)
       return finish(record, canceled, { summary: "Worker stopped after cancellation." }, true);
     if (stopReason)
@@ -158,9 +158,15 @@ export function createFleetRunner({ call, execute, journalPath, capacity = () =>
     return finish(record, outcome, resultFor(output), true);
   }
 
+  async function recoverTurn(record) {
+    const proven = await recover(record.admissionId);
+    return finish(record, failed, {
+      summary: proven ? "Recovered verified worker cleanup after supervision was interrupted." : "Worker termination could not be verified.",
+    }, proven);
+  }
+
   async function driveRunning(record, task) {
-    if (!active)
-      return finish(record, failed, { summary: "Runner restarted during worker execution." }, false);
+    if (!active) return recoverTurn(record);
     if (task.cancelRequestedAt != null) abort("canceled");
     if (active.done) return completeTurn(record, task);
     return "running";
@@ -194,7 +200,7 @@ export function createFleetRunner({ call, execute, journalPath, capacity = () =>
       if (renewed?.renewed !== true) {
         abort("lost-lease");
         if (active && !active.done) return "held";
-        const proven = record.phase === "waiting" || active?.output?.terminationVerified === true;
+        const proven = record.phase === "waiting" || active?.output?.terminationVerified === true || await recover(record.admissionId);
         return finish(record, failed, { summary: "Runner lease could not be renewed." }, proven);
       }
       return record.phase === "running"

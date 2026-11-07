@@ -1,6 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
-import { initializeApp } from "firebase/app";
+import { deleteApp, initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { doc, getFirestore, onSnapshot, terminate } from "firebase/firestore";
 
@@ -16,14 +17,20 @@ export async function readFleetConfig(path) {
   }
 }
 
-export async function connectFleet(config) {
+export async function connectFleet(config, signIn = signInWithEmailAndPassword) {
   const endpoint = new URL("/v1", config.endpoint);
   if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password)
     throw new Error("Factory service must use HTTPS");
-  const app = initializeApp(config.firebase);
-  const auth = getAuth(app);
-  const { user } = await signInWithEmailAndPassword(auth, config.email, config.password);
-  const db = getFirestore(app, config.databaseId);
+  const app = initializeApp(config.firebase, randomUUID());
+  let auth, user, db;
+  try {
+    auth = getAuth(app);
+    ({ user } = await signIn(auth, config.email, config.password));
+    db = getFirestore(app, config.databaseId);
+  } catch (error) {
+    await deleteApp(app);
+    throw error;
+  }
   return {
     async call(op, body) {
       const token = await user.getIdToken();
@@ -38,8 +45,10 @@ export async function connectFleet(config) {
     },
     listen(wake, error) { return onSnapshot(doc(db, "factorySignals", user.uid), wake, error); },
     async close() {
-      await terminate(db);
-      await signOut(auth);
+      try {
+        await terminate(db);
+        await signOut(auth);
+      } finally { await deleteApp(app); }
     },
   };
 }

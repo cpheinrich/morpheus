@@ -580,3 +580,26 @@ test("worker environments drop configured secret references but keep the route's
   // The selected route set ANTHROPIC_*; a keyRef naming the same variable must not erase it.
   assert.deepEqual(env, { ANTHROPIC_BASE_URL: "http://gw", ANTHROPIC_AUTH_TOKEN: "sk-route", PATH: "bin" });
 });
+
+test("scoped Codex quota uses the read-only upstream endpoint and most depleted live window", async () => {
+  const paths = [];
+  const [row] = await readGatewayQuota([quotaGateways[1]], {
+    adminKey: "scoped-key",
+    now: quotaNow,
+    async fetchImpl(url, options) {
+      const path = new URL(url).pathname;
+      paths.push(path);
+      assert.deepEqual(options.headers, { "x-api-key": "scoped-key" });
+      assert.equal(options.redirect, "error");
+      const reset_at = quotaNow / 1000 + 900;
+      const data = path.endsWith("/admin/accounts")
+        ? { items: [{ id: 9, platform: "openai", type: "oauth", status: "active", schedulable: true, credentials: { plan_type: "pro" } }] }
+        : { rate_limit: { allowed: true, primary_window: { used_percent: 14, reset_at, limit_window_seconds: 18000 },
+          secondary_window: { used_percent: 82, reset_at, limit_window_seconds: 604800 } } };
+      return { ok: true, json: async () => ({ data }) };
+    },
+  });
+  assert.deepEqual(paths, ["/api/v1/admin/accounts", "/api/v1/admin/openai/accounts/9/quota"]);
+  assert.equal(row.usedPercent, 82);
+  assert.deepEqual(row.windows, { "5h": 14, "7d": 82 });
+});

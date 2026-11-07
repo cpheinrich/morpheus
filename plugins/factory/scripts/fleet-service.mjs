@@ -20,7 +20,7 @@ const schema = z.strictObject({
     revision: z.string().regex(/^[a-f0-9]{40}$/),
     workspaceKey: id,
     eligibleSlots: z.array(id).min(1).max(16),
-    selection: z.strictObject({ provider: z.literal("codex"), model: id }),
+    selection: z.strictObject({ provider: z.literal("codex"), gateway: id, model: id }),
   })),
 });
 

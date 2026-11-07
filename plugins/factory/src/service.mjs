@@ -10,7 +10,7 @@ import {
   open,
   chmod,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hostname } from "node:os";
 import {
@@ -426,6 +426,7 @@ const BRIDGE_OPERATIONS = new Map([
   ["view", (m, args) => m.viewer.open(args.runId)],
   ["ping", () => ({ ready: true, installationId })],
   ["shutdown", (m) => m.shutdown()],
+  ["factory.remoteAuthorize", (m, args) => m.factoryRemoteAuthorize(args)],
   ["factory.inspect", (m, args) => m.factoryInspect(args)],
   ["factory.delegate", (m, args) => m.factoryDelegate(args)],
   ["factory.status", (m, args) => m.factoryRun(args)],
@@ -1374,6 +1375,17 @@ export class Manager {
     if (rootKind === "codex") return rootId;
     if (rootKind === "claude") return claudeTaskId(rootId);
     throw new Error("Unknown Factory root kind.");
+  }
+  async factoryRemoteAuthorize({ rootId, projectPath }) {
+    if (!isAbsolute(projectPath ?? "")) throw new Error("Remote Factory project is not enrolled locally.");
+    const snapshot = await this.snapshot(rootId);
+    if (permissionMode(snapshot) !== "bypassPermissions")
+      throw new Error("This Codex root cannot authorize Studio workspace writes.");
+    const target = await projectIdentity(projectPath);
+    const root = await projectIdentity(snapshot.cwd);
+    const task = await taskRead(rootId);
+    await this.assertStillEnabled({ ...task, id: rootId, project: root.project }, { map: { [target.project]: true } });
+    return { authorized: true };
   }
   async factoryInspect(args) {
     const codex = args.rootKind === "codex";

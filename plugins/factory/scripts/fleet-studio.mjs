@@ -1,6 +1,7 @@
 import { freemem } from "node:os";
 import { connectFleet, readFleetConfig } from "../src/fleet-client.mjs";
 import { createStudioExecutor } from "../src/fleet-execution.mjs";
+import { createFleetQuota } from "../src/fleet-quota.mjs";
 import { createFleetRunner } from "../src/fleet-runner.mjs";
 
 try {
@@ -8,9 +9,11 @@ try {
   if (!path) throw new Error("Usage: node scripts/fleet-studio.mjs CONFIG");
   const config = await readFleetConfig(path);
   const client = await connectFleet(config);
+  const checkQuota = createFleetQuota(config.quota);
+  const execution = { ...config.execution, gatewayBaseUrl: config.quota.baseUrl };
   const runner = createFleetRunner({
     call: client.call,
-    execute: createStudioExecutor(config.execution, client.call),
+    ...createStudioExecutor(execution, client.call, checkQuota),
     journalPath: config.journalPath,
     // Rank only fresh, eligible hosts. Keep a small memory reserve on each Mac.
     capacity: () => Math.max(0, Math.floor(freemem() / (1024 * 1024)) - 4096),

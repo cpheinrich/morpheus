@@ -140,6 +140,11 @@ async function finishAttempt(db, binding, task, objects) {
   return { settled: await settleAttempt(db, { ...binding, result }) };
 }
 
+async function withAnswer(db, task) {
+  const answer = task.answerId ? (await messageRef(db, task.id, task.answerId).get()).data() : null;
+  return { task, answer };
+}
+
 async function handleWorker(op, input, { db, principal, objects, now, config, log }) {
   const { hostId, slotId } = principal;
   if (op === "heartbeat") return heartbeat(db, principal, input, now);
@@ -152,10 +157,7 @@ async function handleWorker(op, input, { db, principal, objects, now, config, lo
   }
   const task = await loadTask(db, input.taskId, (task) => owns(task) ||
     ((op === "finish" || op === "inspect") && attemptOwner(task.lastAttempt, binding)));
-  if (op === "inspect") {
-    const answer = task.answerId ? (await messageRef(db, task.id, task.answerId).get()).data() : null;
-    return { task, answer };
-  }
+  if (op === "inspect") return withAnswer(db, task);
   if (op === "renew") return { renewed: await renewAttempt(db, binding) };
   if (op === "upload") {
     if (task.cancelRequestedAt != null || task.attempt.leaseUntil <= now) throw failure(409, "Factory attempt cannot publish artifacts");

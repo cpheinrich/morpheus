@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { gatewayWorker, readWorkerConfig } from "../src/gateway-worker.mjs";
+import { gatewayWorker, readWorkerConfig, workerResult } from "../src/gateway-worker.mjs";
 import { readArtifactFiles } from "../src/fleet-artifacts.mjs";
 
 const [configPath, project] = process.argv.slice(2);
@@ -13,11 +13,12 @@ const controller = new AbortController();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const lines = input[Symbol.asyncIterator]();
 
-async function prepare({ task, admissionId, resume, prompt }) {
+async function prepare({ task, admissionId, resume, prompt, gatewayBaseUrl }) {
   const config = await readWorkerConfig(configPath);
   const git = (...args) => execFileSync("git", ["-C", config.cwd, ...args], { encoding: "utf8", timeout: 5000 }).trim();
   if (task.source.project !== project || task.source.revision !== git("rev-parse", "HEAD") ||
       task.selection.provider !== "codex" || task.selection.model !== config.model ||
+      task.selection.gateway !== config.gateway.name || gatewayBaseUrl?.replace(/\/+$/, "") !== config.gateway.baseUrl ||
       config.sandbox !== "workspace-write" || !uuid.test(admissionId))
     throw new Error("Studio checkout or gateway model does not match this enrollment");
   if (!resume && git("status", "--porcelain")) throw new Error("Studio pilot checkout is dirty");
@@ -50,11 +51,26 @@ async function execute(job) {
   return { terminationVerified: outcome.terminationVerified, sessionId: outcome.sessionId, result: outcome.result };
 }
 
+function admissionEnvelope(value) {
+  if (!value || Buffer.byteLength(value) > 512 * 1024) return null;
+  try { return JSON.parse(value); }
+  catch { return null; }
+}
+
+async function dispatch(value) {
+  const job = admissionEnvelope(value);
+  if (!job) return { terminationVerified: true, result: { outcome: "failed", summary: "Invalid Studio admission envelope." } };
+  if (job.op === "recover") {
+    const prior = await workerResult(job.admissionId);
+    return { terminationVerified: prior.terminationVerified, admissionId: prior.admissionId };
+  }
+  return execute(job);
+}
+
 try {
   const { value } = await lines.next();
-  if (!value || Buffer.byteLength(value) > 512 * 1024) throw new Error("Missing or oversized Studio admission");
   void lines.next().then(() => controller.abort(), () => controller.abort());
-  console.log(JSON.stringify({ outcome: await execute(JSON.parse(value)) }));
+  console.log(JSON.stringify({ outcome: await dispatch(value) }));
 } catch {
   console.log(JSON.stringify({ outcome: { terminationVerified: false, result: { outcome: "failed", summary: "Studio executor could not prove completion." } } }));
 } finally {

@@ -20,21 +20,11 @@ the task, slot and writable workspace. An expired lease does not release ownersh
 attempt uses the indeterminate state and needs evidence of cleanup. The default pilot route
 keeps each continuation on its claimed host. Commands address the exact attempt and question.
 
-```mermaid
-flowchart LR
-  C[Existing desktop MCP tools] --> T[Task operations]
-  T --> L[Local bridge]
-  T --> F[Private Firestore task and mailbox]
-  F -->|Outbound watch| R[Enrolled runner]
-  R --> G[Existing gateway and guardian]
-  R -->|Selected files only| A[Private object storage]
-  A -->|Authorized retrieval| C
-```
-
-The local task projection, mailbox transactions, claims, and artifact staging have source
-coverage. Remote activation also needs enrolled runner and controller identities, scoped
-watches, authenticated mutation endpoints, and an end-to-end runner. The observer's dashboard
-credentials do not grant those capabilities. Use the loopback emulator for source checks.
+The [pilot diagram](../../../README.md#authenticated-studio-pilot) shows how both hosts
+reach the authenticated service and receive private Firestore wake signals.
+The service owns the task, mailbox, and artifact operations. Deployment requires
+enrolled identities. The observer's dashboard credentials do not grant those capabilities.
+Use the loopback emulator for source checks.
 
 The cutover lets active local runs finish, retains the previous installed build, and checks a
 local delegation before enabling one remote slot. Final acceptance requires a real controller

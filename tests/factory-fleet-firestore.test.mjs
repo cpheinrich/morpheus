@@ -151,7 +151,7 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
     },
     projects: { pilot: {
       workspaceKey: "pilot-workspace", eligibleSlots: ["studio"], revision,
-      selection: { provider: "codex", model: "gpt-fixture" },
+      selection: { provider: "codex", gateway: "fixture-gateway", model: "gpt-fixture" },
     } },
   };
   const server = createServer(createFleetApi({

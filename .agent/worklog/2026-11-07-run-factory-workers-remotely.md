@@ -53,3 +53,11 @@ and generation-bound download using a storage fixture. Typecheck, compile,
 project index, package syntax and complexity gates passed. Cloud Run, the
 real storage adapter and a provider-backed Studio run remain deployment
 acceptance steps.
+
+Independent review found shared Firebase client teardown, missing cleanup-proof
+recovery, missing quota and desktop authority checks, and an oversized Studio
+envelope. The follow-up isolates Firebase client lifetimes, reads durable
+guardian proof without spawning, applies the existing root permissions and
+disable rules, and sends only the active prompt and launch binding. The Studio
+supervisor uses Sub2API's scoped account and quota reads, including both live
+Codex windows, before launch. The inference key remains separate.

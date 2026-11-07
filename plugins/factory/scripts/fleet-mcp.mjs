@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { delegatedMarker, home } from "../src/config.mjs";
+import { call } from "../src/client.mjs";
 import { codexRootId } from "./codex-root.mjs";
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -32,6 +33,11 @@ export function registerFleetTool(server) {
       try {
         const { op, ...input } = operation;
         const body = { ...input, rootId };
+        if (op === "submit" || op === "answer") {
+          const project = op === "submit" ? input.project : (await client.call("get", { rootId, taskId: input.taskId })).task.source.project;
+          const projectPath = config.projects?.[project];
+          await call("factory.remoteAuthorize", { rootId, projectPath });
+        }
         let result = op === "wait" ? await waitForFleetTask(client, body) : await client.call(op, body);
         if (op === "download") {
           const directory = join(home(), "fleet-downloads");

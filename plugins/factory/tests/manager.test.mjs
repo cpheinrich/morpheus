@@ -335,3 +335,46 @@ test("inspect previews an unmapped model's fallback, and a launch carries it wit
     /modelFallback is disabled/,
   );
 });
+
+test("remote Studio writes require verified current permissions and enabled root and target", async (t) => {
+  const { execFileSync } = await import("node:child_process");
+  const { mkdir } = await import("node:fs/promises");
+  const { projectIdentity } = await import("../src/store.mjs");
+  const directory = await mkdtemp(join(tmpdir(), "factory-remote-authority-"));
+  const previous = process.env.FACTORY_HOME;
+  process.env.FACTORY_HOME = join(directory, "factory");
+  t.after(async () => {
+    if (previous === undefined) delete process.env.FACTORY_HOME;
+    else process.env.FACTORY_HOME = previous;
+    await rm(directory, { recursive: true, force: true });
+  });
+  const cwd = join(directory, "root");
+  const projectPath = join(directory, "target");
+  for (const path of [cwd, projectPath]) {
+    await mkdir(path);
+    execFileSync("git", ["init", "-q", path]);
+  }
+  const rootId = randomUUID();
+  const manager = new Manager();
+  const sandbox = { type: "dangerFullAccess" };
+  const args = { rootId, projectPath };
+  const config = { ...defaults(), mode: "manual" };
+  await configWrite(config);
+  manager.snapshot = async (id) => {
+    assert.equal(id, rootId);
+    return { cwd, sandbox, approvalPolicy: "on-request" };
+  };
+  await assert.rejects(manager.factoryRemoteAuthorize(args), /cannot authorize Studio workspace writes/);
+  manager.snapshot = async () => ({ cwd, sandbox, approvalPolicy: "never" });
+  assert.deepEqual(await manager.factoryRemoteAuthorize(args), { authorized: true });
+  await configWrite({ ...config, mode: "off" });
+  await assert.rejects(manager.factoryRemoteAuthorize(args), /disabled for this task/);
+  for (const path of [cwd, projectPath]) {
+    const { project } = await projectIdentity(path);
+    await configWrite({ ...config, projects: { [project]: "off" } });
+    await assert.rejects(manager.factoryRemoteAuthorize(args), /disabled for repository/);
+  }
+  await configWrite(config);
+  await taskWrite({ ...await taskRead(rootId), id: rootId, disabled: true });
+  await assert.rejects(manager.factoryRemoteAuthorize(args), /disabled for this task/);
+});

@@ -47,30 +47,55 @@ async function publish(call, { artifacts, outcome }, task, signal) {
   return { ...outcome, result: { ...outcome.result, artifacts: names } };
 }
 
-export function createStudioExecutor(config, call) {
+function startExecutor(config) {
+  return spawn("/usr/bin/sudo", [
+    "-n", "-H", "-u", config.account, "--", config.node, config.script, config.workerConfig, config.project,
+  ], {
+    env: { PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin", LANG: "en_US.UTF-8" },
+    stdio: ["pipe", "pipe", "ignore"],
+  });
+}
+
+async function invoke(config, input, signal) {
+  const child = startExecutor(config);
+  child.stdin.on("error", () => {});
+  const exited = once(child, "close").catch(() => [-1]);
+  const stop = () => { if (!child.stdin.writableEnded) child.stdin.end("stop\n"); };
+  child.stdin.write(JSON.stringify(input) + "\n");
+  signal?.addEventListener("abort", stop, { once: true });
+  if (signal?.aborted) stop();
+  try {
+    const [[code], output] = await Promise.all([exited, readExecution(child.stdout, stop)]);
+    if (code === 0 && !output.invalid) return output;
+    return null;
+  } finally {
+    signal?.removeEventListener("abort", stop);
+    child.stdin.destroy();
+  }
+}
+
+export function createStudioExecutor(config, call, checkQuota) {
   if (!validExecution(config)) throw new Error("Invalid Studio execution configuration");
-  return async function execute({ task, admissionId, resume, prompt, signal }) {
-    if (signal.aborted) return noLaunch();
-    const child = spawn("/usr/bin/sudo", [
-      "-n", "-H", "-u", config.account, "--", config.node, config.script, config.workerConfig, config.project,
-    ], {
-      env: { PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin", LANG: "en_US.UTF-8" },
-      stdio: ["pipe", "pipe", "ignore"],
-    });
-    child.stdin.on("error", () => {});
-    const exited = once(child, "close").catch(() => [-1]);
-    const stop = () => { if (!child.stdin.writableEnded) child.stdin.end("stop\n"); };
-    child.stdin.write(JSON.stringify({ task, admissionId, resume, prompt }) + "\n");
-    signal.addEventListener("abort", stop, { once: true });
-    if (signal.aborted) stop();
-    try {
-      const [[code], output] = await Promise.all([exited, readExecution(child.stdout, stop)]);
-      if (code !== 0 || output.invalid || output.outcome?.terminationVerified !== true)
-        return { terminationVerified: false };
-      return await publish(call, output, task, signal);
-    } finally {
-      signal.removeEventListener("abort", stop);
-      child.stdin.destroy();
-    }
+  return {
+    async execute({ task, admissionId, resume, prompt, signal }) {
+      if (signal.aborted) return noLaunch();
+      try {
+        await checkQuota(task.selection);
+      } catch {
+        return { terminationVerified: true, result: { outcome: "failed", summary: "Studio gateway quota is unavailable or above the Factory limit." } };
+      }
+      if (signal.aborted) return noLaunch();
+      // Do not serialize the retained brief or mailbox with the current prompt.
+      const output = await invoke(config, {
+        task: { source: task.source, selection: task.selection }, admissionId, resume, prompt,
+        gatewayBaseUrl: config.gatewayBaseUrl,
+      }, signal);
+      if (output?.outcome?.terminationVerified !== true) return { terminationVerified: false };
+      return publish(call, output, task, signal);
+    },
+    async recover(admissionId) {
+      const output = await invoke(config, { op: "recover", admissionId });
+      return output?.outcome?.admissionId === admissionId && output.outcome.terminationVerified === true;
+    },
   };
 }

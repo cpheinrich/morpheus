@@ -199,3 +199,23 @@ test("lease loss aborts execution and prevents publishing even a later verified 
   assert.deepEqual(calls.at(-1)[1].result, { summary: "Runner lease could not be renewed." });
   assert.equal(calls.at(-1)[1].outcome, "TASK_STATE_FAILED");
 });
+
+test("restart settles the exact admission once its cleanup is proven without executing again", async (t) => {
+  const { options, task, executions, calls } = await fixture(t);
+  task.attempt = { id: attemptId };
+  task.state = working;
+  await writeFile(options.journalPath, JSON.stringify({
+    version: 1, taskId, attemptId, phase: "running", admissionId,
+  }), { mode: 0o600 });
+  let verified = false;
+  const reads = [];
+  const runner = createFleetRunner({ ...options, recover: async (id) => { reads.push(id); return verified; } });
+  assert.equal(await runner.tick(), "held");
+  assert.equal(task.state, uncertain);
+  verified = true;
+  assert.equal(await runner.tick(), "settled");
+  assert.deepEqual(reads, [admissionId, admissionId]);
+  assert.deepEqual(executions, []);
+  assert.deepEqual(calls.filter(([op]) => op === "finish").map(([, body]) => body.cleanupVerified), [false, true]);
+  await assert.rejects(readFile(options.journalPath), { code: "ENOENT" });
+});

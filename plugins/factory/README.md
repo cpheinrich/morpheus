@@ -944,7 +944,7 @@ flowchart LR
          "revision": "0123456789abcdef0123456789abcdef01234567",
          "workspaceKey": "studio-fixture",
          "eligibleSlots": ["studio"],
-         "selection": { "provider": "codex", "model": "enrolled-model" }
+         "selection": { "provider": "codex", "gateway": "studio-codex", "model": "enrolled-model" }
        }
      }
    }
@@ -962,9 +962,10 @@ flowchart LR
 - On the Pro, place `fleet-controller.json` in the owner-only Factory home.
   It contains `endpoint` (Cloud Run HTTPS URL), `databaseId`, `firebase`
   (the Firebase web app's public SDK configuration), and the separate
-  controller `email` and `password`. Use mode `0600`. Install the updated
-  plugin for `factory_remote`; for a controlled smoke check the same client
-  is available as `node scripts/fleet-controller.mjs CONFIG OP BODY_JSON_FILE [ARTIFACT_OUTPUT]`.
+  controller `email` and `password`. Set `projects` to a map of enrolled
+  project IDs to absolute local repository paths. Use mode `0600`. Install
+  and enable the updated plugin for `factory_remote`. Submissions and answers
+  require a currently authorized root and an enabled target repository.
 - On Studio, use separate unprivileged supervisor and execution accounts.
   Install Node, this plugin with `pnpm install --frozen-lockfile`, and all
   executable files on the supervisor-to-worker command path in a location
@@ -975,7 +976,12 @@ flowchart LR
   its system path. Use the existing gateway worker config format and a
   Studio-only Codex gateway credential reference in the execution account.
 - The Studio supervisor config uses the same connection fields as the Pro,
-  with Studio credentials, and adds an absolute `journalPath` in its own
+  with Studio credentials, and a `quota` object with the enrolled gateway
+  `name`, `baseUrl`, Factory `threshold`, and a private `keyRef` to a
+  Sub2API key scoped to `accounts.read`, `accounts.identity.read`, and `openai.quota.read` for the
+  enrolled Codex OAuth group. The supervisor checks fresh quota before each
+  invocation. The execution account receives only the separate inference
+  key. Also set an absolute `journalPath` in the supervisor's
   mode `0700` directory and an `execution` object. The latter provides
   `account` (execution username), `node`, `script` (absolute
   `scripts/fleet-executor.mjs` path), `workerConfig` (absolute owner-only
@@ -994,6 +1000,8 @@ flowchart LR
 
 If a supervisor restarts after recording a launch and before seeing cleanup,
 the attempt remains held. Reconcile the exact admission with the gateway
-worker's `--status` or `--reconcile` evidence before operator intervention.
+worker's `--status` or `--reconcile`. The runner will observe the verified
+proof for that same admission, fail the interrupted task, and release its slot
+without replaying the model.
 The pilot uses an enrolled Codex model and a single Studio slot. Firestore
 coordinates placement, and Sub2API retains account routing behind its gateway.
