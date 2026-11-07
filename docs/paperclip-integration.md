@@ -1,5 +1,8 @@
 # Explicit Morpheus / Paperclip execution linkage
 
+> **Retired historical design.** Paperclip execution has been removed. Commands and deployment
+> procedures below are archival, not supported operations. See [retirement](paperclip-overview.md).
+
 This opt-in bridge links one Git roadmap item to any number of Paperclip execution
 jobs. Git owns intent, source and acceptance references, final issue IDs and verified
 evidence. Paperclip owns live task/run status, scheduling and its dashboard. A `done`

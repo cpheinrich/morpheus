@@ -1,6 +1,6 @@
 # Versioned Paperclip conversation closeouts
 
-This optional operator prototype turns an explicitly frozen conversation input into
+This offline archive tool, retained after Paperclip execution retirement, turns an explicitly frozen conversation input into
 an immutable Git-reviewable snapshot. It does not replace Markdown inboxes or PM,
 connect to Paperclip, change upstream status, commit files, or establish completion.
 Review and commit its output through the ordinary claimed-task PR. An optional

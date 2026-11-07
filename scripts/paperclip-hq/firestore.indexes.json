@@ -1,1 +1,0 @@
-{ "indexes": [{ "collectionGroup": "commands", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "state", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "ASCENDING" }] }], "fieldOverrides": [] }

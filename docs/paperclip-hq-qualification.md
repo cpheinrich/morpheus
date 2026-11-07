@@ -1,5 +1,8 @@
 # Controlled HQ transport qualification
 
+> **Retired historical design.** Paperclip execution has been removed. Commands and deployment
+> procedures below are archival, not supported operations. See [retirement](paperclip-overview.md).
+
 This is an opt-in test identity on the dedicated Firebase demo emulators, joined to
 the existing single-company Manager-owned Pool and its existing Paperclip process
 agents. It does not deploy Firebase, grant production roles, enroll another company,
