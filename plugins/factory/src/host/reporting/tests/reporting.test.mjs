@@ -13,7 +13,7 @@ import { parseReport, freshness } from '../protocol.mjs';
 import { installReporter } from '../install.mjs';
 import { privateConfig } from '../files.mjs';
 import { machine, dispatcher, persistentRunners } from '../sources.mjs';
-const uuid='00000000-0000-4000-8000-000000000001';
+const uuid='11111111-2222-4444-8888-555555555555';
 const at='2026-11-06T23:00:00.000Z';
 const binding={id:'gateway-a-2',instanceId:'gateway-a',accountId:2,provider:'codex',baseUrl:'https://gateway.example'};
 const baseConfig={version:1,hostId:'host-a',endpoint:'https://hq.example/api/infra/ingest',tokenEnv:'INFRA_TOKEN',projectPaths:{},routeAccounts:{},sources:[{id:'machine',kind:'machine'}]};
@@ -116,7 +116,7 @@ test('installer dry-run, actual isolated package import, unloaded-only install a
 test('configuration refuses credential-shaped inline fields and service source project roots are explicit',()=>{
  assert.equal(configSchema.safeParse(baseConfig).success,true);
  assert.equal(configSchema.safeParse({...baseConfig,token:'PRIVATE'}).success,false);
- assert.equal(configSchema.safeParse({...baseConfig,endpoint:'https://user:secret@hq.example/'}).success,false);
+ assert.equal(configSchema.safeParse({...baseConfig,endpoint:'https://user:secret@example.test/'}).success,false);
 });
 test('reporting configuration cannot be tracked in Git or reached through a file symlink',async t=>{
  const root=await temp(t);const config=join(root,'config.json');await put(config,baseConfig);

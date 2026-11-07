@@ -239,3 +239,9 @@ Draft PR https://github.com/cpheinrich/morpheus/pull/637 contains implementation
 absent agent-reviewed label; independent review has not occurred. Auto-merge is off. Paired
 consumer draft https://github.com/darwin-health/darwin/pull/144. Review packets are generated
 after this final records commit; the controller owns fresh reviewers and supervised rollout.
+
+CI caught the public-fixture privacy guard rejecting an invented UUID and credential-shaped URL
+test string. Replaced with its supported repeated-group synthetic UUID (still valid v4) and
+reserved example.test hostname; no guard exception or production behavior changed. Focused
+test_public_fixtures.py (3 tests) and reporter suite (12 tests) pass after the correction.
+Darwin CI green at1c0a275 (5/5). Refreshed reporter review packet follows this correction commit.
