@@ -391,12 +391,20 @@ async function dispatchTeam({ command }) {
     console.error(`Unknown team command "${command ?? ""}".\n\n${HELP}`);
     return 1;
 }
-async function dispatchContext({ flags, command }) {
+async function dispatchContext({ flags, command, rest }) {
     // `--offline` reaches these the way it reaches `doctor`: each consults a
     // remote, and on an unreachable one the declaration already answers the
     // question. `brief` also checks the installed CLI and is
     // a preparation step that fails visibly if current source cannot be obtained.
     const off = offlineDeclared(flags.offline);
+    if (command === "search" || command === "coverage") {
+        const search = await import("./context-search.js");
+        if (command === "coverage")
+            return search.runContextCoverage(process.cwd(), flags.json);
+        return search.runContextSearch(process.cwd(), rest.join(" "), {
+            json: flags.json, maxTokens: flags.maxTokens, sessionId: flags.sessionId,
+        });
+    }
     if (command === "refresh")
         return contextRefresh(process.cwd(), off);
     // The PostToolUse read hook. `index.ts` routes it before loading the CLI;

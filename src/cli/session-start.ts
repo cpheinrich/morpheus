@@ -2,6 +2,8 @@ import { endTerm } from "../session/context.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
 import { boundTask, bindTask } from "../session/tasks.js";
 import { join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { providerSessionId, traceContext, type ContextArm } from "../context-search/rollout.js";
 import { prepareRepository, parseSessionInput, sessionGit, type SessionStartInput } from "../session/start.js";
 import { projectPolicy } from "../session/policy.js";
 import { CANONICAL_INPUTS } from "../session/lease.js";
@@ -56,35 +58,56 @@ async function reportTask(prepared: Prepared, binding: Awaited<ReturnType<typeof
   }
 }
 
+async function printRollout(root: string, paths: readonly string[], arm: ContextArm, id?: string): Promise<void> {
+  if (arm.unavailable) console.log(`! ${arm.unavailable}`);
+  if (!arm.id) return;
+  console.log(`Context search rollout ${arm.id}: ${arm.arm}; engine ${arm.engine}.`);
+  console.log("Use this session's required records listed here as the startup set, then run `morpheus context search <query>` once the task is known.");
+  console.log("Use 1,000 returned tokens for a focused lookup, or up to 2,500 when several sources are needed.");
+  if (id && id !== providerSessionId()) {
+    const quoted = "'" + id.replaceAll("'", "'\\''") + "'";
+    console.log(`Provider session ID is not available in this shell. Prefix Morpheus commands in this session with MORPHEUS_CONTEXT_SESSION_ID=${quoted} to retain its assignment and receipt.`);
+  }
+  const contents = await Promise.all(paths.map(path => readFile(join(root, path), "utf8"))).catch(() => undefined);
+  const startupBytes = contents?.reduce((total, content) => total + Buffer.byteLength(content), 0);
+  const { countContextTokens } = await import("../context-search/engine.js");
+  const startupTokens = contents?.reduce((total, content) => total + countContextTokens(content), 0);
+  await traceContext(root, { type: "assignment", arm: arm.arm, engine: arm.engine,
+    session: arm.session, rollout: arm.id, startup: arm.startup, startupBytes, startupTokens });
+}
+
 /** Trunk lag, the records to read from this checkout, and how to keep the session's task association. */
-async function printReadInstructions(prepared: Prepared, sessionId: string | undefined): Promise<void> {
+async function printReadInstructions(prepared: Prepared, sessionId: string | undefined): Promise<boolean> {
   if (prepared.behind) {
     for (const line of formatLag(prepared.lag, prepared.trunk, new Date())) console.log(line);
     console.log(`Existing edits were preserved. Integrate trunk explicitly before certifying context; inspect latest source with git show ${prepared.sha}:<path>.`);
   }
   console.log("Use this absolute directory for subsequent commands. A hook cannot change its parent agent's working directory.");
   console.log("Read AGENTS.md and required context records from the chosen checkout:");
-  const policy = await projectPolicy(prepared.root);
-  for (const path of policy.requiredInputs ?? CANONICAL_INPUTS) console.log(`  ${join(prepared.root, path)}`);
+  const policy = await projectPolicy(prepared.root, sessionId);
+  const paths = policy.requiredInputs ?? CANONICAL_INPUTS;
+  for (const path of paths) console.log(`  ${join(prepared.root, path)}`);
+  if (policy.rollout) await printRollout(prepared.root, paths, policy.rollout, sessionId);
   if (sessionId) console.log(`To retain this session's task association, pass --session-id ${"'" + sessionId.replaceAll("'", "'\\''") + "'"} to pm claim or pm resume (Codex also supplies CODEX_THREAD_ID automatically).`);
   console.log("Then run morpheus context refresh there. No receipt is issued by startup.");
+  return policy.rollout?.id !== undefined;
 }
 
 export async function startSession(root: string, input: SessionStartInput, opts: BriefOptions = {}): Promise<number> {
   try {
     // Even a failed fetch must not leave another session's receipt usable.
-    await endTerm(root);
+    await endTerm(root, input.sessionId);
     const binding = await boundTask(root, input.sessionId);
     const here = roadmapIdFromBranch(await sessionGit(root, ["rev-parse", "--abbrev-ref", "HEAD"]));
     if (binding && here && here !== binding.task) throw new Error(`This checkout is task ${here}, but the session is associated with ${binding.task}. Use pm resume <ID> to choose explicitly.`);
-    if (binding && binding.root !== root) await endTerm(binding.root);
+    if (binding && binding.root !== root) await endTerm(binding.root, input.sessionId);
     const prepared = await prepareRepository(binding?.root ?? root, opts.offline, opts.rescue ?? {});
     printPreparation(prepared);
     console.log(`WORK IN: ${prepared.root}`);
     await reportTask(prepared, binding, input.sessionId);
-    await printReadInstructions(prepared, input.sessionId);
+    const rollout = await printReadInstructions(prepared, input.sessionId);
     console.log("");
-    return await brief(prepared.root, opts);
+    return await brief(prepared.root, { ...opts, startup: { sessionId: input.sessionId, rollout } });
   } catch (error) {
     console.error(`SESSION START BLOCKED: ${error instanceof Error ? error.message : String(error)}`);
     console.error("Do not start new work in the old checkout or claim that current code was loaded. Repair startup and retry.");

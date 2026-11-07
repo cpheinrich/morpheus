@@ -41,6 +41,9 @@ export function runnerSession(env = process.env) {
     const codex = env["CODEX_THREAD_ID"];
     if (codex)
         return { provider: "codex", tag: sessionTag(codex) };
+    const explicit = env["MORPHEUS_CONTEXT_SESSION_ID"];
+    if (explicit)
+        return { provider: env["CLAUDECODE"] === "1" ? "claude" : "codex", tag: sessionTag(explicit) };
     return null;
 }
 /** A record's lines as an editor numbers them: a trailing newline ends the last line. */

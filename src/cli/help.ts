@@ -104,6 +104,8 @@ Usage
   morpheus context check    exit non-zero unless context is fresh; for hooks and scripts
   morpheus context status   what the current lease says, and how old it is
   morpheus context brief    session start: fetches trunk, updates clean trunk, identifies task
+  morpheus context search <query> [--max-tokens <n>] [--session-id <id>] [--json]
+  morpheus context coverage [--json]
   morpheus context record-read
                             the read hook: logs a tool result's record lines (stdin JSON)
   morpheus context install  [--check] [--handle <github-handle>]

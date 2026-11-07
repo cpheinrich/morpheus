@@ -1658,6 +1658,8 @@ checked-out task, and do not run concurrent authors in one worktree.
 
 **Read \`AGENTS.md\` (an injected copy leaves no read evidence), \`.agent/decisions.md\`,
 \`.agent/learned.md\` and your inbox once at session start, then run \`morpheus context refresh\` once.**
+If startup prints a context-search rollout arm, its required-record list takes precedence. Use
+\`morpheus context search <query>\` once the task is known and open cited records as needed.
 Then just run the gated command — \`pm claim\`, \`pm new\`, \`pm link-issue\`, \`pm block\`,
 \`access sync\`, \`firebase auth setup\`, \`web init\` (provisioning); past five minutes the gate
 re-checks by itself. **Refresh again only when a gated command refuses.**

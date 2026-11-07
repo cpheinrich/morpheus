@@ -909,6 +909,21 @@ checked against reality and killed rather than built.
 
 ### 7.10 Context freshness
 
+A project can opt into the local context search pilot in `morpheus.json` with
+`context.search.rollout`. A stable hash of experiment and provider session IDs assigns
+60% to bounded startup with Tantivy, 20% to bounded startup with ripgrep, and 20% to
+full decisions and lessons with ripgrep. The trial omits human inboxes from all arms.
+Project instructions and configured mandatory records still govern. The required reads
+come from the selected checkout, and a bounded startup receipt is scoped to that provider
+session and worktree. Search excerpts are discovery aids and do not certify reads.
+
+Search covers the manifest's project context plus default records, roadmaps, runbooks and
+meeting notes. Tantivy indexes overlapping 16-line Markdown windows beginning every two
+lines. Cache files live under the worktree's Git metadata, keyed by the current source contents.
+Fallbacks to ripgrep are surfaced and traced. Traces live in common Git metadata so task
+worktree removal does not erase the trial record. See [the trial runbook](docs/runbooks/context-search.md).
+
+
 Everything above assumes an agent has read the records. Nothing made it prove that. A session can
 start without loading `decisions.md`, and a session that *did* load it six hours ago can keep
 working through changes another agent has since pushed — with a claim, a plan, and a draft PR all

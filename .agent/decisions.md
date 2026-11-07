@@ -2565,3 +2565,26 @@ systeminformation cover the package boundary and hardware. No new production dep
 scheduler or control framework is required. A separate optional org-runner credential is scoped
 to enrolled identities. It does not replace repository credentials. Owner dispatcher inventory
 adds observations while preserving required state publication and existing Linux lifecycle.
+
+## Compare bounded startup and Tantivy on real tasks — 2026-11-07
+
+Use a temporary 60/20/20 context rollout. Assign top-level sessions once to
+bounded startup with Tantivy, bounded startup with ripgrep, or full decisions
+and lessons with ripgrep. Omit the human inbox from the trial. Asynchronous
+human–agent communication is moving to Firebase, with Firestore as the system
+of record. The replacement is in progress.
+
+The frozen comparison covered 498 queries, including 257 descriptive queries
+across 249 evidence groups. At 1,000 and 2,500 returned tokens, bounded ripgrep
+had 72.7% and 79.5% descriptive recall at 84.4 and 121.0 ms mean query time.
+Tantivy with 16-line windows and stride 2 reached 87.6% and 90.4% at 10.2 and
+15.0 ms. In the paired Tantivy run it returned about 310 fewer tokens at the
+larger cap than stride 4. Those measurements used a resident worker and mostly
+work-log lookups. CLI startup, whole-task success and the cost of follow-ups
+need measurement under normal use.
+
+Use the same search source scope, citation format and return budget guidance in
+all arms. The required core remains a declared set of source files. A search
+cache or query result cannot certify that a session read its core. Retain
+only bounded local timing and token traces, and review context reminders
+separately from changed requirements.

@@ -117,11 +117,11 @@ export async function projectRoot(start) {
     const ignoresLocal = ignore.split("\n").some((l) => /^\/?local(\/\*?)?$/.test(l.trim()));
     return ignoresLocal ? dir : null;
 }
-async function requiredIds(root) {
-    return (await projectPolicy(root)).requiredInputs ?? CANONICAL_INPUTS;
+async function requiredIds(root, providerSession) {
+    return (await projectPolicy(root, providerSession)).requiredInputs ?? CANONICAL_INPUTS;
 }
 /** Evidence from one Read of a file, if that file is a required record. */
-async function fromFileRead(read, cwd, session, at) {
+async function fromFileRead(read, cwd, session, at, providerSession) {
     const absolute = isAbsolute(read.path) ? read.path : resolve(cwd, read.path);
     const target = await realpath(absolute).catch(() => null);
     if (!target)
@@ -129,7 +129,7 @@ async function fromFileRead(read, cwd, session, at) {
     const root = await projectRoot(dirname(target));
     if (!root)
         return { root: null, entries: [] };
-    const ids = await requiredIds(root);
+    const ids = await requiredIds(root, providerSession);
     const entries = [];
     // `CLAUDE.md` is a symlink to `AGENTS.md`: reading either is reading the record.
     for (const record of await readRecords(root, ids)) {
@@ -159,10 +159,10 @@ async function fromFileRead(read, cwd, session, at) {
     return { root, entries };
 }
 /** Evidence from text a shell-like tool returned, matched against every required record. */
-async function fromText(text, root, session, at, via) {
+async function fromText(text, root, session, at, via, providerSession) {
     const output = contentLines(text);
     const entries = [];
-    for (const record of await readRecords(root, await requiredIds(root))) {
+    for (const record of await readRecords(root, await requiredIds(root, providerSession))) {
         if (record.content === null)
             continue;
         const lines = contentLines(record.content);
@@ -181,7 +181,7 @@ export async function recordRead(raw, now = new Date()) {
     const hook = hookPayload(raw);
     if (!hook)
         return written;
-    const { payload, session, provider, cwd } = hook;
+    const { payload, session, provider, cwd, providerSession } = hook;
     const at = now.toISOString();
     const add = (root, entries) => written.set(root, [...(written.get(root) ?? []), ...entries]);
     const cwdRoot = await projectRoot(cwd);
@@ -191,7 +191,7 @@ export async function recordRead(raw, now = new Date()) {
     if (failed && payload["tool_name"] === "Read")
         return written;
     if (read) {
-        const result = await fromFileRead(read, cwd, session, at);
+        const result = await fromFileRead(read, cwd, session, at, providerSession);
         if (result.root)
             add(result.root, result.entries);
     }
@@ -202,7 +202,7 @@ export async function recordRead(raw, now = new Date()) {
         if (text === null)
             return written;
         if (cwdRoot)
-            add(cwdRoot, withinCap(text, provider) ? await fromText(text, cwdRoot, session, at, toolLabel(payload)) : []);
+            add(cwdRoot, withinCap(text, provider) ? await fromText(text, cwdRoot, session, at, toolLabel(payload), providerSession) : []);
     }
     if (cwdRoot && !written.has(cwdRoot))
         add(cwdRoot, []);
@@ -226,7 +226,7 @@ function hookPayload(raw) {
     // `turn_id` is required in Codex's PostToolUse input and absent from Claude's.
     const provider = "turn_id" in payload ? "codex" : "claude";
     const cwd = typeof payload["cwd"] === "string" && payload["cwd"] ? payload["cwd"] : process.cwd();
-    return { payload, session: sessionTag(id), provider, cwd };
+    return { payload, session: sessionTag(id), provider, cwd, providerSession: id };
 }
 function toolLabel(payload) {
     return typeof payload["tool_name"] === "string" ? payload["tool_name"].slice(0, 64) || "tool" : "tool";

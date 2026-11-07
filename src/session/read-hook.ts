@@ -133,18 +133,18 @@ export async function projectRoot(start: string): Promise<string | null> {
   return ignoresLocal ? dir : null;
 }
 
-async function requiredIds(root: string): Promise<readonly string[]> {
-  return (await projectPolicy(root)).requiredInputs ?? CANONICAL_INPUTS;
+async function requiredIds(root: string, providerSession: string): Promise<readonly string[]> {
+  return (await projectPolicy(root, providerSession)).requiredInputs ?? CANONICAL_INPUTS;
 }
 
 /** Evidence from one Read of a file, if that file is a required record. */
-async function fromFileRead(read: FileRead, cwd: string, session: string, at: string): Promise<{ root: string | null; entries: EvidenceEntry[] }> {
+async function fromFileRead(read: FileRead, cwd: string, session: string, at: string, providerSession: string): Promise<{ root: string | null; entries: EvidenceEntry[] }> {
   const absolute = isAbsolute(read.path) ? read.path : resolve(cwd, read.path);
   const target = await realpath(absolute).catch(() => null);
   if (!target) return { root: null, entries: [] };
   const root = await projectRoot(dirname(target));
   if (!root) return { root: null, entries: [] };
-  const ids = await requiredIds(root);
+  const ids = await requiredIds(root, providerSession);
   const entries: EvidenceEntry[] = [];
   // `CLAUDE.md` is a symlink to `AGENTS.md`: reading either is reading the record.
   for (const record of await readRecords(root, ids)) {
@@ -171,10 +171,10 @@ async function fromFileRead(read: FileRead, cwd: string, session: string, at: st
 }
 
 /** Evidence from text a shell-like tool returned, matched against every required record. */
-async function fromText(text: string, root: string, session: string, at: string, via: string): Promise<EvidenceEntry[]> {
+async function fromText(text: string, root: string, session: string, at: string, via: string, providerSession: string): Promise<EvidenceEntry[]> {
   const output = contentLines(text);
   const entries: EvidenceEntry[] = [];
-  for (const record of await readRecords(root, await requiredIds(root))) {
+  for (const record of await readRecords(root, await requiredIds(root, providerSession))) {
     if (record.content === null) continue;
     const lines = contentLines(record.content);
     for (const run of creditRuns(lines, output)) {
@@ -192,7 +192,7 @@ export async function recordRead(raw: string, now = new Date()): Promise<Map<str
   const written = new Map<string, EvidenceEntry[]>();
   const hook = hookPayload(raw);
   if (!hook) return written;
-  const { payload, session, provider, cwd } = hook;
+  const { payload, session, provider, cwd, providerSession } = hook;
   const at = now.toISOString();
 
   const add = (root: string, entries: EvidenceEntry[]) => written.set(root, [...(written.get(root) ?? []), ...entries]);
@@ -203,14 +203,14 @@ export async function recordRead(raw: string, now = new Date()): Promise<Map<str
   const read = provider === "claude" && !failed ? fileRead(payload) : null;
   if (failed && payload["tool_name"] === "Read") return written;
   if (read) {
-    const result = await fromFileRead(read, cwd, session, at);
+    const result = await fromFileRead(read, cwd, session, at, providerSession);
     if (result.root) add(result.root, result.entries);
   } else {
     const text = shownText(payload, failed);
     // Not understood: no liveness either. A hook that cannot see results must
     // leave the session on the assertion, not lock it out.
     if (text === null) return written;
-    if (cwdRoot) add(cwdRoot, withinCap(text, provider) ? await fromText(text, cwdRoot, session, at, toolLabel(payload)) : []);
+    if (cwdRoot) add(cwdRoot, withinCap(text, provider) ? await fromText(text, cwdRoot, session, at, toolLabel(payload), providerSession) : []);
   }
   if (cwdRoot && !written.has(cwdRoot)) add(cwdRoot, []);
   await appendWithLiveness(written, session, provider, at, now);
@@ -218,7 +218,7 @@ export async function recordRead(raw: string, now = new Date()): Promise<Map<str
 }
 
 /** The payload with its session tag, provider and working directory, or null when it names no session. */
-function hookPayload(raw: string): { payload: Json; session: string; provider: Provider; cwd: string } | null {
+function hookPayload(raw: string): { payload: Json; session: string; provider: Provider; cwd: string; providerSession: string } | null {
   let payload: unknown;
   try {
     payload = JSON.parse(raw);
@@ -231,7 +231,7 @@ function hookPayload(raw: string): { payload: Json; session: string; provider: P
   // `turn_id` is required in Codex's PostToolUse input and absent from Claude's.
   const provider: Provider = "turn_id" in payload ? "codex" : "claude";
   const cwd = typeof payload["cwd"] === "string" && payload["cwd"] ? payload["cwd"] : process.cwd();
-  return { payload, session: sessionTag(id), provider, cwd };
+  return { payload, session: sessionTag(id), provider, cwd, providerSession: id };
 }
 
 function toolLabel(payload: Json): string {

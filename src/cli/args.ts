@@ -51,6 +51,7 @@ export interface Flags {
   needs?: string;
   context?: string;
   sessionId?: string;
+  maxTokens?: string;
   ceiling?: number;
   notes?: string;
   priorReview?: string;
@@ -120,6 +121,7 @@ const stringOptions: Record<string, (flags: Flags, value: string | undefined) =>
   "--slug": (flags, value) => { flags.slug = value; },
   "--needs": (flags, value) => { flags.needs = value; },
   "--session-id": (flags, value) => { flags.sessionId = value; },
+  "--max-tokens": (flags, value) => { flags.maxTokens = value; },
   "--context": (flags, value) => { flags.context = value; },
   "--notes": (flags, value) => { flags.notes = value; },
   "--prior-review": (flags, value) => { flags.priorReview = value; },
