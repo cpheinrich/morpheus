@@ -158,3 +158,78 @@ package imports and launchd rollback. Follow each repo's typecheck/build/compile
 complexity requirements, capture final UI states, finish independent source review and green
 protected CI, then deploy/read back and observe real host/worker transitions and source failure.
 No release acceptance is reduced by finishing this first design turn.
+
+## Implementation handoff — 2026-11-06
+
+The controller accepted the design and authorized implementation through unreviewed draft PRs,
+then supplied four original-acceptance gaps before source review. The optional host package now
+owns reporting/: strict v1 wire schema, filesystem-only desktop/unattended census, passive exact
+gateway-account reader, bounded GitHub reader, hardware/VM/persistent-runner adapters, one-shot
+HTTPS reporter and explicit unloaded-only installer/rollback. It does not change operational
+admission/quota policy, install a service, enroll a host, deploy, or start a model invocation.
+The ordinary CLI and plugin runtime dependencies remain unchanged.
+
+Design critique dispositions (implementation assertions, not independent source clearance):
+
+- D1: read records directly; no Manager/status/reconcile imports or cleanup calls. Filesystem
+  immutability tests cover desktop and unattended; cleanup-unverified stays unresolved.
+- D2: per-host consumer credential binding plus protected source/document/project/account writer
+  registration; reporters receive no Firestore credentials. Consumer HTTP tests cover spoofing.
+- D3: launchd serializes one-shot sends; consumer transactions compare collection time,
+  retain upstream time, ignore equal/older attempts without freshening, cap future skew and recover
+  on a fresh restart sample without an epoch ledger.
+- D4: consumer page and API independently require admin; GET checks session revocation and returns
+  private/no-store even on errors. Three collections remain outside employee-readable HQ.
+- D5: exact stored account-by-ID only; no active provider refresh or model probe. Passive Anthropic
+  counters are fractions (0.82 means82%); Codex counters are percentages. Live read-only acquisition
+  verified that distinction and stale timestamps. Tests pin units/identity/reset bounds.
+- D6: configured capacity, measured VMs, dispatcher allocations and GitHub runner state remain
+  separate; attribution joins exact repo/runner IDs from dispatcher/local enrolled metadata,
+  never name substrings. Null/provisioning and organization-census gaps remain unknown.
+- D7: strict field/byte/count/string allowlists, fixed errors and approved exact GitHub links.
+  Independent source failures retain healthy sources; oversized valid sources become an explicit
+  source error rather than dropping the machine heartbeat. Consumer preserves last good outcome.
+
+ROOT01–04: added observed hardware model/chip/logical cores/OS, VM CPU/RAM and simulator lanes,
+eligible roles/labels, enrolled persistent runner metadata, job name/current reported step, and
+Factory host/task/model/effort/observed elapsed. Missing start times are unknown (file mtime is
+not a launch time). Per-host counts never inherit global repository totals. Failed/incomplete
+sources cannot display zero runners/busy/allocations; consumer regressions cover these cases.
+The consumer root layout already owns main; its dashboard adds no nested main landmark.
+
+Build/borrow: pinned systeminformation5.33.19 (zero dependencies,875133 unpacked bytes; registry
+metadata checked during design) and the already-used Zod4.1.12 (zero dependencies) inside the
+optional host package only. No framework, controller, history store or new paid service.
+The v1 protocol is canonical here and vendored byte-for-byte in the consumer; the explicit
+reporting/check-contract.mjs comparison passes with SHA256
+9150c0a41b0863392f9efd5a85dc1f4967ce9aebd1746326890c5b80aac6b8f8.
+
+Validation: node --test reporting/tests/*.test.mjs (12 passed), focused
+pnpm exec vitest run tests/factory-distribution.test.ts (4 passed), host package
+pnpm typecheck, pnpm build, pnpm check, and root pnpm typecheck, pnpm compile,
+pnpm lint, pnpm morpheus pm index. Root full suite was not run: no shared-core change;
+CI retains its full integration role. Installer tests exercise dry-run, isolated copied-package
+import, unloaded-only replacement, previous-plist preservation/rollback and outside-Git config.
+
+Complexity: inspected the complete new families with pinned Lizard and canonical refactoring
+prompt. Early record-reader/GitHub mixed-responsibility functions were separated into domain
+helpers. Source cognitive warnings are advisory (observeFactory28; wire parseReport16).
+The consumer scanner reports HostRunners through its entire TSX module (26–135, real function
+ends40), merging later components into CCN47. This is an observed parser-extent limitation,
+not a new gate or policy exception. No suppressions/exclusions; inspect actual JSX functions.
+No claim of complete JSX complexity measurement. Raw reports and source-blob diagnostic retained.
+
+Graph: exact task Morpheus generation2026-11-06T23:51:31Z, reporting evidence paths metadata_match
+without recorded gaps. Consumer graph lacked new paths; material source was read directly
+and the not_tracked limitation retained. Coverage signal is not completeness proof.
+
+Private live-source findings/enrollment preparation and exact host identities remain ignored.
+Fresh independent source reviews, green protected CI and the controller's reviewed rollout remain
+outstanding. This stage does not establish deployed acceptance or permission to merge.
+
+Packaging checkpoint: the interrupted native session retained complete credited reads of the
+prior decisions fingerprint in local/sessions/reads.jsonl, but its context receipt was missing.
+After reading the appended decision, restored the receipt using the documented assertion
+fallback; no review or authorization requirement was bypassed. Consumer index refreshed at
+2026-11-07T00:00:03Z: all new implementation paths metadata_match/no recorded issue; rules remain
+not_tracked and were read/tested directly. Best-effort graph signal only.

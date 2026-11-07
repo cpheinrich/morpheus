@@ -3398,6 +3398,19 @@ and its LaunchAgent installer keeps the previous service for rollback and never 
 running tick. The external `agent-host-setup` repository stays separate; its reviewed ci-vm
 build/verify/activate/prune scripts are called by path from the private manifest.
 
+The optional host package's `reporting/` directory adds strictly read-only observation and
+one-shot outbound HTTPS reporting. It reads desktop and explicitly registered unattended state
+roots directly; inspection/status/reconciliation helpers can mutate or stop work and are not
+reporting APIs. Shared gateway quota is keyed by registered instance/account identity and reads
+stored snapshots only, never active refresh/model probes. Each source preserves its data time
+separately from collection and server receipt. Operational host configuration stays local
+authority. Consumer-owned ingestion validates host/source/project/account scope and transactional
+ordering before storing bounded latest state outside employee-readable HQ collections. The
+consumer authenticates its admin again for private/no-store reads. The reporter has no remote
+job controls, inbound port, retry ledger or log/transcript copying. Its pinned systeminformation
+and Zod dependencies remain inside the optional host package. Explicit installation retains a
+previous plist and verifies standalone imports; it never loads the service automatically.
+
 The separate opt-in `plugins/factory/scripts/gateway-worker.mjs` entrypoint serves
 trusted unattended services without desktop identity, native login, quota discovery or
 Paperclip. An owner-only configuration outside workspaces fixes the claimed checkout,
