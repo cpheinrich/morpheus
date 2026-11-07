@@ -402,22 +402,31 @@ default service tier per launch. A missing gateway key fails before any request 
 fall back to the controller's Codex login. Claude workers disable Fast mode for the child
 session. These controls apply to fresh and resumed worker turns.
 
-Quota is read from the gateway's admin API with an admin login. `GET /api/v1/admin/accounts`
-finds each provider's account. An account counts as its most-used 5-hour or 7-day window
-whose reset time has not passed, judged when the response arrives.
+Factory reads usage from the sub2api admin API. In Simple Mode each provider
+uses one shared gateway route. Factory reads every page of the account list
+and scores a pool by its roomiest active, schedulable OAuth account with known
+usage. An account's score is its highest utilization across its active 5-hour
+and 7-day windows. Accounts on cooldown and failed usage reads contribute no
+headroom. The threshold applies to the pool score.
 
-- **Claude.** The account list's stored 5-hour figure has no reset time and sub2api only
-  refreshes it on use, so it can stay at an old value indefinitely and is never used.
-  Every inspection, start and `doctor` asks
-  `GET /api/v1/admin/accounts/<id>/usage?source=active&force=true`, which makes sub2api
-  query Anthropic. sub2api may still answer from its own short cache (about three
-  minutes), so `updatedAt` is the gateway's timestamp for that answer, not a guaranteed
-  provider measurement time. A failed read leaves Claude's quota unknown (routing treats
-  it as no headroom) and does not affect Codex.
-- **Codex.** The account list's stored snapshot, whose windows carry reset times.
-  `updatedAt` is the snapshot's own `codex_usage_updated_at`, so it can be old. The usage
-  endpoint is not called for Codex: forcing it sends a model request, and it stamps the
-  current time even when it returns an old snapshot.
+Factory picks the worker provider and honors explicit model requests. Standard
+Claude model IDs and family aliases select Claude, and standard OpenAI model
+IDs select Codex. Specify the provider for custom model IDs. Sub2api owns OAuth,
+account selection, session stickiness and failover within the selected provider
+pool. The account that supplied the pool score can differ from the account
+that serves a request.
+
+- **Claude.** Inspection, start and `doctor` ask sub2api for
+  `GET /api/v1/admin/accounts/<id>/usage?source=active&force=true` for each
+  eligible account. Sub2api may serve a short cached answer. `updatedAt` is the
+  gateway's timestamp for the selected reading.
+- **Codex.** Factory reads each eligible account's stored usage windows and
+  `codex_usage_updated_at`. Forcing the usage endpoint would send a model
+  request. Windows whose reset times have passed are skipped.
+
+The admin references apply to one gateway origin. Use the provider's shared
+Simple Mode route for the pool score to describe the accounts the gateway can
+schedule.
 
 Each request times out after 15 seconds. Configure the admin login as references too:
 

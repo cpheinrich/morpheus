@@ -357,14 +357,14 @@ function fakeGateway(usage, { extra = codexExtra } = {}) {
     assert.ok(opts.signal instanceof AbortSignal, "every gateway request is time-bounded");
     if (url.endsWith("/api/v1/auth/login")) return { ok: true, json: async () => ({ data: { access_token: "tok" } }) };
     assert.equal(opts.headers.authorization, "Bearer tok");
-    if (url.endsWith("/api/v1/admin/accounts"))
+    if (url.endsWith("/api/v1/admin/accounts?page=1"))
       return {
         ok: true,
         json: async () => ({
           data: {
             items: [
-              { id: 7, platform: "anthropic", extra: { session_window_utilization: 1, passive_usage_7d_utilization: 1 } },
-              { id: 9, platform: "openai", extra },
+              { id: 7, platform: "anthropic", type: "oauth", status: "active", schedulable: true, extra: { session_window_utilization: 1, passive_usage_7d_utilization: 1 } },
+              { id: 9, platform: "openai", type: "oauth", status: "active", schedulable: true, extra },
             ],
           },
         }),
@@ -402,6 +402,47 @@ test("Claude quota is read live on every call; Codex keeps its stored snapshot",
   assert.equal(usageCalls().length, 2);
 });
 
+test("a pool ranks by its roomiest schedulable OAuth account across pages", async () => {
+  const active = { type: "oauth", status: "active", schedulable: true };
+  const usage = new Map([[7, 100], [12, 25]]);
+  const pages = [
+    [
+      { ...active, id: 7, platform: "anthropic" },
+      { ...active, id: 8, platform: "anthropic" },
+      { ...active, id: 9, platform: "anthropic", schedulable: false },
+      { ...active, id: 10, platform: "anthropic", type: "apikey" },
+      { ...active, id: 11, platform: "anthropic", rate_limit_reset_at: "2026-11-04T21:00:00Z" },
+    ],
+    [
+      { ...active, id: 12, platform: "anthropic" },
+      { ...active, id: 13, platform: "openai", extra: { codex_7d_used_percent: 40 } },
+      { ...active, id: 14, platform: "openai", extra: { codex_7d_used_percent: 35 } },
+    ],
+  ];
+  const calls = [];
+  const fetchImpl = async (url) => {
+    if (url.endsWith("/auth/login")) return { ok: true, json: async () => ({ data: { access_token: "tok" } }) };
+    const page = new URL(url).searchParams.get("page");
+    if (page) return { ok: true, json: async () => ({ data: { pages: 2, items: pages[page - 1] } }) };
+    const id = Number(url.match(/accounts\/(\d+)\/usage/)?.[1]);
+    calls.push(id);
+    if (!usage.has(id)) return { ok: false, status: 503 };
+    return { ok: true, json: async () => ({ data: { five_hour: window(0), seven_day: window(usage.get(id)) } }) };
+  };
+  const config = configSchema.parse({ mode: "manual" });
+  const read = () => readGatewayQuota(quotaGateways, { adminEmail: "a", adminPassword: "b", fetchImpl, now: quotaNow });
+  const pools = await read();
+  assert.deepEqual(pools.map((pool) => pool.usedPercent), [25, 35]);
+  assert.deepEqual(calls, [7, 8, 12]);
+  assert.equal(route(config, {}, pools, undefined).executor, "claude");
+  assert.equal(route(config, {}, pools, "codex").executor, "codex");
+
+  usage.set(12, 90);
+  const exhausted = await read();
+  assert.deepEqual(exhausted.map((pool) => pool.usedPercent), [90, 35]);
+  assert.equal(route(config, {}, exhausted, undefined).executor, "codex");
+});
+
 test("a failed Claude usage read is unknown and leaves Codex alone", async () => {
   for (const failure of [new Error("connect ECONNREFUSED"), undefined /* HTTP 404 */, { code: 0 } /* no data */]) {
     const { fetchImpl } = fakeGateway({ 7: failure });
@@ -420,7 +461,7 @@ test("without a now override, reset times are judged when the responses arrive",
   const extra = { ...codexExtra, codex_5h_reset_at: new Date(Date.now() + 50).toISOString(), codex_7d_used_percent: 10 };
   const { fetchImpl: inner } = fakeGateway({}, { extra });
   const fetchImpl = async (url, opts) => {
-    if (url.endsWith("/api/v1/admin/accounts")) await new Promise((r) => setTimeout(r, 80));
+    if (url.endsWith("/api/v1/admin/accounts?page=1")) await new Promise((r) => setTimeout(r, 80));
     return inner(url, opts);
   };
   const [, codex] = await readGatewayQuota(quotaGateways, { adminEmail: "a", adminPassword: "b", fetchImpl });

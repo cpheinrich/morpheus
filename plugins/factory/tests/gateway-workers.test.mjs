@@ -48,14 +48,14 @@ async function harness(t, binaries) {
   globalThis.fetch = async (url) => {
     if (url === `${BASE}/api/v1/auth/login`)
       return { ok: true, json: async () => ({ data: { access_token: "admin-token" } }) };
-    if (url === `${BASE}/api/v1/admin/accounts`)
+    if (url === `${BASE}/api/v1/admin/accounts?page=1`)
       return {
         ok: true,
         json: async () => ({
           data: {
             items: [
-              { id: 1, platform: "anthropic" },
-              { id: 2, platform: "openai", extra: { codex_7d_used_percent: 4 } },
+              { id: 1, platform: "anthropic", type: "oauth", status: "active", schedulable: true },
+              { id: 2, platform: "openai", type: "oauth", status: "active", schedulable: true, extra: { codex_7d_used_percent: 4 } },
             ],
           },
         }),
@@ -251,6 +251,14 @@ echo '{"type":"turn.completed","usage":{}}'
     sandbox: { type: "dangerFullAccess" },
     approvalPolicy: "on-request",
   });
+  await assert.rejects(
+    m.factoryDelegate({ rootKind: "codex", rootId: threadId, prompt: "Look only", model: "opus" }),
+    /already pinned to codex/,
+  );
+  await assert.rejects(
+    m.factoryDelegate({ rootKind: "codex", rootId: threadId, prompt: "Look only", model: "opus", provider: "codex" }),
+    /belongs to a different worker provider/,
+  );
   const second = await m.factoryDelegate({
     rootKind: "codex", rootId: threadId, prompt: "Look only", model: "gpt-6.1-terra", speed: "fast",
   });

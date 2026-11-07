@@ -84,6 +84,11 @@ export function previewSelection(config, snapshot) {
   }
 }
 const DEFAULT_WORKER_MODELS = { codex: "gpt-6.1-sol", claude: "claude-opus-5-5" };
+function explicitModelProvider(model) {
+  if (/^(claude-|(?:opus|sonnet|haiku)$)/i.test(model ?? "")) return "claude";
+  if (/^(gpt-|codex-|o[1-9](?:-|$))/i.test(model ?? "")) return "codex";
+  return undefined;
+}
 function factoryWorkerSelection(worker, config, rootKind, rootEffort, args = {}) {
   const model = args.model ?? DEFAULT_WORKER_MODELS[worker];
   if (!modelIdPattern.test(model) || MOVING_MODEL_ALIASES.has(model.toLowerCase()))
@@ -1377,12 +1382,15 @@ export class Manager {
     return status;
   }
   async factoryDelegate(args) {
+    const modelProvider = explicitModelProvider(args.model);
+    if (modelProvider && args.provider && modelProvider !== args.provider)
+      throw new Error("The requested model belongs to a different worker provider.");
     const common = {
       prompt: args.prompt,
       runId: args.runId,
       cwd: args.cwd,
       repos: args.repos,
-      operation: args.provider,
+      operation: args.provider ?? modelProvider,
       model: args.model,
       effort: args.effort,
       speed: args.speed,
