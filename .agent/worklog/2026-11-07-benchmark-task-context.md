@@ -219,3 +219,38 @@ have completed. Factory/model-trial authorization remains pending; do not infer 
 Record validation performed: morpheus pm validate, morpheus pm index and git diff --check.
 Application tests do not apply to these mandate/measurement records. No claim of production-tested
 retrieval, reduced actual session tokens or completed migration is made.
+
+## November 7 steering and first development screen
+
+Chris authorized Factory using included subscription quota and suggested GPT-6 Luna for the
+relative model comparisons. He asked for historical tasks, a tag sample instead of a full migration,
+`legal → business-records`, section tags for business meeting notes, and links to related GitHub PRs.
+After design acceptance, extend canonical Google Meet intake to assign and validate the section tags
+and project them through its existing catalog. Keep live service retrieval outside the first tranche.
+Results can identify where an agent should check Sentry, App Store Connect or PostHog using its
+existing tools. A future live adapter would need explicit source selection and observation times.
+
+Factory Codex gateway runs 9647aa75-ff8f-40f0-a3d7-ff333e3a4061 (research screen) and
+2e8ff170-3b8d-4034-b79e-c0b656d31f90 (independent design critique) ran on the MacBook Pro,
+with GPT-6 Luna selected in their dispatch envelopes. The retrieval screen itself was deterministic.
+Fresh critique recommended six development groups and six independently labeled held-out groups
+for feasibility before expanding. Freeze each case's as-of evidence and labels, split by underlying
+incident, select a 60–100-record tag overlay independently of the labels, and keep the full
+eligible corpus searchable in all arms. Use fresh, matched model sessions for the downstream comparison.
+
+The controller independently reproduced all 72 deterministic selection and score rows across six
+historical development prompts and 1,436 frozen Evo documents. At 5k, 10k and 20k token ceilings,
+broad lexical retrieval matched 0/6, 2/6 and 3/6 provisional evidence groups respectively.
+One-hop local links tied broad search. Strict AND and a sort that put every existing tag match
+first both matched 0/6 at all three ceilings. The existing tags covered 224/1,436 documents.
+The screen selected whole documents and used provisional source-file labels, with task closure
+exclusions rather than a full historical corpus reconstruction. Treat it as a diagnostic.
+The next comparison will score actual passages, use bounded tag boosts, and separately verify
+repository-qualified PR traversal at the task cutoff. Record omitted governing constraints.
+
+Verified all six canonical Darwin meeting notes in Evo's discovery catalog against the catalog
+revision and digests. The next corpus adds those sources, with a private heading-level overlay.
+Compare meeting-wide and section tags on the same passages. Keep title, date, source revision and
+heading in every result, with a path to the full note. Add a case that requires multiple sections
+and another that follows a decision to its implementing or verifying PR. No new meeting
+ingestion behavior, held-out run or downstream answer trial has been completed.
