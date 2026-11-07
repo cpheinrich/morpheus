@@ -146,6 +146,16 @@ test('oversized valid source becomes unavailable without dropping the machine he
  assert.equal(report.samples.machine.status,'ok');assert.equal(report.samples.github.status,'error');assert.equal(report.samples.github.errorCode,'incomplete');
  assert.ok(Buffer.byteLength(JSON.stringify(report))<=65536);
 });
+test('persistent runner JSON accepts a leading UTF-8 BOM without rewriting the runner file',async t=>{
+ const root=await temp(t),metadataPath=join(root,'.runner');
+ const contents='\uFEFF'+JSON.stringify({agentId:21,gitHubUrl:'https://github.com/example',workFolder:'PRIVATE'});
+ await writeFile(metadataPath,contents,{mode:0o600});
+ const result=await persistentRunners({entries:[{metadataPath,scope:'organization',projectIds:['example/a'],roles:['device-gate'],labels:['phone']}]});
+ assert.equal(result.complete,true);assert.deepEqual(result.value.registrations,[{runnerId:21,projectId:'example/a',scope:'organization',roles:['device-gate'],labels:['phone']}]);
+ assert.equal(await readFile(metadataPath,'utf8'),contents);
+ await writeFile(metadataPath,'\uFEFFnot-json');
+ assert.deepEqual(await persistentRunners({entries:[{metadataPath,scope:'organization',projectIds:['example/a'],roles:[],labels:[]}]}),{complete:false,value:{complete:false,registrations:[]}});
+});
 for(const channel of ['desktop','unattended'])test(`${channel} validates terminal proof identity and never hides contradictory process evidence`,async t=>{
  const root=await temp(t),dir=join(root,channel==='desktop'?'runs':'unattended',uuid);
  const name=channel==='desktop'?'run.json':'admission.json';

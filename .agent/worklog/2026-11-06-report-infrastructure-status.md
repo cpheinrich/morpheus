@@ -277,8 +277,8 @@ Initial source review turn1 BLOCKED; substantive findings retained and author fi
     "durationMs": 212000,
     "evidence": "Root clock around Factory reviewer run 723e269c-0864-424b-b036-5892275dc205: start 2026-11-07 00:05:52 UTC, terminal result acquired by 2026-11-07 00:09:24 UTC."
   },
-  "outcome": "complete",
-  "summary": "Initial high-risk review was blocked; same-reviewer turn2 cleared the corrected source with all substantive findings resolved. Deployment acceptance remains separate.",
+  "outcome": "incomplete",
+  "summary": "Initial blocked review and same-reviewer turn2 clearance are retained; a live-source UTF-8 BOM compatibility correction now awaits the same reviewer turn3. No current-head clearance claimed.",
   "findings": [
     {
       "id": "MORPHEUS-R1",
@@ -315,3 +315,11 @@ Initial source review turn1 BLOCKED; substantive findings retained and author fi
 Initial high-risk review was blocked; same-reviewer turn2 cleared the corrected source with all substantive findings resolved. Deployment acceptance remains separate.
 
 CLEARED follow-up turn 2, high risk, covering db50869376d7c2df65152a69547259766fad45ab. MORPHEUS-R1 (original R1) is resolved; no new findings or unresolved source-review questions. No source files changed or external actions performed. Measured 72000ms; elapsedMinutes 1.2. Original blocked turn1 and substantive findings remain above. Only this named worklog changes after covered source.
+
+## Late live-source compatibility correction — awaiting turn3
+
+Initial blocked review and same-reviewer turn2 clearance are retained; a live-source UTF-8 BOM compatibility correction now awaits the same reviewer turn3. No current-head clearance claimed.
+
+Read-only enrollment inventory found an existing GitHub runner-generated .runner file with a leading UTF-8 BOM. JSON.parse rejected it, making enrolled persistent identity unavailable. Do not rewrite a runner-owned file or publish its contents. The bounded JSON reader now removes one leading BOM before parsing, preserving byte/owner/symlink checks and source mtime. A synthetic regression proves exact runner attribution without file mutation and keeps malformed BOM-prefixed JSON incomplete. No active service or runtime code has been patched.
+
+Reporter16, public privacy3 and direct distribution4 pass. Canonical wire unchanged. Complexity remains advisory; no enrollment/threshold changes. PR returned to draft and agent-reviewed removed; turn2 source clearance remains in the record, but this correction requires a measured same-reviewer late-correction turn. No human approval requested or fabricated. Darwin source remains cleared and its green protected release proceeds independently.
