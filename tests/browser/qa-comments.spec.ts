@@ -56,6 +56,9 @@ test("iOS: pin, scroll or navigate, pin again, and send each clicked frame", asy
     await stage.click({ button: "right", position: { x: 195, y: 150 } });
     await page.locator("#text").fill("First chart");
     await page.locator("#text").press("Enter");
+    await expect(page.locator("#text")).toHaveValue("");
+    await expect(page.locator("#text")).toBeDisabled();
+    await expect(page.locator("#list li")).toContainText("First chart");
     await page.evaluate((s) => (window as unknown as { emitAx: (value: unknown) => void }).emitAx(s), snapshot("trendsScreen", 40));
     await page.evaluate((s) => {
       (window as unknown as { emitAx: (value: unknown) => void }).emitAx(s);
@@ -65,19 +68,26 @@ test("iOS: pin, scroll or navigate, pin again, and send each clicked frame", asy
     await stage.click({ button: "right", position: { x: 195, y: 150 } });
     await page.locator("#text").fill("Second chart");
     await page.locator("#text").press("Enter");
+    await expect(page.locator("#text")).toHaveValue("");
+    await page.locator("#list li").last().click();
+    await expect(page.locator("#text")).toHaveValue("Second chart");
+    await page.locator("#text").fill("Edited second chart");
+    await page.locator("#text").press("Enter");
+    await expect(page.locator("#text")).toHaveValue("");
     await expect(page.locator("#list li")).toHaveCount(2);
     if (process.env.QA_EVIDENCE_DIR) {
       await mkdir(process.env.QA_EVIDENCE_DIR, { recursive: true });
       await page.screenshot({ path: join(process.env.QA_EVIDENCE_DIR, `ios-${testInfo.project.name}.png`) });
     }
     await page.reload();
+    await expect(page.locator("#text")).toHaveValue("");
     await expect(page.locator("#list li")).toHaveCount(2);
     await page.locator("#send").click();
     await expect(page.locator("#status")).toContainText("Queued batch-browser");
     const posted = received.posted;
     expect(posted).not.toBeNull();
     expect(posted!.comments.map((c) => [c.text, c.screenId])).toEqual([
-      ["First chart", "trendsScreen"], ["Second chart", "trackScreen"],
+      ["First chart", "trendsScreen"], ["Edited second chart", "trackScreen"],
     ]);
     expect(posted!.comments[0]?.frame?.dataUrl).toMatch(/^data:image\/png;base64,/);
     expect(posted!.comments[1]?.frame?.dataUrl).toMatch(/^data:image\/png;base64,/);
