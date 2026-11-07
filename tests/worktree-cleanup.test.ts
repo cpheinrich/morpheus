@@ -152,6 +152,35 @@ describe("completed task worktree cleanup", () => {
     await expect(fs.stat(target)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("archives search state when only the search directory is ignored", async () => {
+    await writeFile(join(root, ".git/info/exclude"), "/local/context-search/\n");
+    const local = join(target, "local/context-search");
+    await mkdir(local, { recursive: true });
+    await writeFile(join(local, "keep.txt"), "trace data");
+    await cleanupTask(root, join(root, "hq/product"), id);
+    const archive = join(root, ".git/morpheus-context-archives");
+    const [entry] = await fs.readdir(archive);
+    expect(await readFile(join(archive, entry!, "context-search/keep.txt"), "utf8")).toBe("trace data");
+  });
+
+  it("does not archive clean tracked files named like search state", async () => {
+    const file = "local/context-search/tracked.txt";
+    await mkdir(join(target, dirname(file)), { recursive: true });
+    await writeFile(join(target, file), "tracked");
+    await git(target, "add", "--", file);
+    await git(target, "commit", "-m", "track the test file");
+    head = await git(target, "rev-parse", "HEAD");
+    await git(target, "push", "origin", branch);
+    await git(root, "merge", "--squash", branch);
+    await git(root, "commit", "-m", "merge tracked fixture");
+    merge = await git(root, "rev-parse", "HEAD");
+    await git(root, "push", "origin", "main");
+    await pr("MERGED");
+    await cleanupTask(root, join(root, "hq/product"), id);
+    await expect(fs.readdir(join(root, ".git/morpheus-context-archives"))).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(join(root, file), "utf8")).toBe("tracked");
+  });
+
   it("removes only a valid Morpheus receipt in local/sessions", async () => {
     await generatedReceipt();
     await cleanupTask(root, join(root, "hq/product"), id);

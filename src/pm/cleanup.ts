@@ -55,8 +55,11 @@ async function localData(path: string): Promise<string[]> {
   // package install cache is reproducible; everything else is preserved.
   const status = await git(path, ["status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching", "--ignore-submodules=none", "-z"], false);
   const managedLocalOnly = await onlyManagedLocal(path);
+  const searchOnly = status.includes("!! local/context-search/\0")
+    && await lstat(join(path, "local/context-search")).then(stat => stat.isDirectory(), () => false);
   return status.split("\0").filter(Boolean).filter(entry =>
-    !/^!! (?:.*\/)?node_modules\/?$/.test(entry) && !(entry === "!! local/" && managedLocalOnly));
+    !/^!! (?:.*\/)?node_modules\/?$/.test(entry) && !(entry === "!! local/" && managedLocalOnly)
+      && !(entry === "!! local/context-search/" && searchOnly));
 }
 
 async function onlyManagedLocal(root: string): Promise<boolean> {
@@ -77,6 +80,11 @@ async function archiveSearchState(root: string, common: string): Promise<void> {
     throw error;
   });
   if (!stat) return;
+  if (await git(root, ["ls-files", "--", "local/context-search/"])) return;
+  const ignored = await git(root, ["check-ignore", "--quiet", "--", "local/context-search/"]).then(
+    () => true, (error: { code?: number }) => { if (error.code === 1) return false; throw error; },
+  );
+  if (!ignored) return;
   if (!stat.isDirectory() || await realpath(state) !== state) throw new Error("Context search state changed; retain worktree.");
   const archives = join(common, "morpheus-context-archives");
   await mkdir(archives, { mode: 0o700, recursive: true });
