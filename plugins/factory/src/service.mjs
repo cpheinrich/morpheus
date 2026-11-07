@@ -24,7 +24,6 @@ import {
   modelIdPattern,
   MOVING_MODEL_ALIASES,
   codexPermission,
-  assertPoolAuthority,
   readGatewayQuota,
   resolveAdminCredentials,
   delegates,
@@ -58,8 +57,6 @@ import { identity, ownedProcessState, stopOrphan } from "./processes.mjs";
 import { Viewer } from "./viewer.mjs";
 import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
 import { installationId } from "./installation.mjs";
-import { Pool } from "./pool.mjs";
-import { HQPool } from "./pool-hq.mjs";
 import {
   editTargets,
   canonical,
@@ -466,13 +463,6 @@ export class Manager {
   draining = false;
   processOwnership = ownedProcessState;
   viewer = new Viewer(this);
-  pool = new Pool({
-    admit: (threadId, permission, conversation) =>
-      this.poolAdmission(threadId, permission, conversation),
-    control: (threadId, conversation) =>
-      this.poolControl(threadId, conversation),
-  });
-  hq = new HQPool(this.pool, { draining: () => this.draining });
   async client() {
     if (!this.codex) {
       this.codex = await new Codex().connect();
@@ -680,37 +670,6 @@ export class Manager {
       }
     });
     return this.begin(id);
-  }
-  // Pool admission keeps the bridge's local invariants: no launch while draining or
-  // disabled (globally, for the task, or for its project), verified live settings of
-  // the calling task, and no permission wider than that task's own sandbox.
-  async poolAdmission(threadId, permission, conversation = null) {
-    if (this.draining)
-      throw new Error("Bridge upgrade is in progress; retry afterward.");
-    await this.poolControl(threadId, conversation);
-    const config = await configRead();
-    const snapshot = await this.snapshot(threadId);
-    const identity = await projectIdentity(snapshot.cwd);
-    const task = await this.mutateTask(threadId, (current) => {
-      Object.assign(current, identity);
-    });
-    if (task.disabled || config.projects[task.project] === "off")
-      throw new Error("Delegation disabled for this task or project");
-    assertPoolAuthority(snapshot, permission);
-    return { project: task.project };
-  }
-  // Answers act on an admitted turn; they need no live snapshot, but off still wins.
-  async poolControl(threadId, conversation = null) {
-    const config = await configRead();
-    if (config.mode === "off") throw new Error("Delegation disabled");
-    const caller = await taskRead(threadId);
-    if (caller.disabled || (caller.project && config.projects[caller.project] === "off"))
-      throw new Error("Delegation disabled for this task or project");
-    if (conversation) {
-      const owner = await taskRead(conversation.threadId);
-      if (owner.disabled || (conversation.project && config.projects[conversation.project] === "off"))
-        throw new Error("Delegation is disabled for this conversation's task or project");
-    }
   }
   async recoverOrphans(task, dirs = [task.cwd]) {
     // Never launch over an orphan after a service restart. Guardian will expire its lease.
@@ -1444,9 +1403,6 @@ export class Manager {
   async dispatch(method, args = {}) {
     const handler = BRIDGE_OPERATIONS.get(method);
     if (handler) return handler(this, args);
-    // Remote pool turns are owned by Paperclip's runner, not this service.
-    if (method.startsWith("hq.")) return this.hq.dispatch(method.slice(3), args);
-    if (method.startsWith("pool.")) return this.pool.dispatch(method.slice(5), args);
     throw new Error("Unknown bridge operation");
   }
   async configure(args) {
@@ -1455,7 +1411,6 @@ export class Manager {
     if (value.mode === "off") {
       for (const run of this.runs.values())
         if (!run.terminal) await this.cancel(run.id);
-      await this.pool.stopAll().catch(() => {});
     }
     return value;
   }

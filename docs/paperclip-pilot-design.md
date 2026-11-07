@@ -1,5 +1,8 @@
 # Paperclip pilot
 
+> **Retired historical design.** Paperclip execution has been removed. Commands and deployment
+> procedures below are archival, not supported operations. See [retirement](paperclip-overview.md).
+
 This first integration adopts Paperclip's existing queue, run lifecycle, sessions, parser and dashboard. It does not create another task scheduler. Operational state and credentials stay in a private per-user runtime directory, not this repository.
 
 ## Boundary and first increment

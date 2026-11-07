@@ -6,7 +6,7 @@ import type { Policy } from "./config.js";
  *
  * Kept separate from placement because the two failures have different
  * remedies: an unplaceable run is a configuration problem, a refused run is a
- * wait. The runner reports the code and Paperclip can requeue rather than fail.
+ * wait. The caller can retry a temporary refusal rather than treat it as failure.
  */
 export function admit(profile: Profile, snapshot: BrokerSnapshot, policy: Policy): Admission {
   if (!snapshot.reachable) {

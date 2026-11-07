@@ -1,3 +1,4 @@
+import { Manager } from "../src/service.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
@@ -134,4 +135,22 @@ test("Factory CLI no longer advertises or accepts remote pool commands", async (
     assert.match(result.stderr, /Unsupported Factory command.*factory\.delegate/);
   }
   assert.deepEqual(await readdir(home), []);
+});
+
+
+test("internal legacy dispatch is rejected while the six direct operations still route", async () => {
+  const manager = new Manager();
+  // Tripwires prove rejection cannot reach a legacy controller, even if one is injected.
+  manager.pool = manager.hq = { dispatch() { assert.fail("legacy dispatch reached"); } };
+  for (const method of ["pool.start", "pool.profiles", "pool.stop", "hq.admit", "hq.status", "hq.stop"])
+    await assert.rejects(manager.dispatch(method), { message: "Unknown bridge operation" });
+  const methods = {
+    inspect: "factoryInspect", delegate: "factoryDelegate", status: "factoryRun",
+    wait: "factoryWait", answer: "factoryAnswer", stop: "factoryStop",
+  };
+  for (const [operation, handler] of Object.entries(methods)) {
+    const args = { operation };
+    manager[handler] = (received) => { assert.equal(received, args); return operation; };
+    assert.equal(await manager.dispatch(`factory.${operation}`, args), operation);
+  }
 });

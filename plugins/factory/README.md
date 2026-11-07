@@ -9,9 +9,8 @@ or activate it.
 
 Every worker runs **on the host where the bridge runs**, in checkouts on that host. A gateway
 provides model access through a pooled subscription; it does not run the worker anywhere
-else. Onboarding other machines as a worker fleet is out of scope. Agent-facing routing does
-not use Paperclip, and the legacy pool modules in `src/` are not exposed through the
-`factory_*` tools.
+else. Onboarding other machines as a worker fleet is out of scope. Direct delegation uses the six `factory_*` tools. Paperclip execution, internal pool/HQ
+dispatch and their legacy modules are removed.
 
 This README is the canonical reference; the `delegate` (Codex) and `delegate-to-codex`
 (Claude Code) skills are short procedures that point here.

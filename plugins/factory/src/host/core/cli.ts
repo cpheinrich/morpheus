@@ -2,13 +2,8 @@
 /**
  * Operator entry point.
  *
- * `plan` is the only executable path in this version because execution already
- * belongs to the Paperclip process adapter and the pool runner, which are
- * proven. Reimplementing them here would duplicate the one part of the system
- * that is not the factory's problem.
- *
- * Exit codes follow the pool's convention so a Paperclip run result stays
- * meaningful: 0 resolved, 75 refused and requeueable, 78 configuration or usage.
+ * This planner resolves placement and admission only; it does not execute workers.
+ * Exit codes: 0 resolved, 75 refused and requeueable, 78 configuration or usage.
  */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
