@@ -1,0 +1,9 @@
+**
+!Dockerfile.fleet
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!src/
+!src/*.mjs
+!scripts/
+!scripts/fleet-service.mjs

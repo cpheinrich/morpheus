@@ -48,7 +48,7 @@ jobs:
       - name: Test optional Claude bridge without model calls
         working-directory: plugins/factory
         run: |
-          pnpm install --ignore-workspace --frozen-lockfile
+          pnpm install --frozen-lockfile
           pnpm check
           pnpm test
       - name: Test the Factory host package (own lockfile; no network, Docker or live services)

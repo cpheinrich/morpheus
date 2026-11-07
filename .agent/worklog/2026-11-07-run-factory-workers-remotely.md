@@ -37,3 +37,19 @@ An unverified explicit cancel remains nonterminal and blocks workspace reuse aft
 The focused Factory suite passed 58 cases, and all seven artifact tests also passed on a second
 macOS host against a local object adapter. The reviewed cloud integration and provider-backed
 pilot still need to be run.
+
+The next slice connects the opt-in Codex tool to an authenticated service and
+a Studio supervisor. Firestore wake documents contain only a version marker.
+The API enforces root and host ownership. The gateway executor runs as a
+separate OS principal and copies only declared artifact bytes back to the
+supervisor, which uploads through the same attempt-scoped API. A dedicated
+Firestore database avoids replacing rules for existing workloads. Firebase
+Admin and the existing Firebase web SDK provide authentication and listeners.
+
+Validation passed 62 focused Factory tests, including the executable Studio
+fixture, and two Firestore emulator tests. The API test exercises disallowed
+identities, role and root isolation, native wake listeners, clarification
+and generation-bound download using a storage fixture. Typecheck, compile,
+project index, package syntax and complexity gates passed. Cloud Run, the
+real storage adapter and a provider-backed Studio run remain deployment
+acceptance steps.

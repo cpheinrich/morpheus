@@ -46,7 +46,7 @@ export function submitTask(db, { contextId, messageId, text, launch, now }) {
       return { task, replay: true };
     }
     const brief = { messageId, role: "ROLE_USER", text, createdAt: now };
-    const task = { ...spec, id, contextId, brief, state: "TASK_STATE_SUBMITTED", createdAt: now };
+    const task = { ...spec, queuedSlots: eligibleSlots, id, contextId, brief, state: "TASK_STATE_SUBMITTED", createdAt: now };
     transaction.set(db.doc(taskPath(id)), task);
     transaction.set(submission, { taskId: id, launch: spec });
     return { task, replay: false };
@@ -113,7 +113,7 @@ export function cancelTask(db, { contextId, taskId, now }) {
     matchContext(task, contextId);
     if (task.cancelRequestedAt != null) return { replay: true };
     if (task.state === "TASK_STATE_SUBMITTED" && !task.attempt) {
-      transaction.update(ref, { state: "TASK_STATE_CANCELED", cancelRequestedAt: now });
+      transaction.update(ref, { state: "TASK_STATE_CANCELED", cancelRequestedAt: now, queuedSlots: [] });
     } else if (task.attempt) {
       transaction.update(ref, { cancelRequestedAt: now });
     } else {

@@ -114,3 +114,123 @@ test("Firestore races commit one claim and deliver the settled result to a liste
     assert.equal((await getDoc(ref(`factoryTasks/${running.task.id}`))).data().state, "TASK_STATE_CANCELED");
   });
 });
+
+test("authenticated fleet API isolates roles, wakes both clients and returns a private artifact", { timeout: 30000 }, async (t) => {
+  const { createServer } = await import("node:http");
+  const { readFile } = await import("node:fs/promises");
+  const { once } = await import("node:events");
+  const { createRequire } = await import("node:module");
+  const requirePlugin = createRequire(new URL("../plugins/factory/package.json", import.meta.url));
+  const { initializeApp, deleteApp } = requirePlugin("firebase-admin/app");
+  const { getFirestore } = requirePlugin("firebase-admin/firestore");
+  const { createFleetApi } = await import("../plugins/factory/src/fleet-api.mjs");
+  const address = process.env.FIRESTORE_EMULATOR_HOST;
+  assert.match(address ?? "", /^127\.0\.0\.1:[0-9]+$/);
+  const projectId = "demo-factory-fleet";
+  const environment = await initializeTestEnvironment({
+    projectId,
+    firestore: {
+      host: "127.0.0.1",
+      port: Number(address.split(":")[1]),
+      rules: await readFile(new URL("../plugins/factory/firestore.fleet.rules", import.meta.url), "utf8"),
+    },
+  });
+  t.after(() => environment.cleanup());
+  await environment.clearFirestore();
+  const app = initializeApp({ projectId }, "fleet-api-test");
+  const db = getFirestore(app);
+  t.after(async () => { await db.terminate(); await deleteApp(app); });
+  const objects = new Map();
+  const revision = "1".repeat(40);
+  const config = {
+    users: {
+      pro: { role: "controller", projects: ["pilot"] },
+      stranger: { role: "controller", projects: ["pilot"] },
+      studio: { role: "worker", hostId: "mac-studio", slotId: "studio" },
+      other: { role: "worker", hostId: "other-mac", slotId: "other" },
+    },
+    projects: { pilot: {
+      workspaceKey: "pilot-workspace", eligibleSlots: ["studio"], revision,
+      selection: { provider: "codex", model: "gpt-fixture" },
+    } },
+  };
+  const server = createServer(createFleetApi({
+    db, config,
+    async verifyToken(token) {
+      if (token === "invalid") throw new Error("Invalid token");
+      return { uid: token };
+    },
+    objects: {
+      async put(file, bytes) {
+        const descriptor = { ...file, generation: "9007199254740993" };
+        objects.set(file.objectName, { descriptor, bytes });
+        return descriptor;
+      },
+      async metadata(objectName) { return objects.get(objectName)?.descriptor; },
+      async download(artifact) {
+        const stored = objects.get(artifact.objectName);
+        assert.equal(artifact.generation, stored.descriptor.generation);
+        return stored.bytes;
+      },
+    },
+  })).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  async function call(user, op, body, status = 200) {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/v1`, {
+      method: "POST", headers: { Authorization: `Bearer ${user}` }, body: JSON.stringify({ op, ...body }),
+    });
+    const result = await response.json();
+    assert.equal(response.status, status, JSON.stringify(result));
+    return result;
+  }
+  const input = { rootId: "desktop-root", project: "pilot", revision, messageId: "brief", text: "Make an artifact" };
+  await call("invalid", "submit", input, 401);
+  await call("unenrolled", "submit", input, 403);
+  await call("studio", "submit", input, 403);
+  await call("pro", "submit", { ...input, model: "not-enrolled" }, 403);
+  await call("pro", "submit", { ...input, revision: "2".repeat(40) }, 403);
+  const studio = environment.authenticatedContext("studio").firestore();
+  const signal = doc(studio, "factorySignals/studio");
+  let off;
+  const notified = new Promise((resolve, reject) => {
+    off = onSnapshot(signal, (snapshot) => { if (snapshot.exists()) resolve(snapshot.data()); }, reject);
+  });
+  t.after(() => off());
+  const { task } = await call("pro", "submit", input);
+  assert.deepEqual(Object.keys(await notified), ["version"]);
+  await assert.rejects(getDoc(doc(studio, "factorySignals/pro")), /permission/i);
+  await assert.rejects(getDoc(doc(studio, `factoryTasks/${task.id}`)), /permission/i);
+  await assert.rejects(setDoc(signal, { version: "forged" }), /permission/i);
+  const scope = { rootId: input.rootId, taskId: task.id };
+  await call("stranger", "get", scope, 404);
+  await call("pro", "get", { ...scope, rootId: "other-root" }, 404);
+  assert.deepEqual(await call("studio", "heartbeat", { available: true, capacity: 6000, hostId: "forged" }), { tasks: [task.id] });
+  const identity = { taskId: task.id, attemptId: "90000000-0000-4000-8000-000000000001" };
+  const claim = await call("studio", "claim", identity);
+  assert.equal(claim.attempt.hostId, "mac-studio");
+  assert.deepEqual(await call("studio", "heartbeat", { available: true, capacity: 6000 }), { tasks: [] });
+  await call("other", "inspect", identity, 404);
+  const question = { ...identity, questionId: "question", text: "Which color?" };
+  const pro = environment.authenticatedContext("pro").firestore();
+  let offPro;
+  const controllerWake = new Promise((resolve, reject) => {
+    offPro = onSnapshot(doc(pro, "factorySignals/pro"), (snapshot) => {
+      if (snapshot.exists()) resolve(snapshot.data());
+    }, reject);
+  });
+  t.after(() => offPro());
+  await call("studio", "question", question);
+  assert.deepEqual(Object.keys(await controllerWake), ["version"]);
+  assert.equal((await call("pro", "get", scope)).question.text, "Which color?");
+  await call("pro", "answer", { ...scope, ...identity, questionId: "question", messageId: "answer", text: "Blue" });
+  assert.equal((await call("studio", "inspect", identity)).answer.text, "Blue");
+  const file = { ...identity, name: "result.txt", type: "text/plain", bytes: Buffer.from("blue").toString("base64") };
+  await call("other", "upload", file, 404);
+  const artifact = await call("studio", "upload", file);
+  const finish = { ...identity, outcome: "TASK_STATE_COMPLETED", result: { summary: "Created", artifacts: [file.name] }, cleanupVerified: true };
+  assert.deepEqual(await call("studio", "finish", finish), { settled: true });
+  assert.deepEqual(await call("studio", "finish", finish), { settled: true });
+  await call("stranger", "download", { ...scope, name: file.name }, 404);
+  assert.deepEqual(await call("pro", "download", { ...scope, name: file.name }), { artifact, bytes: file.bytes });
+});

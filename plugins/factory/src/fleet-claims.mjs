@@ -48,7 +48,7 @@ export function claimTask(db, {
     if ((await read(transaction, workspaceRef))?.attemptId) return { reason: "workspace-busy" };
 
     const attempt = { id: attemptId, hostId, slotId, leaseUntil: now + leaseMs };
-    transaction.update(taskRef, { state: "TASK_STATE_WORKING", attempt });
+    transaction.update(taskRef, { state: "TASK_STATE_WORKING", attempt, queuedSlots: [] });
     transaction.update(db.doc(slotPath(slotId)), { attemptId });
     transaction.set(workspaceRef, { attemptId, taskId });
     return { attempt, replay: false };

@@ -129,7 +129,7 @@ async function prepareJob({ config, prompt, resume, admissionId, root, directory
   return isolated;
 }
 // Runs the guardian to its end; true only when python3 itself could not be spawned.
-async function runGuardian(directory, isolated) {
+async function runGuardian(directory, isolated, signal) {
   const child = spawn('python3', [fileURLToPath(new URL('./guardian.py', import.meta.url)), join(directory, 'job.json')], { env: isolated, detached: true, stdio: ['pipe', 'ignore', 'pipe'] });
   let spawned = false;
   child.once('spawn', () => { spawned = true; });
@@ -138,14 +138,16 @@ async function runGuardian(directory, isolated) {
   const heartbeat = setInterval(() => { if (!child.stdin.destroyed) child.stdin.write('{"type":"heartbeat"}\n'); }, 250);
   const cancel = () => { if (!child.stdin.destroyed) child.stdin.write('{"type":"stop"}\n'); };
   process.on('SIGTERM', cancel); process.on('SIGINT', cancel);
+  if (signal?.aborted) cancel();
+  else signal?.addEventListener('abort', cancel, { once: true });
   try { await once(child, 'close'); } catch (error) {
     if (!spawned && child.pid === undefined && error.code === 'ENOENT' && error.syscall === 'spawn python3') return true;
     // Other errors do not prove that no process started. Preserve the unknown hold.
   }
-  finally { clearInterval(heartbeat); child.stdin.destroy(); process.off('SIGTERM', cancel); process.off('SIGINT', cancel); }
+  finally { signal?.removeEventListener('abort', cancel); clearInterval(heartbeat); child.stdin.destroy(); process.off('SIGTERM', cancel); process.off('SIGINT', cancel); }
   return false;
 }
-export async function gatewayWorker(configPath, prompt, resume = null, admissionId = randomUUID()) {
+export async function gatewayWorker(configPath, prompt, resume = null, admissionId = randomUUID(), signal) {
   assertWorkerInputs(prompt, admissionId);
   const config = await readWorkerConfig(configPath);
   const root = await workerStateRoot(config);
@@ -169,7 +171,8 @@ export async function gatewayWorker(configPath, prompt, resume = null, admission
     // No guardian spawn has been attempted. Never persist raw resolver/OS errors.
     return neverLaunched('preparation', step.summary);
   }
-  if (await runGuardian(directory, isolated))
+  if (signal?.aborted) return neverLaunched('preparation', 'Worker canceled before guardian launch.');
+  if (await runGuardian(directory, isolated, signal))
     return neverLaunched('guardian-spawn', 'Guardian executable unavailable; no launch.');
   return workerResult(admissionId);
 }

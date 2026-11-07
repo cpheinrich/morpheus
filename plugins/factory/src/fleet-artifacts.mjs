@@ -90,9 +90,8 @@ async function uploadArtifact(putObject, readObject, object) {
   }
 }
 
-async function putArtifact(putObject, readObject, prefix, name, bytes) {
+async function putArtifact(putObject, readObject, prefix, name, bytes, type) {
   const objectName = `${prefix}/${name}`;
-  const type = contentTypes.get(extname(name).toLowerCase()) ?? "application/octet-stream";
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const generation = await uploadArtifact(putObject, readObject, {
     objectName, bytes, ifGenerationMatch: 0, type, sha256,
@@ -102,25 +101,31 @@ async function putArtifact(putObject, readObject, prefix, name, bytes) {
   return { name, objectName, generation, type, size: bytes.length, sha256 };
 }
 
-export async function publishArtifacts({ outputDir, files, taskId, attemptId, putObject, readObject }) {
-  if (typeof taskId !== "string" || !taskIdentity.test(taskId) ||
-      typeof attemptId !== "string" || !taskIdentity.test(attemptId))
-    throw new Error("Artifacts require valid task and attempt identities.");
+export async function* readArtifactFiles(outputDir, files) {
   const names = artifactNames(files);
-  if (!names.length) return [];
+  if (!names.length) return;
   if (!isAbsolute(outputDir)) throw new Error("Artifact output directory must be absolute.");
   const directory = resolve(outputDir);
   const root = await open(directory, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_DIRECTORY);
   try {
     const directoryStat = await root.stat(statOptions);
-    const prefix = `factory/${taskId}/${attemptId}`;
-    const artifacts = [];
     for (const name of names) {
       const bytes = await readArtifact(directory, directoryStat, name);
-      artifacts.push(await putArtifact(putObject, readObject, prefix, name, bytes));
+      const type = contentTypes.get(extname(name).toLowerCase()) ?? "application/octet-stream";
+      yield { name, bytes, type };
     }
-    return artifacts;
   } finally {
     await root.close();
   }
+}
+
+export async function publishArtifacts({ outputDir, files, taskId, attemptId, putObject, readObject }) {
+  if (typeof taskId !== "string" || !taskIdentity.test(taskId) ||
+      typeof attemptId !== "string" || !taskIdentity.test(attemptId))
+    throw new Error("Artifacts require valid task and attempt identities.");
+  const prefix = `factory/${taskId}/${attemptId}`;
+  const artifacts = [];
+  for await (const { name, bytes, type } of readArtifactFiles(outputDir, files))
+    artifacts.push(await putArtifact(putObject, readObject, prefix, name, bytes, type));
+  return artifacts;
 }

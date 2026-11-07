@@ -3338,6 +3338,18 @@ Under full access this is ownership enforced at delegation, not an OS sandbox. R
 before workspaces migrate when their primary checkout is a linked worktree; one bound to an
 original or non-Git directory is refused with the remedy to start a new root session.
 
+The opt-in Codex Studio pilot exposes `factory_remote` to the controller.
+A Firebase-authenticated HTTPS service verifies enrollment and owns the
+Firestore task, message, and lease transactions. Native listeners watch
+per-client wake documents. Workstations fetch the authoritative snapshot from
+the service after a wake or a timed reconciliation. The Studio supervisor
+journals admissions before launching the existing Codex gateway worker as a
+separate OS user. The slot and checkout remain held until cleanup is verified.
+Artifacts are private Cloud Storage generations referenced by Firestore.
+Sub2API selects the upstream account behind the enrolled Codex gateway.
+The pilot keeps the A2A task semantics and uses the Factory transport described
+in the [operator instructions](plugins/factory/README.md#authenticated-studio-pilot).
+
 The nested `plugins/factory/src/host/` package holds the host and fleet tooling imported from
 the public `morpheus-factory` repository (source and commit only, no history): the TypeScript
 placement/admission/broker core and the Python/shell worker setup, Xcode host-update

@@ -621,3 +621,39 @@ test('--reconcile fails closed on incomplete, unproven or ambiguous evidence, an
   assert.equal(result.output.terminationVerified, true);
   assert.equal(alive(reusedOwned), true); assert.equal(alive(reusedGuardian), true);
 });
+
+test('Studio executor admits the enrolled commit and returns only declared artifact bytes', async t => {
+  const f = await setup(t, `import json,pathlib,sys
+sys.stdin.read()
+output=next(pathlib.Path('.').glob('.factory-artifacts-*'))
+(output/'result.txt').write_text('blue')
+(output/'unlisted.txt').write_text('private')
+print(json.dumps({'type':'thread.started','thread_id':'studio-session'}),flush=True)
+print(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':json.dumps({'outcome':'completed','summary':'done','evidence':['artifact:result.txt'],'question':''})}}),flush=True)
+print(json.dumps({'type':'turn.completed'}),flush=True)
+`);
+  execFileSync('git', ['-C', f.cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'Fixture', '--allow-empty']);
+  const revision = execFileSync('git', ['-C', f.cwd, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const executor = fileURLToPath(new URL('../scripts/fleet-executor.mjs', import.meta.url));
+  async function run(sha) {
+    const child = spawn(process.execPath, [executor, f.configPath, 'fixture'], { env: process.env, stdio: ['pipe', 'pipe', 'inherit'] });
+    const admissionId = randomUUID();
+    const job = { task: { source: { project: 'fixture', revision: sha }, selection: { provider: 'codex', model: f.config.model } },
+      admissionId, resume: null, prompt: 'Write a result artifact' };
+    child.stdin.write(JSON.stringify(job) + '\n');
+    let stdout = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    const [code] = await once(child, 'close');
+    assert.equal(code, 0);
+    return { admissionId, lines: stdout.trim().split('\n').map(line => JSON.parse(line)) };
+  }
+  const wrong = await run('0'.repeat(40));
+  assert.equal(wrong.lines[0].outcome.result.outcome, 'failed');
+  await assert.rejects(readFile(join(f.state, wrong.admissionId, 'admission.json')), { code: 'ENOENT' });
+  const good = await run(revision);
+  assert.deepEqual(good.lines.map(line => Object.keys(line)), [['artifact'], ['outcome']]);
+  assert.deepEqual(good.lines[0].artifact, { name: 'result.txt', type: 'text/plain', bytes: 'Ymx1ZQ==' });
+  assert.equal(good.lines[1].outcome.terminationVerified, true);
+  assert.equal(good.lines[1].outcome.sessionId, 'studio-session');
+});
