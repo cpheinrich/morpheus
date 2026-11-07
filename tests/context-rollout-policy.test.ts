@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -112,4 +112,19 @@ describe("context rollout", () => {
     await symlink(join(root, ".agent"), join(root, "local", "context-search", "cache"));
     await expect(searchStateDirectory(root, "cache")).rejects.toThrow("inside the worktree");
   });
+
+  it("ignores tracked and inaccessible session pins", async () => {
+    const root = await fixture();
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    await writeFile(join(root, ".gitignore"), "/local/\n");
+    await setSessionEngine(root, "session", "tantivy");
+    const dir = join(root, "local/context-search/engines");
+    const [name] = await readdir(dir);
+    execFileSync("git", ["add", "-f", "--", join(dir, name!)], { cwd: root });
+    expect(await sessionEngine(root, "session")).toBeUndefined();
+    await rm(dir, { recursive: true });
+    await writeFile(dir, "not a directory");
+    expect(await sessionEngine(root, "session")).toBeUndefined();
+  });
+
 });

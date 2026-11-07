@@ -38,9 +38,9 @@ asynchronous human and agent communication is in progress.
 
 Review `local/context-search/traces/YYYY-MM-DD.jsonl` in each worktree.
 Older traces remain under `morpheus-context-traces/` in common Git metadata.
-New traces are local and expire after 30 days. Worktree cleanup preserves
-the ignored directory. Copy any needed traces outside the worktree before
-removing that local data.
+New active traces expire after 30 days. On removal of a verified task
+worktree, cleanup moves its search state to the common Git directory under
+`morpheus-context-archives/`, where it remains available for comparison.
 Startup tokens estimate the listed required reads with `o200k_base`.
 Search time includes source discovery, local engine work and excerpt packing. Compare assigned and actual
 engine, startup load, total search time and returned tokens per session.

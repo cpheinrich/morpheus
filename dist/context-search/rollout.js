@@ -143,12 +143,12 @@ export async function traceContext(root, event, now = new Date()) {
         const directory = await searchStateDirectory(root, "traces");
         await expireTrace(directory, now);
         const file = join(directory, `${now.toISOString().slice(0, 10)}.jsonl`);
-        const flags = constants.O_APPEND | constants.O_CREAT | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0);
+        const flags = constants.O_APPEND | constants.O_CREAT | constants.O_WRONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0);
         const handle = await open(file, flags, 0o600);
         try {
-            const { size, nlink } = await handle.stat();
+            const stat = await handle.stat();
             const line = traceLine(event, now);
-            if (nlink === 1 && size + Buffer.byteLength(line) <= DAILY_TRACE_LIMIT)
+            if (stat.isFile() && stat.nlink === 1 && stat.size + Buffer.byteLength(line) <= DAILY_TRACE_LIMIT)
                 await handle.appendFile(line);
         }
         finally {

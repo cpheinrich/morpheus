@@ -138,6 +138,20 @@ describe("completed task worktree cleanup", () => {
     expect(await readFile(join(target, "private.txt"), "utf8")).toBe("keep this\n");
   });
 
+  it("archives ignored search state before removing a completed worktree", async () => {
+    await generatedReceipt();
+    const local = join(target, "local/context-search/traces");
+    await mkdir(local, { recursive: true });
+    await writeFile(join(local, "2026-11-07.jsonl"), "keep trace\n");
+    const archive = join(root, ".git/morpheus-context-archives");
+    await cleanupTask(root, join(root, "hq/product"), id, true);
+    await expect(fs.readdir(archive)).rejects.toMatchObject({ code: "ENOENT" });
+    await cleanupTask(root, join(root, "hq/product"), id);
+    const [entry] = await fs.readdir(archive);
+    expect(await readFile(join(archive, entry!, "context-search/traces/2026-11-07.jsonl"), "utf8")).toBe("keep trace\n");
+    await expect(fs.stat(target)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("removes only a valid Morpheus receipt in local/sessions", async () => {
     await generatedReceipt();
     await cleanupTask(root, join(root, "hq/product"), id);

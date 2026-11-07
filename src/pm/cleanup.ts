@@ -1,4 +1,4 @@
-import { lstat, readdir, readFile, realpath, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -54,9 +54,36 @@ async function localData(path: string): Promise<string[]> {
   // `git worktree remove` deletes ignored files even without --force. The
   // package install cache is reproducible; everything else is preserved.
   const status = await git(path, ["status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching", "--ignore-submodules=none", "-z"], false);
-  const generatedLeaseOnly = await onlyGeneratedLease(path);
+  const managedLocalOnly = await onlyManagedLocal(path);
   return status.split("\0").filter(Boolean).filter(entry =>
-    !/^!! (?:.*\/)?node_modules\/?$/.test(entry) && !(entry === "!! local/" && generatedLeaseOnly));
+    !/^!! (?:.*\/)?node_modules\/?$/.test(entry) && !(entry === "!! local/" && managedLocalOnly));
+}
+
+async function onlyManagedLocal(root: string): Promise<boolean> {
+  const local = join(root, "local");
+  try {
+    if (!(await lstat(local)).isDirectory()) return false;
+    const names = await readdir(local);
+    if (!names.length || names.some(name => name !== "sessions" && name !== "context-search")) return false;
+    if (names.includes("context-search") && !(await lstat(join(local, "context-search"))).isDirectory()) return false;
+    return !names.includes("sessions") || await onlyGeneratedLease(root);
+  } catch { return false; }
+}
+
+async function archiveSearchState(root: string, common: string): Promise<void> {
+  const state = join(root, "local", "context-search");
+  const stat = await lstat(state).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return undefined;
+    throw error;
+  });
+  if (!stat) return;
+  if (!stat.isDirectory() || await realpath(state) !== state) throw new Error("Context search state changed; retain worktree.");
+  const archives = join(common, "morpheus-context-archives");
+  await mkdir(archives, { mode: 0o700, recursive: true });
+  if (await realpath(archives) !== archives) throw new Error("Context search archive must stay in Git metadata.");
+  const destination = await mkdtemp(join(archives, "worktree-"));
+  // Preserve the entire directory so no trace or unexpected local file is lost.
+  await rename(state, join(destination, "context-search"));
 }
 
 /**
@@ -71,7 +98,6 @@ async function onlyGeneratedLease(root: string): Promise<boolean> {
   const generated = new Set([lease, `${sessionId(root)}.records.json`, "reads.jsonl"]);
   try {
     if (!(await lstat(local)).isDirectory() || !(await lstat(sessions)).isDirectory()) return false;
-    if ((await readdir(local)).join("\0") !== "sessions") return false;
     const names = await readdir(sessions);
     const scoped = new RegExp(`^rollout-${sessionId(root)}-[a-f0-9]{16}(?:\\.records)?\\.json$`);
     if (!names.length || names.some(name => !generated.has(name) && !scoped.test(name))) return false;
@@ -193,6 +219,7 @@ async function removeTask(cwd: string, identity: Identity, target: Worktree, rem
   // removal so a network/refusal failure leaves the local worktree available for recovery.
   if (target.branch && remote) await git(cwd, ["push", `--force-with-lease=refs/heads/${target.branch}:${remote}`, "origin", `:refs/heads/${target.branch}`]);
   if (target.branch && await remoteHead(cwd, target.branch) !== null) throw new Error("Remote branch still exists; retain local worktree.");
+  await archiveSearchState(target.path, identity.common);
   await git(cwd, ["worktree", "remove", "--", target.path]);
   await clearTaskBindings(identity.common, target.path);
   if (target.branch) {

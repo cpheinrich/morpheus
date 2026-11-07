@@ -29,10 +29,12 @@ export function validSearchSession(session) {
 export async function sessionEngine(root, session) {
     if (!validSearchSession(session))
         return;
-    const path = join(root, STATE, "engines", engineFile(session));
+    const relative = join(STATE, "engines", engineFile(session));
+    const path = join(root, relative);
     try {
         if (await realpath(path) !== path)
             return;
+        await sessionGit(root, ["check-ignore", "--quiet", "--", relative]);
         const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0));
         try {
             const stat = await file.stat();
@@ -45,9 +47,9 @@ export async function sessionEngine(root, session) {
             await file.close();
         }
     }
-    catch (error) {
-        if (error.code !== "ENOENT")
-            throw error;
+    catch {
+        // A missing, unsafe or untracked-by-convention pin must not prevent search.
+        return undefined;
     }
 }
 export async function setSessionEngine(root, session, engine) {
