@@ -233,3 +233,9 @@ After reading the appended decision, restored the receipt using the documented a
 fallback; no review or authorization requirement was bypassed. Consumer index refreshed at
 2026-11-07T00:00:03Z: all new implementation paths metadata_match/no recorded issue; rules remain
 not_tracked and were read/tested directly. Best-effort graph signal only.
+
+Draft PR https://github.com/cpheinrich/morpheus/pull/637 contains implementation commit
+4465c3c8fb9beecda1dd324de8100b617ae4c847. Final local check pr reports only the deliberately
+absent agent-reviewed label; independent review has not occurred. Auto-merge is off. Paired
+consumer draft https://github.com/darwin-health/darwin/pull/144. Review packets are generated
+after this final records commit; the controller owns fresh reviewers and supervised rollout.
