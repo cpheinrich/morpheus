@@ -95,8 +95,6 @@ fast-forwards; `doctor --all` lists stuck trunks and unpushed rescues.
 **Read `AGENTS.md` (an injected copy leaves no read evidence), `.agent/decisions.md`,
 `.agent/learned.md` and `hq/team/<your handle>.md` once at session start, then run
 `morpheus context refresh` once.**
-When startup prints a context-search rollout arm, use its required-record list instead.
-Once the task is known, run `morpheus context search <query>` and open the cited records you need.
 After that, just run the gated command
 (`pm claim`, `pm new`, `pm link-issue`, `pm block`, `access sync`, `firebase auth setup`,
 `web init` provisioning); past the five-minute term the gate re-certifies when nothing moved.
