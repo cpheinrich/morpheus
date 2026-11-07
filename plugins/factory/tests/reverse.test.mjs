@@ -417,6 +417,8 @@ test("one Claude session runs Codex concurrently only in different worktrees", a
   });
   assert.equal(resumed.cwd, await realpath(other));
   assert.equal(resumed.codexSession, "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0002");
+  assert.equal(resumed.taskId, second.taskId);
+  assert.notEqual(resumed.id, second.id);
   assert.equal(resumed.fresh, true);
   assert.equal((await taskRead(claudeTaskId(sessionId))).primaryCwd, await realpath(repo));
 
@@ -627,6 +629,8 @@ test("Codex-root fresh runs require a binding, persist together, and resume thei
   assert.equal(resumed.fresh, true);
   assert.equal(resumed.cwd, await realpath(other));
   assert.equal(resumed.claudeSession, "fresh-claude-session");
+  assert.equal(resumed.taskId, fresh.taskId);
+  assert.notEqual(resumed.id, fresh.id);
   assert.equal((await taskRead(threadId)).primaryCwd, await realpath(repo));
 
   Object.assign(m.runs.get(resumed.id), { terminal: true, state: "completed" });

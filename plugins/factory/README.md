@@ -564,6 +564,20 @@ launches that worker; the run's
 
 ## Sessions, output and supervision
 
+Factory exposes an additive `task` view on desktop delegation, status, wait and answer results.
+Its ID identifies the delegated work, while the legacy run ID still addresses a concrete local
+invocation. The first invocation's ID serves as the task ID. A follow-up to an open question keeps
+that task ID even if the provider starts another invocation. A new brief after a settled result
+gets a new task ID even when the provider reuses its conversation.
+
+The view uses the adopted task state names from [A2A 1.0.1](https://a2a-protocol.org/v1.0.1/specification/).
+In particular, a question is `TASK_STATE_INPUT_REQUIRED` even when the provider turn has exited.
+Unverified cleanup or an unclassified interruption has `TASK_STATE_UNSPECIFIED`. This is a
+local lifecycle projection with existing MCP tool inputs and run history. It does not expose an A2A
+transport binding.
+
+The cross-host pilot uses the [Factory task contract](src/host/docs/fleet-task-contract.md).
+
 Each Codex task remains a normal saved Codex conversation. The plugin associates its
 working directory with a saved Claude session id and resumes it on subsequent handoffs.
 It does not create a native Claude model choice inside Codex or import Claude messages as

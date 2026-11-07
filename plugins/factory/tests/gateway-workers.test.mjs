@@ -136,15 +136,20 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"done","str
   assert.equal(started.permissions, "acceptEdits");
   const asking = await settle(m, started.id, (r) => r.question || r.terminal);
   assert.equal(asking.question?.id, "q1");
-  // A Claude coordinator answers through codex.answer; tool permission would still need a user.
-  await m.dispatch("codex.answer", {
-    sessionId,
+  const pending = await m.factoryRun({ rootKind: "claude", rootId: sessionId, runId: started.id });
+  assert.equal(pending.task.id, started.task.id);
+  assert.equal(pending.task.status.state, "TASK_STATE_INPUT_REQUIRED");
+  const answered = await m.factoryAnswer({
+    rootKind: "claude",
+    rootId: sessionId,
     runId: started.id,
     questionId: "q1",
-    source: "claude",
+    source: "root",
     reason: "Reversible fixture choice",
     answers: { "Color?": "Blue" },
   });
+  assert.equal(answered.task.id, started.task.id);
+  assert.equal(answered.task.status.state, "TASK_STATE_WORKING");
   const done = await settle(m, started.id);
   assert.equal(done.state, "completed");
   const argv = (await readFile(join(root, "argv"), "utf8")).trim().split("\n");
@@ -217,6 +222,12 @@ echo '{"type":"turn.completed","usage":{}}'
   assert.deepEqual(started.selection, { model: "gpt-6.1-sol", effort: "low", speed: "standard" });
   const done = await settle(m, started.id);
   assert.equal(done.state, "completed");
+  const taskResult = await m.factoryRun({ rootKind: "codex", rootId: threadId, runId: started.id });
+  assert.deepEqual(taskResult.task, {
+    id: started.id,
+    contextId: threadId,
+    status: { state: "TASK_STATE_COMPLETED" },
+  });
   const argv = (await readFile(join(root, "argv"), "utf8")).trim().split("\n");
   const overrides = argv.filter((_, i) => argv[i - 1] === "-c");
   assert.deepEqual(overrides.filter((arg) => arg.startsWith("model_provider")), [
@@ -262,6 +273,8 @@ echo '{"type":"turn.completed","usage":{}}'
   const second = await m.factoryDelegate({
     rootKind: "codex", rootId: threadId, prompt: "Look only", model: "gpt-6.1-terra", speed: "fast",
   });
+  assert.equal(second.task.id, second.id);
+  assert.notEqual(second.task.id, started.task.id);
   assert.equal(second.permissions, "read-only");
   await settle(m, second.id);
   const resumed = (await readFile(join(root, "argv"), "utf8")).trim().split("\n");

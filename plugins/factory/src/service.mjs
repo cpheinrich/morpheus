@@ -57,6 +57,7 @@ import { identity, ownedProcessState, stopOrphan } from "./processes.mjs";
 import { Viewer } from "./viewer.mjs";
 import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
 import { installationId } from "./installation.mjs";
+import { taskIdForAttempt, taskView } from "./task-model.mjs";
 import {
   editTargets,
   canonical,
@@ -642,6 +643,7 @@ export class Manager {
     await mkdir(runDir(id), { mode: 0o700 });
     const prompt = await this.workerPrompt(worker, config, task, args, workspace);
     const record = runRecord({ id, worker, task, workspace, sessionKey, fresh, decision, selection, permissions, codexSandbox, codexSession, args });
+    record.taskId = taskIdForAttempt(id, previous);
     await this.launch(
       record,
       {
@@ -907,6 +909,7 @@ export class Manager {
     } = run;
     return {
       id,
+      ...(run.taskId ? { taskId: run.taskId } : {}),
       executor,
       codexSession,
       threadId,
@@ -1192,6 +1195,7 @@ export class Manager {
     await mkdir(runDir(id), { mode: 0o700 });
     const prompt = await claudeRootPrompt(worker, config, task, args, workspace);
     const record = claudeRootRecord({ id, worker, task, args, workspace, sessionKey, fresh, decision, selection, permission, codexSession, claudeSession });
+    record.taskId = taskIdForAttempt(id, previous);
     await this.launch(
       record,
       {
@@ -1340,7 +1344,14 @@ export class Manager {
     if (worker) status.selection = factoryWorkerSelection(worker, await configRead(), args.rootKind, rootEffort);
     return status;
   }
-  async factoryDelegate(args) {
+  factoryDelegate(args) {
+    return this.sendMessage(args);
+  }
+  async sendMessage(args, liveReply = false) {
+    const run = liveReply ? await this.replyToMessage(args) : await this.startMessage(args);
+    return { ...run, task: taskView(run) };
+  }
+  async startMessage(args) {
     const modelProvider = explicitModelProvider(args.model);
     if (modelProvider && args.provider && modelProvider !== args.provider)
       throw new Error("The requested model belongs to a different worker provider.");
@@ -1367,13 +1378,18 @@ export class Manager {
       : this.codexStart({ ...common, sessionId: args.rootId });
   }
   async factoryRun(args) {
-    return this.statusFor(this.rootTaskId(args.rootKind, args.rootId), args.runId);
+    const run = await this.statusFor(this.rootTaskId(args.rootKind, args.rootId), args.runId);
+    return { ...run, task: taskView(run) };
   }
   async factoryWait(args) {
     await this.factoryRun(args);
-    return this.wait(args.runId, args.seconds);
+    const run = await this.wait(args.runId, args.seconds);
+    return { ...run, task: taskView(run) };
   }
-  async factoryAnswer(args) {
+  factoryAnswer(args) {
+    return this.sendMessage(args, true);
+  }
+  async replyToMessage(args) {
     await this.factoryRun(args);
     return this.answer({
       ...args,
