@@ -392,6 +392,16 @@ how a credentials manager stays the single source of truth, for example
 `exec:/opt/homebrew/bin/darwin-env get FACTORY_CLAUDE_KEY`; give the command an absolute
 path, since the bridge service inherits the PATH of whichever session started it.
 
+`factory_delegate` defaults to `gpt-6.1-sol` on Codex and `claude-opus-5-5` on Claude,
+independent of the controller's model. Standard speed applies to both workers. Specify
+`model` or `speed: "fast"` only for a user-requested override; `selection` reports the
+requested model, effort and speed. Legacy client model maps do not select models for
+`factory_delegate`. Unattended services retain their explicitly configured model.
+Codex selects a dedicated gateway provider with a required environment key and sets the
+default service tier per launch. A missing gateway key fails before any request and cannot
+fall back to the controller's Codex login. Claude workers disable Fast mode for the child
+session. These controls apply to fresh and resumed worker turns.
+
 Quota is read from the gateway's admin API with an admin login. `GET /api/v1/admin/accounts`
 finds each provider's account. An account counts as its most-used 5-hour or 7-day window
 whose reset time has not passed, judged when the response arrives.
@@ -438,7 +448,7 @@ over two minutes doing it), although the documented precedence says the token wi
 host that delegates Claude work through a gateway, run `claude auth logout`; `doctor` notes
 the combination.
 
-The selected model and effort are mapped independently at each Claude launch:
+Legacy controller-specific commands map model and effort independently at each Claude launch:
 
 | Codex selection | Claude alias |
 |---|---|
@@ -496,7 +506,7 @@ both. Start a new Claude session after installing, and review its hooks.
 - **Settings source.** Hooks record the session's working directory and permission mode from
   Claude's own hook input, its effort from `CLAUDE_EFFORT`, and its model from the latest
   assistant reply in the transcript. Until a hook has run, delegation refuses.
-- **Model and effort.** `codexModelMap` maps the Claude family (fable/opus/sonnet/haiku) to an
+- **Legacy model and effort mapping.** `codexModelMap` maps the Claude family (fable/opus/sonnet/haiku) to an
   approved `codexModels` entry; `codexEffortMap` maps effort. Unmapped values use Codex's own
   configured default rather than a guess.
 - **Permissions, never widened.** See the Claude table in

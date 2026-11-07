@@ -104,13 +104,7 @@ async function gatewayEnv(config, root, binding, step) {
 }
 function workerArgv(config, sessionId) {
   const permission = codexPermission({ 'read-only': 'plan', 'workspace-write': 'acceptEdits', 'danger-full-access': 'bypassPermissions' }[config.sandbox]);
-  const argv = codexArgs(sessionId, config, permission, config.gateway);
-  // Pin the provider even if a host or project has a different default provider.
-  argv.splice(argv.length - (sessionId ? 2 : 1), 0,
-    '-c', 'model_provider="OpenAI"',
-    '-c', 'model_providers.OpenAI.env_key="OPENAI_API_KEY"',
-    '-c', 'model_providers.OpenAI.requires_openai_auth=false');
-  return argv;
+  return codexArgs(sessionId, config, permission, config.gateway);
 }
 // Every step before the guardian spawn; `step.summary` names the phase a failure is reported as.
 async function prepareJob({ config, prompt, resume, admissionId, root, directory, binding, record }, step) {
