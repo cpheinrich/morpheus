@@ -45,8 +45,9 @@ record stays in the corpus but is excluded as a return candidate for its own
 descriptive case. This study measures known-source retrieval, so open-ended
 factual usefulness is assessed separately.
 
-Primary outcome is evidence-span recall at 1,000 returned tokens. Also report
-2,500 tokens, file recall, actual token counts, and total query time through
+Primary outcome is evidence-span recall on descriptive cases at 1,000
+returned tokens. Report literal-ID file recall separately. Also report
+2,500 tokens, actual token counts, and total query time through
 serialized tool output. Use a common source-citation formatter and tokenizer.
 Only complete evidence lines count. Pin engine versions, the allowed search
 scope and all settings before opening holdout. Report build time separately
@@ -79,12 +80,14 @@ from the deterministic benchmark and report its actual denominator.
 
 | Method | Retrieval and passage selection |
 |---|---|
-| `ripgrep` | Exact roadmap ID when present, otherwise an OR of distinct query terms. Rank matching lines by number of distinct terms, with path and line tie breaks. Return up to six lines on each side. |
+| `ripgrep` | Exact roadmap ID when present, otherwise an OR of distinct query terms. Rank matching lines by number of distinct terms, with path and line tie breaks. Select the nearest shared window containing the matched line. |
 | `mini-body` | MiniSearch 7.2.0 over 16-line windows with 4-line overlap. Index body text. |
 | `mini-context` | Same windows with indexed title, heading and path. Fixed boosts of 2.5, 2, 1.5 and 1 for title, heading, path and body. |
 | `qmd-bm25` | QMD 2.8.3 lexical document rank. Choose a window around the strongest lexical line in each document. |
 | `qmd-hybrid` | Optional QMD lexical plus local vector without expansion or reranking. Use a window around the matched QMD chunk when anchored, with the BM25 window rule as fallback. |
 
+All adapters draw from the same 16-line windows with 4-line overlap.
+Line-ranked adapters select the nearest window containing the match.
 The bounded ripgrep adapter is a one-query baseline. The full ordinary
 agent workflow has its own baseline. QMD operates on a private projection that
 keeps file basenames, maps hits back to canonical paths and checks inventory size.

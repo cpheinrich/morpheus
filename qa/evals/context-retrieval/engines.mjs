@@ -11,9 +11,13 @@ const words = input => (input.toLowerCase().match(wordPattern) ?? [])
   .filter(word => word.length >= 3 && !STOP.has(word));
 const terms = query => [...new Set(words(query))];
 const LIMIT = 40;
+const WINDOW = 16;
+const STRIDE = 12;
 
 function around(path, line, count) {
-  return { path, first: Math.max(1, line - 6), last: Math.min(count, line + 6) };
+  const overlapMidpoint = Math.ceil((WINDOW - STRIDE) / 2);
+  const first = 1 + Math.floor(Math.max(0, line - overlapMidpoint - 1) / STRIDE) * STRIDE;
+  return { path, first, last: Math.min(count, first + WINDOW - 1) };
 }
 
 function position(path, line, documents) {
@@ -76,8 +80,8 @@ export function prepareMiniSearch(project, rich) {
   for (const { path, lines } of project.documents.values()) {
     const title = lines.find(line => /^# /.test(line)) ?? basename(path);
     let heading = title;
-    for (let first = 0; first < lines.length; first += 12) {
-      const body = lines.slice(first, first + 16);
+    for (let first = 0; first < lines.length; first += STRIDE) {
+      const body = lines.slice(first, first + WINDOW);
       heading = body.findLast(line => /^#{1,6} /.test(line)) ?? heading;
       chunks.push({
         id: chunks.length, path, first: first + 1, last: first + body.length, title, heading,

@@ -124,8 +124,10 @@ def report(frame, directory):
     baseline = {(row["budget"], row["case"]): row for row in rows if row["method"] == "ripgrep"}
     slices = defaultdict(list)
     for row in rows:
-        for name in ("all", row["project"], "kind/" + row["kind"],
-                     row["project"] + "/" + row["kind"]):
+        scopes = ["all", row["project"], "kind/" + row["kind"], row["project"] + "/" + row["kind"]]
+        if row["kind"] != "literal-id":
+            scopes.append("descriptive")
+        for name in scopes:
             slices[(name, row["method"], row["budget"])].append(row)
     summaries = [
         dict(scope=name, method=method, budget=budget, **summarize(
