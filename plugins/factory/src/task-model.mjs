@@ -42,6 +42,11 @@ export function confirmedGroupExit(processState) {
   return processState?.state === "exited" && processState.groupExitVerified === true;
 }
 
+export function unverifiedTaskCancel(processState) {
+  return processState?.state === "exited" && processState.taskCanceled === true &&
+    !confirmedGroupExit(processState);
+}
+
 // The v1 task vocabulary is additive on the legacy MCP response. Use only the
 // conversation identity and the lifecycle projection, not provider session IDs.
 export function taskView(attempt) {

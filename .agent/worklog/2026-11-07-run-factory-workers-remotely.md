@@ -31,3 +31,9 @@ This early review does not clear the pending authenticated runner path for relea
 
 Local verification passed 56 focused Factory tests, 40 CI path-selection tests, Firestore
 emulator integration, workflow lint, complexity, typecheck, compile, and the project index.
+
+The cancellation follow-up also confirms an empty local process group before reporting canceled.
+An unverified explicit cancel remains nonterminal and blocks workspace reuse after restart.
+The focused Factory suite passed 58 cases, and all seven artifact tests also passed on a second
+macOS host against a local object adapter. The reviewed cloud integration and provider-backed
+pilot still need to be run.

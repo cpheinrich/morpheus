@@ -57,7 +57,7 @@ import { identity, ownedProcessState, stopOrphan } from "./processes.mjs";
 import { Viewer } from "./viewer.mjs";
 import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
 import { installationId } from "./installation.mjs";
-import { confirmedGroupExit, confirmedTaskCancel, currentAttemptId, rememberContinuation, taskIdForAttempt, taskView } from "./task-model.mjs";
+import { confirmedGroupExit, confirmedTaskCancel, currentAttemptId, rememberContinuation, taskIdForAttempt, taskView, unverifiedTaskCancel } from "./task-model.mjs";
 import {
   editTargets,
   canonical,
@@ -691,16 +691,17 @@ export class Manager {
       /^[0-9a-f-]{36}$/.test(id),
     )) {
       const p = await readJSON(join(runDir(id), "process.json"), null);
-      if (p?.state !== "running" && p?.state !== "starting") continue;
+      const unverifiedCancel = unverifiedTaskCancel(p);
+      if (p?.state !== "running" && p?.state !== "starting" && !unverifiedCancel) continue;
       const record = await readJSON(join(runDir(id), "run.json"), null);
       if (
         record &&
         (record.threadId === task.id || overlapping(runDirs(record), dirs)) &&
         !this.runs.has(id)
       ) {
-        await writeFile(join(runDir(id), "cancel"), "recovery", {
-          mode: 0o600,
-        });
+        if (unverifiedCancel && (await this.status(id)).terminal) continue;
+        if (!unverifiedCancel)
+          await writeFile(join(runDir(id), "cancel"), "recovery", { mode: 0o600 });
         throw new Error(
           "An interrupted run is being cleaned up. Check status before retrying.",
         );
@@ -838,6 +839,13 @@ export class Manager {
         .catch(() => 0),
     );
     if (run.offset < size) return;
+    if (unverifiedTaskCancel(processState)) {
+      run.state = "cleanup_pending";
+      run.error = "Could not verify canceled worker cleanup; replacement is blocked";
+      clearInterval(run.timer);
+      await atomic(join(runDir(run.id), "run.json"), this.public(run));
+      return;
+    }
     run.terminal = true;
     if (confirmedTaskCancel(processState)) run.taskCanceled = true;
     if (run.stopping || processState?.interrupted)
@@ -979,7 +987,9 @@ export class Manager {
         reason: "Guardian lost; verified child cleanup attempted",
       });
     }
-    const current = await readJSON(join(runDir(id), "process.json"), null);
+    const current = await this.checkCanceledGroup(id, await readJSON(join(runDir(id), "process.json"), null));
+    if (unverifiedTaskCancel(current))
+      return { ...record, state: "cleanup_pending", terminal: false, error: "Could not verify canceled worker cleanup; replacement is blocked" };
     if (!record.terminal && current?.state === "exited") {
       const recovered = { ...record, state: "interrupted", terminal: true };
       if (confirmedTaskCancel(current)) recovered.taskCanceled = true;
@@ -987,6 +997,12 @@ export class Manager {
       return recovered;
     }
     return record;
+  }
+  async checkCanceledGroup(id, current) {
+    if (!unverifiedTaskCancel(current) || !(await stopOrphan(current).catch(() => false))) return current;
+    const verified = { ...current, groupExitVerified: true };
+    await atomic(join(runDir(id), "process.json"), verified);
+    return verified;
   }
   async statusFor(taskId, id) {
     const run = await this.status(id);

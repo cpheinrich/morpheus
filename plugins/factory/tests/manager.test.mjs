@@ -15,6 +15,36 @@ import {
 import { defaults } from "../src/config.mjs";
 import { identity } from "../src/processes.mjs";
 import { randomUUID } from "node:crypto";
+test("restart keeps a canceled worktree fenced while group exit is unverified", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "manager-cancel-"));
+  const previous = process.env.FACTORY_HOME;
+  process.env.FACTORY_HOME = root;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.FACTORY_HOME;
+    else process.env.FACTORY_HOME = previous;
+    await rm(root, { recursive: true, force: true });
+  });
+  await initStore();
+  const manager = new Manager();
+  const id = randomUUID();
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(runDir(id));
+  const cwd = join(root, "claimed");
+  await atomic(join(runDir(id), "run.json"), { id, threadId: "first", cwd, state: "cleanup_pending", terminal: false });
+  const processPath = join(runDir(id), "process.json");
+  const stopped = {
+    state: "exited", taskCanceled: true, interrupted: true, groupExitVerified: false,
+    // A different identity prevents any signal to this live test process.
+    claudePid: process.pid, claudeIdentity: "different process",
+  };
+  await atomic(processPath, stopped);
+  await assert.rejects(manager.recoverOrphans({ id: "second", cwd }), /interrupted run is being cleaned up/);
+  assert.equal((await manager.status(id)).state, "cleanup_pending");
+  await atomic(processPath, { ...stopped, groupExitVerified: true });
+  assert.equal((await manager.status(id)).taskCanceled, true);
+  await manager.recoverOrphans({ id: "second", cwd });
+});
+
 test("supervision permits justified clarification but never implicit tool approval", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "manager-"));
   process.env.FACTORY_HOME = root;
