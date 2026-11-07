@@ -386,3 +386,10 @@ issue descriptions. Record provenance explicitly when a task must instead be rec
 from an early roadmap item or worklog. Exclude placeholders and outcome-only descriptions.
 Holdout labels and the split remain unfrozen. Retain separate historical tags only when their
 source version matches the scored text, or draft them from the historical blob itself.
+
+The bounded ripgrep control returned 8/30 at 2k and 5k, 11/30 at 10k and 15/30 at 20k.
+Its median search plus passage assembly was 51.6 ms. Three fresh contextual MiniSearch
+index builds took 677–692 ms. Across the 72 post-first queries, contextual ranking
+took a 5.0 ms median and 10.0 ms p95 before passage budget assembly. These timing
+boundaries differ, so use them as engineering costs rather than whole-workflow speedups.
+Final Factory inspection still reported the same stale November 6 weekly snapshot.
