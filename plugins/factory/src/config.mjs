@@ -346,8 +346,12 @@ async function gatewayInventory(baseUrl, email, password, fetchImpl) {
 }
 
 function eligibleGatewayAccount(account, platform, now) {
+  const planType = account.credentials?.plan_type;
+  const plan = typeof planType === "string" ? planType.trim().toLowerCase() : "";
   return account.platform === platform && account.type === "oauth"
+    && (platform !== "openai" || !["", "free", "abnormal"].includes(plan))
     && account.status === "active" && account.schedulable === true
+    && !(account.auto_pause_on_expired && Number.isFinite(account.expires_at) && account.expires_at * 1000 <= now)
     && ![account.rate_limit_reset_at, account.overload_until, account.temp_unschedulable_until]
       .some((until) => until && Date.parse(until) > now);
 }

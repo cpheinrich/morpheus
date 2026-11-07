@@ -364,7 +364,7 @@ function fakeGateway(usage, { extra = codexExtra } = {}) {
           data: {
             items: [
               { id: 7, platform: "anthropic", type: "oauth", status: "active", schedulable: true, extra: { session_window_utilization: 1, passive_usage_7d_utilization: 1 } },
-              { id: 9, platform: "openai", type: "oauth", status: "active", schedulable: true, extra },
+              { id: 9, platform: "openai", credentials: { plan_type: "pro" }, type: "oauth", status: "active", schedulable: true, extra },
             ],
           },
         }),
@@ -412,11 +412,14 @@ test("a pool ranks by its roomiest schedulable OAuth account across pages", asyn
       { ...active, id: 9, platform: "anthropic", schedulable: false },
       { ...active, id: 10, platform: "anthropic", type: "apikey" },
       { ...active, id: 11, platform: "anthropic", rate_limit_reset_at: "2026-11-04T21:00:00Z" },
+      { ...active, id: 15, platform: "anthropic", auto_pause_on_expired: true, expires_at: quotaNow / 1000 },
     ],
     [
       { ...active, id: 12, platform: "anthropic" },
-      { ...active, id: 13, platform: "openai", extra: { codex_7d_used_percent: 40 } },
-      { ...active, id: 14, platform: "openai", extra: { codex_7d_used_percent: 35 } },
+      { ...active, id: 13, platform: "openai", credentials: { plan_type: "pro" }, extra: { codex_7d_used_percent: 40 } },
+      { ...active, id: 14, platform: "openai", credentials: { plan_type: "pro" }, extra: { codex_7d_used_percent: 35 } },
+      { ...active, id: 16, platform: "openai", credentials: { plan_type: "Free" }, extra: { codex_7d_used_percent: 0 } },
+      { ...active, id: 17, platform: "openai", extra: { codex_7d_used_percent: 0 } },
     ],
   ];
   const calls = [];

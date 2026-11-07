@@ -55,7 +55,7 @@ async function harness(t, binaries) {
           data: {
             items: [
               { id: 1, platform: "anthropic", type: "oauth", status: "active", schedulable: true },
-              { id: 2, platform: "openai", type: "oauth", status: "active", schedulable: true, extra: { codex_7d_used_percent: 4 } },
+              { id: 2, platform: "openai", credentials: { plan_type: "pro" }, type: "oauth", status: "active", schedulable: true, extra: { codex_7d_used_percent: 4 } },
             ],
           },
         }),
@@ -301,4 +301,43 @@ echo '{"type":"turn.completed","usage":{}}'
     m.start({ threadId, prompt: "do not reroute" }),
     /Pinned gateway "pool" is missing/,
   );
+});
+
+test("an explicit GPT model selects Codex on the first run when Claude has more quota", async (t) => {
+  const { repo } = await harness(t, {
+    codex: `#!/bin/sh
+cat >/dev/null
+echo '{"type":"thread.started","thread_id":"0199bbbb-cccc-7ddd-8eee-ffff00001111"}'
+echo '{"type":"turn.completed","usage":{}}'
+`,
+  });
+  await configWrite({
+    ...defaults(),
+    mode: "manual",
+    gateways: [
+      { name: "claude", provider: "claude", baseUrl: BASE, keyRef: "env:GW_KEY" },
+      { name: "codex", provider: "codex", baseUrl: BASE, keyRef: "env:GW_KEY" },
+    ],
+    admin: { emailRef: "env:GW_ADMIN_EMAIL", passwordRef: "env:GW_ADMIN_PASSWORD" },
+  });
+  const m = new Manager();
+  t.after(() => m.viewer.close());
+  const threadId = "0199cccc-dddd-7eee-8fff-000011112223";
+  m.snapshot = async () => ({
+    cwd: repo,
+    reasoningEffort: "medium",
+    sandbox: { type: "dangerFullAccess" },
+    approvalPolicy: "never",
+  });
+  const before = await m.inspect(threadId);
+  assert.equal(before.binding, null);
+  assert.equal(before.route.executor, "claude");
+  const started = await m.factoryDelegate({
+    rootKind: "codex", rootId: threadId, prompt: "Use the requested model", model: "gpt-6.1-terra",
+  });
+  assert.equal(started.executor, "codex");
+  assert.equal(started.gateway, "codex");
+  assert.equal(started.selection.model, "gpt-6.1-terra");
+  assert.deepEqual((await taskRead(threadId)).workerBinding, { executor: "codex", gateway: "codex" });
+  await settle(m, started.id);
 });

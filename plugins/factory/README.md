@@ -420,8 +420,8 @@ that serves a request.
   `GET /api/v1/admin/accounts/<id>/usage?source=active&force=true` for each
   eligible account. Sub2api may serve a short cached answer. `updatedAt` is the
   gateway's timestamp for the selected reading.
-- **Codex.** Factory reads each eligible account's stored usage windows and
-  `codex_usage_updated_at`. Forcing the usage endpoint would send a model
+- **Codex.** Factory reads stored usage windows and `codex_usage_updated_at`
+  for OAuth accounts with a known ChatGPT subscription plan. Forcing the usage endpoint would send a model
   request. Windows whose reset times have passed are skipped.
 
 The admin references apply to one gateway origin. Use the provider's shared
