@@ -3339,9 +3339,11 @@ other agent on its native login, or either agent behind a pooled-subscription ga
 (sub2api), reached as an API with its own key. A gateway of the coordinator's own provider
 is a valid delegate because it is a separate subscription; the coordinator's own native
 login never is, because that would be circular. Before a root session is pinned, routing picks
-the gateway with the most headroom below its threshold (90% used by default, read from the
-gateway's admin API; missing or stale usage is never headroom), and otherwise the other
-provider's native login on this host. An explicit provider request prefers that provider's
+the gateway with the most headroom below its threshold (90% used by default). For a
+sub2api Simple Mode pool, this is the headroom of the roomiest schedulable OAuth account
+with usable usage data. Sub2api selects the serving account and manages OAuth, stickiness
+and failover. Without eligible gateway capacity the other provider's native login on this
+host is the fallback. An explicit provider or recognized model request prefers that provider's
 eligible gateway; for the coordinator's own provider with no eligible gateway it is refused,
 never handed to the coordinator's own login. After the first successful primary launch the
 pinned route is used as-is: an ineligible pinned gateway refuses and nothing silently switches.

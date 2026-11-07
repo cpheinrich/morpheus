@@ -292,21 +292,8 @@ export async function resolveAdminCredentials(config, options = {}) {
 // instead of holding an inspection or a start open.
 const GATEWAY_TIMEOUT_MS = 15000;
 
-// Read each gateway's account usage from the sub2api admin API. Fails closed: an
-// unreadable quota is `usedPercent: null`, which route() treats as no headroom.
-// Claude: the account list's stored 5-hour figure carries no reset time and sub2api only
-// refreshes it on use, so it can stay at an old value indefinitely. Claude's quota is
-// therefore read on every call from the per-account usage endpoint with
-// `source=active&force=true`; sub2api may answer from its own short upstream cache (about
-// three minutes), so `updatedAt` is the gateway's timestamp for that answer, not a
-// guaranteed provider measurement time. A failed read is unknown, never the stored figure.
-// Codex: the stored snapshot, whose windows carry reset times, with `updatedAt` from its
-// own `codex_usage_updated_at`. Codex's forced usage read would send a model request and
-// stamps a new time even on an old snapshot, so it is not used.
-// `now` defaults to the time each response is read, so a reset passed during the requests
-// counts as passed.
-// Assumes one sub2api instance (the first gateway's baseUrl) and one account per
-// provider; a multi-instance or multi-account pool needs a richer mapping.
+// Read the provider pools in sub2api Simple Mode. The roomiest eligible account
+// gives its pool a score; sub2api chooses which account serves each request.
 export async function readGatewayQuota(
   gateways,
   { adminEmail, adminPassword, fetchImpl = globalThis.fetch, now } = {},
@@ -315,51 +302,90 @@ export async function readGatewayQuota(
   if (!adminEmail || !adminPassword)
     return gateways.map((g) => ({ ...g, usedPercent: null }));
   const baseUrl = gateways[0].baseUrl.replace(/\/+$/, "");
-  const signal = () => AbortSignal.timeout(GATEWAY_TIMEOUT_MS);
-  let token;
-  try {
-    const login = await fetchImpl(`${baseUrl}/api/v1/auth/login`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: adminEmail, password: adminPassword }),
-      signal: signal(),
-    });
-    if (!login.ok) throw new Error(`login HTTP ${login.status}`);
-    token = (await login.json())?.data?.access_token;
-    if (!token) throw new Error("no access token");
-  } catch (error) {
-    return gateways.map((g) => ({ ...g, usedPercent: null, error: error.message }));
+  const inventory = gatewayInventory(baseUrl, adminEmail, adminPassword, fetchImpl);
+  const pools = new Map();
+  return Promise.all(gateways.map(async (gateway) => {
+    if (gateway.baseUrl.replace(/\/+$/, "") !== baseUrl)
+      return { ...gateway, usedPercent: null, error: "Gateway origin differs from the admin origin" };
+    const { provider } = gateway;
+    if (!pools.has(provider))
+      pools.set(provider, inventory.then((result) => poolUsage(result, provider, now)));
+    try {
+      return { ...gateway, ...await pools.get(provider) };
+    } catch (error) {
+      return { ...gateway, usedPercent: null, error: error.message };
+    }
+  }));
+}
+
+async function gatewayInventory(baseUrl, email, password, fetchImpl) {
+  const login = await fetchImpl(`${baseUrl}/api/v1/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, password }),
+    signal: AbortSignal.timeout(GATEWAY_TIMEOUT_MS),
+  });
+  if (!login.ok) throw new Error(`login HTTP ${login.status}`);
+  const token = (await login.json())?.data?.access_token;
+  if (!token) throw new Error("no access token");
+  const get = (path) => fetchImpl(`${baseUrl}/api/v1/admin${path}`, {
+    headers: { authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(GATEWAY_TIMEOUT_MS),
+  });
+
+  const items = [];
+  for (let page = 1, pages = 1; page <= pages; page++) {
+    const response = await get(`/accounts?page=${page}`);
+    if (!response.ok) throw new Error(`accounts HTTP ${response.status}`);
+    const data = (await response.json())?.data;
+    if (!Array.isArray(data?.items)) throw new Error("accounts response has no items");
+    items.push(...data.items);
+    pages = data.pages ?? 1;
   }
-  const headers = { authorization: `Bearer ${token}` };
-  let items;
-  try {
-    const accounts = await fetchImpl(`${baseUrl}/api/v1/admin/accounts`, { headers, signal: signal() });
-    if (!accounts.ok) throw new Error(`accounts HTTP ${accounts.status}`);
-    items = (await accounts.json())?.data?.items ?? [];
-  } catch (error) {
-    return gateways.map((g) => ({ ...g, usedPercent: null, error: error.message }));
-  }
-  return Promise.all(
-    gateways.map(async (g) => {
-      const platform = g.provider === "claude" ? "anthropic" : "openai";
-      const account = items.find((a) => a.platform === platform);
-      if (!account) return { ...g, usedPercent: null };
-      if (g.provider !== "claude") return { ...g, ...accountUsage(g.provider, account.extra ?? {}, now ?? Date.now()) };
-      try {
-        const id = encodeURIComponent(account.id);
-        const res = await fetchImpl(`${baseUrl}/api/v1/admin/accounts/${id}/usage?source=active&force=true`, {
-          headers,
-          signal: signal(),
-        });
-        if (!res.ok) throw new Error(`usage HTTP ${res.status}`);
-        const data = (await res.json())?.data;
-        if (!data || typeof data !== "object") throw new Error("usage response has no data");
-        return { ...g, ...accountUsage("claude", data, now ?? Date.now()) };
-      } catch (error) {
-        return { ...g, usedPercent: null, error: error.message };
-      }
-    }),
+  return { get, items };
+}
+
+function eligibleGatewayAccount(account, platform, now) {
+  const planType = account.credentials?.plan_type;
+  const plan = typeof planType === "string" ? planType.trim().toLowerCase() : "";
+  return account.platform === platform && account.type === "oauth"
+    && (platform !== "openai" || !["", "free", "abnormal"].includes(plan))
+    && account.status === "active" && account.schedulable === true
+    && !(account.auto_pause_on_expired && Number.isFinite(account.expires_at) && account.expires_at * 1000 <= now)
+    && ![account.rate_limit_reset_at, account.overload_until, account.temp_unschedulable_until]
+      .some((until) => until && Date.parse(until) > now);
+}
+
+async function poolUsage({ get, items }, provider, now) {
+  const platform = provider === "claude" ? "anthropic" : "openai";
+  const checkedAt = now ?? Date.now();
+  const accounts = items.filter((account) => eligibleGatewayAccount(account, platform, checkedAt));
+  const readings = await Promise.allSettled(
+    accounts.map((account) => gatewayAccountUsage(get, account, provider, now)),
   );
+  let best = { usedPercent: null };
+  for (const reading of readings) {
+    if (reading.status === "rejected") {
+      if (best.usedPercent == null && !best.error) best = { usedPercent: null, error: reading.reason.message };
+      continue;
+    }
+    const usage = reading.value;
+    if (usage.usedPercent != null && (best.usedPercent == null || usage.usedPercent < best.usedPercent))
+      best = usage;
+  }
+  return best;
+}
+
+async function gatewayAccountUsage(get, account, provider, now) {
+  // Codex forced usage would spend a model request and can timestamp an old snapshot.
+  if (provider === "codex") return accountUsage(provider, account.extra ?? {}, now ?? Date.now());
+  // Claude's stored 5h counter has no reset. Read usage through sub2api's upstream cache.
+  const id = encodeURIComponent(account.id);
+  const response = await get(`/accounts/${id}/usage?source=active&force=true`);
+  if (!response.ok) throw new Error(`usage HTTP ${response.status}`);
+  const data = (await response.json())?.data;
+  if (!data || typeof data !== "object") throw new Error("usage response has no data");
+  return accountUsage(provider, data, now ?? Date.now());
 }
 
 // An account is as full as its most-used window: a subscription with an empty 5-hour

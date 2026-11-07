@@ -48,14 +48,14 @@ async function harness(t, binaries) {
   globalThis.fetch = async (url) => {
     if (url === `${BASE}/api/v1/auth/login`)
       return { ok: true, json: async () => ({ data: { access_token: "admin-token" } }) };
-    if (url === `${BASE}/api/v1/admin/accounts`)
+    if (url === `${BASE}/api/v1/admin/accounts?page=1`)
       return {
         ok: true,
         json: async () => ({
           data: {
             items: [
-              { id: 1, platform: "anthropic" },
-              { id: 2, platform: "openai", extra: { codex_7d_used_percent: 4 } },
+              { id: 1, platform: "anthropic", type: "oauth", status: "active", schedulable: true },
+              { id: 2, platform: "openai", credentials: { plan_type: "pro" }, type: "oauth", status: "active", schedulable: true, extra: { codex_7d_used_percent: 4 } },
             ],
           },
         }),
@@ -251,6 +251,14 @@ echo '{"type":"turn.completed","usage":{}}'
     sandbox: { type: "dangerFullAccess" },
     approvalPolicy: "on-request",
   });
+  await assert.rejects(
+    m.factoryDelegate({ rootKind: "codex", rootId: threadId, prompt: "Look only", model: "opus" }),
+    /already pinned to codex/,
+  );
+  await assert.rejects(
+    m.factoryDelegate({ rootKind: "codex", rootId: threadId, prompt: "Look only", model: "opus", provider: "codex" }),
+    /belongs to a different worker provider/,
+  );
   const second = await m.factoryDelegate({
     rootKind: "codex", rootId: threadId, prompt: "Look only", model: "gpt-6.1-terra", speed: "fast",
   });
@@ -293,4 +301,43 @@ echo '{"type":"turn.completed","usage":{}}'
     m.start({ threadId, prompt: "do not reroute" }),
     /Pinned gateway "pool" is missing/,
   );
+});
+
+test("an explicit GPT model selects Codex on the first run when Claude has more quota", async (t) => {
+  const { repo } = await harness(t, {
+    codex: `#!/bin/sh
+cat >/dev/null
+echo '{"type":"thread.started","thread_id":"0199bbbb-cccc-7ddd-8eee-ffff00001111"}'
+echo '{"type":"turn.completed","usage":{}}'
+`,
+  });
+  await configWrite({
+    ...defaults(),
+    mode: "manual",
+    gateways: [
+      { name: "claude", provider: "claude", baseUrl: BASE, keyRef: "env:GW_KEY" },
+      { name: "codex", provider: "codex", baseUrl: BASE, keyRef: "env:GW_KEY" },
+    ],
+    admin: { emailRef: "env:GW_ADMIN_EMAIL", passwordRef: "env:GW_ADMIN_PASSWORD" },
+  });
+  const m = new Manager();
+  t.after(() => m.viewer.close());
+  const threadId = "0199cccc-dddd-7eee-8fff-000011112223";
+  m.snapshot = async () => ({
+    cwd: repo,
+    reasoningEffort: "medium",
+    sandbox: { type: "dangerFullAccess" },
+    approvalPolicy: "never",
+  });
+  const before = await m.inspect(threadId);
+  assert.equal(before.binding, null);
+  assert.equal(before.route.executor, "claude");
+  const started = await m.factoryDelegate({
+    rootKind: "codex", rootId: threadId, prompt: "Use the requested model", model: "gpt-6.1-terra",
+  });
+  assert.equal(started.executor, "codex");
+  assert.equal(started.gateway, "codex");
+  assert.equal(started.selection.model, "gpt-6.1-terra");
+  assert.deepEqual((await taskRead(threadId)).workerBinding, { executor: "codex", gateway: "codex" });
+  await settle(m, started.id);
 });
