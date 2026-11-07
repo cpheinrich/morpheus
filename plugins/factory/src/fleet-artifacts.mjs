@@ -76,17 +76,33 @@ async function readArtifact(directory, directoryStat, name) {
   }
 }
 
-async function putArtifact(putObject, prefix, name, bytes) {
+async function uploadArtifact(putObject, readObject, object) {
+  try {
+    return await putObject(object);
+  } catch (error) {
+    // A create can succeed before its response is lost. A storage adapter may
+    // reconcile the exact object, but must verify the digest of the stored bytes.
+    const existing = await readObject?.({ objectName: object.objectName });
+    if (!existing) throw error;
+    if (existing.sha256 !== object.sha256 || existing.size !== object.bytes.length)
+      throw new Error("Artifact object already exists with different content.");
+    return existing.generation;
+  }
+}
+
+async function putArtifact(putObject, readObject, prefix, name, bytes) {
   const objectName = `${prefix}/${name}`;
   const type = contentTypes.get(extname(name).toLowerCase()) ?? "application/octet-stream";
   const sha256 = createHash("sha256").update(bytes).digest("hex");
-  const generation = await putObject({ objectName, bytes, ifGenerationMatch: 0, type, sha256 });
+  const generation = await uploadArtifact(putObject, readObject, {
+    objectName, bytes, ifGenerationMatch: 0, type, sha256,
+  });
   if (typeof generation !== "string" || !/^[1-9][0-9]*$/.test(generation))
     throw new Error("Artifact upload did not return an object generation.");
   return { name, objectName, generation, type, size: bytes.length, sha256 };
 }
 
-export async function publishArtifacts({ outputDir, files, taskId, attemptId, putObject }) {
+export async function publishArtifacts({ outputDir, files, taskId, attemptId, putObject, readObject }) {
   if (typeof taskId !== "string" || !taskIdentity.test(taskId) ||
       typeof attemptId !== "string" || !taskIdentity.test(attemptId))
     throw new Error("Artifacts require valid task and attempt identities.");
@@ -101,7 +117,7 @@ export async function publishArtifacts({ outputDir, files, taskId, attemptId, pu
     const artifacts = [];
     for (const name of names) {
       const bytes = await readArtifact(directory, directoryStat, name);
-      artifacts.push(await putArtifact(putObject, prefix, name, bytes));
+      artifacts.push(await putArtifact(putObject, readObject, prefix, name, bytes));
     }
     return artifacts;
   } finally {

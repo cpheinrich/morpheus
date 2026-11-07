@@ -21,3 +21,13 @@ dependency. Artifact tests use the injected object writer and verify exact gener
 The first source slice preserves the MCP interface and local provider flows. The emulator
 exercises the new transaction and listener boundary. Remote enrollment, executable runner
 integration, and live acceptance remain separate from that proof.
+
+Early source review reproduced stale claim replay, an unrecoverable partial artifact upload,
+incorrect local stop status, and reuse of a superseded question. Follow-up code expires claim
+replay, verifies existing upload generations and digests, records explicit guardian cancellation,
+and projects the latest logical task attempt. The emulator now also disconnects its controller
+while the task settles and checks cancellation retains its lock until cleanup is verified.
+This early review does not clear the pending authenticated runner path for release.
+
+Local verification passed 56 focused Factory tests, 40 CI path-selection tests, Firestore
+emulator integration, workflow lint, complexity, typecheck, compile, and the project index.

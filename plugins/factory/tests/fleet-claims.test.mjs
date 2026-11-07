@@ -87,9 +87,11 @@ test("lease expiry and uncertain cleanup preserve ownership until verified settl
   const result = { summary: "done" };
   const settlement = { ...request, outcome: "TASK_STATE_COMPLETED", result };
   assert.equal(await renewAttempt(db, { ...request, now: 130 }), false);
+  assert.deepEqual(await claimTask(db, { ...request, now: 130 }), { reason: "lease-expired" });
   assert.equal(await settleAttempt(db, { ...settlement, attemptId: "old", cleanupVerified: true }), false);
   assert.equal(await settleAttempt(db, { ...settlement, cleanupVerified: false }), false);
   assert.equal(db.docs.get("factoryTasks/task-1").state, "TASK_STATE_UNSPECIFIED");
+  assert.deepEqual(await claimTask(db, request), { reason: "attempt-held" });
   assert.deepEqual(await claimTask(db, fallback), { reason: "workspace-busy" });
   assert.equal(await settleAttempt(db, { ...settlement, cleanupVerified: true }), true);
   assert.equal(db.docs.get("factorySlots/studio").attemptId, null);

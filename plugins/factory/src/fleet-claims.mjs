@@ -34,8 +34,12 @@ export function claimTask(db, {
     const task = await read(transaction, taskRef);
     if (!task) return { reason: "unknown-task" };
     const prior = task.attempt;
-    if (prior?.id === attemptId && prior.hostId === hostId && prior.slotId === slotId)
+    if (prior?.id === attemptId && prior.hostId === hostId && prior.slotId === slotId) {
+      if (prior.leaseUntil <= now) return { reason: "lease-expired" };
+      if (task.state !== "TASK_STATE_WORKING" || task.cancelRequestedAt != null)
+        return { reason: "attempt-held" };
       return { attempt: prior, replay: true };
+    }
     if (task.state !== "TASK_STATE_SUBMITTED" || prior) return { reason: "already-claimed" };
 
     const winner = await preferredSlot(db, transaction, task.eligibleSlots, now, maxAgeMs);
@@ -87,7 +91,8 @@ export function settleAttempt(db, { taskId, attemptId, hostId, outcome, result, 
     ]);
     if (slot?.attemptId !== attemptId || slot.hostId !== hostId) return false;
     if (workspace?.attemptId !== attemptId || workspace.taskId !== taskId) return false;
-    transaction.update(taskRef, { state: outcome, result, attempt: null, lastAttempt: task.attempt });
+    const state = task.cancelRequestedAt != null ? "TASK_STATE_CANCELED" : outcome;
+    transaction.update(taskRef, { state, result, attempt: null, lastAttempt: task.attempt });
     transaction.update(slotRef, { attemptId: null });
     transaction.delete(workspaceRef);
     return true;

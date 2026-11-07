@@ -57,7 +57,7 @@ import { identity, ownedProcessState, stopOrphan } from "./processes.mjs";
 import { Viewer } from "./viewer.mjs";
 import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
 import { installationId } from "./installation.mjs";
-import { taskIdForAttempt, taskView } from "./task-model.mjs";
+import { confirmedTaskCancel, currentAttemptId, rememberContinuation, taskIdForAttempt, taskView } from "./task-model.mjs";
 import {
   editTargets,
   canonical,
@@ -380,6 +380,11 @@ function recordClaudeRootStart(current, { id, config, replies, task, fresh, deci
     current.workspace = workspace.map;
   }
 }
+
+function assertCurrentQuestion(context, run) {
+  if (run.state === "needs_input" && currentAttemptId(context, run) !== run.id)
+    throw new Error("This question belongs to a superseded Factory attempt.");
+}
 function verifiedSession(task) {
   const session = task.session;
   if (!session?.cwd || !session.permissionMode)
@@ -568,7 +573,11 @@ export class Manager {
   // runId is a compatibility pointer to the latest run of either slot. An ordinary
   // delegation must not inherit a fresh run unless the coordinator selected it explicitly.
   async previousRun(task, args) {
-    if (args.runId) return this.statusFor(task.id, args.runId);
+    if (args.runId) {
+      const previous = await this.statusFor(task.id, args.runId);
+      assertCurrentQuestion(task, previous);
+      return previous;
+    }
     const previous = !args.fresh && task.runId ? await this.status(task.runId) : null;
     return previous?.fresh ? null : previous;
   }
@@ -664,6 +673,7 @@ export class Manager {
     await this.mutateTask(task.id, (current) => {
       current.runId = id;
       current.runIds = [...new Set([...(current.runIds ?? []), id])];
+      rememberContinuation(current, record);
       current.supervisionReplies = replies;
       if (!fresh) {
         current.workerBinding ??= bindingFor(decision);
@@ -827,6 +837,7 @@ export class Manager {
     );
     if (run.offset < size) return;
     run.terminal = true;
+    if (confirmedTaskCancel(processState)) run.taskCanceled = true;
     if (run.stopping || processState?.interrupted)
       run.state = "interrupted";
     else if (
@@ -910,6 +921,7 @@ export class Manager {
     return {
       id,
       ...(run.taskId ? { taskId: run.taskId } : {}),
+      ...(run.taskCanceled ? { taskCanceled: true } : {}),
       executor,
       codexSession,
       threadId,
@@ -968,6 +980,7 @@ export class Manager {
     const current = await readJSON(join(runDir(id), "process.json"), null);
     if (!record.terminal && current?.state === "exited") {
       const recovered = { ...record, state: "interrupted", terminal: true };
+      if (confirmedTaskCancel(current)) recovered.taskCanceled = true;
       await atomic(join(runDir(id), "run.json"), recovered);
       return recovered;
     }
@@ -1055,12 +1068,18 @@ export class Manager {
     run.lastLease = Date.now();
     return this.public(run);
   }
-  async cancel(id) {
-    await writeFile(join(runDir(id), "cancel"), "stop", { mode: 0o600 });
+  async cancel(id, command = "stop") {
+    try {
+      const marker = command === "task-cancel" ? "task-cancel" : "cancel";
+      await writeFile(join(runDir(id), marker), command, { mode: 0o600, flag: "wx" });
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      return { stopping: id };
+    }
     const run = this.runs.get(id);
     if (run) {
       run.stopping = true;
-      this.send(run, { type: "stop" });
+      this.send(run, { type: command });
     }
     return { stopping: id };
   }
@@ -1133,10 +1152,11 @@ export class Manager {
         throw new Error("The requested run belongs to another Claude session.");
       if (args.cwd && (await projectIdentity(args.cwd)).cwd !== previous.cwd)
         throw new Error("The requested run belongs to a different working directory.");
+      assertCurrentQuestion(task, previous);
     }
     if (!replying) return previous;
     const awaiting = [...runs.active, ...runs.recent].filter(
-      (run) => run.state === "needs_input",
+      (run) => run.state === "needs_input" && currentAttemptId(task, run) === run.id,
     );
     if (previous && previous.state !== "needs_input")
       throw new Error(`Run ${previous.id} is not awaiting input.`);
@@ -1213,7 +1233,10 @@ export class Manager {
     );
     // Starts are serialized (busy), so nothing can claim these between check and claim.
     await claimCheckouts(task.id, workspace.claims);
-    await this.mutateTask(task.id, (current) => recordClaudeRootStart(current, { id, config, replies, task, fresh, decision, workspace }));
+    await this.mutateTask(task.id, (current) => {
+      recordClaudeRootStart(current, { id, config, replies, task, fresh, decision, workspace });
+      rememberContinuation(current, record);
+    });
     return this.begin(id);
   }
   // Resolves this delegation's checkouts. The primary conversation keeps one working directory
@@ -1378,13 +1401,19 @@ export class Manager {
       : this.codexStart({ ...common, sessionId: args.rootId });
   }
   async factoryRun(args) {
-    const run = await this.statusFor(this.rootTaskId(args.rootKind, args.rootId), args.runId);
-    return { ...run, task: taskView(run) };
+    const contextId = this.rootTaskId(args.rootKind, args.rootId);
+    return this.withTaskView(await this.statusFor(contextId, args.runId));
+  }
+  async withTaskView(run) {
+    const context = await taskRead(run.threadId);
+    const latestId = currentAttemptId(context, run);
+    const latest = latestId === run.id ? run : await this.statusFor(run.threadId, latestId);
+    return { ...run, task: taskView(latest) };
   }
   async factoryWait(args) {
     await this.factoryRun(args);
     const run = await this.wait(args.runId, args.seconds);
-    return { ...run, task: taskView(run) };
+    return this.withTaskView(run);
   }
   factoryAnswer(args) {
     return this.sendMessage(args, true);
@@ -1397,8 +1426,9 @@ export class Manager {
     });
   }
   async factoryStop(args) {
-    await this.factoryRun(args);
-    return this.cancel(args.runId);
+    const run = await this.factoryRun(args);
+    if (run.terminal) return { stopping: args.runId };
+    return this.cancel(args.runId, "task-cancel");
   }
   async setOverride(taskId, executor) {
     if (!["auto", "codex", "claude", "off"].includes(executor))

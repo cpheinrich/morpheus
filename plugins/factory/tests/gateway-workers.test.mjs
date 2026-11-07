@@ -316,6 +316,28 @@ echo '{"type":"turn.completed","usage":{}}'
   );
 });
 
+test("an explicit Factory cancellation settles only after the local guardian exits", async (t) => {
+  const { repo } = await harness(t, { codex: "#!/bin/sh\nexec sleep 30\n" });
+  process.env.OPENAI_API_KEY = "sk-gateway-test";
+  await gatewayConfig("codex", "env:OPENAI_API_KEY");
+  const m = new Manager();
+  t.after(() => m.viewer.close());
+  const rootId = "0199cccc-dddd-7eee-8fff-000011112222";
+  const scope = { rootKind: "codex", rootId };
+  m.snapshot = async () => ({
+    cwd: repo, model: "gpt-6.1-sol", reasoningEffort: "medium",
+    sandbox: { type: "dangerFullAccess" }, approvalPolicy: "never",
+  });
+  const started = await m.factoryDelegate({ ...scope, prompt: "Wait" });
+  const args = { ...scope, runId: started.id };
+  assert.deepEqual(await m.factoryStop(args), { stopping: started.id });
+  assert.deepEqual(await m.factoryStop(args), { stopping: started.id });
+  await settle(m, started.id);
+  const ended = await m.factoryRun(args);
+  assert.equal(ended.state, "interrupted");
+  assert.equal(ended.task.status.state, "TASK_STATE_CANCELED");
+});
+
 test("an explicit GPT model selects Codex on the first run when Claude has more quota", async (t) => {
   const { repo } = await harness(t, {
     codex: `#!/bin/sh

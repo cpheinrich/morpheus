@@ -635,6 +635,13 @@ test("Codex-root fresh runs require a binding, persist together, and resume thei
 
   Object.assign(m.runs.get(resumed.id), { terminal: true, state: "completed" });
   await atomic(join(runDir(resumed.id), "run.json"), m.public(m.runs.get(resumed.id)));
+  const historical = await m.factoryRun({ rootKind: "codex", rootId: threadId, runId: fresh.id });
+  assert.equal(historical.state, "needs_input");
+  assert.equal(historical.task.status.state, "TASK_STATE_COMPLETED");
+  await assert.rejects(m.start({
+    threadId, runId: fresh.id, prompt: "late duplicate answer",
+    replySource: "user", replyReason: "Previously answered",
+  }), /superseded Factory attempt/);
   const withPrimarySession = await taskRead(threadId);
   withPrimarySession.sessions = { [`primary:${await realpath(repo)}`]: "primary-claude-session" };
   await taskWrite(withPrimarySession);

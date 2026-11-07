@@ -72,7 +72,7 @@ export function askQuestion(db, { taskId, attemptId, hostId, questionId, text, n
     }
     if (task.state !== "TASK_STATE_WORKING") return { reason: "task-not-working" };
     transaction.set(ref, { messageId: questionId, role: "ROLE_AGENT", attemptId, text, createdAt: now });
-    transaction.update(taskRef, { state: "TASK_STATE_INPUT_REQUIRED", questionId });
+    transaction.update(taskRef, { state: "TASK_STATE_INPUT_REQUIRED", questionId, answerId: null });
     return { replay: false };
   });
 }

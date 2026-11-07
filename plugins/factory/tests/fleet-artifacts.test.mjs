@@ -110,3 +110,32 @@ test("propagates upload failure and requires a string generation on success", as
     putObject: async () => Number(generation),
   }), /did not return an object generation/);
 });
+
+test("recovers an acknowledged or ambiguous create only when the object has identical bytes", async (t) => {
+  const { outputDir, publish } = await fixture(t);
+  await writeFile(join(outputDir, "first.txt"), "abc");
+  await writeFile(join(outputDir, "second.txt"), "abc");
+  const objects = new Map();
+  let failSecond = true;
+  const storage = {
+    async putObject({ objectName, sha256, bytes, ifGenerationMatch }) {
+      assert.equal(ifGenerationMatch, 0);
+      if (objects.has(objectName)) throw new Error("Precondition failed");
+      if (objectName.endsWith("second.txt") && failSecond) throw new Error("Offline");
+      objects.set(objectName, { generation, sha256, size: bytes.length });
+      if (objectName.endsWith("first.txt")) throw new Error("Create response lost");
+      return generation;
+    },
+    async readObject({ objectName }) {
+      return objects.get(objectName);
+    },
+  };
+  await assert.rejects(publish(["first.txt", "second.txt"], storage), /Offline/);
+  failSecond = false;
+  const result = await publish(["first.txt", "second.txt"], storage);
+  assert.deepEqual(result.map(({ name, generation }) => [name, generation]), [
+    ["first.txt", generation], ["second.txt", generation],
+  ]);
+  await writeFile(join(outputDir, "first.txt"), "xyz");
+  await assert.rejects(publish(["first.txt"], storage), /different content/);
+});

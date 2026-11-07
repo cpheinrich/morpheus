@@ -5,6 +5,15 @@ export function taskIdForAttempt(attemptId, previous) {
   return attemptId;
 }
 
+export function currentAttemptId(context, run) {
+  return context.latestTaskAttempts?.[run.taskId ?? run.id] ?? run.id;
+}
+
+export function rememberContinuation(context, run) {
+  if (run.taskId === run.id) return;
+  context.latestTaskAttempts = { ...context.latestTaskAttempts, [run.taskId]: run.id };
+}
+
 const terminalStatus = new Map([
   ["completed", "TASK_STATE_COMPLETED"],
   ["failed", "TASK_STATE_FAILED"],
@@ -15,11 +24,18 @@ export function taskState(attempt) {
   if (attempt.state === "needs_input") return "TASK_STATE_INPUT_REQUIRED";
   if (attempt.state === "starting") return "TASK_STATE_SUBMITTED";
   if (attempt.state === "running") return "TASK_STATE_WORKING";
+  if (attempt.state === "interrupted" && attempt.terminal === true && attempt.taskCanceled === true)
+    return "TASK_STATE_CANCELED";
   const settled = terminalStatus.get(attempt.state);
   if (settled) return attempt.terminal === true ? settled : "TASK_STATE_WORKING";
   // Cleanup uncertainty and an unclassified interruption are not user questions
   // or proof of successful cancellation.
   return "TASK_STATE_UNSPECIFIED";
+}
+
+export function confirmedTaskCancel(processState) {
+  return processState?.state === "exited" && processState.interrupted === true &&
+    processState.taskCanceled === true && processState.cleanupVerified !== false;
 }
 
 // The v1 task vocabulary is additive on the legacy MCP response. Use only the

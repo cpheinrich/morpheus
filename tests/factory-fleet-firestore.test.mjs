@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
-import { doc, getDoc, onSnapshot, runTransaction, setDoc } from "firebase/firestore";
+import { disableNetwork, doc, enableNetwork, getDoc, onSnapshot, runTransaction, setDoc } from "firebase/firestore";
 import { claimTask, settleAttempt } from "../plugins/factory/src/fleet-claims.mjs";
 import { answerQuestion, askQuestion, cancelTask, submitTask } from "../plugins/factory/src/fleet-mailbox.mjs";
 import { publishArtifacts } from "../plugins/factory/src/fleet-artifacts.mjs";
@@ -17,7 +17,12 @@ test("Firestore races commit one claim and deliver the settled result to a liste
     firestore: {
       host: "127.0.0.1",
       port: Number(address.split(":")[1]),
-      rules: "rules_version = '2'; service cloud.firestore { match /databases/{db}/documents { match /{path=**} { allow read, write: if false; } } }",
+      rules: `rules_version = '2';
+        service cloud.firestore {
+          match /databases/{db}/documents/factoryTasks/{id} {
+            allow get: if request.auth.uid == resource.data.contextId;
+          }
+        }`,
     },
   });
   t.after(() => environment.cleanup());
@@ -50,6 +55,10 @@ test("Firestore races commit one claim and deliver the settled result to a liste
     const question = { ...claim, attemptId: winner.id, questionId: "q", text: "Which color?" };
     assert.deepEqual(await askQuestion(adapter, question), { replay: false });
     assert.equal((await getDoc(task)).data().state, "TASK_STATE_INPUT_REQUIRED");
+    const controller = environment.authenticatedContext("controller").firestore();
+    const watchedTask = doc(controller, task.path);
+    assert.equal((await getDoc(watchedTask)).data().questionId, "q");
+    await disableNetwork(controller);
     const answer = { ...question, contextId: "controller", messageId: "answer", text: "Blue" };
     assert.deepEqual(await answerQuestion(adapter, { ...answer, questionId: "old" }), { reason: "stale-question" });
     await assert.rejects(answerQuestion(adapter, { ...answer, contextId: "other" }), /Unknown Factory task/);
@@ -72,7 +81,7 @@ test("Firestore races commit one claim and deliver the settled result to a liste
     });
     let unsubscribe;
     const observed = new Promise((resolve, reject) => {
-      unsubscribe = onSnapshot(task, (snapshot) => {
+      unsubscribe = onSnapshot(watchedTask, (snapshot) => {
         if (snapshot.data()?.state === "TASK_STATE_COMPLETED") resolve(snapshot.data().result);
       }, reject);
     });
@@ -81,6 +90,7 @@ test("Firestore races commit one claim and deliver the settled result to a liste
       assert.equal(await settleAttempt(adapter, {
         ...claim, attemptId: winner.id, outcome: "TASK_STATE_COMPLETED", result, cleanupVerified: true,
       }), true);
+      await enableNetwork(controller);
       assert.deepEqual(await observed, result);
     } finally {
       unsubscribe();
@@ -91,5 +101,16 @@ test("Firestore races commit one claim and deliver the settled result to a liste
     assert.deepEqual(await cancelTask(adapter, cancellation), { replay: false });
     assert.deepEqual(await cancelTask(adapter, cancellation), { replay: true });
     assert.equal((await getDoc(ref(`factoryTasks/${queued.task.id}`))).data().state, "TASK_STATE_CANCELED");
+    const running = await submitTask(adapter, { ...brief, messageId: "running" });
+    const runningClaim = { ...claim, taskId: running.task.id, attemptId: "c" };
+    assert.equal((await claimTask(adapter, runningClaim)).attempt.id, "c");
+    assert.deepEqual(await cancelTask(adapter, { ...cancellation, taskId: running.task.id }), { replay: false });
+    assert.equal((await getDoc(ref("factorySlots/studio"))).data().attemptId, "c");
+    const canceled = { ...runningClaim, outcome: "TASK_STATE_CANCELED", result: null };
+    assert.equal(await settleAttempt(adapter, { ...canceled, cleanupVerified: false }), false);
+    assert.equal((await getDoc(ref("factorySlots/studio"))).data().attemptId, "c");
+    assert.equal(await settleAttempt(adapter, { ...canceled, cleanupVerified: true }), true);
+    assert.equal((await getDoc(ref("factorySlots/studio"))).data().attemptId, null);
+    assert.equal((await getDoc(ref(`factoryTasks/${running.task.id}`))).data().state, "TASK_STATE_CANCELED");
   });
 });
