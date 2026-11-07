@@ -393,3 +393,78 @@ index builds took 677–692 ms. Across the 72 post-first queries, contextual ran
 took a 5.0 ms median and 10.0 ms p95 before passage budget assembly. These timing
 boundaries differ, so use them as engineering costs rather than whole-workflow speedups.
 Final Factory inspection still reported the same stale November 6 weekly snapshot.
+
+## Broad deterministic benchmark
+
+Chris superseded the small historical comparison with a common, randomly split
+candidate frame, substantially more independent cases, a tested harness,
+technical documentation, and a fresh independent review before the holdout.
+See [the protocol and runbook](../../qa/evals/context-retrieval/README.md).
+The authority remains preliminary research. Deterministic collection is local.
+The previously approved Factory quota applies only to matched model trials.
+
+The pinned corpus contains 3,781 documents across Evo, Lakina and Morpheus,
+including six authorized canonical meeting notes in Evo's research scope.
+Mechanical relationships yielded 1,710 queries and 805 groups. The final
+allocation has 556 development and 249 held-out groups after conservatively
+excluding earlier benchmark evidence from holdout. Literal and descriptive
+lookups can share a group. The proposed 1,200-group holdout exceeded the
+eligible census. The data underrepresent general guidance and meeting
+lookups. No old calibration outcome is counted as a held-out result.
+
+Independent reviewer findings reproduced an invalid PR namespace split,
+different passage geometry, unequal shortlist placement, and insufficient
+verification against original bytes. Fixed the grouping before query
+deduplication, normalized source windows, made descriptive evidence the
+primary outcome, added a broader QMD lexical control, and bound verification
+to the original manifest and response hashes. The reviewer cleared the
+corrected retrieval harness at 3479d044 after 16 focused tests, a separately
+constructed tamper test and a 330-cell development smoke. Holdout requires
+the complete, independently verified development matrix. Complexity passes
+the enforced limit, with advisory warnings in the frame parser and validator.
+
+The independent workflow reviewer caught corpus drift in grep and an
+unbound MiniSearch socket. A private read-only verified corpus and digest
+handshake addressed both. Five workflow harness tests and real tool smokes
+passed. The reviewer cleared an instrumented paired pilot. Both pilot arms
+receive the same compact brief. Comparing that protocol with mandatory
+startup reads requires a separate full-read baseline. The accessible local
+chat census has 739 possible turns across 63 threads before screening, which
+does not establish a 150-task independent workflow holdout.
+
+### Sealed retrieval result
+
+The final frame allocated 1,212 development queries and 498 holdout queries.
+An earlier development run was stopped after identifying more September
+validation and held-out archive files whose evidence should force development.
+The final configuration and frame were identical across development and
+holdout. The independent verifier reconstructed 12,120 development and 4,980
+held-out cells with zero tool errors. The scored holdout was opened only
+after independent clearance and completed development verification.
+
+| Method | Descriptive evidence recall, 1,000 | 2,500 | Total query time, 1,000 | 2,500 |
+|---|---:|---:|---:|---:|
+| Bounded ripgrep | 72.7% | 79.5% | 21.70 s | 31.10 s |
+| MiniSearch body | 79.9% | 85.9% | 10.16 s | 19.64 s |
+| MiniSearch with context fields | 84.7% | 88.0% | 9.73 s | 19.03 s |
+| QMD native BM25 | 63.9% | 65.1% | 4.76 s | 5.91 s |
+| QMD per-term BM25 fusion | 82.3% | 85.5% | 19.71 s | 28.56 s |
+
+The table covers 257 descriptive queries across 249 groups. At 1,000 returned
+tokens, the contextual MiniSearch difference versus ripgrep was +12.0
+percentage points with a paired group bootstrap interval from +6.8 to +17.7.
+Warm median time was 37.4 ms versus 82.6 ms. The Evo descriptive work-log slice
+was 86/101 versus 75/101. The literal-ID file recall comparison was much closer,
+95.9% versus 96.7%, and is a separate control. The contextual MiniSearch gain
+is a retrieval result. This protocol does not establish the gain for conceptual
+questions or real task completion. Only 16 descriptive queries were linked
+section or meeting probes. Evo and Lakina had no linked-section holdout cases.
+The final broad run compares lexical QMD modes. It does not compare QMD vector
+or reranking at scale. Its timing is query and packaging on the local host,
+with index setup recorded separately. The local private report retains per-query
+responses, raw timings, setup times, source manifest digests, and run hashes.
+
+Focused commands: `node --test qa/evals/context-retrieval/*.test.mjs`,
+`morpheus complexity check`, and the documented frame, pilot, development,
+holdout and Python verification commands. Runtime setup used local pinned
+MiniSearch 7.2.0, QMD 2.8.3 and o200k_base tokenizers.
