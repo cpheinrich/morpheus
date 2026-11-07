@@ -254,6 +254,12 @@ class Guardian:
         self.state['ownedProcesses'] = [{'pid': pid, 'identity': list(stamp)}
                                         for pid, stamp in owned.known.items()]
 
+    def verify_group_exit(self):
+        try: os.killpg(self.child.pid, 0)
+        except ProcessLookupError: return True
+        except OSError: return False
+        return False
+
     def cleanup(self):
         # Also stop background tools left behind after the main CLI exits.
         interrupted = self.stopping is not None
@@ -264,6 +270,7 @@ class Guardian:
         self.output(self.out, b'', True); self.output(self.err, b'', True)
         self.out.close();self.err.close();self.selector.close()
         if self.owned: self.verify_owned()
+        else: self.state['groupExitVerified'] = self.verify_group_exit()
         self.state.update(state='exited',exitCode=self.child.returncode,interrupted=interrupted)
         if self.owned:
             self.state['timing'].update(

@@ -57,7 +57,7 @@ import { identity, ownedProcessState, stopOrphan } from "./processes.mjs";
 import { Viewer } from "./viewer.mjs";
 import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
 import { installationId } from "./installation.mjs";
-import { confirmedTaskCancel, currentAttemptId, rememberContinuation, taskIdForAttempt, taskView } from "./task-model.mjs";
+import { confirmedGroupExit, confirmedTaskCancel, currentAttemptId, rememberContinuation, taskIdForAttempt, taskView } from "./task-model.mjs";
 import {
   editTargets,
   canonical,
@@ -576,6 +576,8 @@ export class Manager {
     if (args.runId) {
       const previous = await this.statusFor(task.id, args.runId);
       assertCurrentQuestion(task, previous);
+      if ((args.replySource != null || args.replyReason != null) && previous.state !== "needs_input")
+        throw new Error(`Run ${previous.id} is not awaiting input.`);
       return previous;
     }
     const previous = !args.fresh && task.runId ? await this.status(task.runId) : null;
@@ -1405,10 +1407,12 @@ export class Manager {
     return this.withTaskView(await this.statusFor(contextId, args.runId));
   }
   async withTaskView(run) {
+    return { ...run, task: taskView(await this.latestTaskAttempt(run)) };
+  }
+  async latestTaskAttempt(run) {
     const context = await taskRead(run.threadId);
     const latestId = currentAttemptId(context, run);
-    const latest = latestId === run.id ? run : await this.statusFor(run.threadId, latestId);
-    return { ...run, task: taskView(latest) };
+    return latestId === run.id ? run : this.statusFor(run.threadId, latestId);
   }
   async factoryWait(args) {
     await this.factoryRun(args);
@@ -1426,9 +1430,26 @@ export class Manager {
     });
   }
   async factoryStop(args) {
-    const run = await this.factoryRun(args);
-    if (run.terminal) return { stopping: args.runId };
-    return this.cancel(args.runId, "task-cancel");
+    if (this.busy) throw new Error("Another delegation is starting; retry shortly.");
+    this.busy = true;
+    try {
+      const contextId = this.rootTaskId(args.rootKind, args.rootId);
+      const run = await this.latestTaskAttempt(await this.statusFor(contextId, args.runId));
+      return await this.cancelTask(run);
+    } finally {
+      this.busy = false;
+    }
+  }
+  async cancelTask(run) {
+    if (!run.terminal) return this.cancel(run.id, "task-cancel");
+    if (run.state === "needs_input") {
+      const path = runDir(run.id);
+      if (!confirmedGroupExit(await readJSON(join(path, "process.json"), null)))
+        throw new Error("Could not verify the previous worker exited.");
+      await atomic(join(path, "run.json"), { ...run, state: "interrupted", taskCanceled: true });
+      this.runs.delete(run.id);
+    }
+    return { stopping: run.id };
   }
   async setOverride(taskId, executor) {
     if (!["auto", "codex", "claude", "off"].includes(executor))

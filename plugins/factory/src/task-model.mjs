@@ -34,8 +34,12 @@ export function taskState(attempt) {
 }
 
 export function confirmedTaskCancel(processState) {
-  return processState?.state === "exited" && processState.interrupted === true &&
-    processState.taskCanceled === true && processState.cleanupVerified !== false;
+  return confirmedGroupExit(processState) && processState.interrupted === true &&
+    processState.taskCanceled === true;
+}
+
+export function confirmedGroupExit(processState) {
+  return processState?.state === "exited" && processState.groupExitVerified === true;
 }
 
 // The v1 task vocabulary is additive on the legacy MCP response. Use only the
