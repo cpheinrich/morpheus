@@ -1,7 +1,7 @@
 """Verify and aggregate a complete development or holdout run from saved responses."""
 from collections import defaultdict
 from functools import cache
-from hashlib import sha256
+from hashlib import file_digest, sha256
 import json
 import math
 from pathlib import Path
@@ -25,14 +25,15 @@ def source_lines(path):
     return text.removesuffix("\r").replace("\r\n", "\n").split("\n")
 
 
-def rerender(response, root, case):
+def rerender(response, documents, case):
     parts = []
     spans = response["snippets"]
     for index, span in enumerate(spans):
         path, first, last = span["path"], span["first"], span["last"]
         require(path not in case["exclude"] and not Path(path).is_absolute()
                 and ".." not in Path(path).parts, "Invalid citation path")
-        lines = source_lines(root / path)
+        require(path in documents, "Citation outside the manifest")
+        lines = source_lines(documents[path])
         require(1 <= first <= last <= len(lines), "Invalid citation range")
         require(sum(other["path"] == path for other in spans) <= 2, "Per-file cap exceeded")
         require(not any(other["path"] == path and other["first"] <= last
@@ -41,13 +42,12 @@ def rerender(response, root, case):
     return "".join(parts)
 
 
-def recompute(row, case, directory, encode):
+def recompute(row, case, documents, encode):
     require(all(row[key] == case[key] for key in ("project", "kind", "group")), "Case metadata drift")
     require(math.isfinite(row["totalQueryMs"]) and 0 <= row["searchMs"] <= row["totalQueryMs"],
             "Invalid timer")
     response = json.loads(row["response"])
-    root = directory / case["project"] / "rg"
-    require(response["output"] == rerender(response, root, case), "Response differs from source")
+    require(response["output"] == rerender(response, documents, case), "Response differs from source")
     tokens = len(encode(response["output"]))
     require(tokens == response["returnedTokens"] and tokens <= row["budget"], "Token mismatch")
     targets = case["targets"]
@@ -114,14 +114,42 @@ def summarize_slices(rows, baseline):
         for (name, method, budget), selected in sorted(slices.items())
     ]
 
+
+def file_hash(path):
+    with path.open("rb") as stream:
+        return file_digest(stream, "sha256").hexdigest()
+
+
+def load_sources(config_path, frame):
+    require(file_hash(config_path) == frame["config"], "Source config drift")
+    config = json.loads(config_path.read_text())
+    projects = {}
+    for spec, frozen in zip(config["projects"], frame["corpora"], strict=True):
+        require(spec["name"] == frozen["name"], "Project drift")
+        documents = {}
+        for source, record in zip(spec["sources"], frozen["sources"], strict=True):
+            manifest = Path(source["manifest"])
+            require(file_hash(manifest) == record["manifestHash"], "Manifest drift")
+            manifest_rows = json.loads(manifest.read_text())
+            for entry in (manifest_rows.get("documents") or manifest_rows.get("files") or manifest_rows["entries"]):
+                path = Path(source["root"]) / entry["path"]
+                require(entry["path"] not in documents and file_hash(path) == entry["sha256"], "Source drift")
+                documents[entry["path"]] = path
+        require(len(documents) == frozen["documents"], "Source inventory drift")
+        projects[spec["name"]] = documents
+    return projects
+
 def report(frame, directory):
-    run = json.loads((directory / "run.json").read_text())
+    run_path = directory / "run.json"
+    responses = directory / "responses.jsonl"
+    run = json.loads(run_path.read_text())
     require(run["split"] in {"pilot", "dev", "holdout"}, "Invalid split")
     require(sha256((frame / "frame.json").read_bytes()).hexdigest() == run["frame"], "Wrong frame")
     split = "dev" if run["split"] == "pilot" else run["split"]
     fixture = frame / (split + ".json")
     frozen = json.loads((frame / "frame.json").read_text())
     require(sha256(fixture.read_bytes()).hexdigest() == frozen["fixtures"][split], "Fixture drift")
+    sources = load_sources(Path(run["sourceConfig"]), frozen)
     cases = {case["id"]: case for case in json.loads(fixture.read_text())}
     if run["split"] == "pilot":
         cases = {case_id: cases[case_id] for case_id in run["caseIds"]}
@@ -129,17 +157,18 @@ def report(frame, directory):
                 for budget in run["budgets"]}
     rows = []
     encode = tiktoken.get_encoding("o200k_base").encode_ordinary
-    for line in (directory / "responses.jsonl").open():
+    for line in responses.open():
         row = json.loads(line)
         key = row["case"], row["method"], row["budget"]
         require(key in expected, "Unexpected or duplicate row")
         expected.remove(key)
-        rows.append(recompute(row, cases[row["case"]], directory, encode))
+        rows.append(recompute(row, cases[row["case"]], sources[row["project"]], encode))
     require(not expected, f"Incomplete run. Missing {len(expected)} cells")
     baseline = {(row["budget"], row["case"]): row for row in rows if row["method"] == "ripgrep"}
     summaries = summarize_slices(rows, baseline)
     with (directory / "verified-report.json").open("x") as output:
-        json.dump({"verifiedRows": len(rows), "summary": summaries}, output, indent=2)
+        json.dump({"verifiedRows": len(rows), "runHash": file_hash(run_path),
+                   "responsesHash": file_hash(responses), "summary": summaries}, output, indent=2)
     print(f"Verified {len(rows)} unique paired cells")
 
 

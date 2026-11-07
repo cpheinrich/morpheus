@@ -23,7 +23,8 @@ Both stay in one group. Connect groups that share a direct source or target,
 task ID, or repo-qualified PR. Report actual group counts before claiming
 precision. Prefer a census to generating paraphrases to fill a quota. Target
 2,400 independent development and 1,200 held-out groups if eligible. Keep about
-one third of groups held out per repository and report lookup types separately.
+one third of groups held out per repository and report lookup types separately. Form groups
+before dropping ambiguous prompts so an unscored relationship cannot bridge splits.
 Use a seeded hash of canonical group IDs. Do not reuse exposed benchmark
 questions as new held-out evidence.
 
@@ -83,7 +84,8 @@ from the deterministic benchmark and report its actual denominator.
 | `ripgrep` | Exact roadmap ID when present, otherwise an OR of distinct query terms. Rank matching lines by number of distinct terms, with path and line tie breaks. Select the nearest shared window containing the matched line. |
 | `mini-body` | MiniSearch 7.2.0 over 16-line windows with 4-line overlap. Index body text. |
 | `mini-context` | Same windows with indexed title, heading and path. Fixed boosts of 2.5, 2, 1.5 and 1 for title, heading, path and body. |
-| `qmd-bm25` | QMD 2.8.3 lexical document rank. Choose a window around the strongest lexical line in each document. |
+| `qmd-bm25` | QMD 2.8.3 native lexical document rank, which requires all positive terms. Choose a window around the strongest lexical line in each document. |
+| `qmd-bm25-or` | QMD lexical document rank fused across individual terms with reciprocal rank fusion. Use the same passage rule as native lexical. |
 | `qmd-hybrid` | Optional QMD lexical plus local vector without expansion or reranking. Use a window around the matched QMD chunk when anchored, with the BM25 window rule as fallback. |
 
 All adapters draw from the same 16-line windows with 4-line overlap.
@@ -91,7 +93,9 @@ Line-ranked adapters select the nearest window containing the match.
 The bounded ripgrep adapter is a one-query baseline. The full ordinary
 agent workflow has its own baseline. QMD operates on a private projection that
 keeps file basenames, maps hits back to canonical paths and checks inventory size.
-The shortlist limit is 40 results per adapter. The shared formatter returns
+The shortlist limit is 40 nonoverlapping spans per adapter, after per-file
+deduplication. QMD ranks documents and proposes one window per document.
+This compares full retrieval pipelines, including their query policies. The shared formatter returns
 at most two non-overlapping spans per file. An entry that would exceed the cap
 is skipped intact. Measure retrieval once per case and method and add the
 separately timed packing and serialization at each budget. Report the first
@@ -129,6 +133,7 @@ The held-out runner refuses missing development verification or method,
 version, code, corpus or frame drift. This is a procedural lock; a human
 or agent with filesystem access could open the sealed file. Do not inspect it
 for tuning. The independent verifier checks the complete result matrix,
-rerenders citations from source, recounts tokens with Python, rescores evidence
+rehashes the original source inventory, rerenders citations, recounts tokens
+with Python, rescores evidence
 and reports equal-group-weighted paired bootstrap intervals. Thin slices
 describe the sample and have wide uncertainty.

@@ -142,3 +142,18 @@ test('does not turn quoted answer text into a descriptive query', () => {
   });
   assert.deepEqual(buildFrame([fixture]).map(item => item.kind), ['literal-id']);
 });
+
+test('an ambiguous prompt remains a grouping bridge between surviving cases', () => {
+  const fixture = project('sample', {
+    'docs/a.md': '# A\nRetrieve [fix](b.md#stable) to inspect the cursor offsets.\n## Another\n' + line,
+    'docs/b.md': '# B\n## Stable\n' + otherLine + '\n## Another\n' + line,
+    'docs/c.md': '# C\nRetrieve [fix](d.md#stable) to inspect the cursor offsets.',
+    'docs/d.md': '# D\n## Stable\n' + otherLine,
+    'docs/left.md': '# Left\nUse [source](a.md#another) for verifying export errors.',
+    'docs/right.md': '# Right\nUse [source](b.md#another) when investigating queue writes.',
+  });
+  const cases = buildFrame([fixture], { exposedPaths: { sample: ['docs/a.md'] } });
+  assert.equal(cases.length, 2);
+  assert.equal(new Set(cases.map(item => item.group)).size, 1);
+  assert.deepEqual(cases.map(item => item.split), ['dev', 'dev']);
+});

@@ -51,23 +51,26 @@ export function prepareRipgrep(project, directory) {
       hits.push({ path, line: data.line_number, score });
     }
     hits.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path, 'en') || a.line - b.line);
-    return ripgrepShortlist(hits, project.documents);
+    return shortlist(ripgrepWindows(hits, project.documents));
   };
 }
 
-function ripgrepShortlist(hits, documents) {
-  const shortlist = [];
+function* ripgrepWindows(hits, documents) {
+  for (const hit of hits) yield position(hit.path, hit.line, documents);
+}
+
+function shortlist(ranked) {
+  const selected = [];
   const byPath = new Map();
-  for (const hit of hits) {
-    const prior = byPath.get(hit.path) ?? [];
-    const span = position(hit.path, hit.line, documents);
+  for (const span of ranked) {
+    const prior = byPath.get(span.path) ?? [];
     if (prior.length === 2 || prior.some(p => p.first <= span.last && span.first <= p.last)) continue;
     prior.push(span);
-    byPath.set(hit.path, prior);
-    shortlist.push(span);
-    if (shortlist.length === LIMIT) break;
+    byPath.set(span.path, prior);
+    selected.push(span);
+    if (selected.length === LIMIT) break;
   }
-  return shortlist;
+  return selected;
 }
 
 export function prepareMiniSearch(project, rich) {
@@ -90,10 +93,10 @@ export function prepareMiniSearch(project, rich) {
     }
   }
   index.addAll(chunks);
-  return (query, excluded) => index.search(query, {
+  return (query, excluded) => shortlist(index.search(query, {
     combineWith: 'OR', boost: { title: 2.5, heading: 2, pathWords: 1.5, body: 1 },
     filter: hit => !excluded.has(hit.path),
-  }).slice(0, LIMIT);
+  }));
 }
 
 function qmdRange(hit, path, document, query) {
@@ -139,17 +142,33 @@ export async function prepareQmd(project, directory, modulePath, embed) {
   }
   async function search(query, excluded, mode) {
     const identifier = query.match(identifierPattern)?.[0];
-    const keyword = identifier ? '"' + identifier.replace(/[.-]/g, ' ') + '"' : terms(query).join(' ');
+    const tokens = terms(query);
+    const keyword = identifier ? '"' + identifier.replace(/[.-]/g, ' ') + '"' : tokens.join(' ');
     if (!keyword) return [];
     const options = { limit: LIMIT + excluded.size };
-    const hits = mode === 'qmd-bm25'
-      ? await store.searchLex(keyword, options)
-      : await store.search({ ...options, queries: [{ type: 'lex', query: keyword }, { type: 'vec', query }], rerank: false });
-    return hits.flatMap(hit => {
+    const hits = await qmdHits(store, mode, query, keyword, identifier ? [keyword] : tokens, options);
+    return shortlist(hits.flatMap(hit => {
       const document = projected.get(hit.displayPath.replace(/^(?:qmd:\/\/)?docs\//, ''));
       if (!document) throw Error('QMD source missing from corpus');
       return excluded.has(document.path) ? [] : [qmdRange(hit, document.path, document, query)];
-    }).slice(0, LIMIT);
+    }));
   }
   return { search, close: () => store.close() };
+}
+
+async function qmdHits(store, mode, query, keyword, tokens, options) {
+  if (mode === 'qmd-bm25') return store.searchLex(keyword, options);
+  if (mode === 'qmd-hybrid') {
+    return store.search({ ...options, queries: [{ type: 'lex', query: keyword }, { type: 'vec', query }], rerank: false });
+  }
+  const merged = new Map();
+  for (const token of tokens) {
+    for (const [rank, hit] of (await store.searchLex(token, options)).entries()) {
+      const row = merged.get(hit.displayPath) ?? { hit, score: 0 };
+      row.score += 1 / (60 + rank);
+      merged.set(hit.displayPath, row);
+    }
+  }
+  return [...merged.values()].sort((a, b) => b.score - a.score ||
+    a.hit.displayPath.localeCompare(b.hit.displayPath, 'en')).map(row => row.hit);
 }

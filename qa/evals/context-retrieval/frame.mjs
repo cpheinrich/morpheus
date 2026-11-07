@@ -249,16 +249,18 @@ function components(cases) {
   return groups.values();
 }
 
-function assignSplit(cases, seed) {
+function assignSplit(cases, seed, isScored) {
   const strata = new Map();
-  for (const members of components(cases)) {
-    const group = hash(members.map(member => member.id).sort(compare));
+  for (const related of components(cases)) {
+    const members = related.filter(isScored);
+    if (!members.length) continue;
+    const group = hash(related.map(member => member.id).sort(compare));
     for (const member of members) {
       member.group = group;
       member.split = 'dev';
     }
-    if (members.some(member => member.exposed)) continue;
-    const stratum = [...new Set(members.map(member => member.project))].sort(compare).join(',');
+    if (related.some(member => member.exposed)) continue;
+    const stratum = [...new Set(related.map(member => member.project))].sort(compare).join(',');
     if (!strata.has(stratum)) strata.set(stratum, []);
     strata.get(stratum).push({ members, rank: hash([seed, stratum, group]) });
   }
@@ -294,7 +296,7 @@ export function buildFrame(projects, { seed = 'context-retrieval-v1', exposedPat
     const key = queryKey(item);
     queryCounts.set(key, (queryCounts.get(key) ?? 0) + 1);
   }
-  const unique = cases.filter(item => queryCounts.get(queryKey(item)) === 1);
-  assignSplit(unique, seed);
-  return unique.map(({ keys, exposed, ...item }) => item);
+  const isScored = item => queryCounts.get(queryKey(item)) === 1;
+  assignSplit(cases, seed, isScored);
+  return cases.filter(isScored).map(({ keys, exposed, ...item }) => item);
 }

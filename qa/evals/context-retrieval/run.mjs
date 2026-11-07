@@ -54,7 +54,7 @@ function selectPilot(cases) {
   });
 }
 
-const METHODS = ['ripgrep', 'mini-body', 'mini-context', 'qmd-bm25', 'qmd-hybrid'];
+const METHODS = ['ripgrep', 'mini-body', 'mini-context', 'qmd-bm25', 'qmd-bm25-or', 'qmd-hybrid'];
 
 function verifyFreeze(configPath, directory, projects, split) {
   const frozen = readJson(join(directory, 'frame.json'));
@@ -124,14 +124,20 @@ function toolVersions(methods, tokenizerPath) {
   return versions;
 }
 
-function verifyDevelopment(output, current) {
+function verifyDevelopment(current, framePath) {
   const directory = resolve(process.env.VERIFIED_DEVELOPMENT_RUN);
-  const previous = readJson(join(directory, 'run.json'));
+  const previousPath = join(directory, 'run.json');
+  const previous = readJson(previousPath);
   const report = readJson(join(directory, 'verified-report.json'));
-  if (previous.split !== 'dev' || !report.verifiedRows ||
+  const { counts } = readJson(join(framePath, 'frame.json'));
+  const cases = Object.entries(counts).filter(([key]) => key.includes('/dev/'))
+    .reduce((total, [, count]) => total + count, 0);
+  if (previous.split !== 'dev' || report.verifiedRows !== cases * current.methods.length * budgets.length ||
+      report.runHash !== digest(readFileSync(previousPath)) ||
+      report.responsesHash !== digest(readFileSync(join(directory, 'responses.jsonl'))) ||
       ['code', 'versions', 'methods', 'budgets', 'frame'].some(key =>
         JSON.stringify(previous[key]) !== JSON.stringify(current[key]))) {
-    throw Error('Holdout settings differ from the verified development run: ' + output);
+    throw Error('Holdout settings differ from the verified development run');
   }
 }
 
@@ -141,20 +147,23 @@ async function run({ configPath, framePath, output, split, projects, methods }) 
   if (!methods.length || new Set(methods).size !== methods.length || methods.some(method => !METHODS.includes(method))) {
     throw Error('Invalid method list');
   }
-  if (split === 'holdout' && !process.env.VERIFIED_DEVELOPMENT_RUN) throw Error('Set VERIFIED_DEVELOPMENT_RUN before opening the holdout');
+  const tokenizerPath = process.env.TOKENIZER_MODULE;
+  const versions = toolVersions(methods, tokenizerPath);
+  const frozenSettings = { code: codeHash(), versions, methods, split, budgets,
+    frame: digest(readFileSync(join(framePath, 'frame.json'))), sourceConfig: configPath };
+  if (split === 'holdout') {
+    if (!process.env.VERIFIED_DEVELOPMENT_RUN) throw Error('Set VERIFIED_DEVELOPMENT_RUN before opening the holdout');
+    verifyDevelopment(frozenSettings, framePath);
+  }
   const frozenCases = verifyFreeze(configPath, framePath, projects, pilot ? 'dev' : split);
   const cases = pilot ? selectPilot(frozenCases) : frozenCases;
   validateCases(cases, projects);
   if (!cases.length) throw Error('No eligible cases');
-  const tokenizerPath = process.env.TOKENIZER_MODULE;
-  const versions = toolVersions(methods, tokenizerPath);
   const { getEncoding } = await import(pathToFileURL(tokenizerPath).href);
   const encoding = getEncoding('o200k_base');
   const encode = output => encoding.encode(output, [], []);
-  const runRecord = { code: codeHash(), versions, methods, split, budgets, ...groupCounts(cases),
-    frame: digest(readFileSync(join(framePath, 'frame.json'))),
+  const runRecord = { ...frozenSettings, ...groupCounts(cases),
     caseIds: pilot ? cases.map(item => item.id) : undefined };
-  if (split === 'holdout') verifyDevelopment(output, runRecord);
   mkdirSync(output, { mode: 0o700 });
   privateJson(join(output, 'run.json'), runRecord);
   await recordResponses(projects, cases, methods, output, encode);
