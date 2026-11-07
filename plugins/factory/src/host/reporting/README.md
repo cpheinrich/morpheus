@@ -34,7 +34,7 @@ The designated local writer authenticates through its existing credential wrappe
 account metadata and a singleton credential export in memory, then GETs the fixed vendor usage
 endpoint. Export includes proxy metadata so direct-only eligibility can be checked.
 Every authenticated hop refuses redirects and bounds decoded bytes. HTTP uses `/usr/bin/ssh -F /dev/null -T`
-with BatchMode, StrictHostKeyChecking, a ten-second connect timeout, disabled ProxyCommand,
+with BatchMode, StrictHostKeyChecking, UpdateHostKeys disabled, a ten-second connect timeout, disabled ProxyCommand,
 ProxyJump and LocalCommand, and `-W 127.0.0.1:<gatewayPort>` to the enrolled user and host.
 Ambient SSH configuration is excluded, preserving the enrolled endpoint, port 22, default
 known-host trust and no multiplexing. Existing SSH host-key authentication binds encryption to that endpoint. Only HOME, PATH and an

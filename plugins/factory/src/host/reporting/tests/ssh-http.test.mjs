@@ -7,7 +7,7 @@ import {boundedJson} from '../transport.mjs';
 const binding={ssh:{host:'example.test',user:'operator',gatewayPort:8080}};
 test('SSH builder binds exact enrolled endpoint, loopback port and strict existing trust',()=>{
  const target=new URL('http://example.test:8080/auth');
- assert.deepEqual(sshArguments(target,binding),['-F','/dev/null','-T','-oBatchMode=yes','-oStrictHostKeyChecking=yes','-oConnectTimeout=10','-oProxyCommand=none','-oProxyJump=none','-oPermitLocalCommand=no','-W','127.0.0.1:8080','operator@example.test']);
+ assert.deepEqual(sshArguments(target,binding),['-F','/dev/null','-T','-oBatchMode=yes','-oStrictHostKeyChecking=yes','-oUpdateHostKeys=no','-oConnectTimeout=10','-oProxyCommand=none','-oProxyJump=none','-oPermitLocalCommand=no','-W','127.0.0.1:8080','operator@example.test']);
  for(const ssh of [undefined,{...binding.ssh,host:'other.example.test'},{...binding.ssh,user:undefined},{...binding.ssh,user:'-oProxyCommand=private'},{...binding.ssh,gatewayPort:80},{...binding.ssh,gatewayPort:0},{...binding.ssh,gatewayPort:65536},{...binding.ssh,gatewayPort:8080.5}])assert.throws(()=>sshArguments(target,{ssh}),/^Error: unavailable$/);
  for(const url of ['https://example.test:8080','http://secret@example.test:8080'])assert.throws(()=>sshArguments(new URL(url),binding),/unavailable/);
 });
@@ -44,5 +44,5 @@ test('actual SSH effective configuration ignores ambient endpoint, host-key, pro
  const args=sshArguments(new URL('http://example.test:8080'),{ssh:{host:'example.test',user:'operator',gatewayPort:8080}});
  const effective=argv=>Object.fromEntries(execFileSync('/usr/bin/ssh',['-G','-F',config,...argv],{encoding:'utf8',env:{HOME:process.env.HOME,PATH:process.env.PATH}}).trim().split('\n').map(line=>{const at=line.indexOf(' ');return [line.slice(0,at),line.slice(at+1)];}));
  const unsafe=effective(args.slice(2));assert.equal(unsafe.hostname,'other.example.test');assert.equal(unsafe.port,'2222');assert.equal(unsafe.hostkeyalias,'other.example.test');assert.equal(unsafe.controlmaster,'auto');
- const safe=effective(args);assert.equal(safe.hostname,'example.test');assert.equal(safe.user,'operator');assert.equal(safe.port,'22');assert.equal(safe.stricthostkeychecking,'true');assert.equal(safe.controlmaster,'false');assert.equal(safe.controlpath,undefined);assert.equal(safe.hostkeyalias,undefined);assert.equal(safe.proxycommand,undefined);assert.equal(safe.proxyjump,undefined);assert.equal(safe.permitlocalcommand,'no');assert.equal(safe.localcommand,undefined);assert.match(safe.userknownhostsfile,/\.ssh\/known_hosts/);
+ const safe=effective(args);assert.equal(safe.hostname,'example.test');assert.equal(safe.user,'operator');assert.equal(safe.port,'22');assert.equal(safe.stricthostkeychecking,'true');assert.equal(safe.updatehostkeys,'false');assert.equal(safe.controlmaster,'false');assert.equal(safe.controlpath,undefined);assert.equal(safe.hostkeyalias,undefined);assert.equal(safe.proxycommand,undefined);assert.equal(safe.proxyjump,undefined);assert.equal(safe.permitlocalcommand,'no');assert.equal(safe.localcommand,undefined);assert.match(safe.userknownhostsfile,/\.ssh\/known_hosts/);
 });

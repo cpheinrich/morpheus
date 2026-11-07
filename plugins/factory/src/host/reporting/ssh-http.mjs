@@ -8,7 +8,7 @@ export function sshArguments(target,binding) {
     !/^[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}$/.test(enrolled.host)||target.hostname!==enrolled.host||
     typeof enrolled.user!=='string'||!/^[a-z_][a-z0-9_-]{0,31}$/.test(enrolled.user)||!Number.isSafeInteger(enrolled.gatewayPort)||
     enrolled.gatewayPort<1||enrolled.gatewayPort>65535||Number(target.port||80)!==enrolled.gatewayPort)throw new Error('unavailable');
-  return ['-F','/dev/null','-T','-oBatchMode=yes','-oStrictHostKeyChecking=yes','-oConnectTimeout=10',
+  return ['-F','/dev/null','-T','-oBatchMode=yes','-oStrictHostKeyChecking=yes','-oUpdateHostKeys=no','-oConnectTimeout=10',
     '-oProxyCommand=none','-oProxyJump=none','-oPermitLocalCommand=no',
     '-W',`127.0.0.1:${enrolled.gatewayPort}`,`${enrolled.user}@${enrolled.host}`];
 }
