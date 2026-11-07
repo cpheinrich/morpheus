@@ -107,7 +107,7 @@ function recordedIdentityUsable(identity) {
 async function currentContradiction(p,runId,options) {
   if(options.current.markedRunIds.includes(runId))return true;
   for(const [pid,identity] of [[p?.guardianPid,p?.guardianIdentity],[p?.claudePid,p?.claudeIdentity]]) {
-    if((identity||pid!==undefined&&pid!==null)&&(!Number.isSafeInteger(pid)||pid<=1))throw new Error('invalid-source');
+    if((identity||pid!=null)&&(!Number.isSafeInteger(pid)||pid<=1))throw new Error('invalid-source');
     if(Number.isSafeInteger(pid)&&pid>1){
       const current=await options.lookup(pid);
       if(current&&sameIdentity(current,identity))return true;
