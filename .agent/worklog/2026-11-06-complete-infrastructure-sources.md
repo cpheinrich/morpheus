@@ -84,3 +84,11 @@ A private enrollment plan retains the no-new-admission maintenance qualification
 optional organization identity enrollment. No reporter configuration, live dispatcher, account
 setting, credential permission or device state was changed. Protected merge/deployment and
 live monitoring follow fresh independent source review.
+
+
+## Source review handoff
+
+Draft companion PRs are Morpheus639, Darwin146 and agent-host-setup29. They remain unreviewed,
+with auto-merge disabled. The controller will launch fresh independent source reviewers with
+exact final packets. The author has not claimed source clearance. The retained design findings
+and conditional quota transport requirements are included in the private review supplement.
