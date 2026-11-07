@@ -24,7 +24,7 @@ async function tree(path){const rows=[];for(const name of (await readdir(path)).
 test('desktop and unattended census never writes recovery or copies private fields',async t=>{
  const root=await temp(t);const dir=join(root,'runs',uuid);
  await put(join(dir,'run.json'),{id:uuid,threadId:'task-a',executor:'codex',gateway:'codex',createdAt:Date.parse(at),selection:{model:'gpt-demo-1',effort:'high'},cwd:'/repo/a',workspace:{other:{path:'/repo/b'}},state:'running',question:'PRIVATE',result:{secret:'PRIVATE'},terminal:false});
- await put(join(dir,'process.json'),{state:'running',guardianPid:12,guardianIdentity:'identity'});
+ await put(join(dir,'process.json'),{runId:uuid,state:'running',guardianPid:12,guardianIdentity:'identity'});
  await mkdir(join(root,'unattended'));const before=await tree(root);
  const options={roots:[root,root],channel:'desktop',hostId:'host-a',projects:{'/repo/a':'example/a','/repo/b':'example/b'},accounts:{codex:'gateway-a-2'},lookup:async pid=>{assert.equal(pid,12);return 'identity';}};
  const value=await observeFactory(options);
@@ -35,7 +35,7 @@ test('desktop and unattended census never writes recovery or copies private fiel
  assert.deepEqual(stable.instances[0].projectIds,['example/b']);
  assert.equal(JSON.stringify(value).includes('PRIVATE'),false);assert.equal(JSON.stringify(value).includes('/repo'),false);
  assert.deepEqual(await tree(root),before);
- await put(join(dir,'process.json'),{state:'exited',cleanupVerified:false});
+ await put(join(dir,'process.json'),{runId:uuid,state:'exited',cleanupVerified:false});
  await put(join(dir,'run.json'),{id:uuid,executor:'codex',terminal:true,cwd:'/repo/a'});
  assert.equal((await observeFactory(options)).instances[0].state,'cleanup-unverified');
  assert.equal((await observeFactory({...options,channel:'unattended'})).instances.length,0);
@@ -43,7 +43,7 @@ test('desktop and unattended census never writes recovery or copies private fiel
 test('unattended roots include service admissions; incomplete census cannot mean idle',async t=>{
  const root=await temp(t);const dir=join(root,'unattended',uuid);
  await put(join(dir,'admission.json'),{admissionId:uuid,binding:{jobId:'steward',cwd:'/repo/a',gateway:{provider:'codex',name:'codex'}}});
- await put(join(dir,'process.json'),{state:'running',guardianPid:12,guardianIdentity:'identity'});
+ await put(join(dir,'process.json'),{runId:uuid,state:'running',guardianPid:12,guardianIdentity:'identity'});
  const options={roots:[root],channel:'unattended',hostId:'host-a',projects:{'/repo/a':'example/a'},lookup:async()=> 'identity'};
  assert.equal((await observeFactory(options)).instances[0].executor,'codex');
  assert.equal((await observeFactory(options)).instances[0].createdAt,null);
@@ -145,4 +145,43 @@ test('oversized valid source becomes unavailable without dropping the machine he
  const report=await snapshot({...baseConfig,sources:[{id:'machine',kind:'machine'},{id:'github',kind:'github'}]},{now:()=>new Date(at),read:async source=>source.id==='machine'?{value:sample.value}:{value:{jobs:[],orgCensus:'unavailable',runners:Array.from({length:100},(_,runnerId)=>({projectId:'example/a',runnerId,online:true,busy:false,labels:Array(20).fill('x'.repeat(160))}))}}});
  assert.equal(report.samples.machine.status,'ok');assert.equal(report.samples.github.status,'error');assert.equal(report.samples.github.errorCode,'incomplete');
  assert.ok(Buffer.byteLength(JSON.stringify(report))<=65536);
+});
+for(const channel of ['desktop','unattended'])test(`${channel} validates terminal proof identity and never hides contradictory process evidence`,async t=>{
+ const root=await temp(t),dir=join(root,channel==='desktop'?'runs':'unattended',uuid);
+ const name=channel==='desktop'?'run.json':'admission.json';
+ const record=channel==='desktop'?{id:uuid,executor:'codex',cwd:'/repo/a',terminal:true}:
+  {admissionId:uuid,terminal:true,binding:{jobId:'steward',cwd:'/repo/a',gateway:{provider:'codex',name:'codex'}}};
+ await put(join(dir,name),record);
+ let probes=0;
+ const options={roots:[root],channel,hostId:'host-a',projects:{'/repo/a':'example/a'},lookup:async()=>{probes++;return 'exact';}};
+ await put(join(dir,'process.json'),{runId:uuid,state:'running',guardianPid:12,guardianIdentity:'exact'});
+ const before=await tree(root),live=await observeFactory(options);
+ assert.equal(live.complete,false);assert.equal(live.instances.length,1);assert.equal(live.instances[0].state,'running');
+ assert.deepEqual(await tree(root),before);assert.equal(probes,1);
+ await put(join(dir,'process.json'),{runId:uuid,state:'starting'});
+ const starting=await observeFactory(options);assert.equal(starting.complete,false);assert.equal(starting.instances[0].state,'unknown');
+ await put(join(dir,'process.json'),{runId:'foreign',state:'exited',cleanupVerified:true});
+ const foreign=await observeFactory(options);assert.equal(foreign.complete,false);assert.deepEqual(foreign.instances,[]);
+ await put(join(dir,name),{});
+ assert.equal((await observeFactory(options)).complete,false);
+ await put(join(dir,name),{...record,...(channel==='desktop'?{id:'foreign'}:{admissionId:'foreign'})});
+ assert.equal((await observeFactory(options)).complete,false);
+ await put(join(dir,name),record);
+ await put(join(dir,'process.json'),{runId:uuid,state:'exited',...(channel==='unattended'?{cleanupVerified:true}:{})});
+ probes=0;assert.deepEqual(await observeFactory(options),{complete:true,instances:[],lastOutcome:null});assert.equal(probes,0);
+ if(channel==='unattended'){
+  await put(join(dir,'result.json'),{admissionId:'foreign',result:{outcome:'completed'}});
+  assert.deepEqual(await observeFactory(options),{complete:true,instances:[],lastOutcome:null});
+ }
+});
+test('validated never-launched admissions need no process census, but contradictory process or invalid proof stays unknown',async t=>{
+ const root=await temp(t),dir=join(root,'unattended',uuid),record={admissionId:uuid,sessionId:null,
+  prelaunchFailure:{phase:'preparation',proof:'never-launched',summary:'Synthetic preparation failure'},binding:{jobId:'steward',cwd:'/repo/a',gateway:{provider:'codex',name:'codex'}}};
+ await put(join(dir,'admission.json'),record);
+ const options={roots:[root],channel:'unattended',hostId:'host-a',projects:{'/repo/a':'example/a'},lookup:async()=>{throw Error('historical records must not probe');}};
+ assert.deepEqual(await observeFactory(options),{complete:true,instances:[],lastOutcome:null});
+ await put(join(dir,'admission.json'),{...record,prelaunchFailure:{phase:'unknown',proof:'never-launched'}});
+ const invalid=await observeFactory(options);assert.equal(invalid.complete,false);assert.equal(invalid.instances[0].state,'unknown');
+ await put(join(dir,'admission.json'),record);await put(join(dir,'process.json'),{runId:uuid,state:'starting'});
+ const contradiction=await observeFactory(options);assert.equal(contradiction.complete,false);assert.equal(contradiction.instances[0].state,'unknown');
 });

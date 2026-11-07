@@ -245,3 +245,52 @@ test string. Replaced with its supported repeated-group synthetic UUID (still va
 reserved example.test hostname; no guard exception or production behavior changed. Focused
 test_public_fixtures.py (3 tests) and reporter suite (12 tests) pass after the correction.
 Darwin CI green at1c0a275 (5/5). Refreshed reporter review packet follows this correction commit.
+
+## Independent review turn1 — BLOCKED; author response for turn2
+
+Record key MORPHEUS-R1 maps exactly to reviewer finding R1; the record schema requires at least three characters. The original description/identifier is retained verbatim.
+
+SOURCE REVIEW BLOCKED for 8d8d84e462b86be06bb60379c50ba5bb90644503 (high risk). One substantive finding remains. No files changed, external actions, claims, deployments, or provider probes performed.
+
+Measured by root: 212000ms, elapsedMinutes 3.533333333333333. Exact clock evidence and original substantive findings retained below. The initial verdict remains blocked. The same reviewer is to assess fixes under a15-minute follow-up ceiling.
+
+R1: Validate invocation/directory/process/result identity before terminal exclusion; contradictory live/unknown process evidence remains visible or partial. Proven historical exits and valid never-launched admissions skip process probing. Regression coverage includes desktop and unattended, foreign proof/malformed records, unknown states, preserved historical exits and no observation writes. Recorded model/effort selection is labelled in the paired consumer. Follow-up verification pending.
+
+Focused correction evidence: reporter15, public privacy3 and direct distribution4; root typecheck/lint/compile. No wire change or operational recovery writes.
+
+Complexity remains advisory: reporter observeFactory27/wire16 cognitive; consumer hostIdentities21/POST16/wire16 cognitive plus the previously documented TSX scanner extent warning (raw HostRunners CCN46). No threshold/exclusion/enrollment change.
+
+Initial source review turn1 BLOCKED; substantive findings retained and author fixes await the same reviewer turn2. No clearance or merge readiness claimed.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "9d411f4d72db40203495cb84712984e37aa8718a",
+  "reviewed": "8d8d84e462b86be06bb60379c50ba5bb90644503",
+  "covered": "8d8d84e462b86be06bb60379c50ba5bb90644503",
+  "authorSession": "01a1b323-e075-7c32-98b9-2ce4d216f0a9",
+  "reviewerSession": "01a1b353-71c1-75a3-8d49-6f1e99d273a6",
+  "risk": "high",
+  "elapsedMinutes": 3.533333333333333,
+  "timing": {
+    "source": "clock",
+    "durationMs": 212000,
+    "evidence": "Root clock around Factory reviewer run 723e269c-0864-424b-b036-5892275dc205: start 2026-11-07 00:05:52 UTC, terminal result acquired by 2026-11-07 00:09:24 UTC."
+  },
+  "outcome": "blocked",
+  "summary": "Initial source review turn1 BLOCKED; substantive findings retained and author fixes await the same reviewer turn2. No clearance or merge readiness claimed.",
+  "findings": [
+    {
+      "id": "MORPHEUS-R1",
+      "severity": "substantive",
+      "description": "R1 \u2014 substantive: plugins/factory/src/host/reporting/factory.mjs:25\u201328,52\u201360 discards records before validating identity or contradictory process evidence. A terminal run with a live, identity-matched guardian produces complete:true,instances:[]; malformed run.json plus an unrelated exited/cleanupVerified process does likewise. This permits false idle reporting. Validate directory/run/admission/process identities before terminal exclusion; preserve ambiguous records as unknown or mark the census partial. Never let terminal:true override evidence of a running process. Add focused regression cases.",
+      "paths": [
+        "plugins/factory/src/host/reporting/factory.mjs",
+        "plugins/factory/src/host/reporting/tests/reporting.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Validate invocation/directory/process/result identity before terminal exclusion; contradictory live/unknown process evidence remains visible or partial. Proven historical exits and valid never-launched admissions skip process probing. Regression coverage includes desktop and unattended, foreign proof/malformed records, unknown states, preserved historical exits and no observation writes. Recorded model/effort selection is labelled in the paired consumer. Author implementation only; reviewer verification pending."
+    }
+  ]
+}
+```

@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { join, basename, isAbsolute } from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -22,10 +22,13 @@ async function optionalJson(path) {
   try { return (await jsonFile(path)).data; }
   catch(e) { if(e.code==='ENOENT')return null;throw e; }
 }
-function terminalRecord(r,p) {
-  if(r.prelaunchFailure?.proof === 'never-launched') return true;
-  if(p?.state === 'exited' && p.cleanupVerified === true) return true;
-  return r.terminal === true && p?.cleanupVerified !== false;
+function terminalRecord(r,p,channel) {
+  // Proof belongs to this invocation (validated before here); terminal alone is not proof.
+  const failure=r.prelaunchFailure;
+  if(!p && failure?.proof==='never-launched' && ['preparation','guardian-spawn'].includes(failure.phase) &&
+    typeof failure.summary==='string' && failure.summary.length>0 && r.sessionId===null)return true;
+  return p?.state==='exited' && (p.cleanupVerified===true ||
+    (channel==='desktop' && r.terminal===true && p.cleanupVerified!==false));
 }
 function bindingFor(r,channel) {
   if(channel === 'desktop') return {executor:r.executor,invocationId:r.id,cwd:r.cwd,gateway:r.gateway,task:r.threadId,workspace:r.workspace,selection:r.selection};
@@ -49,15 +52,23 @@ async function activeInstance(r,p,binding,created,channel,options) {
     taskId:binding.task??null,model:observedLabel(binding.selection?.model),
     effort:['none','minimal','low','medium','high','xhigh','max','ultra'].includes(binding.selection?.effort)?binding.selection.effort:null };
 }
+function validateInvocation(binding,p,directory) {
+  if(binding.invocationId!==basename(directory) || !['codex','claude'].includes(binding.executor))throw new Error('invalid-source');
+  if(typeof binding.cwd!=='string' || !isAbsolute(binding.cwd))throw new Error('invalid-source');
+  if(p && (p.runId!==binding.invocationId || !['starting','running','exited'].includes(p.state)))throw new Error('invalid-source');
+}
 async function recordInstance(directory, channel, options) {
   const record=await jsonFile(join(directory,channel==='desktop'?'run.json':'admission.json'));
   const r=record.data,p=await optionalJson(join(directory,'process.json'));
+  const binding=bindingFor(r,channel);
+  validateInvocation(binding,p,directory);
   const result=channel==='unattended'?await optionalJson(join(directory,'result.json')):null;
-  const outcome=result?.result?.outcome ?? r.result?.outcome;
+  const outcome=(result?.admissionId===binding.invocationId?result.result?.outcome:null) ?? r.result?.outcome;
   const lastOutcome=outcomes.has(outcome)?outcome:null;
   const created=Number.isFinite(r.createdAt)?r.createdAt:Date.parse(record.at);
-  if(terminalRecord(r,p))return {lastOutcome,created};
-  return {instance:await activeInstance(r,p,bindingFor(r,channel),created,channel,options),lastOutcome,created};
+  if(terminalRecord(r,p,channel))return {lastOutcome,created};
+  const instance=await activeInstance(r,p,binding,created,channel,options);
+  return {instance,lastOutcome,created,uncertain:r.terminal===true || instance.state==='unknown' || instance.state==='cleanup-unverified' || !instance.projectIds.length};
 }
 export async function observeFactory({ roots, channel, hostId, projects, accounts = {}, lookup = processIdentity }) {
   const instances = new Map(); let complete = true; let lastOutcome = null; let latest = -1;
@@ -69,7 +80,8 @@ export async function observeFactory({ roots, channel, hostId, projects, account
       if (!/^[0-9a-f-]{36}$/.test(name)) continue;
       try {
         const row = await recordInstance(join(root,channel === 'desktop' ? 'runs' : 'unattended',name), channel, {hostId,projects,accounts,lookup});
-        if (row.instance) {instances.set(row.instance.invocationId, row.instance);if(!row.instance.projectIds.length)complete=false;}
+        if(row.uncertain)complete=false;
+        if (row.instance) instances.set(row.instance.invocationId, row.instance);
         if (row.lastOutcome && row.created >= latest) { latest = row.created; lastOutcome = row.lastOutcome; }
       } catch { complete = false; }
     }
