@@ -99,6 +99,21 @@ def timing(selected):
     }
 
 
+
+def summarize_slices(rows, baseline):
+    slices = defaultdict(list)
+    for row in rows:
+        scopes = ["all", row["project"], "kind/" + row["kind"], row["project"] + "/" + row["kind"]]
+        if row["kind"] != "literal-id":
+            scopes.append("descriptive")
+        for name in scopes:
+            slices[(name, row["method"], row["budget"])].append(row)
+    return [
+        dict(scope=name, method=method, budget=budget, **summarize(
+            selected, {row["case"]: baseline[(budget, row["case"])] for row in selected}))
+        for (name, method, budget), selected in sorted(slices.items())
+    ]
+
 def report(frame, directory):
     run = json.loads((directory / "run.json").read_text())
     require(run["split"] in {"pilot", "dev", "holdout"}, "Invalid split")
@@ -122,18 +137,7 @@ def report(frame, directory):
         rows.append(recompute(row, cases[row["case"]], directory, encode))
     require(not expected, f"Incomplete run. Missing {len(expected)} cells")
     baseline = {(row["budget"], row["case"]): row for row in rows if row["method"] == "ripgrep"}
-    slices = defaultdict(list)
-    for row in rows:
-        scopes = ["all", row["project"], "kind/" + row["kind"], row["project"] + "/" + row["kind"]]
-        if row["kind"] != "literal-id":
-            scopes.append("descriptive")
-        for name in scopes:
-            slices[(name, row["method"], row["budget"])].append(row)
-    summaries = [
-        dict(scope=name, method=method, budget=budget, **summarize(
-            selected, {row["case"]: baseline[(budget, row["case"])] for row in selected}))
-        for (name, method, budget), selected in sorted(slices.items())
-    ]
+    summaries = summarize_slices(rows, baseline)
     with (directory / "verified-report.json").open("x") as output:
         json.dump({"verifiedRows": len(rows), "summary": summaries}, output, indent=2)
     print(f"Verified {len(rows)} unique paired cells")

@@ -22,8 +22,9 @@ function readDocument(root, entry) {
 export function loadProjects(configPath) {
   const config = readJson(configPath);
   const seen = new Set();
-  return config.projects.map(({ name, sources }) => {
+  return config.projects.map(({ name, repository, sources }) => {
     if (!/^[a-z][a-z0-9-]*$/.test(name) || seen.has(name)) throw Error('Invalid project name: ' + name);
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repository ?? '')) throw Error('Invalid repository: ' + repository);
     seen.add(name);
     const documents = new Map();
     const provenance = [];
@@ -39,6 +40,6 @@ export function loadProjects(configPath) {
         documents.set(entry.path, readDocument(source, entry));
       }
     }
-    return { name, documents, provenance };
+    return { name, repository, documents, provenance };
   });
 }

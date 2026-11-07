@@ -108,6 +108,11 @@ function descriptive(text, targets) {
   return copiesTarget ? '' : description;
 }
 
+function qualifiedPrKeys(value) {
+  return [...value.matchAll(prReference)].map(match =>
+    'pr:' + (match[1] ?? match[3]).toLowerCase() + '#' + (match[2] ?? match[4]));
+}
+
 function prKeys(project, fields) {
   const keys = [];
   const local = project.repository?.toLowerCase() ?? project.name;
@@ -117,9 +122,7 @@ function prKeys(project, fields) {
     for (const number of numbers.map(part => part.trim().replace(/^-\s+/, ''))) {
       if (/^\d+$/.test(number)) keys.push('pr:' + local + '#' + number);
     }
-    for (const match of value.matchAll(prReference)) {
-      keys.push('pr:' + (match[1] ?? match[3]).toLowerCase() + '#' + (match[2] ?? match[4]));
-    }
+    keys.push(...qualifiedPrKeys(value));
   }
   return keys;
 }
@@ -194,7 +197,8 @@ function linkedCases(docs, add) {
       const paths = [...new Set([source.path, document.path])];
       const exclude = paths.length > 1 ? [source.path] : [];
       used.add(key);
-      add('linked-section', key, 'Find project guidance for ' + description, paths, [],
+      add('linked-section', key, 'Find project guidance for ' + description, paths,
+        [...qualifiedPrKeys(text), ...qualifiedPrKeys(evidence.text)],
         [target(document.path, evidence)], exclude);
     }
   }
@@ -212,7 +216,7 @@ function meetingCases(docs, add) {
       if (!description) continue;
       const suffix = date ? ' (' + date + ')' : '';
       add('meeting-section', document.path + '#' + heading.anchor,
-        heading.title + ' from the meeting about ' + description + suffix, [document.path], [],
+        heading.title + ' from the meeting about ' + description + suffix, [document.path], qualifiedPrKeys(evidence.text),
         [target(document.path, evidence)]);
     }
   }

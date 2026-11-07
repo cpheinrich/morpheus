@@ -101,8 +101,9 @@ if both were separate invocations. Optional hybrid results require pinning
 the local embedding model and recording setup time.
 
 Input JSON contains `seed`, `exposedPaths` keyed by project name, and a
-`projects` array of `{name, sources: [{root, manifest}]}`. Source paths are
-absolute. A manifest lists a Git revision and canonical Markdown paths with
+`projects` array of `{name, repository, sources: [{root, manifest}]}`. Source paths are
+absolute. The repository is the canonical owner/name used for PR grouping.
+A manifest lists a Git revision and canonical Markdown paths with
 SHA-256 digests. It may be the existing context snapshot or meeting manifest.
 Keep input, output and snapshots in a private directory. From the repository
 root, with dependencies installed and private paths supplied:
