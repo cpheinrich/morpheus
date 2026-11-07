@@ -88,7 +88,11 @@ function factoryWorkerSelection(worker, config, rootKind, rootEffort, args = {})
   const model = args.model ?? DEFAULT_WORKER_MODELS[worker];
   if (!modelIdPattern.test(model) || MOVING_MODEL_ALIASES.has(model.toLowerCase()))
     throw new Error("Name a fixed worker model or an approved Claude family alias.");
-  const requestedEffort = args.effort ?? rootEffort;
+  const inheritedEffort = args.effort ?? rootEffort;
+  // A controller can use a model with no reasoning; the pinned Sol model starts at low.
+  const requestedEffort = model === DEFAULT_WORKER_MODELS.codex && inheritedEffort === "none"
+    ? "low"
+    : inheritedEffort;
   const effort = worker === "claude"
     ? config.effortMap[requestedEffort ?? "high"]
     : rootKind === "claude"

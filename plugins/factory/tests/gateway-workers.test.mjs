@@ -206,15 +206,15 @@ echo '{"type":"turn.completed","usage":{}}'
   // The coordinating Codex task: never-approve full access, so the worker gets full access.
   m.snapshot = async () => ({
     cwd: repo,
-    model: "gpt-6-astra",
-    reasoningEffort: "medium",
+    model: "gpt-6-luna",
+    reasoningEffort: "none",
     sandbox: { type: "dangerFullAccess" },
     approvalPolicy: "never",
   });
   const started = await m.factoryDelegate({ rootKind: "codex", rootId: threadId, prompt: "Generate the image" });
   assert.equal(started.executor, "codex");
   assert.equal(started.gateway, "pool");
-  assert.deepEqual(started.selection, { model: "gpt-6.1-sol", effort: "medium", speed: "standard" });
+  assert.deepEqual(started.selection, { model: "gpt-6.1-sol", effort: "low", speed: "standard" });
   const done = await settle(m, started.id);
   assert.equal(done.state, "completed");
   const argv = (await readFile(join(root, "argv"), "utf8")).trim().split("\n");
