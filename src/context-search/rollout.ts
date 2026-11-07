@@ -34,8 +34,8 @@ export interface ContextArm {
 }
 
 export function providerSessionId(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  return (env.CLAUDECODE === "1" ? env.CLAUDE_CODE_SESSION_ID : undefined)
-    || env.CODEX_THREAD_ID || env.MORPHEUS_CONTEXT_SESSION_ID || undefined;
+  return env.MORPHEUS_CONTEXT_SESSION_ID || (env.CLAUDECODE === "1" ? env.CLAUDE_CODE_SESSION_ID : undefined)
+    || env.CODEX_THREAD_ID || undefined;
 }
 
 function object(value: unknown): Record<string, unknown> {

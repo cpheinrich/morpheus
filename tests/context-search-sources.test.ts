@@ -1,5 +1,9 @@
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { classifySources } from "../src/context-search/sources.js";
+import { classifySources, contextCoverage, readContextSources } from "../src/context-search/sources.js";
 
 describe("context search source coverage", () => {
   it("adds project sources and surfaces missing coverage outside the manifest", () => {
@@ -14,5 +18,27 @@ describe("context search source coverage", () => {
       uncovered: ["operations/new-guide.md"],
       emptyPatterns: ["archive/**/*.md"],
     });
+  });
+  it("reports removed and symlinked tracked sources instead of claiming they can be indexed", async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "morpheus-coverage-")));
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      await mkdir(join(root, "docs"));
+      await writeFile(join(root, "docs/active.md"), "# Active");
+      await writeFile(join(root, "docs/deleted.md"), "# Deleted");
+      await symlink("active.md", join(root, "docs/link.md"));
+      execFileSync("git", ["add", "docs"], { cwd: root });
+      await rm(join(root, "docs/deleted.md"));
+
+      const report = await contextCoverage(root, { include: ["docs/deleted.md"], exclude: [] });
+      expect(report.included).toEqual(["docs/active.md"]);
+      expect(report.unavailable).toEqual(["docs/deleted.md", "docs/link.md"]);
+      expect(report.emptyPatterns).toEqual(["docs/deleted.md"]);
+      expect(await readContextSources(root, [...report.included, ...report.unavailable])).toEqual([
+        { path: "docs/active.md", text: "# Active" },
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

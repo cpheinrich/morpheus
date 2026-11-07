@@ -32,16 +32,36 @@ export function classifySources(paths, rules) {
 function matchesAny(paths, pattern) {
     return paths.some(path => minimatch(path, pattern, options));
 }
-export async function contextCoverage(root, rules, tracked = false) {
-    const args = tracked ? ["--cached"] : ["--cached", "--others", "--exclude-standard"];
-    const names = await sessionGit(root, ["ls-files", "-z", ...args, "--", "*.md"], false);
+export async function discoverSources(root, rules) {
+    const names = await sessionGit(root, ["ls-files", "-z", "--cached", "--", "*.md"], false);
     return classifySources(names.split("\0"), rules);
+}
+async function usableSource(absolute) {
+    try {
+        return await realpath(absolute) === absolute && (await stat(absolute)).isFile();
+    }
+    catch (error) {
+        if (error.code === "ENOENT")
+            return false;
+        throw error;
+    }
+}
+export async function contextCoverage(root, rules) {
+    const coverage = await discoverSources(root, rules);
+    const availability = await Promise.all(coverage.included.map(path => usableSource(join(root, path))));
+    const included = coverage.included.filter((_, i) => availability[i]);
+    return {
+        ...coverage,
+        included,
+        unavailable: coverage.included.filter((_, i) => !availability[i]),
+        emptyPatterns: rules.include.filter(pattern => !matchesAny(included, pattern)),
+    };
 }
 export async function readContextSources(root, paths) {
     const sources = await Promise.all(paths.map(async (path) => {
         const absolute = join(root, path);
         try {
-            if (await realpath(absolute) !== absolute || !(await stat(absolute)).isFile())
+            if (!await usableSource(absolute))
                 return null;
             return { path, text: await readFile(absolute, "utf8") };
         }

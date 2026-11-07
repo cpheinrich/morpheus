@@ -48,17 +48,37 @@ function matchesAny(paths: readonly string[], pattern: string): boolean {
   return paths.some(path => minimatch(path, pattern, options));
 }
 
-export async function contextCoverage(root: string, rules: SourceRules, tracked = false): Promise<Coverage> {
-  const args = tracked ? ["--cached"] : ["--cached", "--others", "--exclude-standard"];
-  const names = await sessionGit(root, ["ls-files", "-z", ...args, "--", "*.md"], false);
+export async function discoverSources(root: string, rules: SourceRules): Promise<Coverage> {
+  const names = await sessionGit(root, ["ls-files", "-z", "--cached", "--", "*.md"], false);
   return classifySources(names.split("\0"), rules);
+}
+
+async function usableSource(absolute: string): Promise<boolean> {
+  try {
+    return await realpath(absolute) === absolute && (await stat(absolute)).isFile();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+export async function contextCoverage(root: string, rules: SourceRules): Promise<Coverage & {unavailable: string[]}> {
+  const coverage = await discoverSources(root, rules);
+  const availability = await Promise.all(coverage.included.map(path => usableSource(join(root, path))));
+  const included = coverage.included.filter((_, i) => availability[i]);
+  return {
+    ...coverage,
+    included,
+    unavailable: coverage.included.filter((_, i) => !availability[i]),
+    emptyPatterns: rules.include.filter(pattern => !matchesAny(included, pattern)),
+  };
 }
 
 export async function readContextSources(root: string, paths: readonly string[]): Promise<{path: string; text: string}[]> {
   const sources = await Promise.all(paths.map(async path => {
     const absolute = join(root, path);
     try {
-      if (await realpath(absolute) !== absolute || !(await stat(absolute)).isFile()) return null;
+      if (!await usableSource(absolute)) return null;
       return { path, text: await readFile(absolute, "utf8") };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;

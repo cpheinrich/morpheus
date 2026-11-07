@@ -85,12 +85,12 @@ export function sessionTag(id: string): string {
 export function runnerSession(
   env: NodeJS.ProcessEnv = process.env,
 ): { provider: Provider; tag: string } | null {
+  const explicit = env["MORPHEUS_CONTEXT_SESSION_ID"];
+  if (explicit) return { provider: env["CLAUDECODE"] === "1" ? "claude" : "codex", tag: sessionTag(explicit) };
   const claude = env["CLAUDE_CODE_SESSION_ID"];
   if (env["CLAUDECODE"] === "1" && claude) return { provider: "claude", tag: sessionTag(claude) };
   const codex = env["CODEX_THREAD_ID"];
   if (codex) return { provider: "codex", tag: sessionTag(codex) };
-  const explicit = env["MORPHEUS_CONTEXT_SESSION_ID"];
-  if (explicit) return { provider: env["CLAUDECODE"] === "1" ? "claude" : "codex", tag: sessionTag(explicit) };
   return null;
 }
 

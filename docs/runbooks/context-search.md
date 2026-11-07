@@ -7,7 +7,7 @@ reviewing rollout traces.
 source paths and inclusive line ranges. Start with 1,000 returned tokens.
 Use `--max-tokens 2500` for broader questions. Read the cited governing
 record before acting. `morpheus context coverage` reports source coverage,
-exclusions and unmatched project patterns.
+exclusions, tracked paths unavailable in the checkout and unmatched project patterns.
 
 Set `context.search.rollout` in `morpheus.json` with a shared experiment ID
 and explicit `coreInputs`. Add project-specific source globs under

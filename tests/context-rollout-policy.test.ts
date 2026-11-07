@@ -3,7 +3,8 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { armForBucket, contextArm, parseSearchConfig, traceContext } from "../src/context-search/rollout.js";
+import { armForBucket, contextArm, parseSearchConfig, providerSessionId, traceContext } from "../src/context-search/rollout.js";
+import { runnerSession, sessionTag } from "../src/session/evidence.js";
 import { projectPolicy } from "../src/session/policy.js";
 
 const cleanup: string[] = [];
@@ -39,6 +40,14 @@ describe("context rollout", () => {
     expect([0,59,60,79,80,99].map(armForBucket)).toEqual([
       "tantivy-bounded","tantivy-bounded","ripgrep-bounded","ripgrep-bounded","ripgrep-full","ripgrep-full",
     ]);
+  });
+
+  it("honors the printed hook identity when the shell reports a different provider ID", () => {
+    const env = { CODEX_THREAD_ID: "different-shell-id", MORPHEUS_CONTEXT_SESSION_ID: "hook-session-id" };
+    expect(providerSessionId(env)).toBe("hook-session-id");
+    expect(providerSessionId({ CODEX_THREAD_ID: "native" })).toBe("native");
+    expect(runnerSession({ CODEX_THREAD_ID: "native" })).toEqual({ provider: "codex", tag: sessionTag("native") });
+    expect(runnerSession(env)).toEqual({ provider: "codex", tag: sessionTag("hook-session-id") });
   });
 
   it("retains a session's arm and reads the distinct required sets without human inboxes", async () => {

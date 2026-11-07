@@ -1,5 +1,6 @@
 import { access, readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, parse, resolve } from "node:path";
+import { isContextSearchOutput } from "../context-search/output.js";
 import { CANONICAL_INPUTS } from "./lease.js";
 import { fingerprint, readRecords } from "./inputs.js";
 import { projectPolicy } from "./policy.js";
@@ -201,8 +202,9 @@ export async function recordRead(raw, now = new Date()) {
         // leave the session on the assertion, not lock it out.
         if (text === null)
             return written;
+        const canCredit = withinCap(text, provider) && !isContextSearchOutput(text);
         if (cwdRoot)
-            add(cwdRoot, withinCap(text, provider) ? await fromText(text, cwdRoot, session, at, toolLabel(payload), providerSession) : []);
+            add(cwdRoot, canCredit ? await fromText(text, cwdRoot, session, at, toolLabel(payload), providerSession) : []);
     }
     if (cwdRoot && !written.has(cwdRoot))
         add(cwdRoot, []);

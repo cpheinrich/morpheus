@@ -11,8 +11,8 @@ const TRACE_DAYS = 30;
 const DAILY_TRACE_LIMIT = 1_048_576;
 const MAX_CORE_BYTES = 8_192;
 export function providerSessionId(env = process.env) {
-    return (env.CLAUDECODE === "1" ? env.CLAUDE_CODE_SESSION_ID : undefined)
-        || env.CODEX_THREAD_ID || env.MORPHEUS_CONTEXT_SESSION_ID || undefined;
+    return env.MORPHEUS_CONTEXT_SESSION_ID || (env.CLAUDECODE === "1" ? env.CLAUDE_CODE_SESSION_ID : undefined)
+        || env.CODEX_THREAD_ID || undefined;
 }
 function object(value) {
     if (!value || typeof value !== "object" || Array.isArray(value))
