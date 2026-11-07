@@ -38,12 +38,14 @@ Independent review conditionally cleared the rollout after three focused fixes.
 The bounded receipt smoke also exercised real read-hook payloads and refresh.
 Each worktree retains its content-addressed cache generations until cleanup.
 
+Full CI exposed missing ripgrep and two startup guide byte-budget failures. The correction provisions both engines in Morpheus CI and leaves project-specific startup instructions to enrollment. Actionlint, typecheck, compile and 261 focused tests passed. The reviewer cleared the correction.
+
 ```morpheus-review
 {
   "version": 2,
   "base": "ebc692dcc1ef3d6bd0a649e5c3a6a4b5607d7fc4",
   "reviewed": "cb0ec81f6b912156ee1bd3ad19d8126aedbaf702",
-  "covered": "16ea0bb00cbf76f1ac577ec1c9c27ecbfae2ae89",
+  "covered": "1233d8a7dae217dcbf130c92f15e7a41f1932202",
   "authorSession": "01a1b4d0-b0d9-7cd1-9f03-33349cd7f590",
   "reviewerSession": "/root/pilot_review",
   "risk": "normal",
@@ -144,6 +146,21 @@ Each worktree retains its content-addressed cache generations until cleanup.
         "evidence": "Test real tracked file, symlink and deleted file fixture."
       },
       "conditionMet": "Focused Vitest suites passed 269 tests including the pinned Tantivy binding. Typecheck and compile passed. Coverage and source loading share an availability check; the Git fixture verifies exact paths and unmatched patterns."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/pilot_review",
+      "commit": "1233d8a7dae217dcbf130c92f15e7a41f1932202",
+      "scopeReason": "Late CI correction for missing ripgrep on the runner and the AGENTS.md and scaffolded guide startup byte limits.",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.5333333333333333,
+      "timing": {
+        "source": "clock",
+        "durationMs": 32000,
+        "evidence": "Author clock observations bracketing invocation and delivery, 2026-11-07 22:35:09\u201322:35:41 UTC."
+      },
+      "summary": "Cleared the CI dependency provision and removal of startup text from stock guides. Reviewed actionlint and 21 focused tests with the pinned Tantivy binding. No findings."
     }
   ]
 }
