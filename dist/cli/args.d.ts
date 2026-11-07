@@ -51,6 +51,7 @@ export interface Flags {
     needs?: string;
     context?: string;
     sessionId?: string;
+    maxTokens?: string;
     ceiling?: number;
     notes?: string;
     priorReview?: string;

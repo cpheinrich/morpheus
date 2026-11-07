@@ -83,15 +83,15 @@ async function onlyGeneratedLease(root) {
         if ((await readdir(local)).join("\0") !== "sessions")
             return false;
         const names = await readdir(sessions);
-        if (!names.length || names.some((name) => !generated.has(name)))
+        const scoped = new RegExp(`^rollout-${sessionId(root)}-[a-f0-9]{16}(?:\\.records)?\\.json$`);
+        if (!names.length || names.some(name => !generated.has(name) && !scoped.test(name)))
             return false;
         for (const name of names)
             if (!(await lstat(join(sessions, name))).isFile())
                 return false;
-        if (!names.includes(lease))
-            return true;
-        const { lease: read, issue } = await readLease(root, sessionId(root));
-        return !issue && read?.receipt.worktree === root;
+        const leases = names.filter(name => name.endsWith(".json") && !name.endsWith(".records.json"));
+        const checks = await Promise.all(leases.map(name => readLease(root, name.slice(0, -5))));
+        return checks.every(({ lease: read, issue }) => !issue && read?.receipt.worktree === root);
     }
     catch {
         return false;

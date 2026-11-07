@@ -361,7 +361,7 @@ export async function brief(root, opts = {}) {
     // inherit its certification — and this command would tell a session that
     // has read nothing that its context is fresh. A hook may not certify; it
     // may end a term, which asserts nothing.
-    const previous = await endTerm(root);
+    const previous = await endTerm(root, opts.startup?.sessionId);
     // Computed from the receipt that was discarded, not from the store — which
     // now holds nothing, by design. The discard has to come first (a session
     // must not inherit certification) and the reporting depends on the thing
@@ -379,7 +379,7 @@ export async function brief(root, opts = {}) {
         console.log("This session has no context receipt.");
     }
     const lease = moved;
-    printUnreadRecords(lease);
+    printUnreadRecords(lease, opts.startup?.rollout);
     return 0;
 }
 /** Offline was declared and the trunk genuinely went unasked: say what that permits. */
@@ -411,7 +411,7 @@ async function printStaleMorpheus(morpheus, autoUpdatePreference) {
     }
     console.log("");
 }
-function printUnreadRecords(lease) {
+function printUnreadRecords(lease, rollout = false) {
     // Split, not flattened. `unresolvableInputs` is a subset of `changedInputs`,
     // so listing them together and closing with "run refresh" answers a record
     // that re-reading cannot fix with the one instruction that cannot fix it —
@@ -426,7 +426,8 @@ function printUnreadRecords(lease) {
             console.log(`  ${id}`);
     }
     else if (!stuck.length) {
-        console.log("Read `.agent/decisions.md` and `.agent/learned.md` before starting work.");
+        console.log(rollout ? "Read the required records listed above before starting work."
+            : "Read `.agent/decisions.md` and `.agent/learned.md` before starting work.");
     }
     if (stuck.length) {
         console.log("");

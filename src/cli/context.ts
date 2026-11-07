@@ -406,6 +406,7 @@ export interface BriefOptions {
   autoUpdatePreference?: AutoUpdatePreference;
   /** Dependencies for moving dirty trunk edits to a rescue branch at session start; tests inject `gh`. */
   rescue?: RescueDeps | false;
+  startup?: { sessionId?: string; rollout: boolean };
 }
 
 export async function brief(root: string, opts: BriefOptions = {}): Promise<number> {
@@ -417,7 +418,7 @@ export async function brief(root: string, opts: BriefOptions = {}): Promise<numb
   // inherit its certification — and this command would tell a session that
   // has read nothing that its context is fresh. A hook may not certify; it
   // may end a term, which asserts nothing.
-  const previous = await endTerm(root);
+  const previous = await endTerm(root, opts.startup?.sessionId);
 
   // Computed from the receipt that was discarded, not from the store — which
   // now holds nothing, by design. The discard has to come first (a session
@@ -439,7 +440,7 @@ export async function brief(root: string, opts: BriefOptions = {}): Promise<numb
   }
   const lease = moved;
 
-  printUnreadRecords(lease);
+  printUnreadRecords(lease, opts.startup?.rollout);
   return 0;
 }
 
@@ -482,7 +483,7 @@ async function printStaleMorpheus(morpheus: MorpheusInstallStatus, autoUpdatePre
   console.log("");
 }
 
-function printUnreadRecords(lease: SessionLease | null): void {
+function printUnreadRecords(lease: SessionLease | null, rollout = false): void {
 // Split, not flattened. `unresolvableInputs` is a subset of `changedInputs`,
 // so listing them together and closing with "run refresh" answers a record
 // that re-reading cannot fix with the one instruction that cannot fix it —
@@ -496,7 +497,8 @@ if (readable.length) {
   console.log("These canonical records are unread or have moved:");
   for (const id of readable) console.log(`  ${id}`);
 } else if (!stuck.length) {
-  console.log("Read `.agent/decisions.md` and `.agent/learned.md` before starting work.");
+  console.log(rollout ? "Read the required records listed above before starting work."
+    : "Read `.agent/decisions.md` and `.agent/learned.md` before starting work.");
 }
 
 if (stuck.length) {

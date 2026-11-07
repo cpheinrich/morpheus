@@ -108,6 +108,16 @@ jobs:
         if: ${{ inputs.run-lint }}
         run: pnpm lint
 
+      - name: Install Morpheus context search tools
+        if: ${{ github.repository == 'cpheinrich/morpheus' && runner.os == 'Linux' }}
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y ripgrep
+          python3 -m venv "$RUNNER_TEMP/morpheus-context-search"
+          search_python="$RUNNER_TEMP/morpheus-context-search/bin/python"
+          "$search_python" -m pip install --only-binary=:all: 'tantivy==0.27.0'
+          echo "MORPHEUS_TANTIVY_PYTHON=$search_python" >> "$GITHUB_ENV"
+
       - name: Test
         run: pnpm test
 
