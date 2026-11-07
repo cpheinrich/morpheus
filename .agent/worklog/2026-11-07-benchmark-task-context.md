@@ -358,3 +358,31 @@ median on the six-case run. Full QMD mode completed the six smoke queries. Its f
 measurements included additional model downloads, and the last four had a 4.73 s median.
 Neither compares end-to-end agent time. Model binaries, scripts, raw passages, private
 request inventories and draft tags remain in private research storage.
+
+## Follow-up calibration and case provenance
+
+Full QMD 2.8.3 (automatic expansion, hybrid search and reranking) returned 9/30 surviving
+quotes at 2k and 5k tokens and 10/30 at 10k and 20k. Existing and draft tag preferences again
+left those counts unchanged. All 874 candidate chunks across the 25 questions mapped back
+to the canonical source text. After the first 7.3 s query, the median warm sequential query
+was 5.20 s. The corresponding QMD hybrid run had a 1.11 s first query and a 33 ms warm
+median. These are local search timings. They do not measure an agent's time to an answer.
+
+QMD hybrid retrieved surviving quotes on four calibration cases where contextual lexical
+search had none at 5k. A follow-up interleaved one QMD hit for every one, two or three
+lexical hits, keeping the same rendered-token ceiling. A 3:1 interleave found 18/30 at 2k,
+20/30 at 5k, 21/30 at 10k and 24/30 at 20k, compared with 19/30, 19/30, 20/30 and 20/30
+for lexical alone. This exploratory gain supports comparing QMD as an optional expansion
+during the development round, with direct tests of when the additional lookup is useful.
+No interleave setting was selected using holdout data.
+
+Materialized the 39 immutable pre-task Evo revisions for the provisional 60 case groups,
+with 1755 verified unique Git blobs and 27–1372 scoped documents per revision. This makes
+the leakage-free replay possible. The complete current-scale snapshot remains a separate
+capacity and continuity check. Local original-request candidates need screening and incident
+grouping. A read-only Evo GitHub issue census supplied 44 further historical issue records,
+of which 22 had recorded body edits. Prefer original user messages or unedited authored
+issue descriptions. Record provenance explicitly when a task must instead be reconstructed
+from an early roadmap item or worklog. Exclude placeholders and outcome-only descriptions.
+Holdout labels and the split remain unfrozen. Retain separate historical tags only when their
+source version matches the scored text, or draft them from the historical blob itself.
