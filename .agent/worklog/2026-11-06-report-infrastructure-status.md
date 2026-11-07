@@ -267,7 +267,7 @@ Initial source review turn1 BLOCKED; substantive findings retained and author fi
   "version": 2,
   "base": "9d411f4d72db40203495cb84712984e37aa8718a",
   "reviewed": "8d8d84e462b86be06bb60379c50ba5bb90644503",
-  "covered": "db50869376d7c2df65152a69547259766fad45ab",
+  "covered": "17ddc739330be265406667f06f4ae18d09e01179",
   "authorSession": "01a1b323-e075-7c32-98b9-2ce4d216f0a9",
   "reviewerSession": "01a1b353-71c1-75a3-8d49-6f1e99d273a6",
   "risk": "high",
@@ -277,8 +277,8 @@ Initial source review turn1 BLOCKED; substantive findings retained and author fi
     "durationMs": 212000,
     "evidence": "Root clock around Factory reviewer run 723e269c-0864-424b-b036-5892275dc205: start 2026-11-07 00:05:52 UTC, terminal result acquired by 2026-11-07 00:09:24 UTC."
   },
-  "outcome": "incomplete",
-  "summary": "Initial blocked review and same-reviewer turn2 clearance are retained; a live-source UTF-8 BOM compatibility correction now awaits the same reviewer turn3. No current-head clearance claimed.",
+  "outcome": "complete",
+  "summary": "Initial blocked turn1 and cleared turn2 are retained; same reviewer turn3 cleared the actual-source UTF-8 BOM compatibility correction. All source findings resolved; deployed acceptance remains separate.",
   "findings": [
     {
       "id": "MORPHEUS-R1",
@@ -305,6 +305,19 @@ Initial source review turn1 BLOCKED; substantive findings retained and author fi
       },
       "scopeReason": "Resolve the initial substantive findings and verify their correction regressions; no new source scope.",
       "summary": "CLEARED follow-up turn 2, high risk, covering db50869376d7c2df65152a69547259766fad45ab. MORPHEUS-R1 (original R1) is resolved; no new findings or unresolved source-review questions. No source files changed or external actions performed."
+    },
+    {
+      "reviewerSession": "01a1b353-71c1-75a3-8d49-6f1e99d273a6",
+      "commit": "17ddc739330be265406667f06f4ae18d09e01179",
+      "outcome": "cleared",
+      "elapsedMinutes": 2.2666666666666666,
+      "timing": {
+        "source": "clock",
+        "durationMs": 136000,
+        "evidence": "Root clock around Factory reviewer f7d89a12-b2d2-4933-8009-ff97bbff3ef8: start 2026-11-07 00:30:33 UTC, terminal result acquired 2026-11-07 00:32:49 UTC."
+      },
+      "scopeReason": "Late operational compatibility correction: actual runner metadata has leading UTF8 BOM",
+      "summary": "CLEARED follow-up turn 3, high risk, covering 17ddc739330be265406667f06f4ae18d09e01179. BOM compatibility correction verified; MORPHEUS-R1 remains resolved. No new findings or unresolved questions. No source edits or external actions performed."
     }
   ]
 }
@@ -323,3 +336,9 @@ Initial blocked review and same-reviewer turn2 clearance are retained; a live-so
 Read-only enrollment inventory found an existing GitHub runner-generated .runner file with a leading UTF-8 BOM. JSON.parse rejected it, making enrolled persistent identity unavailable. Do not rewrite a runner-owned file or publish its contents. The bounded JSON reader now removes one leading BOM before parsing, preserving byte/owner/symlink checks and source mtime. A synthetic regression proves exact runner attribution without file mutation and keeps malformed BOM-prefixed JSON incomplete. No active service or runtime code has been patched.
 
 Reporter16, public privacy3 and direct distribution4 pass. Canonical wire unchanged. Complexity remains advisory; no enrollment/threshold changes. PR returned to draft and agent-reviewed removed; turn2 source clearance remains in the record, but this correction requires a measured same-reviewer late-correction turn. No human approval requested or fabricated. Darwin source remains cleared and its green protected release proceeds independently.
+
+## Independent review turn3 — CLEARED
+
+Initial blocked turn1 and cleared turn2 are retained; same reviewer turn3 cleared the actual-source UTF-8 BOM compatibility correction. All source findings resolved; deployed acceptance remains separate.
+
+CLEARED follow-up turn 3, high risk, covering 17ddc739330be265406667f06f4ae18d09e01179. BOM compatibility correction verified; MORPHEUS-R1 remains resolved. No new findings or unresolved questions. No source edits or external actions performed. Actual root timing136000ms, elapsed2.2666666666666666min. No new findings. Source clearance does not establish deployment acceptance.
