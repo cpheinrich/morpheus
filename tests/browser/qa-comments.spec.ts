@@ -57,6 +57,7 @@ test("iOS: pin, scroll or navigate, pin again, and send each clicked frame", asy
     await page.locator("#text").fill("First chart");
     await page.locator("#text").press("Enter");
     await expect(page.locator("#text")).toHaveValue("");
+    await expect(page.locator("#text")).toBeDisabled();
     await expect(page.locator("#list li")).toContainText("First chart");
     await page.evaluate((s) => (window as unknown as { emitAx: (value: unknown) => void }).emitAx(s), snapshot("trendsScreen", 40));
     await page.evaluate((s) => {
