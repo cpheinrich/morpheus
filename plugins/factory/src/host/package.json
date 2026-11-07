@@ -7,7 +7,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run && python3 -m unittest discover -s tests -p 'test_*.py'",
+    "test": "vitest run && python3 -m unittest discover -s tests -p 'test_*.py' && node --test reporting/tests/*.test.mjs",
+    "test:reporting": "node --test reporting/tests/*.test.mjs",
     "factory": "node dist/cli.js",
     "check": "for f in worker/*.sh worker/setup/*.sh scripts/*.sh; do bash -n \"$f\" || exit 1; done && python3 -m py_compile worker/*.py fleet/*.py scripts/*.py"
   },
@@ -20,5 +21,9 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "systeminformation": "5.33.19",
+    "zod": "4.1.12"
   }
 }

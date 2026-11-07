@@ -2511,3 +2511,16 @@ never display name or response order. Ignore only the older cancellation after a
 replacement, or wait while that replacement is pending. Preserve genuine failures, unmatched
 cancellations and the final job-rollup check. This corrects the existing GitHub-specific
 census with native Map/Date operations; no generic module or dependency is needed.
+
+
+## Read-only infrastructure reporting stays outside operational authority — 2026-11-06
+
+MO-26-11-06-15.15.12. The approved internal dashboard outcome uses the optional host package
+for strictly read-only filesystem observations and one-shot HTTPS reporting; consumers own scoped
+ingestion, private latest-state projection and admin UI. Never reuse mutating status/recovery
+helpers. Quota reads exact stored gateway account IDs, never active refresh/model probes; account
+identity and worker host are separate. Local placement/admission configuration stays authoritative.
+Pinned systeminformation5.33.19 (875133 unpacked bytes, no dependencies) supplies platform metrics
+and hardware inventory rather than new platform parsers; existing Zod4.1.12 validates the closed
+wire shape. Both remain optional host dependencies, outside ordinary Morpheus installs. Source
+clearance, protected CI and real consumer enrollment/deployed acceptance remain outstanding.
