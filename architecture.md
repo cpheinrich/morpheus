@@ -3402,11 +3402,18 @@ The optional host package's `reporting/` directory adds strictly read-only obser
 one-shot outbound HTTPS reporting. It reads desktop and explicitly registered unattended state
 roots directly; inspection/status/reconciliation helpers can mutate or stop work and are not
 reporting APIs. Shared gateway quota is keyed by registered instance/account identity and reads
-stored snapshots only, never active refresh/model probes. Each source preserves its data time
+stored snapshots by default. Explicit direct-only enrollment can read supported vendor usage
+using an exact singleton credential export in memory and pinned authenticated transport. It
+never performs OAuth refresh, account maintenance or model probes. An optional separate GitHub
+organization credential reads exact enrolled runner IDs only. Source authority includes those
+IDs and eligible projects. Dispatcher observation is an additive owner export that preserves
+legacy ownership-write failure semantics. Current Factory process evidence and history warnings
+remain separate. Phone readiness means observed host prerequisites, with lease and device identity
+checked around passive native reads. Each source preserves its data time
 separately from collection and server receipt. Operational host configuration stays local
 authority. Consumer-owned ingestion validates host/source/project/account scope and transactional
 ordering before storing bounded latest state outside employee-readable HQ collections. The
-consumer authenticates its admin again for private/no-store reads. The reporter has no remote
+consumer authenticates its admin or current founder-operator again for private/no-store reads. The reporter has no remote
 job controls, inbound port, retry ledger or log/transcript copying. Its pinned systeminformation
 and Zod dependencies remain inside the optional host package. Explicit installation retains a
 previous plist and verifies standalone imports; it never loads the service automatically.

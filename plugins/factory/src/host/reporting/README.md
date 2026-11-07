@@ -13,16 +13,38 @@ The owner-only config has version1, hostId, HTTPS endpoint, tokenEnv, projectPat
 common-Git directory or checkout prefix to owner/repo), routeAccounts (route name to stable account ID), and sources.
 Kinds: machine; factory (roots, desktop/unattended channel); routes (configPath); dispatcher
 (configPath,statePath,serviceLabel,tartPath,projectIds,roles); runners (entries with explicit metadataPath,
-projectIds, repository/organization scope, eligible roles and labels); phone (leasePath); quota (binding with opaque id,
+projectIds, repository/organization scope, eligible roles and labels); phone (leasePath, optional enrolled deviceUdid); quota (binding with opaque id,
 instanceId, exact numeric accountId, provider, baseUrl; emailEnv/passwordEnv); github (at most
-three registered repositories). The company owns real configuration outside Git. Gateway
+three registered repositories, optional organizationRunners exact organization/runnerId/projectIds and organizationTokenEnv). The company owns real configuration outside Git. Gateway
 admin references are resolved only by an existing credential wrapper, never copied into config.
 
 Register default Factory home and every explicitly configured service home. Discover them
 from trusted launchd/wrapper metadata, not arbitrary home scans. The steward's runner can
 inherit the default Factory home: its config-file directory alone does not establish a state
-root. A missing enrolled root is partial, not zero. Quota uses GET account-by-ID stored extra
-fields only. Expired windows retain their old values/timestamps; they never become zero.
+root. A missing enrolled root is partial. Empty reservations and incomplete preparation retain
+separate history warnings. A canonical reconciliation hash proves only record association.
+Current exact guardian/worker and owned-process evidence must also exclude a live contradiction.
+The standalone package includes the unchanged canonical Python proof readers, invoked with -B.
+
+Quota defaults to stored mode. Explicit provider mode requires an exact positive account ID,
+subjectSha256, pinned gatewayOrigin, directEgress true and, for HTTP over the existing encrypted
+tailnet, a verified tailnetAddress. The designated local writer authenticates through its existing
+credential wrapper, reads exact account metadata and a singleton credential export in memory,
+then GETs the fixed vendor usage endpoint. Export includes proxy metadata so direct-only
+eligibility can be checked. Every authenticated hop refuses redirects and bounds decoded bytes.
+Normal OAuth identity, expiry, credential metadata, subject and owner revision are checked before
+publication. Missing, changed, expired, shadow, parent, PAT, agent or proxy-bound credentials refuse.
+No OAuth refresh, account maintenance or inference is performed. Proxy environment inheritance is
+refused. Owner metadata is reread after the provider request. This detects drift without locking
+future owner settings. Enrollment must verify the existing direct-egress configuration.
+Only successful actual provider reads advance source time. Missing or expired windows stay unknown.
+
+The optional organization reader GETs only enrolled org/runner IDs using a separate environment
+reference. It does not list the organization or reuse/modify repository credentials. Enrollment
+and server registration must bind the same owner, exact ID and eligible project set. Deduplicated
+identities use one request across eligible projects. Missing credentials or denied reads retain
+per-identity gaps independently of repository census coverage. The capability required is GitHub
+organization Self-hosted runners read. This package creates no credential or permission grant.
 
 `node reporting/install.mjs --destination /absolute/versioned/runtime --config /absolute/private/reporting.json
 --agent-dir /absolute/Library/LaunchAgents --label example.infra --credential-wrapper /absolute/bin/company-env`
@@ -46,3 +68,16 @@ is telemetry failure and cannot block the underlying CI/release/Factory operatio
 Check transport parity explicitly before joint source review:
 `node reporting/check-contract.mjs /absolute/consumer/apps/web/lib/infrastructure/wire.mjs`.
 The consumer records this hash in its private integration documentation; update both copies together.
+
+
+Owner dispatcher runnerInventory version1 is additive to existing slots and ownership state.
+Legacy null slots retain unknown idle/provisioning semantics until a producer reports a complete
+inventory. Confirmed IDs, pending registration and uncertain deletion survive in the bounded
+observation. A disabled Tart path leaves VM census unknown independently of runner inventory.
+Persistent entries may opt into observeListener. Local listener process state is separate from
+GitHub registration, online and busy state.
+
+An enrolled phone uses bounded read-only devicectl inventory and lock facts bracketed by lease
+and exact identity reads. A held lease is busy and skips the lock read. Disconnection, pairing,
+developer mode, tunnel and DDI facts describe host prerequisites. Unlock-since-boot does not
+assert current screen unlock. No connection, mount, lease acquisition or device control is issued.

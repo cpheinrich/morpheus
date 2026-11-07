@@ -117,6 +117,10 @@ test('configuration refuses credential-shaped inline fields and service source p
  assert.equal(configSchema.safeParse(baseConfig).success,true);
  assert.equal(configSchema.safeParse({...baseConfig,token:'PRIVATE'}).success,false);
  assert.equal(configSchema.safeParse({...baseConfig,endpoint:'https://user:secret@example.test/'}).success,false);
+ const github={id:'github',kind:'github',repositories:['example/a'],organizationTokenEnv:'INFRA_ORG_READ',organizationRunners:[{organization:'example',runnerId:18,projectIds:['example/a']}]};
+ assert.equal(configSchema.safeParse({...baseConfig,sources:[github]}).success,true);
+ assert.equal(configSchema.safeParse({...baseConfig,sources:[{...github,organizationTokenEnv:'GH_TOKEN'}]}).success,false);
+ assert.equal(configSchema.safeParse({...baseConfig,sources:[{...github,organizationRunners:[{...github.organizationRunners[0],projectIds:['foreign/private']}]}]}).success,false);
 });
 test('reporting configuration cannot be tracked in Git or reached through a file symlink',async t=>{
  const root=await temp(t);const config=join(root,'config.json');await put(config,baseConfig);
