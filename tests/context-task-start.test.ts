@@ -9,6 +9,7 @@ import { contextArm } from "../src/context-search/rollout.js";
 import { taskPrompt } from "../src/context-search/task-start.js";
 import { refresh } from "../src/session/context.js";
 import { gate } from "../src/session/gate.js";
+import { bindTask } from "../src/session/tasks.js";
 import { projectRoot, recordRead } from "../src/session/read-hook.js";
 
 const dirs: string[] = [];
@@ -45,10 +46,10 @@ function prompt(root: string, session: string, text = "Change the release author
   return taskPrompt(JSON.stringify({ hook_event_name: "UserPromptSubmit", session_id: session, cwd: root, prompt: text }), projectRoot);
 }
 
-function shown(root: string, session: string, output: string) {
+function shown(root: string, session: string, output: string, workdir?: string) {
   return recordRead(JSON.stringify({
     hook_event_name: "PostToolUse", turn_id: "turn", session_id: session, cwd: root,
-    tool_name: "Bash", tool_response: { output },
+    tool_name: "Bash", tool_input: { workdir }, tool_response: { output },
   }));
 }
 
@@ -86,6 +87,41 @@ describe("task context on bounded startup", () => {
 
     await shown(root, bounded, output);
     expect(await check()).toEqual({ ok: true, message: "" });
+  });
+
+  it("carries a pending first lookup from primary to the bound worktree", async () => {
+    const { root, bounded } = await fixture();
+    vi.stubEnv("MORPHEUS_CONTEXT_SESSION_ID", bounded);
+    expect(await prompt(root, bounded)).toContain("first project task");
+    await shown(root, bounded, "Do project work in an isolated checkout.\n" + core + "\n");
+
+    const sibling = await realpath(await mkdtemp(join(tmpdir(), "morpheus-context-sibling-")));
+    dirs.push(sibling);
+    const task = "MO-26-11-08-01.23.45";
+    execFileSync("git", ["worktree", "add", "-q", "-b", task.toLowerCase() + "-fixture", sibling], { cwd: root });
+    await bindTask(sibling, task, bounded);
+    expect(await prompt(root, bounded)).toBeUndefined();
+    expect((await refresh(sibling)).lease?.status).toBe("fresh");
+    expect((await gate(sibling, "pm new", "local")).message).toContain(sibling);
+
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runTaskRead(sibling, [".agent/decisions.md"], bounded);
+    await shown(root, bounded, String(log.mock.calls[0]?.[0]), sibling);
+    expect(await gate(sibling, "pm new", "local")).toEqual({ ok: true, message: "" });
+  });
+
+  it("preserves the core gate when all additional task records are excluded", async () => {
+    const { root, bounded } = await fixture();
+    const manifest = join(root, "morpheus.json");
+    const { readFile } = await import("node:fs/promises");
+    const config = JSON.parse(await readFile(manifest, "utf8"));
+    config.context.search.exclude = [".agent/decisions.md"];
+    await writeFile(manifest, JSON.stringify(config));
+    vi.stubEnv("MORPHEUS_CONTEXT_SESSION_ID", bounded);
+    expect(await prompt(root, bounded)).toContain("no readable project records beyond the startup core");
+    await shown(root, bounded, "Do project work in an isolated checkout.\n" + core + "\n");
+    expect((await refresh(root)).lease?.status).toBe("fresh");
+    expect(await gate(root, "pm new", "local")).toEqual({ ok: true, message: "" });
   });
 
   it("keeps full startup on the old gate and accepts an exact-path read in a bounded session", async () => {

@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { readEvidence, sessionTag } from "../session/evidence.js";
+import { evidenceCheckouts, evidenceMode } from "../session/certify.js";
+import { sessionTag } from "../session/evidence.js";
 import { projectPolicy } from "../session/policy.js";
 import { boundTask } from "../session/tasks.js";
 import { searchStateDirectory, validSearchSession } from "./local-state.js";
@@ -20,35 +21,59 @@ async function stateExists(root, session, state) {
 async function taskRoot(root, session) {
     return (await boundTask(root, session).catch(() => null))?.root ?? root;
 }
-/** Only sessions whose prompt hook ran get the task check. Legacy clients retain the read gate. */
+async function isBounded(root, session) {
+    return (await projectPolicy(root, session)).rollout?.startup === "bounded";
+}
+/** Search evidence follows a session across the repository just like core reads. */
+async function progress(root, session) {
+    if (await stateExists(root, session, "seen"))
+        return { prompted: true, seen: true };
+    const checkouts = await evidenceCheckouts(root);
+    const states = await Promise.all(checkouts.map(async (checkout) => ({
+        prompted: await stateExists(checkout, session, "prompt"),
+        seen: await stateExists(checkout, session, "seen"),
+    })));
+    return { prompted: states.some(state => state.prompted), seen: states.some(state => state.seen) };
+}
+async function needsTaskContext(root, session) {
+    if (!await isBounded(root, session))
+        return false;
+    const { prompted, seen } = await progress(root, session);
+    return prompted && !seen;
+}
+/** Only sessions whose prompt and read hooks ran get the task check. */
 export async function taskContextRefusal(root, session = providerSessionId()) {
     if (!validSearchSession(session))
         return;
     const { projectRoot } = await import("../session/read-hook.js");
     const checkout = await projectRoot(root);
-    if (!checkout || (await projectPolicy(checkout, session)).rollout?.startup !== "bounded")
+    if (!checkout || !await needsTaskContext(checkout, session))
+        return;
+    const mode = await evidenceMode(checkout, { ...process.env, MORPHEUS_CONTEXT_SESSION_ID: session });
+    if (mode.kind !== "recorded")
         return;
     const active = await taskRoot(checkout, session);
-    for (const path of new Set([active, checkout])) {
-        if (await pending(path, session) && await readHookLive(path, session)) {
-            return `Load context for the task before continuing. In ${path}, run \`${SEARCH}\` and inspect its excerpts, or run \`${READ}\` for a known governing record. If search is empty, refine the query or read a source directly. Then retry this command.`;
-        }
-    }
+    if (!await hasTaskSource(active, session))
+        return;
+    return `Load context for the task before continuing. In ${active}, run \`${SEARCH}\` and inspect its excerpts, or run \`${READ}\` for a known governing record. If search is empty, refine the query or read a source directly. Then retry this command.`;
 }
-async function readHookLive(root, session) {
-    const tag = sessionTag(session);
-    return (await readEvidence(root)).entries.some(entry => entry.kind === "live" && entry.session === tag);
-}
-async function pending(root, session) {
-    return await stateExists(root, session, "prompt") && !await stateExists(root, session, "seen") &&
-        (await projectPolicy(root, session)).rollout?.startup === "bounded";
-}
-async function taskRecords(root, session, paths) {
+async function taskPaths(root, session) {
     const config = await getSearchConfig(root);
     const coverage = await discoverSources(root, config);
-    const required = (await projectPolicy(root, session)).requiredInputs ?? [];
-    const allowed = paths.filter(path => coverage.included.includes(path) && !required.includes(path) && path !== "AGENTS.md");
-    return readContextSources(root, allowed);
+    const required = new Set((await projectPolicy(root, session)).requiredInputs);
+    return coverage.included.filter(path => path !== "AGENTS.md" && !required.has(path));
+}
+async function taskRecords(root, session, paths) {
+    const allowed = new Set(await taskPaths(root, session));
+    return readContextSources(root, paths.filter(path => allowed.has(path)));
+}
+async function hasTaskSource(root, session) {
+    for (const path of await taskPaths(root, session)) {
+        const [record] = await readContextSources(root, [path]);
+        if (record?.text.trim())
+            return true;
+    }
+    return false;
 }
 /** An exact-path read uses the same visible citation as a search result. */
 export async function taskRecord(root, session, path) {
@@ -69,13 +94,14 @@ export async function observeTaskContext(root, session, text) {
     const output = citedText(text);
     if (!output || !validSearchSession(session))
         return;
-    if (!await pending(root, session))
+    if (!await needsTaskContext(root, session))
         return;
     const citations = [...output.matchAll(/^([^\n]+\.md):(\d+)-(\d+)\n/gm)];
     if (!citations.length)
         return;
     const records = await taskRecords(root, session, citations.map(match => match[1]));
     if (citations.some(match => isCurrentExcerpt(output, match, records))) {
+        await searchStateDirectory(root, "startup");
         await writeFile(statePath(root, session, "seen"), "1\n", { mode: 0o600 });
     }
 }
@@ -110,10 +136,12 @@ export async function taskPrompt(raw, locateRoot) {
     const cwdRoot = await locateRoot(input.cwd);
     if (!cwdRoot)
         return;
-    const root = await taskRoot(cwdRoot, session);
-    if (root !== cwdRoot && await stateExists(cwdRoot, session, "seen"))
+    if (!await isBounded(cwdRoot, session))
         return;
-    if ((await projectPolicy(root, session)).rollout?.startup !== "bounded")
+    const root = await taskRoot(cwdRoot, session);
+    if (!await isBounded(root, session) || await stateExists(root, session, "prompt"))
+        return;
+    if ((await progress(root, session)).prompted)
         return;
     await searchStateDirectory(root, "startup");
     const first = await writeFile(statePath(root, session, "prompt"), "1\n", { flag: "wx", mode: 0o600 })
@@ -121,6 +149,9 @@ export async function taskPrompt(raw, locateRoot) {
         return false; throw error; });
     if (!first)
         return;
+    if (!await hasTaskSource(root, session)) {
+        return "Task context search found no readable project records beyond the startup core. Continue with the core. Use morpheus context coverage to check the worktree and project search manifest.";
+    }
     const prefix = providerSessionId() === session ? "" : `MORPHEUS_CONTEXT_SESSION_ID='${session.replaceAll("'", "'\\''")}' `;
     return `For the first project task, once its scope is clear and before implementation, load task context in ${root} with \`${prefix}${SEARCH}\` (1,000 tokens by default). For a known governing record use \`${prefix}${READ}\`. Read the returned excerpts and open any governing sources they cite. Refine an empty search. Conversational replies can proceed without a lookup.`;
 }

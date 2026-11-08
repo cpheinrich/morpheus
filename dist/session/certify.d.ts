@@ -23,6 +23,8 @@ export type EvidenceMode = {
 } | {
     kind: "override";
 };
+/** Every checkout of this repository: evidence is about content, not about which checkout held it. */
+export declare function evidenceCheckouts(root: string): Promise<string[]>;
 /**
  * Decide the mode, and gather this session's evidence from every checkout of
  * the repository.

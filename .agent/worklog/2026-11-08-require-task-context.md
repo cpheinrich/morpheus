@@ -22,3 +22,10 @@ both Tantivy and ripgrep. In each arm, the prompt hook emitted the cue,
 `pm new` refused despite a fresh core receipt, and the same command
 succeeded after the post-tool hook received the search result. The
 focused suite passed 186 tests, including the native Tantivy cases.
+
+Independent review reproduced two edge cases. The first lookup now
+follows a session into a linked worktree, where the visible excerpt is
+checked against that checkout. If the manifest or sparse checkout leaves
+no usable task record, the prompt points to coverage and the existing
+core gate remains usable. Both regression tests pass. The focused
+follow-up covered 156 tests. The two-engine compiled CLI probe still passes.

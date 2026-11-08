@@ -20,9 +20,12 @@ Read the full governing section when a decision or constraint applies.
 Before the first governed action, the freshness gate checks for a result
 the read hook actually observed in that session. An empty search, a
 redirected result or an excerpt from the already-required startup core
-does not satisfy it. The core receipt remains a separate check. A terminal
-or a session without active prompt and read hooks keeps the existing
-freshness policy. The task hook stores no prompt or excerpt text.
+does not satisfy it. Evidence follows the session across linked worktrees,
+and an excerpt is verified against the checkout that returned it. The core
+receipt remains a separate check. A terminal or a session without active
+prompt and read hooks keeps the existing freshness policy. A checkout with
+no readable task records falls back to the core and reports how to check
+coverage. The task hook stores no prompt or excerpt text.
 
 Set `context.search.rollout` in `morpheus.json` with a shared experiment ID
 and explicit `coreInputs`. Add project-specific source globs under

@@ -1,4 +1,4 @@
-/** Only sessions whose prompt hook ran get the task check. Legacy clients retain the read gate. */
+/** Only sessions whose prompt and read hooks ran get the task check. */
 export declare function taskContextRefusal(root: string, session?: string | undefined): Promise<string | undefined>;
 /** An exact-path read uses the same visible citation as a search result. */
 export declare function taskRecord(root: string, session: string | undefined, path: string): Promise<{
