@@ -371,7 +371,7 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
       p.webContext.image.scaleY = frame.height / p.webContext.viewport.height;
       return imageRecord(key, { frame: frame, savedAt: Date.now() }).then(function () { p.frame = frame; p.webContext.image.status = "captured"; });
     }).catch(function (error) { p.webContext.image.status = "failed"; p.webContext.image.error = short(error.message, 160); }).then(function () {
-      persist(); renderList(); showPlacement();
+      persist(); renderList(); showPlacementStatus();
       if (p.id === focusedId && statusEl.textContent === initialStatus) setStatus(p.webContext.image.status === "captured" ? "Placement HTML and JPEG saved." : "HTML saved; placement image failed: " + p.webContext.image.error, p.webContext.image.status === "captured" ? "ok" : "err");
     });
     return p.imageWork;
@@ -498,7 +498,6 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     "<div class=composer><div class=status></div>" +
     "<label>Applies to <select class=scope disabled><option value=element>Element</option><option value=view>Current view</option><option value=page>Whole page</option></select></label>" +
     "<textarea placeholder='Comment for this pin…' disabled maxlength=8000></textarea>" +
-    "<img class=placement alt='Frozen placement viewport' hidden style='max-width:100%;max-height:130px;object-fit:contain'>" +
     "<p class=placement-status role=status hidden></p>" +
     "<div class=keys>Enter saves · Shift+Enter newline · Esc Esc deletes · ⌘Enter sends</div>" +
     "<button class=primary type=button disabled>Send batch</button></div>" +
@@ -508,7 +507,6 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
   var hl = root.querySelector(".hl"), modeBtn = root.querySelector(".mode"), sendBtn = root.querySelector(".primary");
   var textEl = root.querySelector("textarea"), statusEl = root.querySelector(".status");
   var scopeEl = root.querySelector(".scope");
-  var placementEl = root.querySelector(".placement");
   var placementStatusEl = root.querySelector(".placement-status");
   var layoutBtn = root.querySelector(".layout"), awayEl = root.querySelector(".away");
   var LAYOUT_COOKIE = "morpheus_qa_layout";
@@ -628,17 +626,15 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
             if (savedImage && savedImage.frame) { p.frame = savedImage.frame; p.webContext.image.status = "captured"; }
             else if (savedImage && savedImage.snapshot) return capturePinImage(p, savedImage.snapshot);
             else { p.webContext.image.status = "failed"; p.webContext.image.error = "Placement image is no longer in browser storage"; }
-          }).catch(function () { p.webContext.image.status = "failed"; p.webContext.image.error = "Image storage unavailable"; }).then(function () { persist(); renderList(); showPlacement(); });
+          }).catch(function () { p.webContext.image.status = "failed"; p.webContext.image.error = "Image storage unavailable"; }).then(function () { persist(); renderList(); showPlacementStatus(); });
         });
       }
     } catch (e) { pins = []; }
     textEl.value = ""; textEl.disabled = true;
   }
   function focused() { for (var i = 0; i < pins.length; i++) if (pins[i].id === focusedId) return pins[i]; return null; }
-  function showPlacement() {
+  function showPlacementStatus() {
     var p = focused(), image = p && p.webContext && p.webContext.image;
-    placementEl.hidden = !p || !p.frame;
-    if (p && p.frame) placementEl.src = p.frame.dataUrl; else placementEl.removeAttribute("src");
     placementStatusEl.hidden = !image || image.status !== "failed";
     placementStatusEl.textContent = image && image.status === "failed" ? "Placement image unavailable: " + image.error + ". HTML evidence is saved; you can Send this comment." : "";
   }
@@ -706,7 +702,7 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     sendBtn.disabled = sending || ready === 0;
     sendBtn.textContent = ready ? "Send batch (" + ready + ")" : "Send batch";
   }
-  function render() { renderList(); renderPins(); showPlacement(); }
+  function render() { renderList(); renderPins(); showPlacementStatus(); }
 
   function focusPin(id) {
     var p = null; pins.forEach(function (x) { if (x.id === id) p = x; });
