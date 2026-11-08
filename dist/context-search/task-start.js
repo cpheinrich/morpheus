@@ -19,7 +19,8 @@ async function stateExists(root, session, state) {
     return (await readFile(statePath(root, session, state), "utf8").catch(() => "")) === "1\n";
 }
 async function taskRoot(root, session) {
-    return (await boundTask(root, session).catch(() => null))?.root ?? root;
+    const active = (await boundTask(root, session).catch(() => null))?.root;
+    return active && active !== root && await isBounded(active, session) ? active : root;
 }
 async function isBounded(root, session) {
     return (await projectPolicy(root, session)).rollout?.startup === "bounded";
@@ -139,7 +140,7 @@ export async function taskPrompt(raw, locateRoot) {
     if (!await isBounded(cwdRoot, session))
         return;
     const root = await taskRoot(cwdRoot, session);
-    if (!await isBounded(root, session) || await stateExists(root, session, "prompt"))
+    if (await stateExists(root, session, "prompt"))
         return;
     if ((await progress(root, session)).prompted)
         return;

@@ -29,3 +29,7 @@ checked against that checkout. If the manifest or sparse checkout leaves
 no usable task record, the prompt points to coverage and the existing
 core gate remains usable. Both regression tests pass. The focused
 follow-up covered 156 tests. The two-engine compiled CLI probe still passes.
+
+For a bound worktree that predates rollout, the cue and backstop now
+select the bounded caller, where the same evidence rules apply. The
+mixed-policy regression passes. The final focused suite passed all 189 tests.

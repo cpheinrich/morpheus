@@ -23,7 +23,8 @@ async function stateExists(root: string, session: string, state: "prompt" | "see
 }
 
 async function taskRoot(root: string, session: string): Promise<string> {
-  return (await boundTask(root, session).catch(() => null))?.root ?? root;
+  const active = (await boundTask(root, session).catch(() => null))?.root;
+  return active && active !== root && await isBounded(active, session) ? active : root;
 }
 
 async function isBounded(root: string, session: string): Promise<boolean> {
@@ -136,7 +137,7 @@ export async function taskPrompt(raw: string, locateRoot: (cwd: string) => Promi
   if (!cwdRoot) return;
   if (!await isBounded(cwdRoot, session)) return;
   const root = await taskRoot(cwdRoot, session);
-  if (!await isBounded(root, session) || await stateExists(root, session, "prompt")) return;
+  if (await stateExists(root, session, "prompt")) return;
   if ((await progress(root, session)).prompted) return;
   await searchStateDirectory(root, "startup");
   const first = await writeFile(statePath(root, session, "prompt"), "1\n", { flag: "wx", mode: 0o600 })

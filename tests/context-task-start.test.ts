@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -40,6 +40,15 @@ async function fixture() {
     sessions.set(arm, id);
   }
   return { root, bounded: sessions.get("ripgrep-bounded")!, full: sessions.get("ripgrep-full")! };
+}
+
+async function boundCheckout(root: string, session: string): Promise<string> {
+  const sibling = await realpath(await mkdtemp(join(tmpdir(), "morpheus-context-sibling-")));
+  dirs.push(sibling);
+  const task = "MO-26-11-08-01.23.45";
+  execFileSync("git", ["worktree", "add", "-q", "-b", task.toLowerCase() + "-fixture", sibling], { cwd: root });
+  await bindTask(sibling, task, session);
+  return sibling;
 }
 
 function prompt(root: string, session: string, text = "Change the release authority.") {
@@ -95,11 +104,7 @@ describe("task context on bounded startup", () => {
     expect(await prompt(root, bounded)).toContain("first project task");
     await shown(root, bounded, "Do project work in an isolated checkout.\n" + core + "\n");
 
-    const sibling = await realpath(await mkdtemp(join(tmpdir(), "morpheus-context-sibling-")));
-    dirs.push(sibling);
-    const task = "MO-26-11-08-01.23.45";
-    execFileSync("git", ["worktree", "add", "-q", "-b", task.toLowerCase() + "-fixture", sibling], { cwd: root });
-    await bindTask(sibling, task, bounded);
+    const sibling = await boundCheckout(root, bounded);
     expect(await prompt(root, bounded)).toBeUndefined();
     expect((await refresh(sibling)).lease?.status).toBe("fresh");
     expect((await gate(sibling, "pm new", "local")).message).toContain(sibling);
@@ -110,11 +115,27 @@ describe("task context on bounded startup", () => {
     expect(await gate(sibling, "pm new", "local")).toEqual({ ok: true, message: "" });
   });
 
+  it("points to a qualifying checkout when the bound worktree predates the rollout", async () => {
+    const { root, bounded } = await fixture();
+    vi.stubEnv("MORPHEUS_CONTEXT_SESSION_ID", bounded);
+    const sibling = await boundCheckout(root, bounded);
+    await writeFile(join(sibling, "morpheus.json"), "{}");
+    const cue = await prompt(root, bounded);
+    expect(cue).toContain(`load task context in ${root} with`);
+    await shown(root, bounded, "Do project work in an isolated checkout.\n" + core + "\n");
+    expect((await refresh(root)).lease?.status).toBe("fresh");
+    expect((await gate(root, "pm new", "local")).message).toContain(`In ${root}, run`);
+
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runTaskRead(root, [".agent/decisions.md"], bounded);
+    await shown(root, bounded, String(log.mock.calls[0]?.[0]));
+    expect(await gate(root, "pm new", "local")).toEqual({ ok: true, message: "" });
+  });
+
   it("preserves the core gate when all additional task records are excluded", async () => {
     const { root, bounded } = await fixture();
     const manifest = join(root, "morpheus.json");
-    const { readFile } = await import("node:fs/promises");
-    const config = JSON.parse(await readFile(manifest, "utf8"));
+      const config = JSON.parse(await readFile(manifest, "utf8"));
     config.context.search.exclude = [".agent/decisions.md"];
     await writeFile(manifest, JSON.stringify(config));
     vi.stubEnv("MORPHEUS_CONTEXT_SESSION_ID", bounded);
