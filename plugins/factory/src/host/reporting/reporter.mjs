@@ -10,6 +10,7 @@ const variable = z.string().regex(/^[A-Z][A-Z0-9_]{0,99}$/);
 const project = z.string().regex(/^[\w.-]+\/[\w.-]+$/);
 const source = z.discriminatedUnion('kind',[
   z.strictObject({id,kind:z.literal('machine')}),
+  z.strictObject({id,kind:z.literal('scheduledTasks'),statePath:path}),
   z.strictObject({id,kind:z.literal('factory'),roots:z.array(path).min(1).max(8),channel:z.enum(['desktop','unattended'])}),
   z.strictObject({id,kind:z.literal('routes'),configPath:path}),
   z.strictObject({id,kind:z.literal('dispatcher'),configPath:path,statePath:path,serviceLabel:z.string().regex(/^[\w.-]{1,150}$/),tartPath:path,projectIds:z.array(project).max(16),roles:z.array(z.string().max(100)).max(20)}),

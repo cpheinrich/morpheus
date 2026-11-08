@@ -21,6 +21,7 @@ import {
 } from "./certify.js";
 import { currentBranch, resolveTrunk, trunkSha, worktreeRoot, type TrunkRef } from "./git.js";
 import { projectPolicy, sessionId } from "./policy.js";
+import { getSearchConfig, providerSessionId } from "../context-search/rollout.js";
 import { isAbsolute, relative } from "node:path";
 import { clearLease, readLease, writeLease } from "./store.js";
 
@@ -52,9 +53,11 @@ export interface ContextResult {
   written: boolean;
 }
 
-async function session(root: string): Promise<{ worktree: string; id: string }> {
+async function session(root: string, runner = providerSessionId()): Promise<{ worktree: string; id: string }> {
   const worktree = await worktreeRoot(root);
-  return { worktree, id: sessionId(worktree) };
+  const rollout = runner && (await getSearchConfig(worktree).catch(() => undefined))?.rollout;
+  const id = rollout && runner ? `rollout-${sessionId(worktree)}-${sessionId(rollout.id + "\0" + runner)}` : sessionId(worktree);
+  return { worktree, id };
 }
 
 function required(policy: LeasePolicy): readonly string[] {
@@ -267,8 +270,8 @@ function anchorToBranch(lease: SessionLease, onBranch: string | null): SessionLe
  * *resumed* session after a context compaction, which is precisely when an
  * agent has lost what it read.
  */
-export async function endTerm(root: string): Promise<SessionLease | null> {
-  const { worktree, id } = await session(root);
+export async function endTerm(root: string, runner?: string): Promise<SessionLease | null> {
+  const { worktree, id } = await session(root, runner);
   const { lease } = await readLease(worktree, id);
   if (lease) await clearLease(worktree, id);
   return lease;
@@ -366,6 +369,14 @@ export async function noteWrite(root: string, writes: readonly RecordWrite[]): P
  * make a lease that was fresh at 12:05 answer for 18:00, which is the failure
  * the whole item opens with.
  */
+async function canReuseReceipt(worktree: string, lease: SessionLease, policy: LeasePolicy): Promise<boolean> {
+  const requiredNow = required(policy);
+  return lease.status === "fresh"
+    && lease.receipt.inputs.length === requiredNow.length
+    && requiredNow.every(id => lease.receipt.inputs.some(input => input.id === id))
+    && await containsSource(worktree, lease.receipt.remoteSha);
+}
+
 export async function check(
   root: string,
   now = new Date(),
@@ -396,7 +407,7 @@ export async function check(
   // Both sides have to be a real answer. A failed lookup is not a branch, and
   // two of them are not the same branch.
   const sameBranch = onBranch !== null && onBranch !== "" && onBranch === stored.receipt.branch;
-  if (current.status === "fresh" && sameBranch && await containsSource(worktree, stored.receipt.remoteSha)) {
+  if (sameBranch && await canReuseReceipt(worktree, current, policy)) {
     // Nothing was written, because nothing needed to be — the stored lease is
     // still the current answer.
     return { lease: current, observed: false, written: true };

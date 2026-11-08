@@ -13,6 +13,7 @@ const label = z.string().min(1).max(160);
 const labels = z.array(label).max(20);
 const optionalLabel = label.nullable();
 const job = z.strictObject({ repository: project, runId: number.int(), attempt: number.int().min(1),
+  pullRequests:z.array(number.int().positive()).max(3).refine(rows=>distinct(rows,x=>x)).optional(),
   jobId: number.int(), runnerId: number.int().nullable(), name: label, currentStep: optionalLabel, state: z.enum(['queued','in_progress','completed','waiting','pending','requested']),
   conclusion: z.enum(['success','failure','cancelled','skipped','timed_out','action_required','neutral','stale','startup_failure']).nullable(),
   url: z.string().max(300).refine(v => /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/runs\/\d+\/job\/\d+$/.test(v)) });
@@ -23,7 +24,28 @@ const organizationRunner=z.strictObject({organization:z.string().regex(/^[A-Za-z
   observedAt:stamp,readable:z.boolean(),online:z.boolean().nullable(),busy:z.boolean().nullable(),labels,gap:z.enum(['credential-missing','unavailable']).nullable()})
   .refine(v=>v.projectIds.every(p=>p.split('/')[0]===v.organization))
   .refine(v=>v.readable?(v.online!==null&&v.busy!==null&&v.gap===null):(v.online===null&&v.busy===null&&v.gap!==null));
+const positiveId = number.int().positive();
+const deploymentState = z.enum(['queued','running','succeeded','failed','cancelled','skipped','unknown']);
+const deploymentStage = z.strictObject({id,jobId:positiveId,state:deploymentState});
+const deployment = z.strictObject({
+  runId:positiveId,attempt:positiveId,observedAt:stamp,startedAt:stamp,
+  sourceSha:z.string().regex(/^[a-f0-9]{40}$/).nullable(),state:deploymentState,
+  stages:z.array(deploymentStage).max(16).refine(rows=>distinct(rows,row=>row.id)),
+});
+const cadence = z.union([
+  z.enum(['event-driven','twice-monthly']),
+  z.string().regex(/^every [1-9]\d{0,3} minutes from (?:[01]\d|2[0-3]):[0-5]\d UTC$/),
+]);
+const scheduledTask = z.strictObject({
+  id, repository:project, cadence, nextAt:stamp.nullable(), lastRunAt:stamp.nullable(),
+  status:z.enum(['idle','running','succeeded','partial','failed','held','disabled','unknown']),
+  runId:positiveId.nullable(), pullRequests:z.array(positiveId).max(3).refine(rows=>distinct(rows,x=>x)),
+  deployments:z.array(deployment).max(5).refine(rows=>distinct(rows,row=>row.runId)).optional(),
+}).refine(row=>row.cadence!=='event-driven'||row.nextAt===null);
+const tasks = z.array(scheduledTask).max(16).refine(rows=>distinct(rows,row=>row.id));
+export const scheduledTaskDocument = z.strictObject({version:z.literal(1),observedAt:stamp,tasks});
 export const values = {
+  scheduledTasks: z.strictObject({tasks}),
   machine: z.strictObject({ cpuPercent: percent.nullable(), memoryTotalBytes: number, memoryActiveBytes: number,
     diskAvailableBytes: number, diskTotalBytes: number, uptimeSeconds: number,
     hardwareModel:optionalLabel, chip:optionalLabel, logicalCores:number.int().positive().nullable(), osVersion:optionalLabel }),
@@ -61,6 +83,16 @@ function censusClocks(value,time) {
     if([census.runnerObservedAt,census.jobObservedAt].some(v=>Date.parse(v)>time+60000))throw new Error('source-clock');
   }
 }
+function taskClocks(sample) {
+  if(sample.kind!=='scheduledTasks')return;
+  const latest=Date.parse(sample.sourceObservedAt)+60000;
+  if(sample.value.tasks.some(row=>row.lastRunAt&&Date.parse(row.lastRunAt)>latest))throw new Error('source-clock');
+  for(const row of sample.value.tasks) {
+    for(const deployment of row.deployments??[]) {
+      if([deployment.observedAt,deployment.startedAt].some(time=>Date.parse(time)>latest))throw new Error('source-clock');
+    }
+  }
+}
 export function parseReport(input, now = Date.now()) {
   const parsed = reportSchema.safeParse(input);
   if (!parsed.success) throw new Error('invalid-report');
@@ -73,6 +105,7 @@ export function parseReport(input, now = Date.now()) {
     } else {
       if (!values[sample.kind].safeParse(sample.value).success || !sample.sourceObservedAt) throw new Error('invalid-report');
       censusClocks(sample.value,time);
+      taskClocks(sample);
     }
   }
   return parsed.data;

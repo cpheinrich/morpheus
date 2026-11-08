@@ -536,8 +536,9 @@ needed.
 - **`visual-design`** supports early planning when relationships clarify architecture,
   workflows/pipelines, async handoffs, state transitions, ownership or substantial alternatives.
   Before implementation, agents sketch and show useful relationships, distinguish current from
-  proposed, label assumptions and update retained diagrams after material design changes. Trivial
-  self-contained edits need none. The canonical `.agents/skills/visual-design/SKILL.md` is mirrored
+  proposed, label assumptions and update retained diagrams after material design changes. Start
+  flowcharts top to bottom and inspect the render at reading width; use a horizontal layout when
+  it makes a compact relationship clearer. Trivial self-contained edits need none. The canonical `.agents/skills/visual-design/SKILL.md` is mirrored
   for Claude and printed by `morpheus skills guide visual-design`; both providers in every project
   kind receive pointers through the existing registry. New scaffold instructions include the early
   trigger; `doctor` warns when older instructions lack it. Existing projects adopt that guidance
@@ -908,6 +909,22 @@ line, in a handoff received on 2026-08-01, is what caused a prompt-based heartbe
 checked against reality and killed rather than built.
 
 ### 7.10 Context freshness
+
+A project can opt into the local context search pilot in `morpheus.json` with
+`context.search.rollout`. A stable hash of experiment and provider session IDs assigns
+60% to bounded startup with Tantivy, 20% to bounded startup with ripgrep, and 20% to
+full decisions and lessons with ripgrep. The trial omits human inboxes from all arms.
+Project instructions and configured mandatory records still govern. The required reads
+come from the selected checkout, and a bounded startup receipt is scoped to that provider
+session and worktree. Search excerpts are discovery aids and do not certify reads.
+
+Search covers the manifest's project context plus default records, roadmaps, runbooks and
+meeting notes. Tantivy indexes overlapping 16-line Markdown windows beginning every two
+lines. Cache files and traces live under the worktree's ignored `local/context-search/`
+directory so sandboxed searches can acquire index locks and record timings.
+A session can pin the search engine for its checkout without changing its
+required startup records. Overrides and fallbacks are visible in traces. See [the trial runbook](docs/runbooks/context-search.md).
+
 
 Everything above assumes an agent has read the records. Nothing made it prove that. A session can
 start without loading `decisions.md`, and a session that *did* load it six hours ago can keep

@@ -35,6 +35,9 @@ export function sessionTag(id) {
  * terminal or any other tool — refresh then falls back to the assertion.
  */
 export function runnerSession(env = process.env) {
+    const explicit = env["MORPHEUS_CONTEXT_SESSION_ID"];
+    if (explicit)
+        return { provider: env["CLAUDECODE"] === "1" ? "claude" : "codex", tag: sessionTag(explicit) };
     const claude = env["CLAUDE_CODE_SESSION_ID"];
     if (env["CLAUDECODE"] === "1" && claude)
         return { provider: "claude", tag: sessionTag(claude) };

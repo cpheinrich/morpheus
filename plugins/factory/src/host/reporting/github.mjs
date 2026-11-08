@@ -37,12 +37,25 @@ async function runnerSnapshot(context,repository,now) {
   return {runners:validRows.map(r=>({projectId:repository,runnerId:r.id,online:r.status==='online',busy:r.busy,labels:r.labels.map(l=>l.name).slice(0,20)})),
     census:{projectId:repository,runnerComplete:listed.complete&&validRows.length===listed.rows.length,runnerObservedAt:now().toISOString(),jobComplete:false,jobObservedAt:now().toISOString()}};
 }
+function sameBaseRepository(reference,repository) {
+  const base=reference?.base,url=`https://api.github.com/repos/${repository}`;
+  const identities=[[base?.repo?.full_name,repository],[base?.repo_url,url],[base?.repo?.url,url]]
+    .filter(([actual])=>actual!==undefined);
+  return identities.length>0&&identities.every(([actual,expected])=>actual===expected);
+}
+function runPullRequests(run,repository) {
+  if(!Array.isArray(run.pull_requests))return {};
+  const references=run.pull_requests.filter(ref=>Number.isSafeInteger(ref?.number)&&ref.number>0&&sameBaseRepository(ref,repository));
+  const pullRequests=[...new Set(references.map(ref=>ref.number))].slice(0,3);
+  return pullRequests.length?{pullRequests}:{};
+}
 async function projectJobs(context,repository) {
   const runs=await currentRuns(context,repository),jobs=[];let complete=runs.complete;
   for(const run of runs.rows) {
     const result=await page(context,`repos/${repository}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100&page=1`,'jobs',100);
     complete=complete&&result.complete;
-    for(const j of result.rows)jobs.push({repository,runId:run.id,attempt:run.run_attempt,jobId:j.id,runnerId:j.runner_id>0?j.runner_id:null,
+    const pullRequests=runPullRequests(run,repository);
+    for(const j of result.rows)jobs.push({repository,runId:run.id,attempt:run.run_attempt,jobId:j.id,runnerId:j.runner_id>0?j.runner_id:null,...pullRequests,
       name:j.name,currentStep:(j.steps??[]).find(s=>s.status==='in_progress')?.name??null,
       state:j.status,conclusion:j.conclusion??null,url:`https://github.com/${repository}/actions/runs/${run.id}/job/${j.id}`});
   }

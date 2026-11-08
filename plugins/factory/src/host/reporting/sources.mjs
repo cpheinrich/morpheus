@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import si from 'systeminformation';
 import { jsonFile } from './files.mjs';
+import { scheduledTaskDocument } from './protocol.mjs';
 import { observeFactory } from './factory.mjs';
 import { readStoredQuota, readProviderQuota } from './quota.mjs';
 import { githubSnapshot } from './github.mjs';
@@ -70,6 +71,7 @@ export async function persistentRunners(source) {
 export async function collect(source, config) {
   switch(source.kind) {
     case 'machine': return machine();
+    case 'scheduledTasks': return scheduledTasks(source.statePath);
     case 'factory': {
       const value = await observeFactory({...source,hostId:config.hostId,projects:config.projectPaths,accounts:config.routeAccounts});
       return {value,complete:value.complete};
@@ -86,4 +88,10 @@ export async function collect(source, config) {
     case 'quota': return (source.mode==='provider'?readProviderQuota:readStoredQuota)(source.binding,{email:process.env[source.emailEnv],password:process.env[source.passwordEnv]});
     default: throw new Error('invalid-source');
   }
+}
+
+export async function scheduledTasks(statePath) {
+  const {data} = await jsonFile(statePath,{private:true});
+  const {observedAt,tasks} = scheduledTaskDocument.parse(data);
+  return {sourceObservedAt:observedAt,value:{tasks}};
 }
