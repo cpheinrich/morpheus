@@ -19,12 +19,14 @@ Independent review cleared the actionlint fallback after exercising checksum suc
 
 Independent review cleared the focused test update. Its seven workflow tests passed.
 
+The last independent turn cleared the one-line typecheck correction and confirmed that a missing run still fails the assertion.
+
 ```morpheus-review
 {
   "version": 2,
   "base": "4629f043d307acdaa261d50f21ecfee97c895405",
   "reviewed": "33024208a177b421d838eeb2e85f3e6f2eb476e6",
-  "covered": "0948b6f213b1b45fe3058da593b076c125299253",
+  "covered": "ed6b0cc5fbf2760d61b7429a325fe7ad77b63fe6",
   "authorSession": "01a1b9cf-139d-7473-9981-8e7162e9867a",
   "reviewerSession": "f083130b-140b-46ce-a4c3-5b33a4f1d0f7",
   "risk": "normal",
@@ -129,6 +131,27 @@ Independent review cleared the focused test update. Its seven workflow tests pas
         "source": "clock",
         "durationMs": 25595,
         "evidence": "Factory run e1f0dcef-0724-4b15-bc9f-ef9094f6a7ae creation 1794132762945 and terminal record mtime 1794132788540, epoch milliseconds."
+      }
+    },
+    {
+      "reviewerSession": "83dc1df3-f08e-46aa-8c87-08b353c994ae",
+      "commit": "ed6b0cc5fbf2760d61b7429a325fe7ad77b63fe6",
+      "scopeReason": "Hosted CI passed workflow validation and caught TS18048 in the test assertion. The one-line correction handles the optional run field without weakening the test.",
+      "handoff": {
+        "reason": "Fresh reviewer received all prior findings and the exact test-only diff.",
+        "findings": [
+          "N01",
+          "N02",
+          "N03"
+        ]
+      },
+      "outcome": "cleared",
+      "elapsedMinutes": 0.5860666666666666,
+      "summary": "The last independent turn cleared the one-line typecheck correction and confirmed that a missing run still fails the assertion.",
+      "timing": {
+        "source": "clock",
+        "durationMs": 35164,
+        "evidence": "Factory run 26ac43b6-c32d-45cd-91c5-2499feb67a86 creation 1794132928280 and terminal record mtime 1794132963444, epoch milliseconds."
       }
     }
   ]
