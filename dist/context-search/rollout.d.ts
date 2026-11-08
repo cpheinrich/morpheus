@@ -1,3 +1,6 @@
+export type ContextTransport = "cli" | "mcp";
+export type ContextOperation = "search" | "read" | "coverage" | "overview" | "related";
+export type ContextOutcome = "ok" | "empty" | "error";
 export type SearchEngine = "tantivy" | "ripgrep";
 export type Arm = "tantivy-bounded" | "ripgrep-bounded" | "ripgrep-full" | "manual" | "legacy";
 export interface SearchRollout {
@@ -6,6 +9,7 @@ export interface SearchRollout {
 }
 export interface SearchConfig {
     mode?: SearchEngine;
+    transport?: ContextTransport;
     include: string[];
     exclude: string[];
     rollout?: SearchRollout;
@@ -28,7 +32,10 @@ export declare function getSearchConfig(root: string): Promise<SearchConfig>;
 export declare function armForBucket(bucket: number): "tantivy-bounded" | "ripgrep-bounded" | "ripgrep-full";
 export declare function contextArm(root: string, sessionId?: string | undefined, config?: SearchConfig): Promise<ContextArm>;
 export interface ContextTrace {
-    type: "assignment" | "query";
+    type: "assignment" | "query" | "tool" | "visible";
+    transport?: ContextTransport;
+    operation?: ContextOperation;
+    outcome?: ContextOutcome;
     arm: Arm;
     engine: SearchEngine;
     /** Actual engine, when different from the assigned engine. */

@@ -1,5 +1,6 @@
 import { markdownTable } from "../markdown.js";
 import { credible, MAX_CREDIBLE_SPAN_MS, percentile } from "./derive.js";
+import { contextUsage } from "./context-usage.js";
 import { displayCommand } from "./classify.js";
 import { PHASES, SOURCES, addTokens, emptyTokens, totalTokens, } from "./types.js";
 export const TOP_N = 10;
@@ -54,6 +55,7 @@ export function buildReport(sessions, spans, options = {}) {
         byRole: group(sessions, (s) => s.role),
         byModel: [...models.values()].sort((a, b) => totalTokens(b.tokens) - totalTokens(a.tokens)),
         firstTurn,
+        contextUsage: contextUsage(sessions, spans),
         slowest,
         repeated,
         outliers: spans
@@ -234,6 +236,10 @@ export function renderReport(r, heading) {
         f.p90 === null ? "-" : formatTokens(f.p90),
         f.max === null ? "-" : formatTokens(f.max),
     ]), "_none_"), "");
+    if (r.contextUsage.length) {
+        out.push("### Project context use in main sessions", "", markdownTable(["interface", "sessions", "active p50", "requests p50", "tokens p50"], r.contextUsage.map(row => [row.transport, String(row.sessions), formatDuration(row.activeMsP50 ?? 0),
+            String(row.requestsP50 ?? 0), formatTokens(row.tokensP50 ?? 0)]), "_none_"), "", "_Grouped by observed search or read calls. Task mix and session duration may differ across groups._", "");
+    }
     out.push(`### Slowest commands (top ${TOP_N})`, "");
     out.push(markdownTable(["duration", "phase", "repo", "command"], r.slowest.map((s) => [formatDuration(s.durationMs), s.phase, s.repo ?? "-", code(s.command)]), "_none_"), "");
     out.push(`### Most repeated commands (top ${TOP_N})`, "");

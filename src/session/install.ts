@@ -63,6 +63,15 @@ const TASK_PROMPT = {
   label: "the task context hook",
 };
 
+const CLAUDE_MCP_READ = {
+  blocks: () => ({ PostToolUse: [{
+    matcher: "mcp__morpheus_context__(search_project_context|read_project_record)",
+    hooks: [{ type: "command", command: HOOK_SHELL + "record-read --mcp >/dev/null 2>&1; exit 0'" }],
+  }] }),
+  marker: "context record-read --mcp",
+  label: "the Morpheus Context MCP read hook",
+};
+
 const readHook = () => ({ type: "command", command: READ_HOOK_COMMAND });
 
 /**
@@ -71,7 +80,7 @@ const readHook = () => ({ type: "command", command: READ_HOOK_COMMAND });
  * and `context refresh` exits 1 exactly when it prints lines to be read.
  */
 const claudeReadBlocks = (): Json => ({
-  PostToolUse: [{ matcher: "Read|Bash", hooks: [readHook()] }],
+  PostToolUse: [{ matcher: "Read|Bash", hooks: [readHook()] }, ...CLAUDE_MCP_READ.blocks().PostToolUse],
   PostToolUseFailure: [{ matcher: "Bash", hooks: [readHook()] }],
 });
 
@@ -321,7 +330,11 @@ async function ensureHook(
   // the file exactly as it was rather than half-repaired. Each kind of hook is
   // found by its own marker, so one already wired is never added twice, and
   // entries are appended — a project's own hooks on the same event keep running.
-  const wantedAll: WantedBlocks[] = [{ blocks: readBlocks, ...READ_HOOK }, TASK_PROMPT, ...(pollGuard ? [POLL_GUARD] : [])];
+  const wantedAll: WantedBlocks[] = [
+    { blocks: readBlocks, ...READ_HOOK }, TASK_PROMPT,
+    ...(rel === CLAUDE_SETTINGS ? [CLAUDE_MCP_READ] : []),
+    ...(pollGuard ? [POLL_GUARD] : []),
+  ];
   for (const wanted of wantedAll) {
     const added = mergeWanted(block, wanted);
     if ("blocked" in added) return { target: rel, outcome: "blocked", detail: added.blocked };

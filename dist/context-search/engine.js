@@ -59,20 +59,24 @@ export function countContextTokens(text) {
     tokenizer ??= new Tiktoken(ranks);
     return tokenizer.encode(text, [], []).length;
 }
-function format(spans, budget) {
+function format(spans, budget, maxBytes = Infinity, maxLines = Infinity) {
     let output = "";
     let returnedTokens = 0;
-    let resultCount = 0;
+    let outputLines = 0;
+    const excerpts = [];
     for (const { document, first, last } of shortlist(spans)) {
-        const entry = `${document.path}:${first + 1}-${last}\n${document.lines.slice(first, last).join("\n")}\n\n`;
+        const text = document.lines.slice(first, last).join("\n");
+        const entry = `${document.path}:${first + 1}-${last}\n${text}\n\n`;
         const tokens = countContextTokens(output + entry);
-        if (tokens > budget)
+        const entryLines = last - first + 2;
+        if (tokens > budget || Buffer.byteLength(output + entry) > maxBytes || outputLines + entryLines > maxLines)
             continue;
+        outputLines += entryLines;
         output += entry;
         returnedTokens = tokens;
-        resultCount++;
+        excerpts.push({ path: document.path, from: first + 1, to: last, text });
     }
-    return { output, returnedTokens, resultCount };
+    return { output, returnedTokens, resultCount: excerpts.length, excerpts };
 }
 function documentAt(documents, target, offset) {
     let left = 0;
@@ -250,7 +254,7 @@ export async function searchContext(sources, query, budget, options) {
     const { spans, buildMs, cacheHit } = options.engine === "tantivy"
         ? tantivy(sources, documents, query, options.cacheDir)
         : { spans: ripgrep(documents, query), buildMs: 0, cacheHit: false };
-    const result = format(spans, budget);
+    const result = format(spans, budget, options.maxBytes, options.maxLines);
     return { ...result, buildMs, cacheHit, queryMs: performance.now() - start - buildMs };
 }
 //# sourceMappingURL=engine.js.map

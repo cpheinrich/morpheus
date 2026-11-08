@@ -14,6 +14,18 @@ const ignored = [
 const options = { dot: true, nonegate: true, nocomment: true };
 const matches = (path, patterns) => patterns.some(pattern => minimatch(path, pattern, options));
 const safePath = (path) => path.endsWith(".md") && !path.startsWith("/") && !path.split("/").some(part => part === ".." || part === ".");
+export const CONTEXT_KINDS = ["decision", "lesson", "roadmap", "worklog", "runbook", "meeting_note", "other"];
+const kindPaths = [
+    ["decision", ".agent/decisions{.md,/**}"],
+    ["lesson", ".agent/learned{.md,/**}"],
+    ["roadmap", "hq/product/roadmap/**"],
+    ["worklog", ".agent/worklog/**"],
+    ["runbook", "docs/runbooks/**"],
+    ["meeting_note", "hq/team/meeting-notes/**"],
+];
+export function contextKind(path) {
+    return kindPaths.find(([, pattern]) => minimatch(path, pattern, options))?.[0] ?? "other";
+}
 export function classifySources(paths, rules) {
     const coverage = { included: [], excluded: [], uncovered: [], emptyPatterns: [] };
     const include = [...defaults, ...rules.include];

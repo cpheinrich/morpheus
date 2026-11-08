@@ -16,7 +16,7 @@ const exec = promisify(execFile);
 export const MAX_TARGETS = 16;
 
 // A git subprocess must act on the directory it is given, never an inherited repository.
-function gitEnv() {
+export function gitEnv() {
   const env = { ...process.env };
   for (const name of Object.keys(env))
     if (/^GIT_(DIR|WORK_TREE|INDEX_FILE|PREFIX|COMMON_DIR|OBJECT_DIRECTORY)$/.test(name))
