@@ -6,6 +6,7 @@ import { delegatedMarker } from "../src/config.mjs";
 import { codexRootId } from "./codex-root.mjs";
 import { claudeMethods, factoryMethods, factorySpecs } from "./tool-contract.mjs";
 import { registerFleetTool } from "./fleet-mcp.mjs";
+import { dispatchFleet } from "./fleet-delegate.mjs";
 const server = new McpServer({ name: "factory", version: "0.1.0" });
 const factoryArgs = (args, extra) => ({ ...args, rootKind: "codex", rootId: codexRootId(extra) });
 const task = {
@@ -70,11 +71,13 @@ for (const method of factoryMethods) {
     try {
       if (process.env[delegatedMarker] && method === "delegate")
         throw new Error("Delegated workers cannot delegate again.");
+      const scoped = factoryArgs(args, extra);
+      const result = await dispatchFleet(method, scoped) ?? await call(`factory.${method}`, scoped);
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify(await call(`factory.${method}`, factoryArgs(args, extra))),
+            text: JSON.stringify(result),
           },
         ],
       };

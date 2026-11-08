@@ -147,9 +147,14 @@ async function runGuardian(directory, isolated, signal) {
   finally { signal?.removeEventListener('abort', cancel); clearInterval(heartbeat); child.stdin.destroy(); process.off('SIGTERM', cancel); process.off('SIGINT', cancel); }
   return false;
 }
-export async function gatewayWorker(configPath, prompt, resume = null, admissionId = randomUUID(), signal) {
+export async function gatewayWorker(configPath, prompt, resume = null, admissionId = randomUUID(), signal, checkout) {
   assertWorkerInputs(prompt, admissionId);
   const config = await readWorkerConfig(configPath);
+  if (checkout !== undefined) {
+    const cwd = await realpath(checkout);
+    if (dirname(cwd) !== config.cwd) throw new Error('Checkout must be a direct child of the enrolled workspace root');
+    config.cwd = cwd;
+  }
   const root = await workerStateRoot(config);
   const binding = { jobId: config.jobId, cwd: config.cwd, gateway: config.gateway, model: config.model, effort: config.effort, sandbox: config.sandbox, approvalPolicy: config.approvalPolicy };
   const directory = join(root, admissionId);

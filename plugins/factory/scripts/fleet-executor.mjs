@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { gatewayWorker, readWorkerConfig, workerResult } from "../src/gateway-worker.mjs";
 import { readArtifactFiles } from "../src/fleet-artifacts.mjs";
+import { studioCheckout } from "../src/fleet-source.mjs";
 
 const [configPath, project] = process.argv.slice(2);
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -13,21 +14,23 @@ const controller = new AbortController();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const lines = input[Symbol.asyncIterator]();
 
-async function prepare({ task, admissionId, resume, prompt, gatewayBaseUrl }) {
+async function prepare({ task, admissionId, resume, prompt, gatewayBaseUrl, checkout }) {
   const config = await readWorkerConfig(configPath);
-  const git = (...args) => execFileSync("git", ["-C", config.cwd, ...args], { encoding: "utf8", timeout: 5000 }).trim();
-  if (task.source.project !== project || task.source.revision !== git("rev-parse", "HEAD") ||
-      task.selection.provider !== "codex" || task.selection.model !== config.model ||
-      task.selection.gateway !== config.gateway.name || gatewayBaseUrl?.replace(/\/+$/, "") !== config.gateway.baseUrl ||
+  if (task.source.project !== project || task.selection.provider !== "codex" ||
+      task.selection.model !== config.model || task.selection.gateway !== config.gateway.name ||
+      gatewayBaseUrl?.replace(/\/+$/, "") !== config.gateway.baseUrl ||
       config.sandbox !== "workspace-write" || !uuid.test(admissionId))
-    throw new Error("Studio checkout or gateway model does not match this enrollment");
-  if (!resume && git("status", "--porcelain")) throw new Error("Studio pilot checkout is dirty");
-  // Each invocation gets a fresh folder. On resume the worker can copy files
-  // from its previous invocation if needed, but only this folder is published.
-  const outputDir = join(config.cwd, `.factory-artifacts-${admissionId}`);
+    throw new Error("Studio project or gateway model does not match this enrollment");
+  const cwd = task.source.checkout === "git"
+    ? await studioCheckout(config.cwd, checkout, task.source.revision, true)
+    : config.cwd;
+  const git = (...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 5000 }).trim();
+  if (task.source.revision !== git("rev-parse", "HEAD") || (!resume && git("status", "--porcelain")))
+    throw new Error("Studio checkout does not match this admission");
+  const outputDir = join(cwd, `.factory-artifacts-${admissionId}`);
   await mkdir(outputDir, { mode: 0o700 });
   const handoff = `${prompt}\n\nFor output artifacts, write files directly in ${outputDir}. Include each file in the final evidence array as artifact:<filename>. Use flat filenames.`;
-  return { outputDir, handoff };
+  return { outputDir, handoff, checkout: checkout ? cwd : undefined };
 }
 
 async function execute(job) {
@@ -38,7 +41,7 @@ async function execute(job) {
   }
   const { outputDir, handoff } = prepared;
   const { resume, admissionId } = job;
-  const outcome = await gatewayWorker(configPath, handoff, resume, admissionId, controller.signal);
+  const outcome = await gatewayWorker(configPath, handoff, resume, admissionId, controller.signal, prepared.checkout);
   if (outcome.terminationVerified && outcome.result.outcome === "completed" && !controller.signal.aborted) {
     const files = outcome.result.evidence.filter((item) => item.startsWith("artifact:")).map((item) => item.slice(9));
     try {
@@ -60,6 +63,12 @@ function admissionEnvelope(value) {
 async function dispatch(value) {
   const job = admissionEnvelope(value);
   if (!job) return { terminationVerified: true, result: { outcome: "failed", summary: "Invalid Studio admission envelope." } };
+  if (job.op === "prepare") {
+    if (job.source?.project !== project || job.source?.checkout !== "git") return { prepared: false };
+    const { cwd } = await readWorkerConfig(configPath);
+    await studioCheckout(cwd, job.checkout, job.source.revision);
+    return { prepared: true };
+  }
   if (job.op === "recover") {
     const prior = await workerResult(job.admissionId);
     return { terminationVerified: prior.terminationVerified, admissionId: prior.admissionId };

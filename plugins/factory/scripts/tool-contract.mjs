@@ -40,13 +40,15 @@ const provider = z.enum(["codex", "claude"]).optional();
 const run = { runId: z.string().uuid() };
 export const factorySpecs = Object.freeze({
   inspect: [
-    "Inspect the Factory's pinned worker, current availability, quota and active runs for this root session. Call before delegating; root identity is injected by the plugin.",
-    { provider },
+    "Inspect the local Factory route and active runs, or preflight an opted-in fleet checkout. Fleet eligibility and gateway quota are checked separately at submission and launch. Root identity is injected by the plugin.",
+    { provider, placement: z.enum(["local", "fleet"]).optional(), cwd: z.string().optional() },
   ],
   delegate: [
     "Delegate one bounded, self-contained brief through the Factory. The root remains manager and verifier. You MUST call this when the user explicitly requests Factory delegation, MUST NOT call it when the user requests local work, and otherwise use your normal sub-agent judgment. The first successful primary delegation pins provider and gateway for this root session. One primary worker conversation serves the whole task across repositories: name every repository it may write with cwd (its working directory on the first delegation) and repos; later delegations may add repositories and keep the same conversation. Each target resolves to a checkout this task owns: a repository it already maps, an unowned linked worktree (adopted), or, for an original checkout, an isolated worktree created at its committed HEAD (uncommitted edits are not copied; the original is reference only). Another task's checkout is refused. fresh=true creates an isolated non-primary conversation with its own checkouts on that same binding.",
     {
       prompt: z.string().min(1).max(200000),
+      placement: z.enum(["local", "fleet"]).optional().describe("Opt into the configured fleet for this checkout. Omitted uses the ordinary local route."),
+      messageId: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/).optional().describe("Stable submission ID for retrying the same fleet brief."),
       runId: z.string().uuid().optional(),
       replySource: z.enum(["root", "user"]).optional(),
       replyReason: z.string().min(1).optional(),

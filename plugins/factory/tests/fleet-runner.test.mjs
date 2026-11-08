@@ -219,3 +219,26 @@ test("restart settles the exact admission once its cleanup is proven without exe
   assert.deepEqual(calls.filter(([op]) => op === "finish").map(([, body]) => body.cleanupVerified), [false, true]);
   await assert.rejects(readFile(options.journalPath), { code: "ENOENT" });
 });
+
+test("restart during source preparation settles as never launched", async (t) => {
+  const { options, task, executions, journal, calls } = await fixture(t);
+  task.source = { checkout: "git" };
+  const started = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const recover = () => assert.fail("no guardian was launched");
+  const runner = createFleetRunner({
+    ...options, recover,
+    async prepare() { started.resolve(); return release.promise; },
+  });
+  assert.equal(await runner.tick(), "preparing");
+  await started.promise;
+  const record = await journal();
+  assert.equal(record.phase, "preparing");
+  assert.equal(record.admissionId, undefined);
+  const restarted = createFleetRunner({ ...options, recover });
+  assert.equal(await restarted.tick(), "settled");
+  assert.equal(task.state, "TASK_STATE_FAILED");
+  assert.equal(calls.at(-1)[1].cleanupVerified, true);
+  assert.equal(executions.length, 0);
+  release.resolve(true);
+});
