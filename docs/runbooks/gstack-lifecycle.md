@@ -35,9 +35,19 @@ marker are outside the pilot.
 | Verify | `verify` | Keep the project's focused build and test commands authoritative. Inspect gstack's proposed commands before running them, especially for iOS. |
 | Monitor web | `canary` | Observe an exact release for an agreed interval. Return evidence to the existing owner. |
 
-Use a discovered gstack workflow first when it fits and its prerequisites are met. Keep the
-Morpheus workflow for absent or inapplicable skills. Report the skill name and the artifact or
-command result in the existing worklog or review packet. If a playbook proposes work beyond the
+When the user opts in, acknowledge it once in visible chat and say that you will mark gstack
+use as it happens. At each applicable handoff in that session, give a short visible update:
+
+- Before running a skill, name it, the lifecycle step, and what you are using it for.
+  Example: “gstack · Using qa-only at web review to reproduce the navigation issue.”
+- If you check a handoff and skip gstack, state the reason and continue with Morpheus.
+  Example: “gstack · Skipped at monitoring because there is no web release to observe.”
+- After the skill finishes or stops, say what it produced or what prevented it from running,
+  and what Morpheus does next. Include the skill name and evidence in the existing worklog
+  or review packet when the task has one.
+
+The lookup only offers candidates. Announce actual use when you begin following the skill.
+Use a discovered workflow first when it fits and its prerequisites are met. If a playbook proposes work beyond the
 mandate, stop that part and report the gap. The native gstack iOS device flow requires an
 instrumented debug build and a paired device. An iOS route in this pilot uses engineering review
 and the repository's existing simulator, build and test lanes.
