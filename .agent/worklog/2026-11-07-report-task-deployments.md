@@ -76,3 +76,36 @@ Validation on the increment:
 The candidate hash above supersedes the initial deployment-only canonical file. No independent
 reviewer launched; existing draft #649 remains draft with auto-merge disabled. No runtime,
 credential, enrollment, merge or deployment change performed. No clarification remains.
+
+
+## Independent review clearance
+
+Independent Factory review cleared the exact candidate with no findings. The reviewer passed eight focused schema, clock, legacy, private-file and same-repository PR projection checks and verified the canonical protocol hash. One unchanged installer test in the broader reviewer run could not resolve dependencies in that checkout; the author's installed checkout passed all 97 reporting tests. No implementation fixes or follow-up review were needed.
+
+This clearance supersedes the earlier pending-review handoff state. The reviewer was a fresh
+Factory session launched by supervising Codex. Reviewed and covered source remains
+`08baca05b6f677f41eb4a4e948484e18a14b7323`; only this named worklog changes afterward.
+The verified canonical SHA-256 remains
+`c4aa3850bbbba5e69c8ff8e8587ea682afd4dbe06798f674245017d48cf1e975`.
+No merge, auto-merge or runtime action is authorized by this evidence finalization.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "d2d10f84d3e7c162e5d60984da53d9cb7103afe0",
+  "reviewed": "08baca05b6f677f41eb4a4e948484e18a14b7323",
+  "covered": "08baca05b6f677f41eb4a4e948484e18a14b7323",
+  "authorSession": "01a1b9cb-7a67-7320-bdd6-049b9b8e5e3b",
+  "reviewerSession": "01a1b9d5-26d1-70e3-968d-f8e770391db2",
+  "risk": "normal",
+  "elapsedMinutes": 1.9588166666666667,
+  "timing": {
+    "source": "runner",
+    "durationMs": 117529,
+    "evidence": "Factory run ae00a1ee-4e7e-4f4d-a2b2-0944cda54060, reviewer session 01a1b9d5-26d1-70e3-968d-f8e770391db2, turn 01a1b9d5-2702-7ad3-95f3-3b89773beb36: transcript task_complete.duration_ms=117529, supplied by supervising Codex."
+  },
+  "outcome": "cleared",
+  "summary": "Independent Factory review cleared the exact candidate with no findings. The reviewer passed eight focused schema, clock, legacy, private-file and same-repository PR projection checks and verified the canonical protocol hash. One unchanged installer test in the broader reviewer run could not resolve dependencies in that checkout; the author's installed checkout passed all 97 reporting tests. No implementation fixes or follow-up review were needed.",
+  "findings": []
+}
+```
