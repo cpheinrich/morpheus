@@ -128,24 +128,15 @@ function readOptions(argv: string[]) {
   return { values, stage: stage as Stage, surface: surface as Surface, host };
 }
 
-export async function runGstackLifecycle(argv: string[], cwd = process.cwd()): Promise<number> {
-  if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
-    console.log(USAGE);
-    return 0;
-  }
-  const { values, stage, surface, host } = readOptions(argv);
-  const enabled = values.gstack === true;
-  const override = values["skills-dir"];
-  const lookup = enabled && host
-    ? await lookupGstack(stage, surface, host, override && resolve(cwd, override))
-    : { routes: [] };
-  const result = { enabled, stage, surface, ...lookup };
-  if (values.json) {
-    console.log(JSON.stringify(result, null, 2));
-    return 0;
-  }
+type LifecycleResult = Awaited<ReturnType<typeof lookupGstack>> & {
+  enabled: boolean;
+  stage: Stage;
+  surface: Surface;
+};
 
-  console.log(`gstack ${enabled ? "opted in" : "off"} · ${stage} · ${surface}`);
+function printLifecycle(result: LifecycleResult): void {
+  const { enabled } = result;
+  console.log(`gstack ${enabled ? "opted in" : "off"} · ${result.stage} · ${result.surface}`);
   if (result.setupError) {
     console.log(`gstack unavailable. Continue with Morpheus. ${result.setupError}`);
   } else if (enabled && result.routes.length === 0) {
@@ -169,5 +160,25 @@ export async function runGstackLifecycle(argv: string[], cwd = process.cwd()): P
     console.log(`  Available: ${installed.name} · ${installed.path}\n    Provide: ${provide}\n    Return: ${returnToMorpheus}`);
   }
   console.log("Morpheus owns task state, independent review, and delivery.");
+}
+
+export async function runGstackLifecycle(argv: string[], cwd = process.cwd()): Promise<number> {
+  if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
+    console.log(USAGE);
+    return 0;
+  }
+  const { values, stage, surface, host } = readOptions(argv);
+  const enabled = values.gstack === true;
+  const override = values["skills-dir"];
+  const lookup = enabled && host
+    ? await lookupGstack(stage, surface, host, override && resolve(cwd, override))
+    : { routes: [] };
+  const result = { enabled, stage, surface, ...lookup };
+  if (values.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return 0;
+  }
+
+  printLifecycle(result);
   return 0;
 }

@@ -115,23 +115,9 @@ function readOptions(argv) {
     }
     return { values, stage: stage, surface: surface, host };
 }
-export async function runGstackLifecycle(argv, cwd = process.cwd()) {
-    if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
-        console.log(USAGE);
-        return 0;
-    }
-    const { values, stage, surface, host } = readOptions(argv);
-    const enabled = values.gstack === true;
-    const override = values["skills-dir"];
-    const lookup = enabled && host
-        ? await lookupGstack(stage, surface, host, override && resolve(cwd, override))
-        : { routes: [] };
-    const result = { enabled, stage, surface, ...lookup };
-    if (values.json) {
-        console.log(JSON.stringify(result, null, 2));
-        return 0;
-    }
-    console.log(`gstack ${enabled ? "opted in" : "off"} · ${stage} · ${surface}`);
+function printLifecycle(result) {
+    const { enabled } = result;
+    console.log(`gstack ${enabled ? "opted in" : "off"} · ${result.stage} · ${result.surface}`);
     if (result.setupError) {
         console.log(`gstack unavailable. Continue with Morpheus. ${result.setupError}`);
     }
@@ -158,6 +144,24 @@ export async function runGstackLifecycle(argv, cwd = process.cwd()) {
         console.log(`  Available: ${installed.name} · ${installed.path}\n    Provide: ${provide}\n    Return: ${returnToMorpheus}`);
     }
     console.log("Morpheus owns task state, independent review, and delivery.");
+}
+export async function runGstackLifecycle(argv, cwd = process.cwd()) {
+    if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
+        console.log(USAGE);
+        return 0;
+    }
+    const { values, stage, surface, host } = readOptions(argv);
+    const enabled = values.gstack === true;
+    const override = values["skills-dir"];
+    const lookup = enabled && host
+        ? await lookupGstack(stage, surface, host, override && resolve(cwd, override))
+        : { routes: [] };
+    const result = { enabled, stage, surface, ...lookup };
+    if (values.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return 0;
+    }
+    printLifecycle(result);
     return 0;
 }
 //# sourceMappingURL=gstack-lifecycle.js.map

@@ -13,4 +13,6 @@ Existing worklogs and review packets hold evidence when applicable. No new
 activity store or execution hook is needed.
 
 Typecheck and 27 focused lifecycle and agent-instruction tests passed. Compile,
-roadmap index, complexity, and diff checks were run before review.
+roadmap index, complexity, and diff checks passed. The first output change put the
+CLI entrypoint over the complexity limit. Extracting the plain renderer restored
+compliance and kept the JSON path independent.

@@ -202,6 +202,12 @@ printf '%s\\n' --- 'name: review' --- > "$CODEX_HOME/skills/gstack-review/SKILL.
     });
     expect(await readFile(invocations, "utf8")).toBe("git clone\ngit -C\n");
     expect(await readdir(join(cache, "gstack", "v1.97.0.0", "codex"))).toEqual([]);
+    log.mockClear();
+    expect(await run(["skills", "lifecycle", ...args])).toBe(0);
+    expect(log).toHaveBeenCalledWith(
+      "gstack unavailable. Continue with Morpheus. gstack v1.97.0.0 did not resolve to the pinned commit.",
+    );
+    expect(log).not.toHaveBeenCalledWith("No gstack workflow matches this step. Continue with Morpheus.");
     await rm(badPin);
     expect((await managed(...args)).routes[0].installed.name).toBe("review");
   });
