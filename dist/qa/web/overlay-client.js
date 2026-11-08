@@ -1,7 +1,7 @@
 /**
  * The web overlay's script (MO-26-10-06-18.13.32, column layout MO-26-10-07-13.27.17). Plain
  * ES5-style JavaScript with no build step, kept free of backticks and template placeholders so it
- * can live here as a raw string; the server substitutes the project name.
+ * can live here as a raw string; the server substitutes the project name and declared build.
  *
  * Layout. A top-level page request gets the overlay's shell (`shellHtml` in server.ts): the site in
  * a same-origin frame on the left and a full-height comment column on the right, the same shape as
@@ -27,6 +27,7 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
   "use strict";
   if (window.__morpheusQa) return;
   var PROJECT = __MORPHEUS_QA_PROJECT__;
+  var BUILD = /* __MORPHEUS_QA_BUILD__ */ null;
   var COLUMN = 340;
 
   // A document framed by a same-origin parent — the shell's frame, which the shell drives, or a
@@ -159,11 +160,63 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     }
     return state;
   }
+  function coarseUserAgent(userAgent, matches) {
+    for (var i = 0; i < matches.length; i++) {
+      if (matches[i][0].test(userAgent)) return matches[i][1];
+    }
+    return "unknown";
+  }
+  function themeAt(win, target) {
+    var scheme = win.getComputedStyle(target).colorScheme.split(/\s+/);
+    if (scheme.includes("light") && scheme.includes("dark")) {
+      return win.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+    if (scheme.includes("dark")) return "dark";
+    return scheme.includes("light") ? "light" : "unknown";
+  }
+  function allowedSnapshotEntry(state, key) {
+    if (!/^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(key) ||
+        /password|secret|token|email|cookie|authorization|constructor|prototype/i.test(key)) return false;
+    var value = state[key];
+    if (typeof value === "string") return /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(value);
+    if (typeof value === "number") return Number.isInteger(value) && Math.abs(value) <= 1000000;
+    return typeof value === "boolean";
+  }
+  function viewSnapshot(target, root) {
+    if (!root.matches("[data-qa-view]") || !root.contains(target) || privateField(target)) return;
+    var raw = root.getAttribute("data-qa-snapshot");
+    if (!raw || raw.length > 1024) return;
+    var snapshot;
+    try { snapshot = JSON.parse(raw); } catch (e) { return; }
+    if (!snapshot || snapshot.version !== 1 || Object.keys(snapshot).length !== 2) return;
+    var state = snapshot.state;
+    if (!state || typeof state !== "object" || Array.isArray(state)) return;
+    var keys = Object.keys(state);
+    if (!keys.length || keys.length > 8 || !keys.every(function (key) { return allowedSnapshotEntry(state, key); })) return;
+    return { version: 1, state: state };
+  }
+  function captureDiagnostics(win, target, view) {
+    var userAgent = win.navigator.userAgent || "";
+    var browser = coarseUserAgent(userAgent, [
+      [/Edg(?:e|A|iOS)?\//, "edge"], [/OPR\//, "opera"], [/Firefox\/|FxiOS\//, "firefox"],
+      [/Chrome\/|CriOS\//, "chrome"], [/Safari\//, "safari"]
+    ]);
+    var os = coarseUserAgent(userAgent, [
+      [/iPhone|iPad|iPod/, "ios"], [/Android/, "android"], [/CrOS/, "chromeos"],
+      [/Windows/, "windows"], [/Mac OS X|Macintosh/, "macos"], [/Linux/, "linux"]
+    ]);
+    var dpr = win.devicePixelRatio;
+    var pixelRatio = Number.isFinite(dpr) && dpr > 0 && dpr <= 16 ? Math.max(0.01, Math.round(dpr * 100) / 100) : null;
+    var diagnostics = { version: 1, build: BUILD, browser: browser, os: os, devicePixelRatio: pixelRatio, theme: themeAt(win, target) };
+    var snapshot = viewSnapshot(target, view.root);
+    if (snapshot) diagnostics.snapshot = snapshot;
+    return diagnostics;
+  }
   function captureContext(el, createdAt) {
     var win = el.ownerDocument.defaultView, doc = el.ownerDocument, view = currentView(doc);
     var ancestors = contextAncestors(el, view), scroll = scrollPositions(el), state = viewState(view);
     state.push({ kind: "theme", label: "color-scheme", value: short(win.getComputedStyle(doc.documentElement).colorScheme) });
-    return { version: 1, scope: el === doc.body || el === doc.documentElement ? "page" : "element", capturedAt: createdAt, route: routeFor(win), target: describe(el), ancestors: ancestors, view: { kind: view.kind, identity: view.identity, root: describe(view.root) }, state: state, scroll: scroll, viewport: { width: win.innerWidth, height: win.innerHeight, scrollX: win.scrollX, scrollY: win.scrollY }, limitations: ["Bounded semantic HTML; no application stores or hidden/control values.", "Embedded frames, shadow DOM and media pixels are not captured."] };
+    return { version: 1, scope: el === doc.body || el === doc.documentElement ? "page" : "element", capturedAt: createdAt, route: routeFor(win), target: describe(el), ancestors: ancestors, view: { kind: view.kind, identity: view.identity, root: describe(view.root) }, state: state, diagnostics: captureDiagnostics(win, el, view), scroll: scroll, viewport: { width: win.innerWidth, height: win.innerHeight, scrollX: win.scrollX, scrollY: win.scrollY }, limitations: ["Bounded semantic HTML; no application stores or hidden/control values.", "Embedded frames, shadow DOM and media pixels are not captured."] };
   }
   /** Freeze visible DOM, styles and loaded media synchronously; never mount executable clones. */
   function freezeViewport(win) {
@@ -241,7 +294,11 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
       var svg = node.namespaceURI === "http://www.w3.org/2000/svg";
       var clone = svg ? snapshotDoc.createElementNS(node.namespaceURI, node.tagName) : snapshotDoc.createElement(node.matches("html,body") || node.tagName.indexOf("-") >= 0 ? "div" : node.tagName.toLowerCase());
       // SVG geometry is data; executable/event/navigation attributes are never copied.
-      if (svg) Array.prototype.forEach.call(node.attributes, function (a) { if (!/^on|href|src/i.test(a.name) && !/href/i.test(a.name)) clone.setAttribute(a.name, a.value); else if (/href/i.test(a.name) && /^#[A-Za-z0-9_-]+$/.test(a.value)) clone.setAttribute(a.name, a.value); });
+      if (svg) Array.prototype.forEach.call(node.attributes, function (a) {
+        if (a.name === "data-qa-snapshot") return;
+        if (!/^on|href|src/i.test(a.name) && !/href/i.test(a.name)) clone.setAttribute(a.name, a.value);
+        else if (/href/i.test(a.name) && /^#[A-Za-z0-9_-]+$/.test(a.value)) clone.setAttribute(a.name, a.value);
+      });
       return clone;
     }
     function omittedClone(cs, omission) {

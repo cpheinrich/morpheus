@@ -40,7 +40,11 @@ async function main([stateFile]: string[]): Promise<void> {
   let server: Awaited<ReturnType<typeof startWebQaServer>>;
   try {
     const publicOrigin = frontedSite(state);
-    server = await startWebQaServer({ root: state.root, project: state.project, upstream: state.upstream, port: state.port, ...(publicOrigin ? { publicOrigin } : {}) });
+    server = await startWebQaServer({
+      root: state.root, project: state.project, upstream: state.upstream, port: state.port,
+      ...(publicOrigin ? { publicOrigin } : {}),
+      ...(state.build ? { build: state.build } : {}),
+    });
   } catch (error) {
     // The dev server runs in its own process group, so nothing else would end it if the overlay
     // cannot bind (found in review of MO-26-10-06-22.17.47).

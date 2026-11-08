@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, expect, type Page } from "@playwright/test";
-import { startWebQaServer } from "../../src/qa/web/server.js";
+import { startWebQaServer, type WebQaServerOptions } from "../../src/qa/web/server.js";
 
 const fixture = `<!doctype html><html><head><title>Artists</title><style>
 body{margin:0;background:rgb(20,40,200);font-family:Arial}main{height:14000px}#base{height:100px;background:#ddd}
@@ -12,11 +12,11 @@ body{margin:0;background:rgb(20,40,200);font-family:Arial}main{height:14000px}#b
 </style></head><body><main><h1>Artists</h1><div id=base>Base card</div></main>
 <script>window.openArtist=function(name){var old=document.querySelector('[role=dialog]');if(old)old.remove();var d=document.createElement('section');d.setAttribute('role','dialog');if(name==='Bob')d.style.background='rgb(20,200,40)';d.setAttribute('data-artist-id',name);d.innerHTML='<h2>'+name+'</h2><input type=search aria-label="Find artwork" value="landscape"><input type=password value="PASSWORD_SECRET"><div hidden>HIDDEN_SECRET</div><button aria-pressed=true>Oil</button><div id=scroller><div id=target>Artwork '+name+'</div><div style="height:1000px"></div></div>';document.body.appendChild(d)};</script></body></html>`;
 
-async function setup(page: Page, html = fixture) {
+async function setup(page: Page, html = fixture, build?: WebQaServerOptions["build"]) {
   const root = await mkdtemp(join(tmpdir(), "web-context-"));
   const upstream = createServer((_req, res) => { res.writeHead(200, { "content-type": "text/html" }); res.end(html); });
   await new Promise<void>(resolve => upstream.listen(0, "127.0.0.1", resolve));
-  const qa = await startWebQaServer({ root, project: "context-fixture", upstream: `http://127.0.0.1:${(upstream.address() as { port: number }).port}`, port: 0 });
+  const qa = await startWebQaServer({ root, project: "context-fixture", upstream: `http://127.0.0.1:${(upstream.address() as { port: number }).port}`, port: 0, build });
   await page.goto(`http://127.0.0.1:${qa.port}/?token=TOKEN_SECRET#gallery`);
   const site = page.frameLocator("#morpheus-qa-site");
   await expect(site.locator("#base")).toBeVisible();
@@ -25,6 +25,78 @@ async function setup(page: Page, html = fixture) {
   const cleanup = async () => { await qa.close(); upstream.closeAllConnections(); await new Promise<void>(resolve => upstream.close(() => resolve())); await rm(root, { recursive: true, force: true }); };
   return { root, site, frame, pins, cleanup };
 }
+
+test.describe("web pin diagnostics", () => {
+  test.use({
+    deviceScaleFactor: 2,
+    colorScheme: "dark",
+    userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+  });
+  const diagnosticsPage = `<!doctype html><html><head><meta name="build" content="fake-page-build"></head><body>
+    <main data-qa-view="operations" style="color-scheme: light dark">
+      <div id="base">Overview</div>
+      <div id="private" data-qa-private>Private target</div>
+    </main>
+    <div id="outside">Outside view</div></body></html>`;
+
+  test("freezes environment and opted-in state before later UI edits, reload, and Send", async ({ page }) => {
+    const build = { commit: "a".repeat(40), deployment: "build_123" };
+    const s = await setup(page, diagnosticsPage, build);
+    try {
+      const state = { tab: "work", sourceFreshness: "fresh", visibleCount: 2, sample: false };
+      await s.frame.locator("main").evaluate((root, value) => {
+        root.setAttribute("data-qa-snapshot", JSON.stringify({ version: 1, state: value }));
+      }, state);
+      await s.site.locator("#base").click({ button: "right" });
+      await page.locator("morpheus-qa textarea").fill("Context to keep");
+      await page.locator("morpheus-qa textarea").press("Enter");
+      await s.frame.locator("main").evaluate(root => {
+        root.setAttribute("data-qa-snapshot", '{"version":1,"state":{"tab":"other"}}');
+        root.style.colorScheme = "light";
+      });
+      const frozen = {
+        version: 1, build, browser: "chrome", os: "linux", devicePixelRatio: 2, theme: "dark",
+        snapshot: { version: 1, state },
+      };
+      expect((await s.pins())[0]?.context.diagnostics).toEqual(frozen);
+      await page.reload();
+      await expect(page.locator("morpheus-qa ol li")).toContainText("Context to keep");
+      expect((await s.pins())[0]?.context.diagnostics).toEqual(frozen);
+      await page.locator("morpheus-qa button.primary").click();
+      await expect(page.locator("morpheus-qa .status")).toContainText("Queued", { timeout: 18000 });
+      const pending = join(s.root, "local/qa-comments/pending");
+      const [id] = await readdir(pending);
+      const batch = JSON.parse(await readFile(join(pending, id!, "batch.json"), "utf8"));
+      expect(batch.comments[0].webContext.diagnostics).toEqual(frozen);
+    } finally { await s.cleanup(); }
+  });
+
+  test("keeps pins usable with absent, invalid, or out-of-view metadata", async ({ page }) => {
+    const s = await setup(page, diagnosticsPage);
+    try {
+      const cases = [
+        { target: "#base", raw: null },
+        { target: "#base", raw: "{" },
+        { target: "#base", raw: '{"version":1,"state":{"token":"SECRET"}}' },
+        { target: "#base", raw: '{"version":1,"state":{"tab":"https://example.test"}}' },
+        { target: "#private", raw: '{"version":1,"state":{"tab":"work"}}' },
+        { target: "#outside", raw: '{"version":1,"state":{"tab":"work"}}' },
+      ];
+      for (const [i, { target, raw }] of cases.entries()) {
+        await s.frame.locator("main").evaluate((root, value) => {
+          if (value !== null) root.setAttribute("data-qa-snapshot", value);
+        }, raw);
+        await s.site.locator(target).click({ button: "right", position: { x: 30 + 35 * i, y: 8 } });
+        const diagnostics = (await s.pins())[i]?.context.diagnostics;
+        expect(diagnostics).toMatchObject({ build: null, browser: "chrome", os: "linux" });
+        expect(diagnostics).not.toHaveProperty("snapshot");
+        await page.locator("morpheus-qa textarea").fill(`Pin ${i}`);
+        await page.locator("morpheus-qa textarea").press("Enter");
+      }
+      await expect(page.locator("morpheus-qa ol li")).toHaveCount(cases.length);
+    } finally { await s.cleanup(); }
+  });
+});
 
 test("web context: saving a pin clears its composer and keeps the saved comment editable", async ({ page }, info) => {
   const s = await setup(page);

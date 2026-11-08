@@ -6,6 +6,7 @@ import { createConnection } from "node:net";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { QaWebBuildIdentity } from "../comments.js";
 import { normalizeUpstream } from "../web/server.js";
 import {
   DEFAULT_TTL_MINUTES, defaultRun, launchPlist, requireFreePort, tunnelCommand, withPreviewCancellation, type Run,
@@ -36,6 +37,8 @@ export interface WebPreviewConfig {
   path: string;
   /** Legacy namespace retained for configuration compatibility; new session identity is root-based. */
   namespace: string;
+  /** Identity of the build actually served by the dev server, when known. */
+  build?: QaWebBuildIdentity;
 }
 
 export type WebConfigResult = { ok: true; config: WebPreviewConfig } | { ok: false; issues: string[] };
@@ -50,6 +53,15 @@ function webCommand(raw: unknown, issues: string[]): string[] | undefined {
     return undefined;
   }
   return raw as string[];
+}
+
+function webBuild(raw: unknown, issues: string[]): Pick<WebPreviewConfig, "build"> {
+  const parsed = QaWebBuildIdentity.optional().safeParse(raw);
+  if (!parsed.success) {
+    issues.push("qa.web.build must name a full lowercase Git commit, a deployment ID, or both.");
+    return {};
+  }
+  return parsed.data ? { build: parsed.data } : {};
 }
 
 const validNamespace = (namespace: string): boolean => /^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(namespace) && !namespace.includes("..");
@@ -69,8 +81,9 @@ export function parseWebPreviewConfig(raw: unknown, projectName = "Project"): We
   const slug = projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
   const namespace = typeof web.namespace === "string" ? web.namespace : `morpheus.qa.${slug}`;
   if (!validNamespace(namespace)) issues.push("qa.web.namespace may hold letters, digits, single dots and dashes only.");
+  const build = webBuild(web.build, issues);
   if (issues.length) return { ok: false, issues };
-  return { ok: true, config: { url: new URL(url).origin, ...(command ? { command } : {}), cwd: cwd as string, path: path as string, namespace } };
+  return { ok: true, config: { url: new URL(url).origin, ...(command ? { command } : {}), cwd: cwd as string, path: path as string, namespace, ...build } };
 }
 
 export async function loadWebPreviewConfig(root: string): Promise<WebConfigResult> {
@@ -168,6 +181,7 @@ export interface WebPreviewState {
   root: string; upstream: string; site?: string; port: number; path: string; expiresAt: number;
   /** True when this preview started the dev server and so owns stopping it. */
   spawned: boolean; command?: string[]; cwd: string; project: string;
+  build?: WebPreviewConfig["build"];
 }
 
 interface WebContext { root: string; config: WebPreviewConfig; key: string; cacheRoot: string; stateDir: string; stateFile: string; label: string; target: string; run: Run; log: (l: string) => void }
@@ -459,6 +473,7 @@ async function startWeb(ctx: WebContext, options: WebPreviewOptions, project: st
     root: ctx.root, upstream, site, port, path: options.path ?? ctx.config.path, cwd: ctx.config.cwd, project,
     expiresAt: Date.now() + (options.ttlMinutes ?? DEFAULT_TTL_MINUTES) * 60000,
     spawned: !running,
+    ...(ctx.config.build ? { build: ctx.config.build } : {}),
     ...(ctx.config.command ? { command: ctx.config.command.map((a) => a.replaceAll("{port}", String(devPort))) } : {}),
   };
   active.ctx = ctx; active.state = state;

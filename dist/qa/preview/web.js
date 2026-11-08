@@ -6,6 +6,7 @@ import { createConnection } from "node:net";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { QaWebBuildIdentity } from "../comments.js";
 import { normalizeUpstream } from "../web/server.js";
 import { DEFAULT_TTL_MINUTES, defaultRun, launchPlist, requireFreePort, tunnelCommand, withPreviewCancellation, } from "./ios.js";
 const record = (v) => v !== null && typeof v === "object" && !Array.isArray(v) ? v : null;
@@ -17,6 +18,14 @@ function webCommand(raw, issues) {
         return undefined;
     }
     return raw;
+}
+function webBuild(raw, issues) {
+    const parsed = QaWebBuildIdentity.optional().safeParse(raw);
+    if (!parsed.success) {
+        issues.push("qa.web.build must name a full lowercase Git commit, a deployment ID, or both.");
+        return {};
+    }
+    return parsed.data ? { build: parsed.data } : {};
 }
 const validNamespace = (namespace) => /^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(namespace) && !namespace.includes("..");
 const insideProject = (cwd) => typeof cwd === "string" && !!cwd && !cwd.startsWith("/") && !cwd.split("/").includes("..");
@@ -43,9 +52,10 @@ export function parseWebPreviewConfig(raw, projectName = "Project") {
     const namespace = typeof web.namespace === "string" ? web.namespace : `morpheus.qa.${slug}`;
     if (!validNamespace(namespace))
         issues.push("qa.web.namespace may hold letters, digits, single dots and dashes only.");
+    const build = webBuild(web.build, issues);
     if (issues.length)
         return { ok: false, issues };
-    return { ok: true, config: { url: new URL(url).origin, ...(command ? { command } : {}), cwd: cwd, path: path, namespace } };
+    return { ok: true, config: { url: new URL(url).origin, ...(command ? { command } : {}), cwd: cwd, path: path, namespace, ...build } };
 }
 export async function loadWebPreviewConfig(root) {
     let manifest;
@@ -483,6 +493,7 @@ async function startWeb(ctx, options, project, previous, active, stop, check) {
         root: ctx.root, upstream, site, port, path: options.path ?? ctx.config.path, cwd: ctx.config.cwd, project,
         expiresAt: Date.now() + (options.ttlMinutes ?? DEFAULT_TTL_MINUTES) * 60000,
         spawned: !running,
+        ...(ctx.config.build ? { build: ctx.config.build } : {}),
         ...(ctx.config.command ? { command: ctx.config.command.map((a) => a.replaceAll("{port}", String(devPort))) } : {}),
     };
     active.ctx = ctx;
