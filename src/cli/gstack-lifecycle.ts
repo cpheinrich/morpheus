@@ -1,14 +1,13 @@
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import matter from "@11ty/gray-matter";
+import { ensureGstack, type GstackHost } from "./gstack-install.js";
 
 const STAGES = ["plan", "review", "verify", "monitor"] as const;
 const SURFACES = ["general", "web", "ios", "cli"] as const;
 type Stage = typeof STAGES[number];
 type Surface = typeof SURFACES[number];
-type Host = "codex" | "claude";
 
 type Handoff = {
   skill: string;
@@ -59,19 +58,6 @@ const USAGE =
   "morpheus skills lifecycle <plan|review|verify|monitor> <general|web|ios|cli> " +
   "[--gstack --host <codex|claude>] [--skills-dir <path>] [--json]";
 
-function skillRoots(host: Host, cwd: string, override?: string): string[] {
-  if (override) return [resolve(cwd, override)];
-  const home = homedir();
-  if (host === "claude") {
-    return [join(cwd, ".claude", "skills"), join(process.env.CLAUDE_CONFIG_DIR || join(home, ".claude"), "skills")];
-  }
-  return [
-    join(cwd, ".agents", "skills"),
-    join(home, ".agents", "skills"),
-    join(process.env.CODEX_HOME || join(home, ".codex"), "skills"),
-  ];
-}
-
 function readIfPresent(path: string): Promise<string | undefined> {
   return readFile(path, "utf8").catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT" || error.code === "ENOTDIR") return undefined;
@@ -79,11 +65,11 @@ function readIfPresent(path: string): Promise<string | undefined> {
   });
 }
 
-async function findSkill(roots: string[], host: Host, skill: string) {
+async function findSkill(root: string, host: GstackHost, skill: string) {
   const prefixed = `gstack-${skill}`;
   const entries = host === "claude" ? [prefixed, skill] : [prefixed];
-  const candidates = roots.flatMap(root => entries.map(entry => ({ dir: join(root, entry), entry })));
-  for (const { dir, entry } of candidates) {
+  for (const entry of entries) {
+    const dir = join(root, entry);
     // Claude's installer owns flat entrypoints. The nested payload can remain after disabling one.
     if (host === "claude" && !(await readIfPresent(join(dir, ".gstack-owned")))?.trim()) continue;
     const path = join(dir, "SKILL.md");
@@ -96,13 +82,28 @@ async function findSkill(roots: string[], host: Host, skill: string) {
   return null;
 }
 
-async function resolveHandoffs(stage: Stage, surface: Surface, host: Host, cwd: string, override?: string) {
-  const routes = ROUTES[stage][surface] ?? ROUTES[stage].general ?? [];
-  const roots = skillRoots(host, cwd, override);
+async function resolveHandoffs(routes: readonly Handoff[], host: GstackHost, skills: string) {
   return Promise.all(routes.map(async (handoff) => ({
     ...handoff,
-    installed: await findSkill(roots, host, handoff.skill),
+    installed: await findSkill(skills, host, handoff.skill),
   })));
+}
+
+async function lookupGstack(stage: Stage, surface: Surface, host: GstackHost, override?: string) {
+  const candidates = ROUTES[stage][surface] ?? ROUTES[stage].general ?? [];
+  if (candidates.length === 0) return { routes: [] };
+  if (override) return { routes: await resolveHandoffs(candidates, host, override) };
+  try {
+    const { skills, ...runtime } = await ensureGstack(host);
+    return { routes: await resolveHandoffs(candidates, host, skills), runtime };
+  } catch (error) {
+    const setupError = error instanceof Error ? error.message : String(error);
+    return { routes: [], setupError };
+  }
+}
+
+function shellQuote(value: string): string {
+  return "'" + value.replaceAll("'", "'\"'\"'") + "'";
 }
 
 function readOptions(argv: string[]) {
@@ -120,7 +121,7 @@ function readOptions(argv: string[]) {
   if (positionals.length !== 2 || !STAGES.includes(stage as Stage) || !SURFACES.includes(surface as Surface)) {
     throw new Error(USAGE);
   }
-  const host: Host | undefined = values.host === "codex" || values.host === "claude" ? values.host : undefined;
+  const host: GstackHost | undefined = values.host === "codex" || values.host === "claude" ? values.host : undefined;
   if ((values.host !== undefined || values.gstack) && !host) {
     throw new Error("--host must be codex or claude when gstack routing is enabled.");
   }
@@ -133,17 +134,26 @@ export async function runGstackLifecycle(argv: string[], cwd = process.cwd()): P
     return 0;
   }
   const { values, stage, surface, host } = readOptions(argv);
-  const routes = values.gstack && host
-    ? await resolveHandoffs(stage, surface, host, cwd, values["skills-dir"])
-    : [];
-  const result = { enabled: values.gstack === true, stage, surface, routes };
+  const enabled = values.gstack === true;
+  const override = values["skills-dir"];
+  const lookup = enabled && host
+    ? await lookupGstack(stage, surface, host, override && resolve(cwd, override))
+    : { routes: [] };
+  const result = { enabled, stage, surface, ...lookup };
   if (values.json) {
     console.log(JSON.stringify(result, null, 2));
     return 0;
   }
 
   console.log(`gstack ${result.enabled ? "on" : "off"} · ${stage} · ${surface}`);
-  for (const { skill, installed, provide, returnToMorpheus } of routes) {
+  if (result.setupError) console.log(`gstack unavailable. Continue with Morpheus. ${result.setupError}`);
+  if (result.runtime) {
+    const { release, env, pathPrefix } = result.runtime;
+    const settings = Object.entries(env).map(([key, value]) => `${key}=${shellQuote(value)}`);
+    console.log(`  Managed gstack ${release}. Read the skill by path and apply these settings to each gstack shell step.`);
+    console.log(`  export ${settings.join(" ")} PATH=${shellQuote(pathPrefix)}:"$PATH"`);
+  }
+  for (const { skill, installed, provide, returnToMorpheus } of result.routes) {
     if (!installed) {
       console.log(`  ${skill}: unavailable`);
       continue;

@@ -2,12 +2,12 @@
 
 Read when an operator opts a Morpheus session into gstack or when replaying the pilot.
 
-Install a pinned gstack release for the intended host in an isolated workspace or profile using
-[gstack's host setup](https://github.com/garrytan/gstack/blob/d479c5bf1efed979297dc4498c60aef7b67aa639/README.md#other-ai-agents).
-The pilot was developed against gstack commit `d479c5bf1efed979297dc4498c60aef7b67aa639`.
-Use the existing task workflow and open with “Use gstack where relevant for this session.”
-The adapter only enables routing for invocations with `--gstack`. The session agent carries that
-choice across the task. Omitting the flag skips discovery and returns no routes.
+Open the session with “Use gstack where relevant for this session.” At the first applicable
+handoff, the agent calls the lifecycle adapter with `--gstack` and the active host. Morpheus
+fetches the pinned upstream release, verifies its commit, and runs gstack's installer in a
+private profile. The same release and host reuse the cached installation. Ordinary sessions
+omit `--gstack` and skip setup and discovery. An install failure reports the reason and leaves
+the task on its normal Morpheus path.
 
 From the project root. In the pilot worktree, replace `morpheus` with `pnpm morpheus` to use
 the branch's CLI:
@@ -22,12 +22,11 @@ morpheus skills lifecycle monitor web --gstack --host codex
 The surfaces are `general`, `web`, `ios`, and `cli`. Use `review` for author-side review
 before the independent reviewer starts. Use `monitor web` for bounded observation of a specific
 authorized web release. CI runs and TestFlight delivery stay with their existing Morpheus
-observers. Use `--skills-dir` to inspect one isolated host skills directory during a replay.
-Discovery reads named entrypoints from the project and host skills directories. For Claude it
-uses top-level entries marked by gstack's installer, so a disabled skill's nested payload does
-not appear as installed. Manually copied and legacy Claude entries without the installer marker
-are outside this pilot. Discovery does not prove that all referenced helpers, browser/device
-prerequisites or host permissions are available.
+observers. Use `--skills-dir` to inspect an explicitly supplied host skills directory during a replay.
+This override skips managed setup. Discovery reads named entrypoints. For Claude it uses
+top-level entries marked by gstack's installer, so a disabled skill's nested payload does
+not appear as installed. Manually copied and legacy Claude entries without the installer
+marker are outside the pilot.
 
 | Handoff | gstack playbook | Scope |
 | --- | --- | --- |
@@ -43,8 +42,13 @@ mandate, stop that part and report the gap. The native gstack iOS device flow re
 instrumented debug build and a paired device. An iOS route in this pilot uses engineering review
 and the repository's existing simulator, build and test lanes.
 
-The adapter never installs skills, starts agents, runs scheduled probes, or advances task state.
-For Codex, use the reported `gstack-*/SKILL.md` path to identify the skill in the current session.
-The declared skill name can be shorter than its install directory. For Claude Code, use the
-discovered slash command. A matching file is discovery evidence only; the agent checks the skill
-and its tool prerequisites before starting.
+In a managed run, read the returned skill by path in the current session. Apply the printed
+environment to each gstack shell step. In JSON mode, use `runtime.env` and prepend
+`runtime.pathPrefix` to PATH. This exposes the private runtime and browser to the skill. The
+agent still checks the skill's task and target prerequisites before execution.
+
+Morpheus uses [gstack v1.97.0.0](https://github.com/garrytan/gstack/releases/tag/v1.97.0.0).
+The release pin advances with a tested Morpheus change. The managed profile has gstack's
+update checks and telemetry off. To remove the install, finish any gstack work and delete
+`~/.morpheus/tools/gstack` (or `gstack` under `MORPHEUS_TOOLS_DIR`). This removes the runtime,
+profiles, and browser cache together. A later opt-in installs it again.

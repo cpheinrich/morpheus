@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await rm(root, { recursive: true, force: true });
 });
 
@@ -108,5 +109,79 @@ describe("gstack lifecycle routing through the CLI", () => {
     );
     await expect(lookup("review", "web", "--gstak")).rejects.toThrow("Unknown option '--gstak'");
     await expect(lookup("review", "web", "--gstack")).rejects.toThrow("--host must be codex or claude");
+  });
+});
+
+describe("managed gstack through the CLI", () => {
+  async function fakeInstaller() {
+    const bin = join(root, "bin");
+    await mkdir(bin);
+    await writeFile(join(bin, "git"), `#!/bin/sh
+printf 'git %s\\n' "$1" >> "$HOME/../../../../commands"
+if [ "$1" = "-C" ]; then
+  if [ -f "$HOME/../../../../bad-pin" ]; then echo moved-tag; else echo e75a69c9e15164d090e080fa001dc515495ec350; fi
+else
+  mkdir -p "$GSTACK_ROOT/bin"
+  cat > "$GSTACK_ROOT/bin/gstack-config" <<'CONFIG'
+#!/bin/sh
+printf 'config %s\\n' "$*" >> "$HOME/../../../../commands"
+CONFIG
+  chmod +x "$GSTACK_ROOT/bin/gstack-config"
+fi
+`, { mode: 0o700 });
+    await writeFile(join(bin, "npm"), `#!/bin/sh
+printf 'npm\\n' >> "$HOME/../../../../commands"
+`, { mode: 0o700 });
+    await writeFile(join(bin, "bash"), `#!/bin/sh
+printf 'setup %s\\n' "$*" >> "$HOME/../../../../commands"
+mkdir -p "$CODEX_HOME/skills/gstack-review"
+printf '%s\\n' --- 'name: review' --- > "$CODEX_HOME/skills/gstack-review/SKILL.md"
+`, { mode: 0o700 });
+
+    const cache = join(root, "tools");
+    vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
+    vi.stubEnv("MORPHEUS_TOOLS_DIR", cache);
+    return { cache, invocations: join(cache, "commands"), badPin: join(cache, "bad-pin") };
+  }
+
+  async function managed(...args: string[]) {
+    expect(await run(["skills", "lifecycle", ...args, "--json"])).toBe(0);
+    return JSON.parse(log.mock.lastCall![0]);
+  }
+
+  it("keeps default and unmatched requests cold, then installs and reuses one pinned runtime", async () => {
+    const { cache, invocations } = await fakeInstaller();
+    expect(await managed("review", "web")).toEqual({ enabled: false, stage: "review", surface: "web", routes: [] });
+    expect(await managed("monitor", "ios", "--gstack", "--host", "codex")).toEqual({
+      enabled: true, stage: "monitor", surface: "ios", routes: [],
+    });
+    await expect(readdir(cache)).rejects.toMatchObject({ code: "ENOENT" });
+
+    const args = ["review", "general", "--gstack", "--host", "codex"];
+    const first = await managed(...args);
+    expect(first.runtime.release).toBe("v1.97.0.0");
+    expect(first.routes[0].installed.name).toBe("review");
+    expect(first.routes[0].installed.path).toBe(join(first.runtime.env.CODEX_HOME, "skills", "gstack-review", "SKILL.md"));
+    expect(await managed(...args)).toEqual(first);
+    expect(await readFile(invocations, "utf8")).toBe(
+      "git clone\ngit -C\nnpm\nsetup ./setup --host codex --prefix --no-team --no-harness-auto " +
+      "--no-plan-tune-hooks --no-timeline-stop-hook\nconfig set update_check false\nconfig set telemetry off\n",
+    );
+  });
+
+  it("rejects a moved release tag before setup and can retry without a cached partial install", async () => {
+    const { cache, badPin, invocations } = await fakeInstaller();
+    await mkdir(cache);
+    await writeFile(badPin, "");
+    const args = ["review", "general", "--gstack", "--host", "codex"];
+    const failed = await managed(...args);
+    expect(failed).toEqual({
+      enabled: true, stage: "review", surface: "general", routes: [],
+      setupError: "gstack v1.97.0.0 did not resolve to the pinned commit.",
+    });
+    expect(await readFile(invocations, "utf8")).toBe("git clone\ngit -C\n");
+    expect(await readdir(join(cache, "gstack", "v1.97.0.0", "codex"))).toEqual([]);
+    await rm(badPin);
+    expect((await managed(...args)).routes[0].installed.name).toBe("review");
   });
 });

@@ -613,10 +613,10 @@ Instructions get ignored eventually. A failing check does not.
 7. Approval merges and deploys.
 
 An opt-in [gstack pilot](docs/runbooks/gstack-lifecycle.md) maps planning, review preparation,
-verification and release observation to external, host-installed playbooks. It reads the
-installed skill entrypoints on demand and returns a handoff with the expected evidence. The
-session agent carries that evidence into the existing task, review or release record. The
-adapter has no lifecycle write path, scheduler or host hook of its own.
+verification and release observation to gstack playbooks. The first opted-in lookup installs a
+pinned release in a Morpheus-owned cache. The adapter returns the skill path and runtime settings
+along with the expected evidence. The session agent carries that evidence into the existing task,
+review or release record. The adapter has no lifecycle write path, scheduler or host hook.
 
 **`pm claim` is the only supported way to start work.** Three things are derived from the item id
 at claim time and cannot be kept in agreement by anyone remembering to: the branch name, the item's
