@@ -1006,3 +1006,30 @@ proof for that same admission, fail the interrupted task, and release its slot
 without replaying the model.
 The pilot uses an enrolled Codex model and a single Studio slot. Firestore
 coordinates placement, and Sub2API retains account routing behind its gateway.
+
+### Opt in from the normal Codex Factory tools
+
+For a repository already enrolled on the controller, use `factory_inspect` and
+`factory_delegate` with `placement: "fleet"` and the absolute `cwd` of the
+clean, claimed linked checkout. Publish its commit first. Supply the same
+`messageId` to retry a submission with an uncertain response. The returned
+`runId` works with `factory_status`, `factory_wait`, `factory_answer`, and
+`factory_stop` from the same Codex root. Download declared artifacts with
+`factory_remote` using the returned task ID. Omit placement to use the
+existing local route. The initial fleet route supports one checkout and the
+enrolled Codex worker configuration.
+
+To admit new commits without changing the service for each ticket, enroll the
+project with `revision: "git"` and configure its supervisor `execution.sourceMirror`
+as the absolute path of a bare Git repository with the enrolled upstream as
+`origin`. Provision read-only upstream access for the supervisor. Give the
+execution account read-only access to the bare repo and keep upstream credentials
+in the supervisor's private directory. The executor's worker config `cwd` names
+an execution-account-owned directory outside Git. Each attempt fetches its exact
+commit and creates its own child checkout there. A clarification keeps that same
+checkout. The runner records preparation before it can start a model, so a
+restart during checkout can settle the attempt without a guardian receipt. Operators can retire old checkouts after verifying their attempts are
+terminal. An explicit SHA enrollment continues to use the fixed pilot checkout.
+
+The controller applies the verified patch to its claimed worktree and owns the
+implementation ticket through independent review, CI, and merge.

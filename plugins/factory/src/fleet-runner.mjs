@@ -4,7 +4,7 @@ import { open, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute } from "node:path";
 
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
-const states = ["claiming", "running", "waiting"];
+const states = ["claiming", "preparing", "running", "waiting"];
 const failed = "TASK_STATE_FAILED";
 const canceled = "TASK_STATE_CANCELED";
 const isId = (value) => typeof value === "string" && uuid.test(value);
@@ -16,7 +16,7 @@ function identity(record) {
 function validJournal(record) {
   return record?.version === 1 && states.includes(record.phase) &&
     isId(record.taskId) && isId(record.attemptId) &&
-    (record.phase === "claiming" || isId(record.admissionId)) &&
+    (["claiming", "preparing"].includes(record.phase) || isId(record.admissionId)) &&
     (record.phase !== "waiting" || isId(record.questionId));
 }
 
@@ -83,7 +83,7 @@ function resultFor(output) {
 
 // One supervised process owns this journal and slot. RPC deadlines and process
 // termination are the caller's responsibility. The runner never replays a spawn.
-export function createFleetRunner({ call, execute, recover = async () => false, journalPath, capacity = () => 1 }) {
+export function createFleetRunner({ call, execute, prepare, recover = async () => false, journalPath, capacity = () => 1 }) {
   if (!isAbsolute(journalPath)) throw new Error("Factory runner journal path must be absolute.");
   let busy = false;
   let stopping = false;
@@ -121,6 +121,27 @@ export function createFleetRunner({ call, execute, recover = async () => false, 
       .then((output) => { run.output = output; }, () => {})
       .finally(() => { run.done = true; });
     return "running";
+  }
+
+  async function prepareSource(record, task) {
+    const next = { ...record, phase: "preparing" };
+    await writeJournal(journalPath, next);
+    const run = { controller: new AbortController(), done: false, output: false, stopReason: null };
+    active = run;
+    Promise.resolve()
+      .then(() => prepare(task, run.controller.signal))
+      .then((ready) => { run.output = ready === true; }, () => {})
+      .finally(() => { run.done = true; });
+    return "preparing";
+  }
+
+  async function drivePreparing(record, task) {
+    if (active && !active.done) return "preparing";
+    if (task.cancelRequestedAt != null)
+      return finish(record, canceled, { summary: "Canceled before launching the worker." }, true);
+    if (!active?.output || active.stopReason || stopping)
+      return finish(record, failed, { summary: "Studio source preparation failed or was interrupted before launch." }, true);
+    return start(record, task, task.brief.text);
   }
 
   function abort(reason) {
@@ -200,9 +221,10 @@ export function createFleetRunner({ call, execute, recover = async () => false, 
       if (renewed?.renewed !== true) {
         abort("lost-lease");
         if (active && !active.done) return "held";
-        const proven = record.phase === "waiting" || active?.output?.terminationVerified === true || await recover(record.admissionId);
+        const proven = ["waiting", "preparing"].includes(record.phase) || active?.output?.terminationVerified === true || await recover(record.admissionId);
         return finish(record, failed, { summary: "Runner lease could not be renewed." }, proven);
       }
+      if (record.phase === "preparing") return drivePreparing(record, snapshot.task);
       return record.phase === "running"
         ? await driveRunning(record, snapshot.task)
         : await driveWaiting(record, snapshot);
@@ -231,6 +253,7 @@ export function createFleetRunner({ call, execute, recover = async () => false, 
     const renewed = await call("renew", identity(record));
     if (renewed?.renewed !== true)
       return finish(record, failed, { summary: "Runner lease expired before launch." }, true);
+    if (prepare && task.source?.checkout === "git") return prepareSource(record, task);
     return start(record, task, task.brief.text);
   }
 

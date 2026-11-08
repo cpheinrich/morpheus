@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { fetchStudioRevision } from "./fleet-source.mjs";
 import { once } from "node:events";
 import { isAbsolute } from "node:path";
 import { createInterface } from "node:readline";
@@ -9,7 +10,8 @@ const noLaunch = () => ({ terminationVerified: true, result: { outcome: "failed"
 function validExecution(config) {
   return /^[a-z_][a-z0-9_-]*$/.test(config.account) && config.account !== "root" &&
     [config.node, config.script, config.workerConfig].every((path) => typeof path === "string" && isAbsolute(path)) &&
-    /^[a-zA-Z0-9_-]{1,128}$/.test(config.project);
+    /^[a-zA-Z0-9_-]{1,128}$/.test(config.project) &&
+    (config.sourceMirror === undefined || isAbsolute(config.sourceMirror));
 }
 
 async function readExecution(stdout, stop) {
@@ -74,9 +76,22 @@ async function invoke(config, input, signal) {
   }
 }
 
+function sourceBinding(config, task) {
+  if (task.source.project !== config.project || !config.sourceMirror) throw new Error("Source is not enrolled");
+  return { mirror: config.sourceMirror, attemptId: task.attempt.id };
+}
+
 export function createStudioExecutor(config, call, checkQuota) {
   if (!validExecution(config)) throw new Error("Invalid Studio execution configuration");
   return {
+    async prepare(task, signal) {
+      if (signal.aborted) return false;
+      const checkout = sourceBinding(config, task);
+      await fetchStudioRevision(checkout.mirror, task.source.revision);
+      if (signal.aborted) return false;
+      const output = await invoke(config, { op: "prepare", source: task.source, checkout }, signal);
+      return output?.outcome?.prepared === true;
+    },
     async execute({ task, admissionId, resume, prompt, signal }) {
       if (signal.aborted) return noLaunch();
       try {
@@ -89,6 +104,7 @@ export function createStudioExecutor(config, call, checkQuota) {
       const output = await invoke(config, {
         task: { source: task.source, selection: task.selection }, admissionId, resume, prompt,
         gatewayBaseUrl: config.gatewayBaseUrl,
+        checkout: task.source.checkout === "git" ? sourceBinding(config, task) : undefined,
       }, signal);
       if (output?.outcome?.terminationVerified !== true) return { terminationVerified: false };
       return publish(call, output, task, signal);

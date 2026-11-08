@@ -66,6 +66,7 @@ import {
 } from "./dispatch.mjs";
 import {
   checkouts,
+  checkoutInfo,
   claimCheckouts,
   extraRoots,
   legacyMap,
@@ -1376,7 +1377,7 @@ export class Manager {
     if (rootKind === "claude") return claudeTaskId(rootId);
     throw new Error("Unknown Factory root kind.");
   }
-  async factoryRemoteAuthorize({ rootId, projectPath }) {
+  async factoryRemoteAuthorize({ rootId, projectPath, checkoutPath }) {
     if (!isAbsolute(projectPath ?? "")) throw new Error("Remote Factory project is not enrolled locally.");
     const snapshot = await this.snapshot(rootId);
     if (permissionMode(snapshot) !== "bypassPermissions")
@@ -1385,6 +1386,13 @@ export class Manager {
     const root = await projectIdentity(snapshot.cwd);
     const task = await taskRead(rootId);
     await this.assertStillEnabled({ ...task, id: rootId, project: root.project }, { map: { [target.project]: true } });
+    if (checkoutPath !== undefined) {
+      if (!isAbsolute(checkoutPath)) throw new Error("Fleet checkout must be absolute.");
+      const checkout = await checkoutInfo(checkoutPath);
+      if (!checkout.linked || checkout.top !== checkout.cwd || checkout.project !== target.project)
+        throw new Error("Fleet checkout must be a linked checkout of the enrolled project.");
+      await claimCheckouts(rootId, [{ path: checkout.top }], { check: true });
+    }
     return { authorized: true };
   }
   async factoryInspect(args) {

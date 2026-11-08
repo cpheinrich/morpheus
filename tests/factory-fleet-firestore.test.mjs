@@ -144,15 +144,15 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
   const revision = "1".repeat(40);
   const config = {
     users: {
-      pro: { role: "controller", projects: ["pilot"] },
+      pro: { role: "controller", projects: ["pilot", "git-source"] },
       stranger: { role: "controller", projects: ["pilot"] },
       studio: { role: "worker", hostId: "mac-studio", slotId: "studio" },
       other: { role: "worker", hostId: "other-mac", slotId: "other" },
     },
-    projects: { pilot: {
-      workspaceKey: "pilot-workspace", eligibleSlots: ["studio"], revision,
+    projects: Object.fromEntries([["pilot", revision], ["git-source", "git"]].map(([project, policy]) => [project, {
+      workspaceKey: `${project}-workspace`, eligibleSlots: ["studio"], revision: policy,
       selection: { provider: "codex", gateway: "fixture-gateway", model: "gpt-fixture" },
-    } },
+    }])),
   };
   const server = createServer(createFleetApi({
     db, config,
@@ -233,4 +233,10 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
   assert.deepEqual(await call("studio", "finish", finish), { settled: true });
   await call("stranger", "download", { ...scope, name: file.name }, 404);
   assert.deepEqual(await call("pro", "download", { ...scope, name: file.name }), { artifact, bytes: file.bytes });
+  const gitBrief = { ...input, project: "git-source", revision: "2".repeat(40), messageId: "git-brief" };
+  await call("stranger", "submit", gitBrief, 403);
+  await call("pro", "submit", { ...gitBrief, revision: "main" }, 400);
+  const enrolled = await call("pro", "submit", gitBrief);
+  assert.deepEqual(enrolled.task.source, { project: "git-source", revision: gitBrief.revision, checkout: "git" });
+  assert.equal((await call("pro", "submit", gitBrief)).task.id, enrolled.task.id);
 });

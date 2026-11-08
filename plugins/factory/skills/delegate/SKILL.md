@@ -86,3 +86,10 @@ The canonical reference is the plugin's [`README.md`](../../README.md) (installe
 the multi-repository worked example, installation and updates, gateways, cleanup, memory
 selection and failure recovery. Keep this integration outside project scaffolding: another
 Morpheus contributor must never acquire it merely by cloning a repo.
+
+For an explicitly requested, enrolled Codex fleet run, pass `placement: "fleet"`
+and the absolute path of the clean, published linked checkout to both inspect
+and delegate. Supervise the returned run ID with the normal Factory tools and
+download its declared artifacts via `factory_remote`. The controller owns
+implementation delivery through PR, review, CI, and merge. See the README's
+authenticated Studio pilot section for the one-repository enrollment.
