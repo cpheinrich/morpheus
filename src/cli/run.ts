@@ -4,6 +4,7 @@ import { parseArgs } from "./args.js";
 import { dispatch } from "./dispatch.js";
 import { cd } from "../cd/cli.js";
 import { runMeetingIntake } from "../meeting-intake/cli.js";
+import { runGstackLifecycle } from "./gstack-lifecycle.js";
 import { runScheduler } from "../scheduler/cli.js";
 
 /** Importable invocation seam; only the executable owns process exit. */
@@ -12,6 +13,7 @@ export async function run(argv: string[]): Promise<number> {
     throw new Error("Reviewed source authority is only valid for cd budget reserve");
   }
   // Preserve all child arguments, including --help and flags owned by the child.
+  if (argv[0] === "skills" && argv[1] === "lifecycle") return runGstackLifecycle(argv.slice(2));
   if (argv[0] === "credentials") return credentials(argv.slice(1));
   if (argv[0] === "cd") return cd(argv.slice(1));
   if (argv[0] === "meeting-intake") return runMeetingIntake(argv.slice(1));

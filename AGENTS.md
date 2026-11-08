@@ -134,6 +134,11 @@ voice and browser chat enter the same lifecycle: create or link the roadmap item
 on its branch, test it, open a PR and merge it. A trusted author can authorize the work; the
 channel cannot waive the records or review path. Never edit or release directly from a transcript.
 
+**Opt-in gstack pilot.** When the person asks to use gstack for this session, consult
+[the lifecycle pilot guide](docs/runbooks/gstack-lifecycle.md) and ask the adapter at applicable
+handoffs. Prefer its eligible gstack workflows in this session. Keep the task's authority,
+Morpheus claim, independent review, CI and acceptance as the delivery record.
+
 **Register every reusable skill once.** Classify canonical `.agents/skills/` and `.claude/skills/`
 directories in `src/project-skills.ts` as project-facing or Morpheus-only. It drives scaffold,
 discovery and sync; descriptions come from rendered frontmatter. No second catalog. Tests check
