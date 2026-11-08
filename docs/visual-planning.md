@@ -5,6 +5,11 @@ workflows/pipelines, async handoffs, state transitions, ownership or substantial
 Skip trivial self-contained edits. The maintained procedure is the `visual-design` skill, printed
 by `morpheus skills guide visual-design`. This adds no approval pause or merge gate.
 
+Start flowcharts top to bottom and inspect the render at the width people will actually read it.
+Short labels, nearby branches and a clear main path help readers follow the relationships. Use a
+compact row when the relationship calls for it, such as participants in a short sequence. If a
+diagram needs zoom or sideways scrolling, simplify or split it into focused views.
+
 ## Distribution and refinement
 
 Edit `.agents/skills/visual-design/SKILL.md`, then run
@@ -13,19 +18,16 @@ module. Distribution tests compare all three byte for byte. `src/project-skills.
 only registry. Descriptions in scaffold pointers come from the canonical frontmatter.
 
 ```mermaid
-flowchart LR
-  Canonical[Canonical agents skill] --> Sync[Skill sync script]
+flowchart TB
+  Canonical[Canonical skill] --> Sync[Skill sync script]
   Sync --> Mirror[Claude mirror]
   Sync --> CLI[Installed CLI guide]
-  Registry[Project skill registry] --> Init[New-project pointers]
-  Registry --> Existing[Missing-entrypoint sync]
-  Guidance[Early-planning instructions] --> Scaffold[Scaffold AGENTS.md]
-  Guidance --> Doctor[Doctor advisory for older projects]
 ```
 
-This view describes the distribution implemented by this rollout. Skill sync adds missing
-entrypoints; it does not rewrite existing instructions or existing skills. A CLI update refreshes
-the shared guide, while consumer instruction adoption remains a reviewed project change.
+The registry supplies pointers for new projects and for missing entrypoints in existing projects.
+Scaffold instructions carry the early planning trigger, and Doctor flags older instructions that
+lack it. Skill sync preserves existing instructions and skills. A CLI update refreshes the shared
+guide for projects that use the pointers; instruction adoption remains a reviewed project change.
 
 ## Existing-project rollout
 

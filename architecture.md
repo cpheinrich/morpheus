@@ -536,8 +536,9 @@ needed.
 - **`visual-design`** supports early planning when relationships clarify architecture,
   workflows/pipelines, async handoffs, state transitions, ownership or substantial alternatives.
   Before implementation, agents sketch and show useful relationships, distinguish current from
-  proposed, label assumptions and update retained diagrams after material design changes. Trivial
-  self-contained edits need none. The canonical `.agents/skills/visual-design/SKILL.md` is mirrored
+  proposed, label assumptions and update retained diagrams after material design changes. Start
+  flowcharts top to bottom and inspect the render at reading width; use a horizontal layout when
+  it makes a compact relationship clearer. Trivial self-contained edits need none. The canonical `.agents/skills/visual-design/SKILL.md` is mirrored
   for Claude and printed by `morpheus skills guide visual-design`; both providers in every project
   kind receive pointers through the existing registry. New scaffold instructions include the early
   trigger; `doctor` warns when older instructions lack it. Existing projects adopt that guidance
