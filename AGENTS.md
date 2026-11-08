@@ -129,10 +129,11 @@ there. Do not run concurrent authors on one task worktree. **Name slugs like bra
 `morpheus pm cleanup <ID>` from the primary checkout. Ids, worktrees, resume and cleanup:
 [`pm-workflow.md`](docs/runbooks/pm-workflow.md).
 
-**A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
-voice and browser chat enter the same lifecycle: create or link the roadmap item, claim it, work
-on its branch, test it, open a PR and merge it. A trusted author can authorize the work; the
-channel cannot waive the records or review path. Never edit or release directly from a transcript.
+**Conversation is intake.** Authorized requests from any channel follow the same lifecycle:
+create or link the roadmap item, claim it, work on its branch, test, review and merge a PR.
+Never edit or release directly from a transcript.
+
+When asked to use gstack in this session, follow the [gstack lifecycle guide](docs/runbooks/gstack-lifecycle.md).
 
 **Register every reusable skill once.** Classify canonical `.agents/skills/` and `.claude/skills/`
 directories in `src/project-skills.ts` as project-facing or Morpheus-only. It drives scaffold,
