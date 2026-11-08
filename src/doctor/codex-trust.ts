@@ -439,6 +439,7 @@ async function trustLookup(hookState: Map<string, HookState>, hooks: CodexHook[]
 export function describeHook(hook: CodexHook): string {
   const command = hook.command ?? "";
   const position = hook.group === 0 && hook.handler === 0 ? "" : ` #${hook.group}.${hook.handler}`;
+  if (command.includes("context task-prompt")) return `${hook.event}${position} task context hook (context task-prompt)`;
   const what = command.includes("context record-read")
     ? "read hook (context record-read)"
     : command.includes(".morpheus/poll-guard.sh")
