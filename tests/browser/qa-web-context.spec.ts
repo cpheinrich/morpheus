@@ -40,7 +40,6 @@ test("web context: saving a pin clears its composer and keeps the saved comment 
     await expect(page.locator("morpheus-qa textarea")).toBeDisabled();
     await expect(page.locator("morpheus-qa select")).toHaveValue("element");
     await expect(page.locator("morpheus-qa select")).toBeDisabled();
-    await expect(page.locator("morpheus-qa .placement")).toBeHidden();
     await expect(page.locator("morpheus-qa .placement-status")).toBeHidden();
     await expect(page.locator("morpheus-qa .pin.focused")).toHaveCount(0);
     await expect(page.locator("morpheus-qa ol li.focused")).toHaveCount(0);
@@ -49,7 +48,8 @@ test("web context: saving a pin clears its composer and keeps the saved comment 
     await page.locator("morpheus-qa ol li").click();
     await expect(page.locator("morpheus-qa textarea")).toHaveValue("Saved background comment");
     await expect(page.locator("morpheus-qa select")).toHaveValue("view");
-    await expect(page.locator("morpheus-qa .placement")).toBeVisible();
+    await expect(page.locator("morpheus-qa .composer img")).toHaveCount(0);
+    expect((await s.pins())[0]?.frame?.dataUrl).toMatch(/^data:image\/jpeg;/);
   } finally { await s.cleanup(); }
 });
 
