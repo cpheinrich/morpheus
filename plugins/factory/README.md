@@ -564,6 +564,20 @@ launches that worker; the run's
 
 ## Sessions, output and supervision
 
+Factory exposes an additive `task` view on desktop delegation, status, wait and answer results.
+Its ID identifies the delegated work, while the legacy run ID still addresses a concrete local
+invocation. The first invocation's ID serves as the task ID. A follow-up to an open question keeps
+that task ID even if the provider starts another invocation. A new brief after a settled result
+gets a new task ID even when the provider reuses its conversation.
+
+The view uses the adopted task state names from [A2A 1.0.1](https://a2a-protocol.org/v1.0.1/specification/).
+In particular, a question is `TASK_STATE_INPUT_REQUIRED` even when the provider turn has exited.
+Unverified cleanup or an unclassified interruption has `TASK_STATE_UNSPECIFIED`. This is a
+local lifecycle projection with existing MCP tool inputs and run history. It does not expose an A2A
+transport binding.
+
+The cross-host pilot uses the [Factory task contract](src/host/docs/fleet-task-contract.md).
+
 Each Codex task remains a normal saved Codex conversation. The plugin associates its
 working directory with a saved Claude session id and resumes it on subsequent handoffs.
 It does not create a native Claude model choice inside Codex or import Claude messages as
@@ -688,7 +702,7 @@ from a source checkout to the installed copy, with rollback.
 ## Development
 
 ```sh
-pnpm install --ignore-workspace --frozen-lockfile
+pnpm install --frozen-lockfile
 pnpm check
 pnpm test
 (cd src/host && pnpm install --frozen-lockfile && pnpm check && pnpm typecheck && pnpm test && pnpm build)
@@ -873,3 +887,122 @@ runs wrap that report in `result` with the correlation fields above. A completed
 turn is never proof of delivery or consumer acceptance. Authenticated gateway smoke,
 installed runtime verification and actual delivery receipts remain separate rollout
 requirements; fake-provider lifecycle tests establish none of them.
+
+## Authenticated Studio pilot
+
+The Codex-only `factory_remote` tool uses the current desktop root for ownership.
+Its explicit operations are `submit`, `get`, `wait`, `answer`, `cancel`, and
+`download`. Keep a stable message ID for each brief and each answer. `wait`
+returns the latest snapshot within 25 seconds. Download writes a new private
+file under the controller's Factory home and returns its path. The existing
+local Factory tools remain available for local delegation.
+
+```mermaid
+flowchart LR
+  Pro[Codex controller] -->|Authenticated operations| API[Factory service]
+  Studio[Studio supervisor] -->|Claims and status| API
+  API -->|Transactions and wake documents| FS[(Firestore)]
+  FS -->|Native listeners| Pro
+  FS -->|Native listeners| Studio
+  API -->|Private generations| GCS[(Cloud Storage)]
+  Studio -->|Fixed local command| Worker[Studio gateway worker]
+  Worker -->|Private gateway connection| Sub2API[Sub2API]
+  Sub2API -->|Provider requests| Provider[Subscription accounts]
+```
+
+### Provision the service
+
+1. Create a dedicated Native Firestore database, a private uniform-access
+   Storage bucket with public access prevention, an Artifact Registry repository,
+   and a Cloud Run runtime service account. Enable Cloud Run and Artifact Registry.
+   Give the runtime Firestore User scoped to that database, Firebase Auth Viewer
+   for token revocation checks, and Storage Object Creator and Object Viewer on
+   the bucket. Give the deployer Cloud Run Developer, Service Usage Consumer,
+   Artifact Registry Writer on the repository, and Service Account User on that
+   runtime identity.
+2. Apply [firestore.fleet.rules](firestore.fleet.rules) to the named database.
+   The client can read only its own signal document. Firebase Auth must have the
+   email/password provider enabled and two separate operator-provisioned users
+   for the Pro and Studio supervisor. Record their UIDs in enrollment and place
+   their distinct passwords in owner-only files on the corresponding machines.
+3. Build `docker build --platform linux/amd64 -f Dockerfile.fleet -t "$IMAGE" .`
+   from this directory and push the pinned image. Set `FACTORY_ENROLLMENT` as a
+   Cloud Run environment variable using a private local env file. It contains
+   IDs and allowed projects, with this shape:
+
+   ```json
+   {
+     "projectId": "pilot-project",
+     "databaseId": "factory-pilot",
+     "bucket": "pilot-private-factory-artifacts",
+     "users": {
+       "controllerUID": { "role": "controller", "projects": ["fixture"] },
+       "studioUID": { "role": "worker", "hostId": "studio", "slotId": "studio" }
+     },
+     "projects": {
+       "fixture": {
+         "revision": "0123456789abcdef0123456789abcdef01234567",
+         "workspaceKey": "studio-fixture",
+         "eligibleSlots": ["studio"],
+         "selection": { "provider": "codex", "gateway": "studio-codex", "model": "enrolled-model" }
+       }
+     }
+   }
+   ```
+
+4. Deploy `factory-pilot` with the runtime service account, an explicit region
+   and a pinned image digest. Have an admin disable the Cloud Run Invoker IAM
+   check for this service so the Pro and Studio can send Firebase ID tokens.
+   The application checks each token and enrollment before reading the request
+   body or touching task data. Before enrollment, verify that a POST to
+   `/v1` without a token returns the application's JSON 401.
+
+### Enroll the Macs
+
+- On the Pro, place `fleet-controller.json` in the owner-only Factory home.
+  It contains `endpoint` (Cloud Run HTTPS URL), `databaseId`, `firebase`
+  (the Firebase web app's public SDK configuration), and the separate
+  controller `email` and `password`. Set `projects` to a map of enrolled
+  project IDs to absolute local repository paths. Use mode `0600`. Install
+  and enable the updated plugin for `factory_remote`. Submissions and answers
+  require a currently authorized root and an enabled target repository.
+- On Studio, use separate unprivileged supervisor and execution accounts.
+  Install Node, this plugin with `pnpm install --frozen-lockfile`, and all
+  executable files on the supervisor-to-worker command path in a location
+  neither account can modify. Enroll a detached pilot checkout on the execution
+  account at the exact approved SHA. Add `.factory-artifacts-*/` to that
+  checkout's local Git exclude list. The executor refuses a dirty initial
+  checkout and requires `workspace-write`. Configure Codex and Python 3 on
+  its system path. Use the existing gateway worker config format and a
+  Studio-only Codex gateway credential reference in the execution account.
+- The Studio supervisor config uses the same connection fields as the Pro,
+  with Studio credentials, and a `quota` object with the enrolled gateway
+  `name`, `baseUrl`, Factory `threshold`, and a private `keyRef` to a
+  Sub2API key scoped to `accounts.read`, `accounts.identity.read`, and `openai.quota.read` for the
+  enrolled Codex OAuth group. The supervisor checks fresh quota before each
+  invocation. The execution account receives only the separate inference
+  key. On macOS, the placement signal counts free and inactive pages and
+  reserves 4 GiB before advertising capacity. Set an absolute `journalPath` in the supervisor's
+  mode `0700` directory and an `execution` object. The latter provides
+  `account` (execution username), `node`, `script` (absolute
+  `scripts/fleet-executor.mjs` path), `workerConfig` (absolute owner-only
+  gateway config path), and `project` (the enrolled project ID).
+  Grant the supervisor passwordless sudo as the execution account for
+  exactly `NODE SCRIPT WORKER_CONFIG PROJECT`, with environment setting
+  disabled. Preserve the execution account's HOME and ensure sudo's PATH can
+  find Codex and Python. Run one launchd job under the supervisor account with
+  `NODE scripts/fleet-studio.mjs STUDIO_CONFIG`. Give neither worker account
+  the Pro credentials or Cloud Storage IAM.
+- Before starting launchd, check the gateway's `/health` from the Studio
+  itself. For a smoke test, ask the worker to request a color, then generate
+  a small text or PDF artifact from the answer. Confirm the controller
+  downloads and opens the file, the exact Studio attempt is recorded, and
+  the slot is released after verified cleanup.
+
+If a supervisor restarts after recording a launch and before seeing cleanup,
+the attempt remains held. Reconcile the exact admission with the gateway
+worker's `--status` or `--reconcile`. The runner will observe the verified
+proof for that same admission, fail the interrupted task, and release its slot
+without replaying the model.
+The pilot uses an enrolled Codex model and a single Studio slot. Firestore
+coordinates placement, and Sub2API retains account routing behind its gateway.

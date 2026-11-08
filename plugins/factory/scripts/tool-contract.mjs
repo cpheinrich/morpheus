@@ -86,6 +86,7 @@ export const factorySpecs = Object.freeze({
 export const factoryMcpToolNames = names("factory", factoryMethods);
 
 export const codexMcpToolNames = Object.freeze([
+  "factory_remote",
   ...factoryMcpToolNames,
   ...names("claude", claudeMethods),
 ]);

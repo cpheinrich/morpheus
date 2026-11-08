@@ -5,6 +5,7 @@ import { call } from "../src/client.mjs";
 import { delegatedMarker } from "../src/config.mjs";
 import { codexRootId } from "./codex-root.mjs";
 import { claudeMethods, factoryMethods, factorySpecs } from "./tool-contract.mjs";
+import { registerFleetTool } from "./fleet-mcp.mjs";
 const server = new McpServer({ name: "factory", version: "0.1.0" });
 const factoryArgs = (args, extra) => ({ ...args, rootKind: "codex", rootId: codexRootId(extra) });
 const task = {
@@ -114,4 +115,5 @@ for (const method of claudeMethods) {
     },
   );
 }
+registerFleetTool(server);
 await server.connect(new StdioServerTransport());

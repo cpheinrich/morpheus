@@ -296,20 +296,20 @@ const GATEWAY_TIMEOUT_MS = 15000;
 // gives its pool a score; sub2api chooses which account serves each request.
 export async function readGatewayQuota(
   gateways,
-  { adminEmail, adminPassword, fetchImpl = globalThis.fetch, now } = {},
+  { adminEmail, adminPassword, adminKey, fetchImpl = globalThis.fetch, now } = {},
 ) {
   if (!gateways.length) return [];
-  if (!adminEmail || !adminPassword)
+  if (!adminKey && (!adminEmail || !adminPassword))
     return gateways.map((g) => ({ ...g, usedPercent: null }));
   const baseUrl = gateways[0].baseUrl.replace(/\/+$/, "");
-  const inventory = gatewayInventory(baseUrl, adminEmail, adminPassword, fetchImpl);
+  const inventory = gatewayInventory(baseUrl, { adminEmail, adminPassword, adminKey, fetchImpl });
   const pools = new Map();
   return Promise.all(gateways.map(async (gateway) => {
     if (gateway.baseUrl.replace(/\/+$/, "") !== baseUrl)
       return { ...gateway, usedPercent: null, error: "Gateway origin differs from the admin origin" };
     const { provider } = gateway;
     if (!pools.has(provider))
-      pools.set(provider, inventory.then((result) => poolUsage(result, provider, now)));
+      pools.set(provider, inventory.then((result) => poolUsage(result, provider, now, Boolean(adminKey))));
     try {
       return { ...gateway, ...await pools.get(provider) };
     } catch (error) {
@@ -318,21 +318,27 @@ export async function readGatewayQuota(
   }));
 }
 
-async function gatewayInventory(baseUrl, email, password, fetchImpl) {
+async function quotaHeaders(baseUrl, { adminEmail, adminPassword, adminKey, fetchImpl }) {
+  if (adminKey) return { "x-api-key": adminKey };
   const login = await fetchImpl(`${baseUrl}/api/v1/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email: adminEmail, password: adminPassword }),
+    redirect: "error",
     signal: AbortSignal.timeout(GATEWAY_TIMEOUT_MS),
   });
   if (!login.ok) throw new Error(`login HTTP ${login.status}`);
   const token = (await login.json())?.data?.access_token;
   if (!token) throw new Error("no access token");
-  const get = (path) => fetchImpl(`${baseUrl}/api/v1/admin${path}`, {
-    headers: { authorization: `Bearer ${token}` },
+  return { authorization: `Bearer ${token}` };
+}
+
+async function gatewayInventory(baseUrl, options) {
+  const headers = await quotaHeaders(baseUrl, options);
+  const get = (path) => options.fetchImpl(`${baseUrl}/api/v1/admin${path}`, {
+    headers, redirect: "error",
     signal: AbortSignal.timeout(GATEWAY_TIMEOUT_MS),
   });
-
   const items = [];
   for (let page = 1, pages = 1; page <= pages; page++) {
     const response = await get(`/accounts?page=${page}`);
@@ -356,12 +362,13 @@ function eligibleGatewayAccount(account, platform, now) {
       .some((until) => until && Date.parse(until) > now);
 }
 
-async function poolUsage({ get, items }, provider, now) {
+async function poolUsage({ get, items }, provider, now, scoped) {
   const platform = provider === "claude" ? "anthropic" : "openai";
   const checkedAt = now ?? Date.now();
-  const accounts = items.filter((account) => eligibleGatewayAccount(account, platform, checkedAt));
+  const accounts = items.filter((account) => eligibleGatewayAccount(account, platform, checkedAt) &&
+    (!scoped || !Number.isFinite(account.expires_at) || account.expires_at * 1000 > checkedAt));
   const readings = await Promise.allSettled(
-    accounts.map((account) => gatewayAccountUsage(get, account, provider, now)),
+    accounts.map((account) => gatewayAccountUsage(get, account, provider, now, scoped)),
   );
   let best = { usedPercent: null };
   for (const reading of readings) {
@@ -376,8 +383,25 @@ async function poolUsage({ get, items }, provider, now) {
   return best;
 }
 
-async function gatewayAccountUsage(get, account, provider, now) {
-  // Codex forced usage would spend a model request and can timestamp an old snapshot.
+async function scopedCodexUsage(get, account, now) {
+  const response = await get(`/openai/accounts/${encodeURIComponent(account.id)}/quota`);
+  if (!response.ok) throw new Error(`Codex quota HTTP ${response.status}`);
+  const rate = (await response.json())?.data?.rate_limit;
+  if (rate?.limit_reached === true || rate?.allowed === false) return { usedPercent: 100 };
+  const source = {};
+  for (const window of [rate?.primary_window, rate?.secondary_window]) {
+    const name = { 18000: "5h", 604800: "7d" }[window?.limit_window_seconds];
+    if (!name || !Number.isFinite(window.reset_at)) continue;
+    source[`codex_${name}_used_percent`] = window.used_percent;
+    source[`codex_${name}_reset_at`] = window.reset_at;
+  }
+  return accountUsage("codex", source, now ?? Date.now());
+}
+
+async function gatewayAccountUsage(get, account, provider, now, scoped) {
+  // Scoped Codex reads use the dedicated upstream quota endpoint. The legacy
+  // account usage endpoint can spend a model request and timestamp an old snapshot.
+  if (scoped && provider === "codex") return scopedCodexUsage(get, account, now);
   if (provider === "codex") return accountUsage(provider, account.extra ?? {}, now ?? Date.now());
   // Claude's stored 5h counter has no reset. Read usage through sub2api's upstream cache.
   const id = encodeURIComponent(account.id);

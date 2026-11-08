@@ -46,6 +46,7 @@ describe("Morpheus CI inputs", () => {
     ["src/qa/web/server.ts", { ...node, browser: true }],
     ["dist/qa/store.js", { ...node, browser: true }], ["tests/browser/fixture.html", { ...node, browser: true }],
     ["plugins/factory/src/service.mjs", { ...node, bridge: true }],
+    ["tests/factory-fleet-firestore.test.mjs", { ...node, bridge: true }],
     ["plugins/factory/src/host/worker/host_config.py", { ...node, bridge: true }],
     ["plugins/factory/src/host/docs/host-updates.md", { ...node, bridge: true }],
     [".github/actions/ios-testflight-upload/artifact-stage/stage.py", { ...node, browser: true, artifacts: true }],

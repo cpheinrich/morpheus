@@ -136,15 +136,20 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"done","str
   assert.equal(started.permissions, "acceptEdits");
   const asking = await settle(m, started.id, (r) => r.question || r.terminal);
   assert.equal(asking.question?.id, "q1");
-  // A Claude coordinator answers through codex.answer; tool permission would still need a user.
-  await m.dispatch("codex.answer", {
-    sessionId,
+  const pending = await m.factoryRun({ rootKind: "claude", rootId: sessionId, runId: started.id });
+  assert.equal(pending.task.id, started.task.id);
+  assert.equal(pending.task.status.state, "TASK_STATE_INPUT_REQUIRED");
+  const answered = await m.factoryAnswer({
+    rootKind: "claude",
+    rootId: sessionId,
     runId: started.id,
     questionId: "q1",
-    source: "claude",
+    source: "root",
     reason: "Reversible fixture choice",
     answers: { "Color?": "Blue" },
   });
+  assert.equal(answered.task.id, started.task.id);
+  assert.equal(answered.task.status.state, "TASK_STATE_WORKING");
   const done = await settle(m, started.id);
   assert.equal(done.state, "completed");
   const argv = (await readFile(join(root, "argv"), "utf8")).trim().split("\n");
@@ -217,6 +222,12 @@ echo '{"type":"turn.completed","usage":{}}'
   assert.deepEqual(started.selection, { model: "gpt-6.1-sol", effort: "low", speed: "standard" });
   const done = await settle(m, started.id);
   assert.equal(done.state, "completed");
+  const taskResult = await m.factoryRun({ rootKind: "codex", rootId: threadId, runId: started.id });
+  assert.deepEqual(taskResult.task, {
+    id: started.id,
+    contextId: threadId,
+    status: { state: "TASK_STATE_COMPLETED" },
+  });
   const argv = (await readFile(join(root, "argv"), "utf8")).trim().split("\n");
   const overrides = argv.filter((_, i) => argv[i - 1] === "-c");
   assert.deepEqual(overrides.filter((arg) => arg.startsWith("model_provider")), [
@@ -262,6 +273,8 @@ echo '{"type":"turn.completed","usage":{}}'
   const second = await m.factoryDelegate({
     rootKind: "codex", rootId: threadId, prompt: "Look only", model: "gpt-6.1-terra", speed: "fast",
   });
+  assert.equal(second.task.id, second.id);
+  assert.notEqual(second.task.id, started.task.id);
   assert.equal(second.permissions, "read-only");
   await settle(m, second.id);
   const resumed = (await readFile(join(root, "argv"), "utf8")).trim().split("\n");
@@ -301,6 +314,59 @@ echo '{"type":"turn.completed","usage":{}}'
     m.start({ threadId, prompt: "do not reroute" }),
     /Pinned gateway "pool" is missing/,
   );
+});
+
+test("an explicit Factory cancellation settles only after the local guardian exits", async (t) => {
+  const { repo } = await harness(t, { codex: "#!/bin/sh\nexec sleep 30\n" });
+  process.env.OPENAI_API_KEY = "sk-gateway-test";
+  await gatewayConfig("codex", "env:OPENAI_API_KEY");
+  const m = new Manager();
+  t.after(() => m.viewer.close());
+  const rootId = "0199cccc-dddd-7eee-8fff-000011112222";
+  const scope = { rootKind: "codex", rootId };
+  m.snapshot = async () => ({
+    cwd: repo, model: "gpt-6.1-sol", reasoningEffort: "medium",
+    sandbox: { type: "dangerFullAccess" }, approvalPolicy: "never",
+  });
+  const started = await m.factoryDelegate({ ...scope, prompt: "Wait" });
+  const args = { ...scope, runId: started.id };
+  assert.deepEqual(await m.factoryStop(args), { stopping: started.id });
+  assert.deepEqual(await m.factoryStop(args), { stopping: started.id });
+  await settle(m, started.id);
+  const ended = await m.factoryRun(args);
+  assert.equal(ended.state, "interrupted");
+  assert.equal(ended.task.status.state, "TASK_STATE_CANCELED");
+});
+
+test("a canceled question stays terminal when a new brief reuses the provider session", async (t) => {
+  const { repo } = await harness(t, { codex: `#!/bin/sh
+cat >/dev/null
+echo '{"type":"thread.started","thread_id":"0199bbbb-cccc-7ddd-8eee-ffff00001111"}'
+echo '{"type":"item.completed","item":{"type":"agent_message","text":"Which color?"}}'
+echo '{"type":"turn.completed","usage":{}}'
+` });
+  process.env.OPENAI_API_KEY = "sk-gateway-test";
+  await gatewayConfig("codex", "env:OPENAI_API_KEY");
+  const m = new Manager();
+  t.after(() => m.viewer.close());
+  const scope = { rootKind: "codex", rootId: "0199cccc-dddd-7eee-8fff-000011112222" };
+  m.snapshot = async () => ({
+    cwd: repo, model: "gpt-6.1-sol", reasoningEffort: "medium",
+    sandbox: { type: "dangerFullAccess" }, approvalPolicy: "never",
+  });
+  const started = await m.factoryDelegate({ ...scope, prompt: "Ask a question" });
+  const args = { ...scope, runId: started.id };
+  await settle(m, started.id);
+  assert.equal((await m.factoryRun(args)).task.status.state, "TASK_STATE_INPUT_REQUIRED");
+  assert.deepEqual(await m.factoryStop(args), { stopping: started.id });
+  assert.equal((await m.factoryRun(args)).task.status.state, "TASK_STATE_CANCELED");
+  await assert.rejects(m.factoryDelegate({
+    ...args, prompt: "Blue", replySource: "root", replyReason: "Routine clarification",
+  }), /not awaiting input/);
+  const next = await m.factoryDelegate({ ...scope, prompt: "Start again" });
+  assert.equal(next.task.id, next.id);
+  assert.notEqual(next.task.id, started.task.id);
+  await settle(m, next.id);
 });
 
 test("an explicit GPT model selects Codex on the first run when Claude has more quota", async (t) => {
