@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { fetchStudioRevision } from "./fleet-source.mjs";
+import { realpathSync, statSync } from "node:fs";
 import { once } from "node:events";
 import { isAbsolute } from "node:path";
 import { createInterface } from "node:readline";
@@ -112,6 +113,54 @@ export function createStudioExecutor(config, call, checkQuota) {
     async recover(admissionId) {
       const output = await invoke(config, { op: "recover", admissionId });
       return output?.outcome?.admissionId === admissionId && output.outcome.terminationVerified === true;
+    },
+  };
+}
+
+
+function mirrorIdentity(path) {
+  const { dev, ino } = statSync(path, { bigint: true });
+  return `${dev}:${ino}`;
+}
+
+export function createStudioExecutors(config, call, checkQuota, create = createStudioExecutor) {
+  const { additionalGitProjects = {}, ...primary } = config;
+  if (!additionalGitProjects || Object.getPrototypeOf(additionalGitProjects) !== Object.prototype)
+    throw new Error("Invalid additional Studio Git projects");
+
+  const fallback = create(primary, call, checkQuota);
+  const git = new Map();
+  const accounts = new Set([primary.account]);
+  const mirrors = new Set();
+  if (primary.sourceMirror && Object.keys(additionalGitProjects).length)
+    mirrors.add(mirrorIdentity(primary.sourceMirror));
+  for (const [project, fields] of Object.entries(additionalGitProjects)) {
+    const { account, sourceMirror, workerConfig } = fields ?? {};
+    const route = { ...primary, account, sourceMirror, workerConfig, project };
+    if (project === primary.project || typeof account !== "string" || accounts.has(account) ||
+        typeof sourceMirror !== "string" || !validExecution(route))
+      throw new Error("Invalid or duplicate additional Studio Git route");
+    const canonical = realpathSync(sourceMirror);
+    const identity = mirrorIdentity(canonical);
+    if (mirrors.has(identity)) throw new Error("Duplicate Studio Git mirror");
+    git.set(project, create({ ...route, sourceMirror: canonical }, call, checkQuota));
+    accounts.add(account);
+    mirrors.add(identity);
+  }
+  const select = ({ source } = {}) => {
+    if (source?.project === primary.project) return fallback;
+    if (source?.checkout === "git") return git.get(source.project);
+  };
+
+  return {
+    async prepare(task, signal) {
+      return select(task)?.prepare(task, signal) ?? false;
+    },
+    async execute(input) {
+      return select(input.task)?.execute(input) ?? noLaunch();
+    },
+    async recover(admissionId, task) {
+      return select(task)?.recover(admissionId) ?? false;
     },
   };
 }

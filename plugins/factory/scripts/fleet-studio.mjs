@@ -1,6 +1,6 @@
 import { studioCapacity } from "../src/fleet-capacity.mjs";
 import { connectFleet, readFleetConfig } from "../src/fleet-client.mjs";
-import { createStudioExecutor } from "../src/fleet-execution.mjs";
+import { createStudioExecutors } from "../src/fleet-execution.mjs";
 import { createFleetQuota } from "../src/fleet-quota.mjs";
 import { createFleetRunner } from "../src/fleet-runner.mjs";
 
@@ -13,7 +13,7 @@ try {
   const execution = { ...config.execution, gatewayBaseUrl: config.quota.baseUrl };
   const runner = createFleetRunner({
     call: client.call,
-    ...createStudioExecutor(execution, client.call, checkQuota),
+    ...createStudioExecutors(execution, client.call, checkQuota),
     journalPath: config.journalPath,
     capacity: studioCapacity,
   });
