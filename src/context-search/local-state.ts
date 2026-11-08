@@ -7,7 +7,7 @@ import type { SearchEngine } from "./rollout.js";
 
 const STATE = "local/context-search";
 
-export async function searchStateDirectory(root: string, child: "cache" | "traces" | "engines"): Promise<string> {
+export async function searchStateDirectory(root: string, child: "cache" | "traces" | "engines" | "startup"): Promise<string> {
   await sessionGit(root, ["check-ignore", "--quiet", "--", STATE + "/"]).catch(() => {
     throw new Error("Context search state needs an ignored local/context-search directory.");
   });
