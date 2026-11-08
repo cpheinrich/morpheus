@@ -21,6 +21,8 @@ Independent review cleared the focused test update. Its seven workflow tests pas
 
 The last independent turn cleared the one-line typecheck correction and confirmed that a missing run still fails the assertion.
 
+Main already landed its own pinned actionlint fallback in #657. The merge selects main verbatim for node-ci.yml and restores main’s associated test, removing the duplicate correction from this PR. The two TestFlight installer changes remain as independently reviewed.
+
 ```morpheus-review
 {
   "version": 2,
@@ -153,6 +155,12 @@ The last independent turn cleared the one-line typecheck correction and confirme
         "durationMs": 35164,
         "evidence": "Factory run 26ac43b6-c32d-45cd-91c5-2499feb67a86 creation 1794132928280 and terminal record mtime 1794132963444, epoch milliseconds."
       }
+    }
+  ],
+  "trunkIntegrations": [
+    {
+      "commit": "cf9663814d48983adc04b0817a227cd6115b17ae",
+      "reason": "Main already landed its own pinned actionlint fallback in #657. The merge selects main verbatim for node-ci.yml and restores main\u2019s associated test, removing the duplicate correction from this PR. The two TestFlight installer changes remain as independently reviewed."
     }
   ]
 }
