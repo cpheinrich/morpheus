@@ -71,6 +71,27 @@ test.describe("web pin diagnostics", () => {
     } finally { await s.cleanup(); }
   });
 
+  test("omits snapshots from ineligible view roots even when they are the page fallback", async ({ page }) => {
+    const s = await setup(page, diagnosticsPage);
+    try {
+      for (const [i, attribute] of ["aria-hidden", "aria-modal"].entries()) {
+        await s.frame.locator("main").evaluate((root, attr) => {
+          root.removeAttribute("aria-hidden");
+          root.removeAttribute("aria-modal");
+          root.setAttribute(attr, attr === "aria-hidden" ? "true" : "false");
+          root.setAttribute("data-qa-snapshot", '{"version":1,"state":{"tab":"work"}}');
+        }, attribute);
+        await s.site.locator("#base").click({ button: "right", position: { x: 40 + i * 40, y: 8 } });
+        const { diagnostics, view } = (await s.pins())[i]?.context;
+        expect(view.kind).toBe("page");
+        expect(diagnostics).not.toHaveProperty("snapshot");
+        await page.locator("morpheus-qa textarea").fill(`Fallback pin ${i}`);
+        await page.locator("morpheus-qa textarea").press("Enter");
+      }
+      await expect(page.locator("morpheus-qa ol li")).toHaveCount(2);
+    } finally { await s.cleanup(); }
+  });
+
   test("keeps pins usable with absent, invalid, or out-of-view metadata", async ({ page }) => {
     const s = await setup(page, diagnosticsPage);
     try {

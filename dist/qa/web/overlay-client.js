@@ -208,7 +208,7 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     var dpr = win.devicePixelRatio;
     var pixelRatio = Number.isFinite(dpr) && dpr > 0 && dpr <= 16 ? Math.max(0.01, Math.round(dpr * 100) / 100) : null;
     var diagnostics = { version: 1, build: BUILD, browser: browser, os: os, devicePixelRatio: pixelRatio, theme: themeAt(win, target) };
-    var snapshot = viewSnapshot(target, view.root);
+    var snapshot = view.kind === "page" ? undefined : viewSnapshot(target, view.root);
     if (snapshot) diagnostics.snapshot = snapshot;
     return diagnostics;
   }
