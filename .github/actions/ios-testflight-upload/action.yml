@@ -277,10 +277,12 @@ runs:
         case "$(uname -m)" in
           arm64)
             asccli_arch=arm64
+            asccli_asset_id=478751700
             asccli_sha256=7555b910823d8935d9dd5df5fe0382c0ab2741437ed26a3c5b683d13dd19530c
             ;;
           x86_64)
             asccli_arch=x86_64
+            asccli_asset_id=478751702
             asccli_sha256=c72907829723e4ff3a7b60d4c1d9be8755995d4aab9cf960aaf866b83169456c
             ;;
           *)
@@ -290,9 +292,14 @@ runs:
         esac
         asccli_asset="asc_v${ASCCLI_VERSION}_macOS_${asccli_arch}"
         asccli_path="$RUNNER_TEMP/asccli"
-        curl --fail --location --retry 3 --silent --show-error \
-          "https://github.com/tddworks/asc-cli/releases/download/v${ASCCLI_VERSION}/${asccli_asset}" \
-          --output "$asccli_path"
+        if ! curl --fail --location --retry 3 --silent --show-error \
+            "https://github.com/tddworks/asc-cli/releases/download/v${ASCCLI_VERSION}/${asccli_asset}" \
+            --output "$asccli_path"; then
+          curl --fail --location --retry 3 --silent --show-error \
+            --header 'Accept: application/octet-stream' \
+            "https://api.github.com/repos/tddworks/asc-cli/releases/assets/${asccli_asset_id}" \
+            --output "$asccli_path"
+        fi
         printf '%s  %s\n' "$asccli_sha256" "$asccli_path" | shasum -a 256 --check
         chmod 755 "$asccli_path"
         echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
