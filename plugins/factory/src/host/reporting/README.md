@@ -76,6 +76,14 @@ start/create time (unknown if missing), not a file timestamp fabricated as a lau
 Shared account and GitHub sources have exactly one registered writer host. Reporter failure
 is telemetry failure and cannot block the underlying CI/release/Factory operation.
 
+GitHub job rows may carry optional `pullRequests`, up to three distinct positive safe integers.
+The reporter projects only explicit `pull_requests` from already-read workflow runs: the base's
+`repo.full_name` must equal the enrolled repository, or `repo_url`/`repo.url` must equal its exact
+`https://api.github.com/repos/<owner>/<repo>` URL. All supplied base repository identities must
+agree. Malformed numbers, absent base identity and foreign/conflicting identities are excluded;
+deduplication precedes the three-number cap. Without a proven association the property stays
+absent. This adds no GitHub request, scope, branch/commit inference or arbitrary PR text.
+
 Check transport parity explicitly before joint source review:
 `node reporting/check-contract.mjs /absolute/consumer/apps/web/lib/infrastructure/wire.mjs`.
 The consumer records this hash in its private integration documentation; update both copies together.

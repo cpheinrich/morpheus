@@ -13,6 +13,7 @@ const label = z.string().min(1).max(160);
 const labels = z.array(label).max(20);
 const optionalLabel = label.nullable();
 const job = z.strictObject({ repository: project, runId: number.int(), attempt: number.int().min(1),
+  pullRequests:z.array(number.int().positive()).max(3).refine(rows=>distinct(rows,x=>x)).optional(),
   jobId: number.int(), runnerId: number.int().nullable(), name: label, currentStep: optionalLabel, state: z.enum(['queued','in_progress','completed','waiting','pending','requested']),
   conclusion: z.enum(['success','failure','cancelled','skipped','timed_out','action_required','neutral','stale','startup_failure']).nullable(),
   url: z.string().max(300).refine(v => /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/runs\/\d+\/job\/\d+$/.test(v)) });

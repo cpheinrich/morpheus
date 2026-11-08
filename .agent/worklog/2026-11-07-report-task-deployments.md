@@ -49,4 +49,30 @@ activation. Consumer and producer semantic checks and user-visible rollout accep
 their owners, not this reusable protocol patch.
 
 Canonical candidate: `plugins/factory/src/host/reporting/protocol.mjs`.
-SHA-256: `217ff1d2b2420a165ac67337b07d1a8a55a08b5435a0f85f06fcd5371f596d83`.
+SHA-256: `c4aa3850bbbba5e69c8ff8e8587ea682afd4dbe06798f674245017d48cf1e975`.
+
+
+## Related author increment — Work drill-down PR links
+
+Before independent review, extended existing GitHub job rows with optional `pullRequests`.
+Already-read workflow run references supply same-base-repository evidence via exact full_name
+or the exact GitHub API repository URL. Any supplied identities must agree. Malformed numbers
+and foreign/conflicting references are filtered out; positive safe integers are deduplicated
+before the three-number cap. Missing proof keeps the legacy property absent. No branch/commit
+inference, new read/scope, PR title/body, Factory prompt or arbitrary description is projected.
+This is a small domain projection reusing existing run records, Set and the Zod wire; no generic
+module, new dependency or structural design change. The reporter's source/file handling is unchanged.
+
+Validation on the increment:
+- `node --test plugins/factory/src/host/reporting/tests/reporting.test.mjs`: 21 passed.
+- `node --test plugins/factory/src/host/reporting/tests/*.test.mjs`: 97 passed.
+- `pnpm typecheck`, `pnpm compile`, `pnpm morpheus pm index`, `git diff --check`: passed.
+- `morpheus complexity check`: passes; 37 targeted functions in four measured files;
+  enforce CCN 15/cognitive advisory 15, dist excluded, no finding. Inspected the base identity,
+  PR projection and caller family. Tests assert exact unchanged request paths, absent legacy
+  shape, malformed and wrong/conflicting repository evidence, valid name/API URL evidence,
+  deduplication/cap, closed wire rejection and exclusion of arbitrary PR text.
+
+The candidate hash above supersedes the initial deployment-only canonical file. No independent
+reviewer launched; existing draft #649 remains draft with auto-merge disabled. No runtime,
+credential, enrollment, merge or deployment change performed. No clarification remains.
