@@ -990,7 +990,12 @@ flowchart LR
   Grant the supervisor passwordless sudo as the execution account for
   exactly `NODE SCRIPT WORKER_CONFIG PROJECT`, with environment setting
   disabled. Preserve the execution account's HOME and ensure sudo's PATH can
-  find Codex and Python. Run one launchd job under the supervisor account with
+  find Codex and Python. To share this slot with another Git project, add its
+  enrolled project ID and its separate absolute bare mirror path to
+  `execution.additionalGitMirrors`. Each mirror uses its own read-only Git
+  access and gets a separate exact sudo command with that project's ID. All
+  routes share the same worker account, config, quota and admission journal.
+  Run one launchd job under the supervisor account with
   `NODE scripts/fleet-studio.mjs STUDIO_CONFIG`. Give neither worker account
   the Pro credentials or Cloud Storage IAM.
 - Before starting launchd, check the gateway's `/health` from the Studio

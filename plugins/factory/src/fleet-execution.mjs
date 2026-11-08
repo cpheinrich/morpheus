@@ -115,3 +115,35 @@ export function createStudioExecutor(config, call, checkQuota) {
     },
   };
 }
+
+// All project routes share the same worker account and admission result store.
+export function createStudioExecutors(config, call, checkQuota, create = createStudioExecutor) {
+  const { additionalGitMirrors = {}, ...primary } = config;
+  if (!additionalGitMirrors || Object.getPrototypeOf(additionalGitMirrors) !== Object.prototype)
+    throw new Error("Invalid additional Studio Git mirrors");
+
+  const fallback = create(primary, call, checkQuota);
+  const git = new Map();
+  const mirrors = new Set([primary.sourceMirror]);
+  for (const [project, sourceMirror] of Object.entries(additionalGitMirrors)) {
+    if (project === primary.project || typeof sourceMirror !== "string" || !isAbsolute(sourceMirror) || mirrors.has(sourceMirror))
+      throw new Error("Invalid or duplicate additional Studio Git mirror");
+    const route = { ...primary, project, sourceMirror };
+    if (!validExecution(route)) throw new Error("Invalid additional Studio Git route");
+    git.set(project, create(route, call, checkQuota));
+    mirrors.add(sourceMirror);
+  }
+  const select = ({ source }) => source.project === primary.project
+    ? fallback
+    : source.checkout === "git" ? git.get(source.project) : undefined;
+
+  return {
+    async prepare(task, signal) {
+      return select(task)?.prepare(task, signal) ?? false;
+    },
+    async execute(input) {
+      return select(input.task)?.execute(input) ?? noLaunch();
+    },
+    recover: fallback.recover,
+  };
+}
