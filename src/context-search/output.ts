@@ -7,3 +7,4 @@ export function isContextSearchOutput(text: string): boolean {
 
 export const CONTEXT_MCP_PREFIX = "mcp__morpheus_context__";
 export const MCP_EXCERPT_BYTES = 7_000;
+export const MCP_EXCERPT_LINES = 198;

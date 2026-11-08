@@ -20,11 +20,11 @@ async function preferredLookup(root: string) {
   return (await getSearchConfig(root)).transport === "mcp";
 }
 
-function statePath(root: string, session: string, state: "prompt" | "seen"): string {
+function statePath(root: string, session: string, state: "armed" | "prompt" | "seen"): string {
   return join(root, "local/context-search/startup", sessionTag(session) + "." + state);
 }
 
-async function stateExists(root: string, session: string, state: "prompt" | "seen"): Promise<boolean> {
+async function stateExists(root: string, session: string, state: "armed" | "prompt" | "seen"): Promise<boolean> {
   return (await readFile(statePath(root, session, state), "utf8").catch(() => "")) === "1\n";
 }
 
@@ -38,23 +38,36 @@ async function isBounded(root: string, session: string): Promise<boolean> {
 }
 
 /** Search evidence follows a session across the repository just like core reads. */
-async function progress(root: string, session: string): Promise<{ prompted: boolean; seen: boolean }> {
-  if (await stateExists(root, session, "seen")) return { prompted: true, seen: true };
+async function progress(root: string, session: string): Promise<{ prompted: boolean; armed: boolean; seen: boolean }> {
+  if (await stateExists(root, session, "seen")) return { prompted: true, armed: true, seen: true };
   const checkouts = await evidenceCheckouts(root);
   const states = await Promise.all(checkouts.map(async checkout => ({
     prompted: await stateExists(checkout, session, "prompt"),
+    armed: await stateExists(checkout, session, "armed"),
     seen: await stateExists(checkout, session, "seen"),
   })));
-  return { prompted: states.some(state => state.prompted), seen: states.some(state => state.seen) };
+  const prompted = states.some(state => state.prompted);
+  return { prompted, armed: prompted || states.some(state => state.armed), seen: states.some(state => state.seen) };
+}
+
+async function markOnce(root: string, session: string, marker: "armed" | "prompt"): Promise<boolean> {
+  await searchStateDirectory(root, "startup");
+  return writeFile(statePath(root, session, marker), "1\n", { flag: "wx", mode: 0o600 })
+    .then(() => true, error => { if (error.code === "EEXIST") return false; throw error; });
+}
+
+/** The existing startup hook can arm the check independently of trust for the prompt reminder. */
+export async function armMcpTaskContext(root: string, session: string): Promise<void> {
+  if (validSearchSession(session)) await markOnce(root, session, "armed");
 }
 
 async function needsTaskContext(root: string, session: string): Promise<boolean> {
   if (!await isBounded(root, session)) return false;
-  const { prompted, seen } = await progress(root, session);
-  return prompted && !seen;
+  const { armed, seen } = await progress(root, session);
+  return armed && !seen;
 }
 
-/** Only sessions whose prompt and read hooks ran get the task check. */
+/** A startup or prompt hook arms the task check when read evidence is active. */
 export async function taskContextRefusal(root: string, session = providerSessionId()): Promise<string | undefined> {
   if (!validSearchSession(session)) return;
   const { projectRoot } = await import("../session/read-hook.js");
@@ -73,8 +86,12 @@ export async function taskContextRefusal(root: string, session = providerSession
 async function taskPaths(root: string, session: string | undefined): Promise<string[]> {
   const config = await getSearchConfig(root);
   const coverage = await discoverSources(root, config);
+  return taskEvidencePaths(root, session, coverage.included);
+}
+
+async function taskEvidencePaths(root: string, session: string | undefined, paths: readonly string[]): Promise<string[]> {
   const required = new Set((await projectPolicy(root, session)).requiredInputs);
-  return coverage.included.filter(path => path !== "AGENTS.md" && !required.has(path));
+  return paths.filter(path => path !== "AGENTS.md" && !required.has(path));
 }
 
 async function taskRecords(root: string, session: string | undefined, paths: readonly string[]) {
@@ -114,9 +131,13 @@ export async function observeTaskContext(
   if (!pending && !operation) return;
   const citations = [...output.matchAll(/^([^\n]+\.md):(\d+)-(\d+)\n/gm)];
   if (!citations.length) return;
-  const records = await taskRecords(root, session, citations.map(match => match[1]!));
-  if (!citations.some(match => isCurrentExcerpt(output, match, records))) return;
-  if (pending) {
+  const paths = new Set(citations.map(match => match[1]!));
+  const config = await getSearchConfig(root);
+  const eligible = (await discoverSources(root, config)).included.filter(path => paths.has(path));
+  const records = await readContextSources(root, eligible);
+  const visible = citations.filter(match => isCurrentExcerpt(output, match, records)).map(match => match[1]!);
+  if (!visible.length) return;
+  if (pending && (await taskEvidencePaths(root, session, visible)).length) {
     await searchStateDirectory(root, "startup");
     await writeFile(statePath(root, session, "seen"), "1\n", { mode: 0o600 });
   }
@@ -157,10 +178,7 @@ export async function taskPrompt(raw: string, locateRoot: (cwd: string) => Promi
   const root = await taskRoot(cwdRoot, session);
   if (await stateExists(root, session, "prompt")) return;
   if ((await progress(root, session)).prompted) return;
-  await searchStateDirectory(root, "startup");
-  const first = await writeFile(statePath(root, session, "prompt"), "1\n", { flag: "wx", mode: 0o600 })
-    .then(() => true, error => { if (error.code === "EEXIST") return false; throw error; });
-  if (!first) return;
+  if (!await markOnce(root, session, "prompt")) return;
   if (!await hasTaskSource(root, session)) {
     return "Task context search found no readable project records beyond the startup core. Continue with the core. Use morpheus context coverage to check the worktree and project search manifest.";
   }

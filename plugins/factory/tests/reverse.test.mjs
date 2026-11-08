@@ -203,6 +203,12 @@ test("Factory registers context MCP for an admitted Morpheus checkout on both pr
   assert.deepEqual(JSON.parse(argv[argv.indexOf("--mcp-config") + 1]), {
     mcpServers: { morpheus_context: { command: "morpheus", args: ["context", "mcp"], env: { MORPHEUS_CONTEXT_WORKTREE_PIN: "1" } } },
   });
+  const subdir = join(root, "src");
+  await mkdir(subdir);
+  execFileSync("git", ["init", "-q"], { cwd: root });
+  const codexFromSubdir = codexArgs(null, selection, codexPermission("auto"), null, subdir);
+  assert.ok(codexFromSubdir.includes(`mcp_servers.morpheus_context.cwd=${JSON.stringify(await realpath(root))}`));
+  assert.ok(claudeArgs(null, selection, "default", [], subdir).includes("--mcp-config"));
   assert.equal(argv.includes("--strict-mcp-config"), false);
 });
 

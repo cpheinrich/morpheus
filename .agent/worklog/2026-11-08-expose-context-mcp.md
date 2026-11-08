@@ -27,3 +27,16 @@ uses the host's MCP result envelope and rejects fallback content that Codex did 
 The historic trace report separates actual engine from assigned arm. Several historical
 queries in the ripgrep arms used a local Tantivy override. A transport cutover comparison
 is observational, while assignment still supports the engine comparison.
+
+Independent review identified a missing claimed-branch task pointer for cold workers,
+an omitted Factory subdirectory registration, arm-dependent visibility counts, and a
+result format that could exceed Codex's observable line range. Added focused regressions.
+Also aligned descendant thread identity with the provider session ID used by hooks.
+The trusted startup hook can arm bounded MCP sessions independently of the optional
+first-prompt reminder. A current core citation counts for visibility but cannot clear
+the additional task-context requirement.
+
+The initial full suite caught two startup instruction budget checks. Moved authoring
+details into the PM runbook and generated worklog guide, and reran those focused tests.
+Two Factory timeout fixtures failed during concurrent full-suite execution and passed
+in isolation. The Factory registration regression passed with the admitted subdirectory.

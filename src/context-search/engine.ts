@@ -16,6 +16,7 @@ export interface SearchOptions {
   readonly engine: "tantivy" | "ripgrep";
   readonly cacheDir: string;
   readonly maxBytes?: number;
+  readonly maxLines?: number;
 }
 
 export interface ContextExcerpt {
@@ -106,15 +107,18 @@ export function countContextTokens(text: string): number {
   return tokenizer.encode(text, [], []).length;
 }
 
-function format(spans: Iterable<Span>, budget: number, maxBytes = Infinity): Pick<SearchResult, "output" | "returnedTokens" | "resultCount" | "excerpts"> {
+function format(spans: Iterable<Span>, budget: number, maxBytes = Infinity, maxLines = Infinity): Pick<SearchResult, "output" | "returnedTokens" | "resultCount" | "excerpts"> {
   let output = "";
   let returnedTokens = 0;
+  let outputLines = 0;
   const excerpts: ContextExcerpt[] = [];
   for (const { document, first, last } of shortlist(spans)) {
     const text = document.lines.slice(first, last).join("\n");
     const entry = `${document.path}:${first + 1}-${last}\n${text}\n\n`;
     const tokens = countContextTokens(output + entry);
-    if (tokens > budget || Buffer.byteLength(output + entry) > maxBytes) continue;
+    const entryLines = last - first + 2;
+    if (tokens > budget || Buffer.byteLength(output + entry) > maxBytes || outputLines + entryLines > maxLines) continue;
+    outputLines += entryLines;
     output += entry;
     returnedTokens = tokens;
     excerpts.push({ path: document.path, from: first + 1, to: last, text });
@@ -297,6 +301,6 @@ export async function searchContext(
   const { spans, buildMs, cacheHit } = options.engine === "tantivy"
     ? tantivy(sources, documents, query, options.cacheDir)
     : { spans: ripgrep(documents, query), buildMs: 0, cacheHit: false };
-  const result = format(spans, budget, options.maxBytes);
+  const result = format(spans, budget, options.maxBytes, options.maxLines);
   return { ...result, buildMs, cacheHit, queryMs: performance.now() - start - buildMs };
 }

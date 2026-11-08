@@ -64,6 +64,11 @@ async function printRollout(root: string, paths: readonly string[], arm: Context
   console.log(`Context search rollout ${arm.id}: ${arm.arm}; engine ${arm.engine}.`);
   const { getSearchConfig } = await import("../context-search/rollout.js");
   const mcp = (await getSearchConfig(root)).transport === "mcp";
+  const sessionId = id ?? providerSessionId();
+  if (mcp && arm.startup === "bounded" && sessionId) {
+    const { armMcpTaskContext } = await import("../context-search/task-start.js");
+    await armMcpTaskContext(root, sessionId).catch(() => {});
+  }
   console.log(mcp
     ? "Use this session's required records as the startup set, then use the Morpheus Context MCP search_project_context tool once the task is known. The CLI is a fallback if MCP is unavailable."
     : "Use this session's required records listed here as the startup set, then run `morpheus context search <query>` once the task is known.");

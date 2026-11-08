@@ -34,7 +34,8 @@ repository-relative citation. The host supplies the session identity and checkou
 Set `context.search.transport` to `mcp` on a participating project. This chooses the preferred
 interface for all existing arms without changing their assignment. CLI search remains a fallback.
 The MCP result includes the exact excerpt in the model-facing result so the host read hook can
-verify the citation. Use `morpheus context install` to install the current hooks.
+verify the citation. The existing startup and read hooks enforce the bounded check. The
+first-prompt reminder also runs when its hook is trusted. Use `morpheus context install` to install the current hooks.
 
 Use `morpheus context profile [YYYY-MM-DD]` for local results by arm, transport and actual engine.
 It reports call timing, empty results, overrides, build and cache behavior, and independently

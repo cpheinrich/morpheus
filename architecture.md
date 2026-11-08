@@ -922,8 +922,9 @@ A project can opt into the local context search pilot in `morpheus.json` with
 full decisions and lessons with ripgrep. The trial omits human inboxes from all arms.
 Project instructions and configured mandatory records still govern. The required reads
 come from the selected checkout, and a bounded startup receipt is scoped to that provider
-session and worktree. With both task and read hooks active, the first prompt
-cues a bounded search once the task is known. The existing gate also requires
+session and worktree. The first-prompt hook cues a bounded search once the task
+is known. In the MCP pilot the startup hook also arms the check. With read
+evidence active, the existing gate requires
 the read hook to have observed a matching excerpt from an indexed task
 record. An exact-path `context task-read` can supply that excerpt. This check
 is separate from full read evidence for the startup core.

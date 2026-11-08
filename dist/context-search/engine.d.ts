@@ -6,6 +6,7 @@ export interface SearchOptions {
     readonly engine: "tantivy" | "ripgrep";
     readonly cacheDir: string;
     readonly maxBytes?: number;
+    readonly maxLines?: number;
 }
 export interface ContextExcerpt {
     path: string;

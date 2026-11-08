@@ -1,16 +1,17 @@
 import { searchContext, type ContextSource } from "./engine.js";
 import { searchStateDirectory, sessionEngine, validSearchSession } from "./local-state.js";
 import { contextArm, getSearchConfig, traceContext, type ContextTransport, type SearchEngine } from "./rollout.js";
-import { MCP_EXCERPT_BYTES } from "./output.js";
+import { MCP_EXCERPT_BYTES, MCP_EXCERPT_LINES } from "./output.js";
 import { contextKind, discoverSources, readContextSources, type ContextKind } from "./sources.js";
 
-async function runEngine(root: string, sources: readonly ContextSource[], query: string, budget: number, engine: SearchEngine, maxBytes?: number) {
+async function runEngine(root: string, sources: readonly ContextSource[], query: string, budget: number, engine: SearchEngine, transport: ContextTransport) {
+  const caps = transport === "mcp" ? { maxBytes: MCP_EXCERPT_BYTES, maxLines: MCP_EXCERPT_LINES } : {};
   try {
     const cacheDir = engine === "tantivy" ? await searchStateDirectory(root, "cache") : "";
-    return { engine, data: await searchContext(sources, query, budget, { engine, cacheDir, maxBytes }), fallback: false };
+    return { engine, data: await searchContext(sources, query, budget, { engine, cacheDir, ...caps }), fallback: false };
   } catch (error) {
     if (engine !== "tantivy") throw error;
-    const data = await searchContext(sources, query, budget, { engine: "ripgrep", cacheDir: "", maxBytes });
+    const data = await searchContext(sources, query, budget, { engine: "ripgrep", cacheDir: "", ...caps });
     return { engine: "ripgrep" as const, data, fallback: true };
   }
 }
@@ -38,7 +39,7 @@ export async function retrieveContext(root: string, query: string, budget: numbe
     const coverage = await discoverSources(root, config);
     const eligible = kinds?.length ? coverage.included.filter(path => kinds.includes(contextKind(path))) : coverage.included;
     const sources = await readContextSources(root, eligible);
-    const result = await runEngine(root, sources, query, budget, overrideEngine ?? arm.engine, transport === "mcp" ? MCP_EXCERPT_BYTES : undefined);
+    const result = await runEngine(root, sources, query, budget, overrideEngine ?? arm.engine, transport);
     const totalQueryMs = performance.now() - started;
     const { queryMs, buildMs, cacheHit, resultCount, returnedTokens } = result.data;
     await traceContext(root, {

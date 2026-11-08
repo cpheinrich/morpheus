@@ -1,17 +1,18 @@
 import { searchContext } from "./engine.js";
 import { searchStateDirectory, sessionEngine, validSearchSession } from "./local-state.js";
 import { contextArm, getSearchConfig, traceContext } from "./rollout.js";
-import { MCP_EXCERPT_BYTES } from "./output.js";
+import { MCP_EXCERPT_BYTES, MCP_EXCERPT_LINES } from "./output.js";
 import { contextKind, discoverSources, readContextSources } from "./sources.js";
-async function runEngine(root, sources, query, budget, engine, maxBytes) {
+async function runEngine(root, sources, query, budget, engine, transport) {
+    const caps = transport === "mcp" ? { maxBytes: MCP_EXCERPT_BYTES, maxLines: MCP_EXCERPT_LINES } : {};
     try {
         const cacheDir = engine === "tantivy" ? await searchStateDirectory(root, "cache") : "";
-        return { engine, data: await searchContext(sources, query, budget, { engine, cacheDir, maxBytes }), fallback: false };
+        return { engine, data: await searchContext(sources, query, budget, { engine, cacheDir, ...caps }), fallback: false };
     }
     catch (error) {
         if (engine !== "tantivy")
             throw error;
-        const data = await searchContext(sources, query, budget, { engine: "ripgrep", cacheDir: "", maxBytes });
+        const data = await searchContext(sources, query, budget, { engine: "ripgrep", cacheDir: "", ...caps });
         return { engine: "ripgrep", data, fallback: true };
     }
 }
@@ -31,7 +32,7 @@ export async function retrieveContext(root, query, budget, options) {
         const coverage = await discoverSources(root, config);
         const eligible = kinds?.length ? coverage.included.filter(path => kinds.includes(contextKind(path))) : coverage.included;
         const sources = await readContextSources(root, eligible);
-        const result = await runEngine(root, sources, query, budget, overrideEngine ?? arm.engine, transport === "mcp" ? MCP_EXCERPT_BYTES : undefined);
+        const result = await runEngine(root, sources, query, budget, overrideEngine ?? arm.engine, transport);
         const totalQueryMs = performance.now() - started;
         const { queryMs, buildMs, cacheHit, resultCount, returnedTokens } = result.data;
         await traceContext(root, {

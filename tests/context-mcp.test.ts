@@ -6,10 +6,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, expect, it, vi } from "vitest";
+import { contextMcpSession } from "../src/context-search/mcp-scope.js";
 import { createContextMcp } from "../src/context-search/mcp.js";
 import { contextArm } from "../src/context-search/rollout.js";
 import { summarizeContextTraces } from "../src/context-search/trace-summary.js";
-import { taskContextRefusal, taskPrompt } from "../src/context-search/task-start.js";
+import { armMcpTaskContext, taskContextRefusal, taskPrompt } from "../src/context-search/task-start.js";
 import { bindTask } from "../src/session/tasks.js";
 import { recordRead } from "../src/session/read-hook.js";
 
@@ -129,6 +130,17 @@ it("uses the session worktree and refuses to move a pinned Factory worker outsid
   const linked = await realpath(await mkdtemp(join(tmpdir(), "morpheus-mcp-bound-")));
   dirs.push(linked);
   git("worktree", "add", "-qb", "mo-001-verify", linked);
+  const [freshClient, freshServer] = InMemoryTransport.createLinkedPair();
+  const fresh = new Client({ name: "worker-probe", version: "1" });
+  clients.push(fresh);
+  await createContextMcp(linked).connect(freshServer);
+  await fresh.connect(freshClient);
+  const overview = await fresh.callTool({
+    name: "get_context_overview", arguments: {}, _meta: { threadId: "new-worker-thread", sessionId: session },
+  }) as CallToolResult;
+  expect(overview.structuredContent?.task).toMatchObject({ id: "MO-001", roadmap: taskPath });
+  expect(contextMcpSession({ threadId: "descendant-thread", sessionId: session }, {})).toBe(session);
+
   await bindTask(linked, "MO-001", session);
   await writeFile(join(linked, ".agent/decisions.md"), "Only the bound checkout has this decision.\n");
   const args = { path: ".agent/decisions.md", from: 1, to: 1 };
@@ -137,4 +149,55 @@ it("uses the session worktree and refuses to move a pinned Factory worker outsid
   expect(await call("read_project_record", args)).toMatchObject({
     isError: true, content: [{ type: "text", text: expect.stringContaining("admitted checkout") }],
   });
+});
+
+it("profiles visible startup citations without treating them as additional task context", async () => {
+  const { root, session, call, sessions } = await fixture();
+  await armMcpTaskContext(root, session);
+  const read = async (path: string, id: string) => recordRead(JSON.stringify({
+    cwd: root, session_id: id, turn_id: "turn", hook_event_name: "PostToolUse",
+    tool_name: "mcp__morpheus_context__read_project_record",
+    tool_response: await call("read_project_record", { path }, id),
+  }));
+  await read(".agent/context-core.md", session);
+  expect(await taskContextRefusal(root, session)).toContain("Load context");
+  await read(".agent/decisions.md", sessions.get("ripgrep-full"));
+  expect((await summarizeContextTraces(root)).byArmTransport).toEqual(expect.arrayContaining([
+    expect.objectContaining({ arm: "ripgrep-bounded", transport: "mcp", visibleSessions: 1 }),
+    expect.objectContaining({ arm: "ripgrep-full", transport: "mcp", visibleSessions: 1 }),
+  ]));
+});
+
+it("fits complete broad-search excerpts within the host's visible line limit", async () => {
+  const { root, session, call } = await fixture();
+  for (let i = 0; i < 16; i++) {
+    await writeFile(join(root, ".agent/worklog", `2026-11-08-short-${i}.md`), "releasedetail\n".repeat(16));
+  }
+  execFileSync("git", ["add", "."], { cwd: root });
+  await armMcpTaskContext(root, session);
+  const response = await call("search_project_context", { query: "releasedetail", max_tokens: 2500 });
+  const excerpt = response.structuredContent?.excerpt as string;
+  expect(excerpt.split("\n").length).toBeLessThanOrEqual(200);
+  expect(response.structuredContent?.citations).toHaveLength(11);
+  await recordRead(JSON.stringify({
+    cwd: root, session_id: session, turn_id: "turn", hook_event_name: "PostToolUse",
+    tool_name: "mcp__morpheus_context__search_project_context", tool_response: response,
+  }));
+  expect(await taskContextRefusal(root, session)).toBeUndefined();
+});
+
+it("supports the MCP backstop with the existing startup and read hooks even before prompt-hook trust", async () => {
+  const { root, session, call } = await fixture();
+  await armMcpTaskContext(root, session);
+  const observe = (response: CallToolResult) => recordRead(JSON.stringify({
+    cwd: root, session_id: session, turn_id: "turn", hook_event_name: "PostToolUse",
+    tool_name: "mcp__morpheus_context__search_project_context", tool_response: response,
+  }));
+  await observe(await call("search_project_context", { query: "zzzzunused" }));
+  expect(await taskContextRefusal(root, session)).toContain("Load context");
+  expect(await taskPrompt(JSON.stringify({
+    cwd: root, session_id: session, prompt: "Verify release", hook_event_name: "UserPromptSubmit",
+  }), async path => path)).toContain("search_project_context");
+  await observe(await call("search_project_context", { query: secretQuery }));
+  expect(await taskContextRefusal(root, session)).toBeUndefined();
 });

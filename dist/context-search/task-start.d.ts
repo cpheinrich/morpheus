@@ -1,5 +1,7 @@
 import { type ContextOperation } from "./rollout.js";
-/** Only sessions whose prompt and read hooks ran get the task check. */
+/** The existing startup hook can arm the check independently of trust for the prompt reminder. */
+export declare function armMcpTaskContext(root: string, session: string): Promise<void>;
+/** A startup or prompt hook arms the task check when read evidence is active. */
 export declare function taskContextRefusal(root: string, session?: string | undefined): Promise<string | undefined>;
 /** An exact-path read uses the same visible citation as a search result. */
 export declare function taskRecord(root: string, session: string | undefined, path: string): Promise<{
