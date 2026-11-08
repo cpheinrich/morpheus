@@ -36,12 +36,14 @@ mixed-policy regression passes. The final focused suite passed all 189 tests.
 
 Independent review cleared the task gate after fixing worktree handoff, empty corpus recovery and mixed rollout policies.
 
+CI exposed three stale Codex trust expectations. Doctor now names the task hook explicitly. Independent review cleared the correction.
+
 ```morpheus-review
 {
   "version": 2,
   "base": "6ac6063a1e7caa910c916c1effd1678528f2317d",
   "reviewed": "b0833ce137883ec75c7f80c1efedcbf45ac4acf8",
-  "covered": "41d51bfa694351bf235949225d348ab93c27b207",
+  "covered": "65dde926001c6fb4f08c49059fa25b7df329a993",
   "authorSession": "01a1b4d0-b0d9-7cd1-9f03-33349cd7f590",
   "reviewerSession": "/root/task_context_reviewer",
   "risk": "normal",
@@ -109,6 +111,19 @@ Independent review cleared the task gate after fixing worktree handoff, empty co
         "evidence": "Root runner transcript, reviewer invocation/result timestamps 08:34:40.986 to 08:34:55.756 UTC."
       },
       "summary": "The mixed-policy lookup clears the gate. All five focused task-start tests passed."
+    },
+    {
+      "reviewerSession": "/root/task_context_reviewer",
+      "commit": "65dde926001c6fb4f08c49059fa25b7df329a993",
+      "outcome": "cleared",
+      "scopeReason": "CI exposed stale three-hook assumptions in the Codex doctor trust fixtures and an unclear label for the new hook.",
+      "elapsedMinutes": 0.16215,
+      "timing": {
+        "source": "runner",
+        "durationMs": 9729,
+        "evidence": "Root runner transcript, reviewer invocation/result timestamps 08:39:55.840 to 08:40:05.569 UTC."
+      },
+      "summary": "Cleared the explicit task hook label and four-hook trust fixtures. Gate behavior was unchanged."
     }
   ]
 }
