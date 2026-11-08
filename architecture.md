@@ -4088,7 +4088,9 @@ installs `openssl@3`, `asccli` and optionally `sentry-cli`, then archives, expor
 uploads. A caller is reduced to a checkout of the verified SHA and one `uses:` block of
 identifiers. The optional `configuration` input defaults to `Release` and is used consistently
 for both build-settings queries and archive; scheme/configuration names may contain spaces but
-not CR/LF, and remain single argv values.
+not CR/LF, and remain single argv values. The pinned ASC CLI installer tries the public GitHub
+release download first, then the same release asset through GitHub’s API if the download fails.
+Both routes require the architecture-specific SHA-256 before running the binary.
 
 Binary acceptance and distribution are separate action steps. Acceptance requires the pinned
 asccli upload state PROCESSING or COMPLETE with a valid id and no errors; AWAITING_UPLOAD is
