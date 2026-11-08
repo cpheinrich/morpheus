@@ -444,20 +444,27 @@ async function dispatchTeam({ command }: Invocation): Promise<number> {
   
 }
 
+async function dispatchContextLookup(command: string | undefined, rest: string[], flags: Invocation["flags"]): Promise<number | undefined> {
+  if (command === "task-prompt") return (await import("../context-search/task-start.js")).runTaskPromptHook();
+  if (command !== "search" && command !== "coverage" && command !== "engine" && command !== "task-read") return;
+  const search = await import("./context-search.js");
+  const cwd = process.cwd();
+  if (command === "engine") return search.runContextEngine(cwd, rest, flags.sessionId);
+  if (command === "coverage") return search.runContextCoverage(cwd, flags.json);
+  if (command === "task-read") return search.runTaskRead(cwd, rest, flags.sessionId);
+  return search.runContextSearch(cwd, rest.join(" "), {
+    json: flags.json, maxTokens: flags.maxTokens, sessionId: flags.sessionId,
+  });
+}
+
 async function dispatchContext({ flags, command, rest }: Invocation): Promise<number> {
     // `--offline` reaches these the way it reaches `doctor`: each consults a
     // remote, and on an unreachable one the declaration already answers the
     // question. `brief` also checks the installed CLI and is
     // a preparation step that fails visibly if current source cannot be obtained.
     const off = offlineDeclared(flags.offline);
-    if (command === "search" || command === "coverage" || command === "engine") {
-      const search = await import("./context-search.js");
-      if (command === "engine") return search.runContextEngine(process.cwd(), rest, flags.sessionId);
-      if (command === "coverage") return search.runContextCoverage(process.cwd(), flags.json);
-      return search.runContextSearch(process.cwd(), rest.join(" "), {
-        json: flags.json, maxTokens: flags.maxTokens, sessionId: flags.sessionId,
-      });
-    }
+    const search = await dispatchContextLookup(command, rest, flags);
+    if (search !== undefined) return search;
     if (command === "refresh") return contextRefresh(process.cwd(), off);
     // The PostToolUse read hook. `index.ts` routes it before loading the CLI;
     // this is the same entry for anything that calls `run` directly.

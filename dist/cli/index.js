@@ -4,7 +4,9 @@ const argv = process.argv.slice(2);
 // must not load the whole CLI: it imports only the session evidence modules.
 const main = argv[0] === "context" && argv[1] === "record-read"
     ? import("../session/read-hook.js").then((m) => m.runReadHook())
-    : import("./run.js").then((m) => m.run(argv));
+    : argv[0] === "context" && argv[1] === "task-prompt"
+        ? import("../context-search/task-start.js").then((m) => m.runTaskPromptHook())
+        : import("./run.js").then((m) => m.run(argv));
 function ownsQuotaReader() {
     if (argv[0] !== "cd")
         return false;

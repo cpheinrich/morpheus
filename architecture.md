@@ -922,7 +922,11 @@ A project can opt into the local context search pilot in `morpheus.json` with
 full decisions and lessons with ripgrep. The trial omits human inboxes from all arms.
 Project instructions and configured mandatory records still govern. The required reads
 come from the selected checkout, and a bounded startup receipt is scoped to that provider
-session and worktree. Search excerpts are discovery aids and do not certify reads.
+session and worktree. With both task and read hooks active, the first prompt
+cues a bounded search once the task is known. The existing gate also requires
+the read hook to have observed a matching excerpt from an indexed task
+record. An exact-path `context task-read` can supply that excerpt. This check
+is separate from full read evidence for the startup core.
 
 Search covers the manifest's project context plus default records, roadmaps, runbooks and
 meeting notes. Tantivy indexes overlapping 16-line Markdown windows beginning every two

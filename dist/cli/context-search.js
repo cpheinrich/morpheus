@@ -1,9 +1,31 @@
 import { contextArm, getSearchConfig, providerSessionId, traceContext } from "../context-search/rollout.js";
-import { searchContext } from "../context-search/engine.js";
+import { countContextTokens, searchContext } from "../context-search/engine.js";
 import { CONTEXT_SEARCH_HEADER } from "../context-search/output.js";
 import { contextCoverage, discoverSources, readContextSources } from "../context-search/sources.js";
 import { checkoutIdentity } from "../session/start.js";
 import { searchStateDirectory, sessionEngine, setSessionEngine, validSearchSession } from "../context-search/local-state.js";
+export async function runTaskRead(cwd, args, session = providerSessionId()) {
+    const [path, start = "1"] = args;
+    const from = Number(start);
+    if (!path || args.length > 2 || !Number.isSafeInteger(from) || from < 1) {
+        throw new Error("Use morpheus context task-read <indexed-path> [start-line].");
+    }
+    const { root } = await checkoutIdentity(cwd);
+    const { taskRecord } = await import("../context-search/task-start.js");
+    const record = await taskRecord(root, session, path);
+    if (!record)
+        throw new Error("Choose an indexed project record outside the required startup core.");
+    const lines = record.text.replace(/\r?\n$/, "").split(/\r?\n/).slice(from - 1, from + 15);
+    while (lines.length) {
+        const excerpt = `${path}:${from}-${from + lines.length - 1}\n${lines.join("\n")}`;
+        if (Buffer.byteLength(excerpt) <= 6_000 && countContextTokens(excerpt) <= 1_000 && lines.some(line => line.trim())) {
+            console.log(`${CONTEXT_SEARCH_HEADER}\n${excerpt}`);
+            return 0;
+        }
+        lines.pop();
+    }
+    throw new Error("No readable excerpt at that line. Choose a different start line or search for the relevant text.");
+}
 export async function runContextSearch(cwd, query, options) {
     const started = performance.now();
     const budget = options.maxTokens === undefined ? 1000 : Number(options.maxTokens);
