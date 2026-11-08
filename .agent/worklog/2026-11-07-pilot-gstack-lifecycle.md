@@ -56,3 +56,52 @@ fixtures. They did not measure whether a fresh model session follows the handoff
 reminders. Keep the pilot available for an interactive session before deciding on production
 hooks, a machine-started monitor, or wider rollout. The next evidence is whether the session
 picks and records useful gstack work at each applicable transition of a new task.
+
+## Independent review
+
+Independent review found that Claude discovery missed flat launchers and could surface disabled nested payloads. The correction uses installer-marked top-level launchers and satisfied the reviewer's condition in the real isolated Claude install and focused checks.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "ab9785ea401f14909a1bd16c09b7d025a97a4a29",
+  "reviewed": "26890248c61ca155e78aa9a2cb02da15828daef6",
+  "covered": "a06b9b20f180e3a3c88a4a71e286b7adb15caa50",
+  "authorSession": "01a1b9eb-8cea-7402-8459-9a9dbda63a89",
+  "reviewerSession": "/root/gstack_pilot_review",
+  "risk": "normal",
+  "elapsedMinutes": 1.7,
+  "timing": {
+    "source": "clock",
+    "durationMs": 102000,
+    "evidence": "UTC clock before spawning the independent review at 2026-11-08T07:19:24Z and actual UTC completion reported by the reviewer at 2026-11-08T07:21:06Z."
+  },
+  "outcome": "complete",
+  "summary": "Independent review found that Claude discovery missed flat launchers and could surface disabled nested payloads. The correction uses installer-marked top-level launchers and satisfied the reviewer's condition in the real isolated Claude install and focused checks.",
+  "findings": [
+    {
+      "id": "GSTACK-1",
+      "severity": "substantive",
+      "description": "Claude discovery misses the pinned installer’s default flat entrypoint and reports nested payload files as installed even when a skill is disabled.",
+      "paths": [
+        "src/cli/gstack-lifecycle.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Use the top-level short or prefixed Claude launcher and require the installer marker. Report its invocable name and never fall back to the nested payload.",
+      "condition": {
+        "paths": [
+          "src/cli/gstack-lifecycle.ts",
+          "dist/cli/gstack-lifecycle.d.ts",
+          "dist/cli/gstack-lifecycle.js",
+          "dist/cli/gstack-lifecycle.js.map",
+          "tests/gstack-lifecycle.test.ts",
+          "docs/runbooks/gstack-lifecycle.md",
+          ".agent/worklog/2026-11-07-pilot-gstack-lifecycle.md"
+        ],
+        "evidence": "Require gstack provenance and document unsupported layouts. Pass focused lifecycle and project-skill tests, typecheck and compile. Verify executable discovery with a real isolated Claude install, and regress short and prefixed, payload-only and foreign, Codex and default-off routing."
+      },
+      "conditionMet": "Typecheck, compile and 18 lifecycle/project-skill tests passed. The executable resolved the real isolated flat and prefixed Claude launchers and returned unavailable after disabling QA-only while its payload remained. Tests also cover unrelated short names, Codex and default-off."
+    }
+  ]
+}
+```
