@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -10,7 +10,7 @@ const task = (project, checkout = "git") => ({ source: { project, checkout } });
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "factory-executors-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const one = join(root, "one.git"), two = join(root, "two.git"), alias = join(root, "alias.git");
+  const one = join(root, "One.git"), two = join(root, "two.git"), alias = join(root, "alias.git");
   await Promise.all([mkdir(one), mkdir(two), symlink(one, alias)]);
   const primary = { account: "exec1", node: "/node", script: "/executor", workerConfig: "/worker1",
     project: "one", sourceMirror: one };
@@ -52,4 +52,18 @@ test("Studio refuses malformed and duplicate Git routes, including mirror aliase
     { two: { ...extra, sourceMirror: "relative" } }, { "bad/project": extra }]) {
     assert.throws(() => createStudioExecutors({ ...primary, additionalGitProjects }), /Invalid|Duplicate/);
   }
+});
+
+test("Studio rejects a case alias of the primary mirror on case-insensitive filesystems", async (t) => {
+  const { primary, extra } = await fixture(t);
+  const sourceMirror = primary.sourceMirror.replace(/One[.]git$/, "one.git");
+  try {
+    await stat(sourceMirror);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    t.skip("case-sensitive filesystem");
+    return;
+  }
+  const additionalGitProjects = { two: { ...extra, sourceMirror } };
+  assert.throws(() => createStudioExecutors({ ...primary, additionalGitProjects }), /Duplicate Studio Git mirror/);
 });

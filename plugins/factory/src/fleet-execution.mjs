@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { fetchStudioRevision } from "./fleet-source.mjs";
-import { realpathSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { once } from "node:events";
 import { isAbsolute } from "node:path";
 import { createInterface } from "node:readline";
@@ -118,6 +118,11 @@ export function createStudioExecutor(config, call, checkQuota) {
 }
 
 
+function mirrorIdentity(path) {
+  const { dev, ino } = statSync(path, { bigint: true });
+  return `${dev}:${ino}`;
+}
+
 export function createStudioExecutors(config, call, checkQuota, create = createStudioExecutor) {
   const { additionalGitProjects = {}, ...primary } = config;
   if (!additionalGitProjects || Object.getPrototypeOf(additionalGitProjects) !== Object.prototype)
@@ -128,7 +133,7 @@ export function createStudioExecutors(config, call, checkQuota, create = createS
   const accounts = new Set([primary.account]);
   const mirrors = new Set();
   if (primary.sourceMirror && Object.keys(additionalGitProjects).length)
-    mirrors.add(realpathSync(primary.sourceMirror));
+    mirrors.add(mirrorIdentity(primary.sourceMirror));
   for (const [project, fields] of Object.entries(additionalGitProjects)) {
     const { account, sourceMirror, workerConfig } = fields ?? {};
     const route = { ...primary, account, sourceMirror, workerConfig, project };
@@ -136,10 +141,11 @@ export function createStudioExecutors(config, call, checkQuota, create = createS
         typeof sourceMirror !== "string" || !validExecution(route))
       throw new Error("Invalid or duplicate additional Studio Git route");
     const canonical = realpathSync(sourceMirror);
-    if (mirrors.has(canonical)) throw new Error("Duplicate Studio Git mirror");
+    const identity = mirrorIdentity(canonical);
+    if (mirrors.has(identity)) throw new Error("Duplicate Studio Git mirror");
     git.set(project, create({ ...route, sourceMirror: canonical }, call, checkQuota));
     accounts.add(account);
-    mirrors.add(canonical);
+    mirrors.add(identity);
   }
   const select = ({ source } = {}) => {
     if (source?.project === primary.project) return fallback;
