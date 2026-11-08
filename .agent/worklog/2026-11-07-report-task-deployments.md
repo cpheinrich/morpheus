@@ -104,7 +104,7 @@ No merge, auto-merge or runtime action is authorized by this evidence finalizati
     "durationMs": 117529,
     "evidence": "Factory run ae00a1ee-4e7e-4f4d-a2b2-0944cda54060, reviewer session 01a1b9d5-26d1-70e3-968d-f8e770391db2, turn 01a1b9d5-2702-7ad3-95f3-3b89773beb36: transcript task_complete.duration_ms=117529, supplied by supervising Codex."
   },
-  "outcome": "cleared",
+  "outcome": "complete",
   "summary": "Independent Factory review cleared the exact candidate with no findings. The reviewer passed eight focused schema, clock, legacy, private-file and same-repository PR projection checks and verified the canonical protocol hash. One unchanged installer test in the broader reviewer run could not resolve dependencies in that checkout; the author's installed checkout passed all 97 reporting tests. No implementation fixes or follow-up review were needed.",
   "findings": []
 }
