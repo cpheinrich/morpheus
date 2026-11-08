@@ -162,7 +162,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
   async function completeTurn(record, task) {
     const { output, stopReason } = active;
     if (output?.terminationVerified !== true)
-      return recoverTurn(record);
+      return recoverTurn(record, task);
     if (task.cancelRequestedAt != null)
       return finish(record, canceled, { summary: "Worker stopped after cancellation." }, true);
     if (stopReason)
@@ -179,15 +179,15 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     return finish(record, outcome, resultFor(output), true);
   }
 
-  async function recoverTurn(record) {
-    const proven = await recover(record.admissionId);
+  async function recoverTurn(record, task) {
+    const proven = await recover(record.admissionId, task);
     return finish(record, failed, {
       summary: proven ? "Recovered verified worker cleanup after supervision was interrupted." : "Worker termination could not be verified.",
     }, proven);
   }
 
   async function driveRunning(record, task) {
-    if (!active) return recoverTurn(record);
+    if (!active) return recoverTurn(record, task);
     if (task.cancelRequestedAt != null) abort("canceled");
     if (active.done) return completeTurn(record, task);
     return "running";
@@ -221,7 +221,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
       if (renewed?.renewed !== true) {
         abort("lost-lease");
         if (active && !active.done) return "held";
-        const proven = ["waiting", "preparing"].includes(record.phase) || active?.output?.terminationVerified === true || await recover(record.admissionId);
+        const proven = ["waiting", "preparing"].includes(record.phase) || active?.output?.terminationVerified === true || await recover(record.admissionId, snapshot.task);
         return finish(record, failed, { summary: "Runner lease could not be renewed." }, proven);
       }
       if (record.phase === "preparing") return drivePreparing(record, snapshot.task);

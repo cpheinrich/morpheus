@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { fetchStudioRevision } from "./fleet-source.mjs";
+import { realpathSync } from "node:fs";
 import { once } from "node:events";
 import { isAbsolute } from "node:path";
 import { createInterface } from "node:readline";
@@ -116,26 +117,34 @@ export function createStudioExecutor(config, call, checkQuota) {
   };
 }
 
-// All project routes share the same worker account and admission result store.
+
 export function createStudioExecutors(config, call, checkQuota, create = createStudioExecutor) {
-  const { additionalGitMirrors = {}, ...primary } = config;
-  if (!additionalGitMirrors || Object.getPrototypeOf(additionalGitMirrors) !== Object.prototype)
-    throw new Error("Invalid additional Studio Git mirrors");
+  const { additionalGitProjects = {}, ...primary } = config;
+  if (!additionalGitProjects || Object.getPrototypeOf(additionalGitProjects) !== Object.prototype)
+    throw new Error("Invalid additional Studio Git projects");
 
   const fallback = create(primary, call, checkQuota);
   const git = new Map();
-  const mirrors = new Set([primary.sourceMirror]);
-  for (const [project, sourceMirror] of Object.entries(additionalGitMirrors)) {
-    if (project === primary.project || typeof sourceMirror !== "string" || !isAbsolute(sourceMirror) || mirrors.has(sourceMirror))
-      throw new Error("Invalid or duplicate additional Studio Git mirror");
-    const route = { ...primary, project, sourceMirror };
-    if (!validExecution(route)) throw new Error("Invalid additional Studio Git route");
-    git.set(project, create(route, call, checkQuota));
-    mirrors.add(sourceMirror);
+  const accounts = new Set([primary.account]);
+  const mirrors = new Set();
+  if (primary.sourceMirror && Object.keys(additionalGitProjects).length)
+    mirrors.add(realpathSync(primary.sourceMirror));
+  for (const [project, fields] of Object.entries(additionalGitProjects)) {
+    const { account, sourceMirror, workerConfig } = fields ?? {};
+    const route = { ...primary, account, sourceMirror, workerConfig, project };
+    if (project === primary.project || typeof account !== "string" || accounts.has(account) ||
+        typeof sourceMirror !== "string" || !validExecution(route))
+      throw new Error("Invalid or duplicate additional Studio Git route");
+    const canonical = realpathSync(sourceMirror);
+    if (mirrors.has(canonical)) throw new Error("Duplicate Studio Git mirror");
+    git.set(project, create({ ...route, sourceMirror: canonical }, call, checkQuota));
+    accounts.add(account);
+    mirrors.add(canonical);
   }
-  const select = ({ source }) => source.project === primary.project
-    ? fallback
-    : source.checkout === "git" ? git.get(source.project) : undefined;
+  const select = ({ source } = {}) => {
+    if (source?.project === primary.project) return fallback;
+    if (source?.checkout === "git") return git.get(source.project);
+  };
 
   return {
     async prepare(task, signal) {
@@ -144,6 +153,8 @@ export function createStudioExecutors(config, call, checkQuota, create = createS
     async execute(input) {
       return select(input.task)?.execute(input) ?? noLaunch();
     },
-    recover: fallback.recover,
+    async recover(admissionId, task) {
+      return select(task)?.recover(admissionId) ?? false;
+    },
   };
 }
