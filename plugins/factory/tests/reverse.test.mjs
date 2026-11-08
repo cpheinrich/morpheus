@@ -206,9 +206,23 @@ test("Factory registers context MCP for an admitted Morpheus checkout on both pr
   const subdir = join(root, "src");
   await mkdir(subdir);
   execFileSync("git", ["init", "-q"], { cwd: root });
-  const codexFromSubdir = codexArgs(null, selection, codexPermission("auto"), null, subdir);
-  assert.ok(codexFromSubdir.includes(`mcp_servers.morpheus_context.cwd=${JSON.stringify(await realpath(root))}`));
-  assert.ok(claudeArgs(null, selection, "default", [], subdir).includes("--mcp-config"));
+  const other = await mkdtemp(join(tmpdir(), "factory-other-context-mcp-"));
+  t.after(() => rm(other, { recursive: true, force: true }));
+  execFileSync("git", ["init", "-q"], { cwd: other });
+  await writeFile(join(other, "morpheus.json"), "{}");
+  const previous = { GIT_DIR: process.env.GIT_DIR, GIT_WORK_TREE: process.env.GIT_WORK_TREE };
+  try {
+    process.env.GIT_DIR = join(other, ".git");
+    process.env.GIT_WORK_TREE = other;
+    const codexFromSubdir = codexArgs(null, selection, codexPermission("auto"), null, subdir);
+    assert.ok(codexFromSubdir.includes(`mcp_servers.morpheus_context.cwd=${JSON.stringify(await realpath(root))}`));
+    assert.ok(claudeArgs(null, selection, "default", [], subdir).includes("--mcp-config"));
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
   assert.equal(argv.includes("--strict-mcp-config"), false);
 });
 

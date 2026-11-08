@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { lstatSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
 import { join } from "node:path";
+import { gitEnv, within } from "./workspace.mjs";
 
 const name = "morpheus_context";
 const pin = "MORPHEUS_CONTEXT_WORKTREE_PIN";
@@ -15,9 +16,9 @@ function morpheusRoot(cwd) {
   try {
     if (hasManifest(cwd)) return cwd;
     const root = execFileSync("git", ["rev-parse", "--show-toplevel"], {
-      cwd, encoding: "utf8", timeout: 2_000, stdio: ["ignore", "pipe", "ignore"],
+      cwd, env: gitEnv(), encoding: "utf8", timeout: 2_000, stdio: ["ignore", "pipe", "ignore"],
     }).trim();
-    if (root && hasManifest(root)) return root;
+    if (root && within(realpathSync(cwd), realpathSync(root)) && hasManifest(root)) return root;
   } catch {
     // An unavailable context server should not prevent launch on an unrelated checkout.
   }
