@@ -3355,7 +3355,14 @@ Under full access this is ownership enforced at delegation, not an OS sandbox. R
 before workspaces migrate when their primary checkout is a linked worktree; one bound to an
 original or non-Git directory is refused with the remedy to start a new root session.
 
-The opt-in Codex Studio pilot exposes `factory_remote` to the controller.
+The opt-in Codex Studio route is available through the ordinary Factory
+tools with `placement: "fleet"` and a clean, claimed linked checkout. The
+controller resolves the commit. A repository enrolled for Git checkout lets
+the Studio supervisor fetch that commit into its read-only shared mirror and
+the executor materialize an attempt-owned checkout. Upstream credentials
+stay with the supervisor. The controller owns PR review, CI and merge after
+the worker returns its artifacts. The direct `factory_remote` tool also
+supports the original pinned checkout and artifact retrieval.
 A Firebase-authenticated HTTPS service verifies enrollment and owns the
 Firestore task, message, and lease transactions. Native listeners watch
 per-client wake documents. Workstations fetch the authoritative snapshot from

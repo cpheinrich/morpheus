@@ -17,7 +17,7 @@ const schema = z.strictObject({
     z.strictObject({ role: z.literal("worker"), hostId: id, slotId: id }),
   ])),
   projects: z.record(id, z.strictObject({
-    revision: z.string().regex(/^[a-f0-9]{40}$/),
+    revision: z.union([z.string().regex(/^[a-f0-9]{40}$/), z.literal("git")]),
     workspaceKey: id,
     eligibleSlots: z.array(id).min(1).max(16),
     selection: z.strictObject({ provider: z.literal("codex"), gateway: id, model: id }),

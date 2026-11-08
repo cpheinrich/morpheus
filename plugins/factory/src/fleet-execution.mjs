@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { fetchStudioRevision } from "./fleet-source.mjs";
 import { once } from "node:events";
 import { isAbsolute } from "node:path";
 import { createInterface } from "node:readline";
@@ -9,7 +10,8 @@ const noLaunch = () => ({ terminationVerified: true, result: { outcome: "failed"
 function validExecution(config) {
   return /^[a-z_][a-z0-9_-]*$/.test(config.account) && config.account !== "root" &&
     [config.node, config.script, config.workerConfig].every((path) => typeof path === "string" && isAbsolute(path)) &&
-    /^[a-zA-Z0-9_-]{1,128}$/.test(config.project);
+    /^[a-zA-Z0-9_-]{1,128}$/.test(config.project) &&
+    (config.sourceMirror === undefined || isAbsolute(config.sourceMirror));
 }
 
 async function readExecution(stdout, stop) {
@@ -85,10 +87,21 @@ export function createStudioExecutor(config, call, checkQuota) {
         return { terminationVerified: true, result: { outcome: "failed", summary: "Studio gateway quota is unavailable or above the Factory limit." } };
       }
       if (signal.aborted) return noLaunch();
+      let checkout;
+      if (task.source.checkout === "git") {
+        try {
+          if (task.source.project !== config.project || !config.sourceMirror) throw new Error("Source is not enrolled");
+          if (!resume) await fetchStudioRevision(config.sourceMirror, task.source.revision);
+          checkout = { mirror: config.sourceMirror, attemptId: task.attempt.id };
+        } catch {
+          return { terminationVerified: true, result: { outcome: "failed", summary: "Studio could not fetch the enrolled source commit." } };
+        }
+      }
+      if (signal.aborted) return noLaunch();
       // Do not serialize the retained brief or mailbox with the current prompt.
       const output = await invoke(config, {
         task: { source: task.source, selection: task.selection }, admissionId, resume, prompt,
-        gatewayBaseUrl: config.gatewayBaseUrl,
+        gatewayBaseUrl: config.gatewayBaseUrl, checkout,
       }, signal);
       if (output?.outcome?.terminationVerified !== true) return { terminationVerified: false };
       return publish(call, output, task, signal);

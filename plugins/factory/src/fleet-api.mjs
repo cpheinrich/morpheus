@@ -59,11 +59,12 @@ async function loadTask(db, taskId, authorized) {
 function launchFor(config, principal, input) {
   const project = principal.projects.includes(input.project) && Object.hasOwn(config.projects, input.project) && config.projects[input.project];
   const selection = project?.selection;
-  if (!project || project.revision !== input.revision || (input.model && input.model !== selection.model))
+  const fetchSource = project?.revision === "git";
+  if (!project || (!fetchSource && project.revision !== input.revision) || (input.model && input.model !== selection.model))
     throw failure(403, "Project revision or model is outside the pilot enrollment");
   return {
     workspaceKey: project.workspaceKey, eligibleSlots: project.eligibleSlots,
-    source: { project: input.project, revision: project.revision },
+    source: { project: input.project, revision: input.revision, ...(fetchSource ? { checkout: "git" } : {}) },
     selection,
   };
 }
