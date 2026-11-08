@@ -30,7 +30,7 @@ Independent review cleared the enrolled scheduled-task reporter at normal risk w
     "durationMs": 78284,
     "evidence": "Factory run 97c6134d-d051-418b-8bca-922379eeb2d5, Codex session 01a1b92e-31b0-7a51-b98d-31ecebe822c5, turn 01a1b92e-3237-7180-9f0c-c393c8e09474 task_complete.duration_ms=78284."
   },
-  "outcome": "cleared",
+  "outcome": "complete",
   "summary": "Independent review cleared the enrolled scheduled-task reporter at normal risk without findings. The reviewer reran 21 focused tests and probed task bounds, numeric references, stale state, legacy compatibility and clock skew.",
   "findings": []
 }
