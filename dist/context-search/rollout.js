@@ -52,7 +52,11 @@ export function parseSearchConfig(value) {
     if (raw.mode !== undefined && raw.mode !== "tantivy" && raw.mode !== "ripgrep") {
         throw new Error("context.search.mode must be tantivy or ripgrep.");
     }
+    if (raw.transport !== undefined && raw.transport !== "cli" && raw.transport !== "mcp") {
+        throw new Error("context.search.transport must be cli or mcp.");
+    }
     return {
+        ...(raw.transport ? { transport: raw.transport } : {}),
         mode: raw.mode,
         include: strings(raw.include, "include"),
         exclude: strings(raw.exclude, "exclude"),
@@ -114,6 +118,13 @@ async function expireTrace(directory, now) {
         }
     }
 }
+function traceUsage(event) {
+    return {
+        transport: event.transport === "cli" || event.transport === "mcp" ? event.transport : undefined,
+        operation: ["search", "read", "coverage", "overview", "related"].includes(event.operation) ? event.operation : undefined,
+        outcome: ["ok", "empty", "error"].includes(event.outcome) ? event.outcome : undefined,
+    };
+}
 /** Keep this intentionally allowlisted. A caller cannot write text by spreading a result object. */
 function traceLine(event, now) {
     const numbers = {
@@ -129,6 +140,7 @@ function traceLine(event, now) {
         session: /^[a-f0-9]{16}$/.test(event.session ?? "") ? event.session : undefined,
         rollout: /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(event.rollout ?? "") ? event.rollout : undefined,
         startup: event.startup === "bounded" || event.startup === "full" ? event.startup : undefined,
+        ...traceUsage(event),
         cacheHit: typeof event.cacheHit === "boolean" ? event.cacheHit : undefined,
         ...safeNumbers,
     }) + "\n";
@@ -136,7 +148,7 @@ function traceLine(event, now) {
 /** Keep traces in ignored workspace storage writable from the agent sandbox. */
 export async function traceContext(root, event, now = new Date()) {
     try {
-        if (!["assignment", "query"].includes(event.type) ||
+        if (!["assignment", "query", "tool", "visible"].includes(event.type) ||
             !["tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"].includes(event.arm) ||
             !["tantivy", "ripgrep"].includes(event.engine))
             return;

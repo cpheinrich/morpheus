@@ -1,3 +1,4 @@
+import { contextUsage } from "./context-usage.js";
 import { type Phase, type ProfileIssue, type SessionRow, type SessionSource, type SpanRow, type TokenTotals } from "./types.js";
 export interface PhaseLine {
     phase: Phase;
@@ -50,6 +51,7 @@ export interface Report {
     byRepo: GroupLine[];
     byRole: GroupLine[];
     byModel: ModelLine[];
+    contextUsage: ReturnType<typeof contextUsage>;
     firstTurn: Array<{
         provider: string;
         sessions: number;

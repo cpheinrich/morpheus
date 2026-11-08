@@ -445,6 +445,12 @@ async function dispatchTeam({ command }: Invocation): Promise<number> {
 }
 
 async function dispatchContextLookup(command: string | undefined, rest: string[], flags: Invocation["flags"]): Promise<number | undefined> {
+  if (command === "profile") {
+    if (rest.length > 1) throw new Error("Use morpheus context profile [YYYY-MM-DD].");
+    const { summarizeContextTraces } = await import("../context-search/trace-summary.js");
+    console.log(JSON.stringify(await summarizeContextTraces(process.cwd(), { since: rest[0] }), null, 2));
+    return 0;
+  }
   if (command === "task-prompt") return (await import("../context-search/task-start.js")).runTaskPromptHook();
   if (command !== "search" && command !== "coverage" && command !== "engine" && command !== "task-read") return;
   const search = await import("./context-search.js");

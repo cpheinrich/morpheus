@@ -3,6 +3,10 @@ Follow the user's objective, explicit authorization, repository instructions and
 Do not create a second task worktree unless explicitly asked. Do not launch another agent or recursively
 invoke this integration. {coordinator} owns supervision and the conversation with the user.
 
+When the Morpheus Context MCP is available, use `get_context_overview` to orient in an unfamiliar
+project. Use `search_project_context` for task-specific project records and open the governing
+source it cites before making changes.
+
 For a reversible implementation choice, follow existing conventions or a clear default. If you
 need clarification, call AskUserQuestion. If that tool is unavailable, return a concise question
 and mark outcome needs_input. {coordinator} can answer within the user's existing authorization; it cannot

@@ -70,7 +70,16 @@ async function printRollout(root, paths, arm, id) {
     if (!arm.id)
         return;
     console.log(`Context search rollout ${arm.id}: ${arm.arm}; engine ${arm.engine}.`);
-    console.log("Use this session's required records listed here as the startup set, then run `morpheus context search <query>` once the task is known.");
+    const { getSearchConfig } = await import("../context-search/rollout.js");
+    const mcp = (await getSearchConfig(root)).transport === "mcp";
+    const sessionId = id ?? providerSessionId();
+    if (mcp && arm.startup === "bounded" && sessionId) {
+        const { armMcpTaskContext } = await import("../context-search/task-start.js");
+        await armMcpTaskContext(root, sessionId).catch(() => { });
+    }
+    console.log(mcp
+        ? "Use this session's required records as the startup set, then use the Morpheus Context MCP search_project_context tool once the task is known. The CLI is a fallback if MCP is unavailable."
+        : "Use this session's required records listed here as the startup set, then run `morpheus context search <query>` once the task is known.");
     console.log("Use 1,000 returned tokens for a focused lookup, or up to 2,500 when several sources are needed.");
     if (id && id !== providerSessionId()) {
         const quoted = "'" + id.replaceAll("'", "'\\''") + "'";
@@ -81,7 +90,7 @@ async function printRollout(root, paths, arm, id) {
     const { countContextTokens } = await import("../context-search/engine.js");
     const startupTokens = contents?.reduce((total, content) => total + countContextTokens(content), 0);
     await traceContext(root, { type: "assignment", arm: arm.arm, engine: arm.engine,
-        session: arm.session, rollout: arm.id, startup: arm.startup, startupBytes, startupTokens });
+        session: arm.session, rollout: arm.id, startup: arm.startup, startupBytes, startupTokens, transport: mcp ? "mcp" : "cli" });
 }
 /** Trunk lag, the records to read from this checkout, and how to keep the session's task association. */
 async function printReadInstructions(prepared, sessionId) {

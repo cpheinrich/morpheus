@@ -104,7 +104,7 @@ async function gatewayEnv(config, root, binding, step) {
 }
 function workerArgv(config, sessionId) {
   const permission = codexPermission({ 'read-only': 'plan', 'workspace-write': 'acceptEdits', 'danger-full-access': 'bypassPermissions' }[config.sandbox]);
-  return codexArgs(sessionId, config, permission, config.gateway);
+  return codexArgs(sessionId, config, permission, config.gateway, config.cwd);
 }
 // Every step before the guardian spawn; `step.summary` names the phase a failure is reported as.
 async function prepareJob({ config, prompt, resume, admissionId, root, directory, binding, record }, step) {

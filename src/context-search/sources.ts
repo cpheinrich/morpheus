@@ -19,6 +19,22 @@ const matches = (path: string, patterns: readonly string[]) => patterns.some(pat
 const safePath = (path: string) =>
   path.endsWith(".md") && !path.startsWith("/") && !path.split("/").some(part => part === ".." || part === ".");
 
+export const CONTEXT_KINDS = ["decision", "lesson", "roadmap", "worklog", "runbook", "meeting_note", "other"] as const;
+export type ContextKind = typeof CONTEXT_KINDS[number];
+
+const kindPaths: ReadonlyArray<[ContextKind, string]> = [
+  ["decision", ".agent/decisions{.md,/**}"],
+  ["lesson", ".agent/learned{.md,/**}"],
+  ["roadmap", "hq/product/roadmap/**"],
+  ["worklog", ".agent/worklog/**"],
+  ["runbook", "docs/runbooks/**"],
+  ["meeting_note", "hq/team/meeting-notes/**"],
+];
+
+export function contextKind(path: string): ContextKind {
+  return kindPaths.find(([, pattern]) => minimatch(path, pattern, options))?.[0] ?? "other";
+}
+
 export interface SourceRules {
   include: readonly string[];
   exclude: readonly string[];

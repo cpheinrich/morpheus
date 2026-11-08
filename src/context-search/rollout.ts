@@ -9,11 +9,16 @@ const TRACE_DAYS = 30;
 const DAILY_TRACE_LIMIT = 1_048_576;
 const MAX_CORE_BYTES = 8_192;
 
+export type ContextTransport = "cli" | "mcp";
+export type ContextOperation = "search" | "read" | "coverage" | "overview" | "related";
+export type ContextOutcome = "ok" | "empty" | "error";
+
 export type SearchEngine = "tantivy" | "ripgrep";
 export type Arm = "tantivy-bounded" | "ripgrep-bounded" | "ripgrep-full" | "manual" | "legacy";
 export interface SearchRollout { id: string; coreInputs: string[] }
 export interface SearchConfig {
   mode?: SearchEngine;
+  transport?: ContextTransport;
   include: string[];
   exclude: string[];
   rollout?: SearchRollout;
@@ -78,7 +83,11 @@ export function parseSearchConfig(value: unknown): SearchConfig {
   if (raw.mode !== undefined && raw.mode !== "tantivy" && raw.mode !== "ripgrep") {
     throw new Error("context.search.mode must be tantivy or ripgrep.");
   }
+  if (raw.transport !== undefined && raw.transport !== "cli" && raw.transport !== "mcp") {
+    throw new Error("context.search.transport must be cli or mcp.");
+  }
   return {
+    ...(raw.transport ? { transport: raw.transport } : {}),
     mode: raw.mode as SearchEngine | undefined,
     include: strings(raw.include, "include"),
     exclude: strings(raw.exclude, "exclude"),
@@ -133,7 +142,10 @@ export async function contextArm(root: string, sessionId = providerSessionId(), 
 }
 
 export interface ContextTrace {
-  type: "assignment" | "query";
+  type: "assignment" | "query" | "tool" | "visible";
+  transport?: ContextTransport;
+  operation?: ContextOperation;
+  outcome?: ContextOutcome;
   arm: Arm;
   engine: SearchEngine;
   /** Actual engine, when different from the assigned engine. */
@@ -162,6 +174,14 @@ async function expireTrace(directory: string, now: Date): Promise<void> {
   }
 }
 
+function traceUsage(event: ContextTrace) {
+  return {
+    transport: event.transport === "cli" || event.transport === "mcp" ? event.transport : undefined,
+    operation: (["search", "read", "coverage", "overview", "related"] as const).includes(event.operation!) ? event.operation : undefined,
+    outcome: (["ok", "empty", "error"] as const).includes(event.outcome!) ? event.outcome : undefined,
+  };
+}
+
 /** Keep this intentionally allowlisted. A caller cannot write text by spreading a result object. */
 function traceLine(event: ContextTrace, now: Date): string {
   const numbers = {
@@ -178,6 +198,7 @@ function traceLine(event: ContextTrace, now: Date): string {
     session: /^[a-f0-9]{16}$/.test(event.session ?? "") ? event.session : undefined,
     rollout: /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(event.rollout ?? "") ? event.rollout : undefined,
     startup: event.startup === "bounded" || event.startup === "full" ? event.startup : undefined,
+    ...traceUsage(event),
     cacheHit: typeof event.cacheHit === "boolean" ? event.cacheHit : undefined,
     ...safeNumbers,
   }) + "\n";
@@ -186,7 +207,7 @@ function traceLine(event: ContextTrace, now: Date): string {
 /** Keep traces in ignored workspace storage writable from the agent sandbox. */
 export async function traceContext(root: string, event: ContextTrace, now = new Date()): Promise<void> {
   try {
-    if (!["assignment", "query"].includes(event.type) ||
+    if (!["assignment", "query", "tool", "visible"].includes(event.type) ||
         !["tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"].includes(event.arm) ||
         !["tantivy", "ripgrep"].includes(event.engine)) return;
     const directory = await searchStateDirectory(root, "traces");

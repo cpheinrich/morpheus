@@ -1,6 +1,6 @@
 import { access, readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, parse, resolve } from "node:path";
-import { isContextSearchOutput } from "../context-search/output.js";
+import { CONTEXT_MCP_PREFIX, isContextSearchOutput } from "../context-search/output.js";
 import { CANONICAL_INPUTS } from "./lease.js";
 import { fingerprint, readRecords } from "./inputs.js";
 import { projectPolicy } from "./policy.js";
@@ -209,6 +209,11 @@ export async function recordRead(raw, now = new Date()) {
     return written;
 }
 async function fromHookText(payload, root, session, provider, at, providerSession, failed) {
+    const mcpTool = toolLabel(payload);
+    if (!failed && root && mcpTool.startsWith(CONTEXT_MCP_PREFIX)) {
+        await recordContextMcpResult(payload, root, providerSession, provider, mcpTool).catch(() => { });
+        return [];
+    }
     const text = shownText(payload, failed);
     // An unsupported result shape provides no liveness evidence.
     if (text === null)
@@ -220,6 +225,35 @@ async function fromHookText(payload, root, session, provider, at, providerSessio
     if (!failed)
         await recordTaskResult(payload, root, providerSession, text).catch(() => { });
     return [];
+}
+async function recordContextMcpResult(payload, root, session, provider, tool) {
+    const operation = tool === CONTEXT_MCP_PREFIX + "search_project_context" ? "search"
+        : tool === CONTEXT_MCP_PREFIX + "read_project_record" ? "read" : undefined;
+    if (!operation)
+        return;
+    const text = mcpResultText(payload["tool_response"], provider);
+    if (!text || !withinCap(text, provider) || !isContextSearchOutput(text))
+        return;
+    const { contextMcpScope } = await import("../context-search/mcp-scope.js");
+    const scope = await contextMcpScope(root, session);
+    const { observeTaskContext } = await import("../context-search/task-start.js");
+    await observeTaskContext(scope.root, session, text, operation);
+}
+function mcpResultText(response, provider) {
+    if (typeof response === "string")
+        return response;
+    if (isObject(response) && response["isError"] === true)
+        return null;
+    const structured = isObject(response) ? response["structuredContent"] : undefined;
+    // Codex presents structured content in preference to the fallback text block.
+    if (provider === "codex" && isObject(structured)) {
+        return typeof structured["excerpt"] === "string" ? structured["excerpt"] : null;
+    }
+    const blocks = isObject(response) ? response["content"] : response;
+    if (!Array.isArray(blocks))
+        return null;
+    const first = blocks[0];
+    return isObject(first) && first["type"] === "text" && typeof first["text"] === "string" ? first["text"] : null;
 }
 async function recordTaskResult(payload, root, session, text) {
     const input = isObject(payload["tool_input"]) ? payload["tool_input"] : {};
