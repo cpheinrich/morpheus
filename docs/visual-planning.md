@@ -21,7 +21,7 @@ only registry. Descriptions in scaffold pointers come from the canonical frontma
 flowchart TB
   Canonical[Canonical skill] --> Sync[Skill sync script]
   Sync --> Mirror[Claude mirror]
-  Sync --> CLI[Installed CLI guide]
+  Sync --> CLI[Generated CLI module]
 ```
 
 The registry supplies pointers for new projects and for missing entrypoints in existing projects.
