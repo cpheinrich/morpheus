@@ -24,6 +24,13 @@ const organizationRunner=z.strictObject({organization:z.string().regex(/^[A-Za-z
   .refine(v=>v.projectIds.every(p=>p.split('/')[0]===v.organization))
   .refine(v=>v.readable?(v.online!==null&&v.busy!==null&&v.gap===null):(v.online===null&&v.busy===null&&v.gap!==null));
 const positiveId = number.int().positive();
+const deploymentState = z.enum(['queued','running','succeeded','failed','cancelled','skipped','unknown']);
+const deploymentStage = z.strictObject({id,jobId:positiveId,state:deploymentState});
+const deployment = z.strictObject({
+  runId:positiveId,attempt:positiveId,observedAt:stamp,startedAt:stamp,
+  sourceSha:z.string().regex(/^[a-f0-9]{40}$/).nullable(),state:deploymentState,
+  stages:z.array(deploymentStage).max(16).refine(rows=>distinct(rows,row=>row.id)),
+});
 const cadence = z.union([
   z.enum(['event-driven','twice-monthly']),
   z.string().regex(/^every [1-9]\d{0,3} minutes from (?:[01]\d|2[0-3]):[0-5]\d UTC$/),
@@ -32,6 +39,7 @@ const scheduledTask = z.strictObject({
   id, repository:project, cadence, nextAt:stamp.nullable(), lastRunAt:stamp.nullable(),
   status:z.enum(['idle','running','succeeded','partial','failed','held','disabled','unknown']),
   runId:positiveId.nullable(), pullRequests:z.array(positiveId).max(3).refine(rows=>distinct(rows,x=>x)),
+  deployments:z.array(deployment).max(5).refine(rows=>distinct(rows,row=>row.runId)).optional(),
 }).refine(row=>row.cadence!=='event-driven'||row.nextAt===null);
 const tasks = z.array(scheduledTask).max(16).refine(rows=>distinct(rows,row=>row.id));
 export const scheduledTaskDocument = z.strictObject({version:z.literal(1),observedAt:stamp,tasks});
@@ -78,6 +86,11 @@ function taskClocks(sample) {
   if(sample.kind!=='scheduledTasks')return;
   const latest=Date.parse(sample.sourceObservedAt)+60000;
   if(sample.value.tasks.some(row=>row.lastRunAt&&Date.parse(row.lastRunAt)>latest))throw new Error('source-clock');
+  for(const row of sample.value.tasks) {
+    for(const deployment of row.deployments??[]) {
+      if([deployment.observedAt,deployment.startedAt].some(time=>Date.parse(time)>latest))throw new Error('source-clock');
+    }
+  }
 }
 export function parseReport(input, now = Date.now()) {
   const parsed = reportSchema.safeParse(input);
