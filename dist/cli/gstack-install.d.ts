@@ -10,6 +10,7 @@ export declare function ensureGstack(host: GstackHost): Promise<{
         PLAYWRIGHT_BROWSERS_PATH: string;
         CODEX_HOME: string;
         CLAUDE_CONFIG_DIR: string;
+        HOME: string;
     };
     pathPrefix: string;
 }>;

@@ -43,9 +43,10 @@ instrumented debug build and a paired device. An iOS route in this pilot uses en
 and the repository's existing simulator, build and test lanes.
 
 In a managed run, read the returned skill by path in the current session. Apply the printed
-environment to each gstack shell step. In JSON mode, use `runtime.env` and prepend
-`runtime.pathPrefix` to PATH. This exposes the private runtime and browser to the skill. The
-agent still checks the skill's task and target prerequisites before execution.
+environment in a subshell for each gstack shell step and resolve skill references starting
+with `~/` against the managed home. In JSON mode, use `runtime.env` and prepend
+`runtime.pathPrefix` to PATH. The agent checks the skill's task and target prerequisites
+before execution.
 
 Morpheus uses [gstack v1.97.0.0](https://github.com/garrytan/gstack/releases/tag/v1.97.0.0).
 The release pin advances with a tested Morpheus change. The managed profile has gstack's

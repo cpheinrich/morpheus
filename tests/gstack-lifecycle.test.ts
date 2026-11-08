@@ -160,6 +160,8 @@ printf '%s\\n' --- 'name: review' --- > "$CODEX_HOME/skills/gstack-review/SKILL.
     const args = ["review", "general", "--gstack", "--host", "codex"];
     const first = await managed(...args);
     expect(first.runtime.release).toBe("v1.97.0.0");
+    expect(first.runtime.env.CODEX_HOME).toBe(join(first.runtime.env.HOME, ".codex"));
+    expect(first.runtime.env.CLAUDE_CONFIG_DIR).toBe(join(first.runtime.env.HOME, ".claude"));
     expect(first.routes[0].installed.name).toBe("review");
     expect(first.routes[0].installed.path).toBe(join(first.runtime.env.CODEX_HOME, "skills", "gstack-review", "SKILL.md"));
     expect(await managed(...args)).toEqual(first);

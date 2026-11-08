@@ -19,6 +19,7 @@ function installation(directory: string, host: GstackHost) {
     release: RELEASE,
     skills: join(root, "skills"),
     env: {
+      HOME: directory,
       ...profiles,
       GSTACK_ROOT: join(directory, ".claude", "skills", "gstack"),
       GSTACK_HOME: join(directory, "state"),
@@ -44,7 +45,7 @@ async function activeInstall(directory: string) {
 async function setup(directory: string, host: GstackHost) {
   const { env: runtime, pathPrefix } = installation(directory, host);
   // Upstream setup treats the profile as its home. Keep its tools and hooks in this cache.
-  const env = { HOME: directory, PATH: process.env.PATH, TMPDIR: process.env.TMPDIR, ...runtime };
+  const env = { PATH: process.env.PATH, TMPDIR: process.env.TMPDIR, ...runtime };
   const options = { cwd: directory, env, timeout: 300_000, maxBuffer: 4 * 1024 * 1024 };
   await mkdir(join(runtime.CLAUDE_CONFIG_DIR, "skills"), { recursive: true });
   await run("git", ["clone", "--depth", "1", "--branch", RELEASE, "--no-tags",

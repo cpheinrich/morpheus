@@ -150,7 +150,7 @@ export async function runGstackLifecycle(argv: string[], cwd = process.cwd()): P
   if (result.runtime) {
     const { release, env, pathPrefix } = result.runtime;
     const settings = Object.entries(env).map(([key, value]) => `${key}=${shellQuote(value)}`);
-    console.log(`  Managed gstack ${release}. Read the skill by path and apply these settings to each gstack shell step.`);
+    console.log(`  Managed gstack ${release}. Read the skill by path. Resolve ~/ references using the managed HOME and apply these settings in a subshell for each gstack shell step.`);
     console.log(`  export ${settings.join(" ")} PATH=${shellQuote(pathPrefix)}:"$PATH"`);
   }
   for (const { skill, installed, provide, returnToMorpheus } of result.routes) {
