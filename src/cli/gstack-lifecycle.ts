@@ -128,6 +128,40 @@ function readOptions(argv: string[]) {
   return { values, stage: stage as Stage, surface: surface as Surface, host };
 }
 
+type LifecycleResult = Awaited<ReturnType<typeof lookupGstack>> & {
+  enabled: boolean;
+  stage: Stage;
+  surface: Surface;
+};
+
+function printLifecycle(result: LifecycleResult): void {
+  const { enabled } = result;
+  console.log(`gstack ${enabled ? "opted in" : "off"} · ${result.stage} · ${result.surface}`);
+  if (result.setupError) {
+    console.log(`gstack unavailable. Continue with Morpheus. ${result.setupError}`);
+  } else if (enabled && result.routes.length === 0) {
+    console.log("No gstack workflow matches this step. Continue with Morpheus.");
+  } else if (enabled && !result.routes.some(route => route.installed)) {
+    console.log("No matching gstack skill is installed. Continue with Morpheus.");
+  } else if (enabled) {
+    console.log("Available skills are suggestions. Tell the user which skill you use before running it, or why you skip it.");
+  }
+  if (result.runtime) {
+    const { release, env, pathPrefix } = result.runtime;
+    const settings = Object.entries(env).map(([key, value]) => `${key}=${shellQuote(value)}`);
+    console.log(`  Managed gstack ${release}. Read the skill by path. Resolve ~/ references using the managed HOME and apply these settings in a subshell for each gstack shell step.`);
+    console.log(`  export ${settings.join(" ")} PATH=${shellQuote(pathPrefix)}:"$PATH"`);
+  }
+  for (const { skill, installed, provide, returnToMorpheus } of result.routes) {
+    if (!installed) {
+      console.log(`  ${skill}: unavailable`);
+      continue;
+    }
+    console.log(`  Available: ${installed.name} · ${installed.path}\n    Provide: ${provide}\n    Return: ${returnToMorpheus}`);
+  }
+  console.log("Morpheus owns task state, independent review, and delivery.");
+}
+
 export async function runGstackLifecycle(argv: string[], cwd = process.cwd()): Promise<number> {
   if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
     console.log(USAGE);
@@ -145,21 +179,6 @@ export async function runGstackLifecycle(argv: string[], cwd = process.cwd()): P
     return 0;
   }
 
-  console.log(`gstack ${result.enabled ? "on" : "off"} · ${stage} · ${surface}`);
-  if (result.setupError) console.log(`gstack unavailable. Continue with Morpheus. ${result.setupError}`);
-  if (result.runtime) {
-    const { release, env, pathPrefix } = result.runtime;
-    const settings = Object.entries(env).map(([key, value]) => `${key}=${shellQuote(value)}`);
-    console.log(`  Managed gstack ${release}. Read the skill by path. Resolve ~/ references using the managed HOME and apply these settings in a subshell for each gstack shell step.`);
-    console.log(`  export ${settings.join(" ")} PATH=${shellQuote(pathPrefix)}:"$PATH"`);
-  }
-  for (const { skill, installed, provide, returnToMorpheus } of result.routes) {
-    if (!installed) {
-      console.log(`  ${skill}: unavailable`);
-      continue;
-    }
-    console.log(`  ${installed.name} · ${installed.path}\n    Provide: ${provide}\n    Return: ${returnToMorpheus}`);
-  }
-  console.log("Morpheus owns task state, independent review, and delivery.");
+  printLifecycle(result);
   return 0;
 }

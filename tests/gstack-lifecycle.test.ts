@@ -102,6 +102,25 @@ describe("gstack lifecycle routing through the CLI", () => {
     }]);
   });
 
+  it("labels suggestions and fallback without implying a skill has run", async () => {
+    const args = ["skills", "lifecycle"];
+    const flags = ["--gstack", "--host", "codex", "--skills-dir", root];
+    expect(await run([...args, "review", "web"])).toBe(0);
+    expect(log).toHaveBeenCalledWith("gstack off · review · web");
+    expect(await run([...args, "monitor", "ios", ...flags])).toBe(0);
+    expect(log).toHaveBeenCalledWith("No gstack workflow matches this step. Continue with Morpheus.");
+    expect(await run([...args, "review", "web", ...flags])).toBe(0);
+    expect(log).toHaveBeenCalledWith("No matching gstack skill is installed. Continue with Morpheus.");
+
+    log.mockClear();
+    const path = await installSkill("gstack-qa-only");
+    expect(await run([...args, "review", "web", ...flags])).toBe(0);
+    expect(log).toHaveBeenCalledWith("gstack opted in · review · web");
+    expect(log).toHaveBeenCalledWith(expect.stringContaining(`Available: gstack-qa-only · ${path}`));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Tell the user which skill you use before running it"));
+    expect(log).not.toHaveBeenCalledWith(expect.stringContaining("Continue with Morpheus"));
+  });
+
   it("rejects invalid names and option spelling instead of silently opting in", async () => {
     await installSkill("gstack-review", "wrong-skill");
     await expect(lookup("review", "web", "--gstack", "--host", "codex")).rejects.toThrow(
@@ -183,6 +202,12 @@ printf '%s\\n' --- 'name: review' --- > "$CODEX_HOME/skills/gstack-review/SKILL.
     });
     expect(await readFile(invocations, "utf8")).toBe("git clone\ngit -C\n");
     expect(await readdir(join(cache, "gstack", "v1.97.0.0", "codex"))).toEqual([]);
+    log.mockClear();
+    expect(await run(["skills", "lifecycle", ...args])).toBe(0);
+    expect(log).toHaveBeenCalledWith(
+      "gstack unavailable. Continue with Morpheus. gstack v1.97.0.0 did not resolve to the pinned commit.",
+    );
+    expect(log).not.toHaveBeenCalledWith("No gstack workflow matches this step. Continue with Morpheus.");
     await rm(badPin);
     expect((await managed(...args)).routes[0].installed.name).toBe("review");
   });
