@@ -76,6 +76,14 @@ start/create time (unknown if missing), not a file timestamp fabricated as a lau
 Shared account and GitHub sources have exactly one registered writer host. Reporter failure
 is telemetry failure and cannot block the underlying CI/release/Factory operation.
 
+GitHub job rows may carry optional `pullRequests`, up to three distinct positive safe integers.
+The reporter projects only explicit `pull_requests` from already-read workflow runs: the base's
+`repo.full_name` must equal the enrolled repository, or `repo_url`/`repo.url` must equal its exact
+`https://api.github.com/repos/<owner>/<repo>` URL. All supplied base repository identities must
+agree. Malformed numbers, absent base identity and foreign/conflicting identities are excluded;
+deduplication precedes the three-number cap. Without a proven association the property stays
+absent. This adds no GitHub request, scope, branch/commit inference or arbitrary PR text.
+
 Check transport parity explicitly before joint source review:
 `node reporting/check-contract.mjs /absolute/consumer/apps/web/lib/infrastructure/wire.mjs`.
 The consumer records this hash in its private integration documentation; update both copies together.
@@ -102,6 +110,27 @@ identifiers are the full transport. Event-driven tasks have no next slot. Paths,
 errors and arbitrary URLs are refused. Missing or invalid state is reported as a source error.
 Deploy a compatible consumer and enroll its exact host/source binding before adding the source
 to the host reporter. Reports using only prior v1 kinds continue to work.
+
+Task rows may optionally include `deployments` (at most five, distinct by `runId`); absence
+stays absent rather than defaulting to an empty history. Each deployment carries positive safe
+integer `runId` and `attempt`, ISO `observedAt` and `startedAt`, nullable lowercase full 40-character
+`sourceSha`, `state`, and `stages`. A stage carries a protocol-safe `id`, positive safe integer
+`jobId` and `state`; at most sixteen stages, distinct by `id`, are accepted. Deployment and stage
+states are `queued`, `running`, `succeeded`, `failed`, `cancelled`, `skipped` or `unknown`.
+All objects reject additional fields, including arbitrary URLs, names and logs. Unknown stage IDs
+are valid for forward compatibility; consumers display them as unknown without links. Consumers
+construct GitHub paths only from the authorized repository and numeric run/job identities.
+
+The producer selects the latest attempt, derives the app source SHA only from plan, execution or
+receipt evidence, and excludes dry runs and promotion no-ops where proven. Workflow success alone
+does not prove delivery: use `unknown`, or `skipped` for a proven no-op. Keep staging and production
+as separate task IDs and retain existing task status, cadence and top-level run identity. Each
+deployment keeps its actual last observation time on acquisition failure; rereading a file cannot
+refresh it. Wire validation rejects deployment observation/start times more than sixty seconds
+after the sample's `sourceObservedAt`, even if the reporter's `sampledAt` is newer. Invalid files
+produce a source error, never a fabricated current deployment. Existing owner-only, nonsymlink
+and 64 KiB file/transport limits remain. Deploy the compatible server before activating new fields
+in a producer or reporter; no new source, enrollment or credentials are needed.
 
 Current Factory observation takes one canonical same-user process census per source. It checks
 recorded guardian/worker identities on every terminal path and current unattended markers even
