@@ -367,6 +367,14 @@ test("remote Studio writes require verified current permissions and enabled root
   await assert.rejects(manager.factoryRemoteAuthorize(args), /cannot authorize Studio workspace writes/);
   manager.snapshot = async () => ({ cwd, sandbox, approvalPolicy: "never" });
   assert.deepEqual(await manager.factoryRemoteAuthorize(args), { authorized: true });
+  const checkoutPath = join(directory, "linked");
+  execFileSync("git", ["-C", projectPath, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.test",
+    "commit", "--allow-empty", "-qm", "Fixture"]);
+  execFileSync("git", ["-C", projectPath, "worktree", "add", "-q", "--detach", checkoutPath]);
+  assert.deepEqual(await manager.factoryRemoteAuthorize({ ...args, checkoutPath }), { authorized: true });
+  const { claimCheckouts } = await import("../src/workspace.mjs");
+  await claimCheckouts(randomUUID(), [{ path: await (await import("node:fs/promises")).realpath(checkoutPath) }]);
+  await assert.rejects(manager.factoryRemoteAuthorize({ ...args, checkoutPath }), /owned by another Factory task/);
   await configWrite({ ...config, mode: "off" });
   await assert.rejects(manager.factoryRemoteAuthorize(args), /disabled for this task/);
   for (const path of [cwd, projectPath]) {

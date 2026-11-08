@@ -76,9 +76,22 @@ async function invoke(config, input, signal) {
   }
 }
 
+function sourceBinding(config, task) {
+  if (task.source.project !== config.project || !config.sourceMirror) throw new Error("Source is not enrolled");
+  return { mirror: config.sourceMirror, attemptId: task.attempt.id };
+}
+
 export function createStudioExecutor(config, call, checkQuota) {
   if (!validExecution(config)) throw new Error("Invalid Studio execution configuration");
   return {
+    async prepare(task, signal) {
+      if (signal.aborted) return false;
+      const checkout = sourceBinding(config, task);
+      await fetchStudioRevision(checkout.mirror, task.source.revision);
+      if (signal.aborted) return false;
+      const output = await invoke(config, { op: "prepare", source: task.source, checkout }, signal);
+      return output?.outcome?.prepared === true;
+    },
     async execute({ task, admissionId, resume, prompt, signal }) {
       if (signal.aborted) return noLaunch();
       try {
@@ -87,21 +100,11 @@ export function createStudioExecutor(config, call, checkQuota) {
         return { terminationVerified: true, result: { outcome: "failed", summary: "Studio gateway quota is unavailable or above the Factory limit." } };
       }
       if (signal.aborted) return noLaunch();
-      let checkout;
-      if (task.source.checkout === "git") {
-        try {
-          if (task.source.project !== config.project || !config.sourceMirror) throw new Error("Source is not enrolled");
-          if (!resume) await fetchStudioRevision(config.sourceMirror, task.source.revision);
-          checkout = { mirror: config.sourceMirror, attemptId: task.attempt.id };
-        } catch {
-          return { terminationVerified: true, result: { outcome: "failed", summary: "Studio could not fetch the enrolled source commit." } };
-        }
-      }
-      if (signal.aborted) return noLaunch();
       // Do not serialize the retained brief or mailbox with the current prompt.
       const output = await invoke(config, {
         task: { source: task.source, selection: task.selection }, admissionId, resume, prompt,
-        gatewayBaseUrl: config.gatewayBaseUrl, checkout,
+        gatewayBaseUrl: config.gatewayBaseUrl,
+        checkout: task.source.checkout === "git" ? sourceBinding(config, task) : undefined,
       }, signal);
       if (output?.outcome?.terminationVerified !== true) return { terminationVerified: false };
       return publish(call, output, task, signal);

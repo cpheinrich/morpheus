@@ -1027,7 +1027,8 @@ execution account read-only access to the bare repo and keep upstream credential
 in the supervisor's private directory. The executor's worker config `cwd` names
 an execution-account-owned directory outside Git. Each attempt fetches its exact
 commit and creates its own child checkout there. A clarification keeps that same
-checkout. Operators can retire old checkouts after verifying their attempts are
+checkout. The runner records preparation before it can start a model, so a
+restart during checkout can settle the attempt without a guardian receipt. Operators can retire old checkouts after verifying their attempts are
 terminal. An explicit SHA enrollment continues to use the fixed pilot checkout.
 
 The controller applies the verified patch to its claimed worktree and owns the

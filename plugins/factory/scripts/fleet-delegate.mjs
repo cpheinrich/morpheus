@@ -4,7 +4,8 @@ import { mkdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { call } from "../src/client.mjs";
 import { home } from "../src/config.mjs";
-import { atomic, key, projectIdentity, readJSON } from "../src/store.mjs";
+import { atomic, key, readJSON } from "../src/store.mjs";
+import { checkoutInfo } from "../src/workspace.mjs";
 import { fleetControllerPath, fleetOperation } from "./fleet-mcp.mjs";
 
 const states = {
@@ -22,16 +23,14 @@ const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], {
 
 export async function fleetTarget(config, cwd) {
   if (!isAbsolute(cwd ?? "")) throw new Error("Fleet delegation requires the absolute claimed checkout path.");
-  const target = await projectIdentity(cwd);
+  const target = await checkoutInfo(cwd);
   const candidates = [];
   for (const [project, anchor] of Object.entries(config.projects ?? {})) {
-    if (await projectIdentity(anchor).then(({ project }) => project, () => null) === target.project)
+    if (await checkoutInfo(anchor).then(({ project }) => project, () => null) === target.project)
       candidates.push(project);
   }
   if (candidates.length !== 1) throw new Error("Checkout has no unique local fleet enrollment.");
-  if (git(target.cwd, "rev-parse", "--show-toplevel") !== target.cwd ||
-      git(target.cwd, "rev-parse", "--absolute-git-dir") === target.project ||
-      git(target.cwd, "status", "--porcelain"))
+  if (target.top !== target.cwd || !target.linked || git(target.cwd, "status", "--porcelain"))
     throw new Error("Fleet delegation requires a clean linked checkout at its committed revision.");
   return { project: candidates[0], revision: git(target.cwd, "rev-parse", "HEAD") };
 }
@@ -54,24 +53,27 @@ function checkOptions(args) {
     throw new Error("This fleet route supports one checkout and the enrolled Codex worker settings.");
 }
 
-async function submit(method, args) {
+async function submit(method, args, authorize) {
   checkOptions(args);
   const { readFleetConfig } = await import("../src/fleet-client.mjs");
   const config = await readFleetConfig(fleetControllerPath());
   const target = await fleetTarget(config, args.cwd);
   if (method === "inspect") {
-    await call("factory.remoteAuthorize", { rootId: args.rootId, projectPath: args.cwd });
-    return { placement: "fleet", target, route: { executor: "codex", reason: "Enrolled fleet; Studio checks quota before launch." } };
+    await authorize("factory.remoteAuthorize", {
+      rootId: args.rootId, projectPath: config.projects[target.project], checkoutPath: args.cwd,
+    });
+    return { placement: "fleet", target, admission: "pending", availability: "unknown", quota: null,
+      reason: "Local source preflight passed. The service validates enrollment at submission and Studio checks quota before launch." };
   }
   const result = await fleetOperation(args.rootId, {
     op: "submit", ...target, text: args.prompt, model: args.model, messageId: args.messageId ?? randomUUID(),
-  });
+  }, { checkoutPath: args.cwd });
   await mkdir(join(home(), "fleet-runs"), { recursive: true, mode: 0o700 });
-  await atomic(runPath(result.task.id), { rootId: args.rootId });
+  await atomic(runPath(result.task.id), { rootId: args.rootId, checkoutPath: args.cwd });
   return projectRun(result, result.task.id);
 }
 
-async function reply(method, args) {
+async function reply(method, args, checkoutPath) {
   const body = { taskId: args.runId };
   const { task } = await fleetOperation(args.rootId, { ...body, op: "get" });
   const source = method === "delegate" ? args.replySource : args.source;
@@ -84,26 +86,26 @@ async function reply(method, args) {
   const response = await fleetOperation(args.rootId, {
     ...body, op: "answer", attemptId: task.attempt.id, questionId: task.questionId, text,
     messageId: key(`${task.questionId}\0${source}\0${text}`),
-  });
+  }, { checkoutPath });
   if (response.reason) throw new Error(`Fleet reply refused: ${response.reason}`);
   return projectRun(await fleetOperation(args.rootId, { ...body, op: "get" }), args.runId);
 }
 
-export async function dispatchFleet(method, args) {
-  if (!args.runId) return args.placement === "fleet" ? submit(method, args) : undefined;
+export async function dispatchFleet(method, args, { authorize = call } = {}) {
+  if (!args.runId) return args.placement === "fleet" ? submit(method, args, authorize) : undefined;
   const record = await readJSON(runPath(args.runId), null);
   if (!record) {
     if (args.placement === "fleet") throw new Error("No fleet run matches this ID.");
     return undefined;
   }
   if (record.rootId !== args.rootId || args.placement === "local") throw new Error("Fleet run is outside this route or root.");
-  if (method === "answer" || method === "delegate") return reply(method, args);
+  if (method === "answer" || method === "delegate") return reply(method, args, record.checkoutPath);
   const body = { taskId: args.runId };
   if (method === "stop") {
     const response = await fleetOperation(args.rootId, { ...body, op: "cancel" });
     if (response.reason) throw new Error(`Fleet cancellation refused: ${response.reason}`);
     return { stopping: args.runId };
   }
-  const snapshot = await fleetOperation(args.rootId, { ...body, op: method === "wait" ? "wait" : "get" }, args.seconds);
+  const snapshot = await fleetOperation(args.rootId, { ...body, op: method === "wait" ? "wait" : "get" }, { seconds: args.seconds });
   return projectRun(snapshot, args.runId);
 }

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { fetchStudioRevision, studioCheckout } from "../src/fleet-source.mjs";
-import { fleetTarget } from "../scripts/fleet-delegate.mjs";
+import { dispatchFleet, fleetTarget } from "../scripts/fleet-delegate.mjs";
 
 const git = (cwd, ...args) => execFileSync("/usr/bin/git", ["-C", cwd, ...args], {
   encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
@@ -50,4 +50,26 @@ test("a Studio attempt fetches its exact commit, isolates edits, and resumes the
   await assert.rejects(fleetTarget(config, upstream), /clean linked checkout/);
   await writeFile(join(root, "claim", "tracked.txt"), "dirty\n");
   await assert.rejects(fleetTarget(config, join(root, "claim")), /clean linked checkout/);
+  const cwdForInspect = join(root, "claim");
+  git(cwdForInspect, "restore", "tracked.txt");
+  const before = process.env.FACTORY_HOME;
+  process.env.FACTORY_HOME = root;
+  t.after(() => {
+    if (before === undefined) delete process.env.FACTORY_HOME;
+    else process.env.FACTORY_HOME = before;
+  });
+  // A local source check must not imply that the remote endpoint is reachable.
+  const localConfig = { ...config, endpoint: "https://localhost:1" };
+  await writeFile(join(root, "fleet-controller.json"), JSON.stringify(localConfig), { mode: 0o600 });
+  const rootId = randomUUID();
+  const inspect = await dispatchFleet("inspect", { rootId, placement: "fleet", cwd: cwdForInspect }, {
+    authorize(method, input) {
+      assert.equal(method, "factory.remoteAuthorize");
+      assert.deepEqual(input, { rootId, projectPath: upstream, checkoutPath: cwdForInspect });
+    },
+  });
+  assert.equal(inspect.admission, "pending");
+  assert.equal(inspect.availability, "unknown");
+  assert.equal(inspect.quota, null);
+  assert.equal(await dispatchFleet("inspect", { rootId, cwd: cwdForInspect }), undefined);
 });

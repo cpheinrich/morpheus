@@ -22,7 +22,7 @@ async function prepare({ task, admissionId, resume, prompt, gatewayBaseUrl, chec
       config.sandbox !== "workspace-write" || !uuid.test(admissionId))
     throw new Error("Studio project or gateway model does not match this enrollment");
   const cwd = task.source.checkout === "git"
-    ? await studioCheckout(config.cwd, checkout, task.source.revision, resume)
+    ? await studioCheckout(config.cwd, checkout, task.source.revision, true)
     : config.cwd;
   const git = (...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 5000 }).trim();
   if (task.source.revision !== git("rev-parse", "HEAD") || (!resume && git("status", "--porcelain")))
@@ -63,6 +63,12 @@ function admissionEnvelope(value) {
 async function dispatch(value) {
   const job = admissionEnvelope(value);
   if (!job) return { terminationVerified: true, result: { outcome: "failed", summary: "Invalid Studio admission envelope." } };
+  if (job.op === "prepare") {
+    if (job.source?.project !== project || job.source?.checkout !== "git") return { prepared: false };
+    const { cwd } = await readWorkerConfig(configPath);
+    await studioCheckout(cwd, job.checkout, job.source.revision);
+    return { prepared: true };
+  }
   if (job.op === "recover") {
     const prior = await workerResult(job.admissionId);
     return { terminationVerified: prior.terminationVerified, admissionId: prior.admissionId };

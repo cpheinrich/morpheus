@@ -21,7 +21,7 @@ const operation = z.discriminatedUnion("op", [
 
 export const fleetControllerPath = () => join(home(), "fleet-controller.json");
 
-export async function fleetOperation(rootId, operation, seconds) {
+export async function fleetOperation(rootId, operation, { seconds, checkoutPath } = {}) {
   if (process.env[delegatedMarker]) throw new Error("Delegated workers cannot use the remote Factory.");
   const { connectFleet, readFleetConfig, waitForFleetTask } = await import("../src/fleet-client.mjs");
   const config = await readFleetConfig(fleetControllerPath());
@@ -32,7 +32,7 @@ export async function fleetOperation(rootId, operation, seconds) {
     if (op === "submit" || op === "answer") {
       const project = op === "submit" ? input.project : (await client.call("get", { rootId, taskId: input.taskId })).task.source.project;
       const projectPath = config.projects?.[project];
-      await call("factory.remoteAuthorize", { rootId, projectPath });
+      await call("factory.remoteAuthorize", { rootId, projectPath, checkoutPath });
     }
     let result = op === "wait" ? await waitForFleetTask(client, body, seconds) : await client.call(op, body);
     if (op === "download") {

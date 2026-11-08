@@ -40,7 +40,7 @@ const provider = z.enum(["codex", "claude"]).optional();
 const run = { runId: z.string().uuid() };
 export const factorySpecs = Object.freeze({
   inspect: [
-    "Inspect the Factory's pinned worker, current availability, quota and active runs for this root session. Call before delegating; root identity is injected by the plugin.",
+    "Inspect the local Factory route and active runs, or preflight an opted-in fleet checkout. Fleet eligibility and gateway quota are checked separately at submission and launch. Root identity is injected by the plugin.",
     { provider, placement: z.enum(["local", "fleet"]).optional(), cwd: z.string().optional() },
   ],
   delegate: [
