@@ -1,3 +1,4 @@
+import { type ContextOperation } from "./rollout.js";
 /** Only sessions whose prompt and read hooks ran get the task check. */
 export declare function taskContextRefusal(root: string, session?: string | undefined): Promise<string | undefined>;
 /** An exact-path read uses the same visible citation as a search result. */
@@ -6,6 +7,6 @@ export declare function taskRecord(root: string, session: string | undefined, pa
     text: string;
 } | undefined>;
 /** Credit an excerpt only when the hook actually saw matching, current source text. */
-export declare function observeTaskContext(root: string, session: string, text: string): Promise<void>;
+export declare function observeTaskContext(root: string, session: string, text: string, operation?: Extract<ContextOperation, "search" | "read">): Promise<void>;
 export declare function taskPrompt(raw: string, locateRoot: (cwd: string) => Promise<string | null>): Promise<string | undefined>;
 export declare function runTaskPromptHook(): Promise<number>;

@@ -9,6 +9,41 @@ Use `--max-tokens 2500` for broader questions. Read the cited governing
 record before acting. `morpheus context coverage` reports source coverage,
 exclusions, tracked paths unavailable in the checkout and unmatched project patterns.
 
+## Morpheus Context MCP
+
+The local stdio server uses the same source inventory, session assignment and search engines as
+the CLI. Register it for the device's agent clients after installing reviewed Morpheus:
+
+```sh
+codex mcp add morpheus_context -- morpheus context mcp
+claude mcp add --scope user morpheus_context -- morpheus context mcp
+```
+
+Reopen the project session to load the server. Factory launchers register it for admitted Morpheus
+worktrees, including workers with isolated client configuration. The model supplies a query or a
+repository-relative citation. The host supplies the session identity and checkout.
+
+| Tool | Use |
+|---|---|
+| `search_project_context` | Find ranked excerpts, optionally limited to record kinds |
+| `read_project_record` | Read a contiguous cited line range |
+| `check_context_coverage` | Check which tracked Markdown is eligible or unavailable |
+| `get_context_overview` | Orient a fresh agent with portable task and architecture pointers |
+| `get_related_context` | Traverse explicit roadmap, Markdown and GitHub links with source-line evidence |
+
+Set `context.search.transport` to `mcp` on a participating project. This chooses the preferred
+interface for all existing arms without changing their assignment. CLI search remains a fallback.
+The MCP result includes the exact excerpt in the model-facing result so the host read hook can
+verify the citation. Use `morpheus context install` to install the current hooks.
+
+Use `morpheus context profile [YYYY-MM-DD]` for local results by arm, transport and actual engine.
+It reports call timing, empty results, overrides, build and cache behavior, and independently
+observed excerpts. Older query rows without a transport are CLI. Use
+`morpheus profile report --repo <name> --since YYYY-MM-DD` for session time, requests and token use
+grouped by observed interface. This cutover changes transport for every arm, so a historical
+CLI-to-MCP comparison is observational. The engine comparison still uses the existing arms.
+Traces omit raw queries, document text, local paths and provider session IDs.
+
 For the bounded arms, install the task prompt and read hooks with
 `morpheus context install` and make sure both are active in the client. On
 the first user prompt, Morpheus asks the agent to search when the task is

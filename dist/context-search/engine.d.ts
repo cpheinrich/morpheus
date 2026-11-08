@@ -5,8 +5,16 @@ export interface ContextSource {
 export interface SearchOptions {
     readonly engine: "tantivy" | "ripgrep";
     readonly cacheDir: string;
+    readonly maxBytes?: number;
+}
+export interface ContextExcerpt {
+    path: string;
+    from: number;
+    to: number;
+    text: string;
 }
 export interface SearchResult {
+    readonly excerpts: readonly ContextExcerpt[];
     readonly output: string;
     readonly returnedTokens: number;
     readonly resultCount: number;

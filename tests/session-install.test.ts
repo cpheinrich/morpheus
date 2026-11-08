@@ -18,6 +18,11 @@ import {
 import { projectPolicy } from "../src/session/policy.js";
 import { POLL_GUARD_COMMAND, POLL_GUARD_SCRIPT, pollGuardScript } from "../src/wait-ci/hook.js";
 
+const claudeMcpReadHook = {
+  matcher: "mcp__morpheus_context__(search_project_context|read_project_record)",
+  hooks: [{ type: "command", command: READ_HOOK_COMMAND.replace("record-read >", "record-read --mcp >") }],
+};
+
 const HANDLE = "cpheinrich";
 
 describe("morpheus context install", () => {
@@ -117,6 +122,7 @@ describe("morpheus context install", () => {
     expect(doc.hooks.PostToolUse).toEqual([
       { matcher: "Bash", hooks: [] },
       { matcher: "Read|Bash", hooks: [{ type: "command", command: READ_HOOK_COMMAND }] },
+      claudeMcpReadHook,
     ]);
     expect(doc.hooks.SessionStart).toHaveLength(1);
   });
@@ -124,7 +130,10 @@ describe("morpheus context install", () => {
   it("wires the read hook for each provider's own events", async () => {
     await run();
     const claude = (await json(CLAUDE_SETTINGS)) as { hooks: Record<string, unknown> };
-    expect(claude.hooks["PostToolUse"]).toEqual([{ matcher: "Read|Bash", hooks: [{ type: "command", command: READ_HOOK_COMMAND }] }]);
+    expect(claude.hooks["PostToolUse"]).toEqual([
+      { matcher: "Read|Bash", hooks: [{ type: "command", command: READ_HOOK_COMMAND }] },
+      claudeMcpReadHook,
+    ]);
     // Claude reports a non-zero Bash exit — how `refresh` prints a refusal — as a failure event.
     expect(claude.hooks["PostToolUseFailure"]).toEqual([{ matcher: "Bash", hooks: [{ type: "command", command: READ_HOOK_COMMAND }] }]);
     const codex = (await json(CODEX_HOOKS)) as { hooks: Record<string, unknown> };

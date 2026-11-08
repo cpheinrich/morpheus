@@ -928,6 +928,23 @@ the read hook to have observed a matching excerpt from an indexed task
 record. An exact-path `context task-read` can supply that excerpt. This check
 is separate from full read evidence for the startup core.
 
+For an MCP pilot, set `context.search.transport` to `mcp`. The same rollout assignment
+selects the search engine in either interface. The local `morpheus_context` server resolves the
+host session and worktree, then exposes search, exact reads, coverage, overview and relationship
+traversal. The host read hook validates visible search and read excerpts against their source.
+Explicit Markdown and project record links provide traversable relationships, with the declaring
+path and line retained as evidence.
+
+```mermaid
+flowchart TB
+    A["Agent in the task worktree"] --> B["Morpheus Context MCP"]
+    B --> C["Project records and shared search"]
+    C --> D["Cited results"]
+    D --> E["Host observes the excerpt"]
+    E --> F["Freshness gate credits task context"]
+    B --> G["Local timing and usage traces"]
+```
+
 Search covers the manifest's project context plus default records, roadmaps, runbooks and
 meeting notes. Tantivy indexes overlapping 16-line Markdown windows beginning every two
 lines. Cache files and traces live under the worktree's ignored `local/context-search/`

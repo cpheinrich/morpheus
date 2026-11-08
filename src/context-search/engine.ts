@@ -15,9 +15,18 @@ export interface ContextSource {
 export interface SearchOptions {
   readonly engine: "tantivy" | "ripgrep";
   readonly cacheDir: string;
+  readonly maxBytes?: number;
+}
+
+export interface ContextExcerpt {
+  path: string;
+  from: number;
+  to: number;
+  text: string;
 }
 
 export interface SearchResult {
+  readonly excerpts: readonly ContextExcerpt[];
   readonly output: string;
   readonly returnedTokens: number;
   readonly resultCount: number;
@@ -97,19 +106,20 @@ export function countContextTokens(text: string): number {
   return tokenizer.encode(text, [], []).length;
 }
 
-function format(spans: Iterable<Span>, budget: number): Pick<SearchResult, "output" | "returnedTokens" | "resultCount"> {
+function format(spans: Iterable<Span>, budget: number, maxBytes = Infinity): Pick<SearchResult, "output" | "returnedTokens" | "resultCount" | "excerpts"> {
   let output = "";
   let returnedTokens = 0;
-  let resultCount = 0;
+  const excerpts: ContextExcerpt[] = [];
   for (const { document, first, last } of shortlist(spans)) {
-    const entry = `${document.path}:${first + 1}-${last}\n${document.lines.slice(first, last).join("\n")}\n\n`;
+    const text = document.lines.slice(first, last).join("\n");
+    const entry = `${document.path}:${first + 1}-${last}\n${text}\n\n`;
     const tokens = countContextTokens(output + entry);
-    if (tokens > budget) continue;
+    if (tokens > budget || Buffer.byteLength(output + entry) > maxBytes) continue;
     output += entry;
     returnedTokens = tokens;
-    resultCount++;
+    excerpts.push({ path: document.path, from: first + 1, to: last, text });
   }
-  return { output, returnedTokens, resultCount };
+  return { output, returnedTokens, resultCount: excerpts.length, excerpts };
 }
 
 function documentAt(documents: readonly Document[], target: number, offset: "firstChunk" | "firstLine"): Document | undefined {
@@ -287,6 +297,6 @@ export async function searchContext(
   const { spans, buildMs, cacheHit } = options.engine === "tantivy"
     ? tantivy(sources, documents, query, options.cacheDir)
     : { spans: ripgrep(documents, query), buildMs: 0, cacheHit: false };
-  const result = format(spans, budget);
+  const result = format(spans, budget, options.maxBytes);
   return { ...result, buildMs, cacheHit, queryMs: performance.now() - start - buildMs };
 }

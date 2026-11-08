@@ -7,11 +7,16 @@ import { projectPolicy } from "../session/policy.js";
 import { boundTask } from "../session/tasks.js";
 import { searchStateDirectory, validSearchSession } from "./local-state.js";
 import { CONTEXT_SEARCH_HEADER } from "./output.js";
-import { getSearchConfig, providerSessionId } from "./rollout.js";
+import { contextArm, getSearchConfig, providerSessionId, traceContext } from "./rollout.js";
 import { discoverSources, readContextSources } from "./sources.js";
 const SEARCH = 'morpheus context search "<task terms>"';
 const READ = "morpheus context task-read <indexed-path>";
 const PROMPT = "UserPromptSubmit";
+const MCP_SEARCH = "search_project_context";
+const MCP_READ = "read_project_record";
+async function preferredLookup(root) {
+    return (await getSearchConfig(root)).transport === "mcp";
+}
 function statePath(root, session, state) {
     return join(root, "local/context-search/startup", sessionTag(session) + "." + state);
 }
@@ -56,6 +61,9 @@ export async function taskContextRefusal(root, session = providerSessionId()) {
     const active = await taskRoot(checkout, session);
     if (!await hasTaskSource(active, session))
         return;
+    if (await preferredLookup(active)) {
+        return `Load context for the task before continuing. In ${active}, use the Morpheus Context MCP tools \`${MCP_SEARCH}\` or \`${MCP_READ}\`. Inspect a cited excerpt, then retry. If MCP is unavailable, use \`${SEARCH}\`.`;
+    }
     return `Load context for the task before continuing. In ${active}, run \`${SEARCH}\` and inspect its excerpts, or run \`${READ}\` for a known governing record. If search is empty, refine the query or read a source directly. Then retry this command.`;
 }
 async function taskPaths(root, session) {
@@ -91,19 +99,27 @@ function citedText(text) {
     return typeof value.output === "string" ? value.output : "";
 }
 /** Credit an excerpt only when the hook actually saw matching, current source text. */
-export async function observeTaskContext(root, session, text) {
+export async function observeTaskContext(root, session, text, operation) {
     const output = citedText(text);
     if (!output || !validSearchSession(session))
         return;
-    if (!await needsTaskContext(root, session))
+    const pending = await needsTaskContext(root, session);
+    if (!pending && !operation)
         return;
     const citations = [...output.matchAll(/^([^\n]+\.md):(\d+)-(\d+)\n/gm)];
     if (!citations.length)
         return;
     const records = await taskRecords(root, session, citations.map(match => match[1]));
-    if (citations.some(match => isCurrentExcerpt(output, match, records))) {
+    if (!citations.some(match => isCurrentExcerpt(output, match, records)))
+        return;
+    if (pending) {
         await searchStateDirectory(root, "startup");
         await writeFile(statePath(root, session, "seen"), "1\n", { mode: 0o600 });
+    }
+    if (operation) {
+        const arm = await contextArm(root, session);
+        await traceContext(root, { type: "visible", arm: arm.arm, engine: arm.engine, session: arm.session,
+            rollout: arm.id, transport: "mcp", operation });
     }
 }
 function isCurrentExcerpt(output, match, records) {
@@ -154,6 +170,9 @@ export async function taskPrompt(raw, locateRoot) {
         return "Task context search found no readable project records beyond the startup core. Continue with the core. Use morpheus context coverage to check the worktree and project search manifest.";
     }
     const prefix = providerSessionId() === session ? "" : `MORPHEUS_CONTEXT_SESSION_ID='${session.replaceAll("'", "'\\''")}' `;
+    if (await preferredLookup(root)) {
+        return `For the first project task, once its scope is clear and before implementation, use the Morpheus Context MCP tool \`${MCP_SEARCH}\` in the active task worktree (1,000 tokens by default). For a known record use \`${MCP_READ}\`. Open governing sources and refine an empty search. Use \`get_context_overview\` if you are new to this project or Morpheus. If MCP is unavailable, fall back to \`${prefix}${SEARCH}\`. Conversational replies can proceed without a lookup.`;
+    }
     return `For the first project task, once its scope is clear and before implementation, load task context in ${root} with \`${prefix}${SEARCH}\` (1,000 tokens by default). For a known governing record use \`${prefix}${READ}\`. Read the returned excerpts and open any governing sources they cite. Refine an empty search. Conversational replies can proceed without a lookup.`;
 }
 export async function runTaskPromptHook() {

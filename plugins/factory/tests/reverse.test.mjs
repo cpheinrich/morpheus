@@ -182,6 +182,30 @@ test("Codex argv resumes by session id and keeps the prompt out of argv", () => 
   assert.deepEqual(schema.required.sort(), Object.keys(schema.properties).sort());
 });
 
+test("Factory registers context MCP for an admitted Morpheus checkout on both providers", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "factory-context-mcp-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { claudeArgs } = await import("../src/claude.mjs");
+  const selection = { model: "test-model", effort: "high" };
+  const codex = () => codexArgs(null, selection, codexPermission("auto"), null, root);
+  const claude = () => claudeArgs(null, selection, "default", [], root);
+  assert.equal(codex().some(arg => arg.startsWith("mcp_servers.morpheus_context.")), false);
+  assert.equal(claude().includes("--mcp-config"), false);
+
+  await writeFile(join(root, "morpheus.json"), "{}");
+  assert.deepEqual(codex().filter(arg => arg.startsWith("mcp_servers.morpheus_context.")), [
+    'mcp_servers.morpheus_context.command="morpheus"',
+    'mcp_servers.morpheus_context.args=["context","mcp"]',
+    'mcp_servers.morpheus_context.env.MORPHEUS_CONTEXT_WORKTREE_PIN="1"',
+    `mcp_servers.morpheus_context.cwd=${JSON.stringify(root)}`,
+  ]);
+  const argv = claude();
+  assert.deepEqual(JSON.parse(argv[argv.indexOf("--mcp-config") + 1]), {
+    mcpServers: { morpheus_context: { command: "morpheus", args: ["context", "mcp"], env: { MORPHEUS_CONTEXT_WORKTREE_PIN: "1" } } },
+  });
+  assert.equal(argv.includes("--strict-mcp-config"), false);
+});
+
 test("recorded codex exec events fold into a structured result", () => {
   const run = { sequence: 0, progress: "", state: "starting" };
   const events = [
