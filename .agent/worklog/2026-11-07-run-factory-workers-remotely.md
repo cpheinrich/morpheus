@@ -163,3 +163,10 @@ Independent review cleared all five substantive findings and one documentation n
   ]
 }
 ```
+
+The first Studio LaunchDaemon reported fresh heartbeats with zero capacity. The
+host had about 2.7 GiB of immediately free pages and 26.8 GiB of inactive pages.
+The pilot's 4 GiB reserve needs an estimate that includes reclaimable inactive
+pages. The late correction parses a native macOS VM sample, retains the reserve,
+and falls back to immediately free pages if the sample cannot be read. Focused
+capacity and runner tests cover the observed host sample and reserve boundary.

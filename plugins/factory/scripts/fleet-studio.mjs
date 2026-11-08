@@ -1,4 +1,4 @@
-import { freemem } from "node:os";
+import { studioCapacity } from "../src/fleet-capacity.mjs";
 import { connectFleet, readFleetConfig } from "../src/fleet-client.mjs";
 import { createStudioExecutor } from "../src/fleet-execution.mjs";
 import { createFleetQuota } from "../src/fleet-quota.mjs";
@@ -15,8 +15,7 @@ try {
     call: client.call,
     ...createStudioExecutor(execution, client.call, checkQuota),
     journalPath: config.journalPath,
-    // Rank only fresh, eligible hosts. Keep a small memory reserve on each Mac.
-    capacity: () => Math.max(0, Math.floor(freemem() / (1024 * 1024)) - 4096),
+    capacity: studioCapacity,
   });
   const tick = () => runner.tick().catch(() => console.error("Factory Studio tick failed; reconciling on next wake"));
   const unsubscribe = client.listen(tick, () => console.error("Factory Studio listener disconnected; using timed reconciliation"));

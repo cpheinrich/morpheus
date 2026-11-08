@@ -981,7 +981,8 @@ flowchart LR
   Sub2API key scoped to `accounts.read`, `accounts.identity.read`, and `openai.quota.read` for the
   enrolled Codex OAuth group. The supervisor checks fresh quota before each
   invocation. The execution account receives only the separate inference
-  key. Also set an absolute `journalPath` in the supervisor's
+  key. On macOS, the placement signal counts free and inactive pages and
+  reserves 4 GiB before advertising capacity. Set an absolute `journalPath` in the supervisor's
   mode `0700` directory and an `execution` object. The latter provides
   `account` (execution username), `node`, `script` (absolute
   `scripts/fleet-executor.mjs` path), `workerConfig` (absolute owner-only
