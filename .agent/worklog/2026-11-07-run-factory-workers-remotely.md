@@ -69,7 +69,7 @@ Independent review cleared all five substantive findings and one documentation n
   "version": 2,
   "base": "ebc692dcc1ef3d6bd0a649e5c3a6a4b5607d7fc4",
   "reviewed": "a10661469d5c85ff65a5ef2609457059ed95a8e1",
-  "covered": "3cdeca9d705fce07a95eb810eb4fef06da7b8ab0",
+  "covered": "232d6e24a908e8408408a1b7ebafac8645c5b5e5",
   "authorSession": "01a1b6a4-7fb9-78c3-bc46-b774525be5bf",
   "reviewerSession": "/root/studio_service_review",
   "risk": "high",
@@ -159,6 +159,19 @@ Independent review cleared all five substantive findings and one documentation n
         "evidence": "Codex parent transcript UTC call at 20:42:08.641Z and /root/studio_service_review verdict at 20:43:05.935Z."
       },
       "summary": "All six findings resolved. Five independent targeted fixtures passed. No new findings."
+    },
+    {
+      "reviewerSession": "/root/studio_service_review",
+      "commit": "232d6e24a908e8408408a1b7ebafac8645c5b5e5",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.3574833333333333,
+      "timing": {
+        "source": "clock",
+        "durationMs": 21449,
+        "evidence": "Codex reviewer transcript task_started 2026-11-08T06:02:28.106Z to task_complete 2026-11-08T06:02:49.555Z."
+      },
+      "scopeReason": "Live Studio activation exposed a capacity calculation that excluded reclaimable memory. The follow-up covers only the capacity correction and its focused tests.",
+      "summary": "Cleared the macOS capacity correction. All ten focused tests passed independently and native vm_stat parsed on the local Mac. No new findings."
     }
   ]
 }
