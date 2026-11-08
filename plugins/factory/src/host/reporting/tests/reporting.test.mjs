@@ -88,6 +88,52 @@ test('protocol boundaries reject unknown fields, invalid ranges and clock skew',
  assert.equal(parseReport(report,Date.parse(at)-60000).hostId,'host-a');
  assert.equal(freshness(sample,Date.parse(at)+180000),'fresh');assert.equal(freshness(sample,Date.parse(at)+180001),'stale');
 });
+async function observedJob(association) {
+ const calls=[];
+ const result=await githubSnapshot(['example/a'],async path=>{
+  calls.push(path);
+  if(path.includes('/runners'))return {total_count:0,runners:[]};
+  if(path.includes('/jobs'))return {total_count:1,jobs:[{id:7,runner_id:0,name:'Checks',status:'queued'}]};
+  return {total_count:1,workflow_runs:[{id:22,run_attempt:3,...association}]};
+ },()=>new Date(at));
+ assert.deepEqual(calls,['repos/example/a/actions/runners?per_page=100&page=1',
+  'repos/example/a/actions/runs?status=queued&per_page=5&page=1',
+  'repos/example/a/actions/runs?status=in_progress&per_page=5&page=1',
+  'repos/example/a/actions/runs/22/attempts/3/jobs?per_page=100&page=1']);
+ assert.equal(result.complete,true);
+ return result.value.jobs[0];
+}
+test('GitHub job PR projection preserves legacy shape without proven same-repository evidence',async()=>{
+ const legacy={repository:'example/a',runId:22,attempt:3,jobId:7,runnerId:null,
+  name:'Checks',currentStep:null,state:'queued',conclusion:null,url:'https://github.com/example/a/actions/runs/22/job/7'};
+ for(const association of [{},{pull_requests:[]},{pull_requests:null},{pull_requests:'private'},
+  {pull_requests:[{number:8,base:{repo:{full_name:'example/b'}}}]},
+  {pull_requests:[{number:8,base:{repo_url:'https://api.github.com/repos/example/b'}}]},
+  {pull_requests:[{number:8,base:{repo:{full_name:'example/a'},repo_url:'https://api.github.com/repos/example/b'}}]},
+  {pull_requests:[{number:8,base:{repo:{full_name:'example/b',url:'https://api.github.com/repos/example/a'}}}]},
+  {pull_requests:[{number:8,base:{repo_url:'https://api.github.com/repos/example/a?private'}}]},
+  {pull_requests:[{number:8},{number:8,base:{repo:{full_name:'example/a',url:null}}}]},
+  {pull_requests:[null,...[0,-1,1.5,Number.MAX_SAFE_INTEGER+1,'8'].map(number=>({number,base:{repo:{full_name:'example/a'}}}))]},
+ ])assert.deepEqual(await observedJob(association),legacy);
+});
+test('GitHub job PR projection deduplicates and bounds existing explicit run associations',async()=>{
+ const job=await observedJob({pull_requests:[
+  {number:8,base:{repo:{full_name:'example/b'}}},
+  {number:12,base:{repo:{full_name:'example/a'}},title:'PRIVATE'},
+  {number:12,base:{repo_url:'https://api.github.com/repos/example/a'}},
+  {number:14,base:{repo_url:'https://api.github.com/repos/example/a'}},
+  {number:16,base:{repo:{url:'https://api.github.com/repos/example/a'}}},
+  {number:18,base:{repo:{full_name:'example/a'}}},
+ ]});
+ assert.deepEqual(job.pullRequests,[12,14,16]);
+ assert.equal(JSON.stringify(job).includes('PRIVATE'),false);
+ const report={schemaVersion:1,hostId:'host-a',samples:{github:{...sample,kind:'github',value:{jobs:[job],runners:[],orgCensus:'unavailable'}}}};
+ assert.deepEqual(parseReport(report,Date.parse(at)),report);
+ for(const pullRequests of [[0],[-1],[1.5],[Number.MAX_SAFE_INTEGER+1],['12'],[12,12],[1,2,3,4],null]) {
+  const value={...report.samples.github.value,jobs:[{...job,pullRequests}]};
+  assert.throws(()=>parseReport({...report,samples:{github:{...report.samples.github,value}}},Date.parse(at)),/invalid-report/);
+ }
+});
 test('a failed/malformed source cannot leak its data or suppress healthy samples; transport refuses redirects',async()=>{
  const config={...baseConfig,sources:[{id:'machine',kind:'machine'},{id:'bad',kind:'phone'}]};
  const report=await snapshot(config,{now:()=>new Date(at),read:async source=>{if(source.id==='bad')return {value:{token:'PRIVATE'}};return {value:sample.value};}});
