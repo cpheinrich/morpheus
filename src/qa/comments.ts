@@ -78,6 +78,36 @@ const webNode = z.object({
   styles: z.partialRecord(z.enum(["display", "position", "color", "background-color", "font-size", "text-decoration-line", "padding", "overflow", "z-index"]), z.string().max(120)),
 }).strict();
 
+/** Operator-declared identity for the served app, never inferred from the proxy checkout. */
+export const QaWebBuildIdentity = z.object({
+  commit: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/).optional(),
+  deployment: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/).optional(),
+}).strict().refine(build => Boolean(build.commit || build.deployment));
+export type QaWebBuildIdentity = z.infer<typeof QaWebBuildIdentity>;
+
+const snapshotKey = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,31}$/)
+  .refine(key => !/password|secret|token|email|cookie|authorization|constructor|prototype/i.test(key));
+const snapshotValue = z.union([
+  z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/),
+  z.number().int().min(-1_000_000).max(1_000_000),
+  z.boolean(),
+]);
+const qaWebDiagnostics = z.object({
+  version: z.literal(1),
+  build: QaWebBuildIdentity.nullable(),
+  browser: z.enum(["chrome", "edge", "firefox", "safari", "opera", "unknown"]),
+  os: z.enum(["macos", "ios", "android", "windows", "linux", "chromeos", "unknown"]),
+  devicePixelRatio: z.number().positive().max(16).nullable(),
+  theme: z.enum(["light", "dark", "unknown"]),
+  snapshot: z.object({
+    version: z.literal(1),
+    state: z.record(snapshotKey, snapshotValue).refine(state => {
+      const count = Object.keys(state).length;
+      return count > 0 && count <= 8;
+    }),
+  }).strict().optional(),
+}).strict();
+
 /** Small, allowlisted semantic HTML evidence, frozen synchronously at pin placement. */
 export const QaWebContext = z.object({
   version: z.literal(1),
@@ -91,6 +121,7 @@ export const QaWebContext = z.object({
   scroll: z.array(z.object({ selector: webText, x: z.number(), y: z.number() }).strict()).max(8),
   viewport: z.object({ width: z.number().positive(), height: z.number().positive(), scrollX: z.number(), scrollY: z.number() }).strict(),
   limitations: z.array(z.string().max(160)).max(4),
+  diagnostics: qaWebDiagnostics.optional(),
   image: z.object({
     status: z.enum(["pending", "captured", "failed"]),
     coordinateSpace: z.literal("viewport"),

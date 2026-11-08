@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import { BatchRejected, recordBatch } from "../batches.js";
+import { QaWebBuildIdentity } from "../comments.js";
 import { WEB_OVERLAY_COLUMN_PX, WEB_OVERLAY_JS } from "./overlay-client.js";
 /**
  * The web comment overlay (MO-26-10-06-18.13.32): a reverse proxy in front of a local dev server
@@ -167,6 +168,11 @@ export async function startWebQaServer(options) {
     const presented = options.publicOrigin ? normalizeUpstream(options.publicOrigin) : upstream;
     const lib = upstream.protocol === "https:" ? httpsRequest : httpRequest;
     const library = await readFile(screenshotLibraryPath(), "utf8");
+    const build = QaWebBuildIdentity.safeParse(options.build).data ?? null;
+    // Replacer functions keep literal dollar signs in a project name.
+    const overlayScript = WEB_OVERLAY_JS
+        .replace("/* __MORPHEUS_QA_BUILD__ */ null", () => JSON.stringify(build))
+        .replace("__MORPHEUS_QA_PROJECT__", () => JSON.stringify(options.project));
     // Set once the port is bound (a test may ask for port 0); requests arrive only after that.
     let port = options.port;
     /** The overlay's own endpoints: JSON-only writes from its own origin, health, scripts and batches. */
@@ -181,8 +187,7 @@ export async function startWebQaServer(options) {
         }
         if (req.method === "GET" && url.pathname === `${QA_PREFIX}/overlay.js`) {
             res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-store" });
-            // A replacer function, so a "$" in the project name is not read as a replacement pattern.
-            res.end(WEB_OVERLAY_JS.replace("__MORPHEUS_QA_PROJECT__", () => JSON.stringify(options.project)));
+            res.end(overlayScript);
             return;
         }
         if (req.method === "GET" && url.pathname === `${QA_PREFIX}/modern-screenshot.js`) {
