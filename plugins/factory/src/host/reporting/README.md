@@ -15,7 +15,8 @@ Kinds: machine; factory (roots, desktop/unattended channel); routes (configPath)
 (configPath,statePath,serviceLabel,tartPath,projectIds,roles); runners (entries with explicit metadataPath,
 projectIds, repository/organization scope, eligible roles and labels); phone (leasePath, optional enrolled deviceUdid); quota (binding with opaque id,
 instanceId, exact numeric accountId, provider, baseUrl; emailEnv/passwordEnv); github (at most
-three registered repositories, optional organizationRunners exact organization/runnerId/projectIds and organizationTokenEnv). The company owns real configuration outside Git. Gateway
+three registered repositories, optional organizationRunners exact organization/runnerId/projectIds and organizationTokenEnv);
+scheduledTasks (one explicit owner-only statePath). The company owns real configuration outside Git. Gateway
 admin references are resolved only by an existing credential wrapper, never copied into config.
 
 Register default Factory home and every explicitly configured service home. Discover them
@@ -92,6 +93,15 @@ and exact identity reads. A held lease is busy and skips the lock read. Disconne
 developer mode, tunnel and DDI facts describe host prerequisites. Unlock-since-boot does not
 assert current screen unlock. No connection, mount, lease acquisition or device control is issued.
 
+
+An enrolled scheduled-task source reads one bounded, owner-only version 1 JSON document with
+`observedAt` and `tasks`. The producer owns the observation time. The reporter keeps it even
+when rereading the file so an inactive producer becomes stale. Task identifiers, repository,
+cadence, timestamps, bounded outcomes, and optional GitHub numeric run and pull request
+identifiers are the full transport. Event-driven tasks have no next slot. Paths, commands, raw
+errors and arbitrary URLs are refused. Missing or invalid state is reported as a source error.
+Deploy a compatible consumer and enroll its exact host/source binding before adding the source
+to the host reporter. Reports using only prior v1 kinds continue to work.
 
 Current Factory observation takes one canonical same-user process census per source. It checks
 recorded guardian/worker identities on every terminal path and current unattended markers even
