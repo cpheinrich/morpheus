@@ -1,0 +1,4 @@
+# The fleet uses the same prebuilt Firebase libraries as the emulator tests.
+allowBuilds:
+  '@firebase/util': false
+  protobufjs: false

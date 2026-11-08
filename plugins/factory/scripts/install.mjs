@@ -195,7 +195,6 @@ async function stageVerified() {
     "pnpm",
     [
       "install",
-      "--ignore-workspace",
       "--frozen-lockfile",
       "--config.node-linker=hoisted",
     ],

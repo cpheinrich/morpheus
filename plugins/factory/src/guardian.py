@@ -144,8 +144,13 @@ class Guardian:
 
     def check_limits(self, now):
         job, state = self.job, self.state
-        if (self.root/'cancel').exists() or now-self.start > job['maxRunSeconds']:
-            if job.get('admission'): state['reason']='Cancelled' if (self.root/'cancel').exists() else 'Run deadline reached'
+        cancel = (self.root/'cancel').exists()
+        task_cancel = (self.root/'task-cancel').exists()
+        if cancel or task_cancel:
+            if job.get('admission'): state['reason']='Cancelled'
+            self.stop_requested(task_cancel and not cancel)
+        elif now-self.start > job['maxRunSeconds']:
+            if job.get('admission'): state['reason']='Run deadline reached'
             self.stop()
         if not job.get('background',False) and now-self.last_lease > job['graceSeconds']:
             state['reason']='Owner lease expired'; self.stop()
@@ -168,10 +173,15 @@ class Guardian:
         except (BrokenPipeError,OSError):
             self.selector.unregister(self.child.stdin);self.input_registered=False;self.pending_input=b'';self.child.stdin.close()
 
+    def stop_requested(self, task_cancel):
+        if task_cancel and self.stopping is None and self.child.poll() is None:
+            self.state['taskCanceled'] = True
+        self.stop()
+
     def lease_message(self, message):
         kind = message.get('type')
         if kind=='heartbeat': self.last_lease=time.monotonic()
-        elif kind=='stop': self.stop()
+        elif kind in ('stop', 'task-cancel'): self.stop_requested(kind=='task-cancel')
         elif kind=='close': self.close_requested=True
         elif kind=='input' and self.child.poll() is None:
             self.pending_input+=(json.dumps(message['message'])+'\n').encode()
@@ -244,6 +254,12 @@ class Guardian:
         self.state['ownedProcesses'] = [{'pid': pid, 'identity': list(stamp)}
                                         for pid, stamp in owned.known.items()]
 
+    def verify_group_exit(self):
+        try: os.killpg(self.child.pid, 0)
+        except ProcessLookupError: return True
+        except OSError: return False
+        return False
+
     def cleanup(self):
         # Also stop background tools left behind after the main CLI exits.
         interrupted = self.stopping is not None
@@ -254,6 +270,7 @@ class Guardian:
         self.output(self.out, b'', True); self.output(self.err, b'', True)
         self.out.close();self.err.close();self.selector.close()
         if self.owned: self.verify_owned()
+        else: self.state['groupExitVerified'] = self.verify_group_exit()
         self.state.update(state='exited',exitCode=self.child.returncode,interrupted=interrupted)
         if self.owned:
             self.state['timing'].update(

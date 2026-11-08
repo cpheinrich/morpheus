@@ -10,7 +10,7 @@ import {
   open,
   chmod,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hostname } from "node:os";
 import {
@@ -57,6 +57,7 @@ import { identity, ownedProcessState, stopOrphan } from "./processes.mjs";
 import { Viewer } from "./viewer.mjs";
 import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
 import { installationId } from "./installation.mjs";
+import { confirmedGroupExit, confirmedTaskCancel, currentAttemptId, rememberContinuation, taskIdForAttempt, taskView, unverifiedTaskCancel } from "./task-model.mjs";
 import {
   editTargets,
   canonical,
@@ -379,6 +380,11 @@ function recordClaudeRootStart(current, { id, config, replies, task, fresh, deci
     current.workspace = workspace.map;
   }
 }
+
+function assertCurrentQuestion(context, run) {
+  if (run.state === "needs_input" && currentAttemptId(context, run) !== run.id)
+    throw new Error("This question belongs to a superseded Factory attempt.");
+}
 function verifiedSession(task) {
   const session = task.session;
   if (!session?.cwd || !session.permissionMode)
@@ -420,6 +426,7 @@ const BRIDGE_OPERATIONS = new Map([
   ["view", (m, args) => m.viewer.open(args.runId)],
   ["ping", () => ({ ready: true, installationId })],
   ["shutdown", (m) => m.shutdown()],
+  ["factory.remoteAuthorize", (m, args) => m.factoryRemoteAuthorize(args)],
   ["factory.inspect", (m, args) => m.factoryInspect(args)],
   ["factory.delegate", (m, args) => m.factoryDelegate(args)],
   ["factory.status", (m, args) => m.factoryRun(args)],
@@ -567,7 +574,13 @@ export class Manager {
   // runId is a compatibility pointer to the latest run of either slot. An ordinary
   // delegation must not inherit a fresh run unless the coordinator selected it explicitly.
   async previousRun(task, args) {
-    if (args.runId) return this.statusFor(task.id, args.runId);
+    if (args.runId) {
+      const previous = await this.statusFor(task.id, args.runId);
+      assertCurrentQuestion(task, previous);
+      if ((args.replySource != null || args.replyReason != null) && previous.state !== "needs_input")
+        throw new Error(`Run ${previous.id} is not awaiting input.`);
+      return previous;
+    }
     const previous = !args.fresh && task.runId ? await this.status(task.runId) : null;
     return previous?.fresh ? null : previous;
   }
@@ -642,6 +655,7 @@ export class Manager {
     await mkdir(runDir(id), { mode: 0o700 });
     const prompt = await this.workerPrompt(worker, config, task, args, workspace);
     const record = runRecord({ id, worker, task, workspace, sessionKey, fresh, decision, selection, permissions, codexSandbox, codexSession, args });
+    record.taskId = taskIdForAttempt(id, previous);
     await this.launch(
       record,
       {
@@ -662,6 +676,7 @@ export class Manager {
     await this.mutateTask(task.id, (current) => {
       current.runId = id;
       current.runIds = [...new Set([...(current.runIds ?? []), id])];
+      rememberContinuation(current, record);
       current.supervisionReplies = replies;
       if (!fresh) {
         current.workerBinding ??= bindingFor(decision);
@@ -677,16 +692,17 @@ export class Manager {
       /^[0-9a-f-]{36}$/.test(id),
     )) {
       const p = await readJSON(join(runDir(id), "process.json"), null);
-      if (p?.state !== "running" && p?.state !== "starting") continue;
+      const unverifiedCancel = unverifiedTaskCancel(p);
+      if (p?.state !== "running" && p?.state !== "starting" && !unverifiedCancel) continue;
       const record = await readJSON(join(runDir(id), "run.json"), null);
       if (
         record &&
         (record.threadId === task.id || overlapping(runDirs(record), dirs)) &&
         !this.runs.has(id)
       ) {
-        await writeFile(join(runDir(id), "cancel"), "recovery", {
-          mode: 0o600,
-        });
+        if (unverifiedCancel && (await this.status(id)).terminal) continue;
+        if (!unverifiedCancel)
+          await writeFile(join(runDir(id), "cancel"), "recovery", { mode: 0o600 });
         throw new Error(
           "An interrupted run is being cleaned up. Check status before retrying.",
         );
@@ -824,7 +840,15 @@ export class Manager {
         .catch(() => 0),
     );
     if (run.offset < size) return;
+    if (unverifiedTaskCancel(processState)) {
+      run.state = "cleanup_pending";
+      run.error = "Could not verify canceled worker cleanup; replacement is blocked";
+      clearInterval(run.timer);
+      await atomic(join(runDir(run.id), "run.json"), this.public(run));
+      return;
+    }
     run.terminal = true;
+    if (confirmedTaskCancel(processState)) run.taskCanceled = true;
     if (run.stopping || processState?.interrupted)
       run.state = "interrupted";
     else if (
@@ -907,6 +931,8 @@ export class Manager {
     } = run;
     return {
       id,
+      ...(run.taskId ? { taskId: run.taskId } : {}),
+      ...(run.taskCanceled ? { taskCanceled: true } : {}),
       executor,
       codexSession,
       threadId,
@@ -962,13 +988,22 @@ export class Manager {
         reason: "Guardian lost; verified child cleanup attempted",
       });
     }
-    const current = await readJSON(join(runDir(id), "process.json"), null);
+    const current = await this.checkCanceledGroup(id, await readJSON(join(runDir(id), "process.json"), null));
+    if (unverifiedTaskCancel(current))
+      return { ...record, state: "cleanup_pending", terminal: false, error: "Could not verify canceled worker cleanup; replacement is blocked" };
     if (!record.terminal && current?.state === "exited") {
       const recovered = { ...record, state: "interrupted", terminal: true };
+      if (confirmedTaskCancel(current)) recovered.taskCanceled = true;
       await atomic(join(runDir(id), "run.json"), recovered);
       return recovered;
     }
     return record;
+  }
+  async checkCanceledGroup(id, current) {
+    if (!unverifiedTaskCancel(current) || !(await stopOrphan(current).catch(() => false))) return current;
+    const verified = { ...current, groupExitVerified: true };
+    await atomic(join(runDir(id), "process.json"), verified);
+    return verified;
   }
   async statusFor(taskId, id) {
     const run = await this.status(id);
@@ -1052,12 +1087,18 @@ export class Manager {
     run.lastLease = Date.now();
     return this.public(run);
   }
-  async cancel(id) {
-    await writeFile(join(runDir(id), "cancel"), "stop", { mode: 0o600 });
+  async cancel(id, command = "stop") {
+    try {
+      const marker = command === "task-cancel" ? "task-cancel" : "cancel";
+      await writeFile(join(runDir(id), marker), command, { mode: 0o600, flag: "wx" });
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      return { stopping: id };
+    }
     const run = this.runs.get(id);
     if (run) {
       run.stopping = true;
-      this.send(run, { type: "stop" });
+      this.send(run, { type: command });
     }
     return { stopping: id };
   }
@@ -1130,10 +1171,11 @@ export class Manager {
         throw new Error("The requested run belongs to another Claude session.");
       if (args.cwd && (await projectIdentity(args.cwd)).cwd !== previous.cwd)
         throw new Error("The requested run belongs to a different working directory.");
+      assertCurrentQuestion(task, previous);
     }
     if (!replying) return previous;
     const awaiting = [...runs.active, ...runs.recent].filter(
-      (run) => run.state === "needs_input",
+      (run) => run.state === "needs_input" && currentAttemptId(task, run) === run.id,
     );
     if (previous && previous.state !== "needs_input")
       throw new Error(`Run ${previous.id} is not awaiting input.`);
@@ -1192,6 +1234,7 @@ export class Manager {
     await mkdir(runDir(id), { mode: 0o700 });
     const prompt = await claudeRootPrompt(worker, config, task, args, workspace);
     const record = claudeRootRecord({ id, worker, task, args, workspace, sessionKey, fresh, decision, selection, permission, codexSession, claudeSession });
+    record.taskId = taskIdForAttempt(id, previous);
     await this.launch(
       record,
       {
@@ -1209,7 +1252,10 @@ export class Manager {
     );
     // Starts are serialized (busy), so nothing can claim these between check and claim.
     await claimCheckouts(task.id, workspace.claims);
-    await this.mutateTask(task.id, (current) => recordClaudeRootStart(current, { id, config, replies, task, fresh, decision, workspace }));
+    await this.mutateTask(task.id, (current) => {
+      recordClaudeRootStart(current, { id, config, replies, task, fresh, decision, workspace });
+      rememberContinuation(current, record);
+    });
     return this.begin(id);
   }
   // Resolves this delegation's checkouts. The primary conversation keeps one working directory
@@ -1330,6 +1376,17 @@ export class Manager {
     if (rootKind === "claude") return claudeTaskId(rootId);
     throw new Error("Unknown Factory root kind.");
   }
+  async factoryRemoteAuthorize({ rootId, projectPath }) {
+    if (!isAbsolute(projectPath ?? "")) throw new Error("Remote Factory project is not enrolled locally.");
+    const snapshot = await this.snapshot(rootId);
+    if (permissionMode(snapshot) !== "bypassPermissions")
+      throw new Error("This Codex root cannot authorize Studio workspace writes.");
+    const target = await projectIdentity(projectPath);
+    const root = await projectIdentity(snapshot.cwd);
+    const task = await taskRead(rootId);
+    await this.assertStillEnabled({ ...task, id: rootId, project: root.project }, { map: { [target.project]: true } });
+    return { authorized: true };
+  }
   async factoryInspect(args) {
     const codex = args.rootKind === "codex";
     const status = await (codex
@@ -1340,7 +1397,14 @@ export class Manager {
     if (worker) status.selection = factoryWorkerSelection(worker, await configRead(), args.rootKind, rootEffort);
     return status;
   }
-  async factoryDelegate(args) {
+  factoryDelegate(args) {
+    return this.sendMessage(args);
+  }
+  async sendMessage(args, liveReply = false) {
+    const run = liveReply ? await this.replyToMessage(args) : await this.startMessage(args);
+    return { ...run, task: taskView(run) };
+  }
+  async startMessage(args) {
     const modelProvider = explicitModelProvider(args.model);
     if (modelProvider && args.provider && modelProvider !== args.provider)
       throw new Error("The requested model belongs to a different worker provider.");
@@ -1367,13 +1431,26 @@ export class Manager {
       : this.codexStart({ ...common, sessionId: args.rootId });
   }
   async factoryRun(args) {
-    return this.statusFor(this.rootTaskId(args.rootKind, args.rootId), args.runId);
+    const contextId = this.rootTaskId(args.rootKind, args.rootId);
+    return this.withTaskView(await this.statusFor(contextId, args.runId));
+  }
+  async withTaskView(run) {
+    return { ...run, task: taskView(await this.latestTaskAttempt(run)) };
+  }
+  async latestTaskAttempt(run) {
+    const context = await taskRead(run.threadId);
+    const latestId = currentAttemptId(context, run);
+    return latestId === run.id ? run : this.statusFor(run.threadId, latestId);
   }
   async factoryWait(args) {
     await this.factoryRun(args);
-    return this.wait(args.runId, args.seconds);
+    const run = await this.wait(args.runId, args.seconds);
+    return this.withTaskView(run);
   }
-  async factoryAnswer(args) {
+  factoryAnswer(args) {
+    return this.sendMessage(args, true);
+  }
+  async replyToMessage(args) {
     await this.factoryRun(args);
     return this.answer({
       ...args,
@@ -1381,8 +1458,26 @@ export class Manager {
     });
   }
   async factoryStop(args) {
-    await this.factoryRun(args);
-    return this.cancel(args.runId);
+    if (this.busy) throw new Error("Another delegation is starting; retry shortly.");
+    this.busy = true;
+    try {
+      const contextId = this.rootTaskId(args.rootKind, args.rootId);
+      const run = await this.latestTaskAttempt(await this.statusFor(contextId, args.runId));
+      return await this.cancelTask(run);
+    } finally {
+      this.busy = false;
+    }
+  }
+  async cancelTask(run) {
+    if (!run.terminal) return this.cancel(run.id, "task-cancel");
+    if (run.state === "needs_input") {
+      const path = runDir(run.id);
+      if (!confirmedGroupExit(await readJSON(join(path, "process.json"), null)))
+        throw new Error("Could not verify the previous worker exited.");
+      await atomic(join(path, "run.json"), { ...run, state: "interrupted", taskCanceled: true });
+      this.runs.delete(run.id);
+    }
+    return { stopping: run.id };
   }
   async setOverride(taskId, executor) {
     if (!["auto", "codex", "claude", "off"].includes(executor))

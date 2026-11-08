@@ -110,7 +110,7 @@ export function withoutLegacyMarketplaceEntry(catalog) {
 // What a staged install never copies: dependency and build output (the nested host package
 // builds only when its explicit setup runs) and private operator configuration,
 // which lives in FACTORY_HOME and must not ride along if one was dropped into a checkout.
-const NOT_INSTALLED = new Set(["node_modules", ".git", "__pycache__", "dist", "hosts.json", "factory.json", ".env"]);
+const NOT_INSTALLED = new Set(["node_modules", ".git", "__pycache__", "dist", "hosts.json", "factory.json", "fleet-controller.json", "fleet-studio.json", ".env"]);
 export function installCopyFilter(path) {
   const name = path.split("/").pop();
   return !NOT_INSTALLED.has(name) && !name.startsWith(".env.");
