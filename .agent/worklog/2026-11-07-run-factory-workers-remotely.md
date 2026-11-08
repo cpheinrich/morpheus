@@ -183,3 +183,13 @@ The pilot's 4 GiB reserve needs an estimate that includes reclaimable inactive
 pages. The late correction parses a native macOS VM sample, retains the reserve,
 and falls back to immediately free pages if the sample cannot be read. Focused
 capacity and runner tests cover the observed host sample and reserve boundary.
+
+## Live rollout acceptance
+
+The controller submitted a provider-backed Studio task, received and answered its
+clarification, verified the returned artifact's generation and SHA-256 digest,
+and opened it on the Pro. The Studio slot released and resumed heartbeats.
+A separate real Evo implementation task used the same Studio route, returned a
+verified patch, and continued through independent review, required CI and merge.
+The pilot enrolled a specific commit for each checkout. Automated checkout setup
+and integration into the existing delegation entry point are follow-up work.
