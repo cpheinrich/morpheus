@@ -72,21 +72,26 @@ function skillRoots(host: Host, cwd: string, override?: string): string[] {
   ];
 }
 
+function readIfPresent(path: string): Promise<string | undefined> {
+  return readFile(path, "utf8").catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") return undefined;
+    throw error;
+  });
+}
+
 async function findSkill(roots: string[], host: Host, skill: string) {
   const prefixed = `gstack-${skill}`;
-  for (const root of roots) {
-    const paths = [join(root, prefixed, "SKILL.md")];
-    if (host === "claude") paths.push(join(root, "gstack", skill, "SKILL.md"));
-    for (const path of paths) {
-      const source = await readFile(path, "utf8").catch((error: NodeJS.ErrnoException) => {
-        if (error.code === "ENOENT" || error.code === "ENOTDIR") return undefined;
-        throw error;
-      });
-      if (source === undefined) continue;
-      const { name } = matter(source).data;
-      if (name === prefixed || name === skill) return { name, path };
-      throw new Error(`Unexpected gstack skill name in ${path}.`);
-    }
+  const entries = host === "claude" ? [prefixed, skill] : [prefixed];
+  const candidates = roots.flatMap(root => entries.map(entry => ({ dir: join(root, entry), entry })));
+  for (const { dir, entry } of candidates) {
+    // Claude's installer owns flat entrypoints. The nested payload can remain after disabling one.
+    if (host === "claude" && !(await readIfPresent(join(dir, ".gstack-owned")))?.trim()) continue;
+    const path = join(dir, "SKILL.md");
+    const source = await readIfPresent(path);
+    if (source === undefined) continue;
+    const { name } = matter(source).data;
+    if (name !== prefixed && name !== skill) throw new Error(`Unexpected gstack skill name in ${path}.`);
+    return { name: host === "claude" ? entry : name, path };
   }
   return null;
 }

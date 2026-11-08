@@ -60,7 +60,8 @@ describe("gstack lifecycle routing through the CLI", () => {
   });
 
   it("discovers Claude short-name skills and distinguishes a missing install", async () => {
-    const path = await installSkill("gstack/verify", "verify");
+    const path = await installSkill("verify");
+    await writeFile(join(root, "verify", ".gstack-owned"), "/gstack-source\n");
     const flags = ["--gstack", "--host", "claude"];
     expect((await lookup("verify", "ios", ...flags)).routes.map((route: { installed: unknown }) => route.installed))
       .toEqual([{ name: "verify", path }]);
@@ -70,6 +71,21 @@ describe("gstack lifecycle routing through the CLI", () => {
       provide: "Claimed task brief, worktree, acceptance, and open decisions.",
       returnToMorpheus: "Link the amended plan, test plan, and open decisions in the task worklog.",
     }]);
+  });
+
+  it("uses the prefixed Claude invocation name when the render declares a short name", async () => {
+    const path = await installSkill("gstack-verify", "verify");
+    await writeFile(join(root, "gstack-verify", ".gstack-owned"), "/gstack-source\n");
+    const { routes } = await lookup("verify", "cli", "--gstack", "--host", "claude");
+    expect(routes.map((route: { installed: unknown }) => route.installed))
+      .toEqual([{ name: "gstack-verify", path }]);
+  });
+
+  it("does not route an unlinked Claude payload or an unrelated skill with the same short name", async () => {
+    await installSkill("gstack/verify", "verify");
+    await installSkill("verify");
+    const { routes } = await lookup("verify", "ios", "--gstack", "--host", "claude");
+    expect(routes.map((route: { installed: unknown }) => route.installed)).toEqual([null]);
   });
 
   it("only suggests canary for web monitoring", async () => {

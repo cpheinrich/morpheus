@@ -16,8 +16,15 @@ APIs and the repository's existing frontmatter parser.
 Installed gstack from `d479c5bf1efed979297dc4498c60aef7b67aa639` in a temporary Codex profile
 using Bun 1.4.2 and `./setup --host codex --no-team --no-browser`. The real install showed that
 Codex has `gstack-*` directories whose rendered frontmatter can use short names. Discovery and
-the symlink regression test accept that layout. The browser executable also needed Bun on PATH
-at run time, despite being compiled.
+the symlink regression test accept that layout. Codex app-server's model-free `skills/list`
+confirmed all five mapped skills were enabled in the isolated profile. The browser executable
+also needed Bun on PATH at run time, despite being compiled.
+
+The review correction was exercised with a separate real Claude install. Short top-level
+entries resolved as `review` and `qa-only`; relinking produced `gstack-review` and
+`gstack-qa-only`. Disabling `qa-only` removed its entrypoint while the nested payload remained.
+The compiled adapter returned the QA route as unavailable. The pilot reads installer-marked
+Claude entrypoints; legacy or manually copied entries without that marker are outside its scope.
 
 Ran the compiled adapter for four stages, both opt-in settings and three shipped Morpheus
 tasks. All 24 results matched the expected route lists. Every off result was empty.
@@ -30,13 +37,14 @@ tasks. All 24 results matched the expected route lists. Every off result was emp
 
 Ran the gstack verification helper's read-only `gstack-checks detect` against the pilot checkout.
 It found pnpm typecheck and lint, advertised pregate selection, and reported the checkout as
-untrusted. This established what gstack would propose. The actual checks below ran via
-Morpheus's prescribed commands. No gstack release workflow or live monitor ran.
+untrusted. A focused `gstack-checks run --only typecheck --allow-repo-commands --timeout 45`
+then returned `CHECK typecheck PASS 6.1s`. The rest of the checks ran via Morpheus's prescribed
+commands. No gstack release workflow or live monitor ran.
 
 ## Validation
 
 - `pnpm typecheck`
-- `pnpm exec vitest run tests/gstack-lifecycle.test.ts tests/project-skills.test.ts` (16 passed)
+- `pnpm exec vitest run tests/gstack-lifecycle.test.ts tests/project-skills.test.ts` (18 passed)
 - `pnpm exec vitest run tests/ios-test-retry.test.ts tests/wait-ci/wait-run.test.ts tests/wait-ci/poll-guard.test.ts tests/qa-comments.test.ts` (177 passed)
 - `pnpm exec playwright test tests/browser/qa-web-context.spec.ts -g 'exact semantic state' --workers=1` (two browsers passed)
 - `pnpm compile`, `pnpm morpheus pm index`, `morpheus complexity check`, and `git diff --check`

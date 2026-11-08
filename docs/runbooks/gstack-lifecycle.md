@@ -9,7 +9,8 @@ Use the existing task workflow and open with “Use gstack where relevant for th
 The adapter only enables routing for invocations with `--gstack`. The session agent carries that
 choice across the task. Omitting the flag skips discovery and returns no routes.
 
-From the project root:
+From the project root. In the pilot worktree, replace `morpheus` with `pnpm morpheus` to use
+the branch's CLI:
 
 ```sh
 morpheus skills lifecycle plan general --gstack --host codex
@@ -22,8 +23,11 @@ The surfaces are `general`, `web`, `ios`, and `cli`. Use `review` for author-sid
 before the independent reviewer starts. Use `monitor web` for bounded observation of a specific
 authorized web release. CI runs and TestFlight delivery stay with their existing Morpheus
 observers. Use `--skills-dir` to inspect one isolated host skills directory during a replay.
-Discovery reads named entrypoints from the project and host skills directories; it does not prove
-that all referenced helpers, browser/device prerequisites or host permissions are available.
+Discovery reads named entrypoints from the project and host skills directories. For Claude it
+uses top-level entries marked by gstack's installer, so a disabled skill's nested payload does
+not appear as installed. Manually copied and legacy Claude entries without the installer marker
+are outside this pilot. Discovery does not prove that all referenced helpers, browser/device
+prerequisites or host permissions are available.
 
 | Handoff | gstack playbook | Scope |
 | --- | --- | --- |
