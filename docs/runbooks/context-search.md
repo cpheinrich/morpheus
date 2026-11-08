@@ -9,6 +9,21 @@ Use `--max-tokens 2500` for broader questions. Read the cited governing
 record before acting. `morpheus context coverage` reports source coverage,
 exclusions, tracked paths unavailable in the checkout and unmatched project patterns.
 
+For the bounded arms, install the task prompt and read hooks with
+`morpheus context install` and make sure both are active in the client. On
+the first user prompt, Morpheus asks the agent to search when the task is
+known, before implementation. For a known governing record, use
+`morpheus context task-read <indexed-path> [start-line]` to open a cited
+excerpt directly. If the query is empty, refine it or read a known record.
+Read the full governing section when a decision or constraint applies.
+
+Before the first governed action, the freshness gate checks for a result
+the read hook actually observed in that session. An empty search, a
+redirected result or an excerpt from the already-required startup core
+does not satisfy it. The core receipt remains a separate check. A terminal
+or a session without active prompt and read hooks keeps the existing
+freshness policy. The task hook stores no prompt or excerpt text.
+
 Set `context.search.rollout` in `morpheus.json` with a shared experiment ID
 and explicit `coreInputs`. Add project-specific source globs under
 `context.search.include` and explicit exclusions under

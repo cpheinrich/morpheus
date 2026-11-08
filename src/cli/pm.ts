@@ -391,6 +391,12 @@ export async function claim(productDir: string, id: string, cwd: string, session
   }
   try {
     if (offlineDeclared(offline)) throw new Error("New claims require a verified remote; offline claiming is refused.");
+    const { taskContextRefusal } = await import("../context-search/task-start.js");
+    const contextRefusal = await taskContextRefusal(cwd, process.env.MORPHEUS_CONTEXT_SESSION_ID ?? sessionId);
+    if (contextRefusal) {
+      console.error(contextRefusal);
+      return 1;
+    }
     const target = await prepareTask(cwd, productDir, id.toUpperCase());
     if (target) {
       console.log(`Prepared task worktree. WORK IN: ${target}`);

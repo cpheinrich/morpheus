@@ -50,9 +50,18 @@ export const READ_HOOK_MARKER = "context record-read";
  * a hook error after every tool call would be noise in every session, and
  * missing evidence already fails safe, to the assertion with a warning.
  */
-export const READ_HOOK_COMMAND =
+const HOOK_SHELL =
   "sh -c 'PATH=\"${PATH:-/usr/bin:/bin}:${HOME:-/nonexistent}/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; " +
-  "command -v morpheus >/dev/null 2>&1 && morpheus context record-read >/dev/null 2>&1; exit 0'";
+  "command -v morpheus >/dev/null 2>&1 && morpheus context ";
+
+export const READ_HOOK_COMMAND = HOOK_SHELL + "record-read >/dev/null 2>&1; exit 0'";
+const TASK_PROMPT_COMMAND = HOOK_SHELL + "task-prompt; exit 0'";
+
+const TASK_PROMPT = {
+  blocks: () => ({ UserPromptSubmit: [{ hooks: [{ type: "command", command: TASK_PROMPT_COMMAND }] }] }),
+  marker: "context task-prompt",
+  label: "the task context hook",
+};
 
 const readHook = () => ({ type: "command", command: READ_HOOK_COMMAND });
 
@@ -101,10 +110,10 @@ const POLL_GUARD = { blocks: pollGuardBlocks, marker: POLL_GUARD_SCRIPT, label: 
  * `.codex/hooks.json` holds hooks and nothing else.
  */
 export const claudeSettingsFile = (pollGuard = true): string =>
-  JSON.stringify({ hooks: { ...sessionStartBlock(), ...claudeReadBlocks(), ...(pollGuard ? pollGuardBlocks() : {}) } }, null, 2) + "\n";
+  JSON.stringify({ hooks: { ...sessionStartBlock(), ...claudeReadBlocks(), ...TASK_PROMPT.blocks(), ...(pollGuard ? pollGuardBlocks() : {}) } }, null, 2) + "\n";
 
 export const codexHooksFile = (pollGuard = true): string =>
-  JSON.stringify({ hooks: { ...sessionStartBlock(), ...codexReadBlocks(), ...(pollGuard ? pollGuardBlocks() : {}) } }, null, 2) + "\n";
+  JSON.stringify({ hooks: { ...sessionStartBlock(), ...codexReadBlocks(), ...TASK_PROMPT.blocks(), ...(pollGuard ? pollGuardBlocks() : {}) } }, null, 2) + "\n";
 
 export const CLAUDE_SETTINGS = ".claude/settings.json";
 export const CODEX_HOOKS = ".codex/hooks.json";
@@ -312,7 +321,7 @@ async function ensureHook(
   // the file exactly as it was rather than half-repaired. Each kind of hook is
   // found by its own marker, so one already wired is never added twice, and
   // entries are appended — a project's own hooks on the same event keep running.
-  const wantedAll: WantedBlocks[] = [{ blocks: readBlocks, ...READ_HOOK }, ...(pollGuard ? [POLL_GUARD] : [])];
+  const wantedAll: WantedBlocks[] = [{ blocks: readBlocks, ...READ_HOOK }, TASK_PROMPT, ...(pollGuard ? [POLL_GUARD] : [])];
   for (const wanted of wantedAll) {
     const added = mergeWanted(block, wanted);
     if ("blocked" in added) return { target: rel, outcome: "blocked", detail: added.blocked };
@@ -324,8 +333,8 @@ async function ensureHook(
       target: rel,
       outcome: "present",
       detail: pollGuard
-        ? "Already runs the Morpheus session shim, read hook and CI poll guard."
-        : "Already runs the Morpheus session shim and read hook.",
+        ? "Already runs the Morpheus session shim, read hook, task context hook and CI poll guard."
+        : "Already runs the Morpheus session shim, read hook and task context hook.",
     };
   }
   if (write) await writeJson(path, { ...doc, hooks: block });

@@ -1,3 +1,4 @@
+export declare function runTaskRead(cwd: string, args: string[], session?: string | undefined): Promise<number>;
 interface SearchOptions {
     json: boolean;
     maxTokens?: string;

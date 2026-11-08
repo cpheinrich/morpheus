@@ -106,6 +106,7 @@ Usage
   morpheus context check    exit non-zero unless context is fresh; for hooks and scripts
   morpheus context status   what the current lease says, and how old it is
   morpheus context brief    session start: fetches trunk, updates clean trunk, identifies task
+  morpheus context task-read <indexed-path> [start-line] [--session-id <id>]
   morpheus context search <query> [--max-tokens <n>] [--session-id <id>] [--json]
   morpheus context engine <tantivy|ripgrep|auto> [--session-id <id>]
   morpheus context coverage [--json]

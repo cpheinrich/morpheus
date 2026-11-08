@@ -197,19 +197,38 @@ export async function recordRead(raw, now = new Date()) {
             add(result.root, result.entries);
     }
     else {
-        const text = shownText(payload, failed);
-        // Not understood: no liveness either. A hook that cannot see results must
-        // leave the session on the assertion, not lock it out.
-        if (text === null)
+        const entries = await fromHookText(payload, cwdRoot, session, provider, at, providerSession, failed);
+        if (entries === null)
             return written;
-        const canCredit = withinCap(text, provider) && !isContextSearchOutput(text);
         if (cwdRoot)
-            add(cwdRoot, canCredit ? await fromText(text, cwdRoot, session, at, toolLabel(payload), providerSession) : []);
+            add(cwdRoot, entries);
     }
     if (cwdRoot && !written.has(cwdRoot))
         add(cwdRoot, []);
     await appendWithLiveness(written, session, provider, at, now);
     return written;
+}
+async function fromHookText(payload, root, session, provider, at, providerSession, failed) {
+    const text = shownText(payload, failed);
+    // An unsupported result shape provides no liveness evidence.
+    if (text === null)
+        return null;
+    if (!root || !withinCap(text, provider))
+        return [];
+    if (!isContextSearchOutput(text))
+        return fromText(text, root, session, at, toolLabel(payload), providerSession);
+    if (!failed)
+        await recordTaskResult(payload, root, providerSession, text).catch(() => { });
+    return [];
+}
+async function recordTaskResult(payload, root, session, text) {
+    const input = isObject(payload["tool_input"]) ? payload["tool_input"] : {};
+    const workdir = input["workdir"] ?? input["cwd"];
+    const source = typeof workdir === "string" && isAbsolute(workdir) ? await projectRoot(workdir) : root;
+    if (!source)
+        return;
+    const { observeTaskContext } = await import("../context-search/task-start.js");
+    await observeTaskContext(source, session, text);
 }
 /** The payload with its session tag, provider and working directory, or null when it names no session. */
 function hookPayload(raw) {
