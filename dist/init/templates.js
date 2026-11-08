@@ -1064,6 +1064,12 @@ Use applicable lowercase subject tags on the roadmap item and each new worklog. 
 are encouraged: CI/CD work uses both \`engineering\` and \`devops\`; add \`infrastructure\` or
 \`ios\` when relevant. Find explicit matches with \`morpheus pm tagged engineering devops --json\`.
 Older untagged history remains valid and unclassified; do not infer its subject or mass-rewrite it.
+
+**Link relevant records.** In new roadmap items and worklogs, link the decisions, runbooks,
+prior attempts or follow-up items that explain or constrain the work. Use the existing roadmap,
+PR and issue fields for those relationships. Use an explicit \`Supersedes: [prior decision](...)\`
+link when replacing a decision.
+
 `;
 export const inboxArchiveReadme = () => `# Inbox archive
 

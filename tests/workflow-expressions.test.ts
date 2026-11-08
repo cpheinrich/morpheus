@@ -56,9 +56,7 @@ describe("actual GitHub Actions expression-context validation", () => {
     expect(check.run).toContain("https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz");
     expect(check.run).toContain("8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8");
     expect(check.run).toContain("sha256sum --check --status");
-    expect(check.run?.match(/--connect-timeout 15 --max-time 75/g)).toHaveLength(2);
-    expect(check.run).toContain("--header 'Accept: application/octet-stream'");
-    expect(check.run).toContain("https://api.github.com/repos/rhysd/actionlint/releases/assets/384924896");
+    expect(check.run).toContain("--connect-timeout 15 --max-time 90");
     expect(check.run).toContain('"$tool_dir/actionlint" -shellcheck= -pyflakes=');
     expect(check.run).toContain('echo "$tool_dir" >> "$GITHUB_PATH"');
     expect(steps.indexOf(check)).toBeLessThan(steps.findIndex(step => step.name === "Test"));

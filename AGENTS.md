@@ -41,7 +41,7 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 
 | Read | When |
 |---|---|
-| [`pm-workflow.md`](docs/runbooks/pm-workflow.md) | Filing or claiming an item, roadmap ids and slugs, blocking/resuming, records-only or meeting-note PRs, waivers, closing issues, visual evidence, or `check pr` refuses |
+| [`pm-workflow.md`](docs/runbooks/pm-workflow.md) | Filing or claiming an item, linking records, roadmap ids and slugs, blocking/resuming, records-only or meeting-note PRs, waivers, closing issues, visual evidence, or `check pr` refuses |
 | [`independent-review.md`](docs/runbooks/independent-review.md) | Before spawning a reviewer, and before writing the review record — budgets, turns, finalization, conditions, record fields |
 | [`context-freshness.md`](docs/runbooks/context-freshness.md) | A gated command refuses; offline; on a fork; hooks not firing; `context install` |
 | [`device-bootstrap.md`](docs/runbooks/device-bootstrap.md) | Startup reports Morpheus stale or bootstrap required; installing codebase-memory |

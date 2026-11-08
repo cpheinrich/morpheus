@@ -232,8 +232,8 @@ async function workerEnv(worker, task, decision, config) {
 }
 function workerArgv({ worker, task, codexSession, selection, permissions, roots, codexSandbox, decision }) {
   return worker === "claude"
-    ? claudeArgs(task.claudeSession, selection, permissions, roots)
-    : codexArgs(codexSession, selection, codexSandbox, decision.gateway ?? null);
+    ? claudeArgs(task.claudeSession, selection, permissions, roots, task.cwd)
+    : codexArgs(codexSession, selection, codexSandbox, decision.gateway ?? null, task.cwd);
 }
 function runRecord({ id, worker, task, workspace, sessionKey, fresh, decision, selection, permissions, codexSandbox, codexSession, args }) {
   return {
@@ -412,10 +412,10 @@ async function claudeRootEnv(worker, task, decision, config) {
     config,
   );
 }
-function claudeRootArgv({ worker, codexSession, claudeSession, selection, permission, decision, roots }) {
+function claudeRootArgv({ worker, codexSession, claudeSession, selection, permission, decision, roots, cwd }) {
   return worker === "codex"
-    ? codexArgs(codexSession, selection, permission, decision.gateway ?? null)
-    : claudeArgs(claudeSession, selection, permission.name, roots);
+    ? codexArgs(codexSession, selection, permission, decision.gateway ?? null, cwd)
+    : claudeArgs(claudeSession, selection, permission.name, roots, cwd);
 }
 // Bridge operations by method name. A Map, so an inherited name such as "constructor" is unknown.
 const BRIDGE_OPERATIONS = new Map([
@@ -1240,7 +1240,7 @@ export class Manager {
       record,
       {
         runId: id,
-        argv: claudeRootArgv({ worker, codexSession, claudeSession, selection, permission, decision, roots }),
+        argv: claudeRootArgv({ worker, codexSession, claudeSession, selection, permission, decision, roots, cwd: task.cwd }),
         cwd: task.cwd,
         prompt,
         ...(worker === "codex" ? { input: "text" } : {}),

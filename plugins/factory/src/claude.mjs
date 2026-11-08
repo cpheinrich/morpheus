@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { subscriptionEnv, resolveKeyRef } from "./config.mjs";
+import { contextMcpArgs } from "./context-mcp.mjs";
 const exec = promisify(execFile);
 export function subscriptionFromAuthStatus(text) {
   let auth;
@@ -162,7 +163,7 @@ export function applyClaudeEvent(run, event) {
 }
 // Extra task-owned checkouts are added with --add-dir; the permission mode is unchanged, so
 // nothing is widened (bypassPermissions was already unconfined, plan stays read-only).
-export function claudeArgs(session, selection, permission, addDirs = []) {
+export function claudeArgs(session, selection, permission, addDirs = [], cwd) {
   const args = [
     "claude",
     "-p",
@@ -201,6 +202,7 @@ export function claudeArgs(session, selection, permission, addDirs = []) {
     }),
   ];
   for (const dir of addDirs) args.push("--add-dir", dir);
+  args.push(...contextMcpArgs(cwd, "claude"));
   if (session) args.push("--resume", session);
   return args;
 }

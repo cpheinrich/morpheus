@@ -83,7 +83,8 @@ const TOOL_PHASES = {
 const MCP_PREFIX_PHASES = [
     [/^mcp__Claude_Browser__|^mcp__.*(playwright|browser|chrome)/i, "browser"],
     [/^mcp__Claude_Code_iOS_Simulator__|^mcp__.*simulator/i, "simulator"],
-    [/^mcp__codebase-memory/i, "read/search"],
+    [/^mcp__morpheus_context__/, "context"],
+    [/^mcp__codebase[-_]memory/i, "read/search"],
     [/^mcp__cua_/, "browser"],
 ];
 const SHELL_TOOLS = new Set(["Bash", "exec_command", "CommandExecution", "shell", "local_shell"]);

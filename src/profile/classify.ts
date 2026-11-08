@@ -87,7 +87,8 @@ const TOOL_PHASES: Record<string, Phase> = {
 const MCP_PREFIX_PHASES: ReadonlyArray<[RegExp, Phase]> = [
   [/^mcp__Claude_Browser__|^mcp__.*(playwright|browser|chrome)/i, "browser"],
   [/^mcp__Claude_Code_iOS_Simulator__|^mcp__.*simulator/i, "simulator"],
-  [/^mcp__codebase-memory/i, "read/search"],
+  [/^mcp__morpheus_context__/, "context"],
+  [/^mcp__codebase[-_]memory/i, "read/search"],
   [/^mcp__cua_/, "browser"],
 ];
 

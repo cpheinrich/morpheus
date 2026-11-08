@@ -42,7 +42,11 @@ async function main([stateFile]) {
     let server;
     try {
         const publicOrigin = frontedSite(state);
-        server = await startWebQaServer({ root: state.root, project: state.project, upstream: state.upstream, port: state.port, ...(publicOrigin ? { publicOrigin } : {}) });
+        server = await startWebQaServer({
+            root: state.root, project: state.project, upstream: state.upstream, port: state.port,
+            ...(publicOrigin ? { publicOrigin } : {}),
+            ...(state.build ? { build: state.build } : {}),
+        });
     }
     catch (error) {
         // The dev server runs in its own process group, so nothing else would end it if the overlay

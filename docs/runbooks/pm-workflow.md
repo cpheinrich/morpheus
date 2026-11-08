@@ -2,6 +2,15 @@
 
 **Read this when** you file or claim an item, need to block or resume one, open a records-only or meeting-note PR, use a waiver, or `check pr` refuses your PR. `AGENTS.md` keeps the one-line rules.
 
+## Links in new project records
+
+Link the source a future agent would need to understand a constraint, a dependency, a prior
+attempt or a follow-up. Use relative Markdown links to specific sections where possible.
+Keep the worklog's `roadmap` field and the roadmap's `prs` and `issues` fields current.
+When a decision replaces an earlier one, write `Supersedes: [prior decision](...)` and
+link the exact heading. Ordinary links describe related work. Add links as part of writing
+the record, wherever they help explain a decision or outcome.
+
 ## Claiming and roadmap ids
 
 **Claim work before starting it:**

@@ -1,5 +1,6 @@
 import { markdownTable } from "../markdown.js";
 import { credible, MAX_CREDIBLE_SPAN_MS, percentile } from "./derive.js";
+import { contextUsage } from "./context-usage.js";
 import { displayCommand } from "./classify.js";
 import {
   PHASES,
@@ -72,6 +73,7 @@ export interface Report {
   byRepo: GroupLine[];
   byRole: GroupLine[];
   byModel: ModelLine[];
+  contextUsage: ReturnType<typeof contextUsage>;
   firstTurn: Array<{ provider: string; sessions: number; p50: number | null; p90: number | null; max: number | null }>;
   slowest: Array<{ command: string; durationMs: number; phase: Phase; repo: string | null; start: string }>;
   repeated: CommandLine[];
@@ -137,6 +139,7 @@ export function buildReport(sessions: SessionRow[], spans: SpanRow[], options: {
     byRole: group(sessions, (s) => s.role satisfies Role),
     byModel: [...models.values()].sort((a, b) => totalTokens(b.tokens) - totalTokens(a.tokens)),
     firstTurn,
+    contextUsage: contextUsage(sessions, spans),
     slowest,
     repeated,
     outliers: spans
@@ -372,6 +375,14 @@ export function renderReport(r: Report, heading: string): string {
     ),
     "",
   );
+
+  if (r.contextUsage.length) {
+    out.push("### Project context use in main sessions", "",
+      markdownTable(["interface", "sessions", "active p50", "requests p50", "tokens p50"],
+        r.contextUsage.map(row => [row.transport, String(row.sessions), formatDuration(row.activeMsP50 ?? 0),
+          String(row.requestsP50 ?? 0), formatTokens(row.tokensP50 ?? 0)]), "_none_"),
+      "", "_Grouped by observed search or read calls. Task mix and session duration may differ across groups._", "");
+  }
 
   out.push(`### Slowest commands (top ${TOP_N})`, "");
   out.push(
