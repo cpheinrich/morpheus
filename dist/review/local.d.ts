@@ -305,6 +305,7 @@ export declare function parseReviewRecord(markdown: string): LocalReviewRecord;
  */
 export declare function validateReviewRecord(record: LocalReviewRecord, opts?: {
     trivialChange?: () => TrivialDiff;
+    hasNewDeferral?: (from: string) => boolean;
 }): string[];
 export declare function changedPaths(root: string, older: string, newer: string): string[];
 /**

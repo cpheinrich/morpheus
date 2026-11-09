@@ -536,6 +536,43 @@ describe("tracked deferrals", () => {
     expect(check(save({ ...record(), findings: [{ ...incidental, disposition: "open", roadmap: "MO-26-09-22-08.00.00" }] }))).toEqual([]);
     expect(check(save({ ...record(), findings: [{ ...incidental, roadmap: "not-an-id" }] }))).toHaveLength(1);
   });
+  it("allows a new deferred ticket after a cleared follow-up without admitting other edits", () => {
+    const ticket = "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md";
+    writeFileSync(join(root, "code.ts"), "reviewed late correction");
+    const followUp = commit();
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, ticket), ticketBody());
+    const r: LocalReviewRecord = {
+      ...record(),
+      covered: commit(),
+      findings: [{ ...incidental, roadmap: "MO-26-09-22-08.00.00" }],
+      followUps: [{
+        reviewerSession: "a1b2c3d4e5f6a7b8c", commit: followUp, outcome: "cleared",
+        elapsedMinutes: 2, summary: "Cleared the corrected source.", scopeReason: "Reviewed a late source correction.",
+      }],
+    };
+    expect(check(save(r))).toEqual([]);
+    writeFileSync(join(root, "code.ts"), "unreviewed source");
+    expect(check(save({ ...r, covered: commit() }))[0]?.message).toContain("exceed the reviewer's recorded conditions");
+  });
+
+  it("does not allow editing a deferred ticket already present at follow-up clearance", () => {
+    const ticket = "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md";
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, ticket), ticketBody());
+    const followUp = commit();
+    writeFileSync(join(root, ticket), `${ticketBody()}\nUnreviewed change to the existing item.`);
+    const r: LocalReviewRecord = {
+      ...record(),
+      covered: commit(),
+      findings: [{ ...incidental, roadmap: "MO-26-09-22-08.00.00" }],
+      followUps: [{
+        reviewerSession: "a1b2c3d4e5f6a7b8c", commit: followUp, outcome: "cleared",
+        elapsedMinutes: 2, summary: "Cleared the original ticket.", scopeReason: "Reviewed the initial ticket filing.",
+      }],
+    };
+    expect(check(save(r))[0]?.message).toContain("the final follow-up must clear the covered commit");
+  });
   it("does not ask a fixed finding for a roadmap item", () => {
     expect(check(save({ ...record(), findings: [{ ...incidental, disposition: "fixed", response: "Added the year field to the schedule." }] }))).toEqual([]);
   });
