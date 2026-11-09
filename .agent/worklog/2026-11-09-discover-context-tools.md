@@ -31,3 +31,30 @@ The first task claim could not push to upstream under the active account; its Mo
 Codebase-memory Tier 2 was attempted: native MCP list_projects could not start its daemon within 30 seconds, so there is no verified project/generation or coverage result. The supported installer then refused activation because other active sessions could not be stopped safely. Those sessions were preserved; source reads of session install/startup, init templates, context MCP and focused tests supplied the bounded fallback. No graph completeness claim is made. Context MCP search was used to retrieve prior setup/Factory records.
 
 Standalone cloud/mobile connections remain an explicit operator acceptance boundary. Local stdio cannot configure their account-level connectors; no claim is made that every end user's device is already configured by a source change. Existing projects receive setup through explicit reviewed context-install adoption, and installed CLIs receive the new startup cue on update.
+
+## Independent review
+
+Independent review cleared portable context setup, file preservation, startup discovery and documented host/mobile boundaries with no findings.
+
+Reviewer `/root/context_reviewer` independently ran setup/session tests: 43 passed in 3 files; no full-suite rerun. Source fallback only; no live device or pairing repetition. PR: [#671](https://github.com/cpheinrich/morpheus/pull/671).
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "6899d7cb0fd6b58c4e2ae17b52d45b42372782fe",
+  "reviewed": "17d4dd76f2026d3e89a5306cce77d5348555c029",
+  "covered": "17d4dd76f2026d3e89a5306cce77d5348555c029",
+  "authorSession": "01a1c1db-6eeb-78d3-b3a5-dd1ba899c698",
+  "reviewerSession": "/root/context_reviewer",
+  "risk": "normal",
+  "elapsedMinutes": 1.7333333333333334,
+  "timing": {
+    "source": "clock",
+    "durationMs": 104000,
+    "evidence": "clock.curr_time immediately before spawn: 2026-11-09 20:09:03 UTC; reading after reviewer final: 2026-11-09 20:10:47 UTC. Runner returned /root/context_reviewer; no workload estimate."
+  },
+  "outcome": "complete",
+  "summary": "Independent review cleared portable context setup, file preservation, startup discovery and documented host/mobile boundaries with no findings.",
+  "findings": []
+}
+```
