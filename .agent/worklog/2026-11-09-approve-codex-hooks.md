@@ -44,14 +44,14 @@ during hook listing. Morpheus now checks the Codex hash against the committed ha
 before making a config edit. The bundled backend agreed with the committed hashes for all
 four Morpheus hooks and all five Evo hooks in isolated copies.
 
-The independent review found that concurrent Codex servers could lose a hook approval and that Codex could corrupt valid commented inline TOML. Morpheus now locks its own approvals and validates a private staged edit before replacing live config. It also qualifies the no-op message. The reviewer reran the isolated Mac backend probe and cleared all findings. Other Codex writers do not share the Morpheus lock.
+The independent review found that concurrent Codex servers could lose a hook approval and that Codex could corrupt valid commented inline TOML. Morpheus now locks its own approvals and validates a private staged edit before replacing live config. It also qualifies the no-op message. The reviewer reran the isolated Mac backend probe and cleared all findings. Other Codex writers do not share the Morpheus lock. The requester narrowed the scope to Morpheus projects before merge. A new review found a listing-to-file-check race, so approvals now require a hash match to the committed handler. The reviewer cleared the corrected scope, and 34 focused tests and isolated Mac backend checks passed.
 
 ```morpheus-review
 {
   "version": 2,
   "base": "c65d40a628049df4fc897b02187d0d3b07ffcd54",
   "reviewed": "3cfc47aa110386fb2efaa1030bd48aa09ae64f5b",
-  "covered": "d735a6b9c70c9db4d2de884acf4440f602dff224",
+  "covered": "69c59be4b0ee3ac3ca80f6548677d7d35f21e081",
   "authorSession": "01a1c1f7-edcd-7ac3-9ab0-99d0f256650b",
   "reviewerSession": "/root/codex_hooks_review",
   "risk": "high",
@@ -62,7 +62,7 @@ The independent review found that concurrent Codex servers could lose a hook app
     "evidence": "Root clock readings for /root/codex_hooks_review initial turn: 2026-11-09T20:41:31Z before dispatch, 2026-11-09T20:44:21Z after receiving the verdict."
   },
   "outcome": "complete",
-  "summary": "The independent review found that concurrent Codex servers could lose a hook approval and that Codex could corrupt valid commented inline TOML. Morpheus now locks its own approvals and validates a private staged edit before replacing live config. It also qualifies the no-op message. The reviewer reran the isolated Mac backend probe and cleared all findings. Other Codex writers do not share the Morpheus lock.",
+  "summary": "The independent review found that concurrent Codex servers could lose a hook approval and that Codex could corrupt valid commented inline TOML. Morpheus now locks its own approvals and validates a private staged edit before replacing live config. It also qualifies the no-op message. The reviewer reran the isolated Mac backend probe and cleared all findings. Other Codex writers do not share the Morpheus lock. The requester narrowed the scope to Morpheus projects before merge. A new review found a listing-to-file-check race, so approvals now require a hash match to the committed handler. The reviewer cleared the corrected scope, and 34 focused tests and isolated Mac backend checks passed.",
   "findings": [
     {
       "id": "CH-1",
@@ -93,6 +93,17 @@ The independent review found that concurrent Codex servers could lose a hook app
       ],
       "disposition": "fixed",
       "response": "The output now reports what Codex listed and states the project trust prerequisite."
+    },
+    {
+      "id": "CH-4",
+      "turn": 3,
+      "severity": "substantive",
+      "paths": [
+        "src/cli/codex-hooks.ts"
+      ],
+      "description": "Comparing only the current file to HEAD after listing could accept a hash reported from a temporary uncommitted definition.",
+      "disposition": "fixed",
+      "response": "Verify the reported key and hash against Git HEAD before staging. The test rejects a mismatched hash even when the working file matches the committed file. The isolated backend probe left config byte-identical."
     }
   ],
   "followUps": [
@@ -107,6 +118,43 @@ The independent review found that concurrent Codex servers could lose a hook app
         "evidence": "Root clock readings for /root/codex_hooks_review follow-up: 2026-11-09T20:46:29Z before dispatch, 2026-11-09T20:47:03Z after receiving the verdict."
       },
       "summary": "Independently reran the compiled isolated Mac backend probe. Verified serialized commands, byte-identical live config on invalid staged output, saved approvals for new and changed hooks, no-op, file mode and unrelated trust. Cleared all three findings. No new findings."
+    },
+    {
+      "reviewerSession": "/root/codex_hooks_review",
+      "commit": "fdcbbe5b584d70686729c5909477afd2562bbaeb",
+      "outcome": "blocked",
+      "summary": "Found CH-4 with an isolated backend probe: an uncommitted hook hash survived the subsequent file equality check.",
+      "elapsedMinutes": 0.9,
+      "timing": {
+        "source": "clock",
+        "durationMs": 54000,
+        "evidence": "Root clock readings for /root/codex_hooks_review: 2026-11-09T20:49:58Z before dispatch, 2026-11-09T20:50:52Z after return."
+      },
+      "scopeReason": "Requester narrowed approvals to committed definitions owned by Morpheus projects before merge."
+    },
+    {
+      "reviewerSession": "/root/codex_hooks_review",
+      "commit": "69c59be4b0ee3ac3ca80f6548677d7d35f21e081",
+      "outcome": "incomplete",
+      "summary": "The reviewer tool ended the turn before returning a verdict. The author resumed with a read-only diff and focused tests.",
+      "elapsedMinutes": 0.48333333333333334,
+      "timing": {
+        "source": "clock",
+        "durationMs": 29000,
+        "evidence": "Root clock readings for /root/codex_hooks_review: 2026-11-09T20:51:17Z before dispatch, 2026-11-09T20:51:46Z after return."
+      }
+    },
+    {
+      "reviewerSession": "/root/codex_hooks_review",
+      "commit": "69c59be4b0ee3ac3ca80f6548677d7d35f21e081",
+      "outcome": "cleared",
+      "summary": "CH-4 fixed. All reported keys and hashes must match a committed hook before save. The reviewer confirmed the isolated config stayed byte-identical on a mismatch and passed 34 focused tests. No new findings.",
+      "elapsedMinutes": 0.3,
+      "timing": {
+        "source": "clock",
+        "durationMs": 18000,
+        "evidence": "Root clock readings for /root/codex_hooks_review: 2026-11-09T20:51:46Z before dispatch, 2026-11-09T20:52:04Z after return."
+      }
     }
   ]
 }
