@@ -62,6 +62,12 @@ High-risk independent review reproduced an existing roadmap ID passing under a s
       "response": "Filed a separate roadmap item with the Git reproduction shape and path-census acceptance.",
       "roadmap": "MO-26-11-09-15.23.10"
     }
+  ],
+  "trunkIntegrations": [
+    {
+      "commit": "43643c5f7f1fce49eb6d4dc88d3ebdd26320111b",
+      "reason": "Integrated #579. Git merged source, tests and generated JS/declarations without intervention. Regenerated the sole conflicted dist/review/local.js.map from the integrated TypeScript. Focused suites passed all 294 tests; typecheck, compile, PM index and diff checks passed."
+    }
   ]
 }
 ```
