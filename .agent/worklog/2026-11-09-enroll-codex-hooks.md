@@ -28,8 +28,9 @@ available wherever the login job runs, so there is no new package dependency.
 - `pnpm typecheck`, `pnpm compile`, `pnpm morpheus pm index`, and
   `morpheus complexity check` passed (CCN limit 15).
 - `pnpm exec vitest run tests/codex-hooks.test.ts tests/doctor-codex-trust.test.ts`
-  passed (37 tests). Coverage includes a new committed hook after enrollment, unchanged
-  plugin approval state, disable, checkout replacement, and job startup failure.
+  passed (39 tests). Coverage includes a new committed hook after enrollment, unchanged
+  plugin approval state, disable, checkout replacement, and job startup failure. It also
+  exercises revoking a missing checkout and releasing the native lock after abrupt exit.
 - Ran the compiled CLI with the real macOS login job, two isolated Morpheus checkouts,
   and a temporary Codex home. The first project approved its initial hook on enable.
   After a new commit, the actual minute timer approved the new hook without another

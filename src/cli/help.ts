@@ -115,7 +115,8 @@ Usage
   morpheus context record-read
                             the read hook: logs a tool result's record lines (stdin JSON)
   morpheus codex hooks approve   approve pending committed hooks for this Morpheus project once
-  morpheus codex hooks enable|disable   opt this project in or out of future auto-approval (macOS)
+  morpheus codex hooks enable    opt this project in to future auto-approval (macOS)
+  morpheus codex hooks disable [checkout]   stop future automatic approvals
   morpheus codex hooks status    list projects with automatic approval enabled
   morpheus context install  [--check] [--handle <github-handle>]
                             wire .claude/settings.json, .codex/hooks.json and context.handle

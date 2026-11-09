@@ -2,7 +2,7 @@ import { execFile, execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { access, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { z } from "zod";
@@ -111,12 +111,13 @@ async function scan(projects: Enrollment[], approve: (root: string) => Promise<n
 
 interface EnrollmentOptions {
   cwd?: string;
+  checkout?: string | undefined;
   binary?: string;
   setAgent?: typeof setJob;
 }
 
 export async function runCodexHookEnrollment(
-  command: string, { cwd = process.cwd(), binary, setAgent = setJob }: EnrollmentOptions = {},
+  command: string, { cwd = process.cwd(), checkout, binary, setAgent = setJob }: EnrollmentOptions = {},
 ): Promise<number> {
   if (!["enable", "disable", "status", "scan"].includes(command)) {
     throw new Error("Usage: morpheus codex hooks <approve|enable|disable|status>");
@@ -130,14 +131,17 @@ export async function runCodexHookEnrollment(
   return withCodexHookApproval(home, async (approve) => {
     const entries = await enrolled(home);
     if (command === "scan") return scan(entries, approve);
-    const project = await projectEnrollment(cwd);
-    const others = entries.filter(({ root }) => root !== project.root);
     if (command === "disable") {
-      await saveEnrollment(home, others);
-      if (!others.length) await setAgent(home, false);
-      console.log(`Disabled automatic Codex hook approval for ${project.root}.`);
+      const path = checkout ? resolve(cwd, checkout) : (await codexHookProject(cwd)).root;
+      const root = await realpath(path).catch(() => path);
+      const remaining = entries.filter((entry) => entry.root !== path && entry.root !== root);
+      await saveEnrollment(home, remaining);
+      if (!remaining.length) await setAgent(home, false);
+      console.log(`Disabled automatic Codex hook approval for ${path}.`);
       return 0;
     }
+    const project = await projectEnrollment(cwd);
+    const others = entries.filter(({ root }) => root !== project.root);
     await requireMorpheusProject(project.root);
     await setAgent(home, true);
     await saveEnrollment(home, [...others, project]);

@@ -1,5 +1,6 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -221,6 +222,45 @@ describe("automatic Codex project hook approval", () => {
 
     await expect(runCodexHookEnrollment("scan", options)).resolves.toBe(1);
     expect(requests()).toHaveLength(before);
+  });
+
+  it("revokes a missing checkout by its saved path", async () => {
+    const setAgent = vi.fn().mockResolvedValue(undefined);
+    const options = { cwd: repo, binary, setAgent };
+    backend([hook(0)]);
+    await expect(runCodexHookEnrollment("enable", options)).resolves.toBe(0);
+    const previous = join(fixture, "moved");
+    renameSync(repo, previous);
+
+    await expect(runCodexHookEnrollment("disable", { ...options, cwd: fixture, checkout: repo })).resolves.toBe(0);
+    expect(setAgent.mock.calls).toEqual([[home, true], [home, false]]);
+    renameSync(previous, repo);
+    const before = requests().length;
+    await expect(runCodexHookEnrollment("scan", options)).resolves.toBe(0);
+    expect(requests()).toHaveLength(before);
+  });
+
+  it.skipIf(process.platform !== "darwin")("recovers the macOS approval lock after its owner is killed", async () => {
+    const lock = join(home, ".morpheus-hook-approval.flock");
+    const holder = spawn(process.execPath, ["-e", `
+      const fs = require("node:fs");
+      const fd = fs.openSync(process.argv[1], "a+", 0o600);
+      require("node:child_process").execFileSync("/usr/bin/lockf", ["-t", "0", "3"], {
+        stdio: ["ignore", "ignore", "ignore", fd],
+      });
+      console.log("locked");
+      process.stdin.resume();
+    `, lock], { stdio: ["pipe", "pipe", "inherit"] });
+    const exited = once(holder, "exit");
+    try {
+      await expect(once(holder.stdout, "data").then(([chunk]) => chunk.toString().trim())).resolves.toBe("locked");
+      backend([hook(0)]);
+      await expect(approveCodexHooks(repo, binary)).rejects.toThrow("Another Morpheus hook approval");
+    } finally {
+      holder.kill("SIGKILL");
+      await exited;
+    }
+    await expect(approveCodexHooks(repo, binary)).resolves.toBe(1);
   });
 
   it("does not record enrollment or approve a hook if the background job cannot start", async () => {

@@ -249,8 +249,9 @@ the project’s root hook file qualify under the same checks as the one-time com
 clone at the same path needs its own opt-in.
 
 Run `morpheus codex hooks status` to list enrollments and `morpheus codex hooks disable`
-inside a project to stop future automatic approvals for it. Previously saved approvals stay
-in Codex. The job logs approvals and refusals to `morpheus-hook-approval.log` in the Codex
+inside a project to stop future automatic approvals for it. If the checkout was moved or
+deleted, pass the old path shown by `status` to `disable`. Previously saved approvals stay
+in Codex. macOS releases the scanner's lock if its process exits. The job logs approvals and refusals to `morpheus-hook-approval.log` in the Codex
 config directory. To refresh the badge in an open chat, check Settings → Hooks or open a
 new chat.
 
