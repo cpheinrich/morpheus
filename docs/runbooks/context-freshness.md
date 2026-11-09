@@ -211,6 +211,34 @@ whether it was never trusted or changed since, and the exact place to run `/hook
 `~/.codex/config.toml` (or `$CODEX_HOME`) and never writes it: trusting a hook is the user's
 security decision, and the desktop app rewrites that file itself.
 
+### Approve changes for one project
+
+When you want to approve all pending enabled hooks for the current Morpheus project, run
+`morpheus codex hooks approve` from that project's checkout. You can explicitly ask an agent
+in the project to run it for you. Codex can execute the approved commands on subsequent
+events. Approval applies to the exact definitions Codex reported, and a later change needs a
+new invocation. The command uses the Mac desktop backend when installed at the standard
+location, or `codex` on PATH otherwise. It requires a version that supports the hook listing
+API.
+
+The command approves hooks from the root `.codex/hooks.json` and `.codex/config.toml` that
+Codex loads for the project. The checkout must have a committed Morpheus manifest, and the
+hook config must match the committed file. The command cross-checks each reported hash
+against the committed command hook. Review unsupported or unverifiable hooks in Codex.
+A linked worktree uses the main checkout. Codex must already
+trust that project to load its hooks. User, plugin, managed, disabled, and other projects'
+hooks keep their existing state. Installing a dependency does not register its own hook
+config. A Codex plugin can supply hooks separately. The command scopes approval by where the
+hook is defined, and does not inspect the scripts or dependencies a committed project hook
+invokes. The command runs once and creates no schedule or enrollment.
+If the open composer still shows a badge, check Settings → Hooks or open a new chat in the
+same project.
+
+Run one approval at a time and avoid editing Codex settings during the command. Morpheus
+locks its own approvals per Codex config directory and checks for external changes just before
+replacing the config. Other Codex writers do not share that lock. If Codex produces invalid TOML
+or changes anything besides the intended approvals, the command discards the staged edit.
+
 ### How Codex hook trust works
 
 Read from Codex's source at `rust-v0.163.0`, `0.164.0-alpha.11.1` and `0.165.0` (identical in these
