@@ -783,6 +783,9 @@ service-owned claimed checkout while it is in use: this lock serializes unattend
 jobs, not independent tools or desktop processes. The result contains `admissionId`,
 `binding.jobId`, canonical checkout/gateway/model/permission binding, native `sessionId`,
 `resultPath`, `terminationVerified`, exit code and the provider's structured `result`.
+A verified nonzero exit before inference can include `diagnosticCode: "input_too_large"`
+when Codex reports that exact typed turn-start rejection. This code is available from the
+original result and `--status`. Provider stderr and input text stay in private worker state.
 The consumer must generate and durably save a fresh UUID for each intended invocation
 **before calling the CLI**, passing it as `--admission-id`. If the consumer dies before
 receiving stdout, that saved ID is sufficient for `--status` or a same-ID retry; no
