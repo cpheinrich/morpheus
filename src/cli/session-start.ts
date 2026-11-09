@@ -1,3 +1,4 @@
+import { CONTEXT_STARTUP_GUIDANCE } from "../context-search/install.js";
 import { endTerm } from "../session/context.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
 import { boundTask, bindTask } from "../session/tasks.js";
@@ -116,6 +117,7 @@ export async function startSession(root: string, input: SessionStartInput, opts:
     const here = roadmapIdFromBranch(await sessionGit(root, ["rev-parse", "--abbrev-ref", "HEAD"]));
     if (binding && here && here !== binding.task) throw new Error(`This checkout is task ${here}, but the session is associated with ${binding.task}. Use pm resume <ID> to choose explicitly.`);
     if (binding && binding.root !== root) await endTerm(binding.root, input.sessionId);
+    console.log(CONTEXT_STARTUP_GUIDANCE);
     const prepared = await prepareRepository(binding?.root ?? root, opts.offline, opts.rescue ?? {});
     printPreparation(prepared);
     console.log(`WORK IN: ${prepared.root}`);
