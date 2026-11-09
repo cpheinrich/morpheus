@@ -9,6 +9,7 @@ import { isDeepStrictEqual } from "node:util";
 import { parse, type TomlTable, type TomlValue } from "smol-toml";
 import { z } from "zod";
 import { codexHome, listCodexHooks } from "../doctor/codex-trust.js";
+import { RegisteredProject } from "../registry/index.js";
 import { checkoutIdentity, sessionGit } from "../session/start.js";
 
 const desktopCli = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex";
@@ -81,17 +82,24 @@ async function committedFile(root: string, source: string): Promise<string | und
   return sessionGit(root, ["show", `HEAD:${path}`], false).catch(() => undefined);
 }
 
+const projectIdentity = RegisteredProject.pick({ name: true, kind: true, prefix: true });
+
 export async function requireMorpheusProject(root: string): Promise<void> {
   const committed = await committedFile(root, join(root, "morpheus.json"));
-  const identity = z.object({ name: z.string().min(1), morpheusVersion: z.string().min(1) });
-  if (committed) {
-    try {
-      if (identity.safeParse(JSON.parse(committed)).success) return;
-    } catch {
-      // Invalid JSON is treated the same as a missing project manifest.
-    }
+  if (committed === undefined) {
+    throw new Error("Run this command in a Morpheus project with a morpheus.json committed at HEAD.");
   }
-  throw new Error("Run this command in a Morpheus project with a committed morpheus.json.");
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(committed);
+  } catch {
+    throw new Error("Fix invalid JSON in the committed morpheus.json before approving hooks.");
+  }
+  const result = projectIdentity.safeParse(manifest);
+  if (!result.success) {
+    const fields = result.error.issues.map(({ path }) => path.join(".")).filter(Boolean).join(", ");
+    throw new Error(`Fix the committed morpheus.json project identity (${fields || "expected an object"}). Provide a nonempty name, a kind of company, personal or internal, and a prefix of 2–4 uppercase letters.`);
+  }
 }
 
 async function pendingApproval(hook: Hook, root: string): Promise<boolean> {
