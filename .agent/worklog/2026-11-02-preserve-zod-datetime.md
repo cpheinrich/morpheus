@@ -42,8 +42,9 @@ owner at the minute-precision boundary and retain negative offset/local assertio
   schema owners.
 - `pnpm typecheck`, `pnpm lint`, `pnpm compile`, `pnpm morpheus pm index`,
   `pnpm morpheus pm validate`, and `git diff --check` pass.
-- `pnpm audit --prod --audit-level high` exits zero: the Zod high advisory is absent; the one
-  remaining moderate root advisory is the separate minimatch remediation in draft #570.
+- After the 2026-11-09 trunk integration, `pnpm audit --prod --audit-level high` confirms the Zod
+  high advisory is absent. The root MCP SDK now contributes two separate high and two moderate
+  findings handled by the 2026-11-09 focused draft; minimatch remains in draft #570.
 - The one permitted full `pnpm test` run passed 4,059 tests and failed 53. Six are the known
   missing-actionlint cases (`spawnSync actionlint ENOENT`). The other 47 occurred under severe
   resource contention across unrelated process-heavy suites: predominantly 30-second test/hook
@@ -55,6 +56,10 @@ owner at the minute-precision boundary and retain negative offset/local assertio
 ## Independent review
 
 Fresh normal-risk independent review cleared 5fb14e7b with no findings. It verified the official Zod optional-seconds union, all four schema owners, generated runtime and declarations, a 12/12 compiled boundary matrix, the Zod 4.6.6 high-severity audit, and exact-head Node CI with actionlint and 4,135 tests across 139 files; the unrelated qa-browser gate was still in progress.
+
+The 2026-11-09 audit integrated current trunk in `4b371449faba0532fef5aa7359c1b72400578eca`,
+regenerated the root lockfile and three source maps to resolve merge conflicts, and re-ran the five
+focused suites (283/283), typecheck, lint, compile, PM index/validation, audit, and diff checks.
 
 ```morpheus-review
 {
@@ -73,6 +78,12 @@ Fresh normal-risk independent review cleared 5fb14e7b with no findings. It verif
   },
   "outcome": "complete",
   "summary": "Fresh normal-risk independent review cleared 5fb14e7b with no findings. It verified the official Zod optional-seconds union, all four schema owners, generated runtime and declarations, a 12/12 compiled boundary matrix, the Zod 4.6.6 high-severity audit, and exact-head Node CI with actionlint and 4,135 tests across 139 files; the unrelated qa-browser gate was still in progress.",
-  "findings": []
+  "findings": [],
+  "trunkIntegrations": [
+    {
+      "commit": "4b371449faba0532fef5aa7359c1b72400578eca",
+      "reason": "Merged current trunk; regenerated the conflicted root lockfile and source maps while preserving the reviewed optional-seconds contract."
+    }
+  ]
 }
 ```
