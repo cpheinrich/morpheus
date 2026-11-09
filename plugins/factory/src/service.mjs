@@ -849,11 +849,13 @@ export class Manager {
       return;
     }
     run.terminal = true;
+    const missingResult = !run.result;
+    if (missingResult && run.unstructuredClaudeResult) run.result = run.unstructuredClaudeResult;
     if (confirmedTaskCancel(processState)) run.taskCanceled = true;
     if (run.stopping || processState?.interrupted)
       run.state = "interrupted";
     else if (
-      !run.result ||
+      missingResult ||
       (processState?.exitCode && processState.exitCode !== 0)
     )
       run.state = "failed";
