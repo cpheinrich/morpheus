@@ -4,12 +4,9 @@ Read first; `CLAUDE.md` symlinks here. Open runbooks only for their **Read when*
 
 ## What this repo is
 
-Morpheus scaffolds new company repositories and maintains the reusable packages they depend
-on. Read [`architecture.md`](./architecture.md) before making structural changes — it is the
-specification, and it is more current than the code.
-
-This repo is `kind: internal`. It has `hq/product/` and nothing else under `hq/` — no brand,
-marketing, finance, or support, because Morpheus is a tool, not a company.
+Morpheus scaffolds repositories and maintains their shared packages. Read the specification,
+[`architecture.md`](./architecture.md), before structural changes. This `kind: internal` repo
+has only `hq/product/` under `hq/`.
 
 ## Layout
 
@@ -73,7 +70,7 @@ pnpm morpheus review prepare --base origin/main   # the reviewer packet
 pnpm morpheus review validate      # CI's review-record check, run before pushing
 pnpm morpheus inbox validate       # before finishing an inbox
 pnpm morpheus context refresh      # once, after reading the records — see below
-pnpm morpheus wait-ci <pr>         # block once on CI, then a digest of failures — never poll gh
+pnpm morpheus wait-ci <pr> --required-only   # wait for required CI and report failures
 ```
 
 ## Device bootstrap
@@ -85,6 +82,13 @@ honoured, never re-asked. Before structural code discovery or a code change, run
 `morpheus codebase-memory install --check` and `morpheus complexity install --check`; install
 whichever is not operational. **Read [`device-bootstrap.md`](docs/runbooks/device-bootstrap.md)** for what yes and no
 run and for anything the shim reports.
+
+## Morpheus context tools
+
+Discover live MCP tools at startup, resume and compaction. Use context overview, search,
+cited reads and coverage; retain the graph for code structure. If absent, check/repair
+`morpheus context install --check` and use CLI search meanwhile. See
+[host and phone boundaries](docs/runbooks/context-search.md#desktop-phone-and-cloud-boundaries).
 
 ## Context freshness
 
@@ -152,12 +156,11 @@ unblock you>"`. Escalating is cheap; shipping half-baked is expensive. "Blocked 
 `needs`. A blocked item keeps its branch; resume with `pm resume`. Detail:
 [`pm-workflow.md`](docs/runbooks/pm-workflow.md#blocking).
 
-**Break loops.** If the same command fails the same way twice, or you have polled the same thing
-three times, stop: change approach, or `pm block` with what you learned. Never idle-loop
-(`sleep`/`true`/`echo` loops, repeated status checks). To wait on CI prefer `gh pr merge --auto`;
-when the next step depends on the result, run `morpheus wait-ci <n>` once — never poll
-`gh run view` or `gh pr checks` in a loop; for one Actions run, `morpheus wait-ci --run <id>` (or
-`--workflow <file> --branch <b>`). A hook refuses the third poll of a target.
+**Break loops.** If the same command fails the same way twice or three polls agree,
+change approach. Never idle-loop. For one run use `morpheus wait-ci --run <id>`.
+
+**Follow your PR through merge.** If authorized to merge, use `morpheus wait-ci <n> --required-only`.
+Fix or retry failures. Verify the merge or record the hard blocker. GitHub Manager is the backstop.
 
 **Browser-reachable work is not blocked.** If the *single, entire* obstacle is that something has
 to happen in a browser — a console, a dashboard, a setting — do it yourself rather than describe
@@ -287,9 +290,6 @@ Match the surrounding code. This codebase favours:
 
 ## Things that have bitten us
 
-- **Older YAML parsers converted unquoted dates and timestamps into Date objects.** The current
-  parser returns strings; `isoDate` accepts a date, a Date, or a full ISO timestamp, keeping its day.
-- **A colon in a title breaks YAML.** `pm new` quotes scalars defensively; hand-written
-  frontmatter with a colon must be quoted.
-- Generated files (`hq/product/*/README.md` between the `morpheus:` markers) are never edited by
-  hand. Change the item files and regenerate.
+- `isoDate` accepts date strings, legacy YAML Date objects and full ISO timestamps, keeping the day.
+- Quote frontmatter titles containing colons; `pm new` does this automatically.
+- Regenerate marked `hq/product/*/README.md` sections from item files; never edit them by hand.

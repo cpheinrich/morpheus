@@ -1,3 +1,4 @@
+import { installContextClients } from "../context-search/install.js";
 import { accessible as exists } from "../file-io.js";
 import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -437,6 +438,7 @@ export async function installContext(root, opts) {
             : blockedHook(CODEX_HOOKS),
         await ensureHandle(root, opts),
         pollGuard,
+        ...await installContextClients(root, opts.write, opts.clientInstructions),
     ];
 }
 //# sourceMappingURL=install.js.map

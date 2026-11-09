@@ -47,7 +47,7 @@ describe("morpheus context install", () => {
 
   it("wires both providers and the inbox declaration from nothing", async () => {
     const repairs = await run();
-    expect(repairs.map((r) => r.outcome)).toEqual([
+    expect(repairs.slice(0, 7).map((r) => r.outcome)).toEqual([
       "created",
       "created",
       "created",
@@ -83,7 +83,7 @@ describe("morpheus context install", () => {
     const before = await Promise.all([read(CLAUDE_SETTINGS), read(CODEX_HOOKS), read(MANIFEST)]);
 
     const repairs = await run();
-    expect(repairs.map((r) => r.outcome)).toEqual([
+    expect(repairs.slice(0, 7).map((r) => r.outcome)).toEqual([
       "present",
       "present",
       "present",
@@ -327,7 +327,7 @@ describe("morpheus context install", () => {
 
   it("write: false reports what it would do and touches nothing", async () => {
     const repairs = await run(HANDLE, false);
-    expect(repairs.map((r) => r.outcome)).toEqual([
+    expect(repairs.slice(0, 7).map((r) => r.outcome)).toEqual([
       "created",
       "created",
       "created",

@@ -8,6 +8,7 @@ import { CONTEXT_SEARCH_HEADER, MCP_EXCERPT_BYTES } from "./output.js";
 import { contextOverview } from "./overview.js";
 import { buildRelationships, relatedContext } from "./relationships.js";
 import { retrieveContext } from "./retrieve.js";
+import { warmContextMcp } from "./warm.js";
 import { contextArm, traceContext } from "./rollout.js";
 import { CONTEXT_KINDS, contextCoverage, contextKind, discoverSources, readContextSources } from "./sources.js";
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -41,8 +42,8 @@ async function call(cwd, metadata, operation, handler) {
         return { isError: true, content: [{ type: "text", text: error instanceof Error ? error.message : "Morpheus Context could not complete this operation." }] };
     }
 }
-async function search(scope, input, started) {
-    const found = await retrieveContext(scope.root, input.query, input.max_tokens, { session: scope.session, transport: "mcp", kinds: input.kinds, started });
+async function search(scope, input, started, mcpStartedAt) {
+    const found = await retrieveContext(scope.root, input.query, input.max_tokens, { session: scope.session, transport: "mcp", kinds: input.kinds, started, mcpStartedAt });
     const { output, excerpts, returnedTokens } = found.data;
     const message = output ? `${CONTEXT_SEARCH_HEADER}\n${output}`
         : "No matching excerpts within the return budget. Refine the search or read a known source.";
@@ -96,7 +97,7 @@ async function related(scope, input) {
     const data = { ...found, outcome: found.relationships.length ? "ok" : "empty" };
     return result(JSON.stringify(data), data);
 }
-export function createContextMcp(cwd) {
+export function createContextMcp(cwd, mcpStartedAt) {
     const server = new McpServer({ name: "morpheus_context", version: "1.0.0" });
     server.registerTool("search_project_context", {
         description: "Find decisions, prior attempts, roadmap items, runbooks and meeting notes in the active project. Returns ranked excerpts and citations. Use for project history and governing records.",
@@ -105,7 +106,7 @@ export function createContextMcp(cwd) {
             kinds: z.array(z.enum(CONTEXT_KINDS)).min(1).max(CONTEXT_KINDS.length).optional()
                 .describe("Optional restriction to particular record kinds. Search all eligible kinds by default."),
         }, annotations: READ_ONLY,
-    }, (input, extra) => call(cwd, extra._meta, "search", (scope, started) => search(scope, input, started)));
+    }, (input, extra) => call(cwd, extra._meta, "search", (scope, started) => search(scope, input, started, mcpStartedAt)));
     server.registerTool("read_project_record", {
         description: "Read an exact cited section of an indexed project record in source order. Use the citation path and line range.",
         inputSchema: { path: pathInput, from: z.number().int().min(1).max(10_000_000).default(1),
@@ -130,8 +131,10 @@ export function createContextMcp(cwd) {
     return server;
 }
 export async function runContextMcp() {
-    const server = createContextMcp(process.cwd());
-    const closed = new Promise(resolve => { server.server.onclose = () => resolve(0); });
+    const cwd = process.cwd();
+    const server = createContextMcp(cwd, performance.timeOrigin);
+    const warming = warmContextMcp(cwd).catch(() => { });
+    const closed = new Promise(resolve => { server.server.onclose = () => { void warming.then(() => resolve(0)); }; });
     await server.connect(new StdioServerTransport());
     return closed;
 }

@@ -1,5 +1,5 @@
 import { formatMorpheusInstallStatus, installCurrentMorpheus, morpheusInstallStatus, updateMorpheus, } from "../self.js";
-import { autoUpdateStatus, disableAutoUpdate, enableAutoUpdate, ensureAutoUpdate, } from "../self-auto-update.js";
+import { autoUpdateStatus, disableAutoUpdate, enableAutoUpdate, ensureAutoUpdate, reconcileAutoUpdateContext, } from "../self-auto-update.js";
 export async function check(offline) {
     const status = await morpheusInstallStatus({ offline });
     console.log(formatMorpheusInstallStatus(status));
@@ -53,16 +53,30 @@ function printAutoUpdate(change) {
         ? 1
         : 0;
 }
+export async function reportContextMcpSetup() {
+    for (const repair of await reconcileAutoUpdateContext()) {
+        if (repair.outcome === "blocked")
+            console.error(`! Context MCP · ${repair.target} — ${repair.detail}`);
+        if (repair.outcome === "created" || repair.outcome === "updated") {
+            console.log(`✓ Registered Context MCP in ${repair.target}. Reload the client to discover it.`);
+        }
+    }
+}
 /** Called by managed Git hooks. Current is deliberately silent. */
 export async function ensure() {
     const result = await ensureAutoUpdate();
     printEnsure(result, true);
+    if (result.outcome === "current" || result.outcome === "updated")
+        await reportContextMcpSetup();
     return result.outcome === "failed" ? 1 : 0;
 }
 export async function autoUpdate(action, root) {
     try {
-        if (action === "enable")
-            return printAutoUpdate(await enableAutoUpdate(root));
+        if (action === "enable") {
+            const change = await enableAutoUpdate(root);
+            await reportContextMcpSetup();
+            return printAutoUpdate(change);
+        }
         if (action === "disable")
             return printAutoUpdate(await disableAutoUpdate(root));
         if (action === "status" || action === undefined) {
