@@ -15,6 +15,7 @@ Usage
   morpheus pm tagged <tag> [<tag> ...] [--json]     Read roadmap/worklogs matching all subject tags
   morpheus pm claim <RM-014>
   morpheus pm resume <ID>   reuse an existing task worktree or its remote branch
+  morpheus pm unbind <ID>   clear this session’s association to a missing task worktree
   morpheus pm cleanup <ID> [--dry-run|--check] [--release-stale-sessions]
                                             prove a merge, then remove its idle task worktree
   morpheus pm worktrees [prune] [--dry-run]    inventory / prune only missing registrations

@@ -2,7 +2,7 @@ import { cleanupTask, worktreeStatus, pruneStaleWorktrees } from "../pm/cleanup.
 import { offlineDeclared } from "../session/gate.js";
 import { guard } from "./context.js";
 import { assertCurrentSource } from "../session/start.js";
-import { prepareTask, resumeTask, bindTask } from "../session/tasks.js";
+import { prepareTask, resumeTask, bindTask, unbindMissingTask } from "../session/tasks.js";
 import { execFile } from "node:child_process";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
@@ -359,6 +359,17 @@ export async function resume(id, cwd, sessionId = process.env.CODEX_THREAD_ID) {
         const target = await resumeTask(cwd, id.toUpperCase(), sessionId);
         console.log(`Resuming ${id.toUpperCase()}. WORK IN: ${target}`);
         console.log("Run morpheus context brief there to fetch current trunk; preserve task edits and integrate explicitly if behind. Re-read records and refresh. If blocked, use morpheus pm unblock after its recorded need is answered.");
+        return 0;
+    }
+    catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        return 1;
+    }
+}
+export async function unbind(id, cwd, sessionId = process.env.CODEX_THREAD_ID) {
+    try {
+        await unbindMissingTask(cwd, id.toUpperCase(), sessionId);
+        console.log(`Cleared this session's missing worktree association for ${id.toUpperCase()}.`);
         return 0;
     }
     catch (error) {
