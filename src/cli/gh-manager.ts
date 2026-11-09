@@ -289,7 +289,7 @@ export function ghManagerCheckRecord(base: string | undefined, bodyFile: string 
   const trunk = git(root, ["rev-parse", "--verify", "--end-of-options", `${base}^{commit}`]);
   const problem = managerRecordProblem(root, readFileSync(bodyFile, "utf8"), head, trunk);
   if (problem) { console.error(problem); return 1; }
-  console.log(`Manager review record is valid at ${head} against ${trunk}.`);
+  console.log(`Manager review preflight passed at ${head} against ${trunk}.`);
   return 0;
 }
 

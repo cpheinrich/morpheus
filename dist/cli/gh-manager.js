@@ -289,7 +289,7 @@ export function ghManagerCheckRecord(base, bodyFile, cwd = process.cwd()) {
         console.error(problem);
         return 1;
     }
-    console.log(`Manager review record is valid at ${head} against ${trunk}.`);
+    console.log(`Manager review preflight passed at ${head} against ${trunk}.`);
     return 0;
 }
 /**

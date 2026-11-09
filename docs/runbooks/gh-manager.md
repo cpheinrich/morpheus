@@ -51,8 +51,8 @@ and one a person reopens is not closed again until it gets a new push.
 
 A session proposing its own review can validate its committed record before pushing and deciding.
 From the target checkout, run `morpheus gh-manager check-record origin/<base> --body-file <file>`
-with the exact proposed PR body. This reads only local Git and the body file. Apply still validates
-the record against the live head and enforces all repository policy.
+with the exact proposed PR body. This local check leaves the working tree, refs, and GitHub
+untouched. Apply still validates the record against the live head and enforces repository policy.
 
 ## Triaging drafts and WIP pull requests
 
