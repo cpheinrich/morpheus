@@ -18,13 +18,11 @@ export async function bindTask(cwd, task, sessionId, pending = false) {
     await writeFile(temp, JSON.stringify({ root, task, ...(pending ? { pending: true } : {}) }));
     await rename(temp, path);
 }
-export async function boundTask(cwd, sessionId) {
-    if (!sessionId)
-        return null;
-    const { common } = await checkoutIdentity(cwd);
+async function readBinding(common, sessionId) {
+    const path = join(common, "morpheus-sessions", `${sessionKey(sessionId)}.json`);
     let raw;
     try {
-        raw = await readFile(join(common, "morpheus-sessions", `${sessionKey(sessionId)}.json`), "utf8");
+        raw = await readFile(path, "utf8");
     }
     catch (error) {
         if (error.code === "ENOENT")
@@ -34,12 +32,52 @@ export async function boundTask(cwd, sessionId) {
     const binding = JSON.parse(raw);
     if (typeof binding.root !== "string" || typeof binding.task !== "string" || !ROADMAP_ID.test(binding.task))
         throw new Error("Invalid session task association.");
+    return { path, raw, binding };
+}
+async function worktreeMissing(root) {
+    try {
+        await realpath(root);
+        return false;
+    }
+    catch (error) {
+        if (error.code === "ENOENT")
+            return true;
+        throw error;
+    }
+}
+export async function boundTask(cwd, sessionId) {
+    if (!sessionId)
+        return null;
+    const { common } = await checkoutIdentity(cwd);
+    const saved = await readBinding(common, sessionId);
+    if (!saved)
+        return null;
+    const { binding } = saved;
+    if (await worktreeMissing(binding.root)) {
+        throw new Error(`Saved task ${binding.task} worktree is missing at ${binding.root}. If the task is complete, run morpheus pm unbind ${binding.task} from the primary checkout, then retry startup.`);
+    }
     const target = await checkoutIdentity(binding.root);
     const branch = await git(target.root, ["rev-parse", "--abbrev-ref", "HEAD"]);
     if (target.common !== common || target.root !== binding.root || (roadmapIdFromBranch(branch) !== binding.task && !(binding.pending === true && target.linked && branch === "HEAD"))) {
         throw new Error(`Saved task ${binding.task} no longer matches ${binding.root}. Resume a task explicitly with morpheus pm resume <ID>.`);
     }
     return binding;
+}
+/** Explicit recovery for one missing checkout, without changing any worktree or claim. */
+export async function unbindMissingTask(cwd, task, sessionId) {
+    if (!sessionId)
+        throw new Error("A session ID is required. Use --session-id for the affected session when the runner does not supply it.");
+    const { common, linked } = await checkoutIdentity(cwd);
+    if (linked)
+        throw new Error("Run pm unbind from the primary checkout.");
+    const saved = await readBinding(common, sessionId);
+    if (saved?.binding.task !== task)
+        throw new Error(`This session has no saved association for ${task}.`);
+    if (!(await worktreeMissing(saved.binding.root)))
+        throw new Error("The saved worktree still exists. Retain its task association.");
+    if (await readFile(saved.path, "utf8") !== saved.raw)
+        throw new Error("The session association changed. Retry only after verifying the saved task.");
+    await unlink(saved.path);
 }
 async function destination(root, task) {
     const { common } = await checkoutIdentity(root);

@@ -9,7 +9,7 @@ import { prepareRepository, parseSessionInput, assertCurrentSource } from "../sr
 import { prepareTask, resumeTask, bindTask, boundTask } from "../src/session/tasks.js";
 import { startSession } from "../src/cli/session-start.js";
 import { refresh, check } from "../src/session/context.js";
-import { claim } from "../src/cli/pm.js";
+import { claim, unbind } from "../src/cli/pm.js";
 import type { MorpheusInstallStatus } from "../src/self.js";
 
 const exec = promisify(execFile);
@@ -202,6 +202,23 @@ describe("one worktree per implementation task", () => {
     await expect(resumeTask(local, id)).rejects.toThrow("found 2");
     await bindTask(local, id, "stale");
     await expect(boundTask(local, "stale")).rejects.toThrow("no longer matches");
+  });
+  it("recovers startup from a missing worktree without clearing another session's binding", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const target = (await prepareTask(local, join(local, "hq/product"), id))!;
+    await bindTask(target, id, "recover", true);
+    await bindTask(target, id, "other", true);
+    expect(await unbind(id, local, "recover")).toBe(1);
+    expect((await boundTask(local, "recover"))?.root).toBe(target);
+    await git(local, "worktree", "remove", target);
+    expect(await startSession(local, { sessionId: "recover" }, { morpheus })).toBe(1);
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining(`morpheus pm unbind ${id}`));
+    expect(await unbind("MO-26-09-13-17.08.16", local, "recover")).toBe(1);
+    expect(await unbind(id, local, "recover")).toBe(0);
+    expect(await boundTask(local, "recover")).toBeNull();
+    await expect(boundTask(local, "other")).rejects.toThrow("worktree is missing");
+    expect(await startSession(local, { sessionId: "recover" }, { morpheus })).toBe(0);
   });
   it("retains the association while a new worktree is prepared but not claimed", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
