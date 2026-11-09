@@ -70,7 +70,7 @@ pnpm morpheus review prepare --base origin/main   # the reviewer packet
 pnpm morpheus review validate      # CI's review-record check, run before pushing
 pnpm morpheus inbox validate       # before finishing an inbox
 pnpm morpheus context refresh      # once, after reading the records — see below
-pnpm morpheus wait-ci <pr>         # block once on CI, then a digest of failures — never poll gh
+pnpm morpheus wait-ci <pr> --required-only   # wait for required CI and report failures
 ```
 
 ## Device bootstrap
@@ -156,12 +156,11 @@ unblock you>"`. Escalating is cheap; shipping half-baked is expensive. "Blocked 
 `needs`. A blocked item keeps its branch; resume with `pm resume`. Detail:
 [`pm-workflow.md`](docs/runbooks/pm-workflow.md#blocking).
 
-**Break loops.** If the same command fails the same way twice, or you have polled the same thing
-three times, stop: change approach, or `pm block` with what you learned. Never idle-loop
-(`sleep`/`true`/`echo` loops, repeated status checks). To wait on CI prefer `gh pr merge --auto`;
-when the next step depends on the result, run `morpheus wait-ci <n>` once — never poll
-`gh run view` or `gh pr checks` in a loop; for one Actions run, `morpheus wait-ci --run <id>` (or
-`--workflow <file> --branch <b>`). A hook refuses the third poll of a target.
+**Break loops.** If the same command fails the same way twice or three polls agree,
+change approach. Never idle-loop. For one run use `morpheus wait-ci --run <id>`.
+
+**Follow your PR through merge.** If authorized to merge, use `morpheus wait-ci <n> --required-only`.
+Fix or retry failures. Verify the merge or record the hard blocker. GitHub Manager is the backstop.
 
 **Browser-reachable work is not blocked.** If the *single, entire* obstacle is that something has
 to happen in a browser — a console, a dashboard, a setting — do it yourself rather than describe
