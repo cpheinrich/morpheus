@@ -33,7 +33,7 @@ async function isBounded(root, session) {
 /** Search evidence follows a session across the repository just like core reads. */
 async function progress(root, session) {
     if (await stateExists(root, session, "seen"))
-        return { prompted: true, armed: true, seen: true };
+        return { prompted: await stateExists(root, session, "prompt"), armed: true, seen: true };
     const checkouts = await evidenceCheckouts(root);
     const states = await Promise.all(checkouts.map(async (checkout) => ({
         prompted: await stateExists(checkout, session, "prompt"),
@@ -166,6 +166,7 @@ function promptPayload(raw) {
     return input;
 }
 export async function taskPrompt(raw, locateRoot) {
+    const submitted = new Date();
     const input = promptPayload(raw);
     if (!input)
         return;
@@ -173,14 +174,19 @@ export async function taskPrompt(raw, locateRoot) {
     const cwdRoot = await locateRoot(input.cwd);
     if (!cwdRoot)
         return;
-    if (!await isBounded(cwdRoot, session))
+    const arm = await contextArm(cwdRoot, session);
+    if (!arm.session)
         return;
-    const root = await taskRoot(cwdRoot, session);
+    const root = arm.startup === "bounded" ? await taskRoot(cwdRoot, session) : cwdRoot;
     if (await stateExists(root, session, "prompt"))
         return;
-    if ((await progress(root, session)).prompted)
+    const state = await progress(root, session);
+    if (state.prompted)
         return;
     if (!await markOnce(root, session, "prompt"))
+        return;
+    await traceContext(root, { type: "prompt", arm: arm.arm, engine: arm.engine, session: arm.session, rollout: arm.id }, submitted);
+    if (arm.startup !== "bounded" || state.seen)
         return;
     if (!await hasTaskSource(root, session)) {
         return "Task context search found no readable project records beyond the startup core. Continue with the core. Use morpheus context coverage to check the worktree and project search manifest.";

@@ -22,6 +22,13 @@ export interface SearchResult {
     readonly buildMs: number;
     readonly queryMs: number;
     readonly cacheHit: boolean;
+    readonly waitMs: number;
 }
 export declare function countContextTokens(text: string): number;
+export declare function warmTantivyIndex(sources: readonly ContextSource[], cacheDir: string): Promise<{
+    index: string;
+    buildMs: number;
+    cacheHit: boolean;
+    waitMs: number;
+} | undefined>;
 export declare function searchContext(sources: readonly ContextSource[], query: string, budget: number, options: SearchOptions): Promise<SearchResult>;

@@ -3,7 +3,7 @@ import { roadmapIdFromBranch } from "../pm/id.js";
 import { boundTask, bindTask } from "../session/tasks.js";
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
-import { providerSessionId, traceContext } from "../context-search/rollout.js";
+import { contextArm, providerSessionId, traceContext } from "../context-search/rollout.js";
 import { prepareRepository, parseSessionInput, sessionGit } from "../session/start.js";
 import { projectPolicy } from "../session/policy.js";
 import { CANONICAL_INPUTS } from "../session/lease.js";
@@ -93,7 +93,7 @@ async function printRollout(root, paths, arm, id) {
         session: arm.session, rollout: arm.id, startup: arm.startup, startupBytes, startupTokens, transport: mcp ? "mcp" : "cli" });
 }
 /** Trunk lag, the records to read from this checkout, and how to keep the session's task association. */
-async function printReadInstructions(prepared, sessionId) {
+async function printReadInstructions(prepared, sessionId, started) {
     if (prepared.behind) {
         for (const line of formatLag(prepared.lag, prepared.trunk, new Date()))
             console.log(line);
@@ -105,6 +105,12 @@ async function printReadInstructions(prepared, sessionId) {
     const paths = policy.requiredInputs ?? CANONICAL_INPUTS;
     for (const path of paths)
         console.log(`  ${join(prepared.root, path)}`);
+    if (started) {
+        const arm = policy.rollout ?? await contextArm(prepared.root, sessionId).catch(() => undefined);
+        if (arm?.session)
+            await traceContext(prepared.root, { type: "session-start",
+                arm: arm.arm, engine: arm.engine, session: arm.session, rollout: arm.id }, started);
+    }
     if (policy.rollout)
         await printRollout(prepared.root, paths, policy.rollout, sessionId);
     if (sessionId)
@@ -113,6 +119,7 @@ async function printReadInstructions(prepared, sessionId) {
     return policy.rollout?.id !== undefined;
 }
 export async function startSession(root, input, opts = {}) {
+    const started = new Date();
     try {
         // Even a failed fetch must not leave another session's receipt usable.
         await endTerm(root, input.sessionId);
@@ -126,7 +133,7 @@ export async function startSession(root, input, opts = {}) {
         printPreparation(prepared);
         console.log(`WORK IN: ${prepared.root}`);
         await reportTask(prepared, binding, input.sessionId);
-        const rollout = await printReadInstructions(prepared, input.sessionId);
+        const rollout = await printReadInstructions(prepared, input.sessionId, input.source === "startup" ? started : undefined);
         console.log("");
         return await brief(prepared.root, { ...opts, startup: { sessionId: input.sessionId, rollout } });
     }
