@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Manager } from "../src/service.mjs";
@@ -127,6 +127,44 @@ test("supervision permits justified clarification but never implicit tool approv
   );
   assert.equal(audit.source, "codex");
   assert.equal(audit.reason, "Reversible test fixture choice");
+});
+test("an unstructured Claude result stays private until exit and cannot shadow a later report", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "manager-claude-result-"));
+  const previous = process.env.FACTORY_HOME;
+  process.env.FACTORY_HOME = root;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.FACTORY_HOME;
+    else process.env.FACTORY_HOME = previous;
+    await rm(root, { recursive: true, force: true });
+  });
+  await initStore();
+  const manager = new Manager();
+  manager.send = () => {};
+  for (const hasReport of [false, true]) {
+    const id = randomUUID();
+    await mkdir(runDir(id));
+    const run = {
+      id, cwd: root, executor: "claude", state: "running", terminal: false,
+      question: null, offset: 0, guardian: { stdin: { destroy() {} } },
+    };
+    manager.runs.set(id, run);
+    await manager.event(run, { type: "result" });
+    let status = await manager.status(id);
+    assert.equal(status.state, "running");
+    assert.equal(status.terminal, false);
+    assert.equal(status.question, null);
+    assert.equal(status.result, undefined);
+
+    const report = { outcome: "completed", summary: "Recovered report.", evidence: [] };
+    if (hasReport) await manager.event(run, { type: "result", structured_output: report });
+    await manager.settleRun(run, { state: "exited", exitCode: 0 });
+    status = await manager.status(id);
+    assert.equal(status.terminal, true);
+    assert.equal(status.state, hasReport ? "completed" : "failed");
+    assert.deepEqual(status.result, hasReport ? report : {
+      outcome: "failed", summary: "Claude ended without a structured completion report.", evidence: [],
+    });
+  }
 });
 test("persisted state recovers exited runs without replaying work", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "recovery-"));

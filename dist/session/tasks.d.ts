@@ -5,6 +5,8 @@ interface TaskBinding {
 }
 export declare function bindTask(cwd: string, task: string, sessionId?: string, pending?: boolean): Promise<void>;
 export declare function boundTask(cwd: string, sessionId?: string): Promise<TaskBinding | null>;
+/** Explicit recovery for one missing checkout, without changing any worktree or claim. */
+export declare function unbindMissingTask(cwd: string, task: string, sessionId?: string): Promise<void>;
 /** Prepare only; the destination must be read/certified before claim can push. */
 export declare function prepareTask(root: string, productDir: string, id: string): Promise<string | null>;
 /** Resume by explicit roadmap identity, never by guessing which branch is meant. */
