@@ -7,11 +7,11 @@ previous: .agent/inbox-archive/2026-11-09-1014-cpheinrich.md
 ---
 # Inbox — 2026-11-09
 
-The issue automation reconciled all open GitHub issues and preserved the completed ledger.
-The retired Paperclip-pool request #585 is closed with merged retirement evidence. The legacy
-web-layout fix (#666) and delivery-documentation correction (#667) passed independent review;
-both remain open because the confirmed [GitHub Actions outage](https://stspg.io/7yw63xl9ztrv)
-interrupted required checks. The automation will resume their review-to-merge loop after recovery.
+The issue automation resumed the reviewed fixes after the CI incident. Delivery documentation
+PR [#667](https://github.com/cpheinrich/morpheus/pull/667) merged and closed #622. The expired
+quota test (#669) and repeated legacy installer cleanup (#586) were independently verified as
+already fixed in merged PRs #670 and #589, then closed with evidence. Web-layout PR [#666](https://github.com/cpheinrich/morpheus/pull/666) also merged
+and closed #433 after all current-head checks passed. The prior trust blocker for #423 is resolved by current write access.
 Unreplied decisions below remain unchanged.
 The prior inbox is [archived](../../.agent/inbox-archive/2026-11-09-1014-cpheinrich.md).
 
@@ -21,16 +21,13 @@ The prior inbox is [archived](../../.agent/inbox-archive/2026-11-09-1014-cpheinr
 
 ~
 
-## ❗ 2. Adopt the worktree-storage report · `codex`
+## ✅ 2. Worktree-storage intake is trusted · `codex`
 
-[#423](https://github.com/cpheinrich/morpheus/issues/423) requests durable/configurable worktree storage after temporary-directory loss. Its reporter has CONTRIBUTOR association and read-only repository permission, so the repository's trusted-intake policy prevents implementing that request without maintainer adoption.
-
-- **A — adopt the report for investigation (recommended).** Reproduce the loss and evaluate a durable root alongside missing-worktree recovery #430 before choosing a design.
-- **B — retain temporary roots.** Investigate recovery under #430 while leaving storage policy unchanged.
-- **C — defer #423.** Keep it open until a consumer provides more concrete requirements.
-- **Other —** a different approach.
-
-~
+[#423](https://github.com/cpheinrich/morpheus/issues/423)'s reporter now has COLLABORATOR
+association and write permission, verified through GitHub on 2026-11-09. The prior adoption
+blocker is resolved. Investigate the storage report alongside missing-worktree recovery #430;
+no maintainer reply is needed for intake. The settled default remains until reviewed design work
+establishes a change.
 
 ## ❗ 3. One older claim remains · `codex`
 
@@ -47,9 +44,9 @@ The prior inbox is [archived](../../.agent/inbox-archive/2026-11-09-1014-cpheinr
 
 [#585](https://github.com/cpheinrich/morpheus/issues/585) no longer applies after the authorized
 Paperclip retirement in [#644](https://github.com/cpheinrich/morpheus/pull/644); current-source
-retirement tests passed. [#666](https://github.com/cpheinrich/morpheus/pull/666) recognizes the
+retirement tests passed. Merged [#666](https://github.com/cpheinrich/morpheus/pull/666) recognizes the
 existing `web/` app without scaffolding a second site. [#667](https://github.com/cpheinrich/morpheus/pull/667)
-labels the old watchdog migration proposal historical and points to the current release-owner guide.
+merged and labels the old watchdog migration proposal historical and points to the current release-owner guide.
 The operational ledger retains every remaining issue, evidence and concrete next action. Next priorities
 include HQ unauthorized-payload reproduction (#600), missing-worktree recovery (#430), required-CI
 census (#616), native retry coverage (#618), and Factory/review tooling defects. Intentional Manager
