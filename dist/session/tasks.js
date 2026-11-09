@@ -15,7 +15,7 @@ export async function bindTask(cwd, task, sessionId, pending = false) {
     await mkdir(dir, { recursive: true });
     const path = join(dir, `${sessionKey(sessionId)}.json`);
     const temp = `${path}.${randomUUID()}.tmp`;
-    await writeFile(temp, JSON.stringify({ root, task, ...(pending ? { pending: true } : {}) }));
+    await writeFile(temp, JSON.stringify({ root, task, bindingId: randomUUID(), ...(pending ? { pending: true } : {}) }));
     await rename(temp, path);
 }
 async function readBinding(common, sessionId) {
@@ -34,7 +34,7 @@ async function readBinding(common, sessionId) {
         throw new Error("Invalid session task association.");
     return { path, raw, binding };
 }
-async function worktreeMissing(root) {
+async function pathMissing(root) {
     try {
         await realpath(root);
         return false;
@@ -45,6 +45,9 @@ async function worktreeMissing(root) {
         throw error;
     }
 }
+function unboundMarker(saved) {
+    return `${saved.path}.${sessionKey(saved.raw)}.unbound`;
+}
 export async function boundTask(cwd, sessionId) {
     if (!sessionId)
         return null;
@@ -53,7 +56,9 @@ export async function boundTask(cwd, sessionId) {
     if (!saved)
         return null;
     const { binding } = saved;
-    if (await worktreeMissing(binding.root)) {
+    if (await pathMissing(binding.root)) {
+        if (!(await pathMissing(unboundMarker(saved))))
+            return null;
         throw new Error(`Saved task ${binding.task} worktree is missing at ${binding.root}. If the task is complete, run morpheus pm unbind ${binding.task} from the primary checkout, then retry startup.`);
     }
     const target = await checkoutIdentity(binding.root);
@@ -73,11 +78,17 @@ export async function unbindMissingTask(cwd, task, sessionId) {
     const saved = await readBinding(common, sessionId);
     if (saved?.binding.task !== task)
         throw new Error(`This session has no saved association for ${task}.`);
-    if (!(await worktreeMissing(saved.binding.root)))
+    if (!(await pathMissing(saved.binding.root)))
         throw new Error("The saved worktree still exists. Retain its task association.");
-    if (await readFile(saved.path, "utf8") !== saved.raw)
-        throw new Error("The session association changed. Retry only after verifying the saved task.");
-    await unlink(saved.path);
+    // A concurrent claim or resume can replace the binding at any moment. A marker
+    // keyed to its contents retires only the stale association we actually read.
+    try {
+        await writeFile(unboundMarker(saved), "", { flag: "wx", mode: 0o600 });
+    }
+    catch (error) {
+        if (error.code !== "EEXIST")
+            throw error;
+    }
 }
 async function destination(root, task) {
     const { common } = await checkoutIdentity(root);

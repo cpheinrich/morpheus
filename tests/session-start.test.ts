@@ -12,6 +12,11 @@ import { refresh, check } from "../src/session/context.js";
 import { claim, unbind } from "../src/cli/pm.js";
 import type { MorpheusInstallStatus } from "../src/self.js";
 
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, writeFile: vi.fn(actual.writeFile) };
+});
+
 const exec = promisify(execFile);
 const git = async (cwd: string, ...args: string[]) => (await exec("git", args, { cwd })).stdout.trim();
 const morpheus: MorpheusInstallStatus = { source: "copied", kind: "package", relation: "current", fresh: true, installedSha: null, remoteSha: null };
@@ -219,6 +224,23 @@ describe("one worktree per implementation task", () => {
     expect(await boundTask(local, "recover")).toBeNull();
     await expect(boundTask(local, "other")).rejects.toThrow("worktree is missing");
     expect(await startSession(local, { sessionId: "recover" }, { morpheus })).toBe(0);
+  });
+  it("preserves a live replacement binding installed during recovery", async () => {
+    const target = (await prepareTask(local, join(local, "hq/product"), id))!;
+    await bindTask(target, id, "recover-race", true);
+    await git(local, "worktree", "remove", target);
+    const replacementId = "MO-26-09-13-17.08.16";
+    const replacement = join(dir, "replacement");
+    await git(local, "worktree", "add", "-b", `${replacementId.toLowerCase()}-replacement`, replacement);
+    const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    const spy = vi.mocked(writeFile).mockImplementation(async (...args) => {
+      if (String(args[0]).endsWith(".unbound")) await bindTask(replacement, replacementId, "recover-race");
+      await actual.writeFile(...args);
+    });
+    try {
+      expect(await unbind(id, local, "recover-race")).toBe(0);
+      expect(await boundTask(local, "recover-race")).toMatchObject({ task: replacementId, root: await realpath(replacement) });
+    } finally { spy.mockReset(); }
   });
   it("retains the association while a new worktree is prepared but not claimed", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
