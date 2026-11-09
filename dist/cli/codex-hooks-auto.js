@@ -122,8 +122,8 @@ export async function runCodexHookEnrollment(command, { cwd = process.cwd(), che
             return scan(entries, approve);
         if (command === "disable") {
             const path = checkout ? resolve(cwd, checkout) : (await codexHookProject(cwd)).root;
-            const root = await realpath(path).catch(() => path);
-            const remaining = entries.filter((entry) => entry.root !== path && entry.root !== root);
+            const root = entries.some((entry) => entry.root === path) ? path : await realpath(path).catch(() => path);
+            const remaining = entries.filter((entry) => entry.root !== root);
             await saveEnrollment(home, remaining);
             if (!remaining.length)
                 await setAgent(home, false);

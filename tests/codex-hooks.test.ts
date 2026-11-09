@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -25,8 +25,8 @@ function hook(index: number, overrides: Record<string, unknown> = {}) {
   };
 }
 
-function backend(hooks: ReturnType<typeof hook>[], options: { error?: boolean; corrupt?: boolean; conflict?: boolean; hold?: boolean } = {}) {
-  writeFileSync(join(fixture, "fixture.json"), JSON.stringify({ repo, home, hooks, ...options }));
+function backend(hooks: ReturnType<typeof hook>[], options: { error?: boolean; corrupt?: boolean; conflict?: boolean; hold?: boolean; repository?: string } = {}) {
+  writeFileSync(join(fixture, "fixture.json"), JSON.stringify({ repo: options.repository ?? repo, home, hooks, ...options }));
 }
 
 function requests() {
@@ -238,6 +238,24 @@ describe("automatic Codex project hook approval", () => {
     const before = requests().length;
     await expect(runCodexHookEnrollment("scan", options)).resolves.toBe(0);
     expect(requests()).toHaveLength(before);
+  });
+
+  it("revokes only the stored path when a moved checkout was replaced by a symlink", async () => {
+    const setAgent = vi.fn().mockResolvedValue(undefined);
+    const options = { cwd: repo, binary, setAgent };
+    backend([hook(0)]);
+    await expect(runCodexHookEnrollment("enable", options)).resolves.toBe(0);
+    const other = join(fixture, "other-project");
+    git(fixture, "clone", "--no-hardlinks", repo, other);
+    backend([], { repository: other });
+    await expect(runCodexHookEnrollment("enable", { ...options, cwd: other })).resolves.toBe(0);
+    renameSync(repo, join(fixture, "moved"));
+    symlinkSync(other, repo, "dir");
+
+    await expect(runCodexHookEnrollment("disable", { ...options, cwd: fixture, checkout: repo })).resolves.toBe(0);
+    const state = JSON.parse(readFileSync(join(home, "morpheus-hook-projects.json"), "utf8"));
+    expect(state.map((entry: { root: string }) => entry.root)).toEqual([other]);
+    expect(setAgent.mock.calls).toEqual([[home, true], [home, true]]);
   });
 
   it.skipIf(process.platform !== "darwin")("recovers the macOS approval lock after its owner is killed", async () => {

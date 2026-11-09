@@ -133,8 +133,8 @@ export async function runCodexHookEnrollment(
     if (command === "scan") return scan(entries, approve);
     if (command === "disable") {
       const path = checkout ? resolve(cwd, checkout) : (await codexHookProject(cwd)).root;
-      const root = await realpath(path).catch(() => path);
-      const remaining = entries.filter((entry) => entry.root !== path && entry.root !== root);
+      const root = entries.some((entry) => entry.root === path) ? path : await realpath(path).catch(() => path);
+      const remaining = entries.filter((entry) => entry.root !== root);
       await saveEnrollment(home, remaining);
       if (!remaining.length) await setAgent(home, false);
       console.log(`Disabled automatic Codex hook approval for ${path}.`);
