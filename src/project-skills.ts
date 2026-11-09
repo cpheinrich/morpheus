@@ -12,6 +12,7 @@ import {
   motionDesignExplorationSkill,
   researchEngineerPointerSkill,
   vpDesignPointerSkill,
+  visualDesignPointerSkill,
   websiteInitSkill,
   type Seed,
 } from "./init/templates.js";
@@ -48,6 +49,15 @@ export interface ProjectSkillDefinition {
  * the loader's routing text as the one source of truth.
  */
 export const PROJECT_SKILLS: readonly ProjectSkillDefinition[] = [
+  {
+    name: "visual-design",
+    providers: ["agents", "claude"],
+    kinds: ALL_KINDS,
+    distribution: "pointer",
+    canonical: true,
+    guide: "morpheus skills guide visual-design",
+    render: visualDesignPointerSkill,
+  },
   {
     name: "motion-design-exploration",
     providers: ["agents"],

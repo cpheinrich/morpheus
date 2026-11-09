@@ -36,7 +36,7 @@ export type EvidenceMode =
   | { kind: "override" };
 
 /** Every checkout of this repository: evidence is about content, not about which checkout held it. */
-async function checkouts(root: string): Promise<string[]> {
+export async function evidenceCheckouts(root: string): Promise<string[]> {
   try {
     const { stdout } = await exec("git", ["worktree", "list", "--porcelain", "-z"], { cwd: root, timeout: 15_000, env: gitSubprocessEnv() });
     const paths = stdout.split("\0").filter((f) => f.startsWith("worktree ")).map((f) => f.slice("worktree ".length));
@@ -64,7 +64,7 @@ export async function evidenceMode(root: string, env: NodeJS.ProcessEnv = proces
   const reads: ReadEntry[] = [];
   let live = false;
   let malformed = 0;
-  for (const checkout of await checkouts(root)) {
+  for (const checkout of await evidenceCheckouts(root)) {
     const log = await readEvidence(checkout);
     malformed += log.malformed;
     for (const entry of log.entries) {

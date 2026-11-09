@@ -60,6 +60,51 @@ def cleanup(root, clock=time.monotonic, pause=time.sleep):
     return False
 
 
+def parse_reader_status(pending):
+    """The group leader's fixed failure status, or None for anything else."""
+    try:
+        value = json.loads(pending)
+    except (ValueError, UnicodeError):
+        return None
+    if not isinstance(value, dict) or len(value) != 2:
+        return None
+    if value.get("reader") == "spawn-failed" and type(value.get("errno")) is int and 0 <= value["errno"] <= 4095:
+        return value
+    if value.get("reader") == "exited" and type(value.get("code")) is int and -255 <= value["code"] <= 255:
+        return value
+    return None
+
+
+def watch_reader(status_read, owner, started, stopped, report):
+    """Relays at most one reader status. True when a status (or a closed pipe) ended the
+    watch; False when a stop request, losing the owner or the 60 s bound ended it."""
+    pending = b""
+    while not stopped() and os.getppid() == owner and time.monotonic() - started < 60:
+        try:
+            chunk = os.read(status_read, 256)
+            if not chunk:
+                report({"reader": "status-unavailable"})
+                return True
+            pending += chunk
+        except BlockingIOError:
+            pass
+        if b"\n" in pending or len(pending) > 128:
+            status = parse_reader_status(pending)
+            report(status if status is not None else {"reader": "status-unavailable"})
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def start_root(argv, status_write):
+    environment = dict(os.environ)
+    environment.pop("MORPHEUS_CD_AGENT_OWNER", None)
+    environment["MORPHEUS_CD_QUOTA_READER_OWNER"] = uuid.uuid4().hex
+    return subprocess.Popen([sys.executable, __file__, "--group", str(status_write), *argv[1:]],
+                            start_new_session=True, env=environment, close_fds=True,
+                            pass_fds=(status_write,))
+
+
 def main(argv):
     stop = False
     owner, started = os.getppid(), time.monotonic()
@@ -79,47 +124,15 @@ def main(argv):
         signal.signal(signal.SIGTERM, request_stop)
         signal.signal(signal.SIGINT, request_stop)
         signal.signal(signal.SIGCHLD, signal.SIG_DFL)
-        environment = dict(os.environ)
-        environment.pop("MORPHEUS_CD_AGENT_OWNER", None)
-        environment["MORPHEUS_CD_QUOTA_READER_OWNER"] = uuid.uuid4().hex
         status_read, status_write = os.pipe()
         os.set_blocking(status_read, False)
-        root = subprocess.Popen([sys.executable, __file__, "--group", str(status_write), *argv[1:]],
-                                start_new_session=True, env=environment, close_fds=True,
-                                pass_fds=(status_write,))
+        root = start_root(argv, status_write)
         os.close(status_write)
         status_write = None
         # Never poll/reap the root. Its live group leader reports only a fixed
         # failure status, while its PID still protects descendant cleanup.
-        pending = b""
-        while not stop and os.getppid() == owner and time.monotonic() - started < 60:
-            try:
-                chunk = os.read(status_read, 256)
-                if not chunk:
-                    report({"reader": "status-unavailable"})
-                    stop = True
-                    break
-                pending += chunk
-            except BlockingIOError:
-                pass
-            if b"\n" in pending or len(pending) > 128:
-                status = None
-                try:
-                    value = json.loads(pending)
-                    if (isinstance(value, dict) and len(value) == 2
-                            and value.get("reader") == "spawn-failed"
-                            and type(value.get("errno")) is int and 0 <= value["errno"] <= 4095):
-                        status = value
-                    elif (isinstance(value, dict) and len(value) == 2
-                            and value.get("reader") == "exited"
-                            and type(value.get("code")) is int and -255 <= value["code"] <= 255):
-                        status = value
-                except (ValueError, UnicodeError):
-                    pass
-                report(status if status is not None else {"reader": "status-unavailable"})
-                stop = True
-                break
-            time.sleep(0.02)
+        if watch_reader(status_read, owner, started, lambda: stop, report):
+            stop = True
         clean = cleanup(root)
         report({"cleanup": "terminated" if clean else "unknown"})
         return 0 if clean and stop else 3

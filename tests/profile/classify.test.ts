@@ -176,3 +176,8 @@ describe("percentile", () => {
     expect(percentile([], 50)).toBeNull();
   });
 });
+
+it("classifies named Morpheus Context MCP tools as project context", () => {
+  expect(classifyTool("mcp__morpheus_context__search_project_context", { query: "release" })).toBe("context");
+  expect(classifyTool("mcp__morpheus_context__get_context_overview", {})).toBe("context");
+});

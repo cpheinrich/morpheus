@@ -25,6 +25,7 @@ const stringOptions = {
     "--slug": (flags, value) => { flags.slug = value; },
     "--needs": (flags, value) => { flags.needs = value; },
     "--session-id": (flags, value) => { flags.sessionId = value; },
+    "--max-tokens": (flags, value) => { flags.maxTokens = value; },
     "--context": (flags, value) => { flags.context = value; },
     "--notes": (flags, value) => { flags.notes = value; },
     "--prior-review": (flags, value) => { flags.priorReview = value; },
@@ -62,19 +63,50 @@ const booleanOptions = {
     "--worktree": (flags) => { flags.worktree = true; },
     "--nul": (flags) => { flags.nul = true; },
     "--full": (flags) => { flags.full = true; },
+    "--ci": (flags) => { flags.ci = true; },
     "--dispatch": (flags) => { flags.dispatch = true; },
     "--required-only": (flags) => { flags.requiredOnly = true; },
 };
-/** Flags `parseArgs` consumes in its switch rather than through the option tables. */
-const SWITCH_FLAGS = ["--dir", "--base", "--issue", "--ceiling", "--author", "--isbn", "--tag"];
 /**
  * Every flag the global parser consumes before a subcommand sees its arguments. A subcommand that
  * lets a project declare its own flags (qa preview modes) must refuse these, or the flag is
  * silently swallowed and the command runs as if it were never given.
  */
 export function globalFlags() {
-    return new Set(["--help", "-h", ...Object.keys(stringOptions), ...Object.keys(booleanOptions), ...SWITCH_FLAGS]);
+    return new Set(["--help", "-h", ...Object.keys(stringOptions), ...Object.keys(booleanOptions), ...Object.keys(valueOptions)]);
 }
+/**
+ * Flags whose value needs more than a plain assignment: a default kept when the value is missing,
+ * a list, a validated number, or a value taken only when present. Each returns the index of the
+ * last argument it consumed.
+ */
+const valueOptions = {
+    "--dir": (flags, argv, i) => { flags.dir = argv[++i] ?? flags.dir; return i; },
+    "--base": (flags, argv, i) => {
+        const value = argv[++i];
+        if (value !== undefined) {
+            flags.base = value;
+            flags.baseGiven = true;
+        }
+        return i;
+    },
+    "--issue": (flags, argv, i) => { flags.issue = argv[++i] ?? ""; return i; },
+    "--ceiling": (flags, argv, i) => {
+        const n = Number(argv[++i]);
+        if (Number.isInteger(n) && n > 0)
+            flags.ceiling = n;
+        return i;
+    },
+    "--author": (flags, argv, i) => {
+        const author = argv[++i];
+        if (author)
+            flags.authors.push(author);
+        return i;
+    },
+    "--tag": (flags, argv, i) => { flags.tags.push(argv[++i] ?? ""); return i; },
+    "--isbn": (flags, argv, i) => { if (argv[i + 1])
+        flags.isbns.push(argv[++i]); return i; },
+};
 export function parseArgs(argv) {
     const flags = {
         dir: "hq/product",
@@ -87,6 +119,7 @@ export function parseArgs(argv) {
         all: false,
         offline: false,
         full: false,
+        ci: false,
         requiredOnly: false,
         json: false,
         dispatch: false,
@@ -112,43 +145,12 @@ export function parseArgs(argv) {
             booleanOption(flags);
             continue;
         }
-        switch (arg) {
-            case "--dir":
-                flags.dir = argv[++i] ?? flags.dir;
-                break;
-            case "--base": {
-                const value = argv[++i];
-                if (value !== undefined) {
-                    flags.base = value;
-                    flags.baseGiven = true;
-                }
-                break;
-            }
-            case "--issue":
-                flags.issue = argv[++i] ?? "";
-                break;
-            case "--ceiling": {
-                const n = Number(argv[++i]);
-                if (Number.isInteger(n) && n > 0)
-                    flags.ceiling = n;
-                break;
-            }
-            case "--author": {
-                const author = argv[++i];
-                if (author)
-                    flags.authors.push(author);
-                break;
-            }
-            case "--tag":
-                flags.tags.push(argv[++i] ?? "");
-                break;
-            case "--isbn":
-                if (argv[i + 1])
-                    flags.isbns.push(argv[++i]);
-                break;
-            default:
-                flags.positional.push(arg);
+        const valueOption = Object.hasOwn(valueOptions, arg) ? valueOptions[arg] : undefined;
+        if (valueOption) {
+            i = valueOption(flags, argv, i);
+            continue;
         }
+        flags.positional.push(arg);
     }
     return flags;
 }

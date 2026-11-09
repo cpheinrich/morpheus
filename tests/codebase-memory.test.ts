@@ -26,71 +26,79 @@ interface FakeState {
   installerFailure?: string;
 }
 
+// The codebase-memory CLI's answers, whether invoked natively or through the installer's npx form.
+function cbmAnswer(root: string, state: FakeState, cbmArgs: string[]) {
+  if (cbmArgs[0] === "--version") {
+    return ok(`codebase-memory-mcp ${state.version ?? CODEBASE_MEMORY_VERSION}\n`);
+  }
+  if (cbmArgs[0] === "install") {
+    state.nativeAvailable = true;
+    state.version = CODEBASE_MEMORY_VERSION;
+    return state.installerFailure ? failed(state.installerFailure) : ok();
+  }
+  if (cbmArgs[0] === "config" && cbmArgs[1] === "set") {
+    if (cbmArgs[2] === "auto_index") state.autoIndex = true;
+    if (cbmArgs[2] === "auto_watch") state.autoWatch = true;
+    return ok();
+  }
+  if (cbmArgs[0] === "config" && cbmArgs[1] === "list") {
+    return ok(
+      `Configuration:\n  auto_index = ${state.autoIndex}\n  auto_watch = ${state.autoWatch}\n`,
+    );
+  }
+  if (cbmArgs.includes("index_repository")) {
+    state.indexed = true;
+    state.indexedHead = "abc123";
+    return ok(envelope({ project: "test-project", status: "ready" }));
+  }
+  if (cbmArgs.includes("list_projects")) {
+    return ok(
+      envelope({
+        projects: state.indexed
+          ? [{ name: "test-project", root_path: resolve(root) }]
+          : [],
+      }),
+    );
+  }
+  if (cbmArgs.includes("index_status")) {
+    return ok(
+      envelope({
+        project: "test-project",
+        root_path: resolve(root),
+        status: "ready",
+        git: { head_sha: state.indexedHead },
+      }),
+    );
+  }
+  return undefined;
+}
+
+function gitAnswer(root: string, command: string, args: string[], cwd: string | undefined) {
+  if (command === "git" && args.join(" ") === "rev-parse --show-toplevel") return ok(`${cwd}\n`);
+  if (command === "git" && args.join(" ") === "rev-parse HEAD") {
+    return ok(cwd === resolve(root) ? "abc123\n" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
+  }
+  if (command === "git" && args.join(" ") === "status --porcelain --untracked-files=all") return ok();
+  if (command === "git" && args[0] === "ls-remote") {
+    return ok("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/heads/main\n");
+  }
+  if (
+    command === "git" &&
+    args.join(" ") ===
+      "merge-base --is-ancestor aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ) {
+    return ok();
+  }
+  return undefined;
+}
+
 function fakeRunner(root: string, state: FakeState, calls: string[]): CodebaseMemoryCommandRunner {
   return async (command, args, cwd) => {
     calls.push([command, ...args].join(" "));
     const isNative = command === "codebase-memory-mcp";
     const cbmArgs = isNative ? args : args.slice(5);
     if (isNative && !state.nativeAvailable) return failed("not found");
-
-    if (cbmArgs[0] === "--version") {
-      return ok(`codebase-memory-mcp ${state.version ?? CODEBASE_MEMORY_VERSION}\n`);
-    }
-    if (cbmArgs[0] === "install") {
-      state.nativeAvailable = true;
-      state.version = CODEBASE_MEMORY_VERSION;
-      return state.installerFailure ? failed(state.installerFailure) : ok();
-    }
-    if (cbmArgs[0] === "config" && cbmArgs[1] === "set") {
-      if (cbmArgs[2] === "auto_index") state.autoIndex = true;
-      if (cbmArgs[2] === "auto_watch") state.autoWatch = true;
-      return ok();
-    }
-    if (cbmArgs[0] === "config" && cbmArgs[1] === "list") {
-      return ok(
-        `Configuration:\n  auto_index = ${state.autoIndex}\n  auto_watch = ${state.autoWatch}\n`,
-      );
-    }
-    if (cbmArgs.includes("index_repository")) {
-      state.indexed = true;
-      state.indexedHead = "abc123";
-      return ok(envelope({ project: "test-project", status: "ready" }));
-    }
-    if (cbmArgs.includes("list_projects")) {
-      return ok(
-        envelope({
-          projects: state.indexed
-            ? [{ name: "test-project", root_path: resolve(root) }]
-            : [],
-        }),
-      );
-    }
-    if (cbmArgs.includes("index_status")) {
-      return ok(
-        envelope({
-          project: "test-project",
-          root_path: resolve(root),
-          status: "ready",
-          git: { head_sha: state.indexedHead },
-        }),
-      );
-    }
-    if (command === "git" && args.join(" ") === "rev-parse --show-toplevel") return ok(`${cwd}\n`);
-    if (command === "git" && args.join(" ") === "rev-parse HEAD") {
-      return ok(cwd === resolve(root) ? "abc123\n" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
-    }
-    if (command === "git" && args.join(" ") === "status --porcelain --untracked-files=all") return ok();
-    if (command === "git" && args[0] === "ls-remote") {
-      return ok("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/heads/main\n");
-    }
-    if (
-      command === "git" &&
-      args.join(" ") ===
-        "merge-base --is-ancestor aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    ) {
-      return ok();
-    }
-    return failed(`unexpected command: ${command} ${args.join(" ")}`);
+    return cbmAnswer(root, state, cbmArgs) ?? gitAnswer(root, command, args, cwd) ?? failed(`unexpected command: ${command} ${args.join(" ")}`);
   };
 }
 

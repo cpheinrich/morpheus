@@ -219,19 +219,12 @@ export function plannedFiles(survey: WebSurvey, ctx: ConsumerAuthContext): Plann
   ];
 }
 
-export async function scaffoldConsumerAuth(
-  opts: ConsumerAuthOptions,
-): Promise<ConsumerAuthResult> {
+type ScaffoldOutcome = { written: string[]; skipped: string[]; merged: string[]; upgraded: string[]; drifted: string[]; notes: string[] };
+
+/** Writes each absent planned file; an existing one is kept, upgraded only when it is byte-for-byte `web init` output, or named as drifted. */
+async function writePlannedFiles(opts: ConsumerAuthOptions, configPath: string, out: ScaffoldOutcome): Promise<void> {
   const { root, survey, ctx } = opts;
-  const written: string[] = [];
-  const skipped: string[] = [];
-  const merged: string[] = [];
-  const upgraded: string[] = [];
-  const drifted: string[] = [];
-  const notes: string[] = [];
-
-  const configPath = survey.webRoot === "." ? "lib/firebase/config.ts" : `${survey.webRoot}/lib/firebase/config.ts`;
-
+  const { written, skipped, upgraded, drifted } = out;
   for (const file of plannedFiles(survey, ctx)) {
     const abs = join(root, file.path);
     if (await exists(abs)) {
@@ -264,6 +257,9 @@ export async function scaffoldConsumerAuth(
     written.push(file.path);
   }
 
+}
+
+function driftNotes(drifted: string[], configPath: string, notes: string[]): void {
   if (drifted.includes(configPath)) {
     notes.push(
       `${configPath} carries local edits, so it was neither replaced nor safe to ` +
@@ -285,16 +281,28 @@ export async function scaffoldConsumerAuth(
     );
   }
 
-  // --- merges ---------------------------------------------------------------
+}
 
-  const rules = await addConsumerRules(root, survey.firestoreRulesPath);
+/** The consumer accounts rules block and the emulators block in firebase.json. */
+async function mergeFirebase(root: string, rulesPath: ConsumerAuthOptions["survey"]["firestoreRulesPath"], out: ScaffoldOutcome): Promise<void> {
+  const { written, merged, notes } = out;
+  const rules = await addConsumerRules(root, rulesPath);
   if (rules.kind === "merged") merged.push(`${rules.path} (+consumer accounts block)`);
   if (rules.kind === "note") notes.push(rules.message);
 
-  const firebaseJson = await ensureEmulatorsBlock(root, survey.firestoreRulesPath);
+  const firebaseJson = await ensureEmulatorsBlock(root, rulesPath);
   if (firebaseJson.kind === "written") written.push("firebase.json");
   if (firebaseJson.kind === "merged") merged.push("firebase.json (+emulators)");
   if (firebaseJson.kind === "note") notes.push(firebaseJson.message);
+}
+
+/** Merges rules, emulators, dependencies, scripts, overrides and tsconfig into what the project already has. */
+async function mergeProjectFiles(opts: ConsumerAuthOptions, out: ScaffoldOutcome): Promise<{ appDeps: string[]; appDevDeps: string[]; rootDevDeps: string[] }> {
+  const { root, survey, ctx } = opts;
+  const { merged, notes } = out;
+  // --- merges ---------------------------------------------------------------
+
+  await mergeFirebase(root, survey.firestoreRulesPath, out);
 
   const appDeps = await mergeDependencies(root, survey.webRoot, APP_DEPENDENCIES);
   const appManifest = survey.webRoot === "." ? "package.json" : `${survey.webRoot}/package.json`;
@@ -330,9 +338,13 @@ export async function scaffoldConsumerAuth(
     merged.push("packages/shared/package.json (+./schema/user)");
   }
 
+  return { appDeps, appDevDeps, rootDevDeps };
+}
+
+function projectDecisionNotes(dependenciesAdded: number | boolean, written: string[], ctx: ConsumerAuthOptions["ctx"], notes: string[]): void {
   // --- what only the project can decide --------------------------------------
 
-  if (appDeps.length || appDevDeps.length || rootDevDeps.length) {
+  if (dependenciesAdded) {
     notes.push("Run `pnpm install` — the generated code imports dependencies just added.");
   }
 
@@ -371,6 +383,19 @@ export async function scaffoldConsumerAuth(
       "the Morpheus repo.",
   );
 
+}
+
+export async function scaffoldConsumerAuth(
+  opts: ConsumerAuthOptions,
+): Promise<ConsumerAuthResult> {
+  const { survey } = opts;
+  const out: ScaffoldOutcome = { written: [], skipped: [], merged: [], upgraded: [], drifted: [], notes: [] };
+  const { written, skipped, merged, upgraded, drifted, notes } = out;
+  const configPath = survey.webRoot === "." ? "lib/firebase/config.ts" : `${survey.webRoot}/lib/firebase/config.ts`;
+  await writePlannedFiles(opts, configPath, out);
+  driftNotes(drifted, configPath, notes);
+  const { appDeps, appDevDeps, rootDevDeps } = await mergeProjectFiles(opts, out);
+  projectDecisionNotes(appDeps.length || appDevDeps.length || rootDevDeps.length, written, opts.ctx, notes);
   return { written, skipped, merged, upgraded, drifted, notes };
 }
 

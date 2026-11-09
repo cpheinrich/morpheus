@@ -254,14 +254,38 @@ jobs:
               exit 1
             fi
 
-            if ! baseline="$(gh api \
-              -H "Accept: application/vnd.github+json" \
-              "/repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW_FILE}/runs?branch=main&status=success&per_page=1" \
-              --jq '.workflow_runs[0].head_sha // empty')"; then
+            # The baseline is the newest successful run that actually uploaded, not merely the
+            # newest successful run: an admission-only duplicate, an intentional no-op or a
+            # test-only run also succeeds, and taking its head would skip a commit that never
+            # reached TestFlight. An upload is a successful job in any attempt named `upload`
+            # (a caller's job id), `Upload TestFlight build` (a caller's named job), or ending
+            # `/ Upload TestFlight build` (this workflow's own job, prefixed by the caller's).
+            upload_job='(.name == "upload" or .name == "Upload TestFlight build" or (.name | endswith("/ Upload TestFlight build"))) and .conclusion == "success"'
+            find_upload() {
+              local page runs id sha count
+              for page in 1 2 3 4 5; do
+                runs="$(gh api -H "Accept: application/vnd.github+json" \
+                  "/repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW_FILE}/runs?branch=main&status=success&per_page=20&page=${page}" \
+                  --jq '.workflow_runs[] | "\(.id) \(.head_sha)"' </dev/null)" || return 1
+                [ -z "$runs" ] && return 0
+                while read -r id sha; do
+                  count="$(gh api --paginate -H "Accept: application/vnd.github+json" \
+                    "/repos/${GITHUB_REPOSITORY}/actions/runs/${id}/jobs?filter=all&per_page=100" \
+                    --jq "[.jobs[] | select(${upload_job})] | length" </dev/null)" || return 1
+                  if [ "$(awk '{ total += $1 } END { print total + 0 }' <<< "$count")" -gt 0 ]; then
+                    printf '%s\n' "$sha"
+                    return 0
+                  fi
+                done <<< "$runs"
+              done
+              return 0
+            }
+
+            if ! baseline="$(find_upload)"; then
               baseline=""
-              reason="the successful-run baseline could not be read; building conservatively"
+              reason="the upload baseline could not be read; building conservatively"
             elif [ -z "$baseline" ]; then
-              reason="no successful upload exists yet"
+              reason="no successful upload found among the latest 100 successful runs"
             elif ! git cat-file -e "${baseline}^{commit}" 2>/dev/null; then
               reason="the last successful upload commit is unavailable; building conservatively"
             elif ! git merge-base --is-ancestor "$baseline" "$CURRENT_SHA"; then
@@ -536,10 +560,12 @@ jobs:
           case "$(uname -m)" in
             arm64)
               asccli_arch=arm64
+              asccli_asset_id=478751700
               asccli_sha256=7555b910823d8935d9dd5df5fe0382c0ab2741437ed26a3c5b683d13dd19530c
               ;;
             x86_64)
               asccli_arch=x86_64
+              asccli_asset_id=478751702
               asccli_sha256=c72907829723e4ff3a7b60d4c1d9be8755995d4aab9cf960aaf866b83169456c
               ;;
             *)
@@ -549,9 +575,14 @@ jobs:
           esac
           asccli_asset="asc_v${ASCCLI_VERSION}_macOS_${asccli_arch}"
           asccli_path="$RUNNER_TEMP/asccli"
-          curl --fail --location --retry 3 --silent --show-error \
-            "https://github.com/tddworks/asc-cli/releases/download/v${ASCCLI_VERSION}/${asccli_asset}" \
-            --output "$asccli_path"
+          if ! curl --fail --location --retry 3 --silent --show-error \
+              "https://github.com/tddworks/asc-cli/releases/download/v${ASCCLI_VERSION}/${asccli_asset}" \
+              --output "$asccli_path"; then
+            curl --fail --location --retry 3 --silent --show-error \
+              --header 'Accept: application/octet-stream' \
+              "https://api.github.com/repos/tddworks/asc-cli/releases/assets/${asccli_asset_id}" \
+              --output "$asccli_path"
+          fi
           printf '%s  %s\n' "$asccli_sha256" "$asccli_path" | shasum -a 256 --check
           chmod 755 "$asccli_path"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"

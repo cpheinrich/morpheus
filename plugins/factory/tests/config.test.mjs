@@ -23,9 +23,9 @@ test("off overrides automatic, project and manual choices", () => {
   c.projects[task.project] = "automatic";
   assert.equal(route(c, task, [], "claude").executor, "codex");
   c.mode = "automatic";
-  assert.equal(route(c, task, []).executor, "codex");
+  assert.equal(route(c, task, []).executor, "claude");
   assert.equal(route(c, task, [gw("claude", "claude", 5)]).executor, "claude");
-  assert.equal(route(c, task, [gw("claude", "claude", null)]).executor, "codex");
+  assert.equal(route(c, task, [gw("claude", "claude", null)]).executor, "claude");
   assert.equal(route(c, task, [], "codex").executor, "codex");
   assert.equal(route(c, task, [], "claude").executor, "claude");
   assert.equal(
@@ -33,7 +33,7 @@ test("off overrides automatic, project and manual choices", () => {
     "codex",
   );
   c.projects[task.project] = "manual";
-  assert.equal(route(c, task, [gw("claude", "claude", 5)]).executor, "codex");
+  assert.equal(route(c, task, [gw("claude", "claude", 5)]).executor, "claude");
   assert.equal(route(c, task, [], "claude").executor, "claude");
 });
 test("fresh settings default to 90 percent and preserve saved thresholds", async (t) => {
@@ -49,15 +49,15 @@ test("fresh settings default to 90 percent and preserve saved thresholds", async
   assert.equal(fresh.threshold, 90);
   assert.equal(fresh.mode, "off");
   fresh.mode = "automatic";
-  assert.equal(route(fresh, task, [gw("claude", "claude", 90)]).executor, "codex");
+  assert.equal(route(fresh, task, [gw("claude", "claude", 90)]).executor, "claude");
   assert.equal(route(fresh, task, [gw("claude", "claude", 89.99)]).executor, "claude");
   // The same threshold applies when Claude coordinates and Codex is the delegate.
-  assert.equal(route(fresh, task, [gw("codex", "codex", 90)], undefined, "claude").executor, "claude");
+  assert.equal(route(fresh, task, [gw("codex", "codex", 90)], undefined, "claude").executor, "codex");
   assert.equal(route(fresh, task, [gw("codex", "codex", 89.99)], undefined, "claude").executor, "codex");
   await configWrite({ ...fresh, threshold: 30 });
   const saved = await configRead();
   assert.equal(saved.threshold, 30);
-  assert.equal(route(saved, task, [gw("claude", "claude", 30)]).executor, "codex");
+  assert.equal(route(saved, task, [gw("claude", "claude", 30)]).executor, "claude");
   assert.equal(route(saved, task, [gw("claude", "claude", 29.99)]).executor, "claude");
 });
 test("model and effort are mapped independently, with provenance", () => {
@@ -340,71 +340,181 @@ test("admin credentials come from configured references, else the service enviro
   assert.match(broken.error, /Environment variable E is not set/);
 });
 
-test("readGatewayQuota reads the sub2api admin API and fails closed", async () => {
+// A fake sub2api. The account list carries Claude's stale stored 5-hour figure (100%)
+// and Codex's stored snapshot (`codexExtra`); the per-account usage endpoint answers from
+// `usage[id]`, which a test may change between calls. Every request is logged.
+const codexExtra = {
+  codex_5h_used_percent: 80,
+  codex_5h_reset_at: "2026-11-04T19:30:00Z",
+  codex_7d_used_percent: 53,
+  codex_7d_reset_at: "2026-11-09T05:11:11Z",
+  codex_usage_updated_at: "2026-11-04T17:12:00Z",
+};
+function fakeGateway(usage, { extra = codexExtra } = {}) {
+  const calls = [];
   const fetchImpl = async (url, opts) => {
-    if (url.endsWith("/api/v1/auth/login")) {
-      return { ok: true, json: async () => ({ data: { access_token: "tok" } }) };
-    }
-    if (url.endsWith("/api/v1/admin/accounts")) {
+    calls.push(url);
+    assert.ok(opts.signal instanceof AbortSignal, "every gateway request is time-bounded");
+    if (url.endsWith("/api/v1/auth/login")) return { ok: true, json: async () => ({ data: { access_token: "tok" } }) };
+    assert.equal(opts.headers.authorization, "Bearer tok");
+    if (url.endsWith("/api/v1/admin/accounts?page=1"))
       return {
         ok: true,
         json: async () => ({
           data: {
             items: [
-              { platform: "anthropic", extra: { session_window_utilization: 0.05 } },
-              { platform: "openai", extra: { codex_7d_used_percent: 53 } },
+              { id: 7, platform: "anthropic", type: "oauth", status: "active", schedulable: true, extra: { session_window_utilization: 1, passive_usage_7d_utilization: 1 } },
+              { id: 9, platform: "openai", credentials: { plan_type: "pro" }, type: "oauth", status: "active", schedulable: true, extra },
             ],
           },
         }),
       };
-    }
-    return { ok: false, status: 404, json: async () => ({}) };
+    const m = url.match(/\/api\/v1\/admin\/accounts\/(\d+)\/usage\?source=active&force=true$/);
+    const answer = m && usage[m[1]];
+    if (answer instanceof Error) throw answer;
+    if (!answer) return { ok: false, status: 404, json: async () => ({}) };
+    return { ok: true, json: async () => answer };
   };
-  const gateways = [
-    { name: "claude", provider: "claude", baseUrl: "http://gw", keyRef: "env:KEY" },
-    { name: "codex", provider: "codex", baseUrl: "http://gw", keyRef: "env:KEY" },
+  return { fetchImpl, calls, usageCalls: () => calls.filter((u) => u.includes("/usage")) };
+}
+const quotaGateways = [
+  { name: "claude", provider: "claude", baseUrl: "http://gw/", keyRef: "env:KEY" },
+  { name: "codex", provider: "codex", baseUrl: "http://gw", keyRef: "env:KEY" },
+];
+const quotaNow = Date.parse("2026-11-04T20:00:00Z");
+const window = (utilization, resets_at = "2026-11-04T22:00:00Z") => ({ utilization, resets_at, remaining_seconds: 7200 });
+
+test("Claude quota is read live on every call; Codex keeps its stored snapshot", async () => {
+  const usage = { 7: { data: { updated_at: "2026-11-04T19:58:00Z", five_hour: window(4), seven_day: window(12) } } };
+  const { fetchImpl, usageCalls } = fakeGateway(usage);
+  const read = () => readGatewayQuota(quotaGateways, { adminEmail: "a", adminPassword: "b", fetchImpl, now: quotaNow });
+  const [claude, codex] = await read();
+  // The list's stored 100% is replaced by the live low reading.
+  assert.deepEqual([claude.usedPercent, claude.windows, claude.updatedAt], [12, { "5h": 4, "7d": 12 }, "2026-11-04T19:58:00Z"]);
+  // Codex: the expired 5-hour 80% is skipped, the live week counts, and the time is the
+  // snapshot's own — no usage request (which would probe the model) is made for it.
+  assert.deepEqual([codex.usedPercent, codex.windows, codex.updatedAt], [53, { "7d": 53 }, "2026-11-04T17:12:00Z"]);
+  assert.deepEqual(usageCalls(), ["http://gw/api/v1/admin/accounts/7/usage?source=active&force=true"]);
+  // A repeated read asks again and reports what changed; nothing is cached.
+  usage[7] = { data: { updated_at: "2026-11-04T20:01:00Z", five_hour: window(88), seven_day: window(12) } };
+  const [again] = await read();
+  assert.deepEqual([again.usedPercent, again.updatedAt], [88, "2026-11-04T20:01:00Z"]);
+  assert.equal(usageCalls().length, 2);
+});
+
+test("a pool ranks by its roomiest schedulable OAuth account across pages", async () => {
+  const active = { type: "oauth", status: "active", schedulable: true };
+  const usage = new Map([[7, 100], [12, 25]]);
+  const pages = [
+    [
+      { ...active, id: 7, platform: "anthropic" },
+      { ...active, id: 8, platform: "anthropic" },
+      { ...active, id: 9, platform: "anthropic", schedulable: false },
+      { ...active, id: 10, platform: "anthropic", type: "apikey" },
+      { ...active, id: 11, platform: "anthropic", rate_limit_reset_at: "2026-11-04T21:00:00Z" },
+      { ...active, id: 15, platform: "anthropic", auto_pause_on_expired: true, expires_at: quotaNow / 1000 },
+    ],
+    [
+      { ...active, id: 12, platform: "anthropic" },
+      { ...active, id: 13, platform: "openai", credentials: { plan_type: "pro" }, extra: { codex_7d_used_percent: 40 } },
+      { ...active, id: 14, platform: "openai", credentials: { plan_type: "pro" }, extra: { codex_7d_used_percent: 35 } },
+      { ...active, id: 16, platform: "openai", credentials: { plan_type: "Free" }, extra: { codex_7d_used_percent: 0 } },
+      { ...active, id: 17, platform: "openai", extra: { codex_7d_used_percent: 0 } },
+    ],
   ];
-  const result = await readGatewayQuota(gateways, { adminEmail: "a", adminPassword: "b", fetchImpl });
-  assert.equal(result[0].usedPercent, 5);
-  assert.equal(result[1].usedPercent, 53);
-  // No admin credentials: every gateway is unknown, never "plenty left".
-  const noCreds = await readGatewayQuota(gateways, { fetchImpl });
-  assert.equal(noCreds[0].usedPercent, null);
-  assert.equal(noCreds[1].usedPercent, null);
-  // A login failure fails closed too.
-  const bad = await readGatewayQuota(gateways, {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    if (url.endsWith("/auth/login")) return { ok: true, json: async () => ({ data: { access_token: "tok" } }) };
+    const page = new URL(url).searchParams.get("page");
+    if (page) return { ok: true, json: async () => ({ data: { pages: 2, items: pages[page - 1] } }) };
+    const id = Number(url.match(/accounts\/(\d+)\/usage/)?.[1]);
+    calls.push(id);
+    if (!usage.has(id)) return { ok: false, status: 503 };
+    return { ok: true, json: async () => ({ data: { five_hour: window(0), seven_day: window(usage.get(id)) } }) };
+  };
+  const config = configSchema.parse({ mode: "manual" });
+  const read = () => readGatewayQuota(quotaGateways, { adminEmail: "a", adminPassword: "b", fetchImpl, now: quotaNow });
+  const pools = await read();
+  assert.deepEqual(pools.map((pool) => pool.usedPercent), [25, 35]);
+  assert.deepEqual(calls, [7, 8, 12]);
+  assert.equal(route(config, {}, pools, undefined).executor, "claude");
+  assert.equal(route(config, {}, pools, "codex").executor, "codex");
+
+  usage.set(12, 90);
+  const exhausted = await read();
+  assert.deepEqual(exhausted.map((pool) => pool.usedPercent), [90, 35]);
+  assert.equal(route(config, {}, exhausted, undefined).executor, "codex");
+});
+
+test("a failed Claude usage read is unknown and leaves Codex alone", async () => {
+  for (const failure of [new Error("connect ECONNREFUSED"), undefined /* HTTP 404 */, { code: 0 } /* no data */]) {
+    const { fetchImpl } = fakeGateway({ 7: failure });
+    const [claude, codex] = await readGatewayQuota(quotaGateways, { adminEmail: "a", adminPassword: "b", fetchImpl, now: quotaNow });
+    // Never the stored 100% (or any other stored figure): unknown, with the reason.
+    assert.equal(claude.usedPercent, null);
+    assert.equal(claude.updatedAt, undefined);
+    assert.match(claude.error, /ECONNREFUSED|usage HTTP 404|no data/);
+    assert.equal(codex.usedPercent, 53);
+    assert.equal(codex.error, undefined);
+  }
+});
+
+test("without a now override, reset times are judged when the responses arrive", async () => {
+  // The Codex 5-hour window resets 50ms from the start; the account list arrives after it.
+  const extra = { ...codexExtra, codex_5h_reset_at: new Date(Date.now() + 50).toISOString(), codex_7d_used_percent: 10 };
+  const { fetchImpl: inner } = fakeGateway({}, { extra });
+  const fetchImpl = async (url, opts) => {
+    if (url.endsWith("/api/v1/admin/accounts?page=1")) await new Promise((r) => setTimeout(r, 80));
+    return inner(url, opts);
+  };
+  const [, codex] = await readGatewayQuota(quotaGateways, { adminEmail: "a", adminPassword: "b", fetchImpl });
+  assert.equal(codex.usedPercent, 10);
+});
+
+test("readGatewayQuota fails closed without credentials or login", async () => {
+  const { fetchImpl, calls } = fakeGateway({});
+  const noCreds = await readGatewayQuota(quotaGateways, { fetchImpl });
+  assert.deepEqual(noCreds.map((g) => g.usedPercent), [null, null]);
+  assert.equal(calls.length, 0);
+  const bad = await readGatewayQuota(quotaGateways, {
     adminEmail: "a",
     adminPassword: "b",
     fetchImpl: async () => ({ ok: false, status: 401, json: async () => ({}) }),
   });
-  assert.equal(bad[0].usedPercent, null);
+  assert.deepEqual(bad.map((g) => [g.usedPercent, g.error]), [[null, "login HTTP 401"], [null, "login HTTP 401"]]);
 });
 
 test("an account is as full as its most-used live window", async () => {
   const { accountUsage } = await import("../src/config.mjs");
-  const now = Date.parse("2026-10-31T13:30:00Z");
+  const now = quotaNow;
+  const at = (ms) => new Date(ms).toISOString();
   // Claude: an empty 5-hour window does not hide a nearly spent week.
-  assert.deepEqual(
-    accountUsage("claude", { session_window_utilization: 0, passive_usage_7d_utilization: 0.93, passive_usage_7d_reset: now / 1000 + 3600 }, now),
-    { usedPercent: 93, windows: { "5h": 0, "7d": 93 } },
-  );
-  // A 7-day window whose reset time has passed is not counted.
-  assert.deepEqual(
-    accountUsage("claude", { session_window_utilization: 0.06, passive_usage_7d_utilization: 0.93, passive_usage_7d_reset: now / 1000 - 60 }, now),
-    { usedPercent: 6, windows: { "5h": 6 } },
-  );
-  // Codex: the higher of the two, skipping a 5-hour window that already reset.
-  assert.equal(
-    accountUsage("codex", { codex_5h_used_percent: 80, codex_5h_reset_at: "2026-10-31T08:32:08Z", codex_7d_used_percent: 53, codex_7d_reset_at: "2026-11-05T05:11:11Z" }, now).usedPercent,
-    53,
-  );
-  assert.equal(
-    accountUsage("codex", { codex_5h_used_percent: 80, codex_5h_reset_at: "2026-10-31T14:00:00Z", codex_7d_used_percent: 53, codex_7d_reset_at: "2026-11-05T05:11:11Z" }, now).usedPercent,
-    80,
-  );
-  // Nothing readable is unknown, never headroom.
-  assert.deepEqual(accountUsage("claude", {}, now), { usedPercent: null, windows: {} });
-  assert.equal(accountUsage("codex", { codex_7d_used_percent: "53" }, now).usedPercent, null);
+  assert.deepEqual(accountUsage("claude", { updated_at: "u", five_hour: window(0), seven_day: window(93) }, now), {
+    usedPercent: 93,
+    windows: { "5h": 0, "7d": 93 },
+    updatedAt: "u",
+  });
+  // Claude's 5-hour reset is honoured: a window resetting exactly now is finished; one
+  // resetting a millisecond later still counts.
+  assert.deepEqual(accountUsage("claude", { five_hour: window(100, at(now)), seven_day: window(40) }, now), {
+    usedPercent: 40,
+    windows: { "7d": 40 },
+    updatedAt: null,
+  });
+  assert.equal(accountUsage("claude", { five_hour: window(100, at(now + 1)), seven_day: window(40) }, now).usedPercent, 100);
+  assert.equal(accountUsage("claude", { five_hour: window(55, null), seven_day: null }, now).usedPercent, 55);
+  assert.equal(accountUsage("claude", { five_hour: window(80, at(now - 1)), seven_day: window(90, at(now - 1)) }, now).usedPercent, null);
+  // Invalid or missing figures are unreadable, never headroom.
+  for (const bad of ["53", NaN, Infinity, -1, null, undefined])
+    assert.equal(accountUsage("claude", { five_hour: window(bad), seven_day: window(bad) }, now).usedPercent, null, String(bad));
+  assert.deepEqual(accountUsage("claude", {}, now), { usedPercent: null, windows: {}, updatedAt: null });
+  // Codex: the higher of the two live windows, at the same reset boundary, with the
+  // snapshot's own time; reset times may be ISO strings or epoch seconds.
+  assert.deepEqual(accountUsage("codex", codexExtra, now), { usedPercent: 53, windows: { "7d": 53 }, updatedAt: "2026-11-04T17:12:00Z" });
+  assert.equal(accountUsage("codex", { ...codexExtra, codex_5h_reset_at: at(now) }, now).usedPercent, 53);
+  assert.equal(accountUsage("codex", { ...codexExtra, codex_5h_reset_at: at(now + 1) }, now).usedPercent, 80);
+  assert.equal(accountUsage("codex", { ...codexExtra, codex_5h_reset_at: now / 1000 + 60 }, now).usedPercent, 80);
+  assert.deepEqual(accountUsage("codex", { codex_7d_used_percent: "53" }, now), { usedPercent: null, windows: {}, updatedAt: null });
 });
 
 test("placement picks the most-headroom gateway below the threshold", () => {
@@ -413,10 +523,11 @@ test("placement picks the most-headroom gateway below the threshold", () => {
   const r = route(c, task, gateways);
   assert.equal(r.executor, "claude");
   assert.equal(r.gateway.name, "claude");
-  // At or above the threshold, or unknown, the gateway is skipped and the work stays here.
+  // At or above the threshold, or unknown, the gateway is skipped and the other native
+  // provider is used; calling the Factory tool has already made the delegation decision.
   const stay = route(c, task, [gw("claude", "claude", 90)]);
-  assert.deepEqual([stay.executor, stay.gateway, delegates(stay, "codex")], ["codex", undefined, false]);
-  assert.equal(route(c, task, [gw("claude", "claude", null)]).executor, "codex");
+  assert.deepEqual([stay.executor, stay.gateway, delegates(stay, "codex")], ["claude", undefined, true]);
+  assert.equal(route(c, task, [gw("claude", "claude", null)]).executor, "claude");
   // A gateway of the coordinator's own provider is a separate subscription, so it is a
   // delegate like any other: with more headroom it wins when Codex coordinates.
   const own = route(c, task, [gw("claude", "claude", 80), gw("codex", "codex", 10)]);
@@ -468,4 +579,27 @@ test("worker environments drop configured secret references but keep the route's
   );
   // The selected route set ANTHROPIC_*; a keyRef naming the same variable must not erase it.
   assert.deepEqual(env, { ANTHROPIC_BASE_URL: "http://gw", ANTHROPIC_AUTH_TOKEN: "sk-route", PATH: "bin" });
+});
+
+test("scoped Codex quota uses the read-only upstream endpoint and most depleted live window", async () => {
+  const paths = [];
+  const [row] = await readGatewayQuota([quotaGateways[1]], {
+    adminKey: "scoped-key",
+    now: quotaNow,
+    async fetchImpl(url, options) {
+      const path = new URL(url).pathname;
+      paths.push(path);
+      assert.deepEqual(options.headers, { "x-api-key": "scoped-key" });
+      assert.equal(options.redirect, "error");
+      const reset_at = quotaNow / 1000 + 900;
+      const data = path.endsWith("/admin/accounts")
+        ? { items: [{ id: 9, platform: "openai", type: "oauth", status: "active", schedulable: true, credentials: { plan_type: "pro" } }] }
+        : { rate_limit: { allowed: true, primary_window: { used_percent: 14, reset_at, limit_window_seconds: 18000 },
+          secondary_window: { used_percent: 82, reset_at, limit_window_seconds: 604800 } } };
+      return { ok: true, json: async () => ({ data }) };
+    },
+  });
+  assert.deepEqual(paths, ["/api/v1/admin/accounts", "/api/v1/admin/openai/accounts/9/quota"]);
+  assert.equal(row.usedPercent, 82);
+  assert.deepEqual(row.windows, { "5h": 14, "7d": 82 });
 });

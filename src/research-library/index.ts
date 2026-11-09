@@ -27,25 +27,42 @@ export function parseResearchLibraryBook(
   const objectPrefix = normalizeObjectPrefix(contract.objectPrefix);
   if (!isSlug(slug) || typeof title !== "string" || !title.trim()) return null;
   if (!isStringArray(authors) || authors.length === 0) return null;
-  if (typeof sourceDirectory !== "string" || !sourceDirectory || sourceDirectory.includes("/") ||
-      sourceDirectory === "." || sourceDirectory === "..") return null;
-  if (!isRecord(bundle)) return null;
-  if (bundle.bucket !== contract.bucket || typeof bundle.sha256 !== "string" ||
-      !/^[a-f0-9]{64}$/.test(bundle.sha256) ||
-      bundle.object !== objectPrefix + "/" + slug + "/" + bundle.sha256 + ".zip" ||
-      !isPositiveInteger(bundle.bytes) || !isPositiveInteger(bundle.files)) return null;
-  if (!isRecord(reader)) return null;
-  if (reader.bucket !== contract.bucket || typeof reader.sha256 !== "string" ||
-      !/^[a-f0-9]{64}$/.test(reader.sha256) ||
-      reader.object !== objectPrefix + "/" + slug + "/" + reader.sha256 + ".html" ||
-      !isPositiveInteger(reader.bytes) || reader.sourceBundleSha256 !== bundle.sha256 ||
-      reader.format !== RESEARCH_LIBRARY_READER_FORMAT) return null;
+  if (!validSourceDirectory(sourceDirectory)) return null;
+  if (!validBundle(bundle, contract.bucket, `${objectPrefix}/${slug}`)) return null;
+  if (!validReader(reader, contract.bucket, `${objectPrefix}/${slug}`, bundle.sha256)) return null;
+  return validOptionalFields(value) ? value as ResearchLibraryBook : null;
+}
+
+function validSourceDirectory(sourceDirectory: unknown): boolean {
+  return typeof sourceDirectory === "string" && !!sourceDirectory && !sourceDirectory.includes("/") &&
+    sourceDirectory !== "." && sourceDirectory !== "..";
+}
+
+/** The bundle object lives in the contract's bucket at <prefix>/<slug>/<sha256>.zip, with positive sizes. */
+function validBundle(bundle: unknown, bucket: string, base: string): bundle is Record<string, unknown> & { sha256: string } {
+  if (!isRecord(bundle)) return false;
+  return bundle.bucket === bucket && typeof bundle.sha256 === "string" &&
+    /^[a-f0-9]{64}$/.test(bundle.sha256) &&
+    bundle.object === base + "/" + bundle.sha256 + ".zip" &&
+    isPositiveInteger(bundle.bytes) && isPositiveInteger(bundle.files);
+}
+
+/** The reader is the HTML built from exactly this bundle, beside it in the same bucket. */
+function validReader(reader: unknown, bucket: string, base: string, bundleSha256: string): boolean {
+  if (!isRecord(reader)) return false;
+  return reader.bucket === bucket && typeof reader.sha256 === "string" &&
+    /^[a-f0-9]{64}$/.test(reader.sha256) &&
+    reader.object === base + "/" + reader.sha256 + ".html" &&
+    isPositiveInteger(reader.bytes) && reader.sourceBundleSha256 === bundleSha256 &&
+    reader.format === RESEARCH_LIBRARY_READER_FORMAT;
+}
+
+function validOptionalFields(value: Record<string, unknown>): boolean {
   const optionalStrings = [value.edition, value.publisher, value.language];
   if (optionalStrings.some((field) => field !== undefined &&
-      (typeof field !== "string" || !field.trim()))) return null;
-  if (value.year !== undefined && !isPositiveInteger(value.year)) return null;
-  if (value.isbn !== undefined && !isStringArray(value.isbn)) return null;
-  return value as ResearchLibraryBook;
+      (typeof field !== "string" || !field.trim()))) return false;
+  if (value.year !== undefined && !isPositiveInteger(value.year)) return false;
+  return value.isbn === undefined || isStringArray(value.isbn);
 }
 
 export function formatResearchLibraryBytes(bytes: number): string {

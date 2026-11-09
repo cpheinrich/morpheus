@@ -1,4 +1,5 @@
 import { type IncomingMessage } from "node:http";
+import { QaWebBuildIdentity } from "../comments.js";
 /**
  * The web comment overlay (MO-26-10-06-18.13.32): a reverse proxy in front of a local dev server
  * that injects one script into every HTML page. The page stays the app — same paths, same
@@ -25,6 +26,7 @@ export interface WebQaServerOptions {
      * origin and referer, so absolute URLs it builds (OAuth redirect_uri callbacks) name the site.
      */
     publicOrigin?: string;
+    build?: QaWebBuildIdentity;
     onListen?: (info: {
         port: number;
     }) => void;

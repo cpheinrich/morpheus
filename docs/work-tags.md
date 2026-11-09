@@ -33,9 +33,8 @@ or role names. An explicitly reviewed historical classification can be a separat
 `pm block` copies an item's current tags into its new worklog; authored worklogs carry their own
 snapshot so changing a ticket later does not rewrite past classification.
 
-Tags are subjects, not owners, claims, priorities, permissions or delivery evidence. They may
-later project into Paperclip tasks, but that adapter cannot replace Git's record or authorize
-execution. This change does not modify Paperclip or install a supervisor.
+Tags are subjects, not owners, claims, priorities, permissions or delivery evidence. A queue
+projection cannot replace Git's record or authorize execution. Tags install no supervisor.
 
 The DevOps role is available through `morpheus cto guide devops-engineer`. New projects receive
 discoverable pointers for Codex and Claude. Existing projects can rerun `morpheus init` to add

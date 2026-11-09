@@ -87,6 +87,7 @@ describe("the reusable project-skill registry", () => {
   it("derives a complete machine-readable catalog from rendered SKILL.md frontmatter", () => {
     const catalog = projectSkillCatalog();
     expect(catalog.map((skill) => skill.name)).toEqual([
+      "visual-design",
       "motion-design-exploration",
       "comment-qa",
       "meeting-intake",
@@ -234,7 +235,7 @@ describe("project-skill synchronization", () => {
       await writeFile(join(root, "morpheus.json"), '{"kind":"internal"}\n');
       expect(await syncProjectSkillEntrypoints(root, false)).toBe(0);
       expect(error).not.toHaveBeenCalled();
-      expect(log.mock.calls.flat().join(" ")).toContain("Created 15 Morpheus project skill");
+      expect(log.mock.calls.flat().join(" ")).toContain("Created 17 Morpheus project skill");
     } finally {
       error.mockRestore();
       log.mockRestore();
@@ -254,7 +255,7 @@ describe("morpheus skills list", () => {
 
     const defaultCommand = await cli("skills");
     expect(defaultCommand.code).toBe(0);
-    expect(defaultCommand.out).toContain("Morpheus project skills (10)");
+    expect(defaultCommand.out).toContain("Morpheus project skills (11)");
     expect(defaultCommand.out).toContain("morpheus skills sync");
   });
 

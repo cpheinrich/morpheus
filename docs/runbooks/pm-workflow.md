@@ -2,6 +2,15 @@
 
 **Read this when** you file or claim an item, need to block or resume one, open a records-only or meeting-note PR, use a waiver, or `check pr` refuses your PR. `AGENTS.md` keeps the one-line rules.
 
+## Links in new project records
+
+Link the source a future agent would need to understand a constraint, a dependency, a prior
+attempt or a follow-up. Use relative Markdown links to specific sections where possible.
+Keep the worklog's `roadmap` field and the roadmap's `prs` and `issues` fields current.
+When a decision replaces an earlier one, write `Supersedes: [prior decision](...)` and
+link the exact heading. Ordinary links describe related work. Add links as part of writing
+the record, wherever they help explain a decision or outcome.
+
 ## Claiming and roadmap ids
 
 **Claim work before starting it:**
@@ -210,6 +219,12 @@ failing check simply leaves the PR unmerged rather than merging something broken
 only when the next step depends on the result: it prints nothing while it waits, then one line when
 green or the failing step's log when not, and exits 0 green, 1 failed, 2 timeout, 3 error. Never
 poll `gh run view` or `gh pr checks` in a loop — each poll re-reads the whole session context.
+
+PR waits reconcile cancellations against later runs of the same workflow on the same head.
+Creation time orders runs, with the higher run ID breaking same-second ties. A pending replacement
+keeps the wait open; a successful replacement can supersede the older cancellation. A sole or
+newest cancellation, a real failure, or a still-cancelled job in the check rollup remains blocking.
+Different workflows never replace one another, even when they have the same display name.
 
 For a run no pull request owns — TestFlight, a release, a nightly — wait on the run itself:
 

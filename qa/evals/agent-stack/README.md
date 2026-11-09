@@ -1,5 +1,8 @@
 # Agent-stack historical decision evaluation
 
+> **Historical, offline only.** The Paperclip pilot is retired. The frozen harness never
+> launches agents; retain its manifest, input bytes and receipts unchanged.
+
 Twelve short decisions reconstructed from real Morpheus-family records, asked of the same model
 and effort under two prompt conditions. It measures whether a role policy plus retrieved lessons
 changes a **next-action decision**. It does not re-run historical implementations, and it cannot

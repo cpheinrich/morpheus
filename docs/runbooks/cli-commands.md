@@ -17,6 +17,7 @@ pnpm morpheus pm migrate-ids --check   # integer roadmap ids → the dated schem
 pnpm morpheus pm block MO-051 --needs "what would unblock this"
 pnpm morpheus pm unblock MO-051
 pnpm morpheus heartbeat            # what should happen next, and whether anything should
+pnpm morpheus scheduler tick --config <host.json> [--backup] [--dry-run]  # repository-owned schedules; see scheduler.md
 pnpm morpheus gh-manager sweep <owner/repo>  # how the GitHub Manager would route each open PR
 pnpm morpheus review prompt        # the rung-2 reviewer prompt for this branch
 pnpm morpheus voice knowledge      # standing explainer, uploaded once as project knowledge
@@ -35,6 +36,7 @@ pnpm morpheus brand finalize --selection "Name" # promote a reviewed direction i
 pnpm morpheus init                 # scaffold a project — safe to re-run, never overwrites
 pnpm morpheus init status          # how far through project setup this repo is
 pnpm morpheus cto guide [mandate|provenance]  # the agentic-CTO skill other projects' pointers name
+pnpm morpheus skills guide visual-design    # shared early diagram planning procedure
 pnpm morpheus cto guide research-engineer[/record|/provenance]  # the research-engineer skill under it
 pnpm morpheus web init             # provision and scaffold the website: waitlist + /hq sign-in
 pnpm morpheus web add-consumer-auth # consumer accounts: staging project, auth plumbing, three suites
@@ -49,4 +51,7 @@ pnpm morpheus context status       # what the current lease says, and how old it
 pnpm morpheus context install      # wire the session-start hooks — run it once per project
 pnpm morpheus codebase-memory install         # trusted-device bootstrap, safe to re-run
 pnpm morpheus codebase-memory install --check # verify operational mode without changing it
+pnpm morpheus complexity install [--check]     # pinned Lizard analyzer; --check runs its canary — see complexity.md
+pnpm morpheus complexity check [--all] [--base <ref>] [--json] [--ci]  # functions your changes touch, against morpheus.json complexity
+pnpm morpheus complexity prompt                # the canonical refactoring prompt to use on a finding
 ```

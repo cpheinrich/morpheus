@@ -1,4 +1,5 @@
 import { type LeasePolicy } from "./lease.js";
+import { type ContextArm } from "../context-search/rollout.js";
 /**
  * Resolve this project's required set.
  *
@@ -11,6 +12,8 @@ import { type LeasePolicy } from "./lease.js";
 export interface ProjectContext extends LeasePolicy {
     /** `undefined` means undeclared — `resolveTrunk` asks `origin/HEAD` then. */
     trunk?: string;
+    /** Pilot assignment, including safe fallback when the core or provider ID is unavailable. */
+    rollout?: ContextArm;
     /**
      * Entries of `requiredInputs` that were not strings and so are not in the
      * required set. Surfaced rather than dropped: it lands on the project that
@@ -20,7 +23,7 @@ export interface ProjectContext extends LeasePolicy {
      */
     droppedInputs?: string[];
 }
-export declare function projectPolicy(root: string): Promise<ProjectContext>;
+export declare function projectPolicy(root: string, runnerId?: string): Promise<ProjectContext>;
 /**
  * Session identity is the worktree, because CLAUDE.md already mandates one
  * worktree per parallel session — so two agents cannot share an id, and one

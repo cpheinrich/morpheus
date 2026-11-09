@@ -13,9 +13,20 @@ name: Release Preflight
 #         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 #           with:
 #             ref: ${{ needs.preflight.outputs.sha }}
+#
+# By default the source must be main's current head. A caller whose own controller pins a source
+# and refuses older ones (it owns that ordering) may opt in with `allow-pinned-source: true` to
+# accept a reviewed merge that main contains.
 
 on:
   workflow_call:
+    inputs:
+      allow-pinned-source:
+        description: >-
+          Accept a reviewed merged commit that current main contains, not only main's head. Only for
+          a caller that itself refuses sources older than what it already delivered.
+        type: boolean
+        default: false
     outputs:
       sha:
         description: Exact reviewed main commit the release job must check out.
@@ -43,6 +54,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ github.sha }}
+          ALLOW_PINNED_SOURCE: ${{ inputs.allow-pinned-source }}
         run: |
           set -euo pipefail
 
@@ -67,9 +79,29 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" \
             --jq '.object.sha')"
-          if [ "$main_sha" != "$EXPECTED_SHA" ]; then
-            echo "Release source $EXPECTED_SHA is not current origin/main ($main_sha)" >&2
+          if ! [[ "$main_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Could not read current main for ${GITHUB_REPOSITORY}" >&2
             exit 1
+          fi
+          # The default is current main's head, for every invocation and re-run: a re-run keeps its
+          # original SHA, and a caller's cached outputs can predate a newer delivery, so this is what
+          # stops an older source from shipping after a newer one. Only a caller that opted in (and
+          # owns that ordering itself) may release a pinned reviewed source that main contains:
+          # GitHub compare base...head must report `ahead`; diverged, behind or unreadable refuses.
+          # The merged-PR check below binds the exact commit to a reviewed merge either way.
+          if [ "$main_sha" != "$EXPECTED_SHA" ]; then
+            if [ "${ALLOW_PINNED_SOURCE:-}" != "true" ]; then
+              echo "Release source $EXPECTED_SHA is not current origin/main ($main_sha)" >&2
+              exit 1
+            fi
+            ancestry="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/compare/${EXPECTED_SHA}...${main_sha}?per_page=1" \
+              --jq '.status')"
+            if [ "$ancestry" != "ahead" ]; then
+              echo "Release source $EXPECTED_SHA is not contained in current main ($main_sha; compare status: ${ancestry:-unknown})" >&2
+              exit 1
+            fi
           fi
 
           merged_pr_rows="$(gh api \

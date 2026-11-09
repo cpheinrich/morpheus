@@ -86,13 +86,18 @@ jobs:
         if: ${{ inputs.run-workflow-lint }}
         working-directory: .
         timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test "$RUNNER_OS/$RUNNER_ARCH" = Linux/X64
           tool_dir="$(mktemp -d "$RUNNER_TEMP/actionlint.XXXXXX")"
-          curl --fail --silent --show-error --location --connect-timeout 15 --max-time 90 \
+          if ! curl --fail --silent --show-error --location --connect-timeout 15 --max-time 90 \
             https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
-            --output "$tool_dir/actionlint.tar.gz"
+            --output "$tool_dir/actionlint.tar.gz"; then
+            gh release download v1.7.12 --repo github.com/rhysd/actionlint --pattern actionlint_1.7.12_linux_amd64.tar.gz \
+              --output "$tool_dir/actionlint.tar.gz" --clobber
+          fi
           printf '%s  %s\n' 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8 "$tool_dir/actionlint.tar.gz" \
             | sha256sum --check --status
           tar -xzf "$tool_dir/actionlint.tar.gz" -C "$tool_dir" actionlint
@@ -107,6 +112,16 @@ jobs:
       - name: Lint
         if: ${{ inputs.run-lint }}
         run: pnpm lint
+
+      - name: Install Morpheus context search tools
+        if: ${{ github.repository == 'cpheinrich/morpheus' && runner.os == 'Linux' }}
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y ripgrep
+          python3 -m venv "$RUNNER_TEMP/morpheus-context-search"
+          search_python="$RUNNER_TEMP/morpheus-context-search/bin/python"
+          "$search_python" -m pip install --only-binary=:all: 'tantivy==0.27.0'
+          echo "MORPHEUS_TANTIVY_PYTHON=$search_python" >> "$GITHUB_ENV"
 
       - name: Test
         run: pnpm test

@@ -38,15 +38,6 @@ export interface CodebaseMemoryOptions {
     packageRoot?: string;
     checkMorpheusRemote?: boolean;
 }
-/**
- * Read operational state without changing it. Morpheus installation freshness asks
- * origin unless `checkMorpheusRemote` is false; every codebase-memory check is
- * local.
- *
- * A project is operational only when the executable runs, at least one local
- * agent client names it, automatic indexing and watching are enabled, and the
- * exact checkout (worktrees included) has a ready index at its current HEAD.
- */
 export declare function codebaseMemoryStatus(root: string, opts?: CodebaseMemoryOptions): Promise<CodebaseMemoryStatus>;
 export interface InstallResult {
     status: CodebaseMemoryStatus;

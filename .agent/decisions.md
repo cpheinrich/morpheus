@@ -1,5 +1,287 @@
 # Decisions
 
+## Paperclip execution is removed; offline history stays immutable — 2026-11-07
+
+MO-26-11-07-09.06.49. Chris authorized removal of active Paperclip integrations from Morpheus,
+Factory and consumers. This supersedes the pilot, explicit execution linkage, remote pool/HQ
+transport and the November 3 decision to leave legacy backend modules for separate integrations.
+Delete those execution paths; keep direct Factory gateway operations, their permission/quota/
+workspace/process ownership, optional read-only host reporting and generic Xcode/CI pools.
+Preserve tracked `.agent/paperclip*` evidence and dated history. The closeout exporter/renderer
+and append-only history workflow remain offline-only. Keep exact agent-stack manifest inputs,
+including worker instructions and the non-launching harness. Workflow-repair loses live collection
+while retaining offline grading, frozen-input checks and cached results. Current guides point to
+retirement; earlier designs are explicitly archival. No new dependency or generic module is needed:
+this is deletion plus existing dispatch and archive regression coverage. Runtime installation,
+service shutdown and configuration/credential changes remain outside this source task, pending
+controller-coordinated independent review and normal protected delivery.
+
+**CI cache retirement stays with the dispatcher owner and runs offline** — 2026-11-06.
+MO-26-11-06-13.51.37. Actual disk use found retired slot and image-pool cache disks as well
+as unreferenced images. Keep the development watchdog out of Tart storage: share the
+dispatcher's exact cache-path function with its owner's explicit offline pruner, retain
+every mountable repo/slot disk, and require unloaded admission, no running VM and closed-file
+proof before unlinking generated disks. Unknown state preserves data. Extend only measured
+closed-app OS cache roots in the watchdog; retain build guards because their protected
+category was empty. No new schedule, generic framework, dependency or host-size default.
+Host-specific capacity and simulator lanes remain operator config; source review and actual
+runtime qualification precede calling the requested host change complete.
+
+**Visual planning is early, selective and advisory** — 2026-11-06.
+MO-26-11-06-13.35.21. Chris approved proactive diagrams before implementation when relationships
+help explain architecture, workflows/pipelines, async handoffs, state transitions, ownership or
+substantial alternatives; trivial self-contained edits skip them. The small `visual-design` skill
+uses the existing canonical/Claude mirror/generated CLI/pointer convention and single project-skill
+registry. `morpheus skills guide visual-design` prints it. Scaffold and existing-project instruction
+adoption carry the early trigger; doctor warns about the latter's absence. Durable diagrams remain
+fenced Mermaid under architecture section 15, and agents update retained diagrams after material
+design changes. Review asks about usefulness/accuracy as advice; substantive inaccuracies remain
+normal findings. No approval pause, mandatory diagram artifact or new merge gate. Reused the existing
+CLI dispatcher, registry and template mechanisms; no generic module or new dependency is needed.
+
+**Findings are refactored with one canonical prompt shipped in the CLI** — 2026-11-05.
+MO-26-11-05-23.15.42. Chris's rollout mandate makes the tested refactoring prompt part of every
+project's complexity workflow. It is one Markdown asset beside the analyzer runner, copied by
+`pnpm compile` and printed by `morpheus complexity prompt`, so a CLI update reaches every project
+and no project copy can drift; no skill, catalog or generated module. `check --json` adds every
+measured function row with a `targeted` flag, so before/after family metrics come from the same
+analyzer run on base and head; no compare command or path option. No dependency.
+
+**Morpheus and Lakina block on CCN > 15; cognitive complexity stays advisory** — 2026-11-06.
+MO-26-11-06-22.44.18 (Lakina: LK-26-11-06-22.47.39). After both baseline refactors merged, Chris
+authorized switching Morpheus and Lakina to `enforce`, which supersedes "Lakina and Morpheus stay
+advisory until theirs merge" in the 2026-11-05 entry below; Evo is unchanged. Each manifest states
+`ccn: 15` and `cognitiveWarn: 15` explicitly, and the pin stays b57041bf. Morpheus keeps its one
+generated `dist/**` exclude and has no exceptions. Lakina carries exactly the dispositions approved
+with its baseline (lakinacapital#630): a semantic exception at 17 for the sealed
+`strategy/weighted.py` `__post_init__`, which is never edited or resealed to meet the limit; four
+function-specific semantic exceptions for test cases retained out of scope; and exact-path excludes
+for two immutable `.agent/artifacts` records. The two artifact excludes depart from the runbook's
+"exclude is for generated and vendored code", by Chris's explicit choice for frozen records that
+can never change. No directory-wide exclude, raised limit or new waiver. The gate stays the
+existing step in the required `pr / conventions` job: no new workflow or required check.
+
+**Function complexity uses one pinned Lizard, checked first by the agent, with CI as backstop** —
+2026-11-05. MO-26-11-05-21.48.00. Chris's rollout mandate: a reusable pinned analyzer installed by
+Morpheus, targeted checks while the change is small, review integration and a CI backstop; Evo blocks
+on CCN > 15 after its baseline refactor, Lakina and Morpheus stay advisory until theirs merge, no
+blanket ignores or threshold gaming. Lizard is fetched by commit id (content-addressed, no tarball
+digest) and its two runtime imports, `pygments` and `pathspec`, install into a venv by exact wheel
+hash; the install directory is keyed on the whole pin and every check runs a canary, so a stale or
+broken runtime reads as "not run". Morpheus carries no analyzer supplements: gaps are fixed in the
+fork or upstream and listed as coverage limits. Lizard's in-source suppressions are neutralised by
+same-length text substitution and reported, never obeyed. CI is a step inside the required
+`pr / conventions` job (no new required check, no branch-protection change); advisory never fails it,
+even when install fails; enforce measures every in-scope file. A policy change between merge base and
+head is shown as a warning, not gated. Exceptions are per function (path plus Lizard long name), carry
+the CCN they cover, a reason and a reference. Considered `uv` and installing Lizard with pip (pip does
+not hash-check a source build's build dependencies); used the runner's `python3 -m venv` and
+`pip --require-hashes --only-binary :all:`. No new Node dependency: Zod, minimatch and native Git.
+
+**Factory host tooling moves into the optional plugin; personal fleet config stays local** —
+2026-11-04. MO-26-11-04-21.51.56. Chris authorized moving the reusable `morpheus-factory`
+contents into the Factory plugin and sanitizing what is imported. They live in a nested
+`plugins/factory/src/host/` package with its own lockfile and workspace file, so neither the
+plugin's runtime nor ordinary Morpheus install depends on them; languages and behaviour are
+kept, and the TypeScript core is built there rather than committed. Real hosts, paths, runner
+labels and devices move out of Git into an owner-only `$FACTORY_HOME/hosts.json`, validated by
+one Python boundary that refuses links, other owners, group/other access and credential-shaped
+values; Firestore, the future authority, will feed the same validator. Defaults that named a
+person or project (GitHub user, consumer repository, checkout paths, simulator and preview
+names, reserved runner names) are removed or became operator configuration, and the manifest must
+live outside every Git checkout. The hourly tick stops fast-forwarding its own checkout, because an installed copy is
+not one; the LaunchAgent installer keeps the previous plist for `--rollback` and refuses while a
+tick runs, and an unchanged storage watchdog is no longer restarted on setup reruns. Imported
+fixtures and docs are synthetic and a shape-based test (home paths, device UDIDs, tailnet
+names, runner labels, personal emails) guards them, deliberately without a list of real values.
+No history is imported; the source repository's own history is a separate cleanup. Live hosts
+migrate one at a time by the documented steps. No dependency: the source's existing
+TypeScript/vitest toolchain and the Python standard library.
+
+**One Factory task conversation spans repositories through task-owned checkouts** — 2026-11-04.
+MO-26-11-04-20.01.14. Chris approved one persistent worker conversation per task, writing in several
+explicitly named repositories, each through a checkout the task owns; independent tasks get
+different checkouts even in the same repositories, and originals are reference only. This removes
+the same-repository equality gate in `start`/`codexStart` and supersedes "the primary provider
+conversation is scoped to its canonical checkout" in the 2026-11-02 entry below: the conversation
+keeps its first working directory (Claude resumes only from it, so the `primary:<cwd>` key and
+saved sessions in linked checkouts stand) and adds repositories through a persisted map. Targets
+are explicit (`cwd`, `repos`), never inferred from where the root moved. An unowned linked
+worktree is adopted; every original checkout, the root's own included, becomes a detached
+worktree at its committed HEAD; a directory outside Git is refused. There is no shared-original
+exception: two roots starting in one original get separate worktrees, and an idle task's checkout
+cannot be taken. A pre-workspace conversation bound to an original or non-Git directory is
+refused with the remedy (a new root session), because its native session cannot move and
+continuing would keep writing a shared original. One registry with one writer records ownership
+at launch, refuses equal, nested, containing and aliased claims across tasks, and releases a
+checkout only when its absence is confirmed; a permission or I/O error keeps the owner. One
+writer, the edit guard and per-repository `off` cover every checkout; extra checkouts reach Claude
+as `--add-dir` and Codex as writable roots under `workspace-write` only, never widening a mode.
+Under full access this is an ownership convention enforced at delegation, not an OS sandbox. A
+coordinator, worker-per-repository, an auto-cleanup and a release command were not added. Native
+Git and Node only; no dependency.
+
+**Factory refreshes Claude quota through the gateway's existing usage read** — 2026-11-04.
+MO-26-11-04-18.31.58. The account list's Claude five-hour utilization is a stored snapshot
+without a reset bound. Request its active usage endpoint on inspection/start/doctor and
+honor returned reset times; failures remain unknown rather than reusing old list counters.
+Expose the gateway's reported `updatedAt`, while documenting its short upstream cache.
+Retain Codex's canonical stored snapshot, expiry and actual snapshot timestamp: forcing its
+usage endpoint may generate a model probe and report the current time on old data. Native
+fetch/AbortSignal and the existing parser suffice; no dependency, polling daemon, age gate,
+retry mechanism or new setting. Check resets at response time, not before network waits.
+
+**An exited unattended admission's cleanup may be re-proven explicitly, never assumed** — 2026-11-04.
+MO-26-11-04-15.07.12. The guardian proves cleanup once, at exit, and a latched census failure or a
+slow tool left a real exited admission held for good with no supported recovery. An explicit
+`gateway-worker --reconcile` re-runs the existing owned-process tracker read-only, at the guardian's
+standard: marker, recorded identities and descendants, plus the recorded guardian identity. It
+sends no signals and launches nothing. On positive proof only, it writes one `reconciliation.json`
+bound by SHA-256 to that admission's `process.json` and `admission.json`. One Python check serves
+the guardian's admission gate and `--status`. Missing, ambiguous, unreadable or stale evidence keeps
+the hold, and `process.json` is never rewritten. Start times are compared as the guardian recorded
+them (no `TZ`, `LC_ALL=C`); a recorded identity in any other format is refused. A reconcile daemon, an auto-reconciling `--status`
+and a flag reset were rejected: the observed defect needs one explicit, evidence-bound recovery.
+Standard library and the existing tracker; no dependency.
+
+**Release preflight accepts a pinned reviewed source only for a caller that opts in** — 2026-11-04.
+MO-26-11-04-00.19.43. Chris accepted the Evo release-controller design, whose reviewed amendment lets
+a pinned release keep its source while `main` advances. Removing current-head equality for every
+caller was tried first, and independent review found that three successive guards in
+`ios-nightly-build` still left a path for an older source:
+- a re-run of an older night;
+- that re-run during an Actions API outage;
+- "re-run failed jobs" reusing a cached `build=true` decision after the preflight itself failed.
+
+Equality at preflight time is what closes all of them. So `release-preflight.yml` gains one
+`workflow_call` boolean, `allow-pinned-source`, defaulting to false. Every existing caller, every
+re-run and every manual dispatch keeps the original equality unchanged. A caller that passes `true`
+also accepts a reviewed merge that current `main` strictly contains (GitHub compare `ahead`;
+anything else, including an unreadable `main`, refuses). That suits a caller whose own controller
+pins the source and refuses older ones. Evo's release controller opts in within its own change; no
+other caller does. The `refs/heads/main` requirement, the exact clean `github.sha` checkout, the
+merged-PR binding and the read-only permissions are unchanged in both modes, and there is no
+caller-selected source. The nightly changes were removed rather than layered. Native `gh api` and
+Bash; no dependency.
+
+**Factory agent discovery uses gateway workers only** — 2026-11-03.
+MO-26-11-03-22.16.36. Chris confirmed Paperclip is unconfigured and unused and requested
+removal of its Factory guidance. Remove pool MCP tools, pool CLI commands and operator
+setup instructions from the agent-facing plugin. Keep the six `factory_*` tools and
+existing gateway behavior. Legacy backend modules remain for separate integrations;
+removing the broader Paperclip integration is a separate task. No new dependency.
+
+**Unattended Factory admission retains proven prelaunch failures** — 2026-11-03.
+MO-26-11-03-17.34.41. The explicit gateway-worker CLI is separate from desktop/Pool
+discovery: trusted service configuration fixes authority and gateway, the caller reserves
+an invocation UUID, and the existing guardian owns workspace serialization and cleanup.
+A caught preparation failure before spawn or definitive guardian ENOENT refusal records
+phase-specific never-launched proof, terminal failure and a null native session. Same-ID
+status/replay retain that failure even after setup recovers; a new intended invocation
+uses a fresh UUID without resume. Ambiguous launch, missing proof and unknown cleanup
+keep their holds; no historical unknown operation is cleared. Reuse existing atomic
+admission/result records and Node spawn evidence for this domain-specific lifecycle fix;
+no generic module, dependency, ledger, retry option, quota gate or provider fallback.
+The same guardian retains UTC invocation bounds and monotonic duration through owned
+cleanup, independently of its existing deadline clock. Verified terminal/native-session
+results expose optional runner timing for lost-reply review recovery; legacy, unknown
+and never-launched cases fabricate no duration. Consumers compute minutes from milliseconds.
+
+**Recurring runs are repository-owned schedules dispatched by one portable tick** — 2026-11-03.
+MO-26-11-03-12.57.01. Chris accepted the design: each repository declares `.morpheus/schedules.json`;
+a host timer runs `morpheus scheduler tick` every minute and one GitHub-hosted backup runs the same
+tick every 15 minutes with a 30-minute grace. The host config lists repository names only. Run
+history, keyed by the ` [schedule:<id>:<instant>]` run-name suffix, is the only ledger: no database,
+queue, controller, agent or dashboard. Only the latest due slot is ever submitted, never one before
+the registry file's commit; any run spends its slot; unreadable history is an error. Receivers run
+`scheduler admit` (a step named `Scheduler admission`) under whole-workflow concurrency, and a
+successful gated `Scheduler occurrence admitted` marker step is the only thing that consumes an
+occurrence. The tick's lock is taken over only from a dead owner PID, never for age alone. The
+shared iOS nightly's change baseline becomes the newest successful run with a successful upload job
+(`upload`, `Upload TestFlight build`, or `… / Upload TestFlight build`), refining the 2026-09-01
+cursor decision: an admission-only duplicate also succeeds, and its head must not stand in for an
+upload. This narrows duplicates and claims no exactly-once
+effect. Morpheus's hourly heartbeat cron is deliberately removed, per Chris; the workflow stays
+manual. Cron/timezone evaluation uses Croner 11.0.0 (registry modified 2026-11-01, no dependencies)
+rather than hand-rolled DST handling; GitHub access is Node `fetch` with a timeout and Zod.
+
+**Factory reads Codex ownership per MCP request** — 2026-11-03.
+MO-26-11-03-12.41.12. Desktop MCP processes can outlive their launching chat, so use
+host-injected `_meta.threadId` before the legacy `CODEX_THREAD_ID` environment fallback.
+Never take ownership from model arguments or fall back from malformed supplied metadata
+to an old process identity. This preserves the existing provider-neutral ownership contract.
+The unloaded-task reader accepts Codex's in-place zstd rollout compression and retains
+the active-turn, freshness and permission checks; missing files remain unavailable rather
+than triggering another session's settings. Reuse Node's built-in zstd as the profiler
+already does; this is a provider-specific correction with no generic module or dependency.
+
+**Factory delegation is a provider-neutral root tool with one sticky primary worker** —
+2026-11-02. MO-26-11-02-19.27.44. This supersedes the automatic prompt-hook dispatch decision
+immediately below. Neither Codex nor Claude hooks dispatch a user prompt. Both roots discover the
+same `factory_inspect`, `factory_delegate`, `factory_status`, `factory_wait`, `factory_answer` and
+`factory_stop` contract, with root identity injected by the MCP host and verified on every run
+control. An explicit user request to use the Factory binds; an explicit request to stay local
+does not; otherwise the root applies its ordinary sub-agent judgment and remains manager and
+verifier.
+
+The first successful primary launch pins provider and gateway for that root session. A failed
+preflight does not pin. Quota, gateway ordering or availability never silently changes an existing
+binding; an unavailable pinned gateway refuses, and changing provider requires a new root session.
+The primary provider conversation is scoped to its canonical checkout and never resumes across
+worktrees. `fresh:true` creates an isolated conversation on the same binding, may write only in a
+different isolated worktree, and never replaces the primary conversation; a clarification resumes
+the fresh conversation that asked it. Existing permission, quota, one-writer, concurrency,
+recursion and native-edit guards remain. `manual` and the saved `automatic` value are compatibility
+labels for the same model-directed behavior; global/project/task `off` remains authoritative. No
+new dependency.
+
+**Factory's prompt hook dispatches automatic turns; the coordinator stays the manager** —
+2026-11-02. MO-26-11-02-16.48.03. Chris authorized automatic dispatch with whichever agent holds
+the conversation remaining the manager, and asked that an activated session's first reply say
+Factory is delegating. In `automatic` mode `UserPromptSubmit` launches the routed worker through
+the existing start path. This supersedes "automatic dispatch is not part of this change" in the
+entry below.
+
+The design is held to these limits:
+
+- **Bounded handoff.** The worker gets the whole prompt (one over 32,000 characters is refused,
+  never truncated, since its end can carry the user's restrictions), the previous bridge result for the checkout,
+  and its own saved session. It gets no transcript; missing context comes from the clarification
+  loop.
+- **One launch per turn.** Codex's `turn_id` or Claude's `prompt_id` (transcript metadata only
+  as a fallback) identifies the turn, which is reserved durably before launch and run records name their
+  turn, so retries and restarts reconcile by run identity or report unknown.
+- **The manager first.** Active and waiting runs are returned to the manager before routing.
+- **Narrow local fallback.** Only existing routes and a `local:` prefix keep a turn local.
+  Errors and missing identity are explicit.
+
+A gateway is a shared credential, so there is no per-credential lock or scheduler. Lease, grace,
+`maxConcurrent` and per-checkout ownership are unchanged. The edit guard prevents races and is
+not a boundary. The notice is a deterministic `systemMessage`, plus a once-only first-reply
+instruction that is model-written and so not guaranteed. No dependency: the existing bridge,
+guardian, `ws` and Zod.
+
+**Factory is experimental; a machine opts in only through its saved `mode`** — 2026-11-02.
+MO-26-11-02-16.09.00. Chris approved a repository-owned experimental, default-off status with a
+private per-machine override. The override is the existing `config.json` `mode`, not a second
+`enabled` switch: a separate flag would add a state that can disagree with `mode`, and `off`
+already beats every project and task choice. `release` in `src/config.mjs` supplies the schema
+default and `doctor`'s report; the manifests say "Experimental". Installing stays separate from
+enabling: the installer writes settings only to carry an old `codex-claude` install's choice to
+a machine with none, never over a saved factory config. Install and activation stay personal to
+the machine (`factory@personal`, `factory@factory-local`); a test keeps every reference to the
+package, its settings directory and its variables out of `src/` and `.morpheus/`, so init,
+bootstrap, session start and self install/update cannot install or enable it. The coordinator
+remains the manager; automatic dispatch is not part of this change. No dependency.
+
+**Exact HQ record lookups precede token relevance by default** — 2026-11-02.
+MO-26-11-02-13.16.08, #478. Numeric token frequency must not displace the requested record.
+Use existing stored identity fields and the canonical roadmap-ID grammar, with filename
+boundaries, before the result limit. Keep ordinary MiniSearch/source-weight ranking within
+each group and preserve explicit project callbacks as a full ranking override. This is a
+small domain-specific correction using the existing MiniSearch dependency, with no second
+index, payload version, search provider or new package.
+
 **Reviews never wait on approval inside five turns, and any fresh reviewer may continue** —
 2026-10-30. MO-26-10-30-14.56.24. Evo's CD staging channel stalled from 2026-10-26 because a
 test-only repair PR (evo#665) had an incomplete initial review: the next turn needed
@@ -438,7 +720,7 @@ request received in Messages, Slack, email, voice or browser chat is authorizati
 roadmap; it is not permission to skip the item, claim, branch, tests or PR. Manual mutations prefer
 one-shot commands with explicit targets and always carry a caller-perspective verification probe.
 Release workflows first prove that the source is a clean, current `main` commit associated with a
-merged PR, then the release job checks out that exact SHA. An upload receipt is delivery; completion
+merged PR (*refined 2026-11-04: a caller may opt in to a reviewed source `main` contains — see the top entry*), then the release job checks out that exact SHA. An upload receipt is delivery; completion
 needs evidence of the requested user-visible behavior. A recurring production probe remains local
 until a second project needs the same shape.
 
@@ -2250,3 +2532,59 @@ Three decisions stand:
 
 No dependency: existing GitHub concurrency, Morpheus reusable workflows and the upload action's
 automatic build number.
+
+## Superseded workflow cancellations retain exact run identity — 2026-11-02
+
+Issues #564/#577: a complete current-head census can contain an empty cancelled duplicate
+beside its successful replacement. Compare stable workflow IDs and creation time/run ID,
+never display name or response order. Ignore only the older cancellation after a successful
+replacement, or wait while that replacement is pending. Preserve genuine failures, unmatched
+cancellations and the final job-rollup check. This corrects the existing GitHub-specific
+census with native Map/Date operations; no generic module or dependency is needed.
+
+
+## Read-only infrastructure reporting stays outside operational authority — 2026-11-06
+
+MO-26-11-06-15.15.12. The approved internal dashboard outcome uses the optional host package
+for strictly read-only filesystem observations and one-shot HTTPS reporting; consumers own scoped
+ingestion, private latest-state projection and admin UI. Never reuse mutating status/recovery
+helpers. Quota reads exact stored gateway account IDs, never active refresh/model probes; account
+identity and worker host are separate. Local placement/admission configuration stays authoritative.
+Pinned systeminformation5.33.19 (875133 unpacked bytes, no dependencies) supplies platform metrics
+and hardware inventory rather than new platform parsers; existing Zod4.1.12 validates the closed
+wire shape. Both remain optional host dependencies, outside ordinary Morpheus installs. Source
+clearance, protected CI and real consumer enrollment/deployed acceptance remain outstanding.
+
+
+## 2026-11-06 — Complete read-only infrastructure observations
+
+Keep the existing optional reporter and bounded projection. Reuse native devicectl and the
+canonical Factory proof validator. Use native fetch for domain-specific exact-ID GitHub and
+supported provider usage reads, with shared bounded decoding. Existing pinned Zod and
+systeminformation cover the package boundary and hardware. No new production dependency,
+scheduler or control framework is required. A separate optional org-runner credential is scoped
+to enrolled identities. It does not replace repository credentials. Owner dispatcher inventory
+adds observations while preserving required state publication and existing Linux lifecycle.
+
+## Compare bounded startup and Tantivy on real tasks — 2026-11-07
+
+Use a temporary 60/20/20 context rollout. Assign top-level sessions once to
+bounded startup with Tantivy, bounded startup with ripgrep, or full decisions
+and lessons with ripgrep. Omit the human inbox from the trial. Asynchronous
+human–agent communication is moving to Firebase, with Firestore as the system
+of record. The replacement is in progress.
+
+The frozen comparison covered 498 queries, including 257 descriptive queries
+across 249 evidence groups. At 1,000 and 2,500 returned tokens, bounded ripgrep
+had 72.7% and 79.5% descriptive recall at 84.4 and 121.0 ms mean query time.
+Tantivy with 16-line windows and stride 2 reached 87.6% and 90.4% at 10.2 and
+15.0 ms. In the paired Tantivy run it returned about 310 fewer tokens at the
+larger cap than stride 4. Those measurements used a resident worker and mostly
+work-log lookups. CLI startup, whole-task success and the cost of follow-ups
+need measurement under normal use.
+
+Use the same search source scope, citation format and return budget guidance in
+all arms. The required core remains a declared set of source files. A search
+cache or query result cannot certify that a session read its core. Retain
+only bounded local timing and token traces, and review context reminders
+separately from changed requirements.

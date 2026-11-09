@@ -229,83 +229,100 @@ export function planDecision(decision: Decision, live: LiveState, ctx: Context):
     return escalate(live, inert(decision.needsHuman ?? decision.reasoning), sections, marker);
   }
 
-  // An abandoned draft that has not done what its roadmap item defines. Not a failure and not
-  // obsolete: it is unfinished work, and saying so is what stops it reading as nearly merged.
-  if (decision.action === "incomplete") {
-    return {
-      verdict: "incomplete",
-      operations: [
-        comment("incomplete", [`**Still missing:** ${inert(decision.missing ?? decision.reasoning)}`, "The manager will leave this alone until it gets a new push.", ...sections], { ...marker, verdict: "incomplete" }),
-        ...(live.labels.includes(INCOMPLETE_LABEL) ? [] : [{ kind: "add-label" as const, label: INCOMPLETE_LABEL }]),
-      ],
-    };
-  }
-
-  if (decision.action === "close") {
-    if (!ctx.policy.actions.close) return refuse("the session proposed closing this, and closing is disabled by policy");
-    // Closing on a model's say-so is the one irreversible-feeling action here, so it needs a
-    // fact the plan can check: the superseding pull request really merged. Anything less is a
-    // warning with a grace period.
-    if (decision.supersededBy !== undefined && live.supersededMerged === true) {
-      return { verdict: "close", operations: [comment("close", [`Superseded by #${decision.supersededBy}, which merged. Reopen this if that is wrong; the branch is untouched.`, ...sections], marker), ...removeLabels(live, NEEDS_HUMAN_LABEL, STALE_LABEL), { kind: "close" }] };
-    }
-    return {
-      verdict: "warn-stale",
-      operations: [
-        comment("warn-stale", [`This will be closed in ${ctx.policy.closeGraceDays} days unless it gets a new push or someone removes the \`${STALE_LABEL}\` label. The branch will be left in place.`, ...sections], { ...marker, verdict: "warn-stale" }),
-        ...(live.labels.includes(STALE_LABEL) ? [] : [{ kind: "add-label" as const, label: STALE_LABEL }]),
-      ],
-    };
-  }
-
+  if (decision.action === "incomplete") return planIncomplete(decision, live, sections, marker);
+  if (decision.action === "close") return planClose(decision, live, ctx, sections, marker, refuse);
   // merge
-  if (!ctx.policy.actions.merge) return refuse("the session proposed merging, and merging is disabled by policy");
-  const body = decision.body ?? live.body;
-  if (live.isDraft && !(decision.markReady && ctx.policy.actions.undraft)) {
-    return refuse("this is still a draft and the session did not judge it complete enough to mark ready");
-  }
-  if (decision.usedManagerReview) {
-    if (!ctx.policy.actions.review) return refuse("the merge rests on a manager review, and manager review is disabled by policy");
-    const gated = humanGatedPaths(live.changedFiles, ctx.policy);
-    if (gated.length) return refuse(`this changes ${gated.slice(0, 3).join(", ")}${gated.length > 3 ? ` and ${gated.length - 3} more` : ""}, which the manager may not clear on its own review`);
-    if (!hasVisibleLine(body, "manager-review-record")) return refuse("the session claimed a manager review but the pull request body carries no manager-review-record: line");
-    // Checked here with the same code `check pr` runs, so a record the gate would refuse is an
-    // escalation now rather than a red check and another session later.
-    if (live.recordProblem) return refuse(`the manager review record does not validate: ${live.recordProblem}`);
-  } else {
-    if (!live.labels.includes("agent-reviewed") && !live.authorRecordValid) {
-      return refuse(live.authorRecordProblem
-        ? `the author's independent review record does not validate: ${live.authorRecordProblem}`
-        : "the session proposed merging without a manager review, and no completed independent review is on record");
-    }
-    // Merging on the author's review means the session may have added nothing of its own. A
-    // session holds push access, so "I only merged trunk" is verified, not taken on its word:
-    // anything else is unreviewed authoring that the author's record would otherwise carry.
-    if (live.sessionPushed !== "nothing" && live.sessionPushed !== "trunk-merges") {
-      return refuse(live.sessionPushed === "other"
-        ? "the session changed the branch beyond a clean merge of trunk, so the author's review no longer covers it; that needed a manager review of its own"
-        : "what the session pushed could not be verified, so the author's review cannot be relied on for it");
-    }
-  }
+  const refusal = mergeRefusal(decision, live, ctx);
+  if (refusal) return refuse(refusal);
+  return { verdict: "merge", operations: mergeOperations(decision, live, sections, marker) };
+}
 
+/**
+ * An abandoned draft that has not done what its roadmap item defines. Not a failure and not
+ * obsolete: it is unfinished work, and saying so is what stops it reading as nearly merged.
+ */
+function planIncomplete(decision: Decision, live: LiveState, sections: string[], marker: ManagerMarker): Plan {
   return {
-    verdict: "merge",
+    verdict: "incomplete",
     operations: [
-      // First, and before the label: the label event re-runs `check pr`, which reads the cleared
-      // head from this comment.
-      comment("merge", [`Auto-merge is being enabled; GitHub merges this once the required checks pass.${live.behind ? " The branch is behind its base, so the base is being merged in." : ""}`, ...sections], { ...marker, ...(decision.usedManagerReview ? { cleared: live.headSha } : {}), ...(live.behind ? { updated: live.headSha } : {}) }),
-      ...(decision.body !== undefined && decision.body !== live.body ? [{ kind: "set-body" as const, body: decision.body }] : []),
-      ...(live.isDraft ? [{ kind: "ready" as const }] : []),
-      ...removeLabels(live, NEEDS_HUMAN_LABEL, STALE_LABEL, INCOMPLETE_LABEL, DORMANT_LABEL),
-      // Removed and re-applied on every clearance, never left in place: whoever applied it
-      // before, the newest `labeled` event must be the App's and must follow the comment above.
-      ...(decision.usedManagerReview ? [...removeLabels(live, MANAGER_REVIEWED_LABEL), { kind: "add-label" as const, label: MANAGER_REVIEWED_LABEL }] : []),
-      ...(!decision.usedManagerReview && !live.labels.includes("agent-reviewed") ? [{ kind: "add-label" as const, label: "agent-reviewed" }] : []),
-      ...(live.cancelledRunIds.length ? [{ kind: "rerun" as const, runIds: live.cancelledRunIds }] : []),
-      ...(live.autoMerge ? [] : [{ kind: "auto-merge" as const }]),
-      ...updateIfBehind(live),
+      comment("incomplete", [`**Still missing:** ${inert(decision.missing ?? decision.reasoning)}`, "The manager will leave this alone until it gets a new push.", ...sections], { ...marker, verdict: "incomplete" }),
+      ...(live.labels.includes(INCOMPLETE_LABEL) ? [] : [{ kind: "add-label" as const, label: INCOMPLETE_LABEL }]),
     ],
   };
+}
+
+function planClose(decision: Decision, live: LiveState, ctx: Context, sections: string[], marker: ManagerMarker, refuse: (why: string) => Plan): Plan {
+  if (!ctx.policy.actions.close) return refuse("the session proposed closing this, and closing is disabled by policy");
+  // Closing on a model's say-so is the one irreversible-feeling action here, so it needs a
+  // fact the plan can check: the superseding pull request really merged. Anything less is a
+  // warning with a grace period.
+  if (decision.supersededBy !== undefined && live.supersededMerged === true) {
+    return { verdict: "close", operations: [comment("close", [`Superseded by #${decision.supersededBy}, which merged. Reopen this if that is wrong; the branch is untouched.`, ...sections], marker), ...removeLabels(live, NEEDS_HUMAN_LABEL, STALE_LABEL), { kind: "close" }] };
+  }
+  return {
+    verdict: "warn-stale",
+    operations: [
+      comment("warn-stale", [`This will be closed in ${ctx.policy.closeGraceDays} days unless it gets a new push or someone removes the \`${STALE_LABEL}\` label. The branch will be left in place.`, ...sections], { ...marker, verdict: "warn-stale" }),
+      ...(live.labels.includes(STALE_LABEL) ? [] : [{ kind: "add-label" as const, label: STALE_LABEL }]),
+    ],
+  };
+}
+
+/** Why a proposed merge cannot be applied as it stands, or undefined when it can. */
+function mergeRefusal(decision: Decision, live: LiveState, ctx: Context): string | undefined {
+  if (!ctx.policy.actions.merge) return "the session proposed merging, and merging is disabled by policy";
+  if (live.isDraft && !(decision.markReady && ctx.policy.actions.undraft)) {
+    return "this is still a draft and the session did not judge it complete enough to mark ready";
+  }
+  return decision.usedManagerReview ? managerReviewRefusal(decision, live, ctx) : authorReviewRefusal(live);
+}
+
+function managerReviewRefusal(decision: Decision, live: LiveState, ctx: Context): string | undefined {
+  const body = decision.body ?? live.body;
+  if (!ctx.policy.actions.review) return "the merge rests on a manager review, and manager review is disabled by policy";
+  const gated = humanGatedPaths(live.changedFiles, ctx.policy);
+  if (gated.length) return `this changes ${gated.slice(0, 3).join(", ")}${gated.length > 3 ? ` and ${gated.length - 3} more` : ""}, which the manager may not clear on its own review`;
+  if (!hasVisibleLine(body, "manager-review-record")) return "the session claimed a manager review but the pull request body carries no manager-review-record: line";
+  // Checked here with the same code `check pr` runs, so a record the gate would refuse is an
+  // escalation now rather than a red check and another session later.
+  if (live.recordProblem) return `the manager review record does not validate: ${live.recordProblem}`;
+  return undefined;
+}
+
+function authorReviewRefusal(live: LiveState): string | undefined {
+  if (!live.labels.includes("agent-reviewed") && !live.authorRecordValid) {
+    return live.authorRecordProblem
+      ? `the author's independent review record does not validate: ${live.authorRecordProblem}`
+      : "the session proposed merging without a manager review, and no completed independent review is on record";
+  }
+  // Merging on the author's review means the session may have added nothing of its own. A
+  // session holds push access, so "I only merged trunk" is verified, not taken on its word:
+  // anything else is unreviewed authoring that the author's record would otherwise carry.
+  if (live.sessionPushed !== "nothing" && live.sessionPushed !== "trunk-merges") {
+    return live.sessionPushed === "other"
+      ? "the session changed the branch beyond a clean merge of trunk, so the author's review no longer covers it; that needed a manager review of its own"
+      : "what the session pushed could not be verified, so the author's review cannot be relied on for it";
+  }
+  return undefined;
+}
+
+function mergeOperations(decision: Decision, live: LiveState, sections: string[], marker: ManagerMarker): Operation[] {
+  const managed = !!decision.usedManagerReview;
+  return [
+    // First, and before the label: the label event re-runs `check pr`, which reads the cleared
+    // head from this comment.
+    comment("merge", [`Auto-merge is being enabled; GitHub merges this once the required checks pass.${live.behind ? " The branch is behind its base, so the base is being merged in." : ""}`, ...sections], { ...marker, ...(managed ? { cleared: live.headSha } : {}), ...(live.behind ? { updated: live.headSha } : {}) }),
+    ...(decision.body !== undefined && decision.body !== live.body ? [{ kind: "set-body" as const, body: decision.body }] : []),
+    ...(live.isDraft ? [{ kind: "ready" as const }] : []),
+    ...removeLabels(live, NEEDS_HUMAN_LABEL, STALE_LABEL, INCOMPLETE_LABEL, DORMANT_LABEL),
+    // Removed and re-applied on every clearance, never left in place: whoever applied it
+    // before, the newest `labeled` event must be the App's and must follow the comment above.
+    ...(managed ? [...removeLabels(live, MANAGER_REVIEWED_LABEL), { kind: "add-label" as const, label: MANAGER_REVIEWED_LABEL }] : []),
+    ...(!managed && !live.labels.includes("agent-reviewed") ? [{ kind: "add-label" as const, label: "agent-reviewed" }] : []),
+    ...(live.cancelledRunIds.length ? [{ kind: "rerun" as const, runIds: live.cancelledRunIds }] : []),
+    ...(live.autoMerge ? [] : [{ kind: "auto-merge" as const }]),
+    ...updateIfBehind(live),
+  ];
 }
 
 /**
@@ -333,30 +350,8 @@ export function planTriage(decision: Decision, live: LiveState, ctx: Context): P
   if (decision.head !== live.headSha) return wait("the decision names a head other than the branch's, which did not move", true);
 
   switch (decision.action) {
-    case "ready": {
-      const ready = { ...marker, verdict: "ready" as const };
-      const cleared = removeLabels(live, INCOMPLETE_LABEL, DORMANT_LABEL, NEEDS_HUMAN_LABEL);
-      if (live.isDraft && !hasWipName(live) && ctx.policy.actions.undraft) {
-        return { verdict: "ready", operations: [
-          comment("ready", ["Marked ready for review. From here the ordinary path applies: nothing merges without a complete review and passing required checks, and the usual quiet period still holds.", ...sections], ready),
-          ...cleared,
-          { kind: "ready" },
-        ] };
-      }
-      const why = !ctx.policy.actions.undraft ? "marking drafts ready is disabled by policy" : "its WIP branch or title says a person must take it out of WIP";
-      return { verdict: "ready", operations: [comment("ready", [`This reads as complete, but it was left as it is: ${why}.`, ...sections], ready), ...cleared] };
-    }
-    case "incomplete":
-      return { verdict: "incomplete", operations: [
-        comment("incomplete", [
-          `**Still missing:** ${inert(decision.missing ?? decision.reasoning)}`,
-          decision.remainingChecks ? `**Checks to run before review:** ${inert(decision.remainingChecks)}` : "",
-          "Another agent can pick this up on its branch; the manager does not implement it. It leaves this alone until it gets a new push or someone removes the `manager:incomplete` label.",
-          ...sections,
-        ], { ...marker, verdict: "incomplete" }),
-        ...removeLabels(live, DORMANT_LABEL),
-        ...(live.labels.includes(INCOMPLETE_LABEL) ? [] : [{ kind: "add-label" as const, label: INCOMPLETE_LABEL }]),
-      ] };
+    case "ready": return planTriageReady(live, ctx, sections, marker);
+    case "incomplete": return planTriageIncomplete(decision, live, sections, marker);
     case "dormant":
       return { verdict: "dormant", operations: [
         comment("dormant", ["Nothing is closed. The manager will not look at this again until it gets a new push or someone removes the `manager:dormant` label.", ...sections], { ...marker, verdict: "dormant" }),
@@ -370,6 +365,34 @@ export function planTriage(decision: Decision, live: LiveState, ctx: Context): P
     default:
       return wait(`a triage session may not ${decision.action} a pull request; at most it marks a plain draft ready`, true);
   }
+}
+
+/** A plain draft is marked ready when policy allows; a WIP name or disabled undraft leaves it as it is. */
+function planTriageReady(live: LiveState, ctx: Context, sections: string[], marker: ManagerMarker): Plan {
+  const ready = { ...marker, verdict: "ready" as const };
+  const cleared = removeLabels(live, INCOMPLETE_LABEL, DORMANT_LABEL, NEEDS_HUMAN_LABEL);
+  if (live.isDraft && !hasWipName(live) && ctx.policy.actions.undraft) {
+    return { verdict: "ready", operations: [
+      comment("ready", ["Marked ready for review. From here the ordinary path applies: nothing merges without a complete review and passing required checks, and the usual quiet period still holds.", ...sections], ready),
+      ...cleared,
+      { kind: "ready" },
+    ] };
+  }
+  const why = !ctx.policy.actions.undraft ? "marking drafts ready is disabled by policy" : "its WIP branch or title says a person must take it out of WIP";
+  return { verdict: "ready", operations: [comment("ready", [`This reads as complete, but it was left as it is: ${why}.`, ...sections], ready), ...cleared] };
+}
+
+function planTriageIncomplete(decision: Decision, live: LiveState, sections: string[], marker: ManagerMarker): Plan {
+  return { verdict: "incomplete", operations: [
+    comment("incomplete", [
+      `**Still missing:** ${inert(decision.missing ?? decision.reasoning)}`,
+      decision.remainingChecks ? `**Checks to run before review:** ${inert(decision.remainingChecks)}` : "",
+      "Another agent can pick this up on its branch; the manager does not implement it. It leaves this alone until it gets a new push or someone removes the `manager:incomplete` label.",
+      ...sections,
+    ], { ...marker, verdict: "incomplete" }),
+    ...removeLabels(live, DORMANT_LABEL),
+    ...(live.labels.includes(INCOMPLETE_LABEL) ? [] : [{ kind: "add-label" as const, label: INCOMPLETE_LABEL }]),
+  ] };
 }
 
 /** Every marker triage writes says so, which keeps its attempt budget apart from the ordinary path's. */

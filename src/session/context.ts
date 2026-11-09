@@ -21,6 +21,7 @@ import {
 } from "./certify.js";
 import { currentBranch, resolveTrunk, trunkSha, worktreeRoot, type TrunkRef } from "./git.js";
 import { projectPolicy, sessionId } from "./policy.js";
+import { getSearchConfig, providerSessionId } from "../context-search/rollout.js";
 import { isAbsolute, relative } from "node:path";
 import { clearLease, readLease, writeLease } from "./store.js";
 
@@ -52,9 +53,11 @@ export interface ContextResult {
   written: boolean;
 }
 
-async function session(root: string): Promise<{ worktree: string; id: string }> {
+async function session(root: string, runner = providerSessionId()): Promise<{ worktree: string; id: string }> {
   const worktree = await worktreeRoot(root);
-  return { worktree, id: sessionId(worktree) };
+  const rollout = runner && (await getSearchConfig(worktree).catch(() => undefined))?.rollout;
+  const id = rollout && runner ? `rollout-${sessionId(worktree)}-${sessionId(rollout.id + "\0" + runner)}` : sessionId(worktree);
+  return { worktree, id };
 }
 
 function required(policy: LeasePolicy): readonly string[] {
@@ -125,25 +128,17 @@ export async function refresh(root: string, now = new Date(), opts: RefreshOptio
   const { lease: stored } = await readLease(worktree, id);
   // An asserted receipt — or one taken before evidence existed — is never the
   // baseline a recorded one extends: that would launder the assertion.
-  const previous = stored && (mode.kind !== "recorded" || stored.receipt.evidence === "recorded") ? stored.receipt : null;
+  const previous = baselineReceipt(stored, mode);
 
-  if (sha) {
-    try {
-      const verified = await assertCurrentSource(worktree);
-      if (verified !== sha) throw new Error("Trunk moved during refresh. Re-read current source and retry.");
-    } catch (error) {
-      // Invalidate the old certification as well as refusing this one.
-      await clearLease(worktree, id);
-      return { lease: null, observed: true, written: false, previous, extended: false,
-        evidence: { mode, requirements: [] },
-        issue: error instanceof Error ? error.message : String(error) };
-    }
+  const stale = sha ? await sourceProblem(worktree, id, sha) : undefined;
+  if (stale) {
+    return { lease: null, observed: true, written: false, previous, extended: false,
+      evidence: { mode, requirements: [] }, issue: stale };
   }
 
-  const needs =
-    mode.kind === "recorded"
-      ? await requirements(previous, previous ? await readSnapshot(worktree, id) : new Map(), records, mode.reads)
-      : [];
+  const needs = mode.kind === "recorded"
+    ? await requirements(previous, previous ? await readSnapshot(worktree, id) : new Map(), records, mode.reads)
+    : [];
   if (needs.some((r) => r.missing.length)) {
     // Nothing is written: the stored receipt is still the true record of what
     // was read, and the result says what is not.
@@ -155,32 +150,13 @@ export async function refresh(root: string, now = new Date(), opts: RefreshOptio
   const branch = (await currentBranch(worktree)) ?? "";
   // Unchanged only against a verified trunk: an unreachable one is unknown,
   // never "the same as last time".
-  const extended = previous !== null && sha !== null && previous.remoteSha === sha && sameInputs(previous.inputs, inputs);
+  const extended = unchangedSince(previous, sha, inputs);
   const receipt: ContextReceipt = extended
-    ? { ...previous, branch, worktree }
-    : {
-        version: 1,
-        id: `ctx-${now.toISOString()}`,
-        createdAt: now.toISOString(),
-        // A receipt with no verifiable trunk still records what was read. The
-        // lease it produces is `unknown`, which fails closed — but the inputs are
-        // real, so the next online check has something to compare against rather
-        // than starting over.
-        remoteSha: sha ?? "",
-        // `""` when the lookup failed — not a name, and `sameBranch` below never
-        // matches it, so an unanchorable receipt re-observes rather than
-        // short-circuiting.
-        branch,
-        worktree,
-        inputs,
-        evidence: mode.kind === "recorded" ? "recorded" : "asserted",
-      };
+    ? { ...previous!, branch, worktree }
+    : freshReceipt(now, sha, branch, worktree, inputs, mode);
 
   const lease = observeLease(receipt, { checkedAt: now.toISOString(), remoteSha: sha, inputs }, policy);
-  const write = await writeLease(worktree, id, lease);
-  // The baseline the next refresh diffs against. A failure here costs that
-  // refresh a whole-record read, never a false certification.
-  if (write.written) await writeSnapshot(worktree, id, records).catch(() => undefined);
+  const write = await persistLease(worktree, id, lease, records);
   return {
     lease,
     observed: true,
@@ -191,6 +167,86 @@ export async function refresh(root: string, now = new Date(), opts: RefreshOptio
     ...(write.issue ? { issue: write.issue } : {}),
     ...(observation.reason === "missing" ? { trunkMissing: trunk } : {}),
   };
+}
+
+/** Why the checked-out source is not the trunk just observed, after invalidating the old certification; undefined when it is. */
+async function sourceProblem(worktree: string, id: string, sha: string): Promise<string | undefined> {
+  try {
+    const verified = await assertCurrentSource(worktree);
+    if (verified !== sha) throw new Error("Trunk moved during refresh. Re-read current source and retry.");
+    return undefined;
+  } catch (error) {
+    // Invalidate the old certification as well as refusing this one.
+    await clearLease(worktree, id);
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+function freshReceipt(now: Date, sha: string | null, branch: string, worktree: string, inputs: ContextReceipt["inputs"], mode: EvidenceMode): ContextReceipt {
+  return {
+    version: 1,
+    id: `ctx-${now.toISOString()}`,
+    createdAt: now.toISOString(),
+    // A receipt with no verifiable trunk still records what was read. The
+    // lease it produces is `unknown`, which fails closed — but the inputs are
+    // real, so the next online check has something to compare against rather
+    // than starting over.
+    remoteSha: sha ?? "",
+    // `""` when the lookup failed — not a name, and `sameBranch` below never
+    // matches it, so an unanchorable receipt re-observes rather than
+    // short-circuiting.
+    branch,
+    worktree,
+    inputs,
+    evidence: mode.kind === "recorded" ? "recorded" : "asserted",
+  };
+}
+
+function unchangedSince(previous: ContextReceipt | null, sha: string | null, inputs: ContextReceipt["inputs"]): boolean {
+  return previous !== null && sha !== null && previous.remoteSha === sha && sameInputs(previous.inputs, inputs);
+}
+
+async function persistLease(worktree: string, id: string, lease: SessionLease, records: Parameters<typeof writeSnapshot>[2]) {
+  const write = await writeLease(worktree, id, lease);
+  // The baseline the next refresh diffs against. A failure here costs that
+  // refresh a whole-record read, never a false certification.
+  if (write.written) await writeSnapshot(worktree, id, records).catch(() => undefined);
+  return write;
+}
+
+/** The stored receipt a refresh may extend: never an asserted one under a live read hook, which would launder the assertion. */
+function baselineReceipt(stored: Awaited<ReturnType<typeof readLease>>["lease"], mode: EvidenceMode): ContextReceipt | null {
+  return stored && (mode.kind !== "recorded" || stored.receipt.evidence === "recorded") ? stored.receipt : null;
+}
+
+/** Observes the trunk and records afresh against the stored receipt, and proves the checkout contains that trunk. */
+async function reobserve(worktree: string, receipt: ContextReceipt, policy: Awaited<ReturnType<typeof projectPolicy>>, now: Date, offline: boolean) {
+  const inputs = await readInputs(worktree, required(policy));
+  const trunk = await resolveTrunk(worktree, policy.trunk);
+  const observation = offline
+    ? ({ sha: null, reason: "unreachable" } as const)
+    : await trunkSha(worktree, trunk);
+  const lease = observeLease(
+    receipt,
+    { checkedAt: now.toISOString(), remoteSha: observation.sha, inputs },
+    policy,
+  );
+
+  // Identical context records do not prove identical source. In particular,
+  // switching to an older branch (or resetting the same branch) must not
+  // re-certify a code-only gap. Repeat this local proof on every read so a
+  // failed persistence cannot make the next process trust the old verdict.
+  if (lease.status === "fresh" && !await containsSource(worktree, observation.sha ?? "")) {
+    lease.status = "refresh_required";
+    lease.reason = "Checkout does not contain the observed trunk. Fetch and integrate current source, re-read records, then run morpheus context refresh.";
+  }
+  return { lease, observation, trunk };
+}
+
+function anchorToBranch(lease: SessionLease, onBranch: string | null): SessionLease {
+  return lease.status === "fresh" && onBranch !== null && onBranch !== lease.receipt.branch
+    ? { ...lease, receipt: { ...lease.receipt, branch: onBranch } }
+    : lease;
 }
 
 /**
@@ -214,8 +270,8 @@ export async function refresh(root: string, now = new Date(), opts: RefreshOptio
  * *resumed* session after a context compaction, which is precisely when an
  * agent has lost what it read.
  */
-export async function endTerm(root: string): Promise<SessionLease | null> {
-  const { worktree, id } = await session(root);
+export async function endTerm(root: string, runner?: string): Promise<SessionLease | null> {
+  const { worktree, id } = await session(root, runner);
   const { lease } = await readLease(worktree, id);
   if (lease) await clearLease(worktree, id);
   return lease;
@@ -313,6 +369,14 @@ export async function noteWrite(root: string, writes: readonly RecordWrite[]): P
  * make a lease that was fresh at 12:05 answer for 18:00, which is the failure
  * the whole item opens with.
  */
+async function canReuseReceipt(worktree: string, lease: SessionLease, policy: LeasePolicy): Promise<boolean> {
+  const requiredNow = required(policy);
+  return lease.status === "fresh"
+    && lease.receipt.inputs.length === requiredNow.length
+    && requiredNow.every(id => lease.receipt.inputs.some(input => input.id === id))
+    && await containsSource(worktree, lease.receipt.remoteSha);
+}
+
 export async function check(
   root: string,
   now = new Date(),
@@ -343,7 +407,7 @@ export async function check(
   // Both sides have to be a real answer. A failed lookup is not a branch, and
   // two of them are not the same branch.
   const sameBranch = onBranch !== null && onBranch !== "" && onBranch === stored.receipt.branch;
-  if (current.status === "fresh" && sameBranch && await containsSource(worktree, stored.receipt.remoteSha)) {
+  if (sameBranch && await canReuseReceipt(worktree, current, policy)) {
     // Nothing was written, because nothing needed to be — the stored lease is
     // still the current answer.
     return { lease: current, observed: false, written: true };
@@ -352,25 +416,7 @@ export async function check(
   // Past the term, or already known stale. Re-observe against the receipt the
   // agent actually took — its `inputs` are the assertion, and comparing new
   // observations to them is the entire mechanism.
-  const inputs = await readInputs(worktree, required(policy));
-  const trunk = await resolveTrunk(worktree, policy.trunk);
-  const observation = offline
-    ? ({ sha: null, reason: "unreachable" } as const)
-    : await trunkSha(worktree, trunk);
-  const lease = observeLease(
-    stored.receipt,
-    { checkedAt: now.toISOString(), remoteSha: observation.sha, inputs },
-    policy,
-  );
-
-  // Identical context records do not prove identical source. In particular,
-  // switching to an older branch (or resetting the same branch) must not
-  // re-certify a code-only gap. Repeat this local proof on every read so a
-  // failed persistence cannot make the next process trust the old verdict.
-  if (lease.status === "fresh" && !await containsSource(worktree, observation.sha ?? "")) {
-    lease.status = "refresh_required";
-    lease.reason = "Checkout does not contain the observed trunk. Fetch and integrate current source, re-read records, then run morpheus context refresh.";
-  }
+  const { lease, observation, trunk } = await reobserve(worktree, stored.receipt, policy, now, offline);
 
   // Re-anchored **here**, where the re-observation has just proven the receipt
   // still true against the records on this branch — which covers every route
@@ -380,10 +426,7 @@ export async function check(
   // the mismatch is otherwise permanent for the session even once the receipt
   // is proved current. Only on `fresh`: a lease that failed for any other
   // reason has proved nothing.
-  const anchored =
-    lease.status === "fresh" && onBranch !== null && onBranch !== lease.receipt.branch
-      ? { ...lease, receipt: { ...lease.receipt, branch: onBranch } }
-      : lease;
+  const anchored = anchorToBranch(lease, onBranch);
 
   const write = await writeLease(worktree, id, anchored);
   // A failed write is the module's one fail-open path: the previous lease

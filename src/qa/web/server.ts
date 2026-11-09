@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import { BatchRejected, recordBatch, type PostedBatch } from "../batches.js";
+import { QaWebBuildIdentity } from "../comments.js";
 import { WEB_OVERLAY_COLUMN_PX, WEB_OVERLAY_JS } from "./overlay-client.js";
 
 /**
@@ -36,6 +37,7 @@ export interface WebQaServerOptions {
    * origin and referer, so absolute URLs it builds (OAuth redirect_uri callbacks) name the site.
    */
   publicOrigin?: string;
+  build?: QaWebBuildIdentity;
   onListen?: (info: { port: number }) => void;
 }
 
@@ -169,13 +171,118 @@ function screenshotLibraryPath(): string {
   return join(dirname(require.resolve("modern-screenshot")), "index.js");
 }
 
+/** A write to a QA endpoint is JSON from this overlay's own origin. */
+function ownJsonWrite(req: IncomingMessage, port: number): boolean {
+  const origin = req.headers.origin;
+  const type = req.headers["content-type"] ?? "";
+  return !!origin && ownOrigins(port).has(origin) && type.startsWith("application/json");
+}
+
 export async function startWebQaServer(options: WebQaServerOptions): Promise<{ port: number; close: () => Promise<void> }> {
   const upstream = normalizeUpstream(options.upstream);
   const presented = options.publicOrigin ? normalizeUpstream(options.publicOrigin) : upstream;
   const lib = upstream.protocol === "https:" ? httpsRequest : httpRequest;
   const library = await readFile(screenshotLibraryPath(), "utf8");
+  const build = QaWebBuildIdentity.safeParse(options.build).data ?? null;
+  // Replacer functions keep literal dollar signs in a project name.
+  const overlayScript = WEB_OVERLAY_JS
+    .replace("/* __MORPHEUS_QA_BUILD__ */ null", () => JSON.stringify(build))
+    .replace("__MORPHEUS_QA_PROJECT__", () => JSON.stringify(options.project));
   // Set once the port is bound (a test may ask for port 0); requests arrive only after that.
   let port = options.port;
+
+  /** The overlay's own endpoints: JSON-only writes from its own origin, health, scripts and batches. */
+  const qaEndpoint = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
+    if (req.method !== "GET" && req.method !== "HEAD" && !ownJsonWrite(req, port)) {
+      sendJson(res, 403, { error: "QA endpoints accept JSON from this overlay's own origin only" });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === `${QA_PREFIX}/health`) {
+      sendJson(res, 200, { ok: true, kind: "web", upstream: upstream.origin, project: options.project, root: options.root });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === `${QA_PREFIX}/overlay.js`) {
+      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(overlayScript);
+      return;
+    }
+    if (req.method === "GET" && url.pathname === `${QA_PREFIX}/modern-screenshot.js`) {
+      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "max-age=3600" });
+      res.end(library);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === `${QA_PREFIX}/api/batches`) {
+      const raw = JSON.parse((await readBody(req)).toString("utf8")) as PostedBatch;
+      try {
+        const { id, path, pendingCount, wakeConfigured, responderActive } = await recordBatch(options.root, options.project, raw, { url: upstream.origin, kind: "web" });
+        sendJson(res, 201, { id, path, pendingCount, wakeConfigured, responderActive });
+      } catch (error) {
+        if (error instanceof BatchRejected || (error as { name?: string }).name === "ZodError") { sendJson(res, 400, { error: (error as Error).message }); return; }
+        throw error;
+      }
+      return;
+    }
+    sendJson(res, 404, { error: "not found" });
+  };
+
+  /** Relays a site response; HTML gets the overlay injected and the headers that would block it removed. */
+  const forward = (upstreamRes: IncomingMessage, res: ServerResponse, own: string): void => {
+    const headers: Record<string, string | string[]> = {};
+    for (const [name, value] of Object.entries(upstreamRes.headers)) {
+      if (value === undefined || HOP_BY_HOP.has(name)) continue;
+      headers[name] = value;
+    }
+    if (typeof headers.location === "string") headers.location = rewriteLocation(headers.location, upstream, own);
+    const isHtml = /text\/html/i.test(String(upstreamRes.headers["content-type"] ?? ""));
+    if (!isHtml) {
+      res.writeHead(upstreamRes.statusCode ?? 502, headers);
+      upstreamRes.pipe(res);
+      return;
+    }
+    const chunks: Buffer[] = [];
+    upstreamRes.on("data", (c: Buffer) => chunks.push(c));
+    upstreamRes.on("end", () => {
+      try {
+        const raw = Buffer.concat(chunks);
+        const decoded = decode(raw, upstreamRes.headers["content-encoding"] as string | undefined);
+        if (!decoded) {
+          // An encoding we cannot read (zstd, stacked): pass the page through without the overlay.
+          res.writeHead(upstreamRes.statusCode ?? 502, headers);
+          res.end(raw);
+          return;
+        }
+        const body = injectOverlay(decoded.toString("utf8"));
+        delete headers["content-length"];
+        delete headers["content-encoding"];
+        // A dev-only tool on a local origin: a page CSP would refuse the injected script.
+        delete headers["content-security-policy"];
+        delete headers["content-security-policy-report-only"];
+        // The shell frames the page on its own origin; a frame refusal would blank it.
+        delete headers["x-frame-options"];
+        headers["cache-control"] = "no-store";
+        res.writeHead(upstreamRes.statusCode ?? 502, headers);
+        res.end(body);
+      } catch (error) {
+        if (!res.headersSent) sendJson(res, 502, { error: `could not inject the overlay: ${(error as Error).message}` });
+      }
+    });
+    upstreamRes.on("error", (error) => res.destroy(error));
+  };
+
+  /** Everything else is the site, proxied with this overlay's own host. */
+  const proxySite = (req: IncomingMessage, res: ServerResponse, url: URL, own: string): void => {
+    const wantsHtml = req.method === "GET" && (req.headers["sec-fetch-dest"] === "iframe" || /text\/html/.test(req.headers.accept ?? ""));
+    const up = lib({
+      protocol: upstream.protocol, hostname: upstream.hostname, port: upstream.port || (upstream.protocol === "https:" ? 443 : 80),
+      path: `${url.pathname}${url.search}`, method: req.method, headers: upstreamHeaders(req, upstream, own, wantsHtml, presented),
+    }, (upstreamRes) => forward(upstreamRes, res, own));
+    up.on("error", (error) => {
+      if (!res.headersSent) sendJson(res, 502, { error: `dev server unreachable at ${upstream.origin}: ${error.message}` });
+      else res.destroy(error);
+    });
+    if (req.method === "GET" || req.method === "HEAD") up.end();
+    else req.pipe(up);
+  };
 
   const handler = async (req: IncomingMessage, res: ServerResponse) => {
     try {
@@ -185,102 +292,13 @@ export async function startWebQaServer(options: WebQaServerOptions): Promise<{ p
         sendJson(res, 403, { error: "This overlay answers only to 127.0.0.1, localhost or [::1] on its own port." });
         return;
       }
-      if (url.pathname.startsWith(`${QA_PREFIX}/`)) {
-        if (req.method !== "GET" && req.method !== "HEAD") {
-          const origin = req.headers.origin;
-          const type = req.headers["content-type"] ?? "";
-          if (!origin || !ownOrigins(port).has(origin) || !type.startsWith("application/json")) {
-            sendJson(res, 403, { error: "QA endpoints accept JSON from this overlay's own origin only" });
-            return;
-          }
-        }
-        if (req.method === "GET" && url.pathname === `${QA_PREFIX}/health`) {
-          sendJson(res, 200, { ok: true, kind: "web", upstream: upstream.origin, project: options.project, root: options.root });
-          return;
-        }
-        if (req.method === "GET" && url.pathname === `${QA_PREFIX}/overlay.js`) {
-          res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-store" });
-          // A replacer function, so a "$" in the project name is not read as a replacement pattern.
-          res.end(WEB_OVERLAY_JS.replace("__MORPHEUS_QA_PROJECT__", () => JSON.stringify(options.project)));
-          return;
-        }
-        if (req.method === "GET" && url.pathname === `${QA_PREFIX}/modern-screenshot.js`) {
-          res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "max-age=3600" });
-          res.end(library);
-          return;
-        }
-        if (req.method === "POST" && url.pathname === `${QA_PREFIX}/api/batches`) {
-          const raw = JSON.parse((await readBody(req)).toString("utf8")) as PostedBatch;
-          try {
-            const { id, path, pendingCount, wakeConfigured, responderActive } = await recordBatch(options.root, options.project, raw, { url: upstream.origin, kind: "web" });
-            sendJson(res, 201, { id, path, pendingCount, wakeConfigured, responderActive });
-          } catch (error) {
-            if (error instanceof BatchRejected || (error as { name?: string }).name === "ZodError") { sendJson(res, 400, { error: (error as Error).message }); return; }
-            throw error;
-          }
-          return;
-        }
-        sendJson(res, 404, { error: "not found" });
-        return;
-      }
-
+      if (url.pathname.startsWith(`${QA_PREFIX}/`)) { await qaEndpoint(req, res, url); return; }
       if (wantsShell(req)) {
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
         res.end(shellHtml(options.project));
         return;
       }
-      const wantsHtml = req.method === "GET" && (req.headers["sec-fetch-dest"] === "iframe" || /text\/html/.test(req.headers.accept ?? ""));
-      const up = lib({
-        protocol: upstream.protocol, hostname: upstream.hostname, port: upstream.port || (upstream.protocol === "https:" ? 443 : 80),
-        path: `${url.pathname}${url.search}`, method: req.method, headers: upstreamHeaders(req, upstream, own, wantsHtml, presented),
-      }, (upstreamRes) => {
-        const headers: Record<string, string | string[]> = {};
-        for (const [name, value] of Object.entries(upstreamRes.headers)) {
-          if (value === undefined || HOP_BY_HOP.has(name)) continue;
-          headers[name] = value;
-        }
-        if (typeof headers.location === "string") headers.location = rewriteLocation(headers.location, upstream, own);
-        const isHtml = /text\/html/i.test(String(upstreamRes.headers["content-type"] ?? ""));
-        if (!isHtml) {
-          res.writeHead(upstreamRes.statusCode ?? 502, headers);
-          upstreamRes.pipe(res);
-          return;
-        }
-        const chunks: Buffer[] = [];
-        upstreamRes.on("data", (c: Buffer) => chunks.push(c));
-        upstreamRes.on("end", () => {
-          try {
-            const raw = Buffer.concat(chunks);
-            const decoded = decode(raw, upstreamRes.headers["content-encoding"] as string | undefined);
-            if (!decoded) {
-              // An encoding we cannot read (zstd, stacked): pass the page through without the overlay.
-              res.writeHead(upstreamRes.statusCode ?? 502, headers);
-              res.end(raw);
-              return;
-            }
-            const body = injectOverlay(decoded.toString("utf8"));
-            delete headers["content-length"];
-            delete headers["content-encoding"];
-            // A dev-only tool on a local origin: a page CSP would refuse the injected script.
-            delete headers["content-security-policy"];
-            delete headers["content-security-policy-report-only"];
-            // The shell frames the page on its own origin; a frame refusal would blank it.
-            delete headers["x-frame-options"];
-            headers["cache-control"] = "no-store";
-            res.writeHead(upstreamRes.statusCode ?? 502, headers);
-            res.end(body);
-          } catch (error) {
-            if (!res.headersSent) sendJson(res, 502, { error: `could not inject the overlay: ${(error as Error).message}` });
-          }
-        });
-        upstreamRes.on("error", (error) => res.destroy(error));
-      });
-      up.on("error", (error) => {
-        if (!res.headersSent) sendJson(res, 502, { error: `dev server unreachable at ${upstream.origin}: ${error.message}` });
-        else res.destroy(error);
-      });
-      if (req.method === "GET" || req.method === "HEAD") up.end();
-      else req.pipe(up);
+      proxySite(req, res, url, own);
     } catch (error) {
       if (!res.headersSent) sendJson(res, 500, { error: (error as Error).message });
     }

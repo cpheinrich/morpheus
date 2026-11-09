@@ -12,29 +12,38 @@ export type HeldAwareResult = { state: "repair-held"; workId: string } | { state
 export const due = (work: CdState["agents"][string], now: string): boolean =>
   work.state !== "complete" && Date.parse(work.nextCheckAt) <= Date.parse(now) && (!work.lease || Date.parse(work.lease.expiresAt) <= Date.parse(now));
 
+type Work = CdState["agents"][string];
+/** The first due work that is not held, or the result to return: idle when nothing is due, held when all of it is. */
+function selectUnheld(state: CdState, executor: AgentExecutor, now: string): { work: Work; result?: undefined } | { work?: undefined; result: HeldAwareResult } {
+  // The Claude executor applies the worker's own rule: a latest-event subscription admission wait is due for it.
+  const claudeDue = (work: Work) => executor === "claude" && work.state !== "complete"
+    && (!work.lease || Date.parse(work.lease.expiresAt) <= Date.parse(now)) && awaitingSubscriptionAdmission(state, work);
+  const candidates = Object.values(state.agents).filter(work => due(work, now) || claudeDue(work));
+  if (!candidates.length) return { result: { state: "idle" } };
+  const work = candidates.find(item => !repairHeld(state, item.intentId));
+  return work ? { work } : { result: { state: "repair-held", workId: candidates[0]!.id } };
+}
+
 export async function runHeldAwareWorker<C, S extends LedgerStore>(d: { runWorker: RunWorkerPort<C, S>; config: C; store: S; sourceDir: string; options: WorkerOptions; environment: NodeJS.ProcessEnv; now?: () => string }): Promise<HeldAwareResult> {
   const snapshot = await d.store.read(), now = (d.now ?? (() => new Date().toISOString()))();
   try { validateRepairControls(snapshot.state); } catch (error) { if (error instanceof RepairControlInvalid) return { state: "repair-control-invalid", reason: error.message }; throw error; }
-  const agents = snapshot.state.agents;
-  let target = d.options.workId ? agents[d.options.workId] : undefined;
+  let target = d.options.workId ? snapshot.state.agents[d.options.workId] : undefined;
   // A held target returns before quota/login; unheld work behind it is still selected (no starvation).
   if (target && repairHeld(snapshot.state, target.intentId)) return { state: "repair-held", workId: target.id };
   if (!d.options.workId) {
-    // The Claude executor applies the worker's own rule: a latest-event subscription admission wait is due for it.
-    const claudeDue = (work: CdState["agents"][string]) => d.options.executor === "claude" && work.state !== "complete"
-      && (!work.lease || Date.parse(work.lease.expiresAt) <= Date.parse(now)) && awaitingSubscriptionAdmission(snapshot.state, work);
-    const candidates = Object.values(agents).filter(work => due(work, now) || claudeDue(work));
-    if (!candidates.length) return { state: "idle" };
-    target = candidates.find(work => !repairHeld(snapshot.state, work.intentId));
-    if (!target) return { state: "repair-held", workId: candidates[0]!.id };
+    const selected = selectUnheld(snapshot.state, d.options.executor, now);
+    if (!selected.work) return selected.result;
+    target = selected.work;
   }
   // With no holds this is the work the unchanged worker would pick itself. The explicit workId adds
   // one bounded early race (documented): a concurrent budget-wait between the two reads.
   const options = target ? { ...d.options, workId: target.id } : d.options;
   try { return await d.runWorker(d.config, target ? guardStore(d.store, target.intentId) : d.store, d.sourceDir, options, d.environment); }
-  catch (error) {
-    if (error instanceof RepairHeld) return { state: "repair-held", workId: target?.id ?? d.options.workId ?? "" };
-    if (error instanceof RepairControlInvalid) return { state: "repair-control-invalid", reason: error.message };
-    throw error;
-  }
+  catch (error) { return controlRefusal(error, target?.id ?? d.options.workId ?? ""); }
+}
+/** A hold or invalid control raised while the worker ran is a result, not a failure; anything else propagates. */
+function controlRefusal(error: unknown, workId: string): HeldAwareResult {
+  if (error instanceof RepairHeld) return { state: "repair-held", workId };
+  if (error instanceof RepairControlInvalid) return { state: "repair-control-invalid", reason: error.message };
+  throw error;
 }

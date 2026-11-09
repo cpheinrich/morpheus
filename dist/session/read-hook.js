@@ -1,5 +1,6 @@
 import { access, readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, parse, resolve } from "node:path";
+import { CONTEXT_MCP_PREFIX, isContextSearchOutput } from "../context-search/output.js";
 import { CANONICAL_INPUTS } from "./lease.js";
 import { fingerprint, readRecords } from "./inputs.js";
 import { projectPolicy } from "./policy.js";
@@ -26,6 +27,12 @@ export const OTHER_TEXT_CAP_LINES = 200;
 const MAX_PAYLOAD_BYTES = 8 * 1024 * 1024;
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const isCount = (n) => typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
+/** An image, PDF or notebook result is not lines of a record. */
+function notTextLines(response, file) {
+    if (isObject(response) && typeof response["type"] === "string" && response["type"] !== "text")
+        return true;
+    return isObject(response) && file === null && "type" in response;
+}
 /**
  * Claude Code's Read result: `tool_response` is the tool's own output,
  * `{ type: "text", file: { filePath, content, startLine, numLines, totalLines } }`
@@ -44,12 +51,12 @@ export function fileRead(payload) {
     if (file && typeof file["content"] === "string" && isCount(file["startLine"]) && isCount(file["numLines"])) {
         return { path, from: Math.max(1, file["startLine"]), count: file["numLines"], content: file["content"] };
     }
-    // An image, PDF or notebook result is not lines of a record.
-    if (isObject(response) && typeof response["type"] === "string" && response["type"] !== "text")
+    if (notTextLines(response, file))
         return null;
-    if (isObject(response) && file === null && "type" in response)
-        return null;
-    // A payload without the recorded shape still names the range it asked for.
+    return requestedRange(path, input);
+}
+/** A payload without the recorded shape still names the range it asked for. */
+function requestedRange(path, input) {
     const offset = isCount(input["offset"]) ? input["offset"] : 1;
     const limit = isCount(input["limit"]) && input["limit"] > 0 ? input["limit"] : 2000;
     return { path, from: Math.max(1, offset), count: limit };
@@ -111,11 +118,11 @@ export async function projectRoot(start) {
     const ignoresLocal = ignore.split("\n").some((l) => /^\/?local(\/\*?)?$/.test(l.trim()));
     return ignoresLocal ? dir : null;
 }
-async function requiredIds(root) {
-    return (await projectPolicy(root)).requiredInputs ?? CANONICAL_INPUTS;
+async function requiredIds(root, providerSession) {
+    return (await projectPolicy(root, providerSession)).requiredInputs ?? CANONICAL_INPUTS;
 }
 /** Evidence from one Read of a file, if that file is a required record. */
-async function fromFileRead(read, cwd, session, at) {
+async function fromFileRead(read, cwd, session, at, providerSession) {
     const absolute = isAbsolute(read.path) ? read.path : resolve(cwd, read.path);
     const target = await realpath(absolute).catch(() => null);
     if (!target)
@@ -123,7 +130,7 @@ async function fromFileRead(read, cwd, session, at) {
     const root = await projectRoot(dirname(target));
     if (!root)
         return { root: null, entries: [] };
-    const ids = await requiredIds(root);
+    const ids = await requiredIds(root, providerSession);
     const entries = [];
     // `CLAUDE.md` is a symlink to `AGENTS.md`: reading either is reading the record.
     for (const record of await readRecords(root, ids)) {
@@ -153,10 +160,10 @@ async function fromFileRead(read, cwd, session, at) {
     return { root, entries };
 }
 /** Evidence from text a shell-like tool returned, matched against every required record. */
-async function fromText(text, root, session, at, via) {
+async function fromText(text, root, session, at, via, providerSession) {
     const output = contentLines(text);
     const entries = [];
-    for (const record of await readRecords(root, await requiredIds(root))) {
+    for (const record of await readRecords(root, await requiredIds(root, providerSession))) {
         if (record.content === null)
             continue;
         const lines = contentLines(record.content);
@@ -172,22 +179,10 @@ async function fromText(text, root, session, at, via) {
  */
 export async function recordRead(raw, now = new Date()) {
     const written = new Map();
-    let payload;
-    try {
-        payload = JSON.parse(raw);
-    }
-    catch {
+    const hook = hookPayload(raw);
+    if (!hook)
         return written;
-    }
-    if (!isObject(payload))
-        return written;
-    const id = payload["session_id"];
-    if (typeof id !== "string" || !id)
-        return written;
-    const session = sessionTag(id);
-    // `turn_id` is required in Codex's PostToolUse input and absent from Claude's.
-    const provider = "turn_id" in payload ? "codex" : "claude";
-    const cwd = typeof payload["cwd"] === "string" && payload["cwd"] ? payload["cwd"] : process.cwd();
+    const { payload, session, provider, cwd, providerSession } = hook;
     const at = now.toISOString();
     const add = (root, entries) => written.set(root, [...(written.get(root) ?? []), ...entries]);
     const cwdRoot = await projectRoot(cwd);
@@ -197,27 +192,112 @@ export async function recordRead(raw, now = new Date()) {
     if (failed && payload["tool_name"] === "Read")
         return written;
     if (read) {
-        const result = await fromFileRead(read, cwd, session, at);
+        const result = await fromFileRead(read, cwd, session, at, providerSession);
         if (result.root)
             add(result.root, result.entries);
     }
     else {
-        // Claude Code reports a shell command that exits non-zero as a failed
-        // tool call: no `tool_response`, and the model is shown `error` instead —
-        // which is where `context refresh` prints the lines it is refusing over.
-        const text = payload["hook_event_name"] === "PostToolUseFailure"
-            ? typeof payload["error"] === "string" ? payload["error"] : null
-            : outputText(payload["tool_response"]);
-        // Not understood: no liveness either. A hook that cannot see results must
-        // leave the session on the assertion, not lock it out.
-        if (text === null)
+        const entries = await fromHookText(payload, cwdRoot, session, provider, at, providerSession, failed);
+        if (entries === null)
             return written;
-        const via = typeof payload["tool_name"] === "string" ? payload["tool_name"].slice(0, 64) || "tool" : "tool";
         if (cwdRoot)
-            add(cwdRoot, withinCap(text, provider) ? await fromText(text, cwdRoot, session, at, via) : []);
+            add(cwdRoot, entries);
     }
     if (cwdRoot && !written.has(cwdRoot))
         add(cwdRoot, []);
+    await appendWithLiveness(written, session, provider, at, now);
+    return written;
+}
+async function fromHookText(payload, root, session, provider, at, providerSession, failed) {
+    const mcpTool = toolLabel(payload);
+    if (!failed && root && mcpTool.startsWith(CONTEXT_MCP_PREFIX)) {
+        await recordContextMcpResult(payload, root, providerSession, provider, mcpTool).catch(() => { });
+        return [];
+    }
+    const text = shownText(payload, failed);
+    // An unsupported result shape provides no liveness evidence.
+    if (text === null)
+        return null;
+    if (!root || !withinCap(text, provider))
+        return [];
+    if (!isContextSearchOutput(text))
+        return fromText(text, root, session, at, toolLabel(payload), providerSession);
+    if (!failed)
+        await recordTaskResult(payload, root, providerSession, text).catch(() => { });
+    return [];
+}
+async function recordContextMcpResult(payload, root, session, provider, tool) {
+    const operation = tool === CONTEXT_MCP_PREFIX + "search_project_context" ? "search"
+        : tool === CONTEXT_MCP_PREFIX + "read_project_record" ? "read" : undefined;
+    if (!operation)
+        return;
+    const text = mcpResultText(payload["tool_response"], provider);
+    if (!text || !withinCap(text, provider) || !isContextSearchOutput(text))
+        return;
+    const { contextMcpScope } = await import("../context-search/mcp-scope.js");
+    const scope = await contextMcpScope(root, session);
+    const { observeTaskContext } = await import("../context-search/task-start.js");
+    await observeTaskContext(scope.root, session, text, operation);
+}
+function mcpResultText(response, provider) {
+    if (typeof response === "string")
+        return response;
+    if (isObject(response) && response["isError"] === true)
+        return null;
+    const structured = isObject(response) ? response["structuredContent"] : undefined;
+    // Codex presents structured content in preference to the fallback text block.
+    if (provider === "codex" && isObject(structured)) {
+        return typeof structured["excerpt"] === "string" ? structured["excerpt"] : null;
+    }
+    const blocks = isObject(response) ? response["content"] : response;
+    if (!Array.isArray(blocks))
+        return null;
+    const first = blocks[0];
+    return isObject(first) && first["type"] === "text" && typeof first["text"] === "string" ? first["text"] : null;
+}
+async function recordTaskResult(payload, root, session, text) {
+    const input = isObject(payload["tool_input"]) ? payload["tool_input"] : {};
+    const workdir = input["workdir"] ?? input["cwd"];
+    const source = typeof workdir === "string" && isAbsolute(workdir) ? await projectRoot(workdir) : root;
+    if (!source)
+        return;
+    const { observeTaskContext } = await import("../context-search/task-start.js");
+    await observeTaskContext(source, session, text);
+}
+/** The payload with its session tag, provider and working directory, or null when it names no session. */
+function hookPayload(raw) {
+    let payload;
+    try {
+        payload = JSON.parse(raw);
+    }
+    catch {
+        return null;
+    }
+    if (!isObject(payload))
+        return null;
+    const id = payload["session_id"];
+    if (typeof id !== "string" || !id)
+        return null;
+    // `turn_id` is required in Codex's PostToolUse input and absent from Claude's.
+    const provider = "turn_id" in payload ? "codex" : "claude";
+    const cwd = typeof payload["cwd"] === "string" && payload["cwd"] ? payload["cwd"] : process.cwd();
+    return { payload, session: sessionTag(id), provider, cwd, providerSession: id };
+}
+function toolLabel(payload) {
+    return typeof payload["tool_name"] === "string" ? payload["tool_name"].slice(0, 64) || "tool" : "tool";
+}
+/**
+ * The text the model was shown. Claude Code reports a shell command that exits non-zero as a
+ * failed tool call: no `tool_response`, and the model is shown `error` instead — which is where
+ * `context refresh` prints the lines it is refusing over.
+ */
+function shownText(payload, failed) {
+    if (failed)
+        return typeof payload["error"] === "string" ? payload["error"] : null;
+    return outputText(payload["tool_response"]);
+}
+/** Appends each checkout's entries, preceded by this session's liveness entry the first time. */
+async function appendWithLiveness(written, session, provider, at, now) {
     for (const [root, entries] of written) {
         const { entries: logged } = await readEvidence(root);
         const live = logged.some((e) => e.kind === "live" && e.session === session);
@@ -225,7 +305,6 @@ export async function recordRead(raw, now = new Date()) {
         written.set(root, all);
         await appendEvidence(root, all, now);
     }
-    return written;
 }
 /** CLI entry: read the payload from stdin, record, and always exit 0. */
 export async function runReadHook() {

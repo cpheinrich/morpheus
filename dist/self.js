@@ -103,6 +103,10 @@ async function readMorpheusInstallStatus(opts) {
             detail: `standalone installation has no valid ${INSTALL_RECEIPT}`,
         };
     }
+    return compareWithMain(runner, source, kind, installedSha, checkout);
+}
+/** The install against current main: unknown when main is unreachable, then dirty, current, ahead or stale. */
+async function compareWithMain(runner, source, kind, installedSha, checkout) {
     const remote = await runner("git", ["ls-remote", "--exit-code", MORPHEUS_REMOTE, "refs/heads/main"], source);
     const remoteSha = remote.code === 0 ? remote.stdout.trim().split(/\s+/)[0] ?? "" : "";
     if (!/^[0-9a-f]{40}$/i.test(remoteSha)) {

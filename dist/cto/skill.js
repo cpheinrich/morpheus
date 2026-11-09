@@ -885,7 +885,7 @@ add other applicable subject tags, such as \`infrastructure\` or \`ios\`, instea
 Use \`morpheus pm new roadmap "<title>" --tag engineering --tag devops\` and copy the subject tags to
 new worklog frontmatter. \`morpheus pm tagged engineering devops --json\` finds their explicit
 metadata. Untagged historical records still need targeted reading and are not negative evidence.
-Tags narrow context; they never claim ownership or authorize execution. Paperclip or another queue
+Tags narrow context; they never claim ownership or authorize execution. A queue
 may project those tags, while the Morpheus ticket/worklog remains the durable contract.
 
 Close only after the configured user-visible delivery is verified and the normal schedule can
@@ -1013,8 +1013,8 @@ forever chat, favored responsibility and event/deadline-driven wakeups, and sugg
 reasoning for incidents. He asked for multiple subject tags on roadmap tickets and corresponding
 worklogs, including \`engineering\` and \`devops\`, across future infrastructure/CI/CD work.
 
-His follow-up makes Morpheus's own ticket/worklog structure primary even while another session
-explores Paperclip. Mapping additional queue tasks is a later adapter concern. This source change
+His follow-up makes Morpheus's own ticket/worklog structure primary. Queue projections are
+optional adapter concerns. This source change
 adds no runtime supervisor and grants no new model, provider, spending or credential capability.
 
 On 2026-10-26 Chris required agents in the delivery campaign and this shared persona to document

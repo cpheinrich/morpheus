@@ -1,4 +1,9 @@
-import { createHqSearchIndex, type HqSearchDocument, type HqSearchPayload } from "./index.js";
+import {
+  createHqSearchIndex,
+  searchExcerpt,
+  type HqSearchDocument,
+  type HqSearchPayload,
+} from "./index.js";
 
 export const HQ_SEARCH_PRIVATE_CACHE_CONTROL = "private, max-age=31536000, immutable";
 
@@ -85,6 +90,7 @@ export function markdownSearchDocument(input: MarkdownSearchDocumentInput): HqSe
     metadata,
     aliases: [input.aliases, discoveredAliases].filter(Boolean).join(" "),
     text,
+    excerpt: searchExcerpt(text),
   };
 }
 

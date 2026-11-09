@@ -1,5 +1,8 @@
 # Firebase to the private Paperclip controller
 
+> **Retired historical design.** Paperclip execution has been removed. Commands and deployment
+> procedures below are archival, not supported operations. See [retirement](paperclip-overview.md).
+
 **Opt-in pilot source.** This connects one configured HQ company to the
 MacBook Pro controller. Consumer deployment and acceptance remain separately verified.
 The [overview](paperclip-overview.md) records the accepted target. The

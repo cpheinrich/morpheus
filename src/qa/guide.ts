@@ -112,6 +112,9 @@ each claimed id: \`morpheus qa comments show <id> --root <checkout>\`. Read its 
   route, target/ancestors, view/entity, observable UI state, styles, original viewport and scroll.
   Respect \`webContext.scope\` (element/view/page), including feedback about a background or whole
   view. \`comment.createdAt\` and \`webContext.capturedAt\` record placement, not Send.
+  Optional \`webContext.diagnostics\` records the preview's declared build, coarse browser/OS,
+  pixel ratio, effective CSS theme, and an opted-in active view snapshot at placement. An
+  unavailable build or view snapshot means the preview did not supply that evidence.
   When available, \`comment.frame.path\` names the supplementary placement viewport JPEG
   (comment-N.jpg, longest edge at most 1600 px, quality 0.5). It covers the visible application
   viewport, not the whole scroll page. \`frame.capturedAt\` is the frozen placement time.

@@ -326,11 +326,62 @@ export function parseReviewRecord(markdown) {
 export function validateReviewRecord(record, opts = {}) {
     const waivers = [];
     const turns = followUpTurns(record);
+    checkSessionAndOutcome(record, turns);
+    checkFindings(record);
+    const substantive = record.findings.some(f => f.severity === "substantive");
+    // A substantive finding the reviewer pre-cleared under a condition, and the author fixed
+    // under it, needs no turn; any other substantive finding still does.
+    const unconditional = record.findings.some(f => f.severity === "substantive" && !(f.condition && f.disposition === "fixed" && f.conditionMet));
+    checkTurnTimings(record, turns);
+    checkSubstantiveResolved(record, turns, unconditional);
+    const budget = REVIEW_BUDGET_MINUTES[record.risk];
+    const multiplier = record.extensionReason ? 1.5 : 1;
+    if (overrun({ outcome: record.initialOutcome ?? record.outcome, elapsedMinutes: record.elapsedMinutes }, budget * multiplier))
+        throw new Error("review exceeded its budget; record incomplete and escalate instead of claiming completion");
+    checkTurnCount(turns);
+    // An incomplete initial turn (timeout, crash, lost session, missing evidence) is followed by
+    // another turn without anyone's approval: the same reviewer resumed, or a fresh one. It is not a
+    // clearance, so that turn needs no late-correction scope reason. The verdict stays recorded.
+    const resumed = record.initialOutcome === "incomplete";
+    if (resumed && !turns.length)
+        throw new Error("an incomplete initial review needs a later turn that clears; resume the reviewer or start a fresh one with the earlier findings");
+    const floor = checkReviewFloor(record, turns, resumed, opts.trivialChange);
+    if (floor)
+        waivers.push(floor);
+    // A turn after a clearance is a late correction, such as a fix full CI asked for after the
+    // reviewer cleared the code. It spends one of the remaining turns and must name the scope
+    // decision in its scopeReason, so the record shows why a cleared review was reopened. A turn
+    // after blocked, after incomplete, or after substantive initial findings is an ordinary
+    // follow-up and needs none. Per-turn budget checks still reject exhausted turns, historical ones included.
+    if (!substantive && !resumed && turns[0] && !turns[0].scopeReason)
+        throw new Error("a follow-up after a clean initial review is a late correction and needs an explicit scope reason");
+    checkHandoffs(record, turns);
+    const finalization = checkFinalization(turns, resumed, unconditional);
+    checkFinalVerification(record, turns, finalization, budget);
+    checkTurnBudgets(record, turns, budget);
+    return waivers;
+}
+/**
+ * A ceiling binds a turn that renders a verdict. A turn that ran out of time is recorded
+ * incomplete with its honest measurement and gives no clearance, and the next turn (the same
+ * reviewer resumed, or a fresh one) continues; refusing the record for it would leave a timed-out
+ * review blocked for good, which is the stall this contract exists to prevent.
+ */
+function overrun(turn, ceiling) { return turn.outcome !== "incomplete" && turn.elapsedMinutes > ceiling; }
+function checkSessionAndOutcome(record, turns) {
     // Never self-review, whichever turn: a fresh reviewer may replace another, never the author.
     if ([record, ...turns].some(turn => bareSession(record.authorSession) === bareSession(turn.reviewerSession)))
         throw new Error("reviewer must be a fresh independent session");
     if (record.outcome !== "complete")
         throw new Error(`review is ${record.outcome}; leave the PR open and disable auto-merge`);
+}
+function checkSubstantiveResolved(record, turns, unconditional) {
+    if (unconditional && !turns.length)
+        throw new Error("substantive findings require a follow-up review turn unless cleared under a recorded condition");
+    if (record.findings.some(f => f.severity === "substantive" && f.disposition !== "fixed" && f.disposition !== "disputed"))
+        throw new Error("substantive findings cannot be deferred");
+}
+function checkFindings(record) {
     if (new Set(record.findings.map(f => f.id)).size !== record.findings.length)
         throw new Error("finding IDs must be unique");
     if (record.findings.some(f => f.severity !== "incidental" && f.disposition === "open"))
@@ -343,10 +394,8 @@ export function validateReviewRecord(record, opts = {}) {
         if (f.conditionMet && !f.condition)
             throw new Error(`finding ${f.id} records conditionMet without a reviewer condition`);
     }
-    const substantive = record.findings.some(f => f.severity === "substantive");
-    // A substantive finding the reviewer pre-cleared under a condition, and the author fixed
-    // under it, needs no turn; any other substantive finding still does.
-    const unconditional = record.findings.some(f => f.severity === "substantive" && !(f.condition && f.disposition === "fixed" && f.conditionMet));
+}
+function checkTurnTimings(record, turns) {
     for (const turn of [record, ...turns]) {
         if (!turn.timing && record.version === 2)
             throw new Error("version 2 requires measured timing for the initial review and every follow-up");
@@ -357,21 +406,9 @@ export function validateReviewRecord(record, opts = {}) {
             throw new Error("version 2 requires a positive measured duration for every turn; zero is the template placeholder");
         }
     }
-    if (unconditional && !turns.length)
-        throw new Error("substantive findings require a follow-up review turn unless cleared under a recorded condition");
-    if (record.findings.some(f => f.severity === "substantive" && f.disposition !== "fixed" && f.disposition !== "disputed"))
-        throw new Error("substantive findings cannot be deferred");
-    const budget = REVIEW_BUDGET_MINUTES[record.risk];
-    const multiplier = record.extensionReason ? 1.5 : 1;
-    // A ceiling binds a turn that renders a verdict. A turn that ran out of time is recorded
-    // incomplete with its honest measurement and gives no clearance, and the next turn (the same
-    // reviewer resumed, or a fresh one) continues; refusing the record for it would leave a timed-out
-    // review blocked for good, which is the stall this contract exists to prevent.
-    const overrun = (turn, ceiling) => turn.outcome !== "incomplete" && turn.elapsedMinutes > ceiling;
-    if (overrun({ outcome: record.initialOutcome ?? record.outcome, elapsedMinutes: record.elapsedMinutes }, budget * multiplier))
-        throw new Error("review exceeded its budget; record incomplete and escalate instead of claiming completion");
-    // Five ordinary turns need nobody's approval, the initial review and incomplete turns included;
-    // each one after that carries its own humanAuthorization. Finalization stays outside the count.
+}
+/** Five ordinary turns need nobody's approval, the initial review and incomplete turns included; each one after that carries its own humanAuthorization. Finalization stays outside the count. */
+function checkTurnCount(turns) {
     let ordinal = 1;
     for (const turn of turns) {
         if (turn.finalization)
@@ -381,95 +418,93 @@ export function validateReviewRecord(record, opts = {}) {
             throw new Error(`review turn ${ordinal} is beyond the ${MAX_REVIEW_TURNS} automatic turns (the initial review counts); each ordinary turn after the fifth needs explicit humanAuthorization`);
         }
     }
-    // An incomplete initial turn (timeout, crash, lost session, missing evidence) is followed by
-    // another turn without anyone's approval: the same reviewer resumed, or a fresh one. It is not a
-    // clearance, so that turn needs no late-correction scope reason. The verdict stays recorded.
-    const resumed = record.initialOutcome === "incomplete";
-    if (resumed && !turns.length)
-        throw new Error("an incomplete initial review needs a later turn that clears; resume the reviewer or start a fresh one with the earlier findings");
-    // Normal and high risk require a measured initial pass of at least 30 seconds.
-    // Small risk keeps no floor: a one-line change can genuinely be read faster.
-    // A pass under the floor is not a review, so it cannot count as one. It can only be preserved
-    // as incomplete, and the review is then a later ordinary turn, which must meet the floor itself
-    // and clear. Without this the resumption the contract offers never lands.
-    // A trivially small change (TRIVIAL_DIFF_MAX_LINES) is waived: there the floor measures the diff.
-    // The waiver relaxes the 30 seconds, not the measurement: a zero duration is the template's
-    // placeholder, so a record with any zero-length turn never qualifies.
+}
+/**
+ * Normal and high risk require a measured initial pass of at least 30 seconds.
+ * Small risk keeps no floor: a one-line change can genuinely be read faster.
+ * A pass under the floor is not a review, so it cannot count as one. It can only be preserved
+ * as incomplete, and the review is then a later ordinary turn, which must meet the floor itself
+ * and clear. Without this the resumption the contract offers never lands.
+ * A trivially small change (TRIVIAL_DIFF_MAX_LINES) is waived: there the floor measures the diff.
+ * The waiver relaxes the 30 seconds, not the measurement: a zero duration is the template's
+ * placeholder, so a record with any zero-length turn never qualifies. Returns the waiver applied, if any.
+ */
+function checkReviewFloor(record, turns, resumed, trivialChange) {
     const rescuedByTurn = turns.some(turn => !turn.finalization && turn.outcome === "cleared" && turn.elapsedMinutes >= 0.5);
-    if (record.risk !== "small" && record.elapsedMinutes < 0.5 && !(resumed && rescuedByTurn)) {
-        const measured = [record, ...turns].every(turn => turn.elapsedMinutes > 0);
-        const size = measured ? opts.trivialChange?.() : undefined;
-        if (!size?.trivial) {
-            const why = size ? ` (not a trivial change: ${size.reason})` : "";
-            // A finalization turn only closes out an existing clearance, so it is never the review that counts.
-            if (!resumed)
-                throw new Error(`an initial review under 30 seconds at normal or high risk is not a review; record it as initialOutcome incomplete, or record what was actually done${why}`);
-            throw new Error(`an initial review under 30 seconds at normal or high risk needs a later turn of at least 30 seconds that clears${why}`);
-        }
-        waivers.push(floorWaiver(size));
-    }
-    // A turn after a clearance is a late correction, such as a fix full CI asked for after the
-    // reviewer cleared the code. It spends one of the remaining turns and must name the scope
-    // decision in its scopeReason, so the record shows why a cleared review was reopened. A turn
-    // after blocked, after incomplete, or after substantive initial findings is an ordinary
-    // follow-up and needs none. Per-turn budget checks still reject exhausted turns, historical ones included.
-    if (!substantive && !resumed && turns[0] && !turns[0].scopeReason)
-        throw new Error("a follow-up after a clean initial review is a late correction and needs an explicit scope reason");
-    checkHandoffs(record, turns);
-    // One automatic finalization-only turn per pull request, outside the five-turn count. It finishes
-    // an approved change: it cannot resolve a substantive finding, run long, or be repeated, and a
-    // reviewer that still has a concern records blocked or incomplete instead, which stays blocked.
-    // An ordinary turn may follow it within the automatic five, as a late correction with its scope reason.
+    if (!(record.risk !== "small" && record.elapsedMinutes < 0.5 && !(resumed && rescuedByTurn)))
+        return undefined;
+    const measured = [record, ...turns].every(turn => turn.elapsedMinutes > 0);
+    const size = measured ? trivialChange?.() : undefined;
+    if (size?.trivial)
+        return floorWaiver(size);
+    const why = size ? ` (not a trivial change: ${size.reason})` : "";
+    // A finalization turn only closes out an existing clearance, so it is never the review that counts.
+    if (!resumed)
+        throw new Error(`an initial review under 30 seconds at normal or high risk is not a review; record it as initialOutcome incomplete, or record what was actually done${why}`);
+    throw new Error(`an initial review under 30 seconds at normal or high risk needs a later turn of at least 30 seconds that clears${why}`);
+}
+/**
+ * One automatic finalization-only turn per pull request, outside the five-turn count. It finishes
+ * an approved change: it cannot resolve a substantive finding, run long, or be repeated, and a
+ * reviewer that still has a concern records blocked or incomplete instead, which stays blocked.
+ * An ordinary turn may follow it within the automatic five, as a late correction with its scope reason.
+ */
+function checkFinalization(turns, resumed, unconditional) {
     const finalizations = turns.filter(turn => turn.finalization);
     if (finalizations.length > 1)
         throw new Error("a pull request gets one automatic finalization-only turn; record a second as an ordinary turn");
     const finalization = finalizations[0];
-    if (finalization) {
-        const finalizationIndex = turns.indexOf(finalization);
-        if (finalization.outcome !== "cleared")
-            throw new Error(`a finalization turn that is ${finalization.outcome} leaves the pull request blocked; it cannot be recorded as finalization`);
-        if (finalization.elapsedMinutes > FINALIZATION_CEILING_MINUTES)
-            throw new Error(`a finalization turn is capped at ${FINALIZATION_CEILING_MINUTES} minutes; anything longer is a review and spends a turn`);
-        if (!finalization.scopeReason)
-            throw new Error("a finalization turn must name what it finalized in its scopeReason, so it cannot quietly become a new topic");
-        // It finalizes a clearance, so there has to be one. Without this, the five-minute automatic turn
-        // is what turns a review the reviewer blocked on a substantive finding into a merge.
-        const previous = turns[finalizationIndex - 1];
-        // With no earlier follow-up, the predecessor is the initial turn: a clearance unless it was
-        // preserved as incomplete, which a finalization turn cannot repair.
-        const previousOutcome = previous?.outcome ?? (resumed ? "incomplete" : "cleared");
-        if (previousOutcome !== "cleared")
-            throw new Error(`a finalization turn only follows a cleared turn; the ${previousOutcome} turn before it leaves the pull request blocked`);
-        if (unconditional && previous?.outcome !== "cleared")
-            throw new Error("an automatic finalization turn cannot resolve substantive findings; an ordinary turn must clear them first");
-    }
+    if (!finalization)
+        return undefined;
+    const finalizationIndex = turns.indexOf(finalization);
+    if (finalization.outcome !== "cleared")
+        throw new Error(`a finalization turn that is ${finalization.outcome} leaves the pull request blocked; it cannot be recorded as finalization`);
+    if (finalization.elapsedMinutes > FINALIZATION_CEILING_MINUTES)
+        throw new Error(`a finalization turn is capped at ${FINALIZATION_CEILING_MINUTES} minutes; anything longer is a review and spends a turn`);
+    if (!finalization.scopeReason)
+        throw new Error("a finalization turn must name what it finalized in its scopeReason, so it cannot quietly become a new topic");
+    // It finalizes a clearance, so there has to be one. Without this, the five-minute automatic turn
+    // is what turns a review the reviewer blocked on a substantive finding into a merge.
+    const previous = turns[finalizationIndex - 1];
+    // With no earlier follow-up, the predecessor is the initial turn: a clearance unless it was
+    // preserved as incomplete, which a finalization turn cannot repair.
+    const previousOutcome = previous?.outcome ?? (resumed ? "incomplete" : "cleared");
+    if (previousOutcome !== "cleared")
+        throw new Error(`a finalization turn only follows a cleared turn; the ${previousOutcome} turn before it leaves the pull request blocked`);
+    if (unconditional && previous?.outcome !== "cleared")
+        throw new Error("an automatic finalization turn cannot resolve substantive findings; an ordinary turn must clear them first");
+    return finalization;
+}
+function checkFinalVerification(record, turns, finalization, budget) {
     const verifications = turns.filter(turn => turn.verification);
     if (verifications.length > 1)
         throw new Error("only one automatic final verification turn is allowed");
     const verification = verifications[0];
-    if (verification) {
-        const index = turns.indexOf(verification);
-        if (index !== VERIFICATION_TURN_INDEX || verification.humanAuthorization || verification.finalization) {
-            throw new Error("automatic final verification is only the fourth ordinary turn");
-        }
-        if (finalization && turns.indexOf(finalization) < index) {
-            throw new Error("nothing follows finalization automatically");
-        }
-        if (index < 1 || turns[index - 1].outcome === "incomplete") {
-            throw new Error("final verification cannot resume an incomplete review");
-        }
-        if (!verification.scopeReason || verification.outcome !== "cleared") {
-            throw new Error("final verification needs a scope reason and a cleared outcome; unresolved concerns escalate");
-        }
-        if (verification.elapsedMinutes > FINAL_VERIFICATION_CEILING_MINUTES) {
-            throw new Error(`final verification exceeded its ${FINAL_VERIFICATION_CEILING_MINUTES}-minute ceiling`);
-        }
-        const ordinaryMinutes = record.elapsedMinutes + turns.slice(0, index + 1)
-            .filter(turn => !turn.finalization).reduce((sum, turn) => sum + turn.elapsedMinutes, 0);
-        if (ordinaryMinutes > budget * 2) {
-            throw new Error("final verification exceeded the cumulative two-initial-budget limit");
-        }
+    if (!verification)
+        return;
+    const index = turns.indexOf(verification);
+    if (index !== VERIFICATION_TURN_INDEX || verification.humanAuthorization || verification.finalization) {
+        throw new Error("automatic final verification is only the fourth ordinary turn");
     }
+    if (finalization && turns.indexOf(finalization) < index) {
+        throw new Error("nothing follows finalization automatically");
+    }
+    if (index < 1 || turns[index - 1].outcome === "incomplete") {
+        throw new Error("final verification cannot resume an incomplete review");
+    }
+    if (!verification.scopeReason || verification.outcome !== "cleared") {
+        throw new Error("final verification needs a scope reason and a cleared outcome; unresolved concerns escalate");
+    }
+    if (verification.elapsedMinutes > FINAL_VERIFICATION_CEILING_MINUTES) {
+        throw new Error(`final verification exceeded its ${FINAL_VERIFICATION_CEILING_MINUTES}-minute ceiling`);
+    }
+    const ordinaryMinutes = record.elapsedMinutes + turns.slice(0, index + 1)
+        .filter(turn => !turn.finalization).reduce((sum, turn) => sum + turn.elapsedMinutes, 0);
+    if (ordinaryMinutes > budget * 2) {
+        throw new Error("final verification exceeded the cumulative two-initial-budget limit");
+    }
+}
+function checkTurnBudgets(record, turns, budget) {
     turns.forEach((turn, index) => {
         // A follow-up is half the initial budget because its reviewer already holds the context. A fresh
         // reviewer taking over does not, so its ordinary turn gets the initial ceiling (no extension).
@@ -489,7 +524,6 @@ export function validateReviewRecord(record, opts = {}) {
             throw new Error("a turn after a cleared turn is a late correction and needs an explicit scope reason; otherwise a turn follows only a blocked or incomplete one");
         }
     });
-    return waivers;
 }
 /**
  * A fresh reviewer may take over from any turn, with no human approval: the session timed out, was
@@ -508,41 +542,50 @@ function checkHandoffs(record, turns) {
     turns.forEach((turn, index) => {
         const number = index + 2;
         const previous = turns[index - 1] ?? record;
-        if (turn.blockedOn) {
-            if (turn.outcome !== "blocked")
-                throw new Error(`turn ${number} records blockedOn but returned ${turn.outcome}`);
-            for (const id of turn.blockedOn) {
-                const finding = ids.get(id);
-                if (!finding)
-                    throw new Error(`turn ${number} blocked on finding ${id}, which is not in the record; a reviewer's blocking findings are never dropped`);
-                if (finding.severity !== "substantive")
-                    throw new Error(`turn ${number} blocked on ${id}, a ${finding.severity} finding; only substantive findings block`);
-                if ((finding.turn ?? 1) > number)
-                    throw new Error(`turn ${number} blocked on ${id}, which a later turn raised`);
-            }
-        }
+        checkBlockedOn(ids, turn, number);
         if (sameReviewer(turn.reviewerSession, previous.reviewerSession)) {
             if (turn.handoff)
                 throw new Error(`turn ${number} records a handoff but uses the same reviewer session as the turn before it`);
             return;
         }
-        if (!turn.handoff)
-            throw new Error(`turn ${number} is taken by a fresh reviewer session; record handoff { reason, findings } naming every earlier finding it was given`);
-        // Every blocked follow-up before a fresh reviewer, not only the one right before it: otherwise a
-        // resumed turn that times out in between would let what the blocked turn rested on go unnamed.
-        const unnamed = turns.slice(0, index).findIndex(earlier => earlier.outcome === "blocked" && !earlier.blockedOn?.length);
-        if (unnamed >= 0) {
-            throw new Error(`the blocked turn ${unnamed + 2} must name its substantive findings in blockedOn when a fresh reviewer takes over at turn ${number}`);
-        }
-        const earlier = record.findings.filter(f => (f.turn ?? 1) < number).map(f => f.id);
-        const given = new Set(turn.handoff.findings);
-        const dropped = earlier.filter(id => !given.has(id));
-        if (dropped.length)
-            throw new Error(`the fresh reviewer at turn ${number} was not given earlier finding${dropped.length === 1 ? "" : "s"} ${dropped.join(", ")}; every earlier finding goes to the fresh reviewer`);
-        const unknown = [...given].filter(id => !earlier.includes(id));
-        if (unknown.length)
-            throw new Error(`the handoff at turn ${number} names ${unknown.join(", ")}, which ${unknown.length === 1 ? "is not an earlier finding" : "are not earlier findings"} in this record; a finding given to a reviewer stays in the record`);
+        checkHandoff(record, turns, turn, index);
     });
+}
+/** A blocked turn names only substantive findings already raised by it or an earlier turn. */
+function checkBlockedOn(ids, turn, number) {
+    if (!turn.blockedOn)
+        return;
+    if (turn.outcome !== "blocked")
+        throw new Error(`turn ${number} records blockedOn but returned ${turn.outcome}`);
+    for (const id of turn.blockedOn) {
+        const finding = ids.get(id);
+        if (!finding)
+            throw new Error(`turn ${number} blocked on finding ${id}, which is not in the record; a reviewer's blocking findings are never dropped`);
+        if (finding.severity !== "substantive")
+            throw new Error(`turn ${number} blocked on ${id}, a ${finding.severity} finding; only substantive findings block`);
+        if ((finding.turn ?? 1) > number)
+            throw new Error(`turn ${number} blocked on ${id}, which a later turn raised`);
+    }
+}
+/** A fresh reviewer's handoff names exactly the earlier findings, after every earlier blocked turn named what it blocked on. */
+function checkHandoff(record, turns, turn, index) {
+    const number = index + 2;
+    if (!turn.handoff)
+        throw new Error(`turn ${number} is taken by a fresh reviewer session; record handoff { reason, findings } naming every earlier finding it was given`);
+    // Every blocked follow-up before a fresh reviewer, not only the one right before it: otherwise a
+    // resumed turn that times out in between would let what the blocked turn rested on go unnamed.
+    const unnamed = turns.slice(0, index).findIndex(earlier => earlier.outcome === "blocked" && !earlier.blockedOn?.length);
+    if (unnamed >= 0) {
+        throw new Error(`the blocked turn ${unnamed + 2} must name its substantive findings in blockedOn when a fresh reviewer takes over at turn ${number}`);
+    }
+    const earlier = record.findings.filter(f => (f.turn ?? 1) < number).map(f => f.id);
+    const given = new Set(turn.handoff.findings);
+    const dropped = earlier.filter(id => !given.has(id));
+    if (dropped.length)
+        throw new Error(`the fresh reviewer at turn ${number} was not given earlier finding${dropped.length === 1 ? "" : "s"} ${dropped.join(", ")}; every earlier finding goes to the fresh reviewer`);
+    const unknown = [...given].filter(id => !earlier.includes(id));
+    if (unknown.length)
+        throw new Error(`the handoff at turn ${number} names ${unknown.join(", ")}, which ${unknown.length === 1 ? "is not an earlier finding" : "are not earlier findings"} in this record; a finding given to a reviewer stays in the record`);
 }
 export function changedPaths(root, older, newer) {
     return git(root, ["diff", "--name-only", "-z", "--no-renames", older, newer, "--"]).split("\0").filter(Boolean);
@@ -635,7 +678,18 @@ export function verifyUncoveredCommits(root, record, from, to, trunk, allowed, r
 const FINAL_VERIFICATION_POLICY = /^(?:architecture\.md|docs\/runbooks\/independent-review\.md|\.agent\/decisions\.md)$/i;
 /** Bound only author commits; a main merge keeps its existing exact/named integration rule. */
 function verifyFinalVerification(root, record, turn, from, trunk, worklog) {
-    const scope = turn.verification;
+    const attested = checkAttestedPaths(record, turn.verification);
+    verifyUncoveredCommits(root, record, from, turn.commit, trunk, new Set([worklog, ...attested]), "final verification changed a path outside its attested scope");
+    const { changed, testLines, nonTestLines } = authorDiffSize(root, from, turn.commit, worklog);
+    if (changed.size === 0 || changed.size > 4 || changed.size !== attested.size || [...changed].some(path => !attested.has(path))) {
+        throw new Error("final verification must attest exactly one to four changed paths");
+    }
+    if (testLines > FINAL_VERIFICATION_TEST_LINES || nonTestLines > FINAL_VERIFICATION_NON_TEST_LINES) {
+        throw new Error(`final verification exceeds the ${FINAL_VERIFICATION_TEST_LINES} test-line or ${FINAL_VERIFICATION_NON_TEST_LINES} non-test-line limit`);
+    }
+}
+/** Attested paths are never policy; a late-test turn covers tests only and a finding-fix turn tests or recorded finding paths. */
+function checkAttestedPaths(record, scope) {
     const attested = new Set(scope.paths);
     const allowedFindings = new Set(record.findings.filter(f => f.disposition === "fixed").flatMap(f => f.paths));
     for (const path of attested) {
@@ -647,11 +701,13 @@ function verifyFinalVerification(root, record, turn, from, trunk, worklog) {
             throw new Error(`finding-fix verification needs a previously recorded finding path: ${path}`);
         }
     }
-    verifyUncoveredCommits(root, record, from, turn.commit, trunk, new Set([worklog, ...attested]), "final verification changed a path outside its attested scope");
+    return attested;
+}
+/** Paths and test/non-test line counts the single-parent (author) commits in a range changed, the worklog excluded. */
+function authorDiffSize(root, from, to, worklog) {
     const changed = new Set();
-    let testLines = 0;
-    let nonTestLines = 0;
-    for (const commit of git(root, ["rev-list", "--first-parent", "--reverse", `${from}..${turn.commit}`]).split("\n").filter(Boolean)) {
+    let testLines = 0, nonTestLines = 0;
+    for (const commit of git(root, ["rev-list", "--first-parent", "--reverse", `${from}..${to}`]).split("\n").filter(Boolean)) {
         const parents = git(root, ["show", "-s", "--format=%P", commit]).split(" ");
         if (parents.length !== 1)
             continue;
@@ -670,12 +726,7 @@ function verifyFinalVerification(root, record, turn, from, trunk, worklog) {
                 nonTestLines += lines;
         }
     }
-    if (changed.size === 0 || changed.size > 4 || changed.size !== attested.size || [...changed].some(path => !attested.has(path))) {
-        throw new Error("final verification must attest exactly one to four changed paths");
-    }
-    if (testLines > FINAL_VERIFICATION_TEST_LINES || nonTestLines > FINAL_VERIFICATION_NON_TEST_LINES) {
-        throw new Error(`final verification exceeds the ${FINAL_VERIFICATION_TEST_LINES} test-line or ${FINAL_VERIFICATION_NON_TEST_LINES} non-test-line limit`);
-    }
+    return { changed, testLines, nonTestLines };
 }
 /** First-parent two-parent merges in a range whose second parent is trunk history. */
 function trunkMerges(root, from, to, trunk) {
@@ -763,6 +814,20 @@ export function verifyReviewRecord(opts) {
         } });
     checkFreshReviewer(opts.root, record, path, opts.head);
     checkTrackedDeferrals(opts.root, record, opts.head);
+    checkRecordChain(opts, record);
+    const merges = coveredMerges(opts, record, path);
+    // A hand-resolved merge named before a late correction moved `covered` past it now sits in a
+    // range the correction turn cleared. The entry stays true and accepted; it is not stray.
+    if (followUpTurns(record).length)
+        for (const commit of trunkMerges(opts.root, record.reviewed, record.covered, opts.base))
+            merges.add(commit);
+    const stray = (record.trunkIntegrations ?? []).find(entry => !merges.has(entry.commit));
+    if (stray)
+        throw new Error("trunkIntegrations names a commit that is not a trunk merge on this branch after review");
+    return { record, waivers };
+}
+/** base, reviewed, covered and the head form one chain, each turn builds on the last, and the review base is real trunk history. */
+function checkRecordChain(opts, record) {
     // Named rather than left to a raw `git merge-base` failure, which reads as a tool crash.
     for (const [older, newer, olderName, newerName] of [[record.base, record.reviewed, "base", "reviewed"], [record.reviewed, record.covered, "reviewed", "covered"], [record.covered, opts.head, "covered", "the PR head"]]) {
         if (!isAncestor(opts.root, older, newer))
@@ -773,21 +838,27 @@ export function verifyReviewRecord(opts) {
     if (!isAncestor(opts.root, coveredBase(record), git(opts.root, ["merge-base", opts.base, opts.head]))) {
         throw new Error("the recorded review base must precede the PR's merge base with trunk; reconcile the base and coverage explicitly");
     }
-    const merges = new Set();
+}
+/**
+ * Every uncovered author commit stays inside what its range allows (minor fixes and conditions,
+ * a conditional tail, finalization and final-verification attestations, then only the worklog);
+ * returns the trunk merges those ranges contain.
+ */
+function coveredMerges(opts, record, path) {
+    const merges = new Set(), add = (commits) => { for (const commit of commits)
+        merges.add(commit); };
     const turns = followUpTurns(record);
     const conditional = conditionallyCleared(record);
     if (!turns.length && record.reviewed !== record.covered) {
         const allowed = new Set([path, ...conditional, ...newlyFiledDeferralPaths(opts.root, record, record.reviewed, record.covered), ...record.findings.filter(f => f.severity === "minor" && f.disposition === "fixed").flatMap(f => f.paths)]);
-        for (const commit of verifyUncoveredCommits(opts.root, record, record.reviewed, record.covered, opts.base, allowed, "author-only fixes exceed the minor finding paths and reviewer conditions; review coverage must be renewed explicitly"))
-            merges.add(commit);
+        add(verifyUncoveredCommits(opts.root, record, record.reviewed, record.covered, opts.base, allowed, "author-only fixes exceed the minor finding paths and reviewer conditions; review coverage must be renewed explicitly"));
     }
     const last = turns[turns.length - 1];
     if (last && last.commit !== record.covered) {
         // Only a conditional clearance lets `covered` run past the final turn, and only within its paths.
         if (!isAncestor(opts.root, last.commit, record.covered))
             throw new Error("the final follow-up must clear the covered commit");
-        for (const commit of verifyUncoveredCommits(opts.root, record, last.commit, record.covered, opts.base, new Set([path, ...conditional, ...newlyFiledDeferralPaths(opts.root, record, last.commit, record.covered)]), "author fixes after the final follow-up exceed the reviewer's recorded conditions"))
-            merges.add(commit);
+        add(verifyUncoveredCommits(opts.root, record, last.commit, record.covered, opts.base, new Set([path, ...conditional, ...newlyFiledDeferralPaths(opts.root, record, last.commit, record.covered)]), "author fixes after the final follow-up exceed the reviewer's recorded conditions"));
     }
     // The attestation is checked against the diff it claims to cover, so an automatic turn cannot
     // clear implementation by naming a documentation path.
@@ -798,26 +869,14 @@ export function verifyReviewRecord(opts) {
         if (problems.length)
             throw new Error(`finalization turn is out of scope: ${problems.join("; ")}`);
         const from = turns[index - 1]?.commit ?? record.reviewed;
-        const allowed = new Set([path, ...conditional, ...turn.finalization.paths]);
-        for (const commit of verifyUncoveredCommits(opts.root, record, from, turn.commit, opts.base, allowed, "a finalization turn may cover only the review record, previously conditioned paths and the explanatory documentation it attested"))
-            merges.add(commit);
+        add(verifyUncoveredCommits(opts.root, record, from, turn.commit, opts.base, new Set([path, ...conditional, ...turn.finalization.paths]), "a finalization turn may cover only the review record, previously conditioned paths and the explanatory documentation it attested"));
     }
     for (const [index, turn] of turns.entries()) {
-        if (!turn.verification)
-            continue;
-        verifyFinalVerification(opts.root, record, turn, turns[index - 1]?.commit ?? record.reviewed, opts.base, path);
+        if (turn.verification)
+            verifyFinalVerification(opts.root, record, turn, turns[index - 1]?.commit ?? record.reviewed, opts.base, path);
     }
-    for (const commit of verifyUncoveredCommits(opts.root, record, record.covered, opts.head, opts.base, new Set([path]), "changes after covered commit invalidate review (only its worklog and trunk merges may follow)"))
-        merges.add(commit);
-    // A hand-resolved merge named before a late correction moved `covered` past it now sits in a
-    // range the correction turn cleared. The entry stays true and accepted; it is not stray.
-    if (followUpTurns(record).length)
-        for (const commit of trunkMerges(opts.root, record.reviewed, record.covered, opts.base))
-            merges.add(commit);
-    const stray = (record.trunkIntegrations ?? []).find(entry => !merges.has(entry.commit));
-    if (stray)
-        throw new Error("trunkIntegrations names a commit that is not a trunk merge on this branch after review");
-    return { record, waivers };
+    add(verifyUncoveredCommits(opts.root, record, record.covered, opts.head, opts.base, new Set([path]), "changes after covered commit invalidate review (only its worklog and trunk merges may follow)"));
+    return merges;
 }
 /**
  * A reviewer session reviews one task. The same id in another worklog means the reviewer was

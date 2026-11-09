@@ -51,6 +51,7 @@ export interface Flags {
     needs?: string;
     context?: string;
     sessionId?: string;
+    maxTokens?: string;
     ceiling?: number;
     notes?: string;
     priorReview?: string;
@@ -85,6 +86,8 @@ export interface Flags {
     /** `wait-ci --workflow`: only runs for this commit. */
     sha?: string;
     full: boolean;
+    /** `complexity check`: GitHub annotations and job summary; enforce measures every file. */
+    ci: boolean;
     json: boolean;
     dispatch: boolean;
     print: boolean;

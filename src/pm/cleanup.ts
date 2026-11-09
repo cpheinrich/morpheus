@@ -1,4 +1,4 @@
-import { lstat, readdir, readFile, realpath, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -54,9 +54,44 @@ async function localData(path: string): Promise<string[]> {
   // `git worktree remove` deletes ignored files even without --force. The
   // package install cache is reproducible; everything else is preserved.
   const status = await git(path, ["status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching", "--ignore-submodules=none", "-z"], false);
-  const generatedLeaseOnly = await onlyGeneratedLease(path);
+  const managedLocalOnly = await onlyManagedLocal(path);
+  const searchOnly = status.includes("!! local/context-search/\0")
+    && await lstat(join(path, "local/context-search")).then(stat => stat.isDirectory(), () => false);
   return status.split("\0").filter(Boolean).filter(entry =>
-    !/^!! (?:.*\/)?node_modules\/?$/.test(entry) && !(entry === "!! local/" && generatedLeaseOnly));
+    !/^!! (?:.*\/)?node_modules\/?$/.test(entry) && !(entry === "!! local/" && managedLocalOnly)
+      && !(entry === "!! local/context-search/" && searchOnly));
+}
+
+async function onlyManagedLocal(root: string): Promise<boolean> {
+  const local = join(root, "local");
+  try {
+    if (!(await lstat(local)).isDirectory()) return false;
+    const names = await readdir(local);
+    if (!names.length || names.some(name => name !== "sessions" && name !== "context-search")) return false;
+    if (names.includes("context-search") && !(await lstat(join(local, "context-search"))).isDirectory()) return false;
+    return !names.includes("sessions") || await onlyGeneratedLease(root);
+  } catch { return false; }
+}
+
+async function archiveSearchState(root: string, common: string): Promise<void> {
+  const state = join(root, "local", "context-search");
+  const stat = await lstat(state).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return undefined;
+    throw error;
+  });
+  if (!stat) return;
+  if (await git(root, ["ls-files", "--", "local/context-search/"])) return;
+  const ignored = await git(root, ["check-ignore", "--quiet", "--", "local/context-search/"]).then(
+    () => true, (error: { code?: number }) => { if (error.code === 1) return false; throw error; },
+  );
+  if (!ignored) return;
+  if (!stat.isDirectory() || await realpath(state) !== state) throw new Error("Context search state changed; retain worktree.");
+  const archives = join(common, "morpheus-context-archives");
+  await mkdir(archives, { mode: 0o700, recursive: true });
+  if (await realpath(archives) !== archives) throw new Error("Context search archive must stay in Git metadata.");
+  const destination = await mkdtemp(join(archives, "worktree-"));
+  // Preserve the entire directory so no trace or unexpected local file is lost.
+  await rename(state, join(destination, "context-search"));
 }
 
 /**
@@ -71,13 +106,13 @@ async function onlyGeneratedLease(root: string): Promise<boolean> {
   const generated = new Set([lease, `${sessionId(root)}.records.json`, "reads.jsonl"]);
   try {
     if (!(await lstat(local)).isDirectory() || !(await lstat(sessions)).isDirectory()) return false;
-    if ((await readdir(local)).join("\0") !== "sessions") return false;
     const names = await readdir(sessions);
-    if (!names.length || names.some((name) => !generated.has(name))) return false;
+    const scoped = new RegExp(`^rollout-${sessionId(root)}-[a-f0-9]{16}(?:\\.records)?\\.json$`);
+    if (!names.length || names.some(name => !generated.has(name) && !scoped.test(name))) return false;
     for (const name of names) if (!(await lstat(join(sessions, name))).isFile()) return false;
-    if (!names.includes(lease)) return true;
-    const { lease: read, issue } = await readLease(root, sessionId(root));
-    return !issue && read?.receipt.worktree === root;
+    const leases = names.filter(name => name.endsWith(".json") && !name.endsWith(".records.json"));
+    const checks = await Promise.all(leases.map(name => readLease(root, name.slice(0, -5))));
+    return checks.every(({ lease: read, issue }) => !issue && read?.receipt.worktree === root);
   } catch { return false; }
 }
 
@@ -108,6 +143,11 @@ async function remoteHead(root: string, branch: string): Promise<string | null> 
 
 export interface CleanupResult { path: string; branch?: string; pr?: number; dryRun: boolean }
 
+type Identity = Awaited<ReturnType<typeof checkoutIdentity>>;
+type Trunk = Awaited<ReturnType<typeof resolveTrunk>>;
+type Fetched = Awaited<ReturnType<typeof fetchTrunk>>;
+type Markers = Awaited<ReturnType<typeof temporaryTasks>>;
+
 /** All irreversible operations follow fresh, exact PR evidence; ancestry to trunk alone is insufficient. */
 export async function cleanupTask(cwd: string, productDir: string, id: string, dryRun = false, releaseStaleSessions = false): Promise<CleanupResult> {
   if (!ROADMAP_ID.test(id)) throw new Error(`Invalid roadmap ID: ${id}`);
@@ -116,6 +156,24 @@ export async function cleanupTask(cwd: string, productDir: string, id: string, d
   // real paths so a valid product directory under tmpdir is not rejected.
   const productRel = relative(identity.root, await realpath(resolve(productDir)));
   if (!productRel || productRel.startsWith("..") || isAbsolute(productRel)) throw new Error("Product directory must be inside this repository.");
+  const { trunk, fetched, markers, target } = await locateTask(cwd, identity, id);
+  await clean(target, identity.common);
+  await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID, releaseStaleSessions);
+  await assertNoOpenProcesses(target.path);
+  if (target.branch === fetched.branch) throw new Error(`Policy violation: secondary worktree on trunk ${fetched.branch}.`);
+  await assertItem(target.path, productRel, id, fetched.sha, target.detached);
+  const { pr, remote } = target.detached
+    ? await proveDetachedContained(cwd, target, markers, id, fetched)
+    : await proveBranchMerged(cwd, target, trunk, fetched);
+  const result = { path: target.path, branch: target.branch, pr: pr?.number, dryRun };
+  if (dryRun) return result;
+  if (identity.root === target.path) throw new Error("Run cleanup from another checkout, so it cannot remove the caller's working directory.");
+  await removeTask(cwd, identity, target, remote, releaseStaleSessions);
+  return result;
+}
+
+/** Fetches trunk and finds the one worktree (and at most one branch) holding the task. */
+async function locateTask(cwd: string, identity: Identity, id: string): Promise<{ trunk: Trunk; fetched: Fetched; markers: Markers; target: Worktree }> {
   const trunk = await resolveTrunk(cwd, (await projectPolicy(cwd)).trunk);
   await git(cwd, [...FETCH_PRUNE]); // unlike reconciliation, failures here must never be swallowed
   if (trunk.remote !== "origin") await git(cwd, ["fetch", "--prune", "--no-tags", "--", trunk.remote]);
@@ -128,36 +186,36 @@ export async function cleanupTask(cwd: string, productDir: string, id: string, d
   if (branches.length > 1 || targets.length !== 1 || (targets[0]!.detached && branches.length)) {
     throw new Error(`Ambiguous or missing task ${id}: ${branches.length} branches, ${targets.length} worktrees. Retain and resolve explicitly.`);
   }
-  const target = targets[0]!;
-  await clean(target, identity.common);
-  await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID, releaseStaleSessions);
-  await assertNoOpenProcesses(target.path);
-  if (target.branch === fetched.branch) throw new Error(`Policy violation: secondary worktree on trunk ${fetched.branch}.`);
-  await assertItem(target.path, productRel, id, fetched.sha, target.detached);
-  let pr: CleanupPr | undefined;
-  let remote: string | null = null;
-  if (target.detached) {
-    const marker = markers.find(m => m.root === target.path && m.task === id)!;
-    const own = await realpath(resolve(target.path, await git(target.path, ["rev-parse", "--git-dir"])));
-    if (own !== marker.gitDir) throw new Error("Temporary marker does not match this checkout; manual action required.");
-    await contained(cwd, target.head, fetched.sha, "Temporary detached HEAD is not reachable from observed trunk; retain it.");
-  } else {
-    if (!target.branch) throw new Error("Unmarked detached worktree requires explicit human action.");
-    pr = await cleanupPr(cwd, target.branch, trunk.remote);
-    if (pr.state !== "MERGED" || pr.baseRefName !== fetched.branch) throw new Error(`PR #${pr.number} is ${pr.state} into ${pr.baseRefName}; require MERGED into ${fetched.branch}.`);
-    // Fetch objects missing after squash/auto-delete, then compare the immutable recorded OID.
-    for (const sha of [pr.headRefOid, pr.mergeCommit.oid]) {
-      if (!oid.test(sha)) throw new Error("Incomplete PR commit evidence.");
-      await git(cwd, ["cat-file", "-e", `${sha}^{commit}`]).catch(() => git(cwd, ["fetch", "--no-tags", "--no-write-fetch-head", "--", trunk.remote, sha]));
-    }
-    await contained(cwd, target.head, pr.headRefOid, "Local HEAD is not contained in the merged PR head; local commits or unavailable ancestry require manual action.");
-    await contained(cwd, pr.mergeCommit.oid, fetched.sha, "PR merge commit is not reachable from observed remote trunk.");
-    remote = await remoteHead(cwd, target.branch);
-    if (remote) await contained(cwd, remote, pr.headRefOid, "Remote branch contains unmerged work or unavailable ancestry; retain it.");
+  return { trunk, fetched, markers, target: targets[0]! };
+}
+
+async function proveDetachedContained(cwd: string, target: Worktree, markers: Markers, id: string, fetched: Fetched): Promise<{ pr: undefined; remote: null }> {
+  const marker = markers.find(m => m.root === target.path && m.task === id)!;
+  const own = await realpath(resolve(target.path, await git(target.path, ["rev-parse", "--git-dir"])));
+  if (own !== marker.gitDir) throw new Error("Temporary marker does not match this checkout; manual action required.");
+  await contained(cwd, target.head, fetched.sha, "Temporary detached HEAD is not reachable from observed trunk; retain it.");
+  return { pr: undefined, remote: null };
+}
+
+/** The branch's PR merged into trunk, contains the local HEAD, and the remote branch holds nothing unmerged. */
+async function proveBranchMerged(cwd: string, target: Worktree, trunk: Trunk, fetched: Fetched): Promise<{ pr: CleanupPr; remote: string | null }> {
+  if (!target.branch) throw new Error("Unmarked detached worktree requires explicit human action.");
+  const pr = await cleanupPr(cwd, target.branch, trunk.remote);
+  if (pr.state !== "MERGED" || pr.baseRefName !== fetched.branch) throw new Error(`PR #${pr.number} is ${pr.state} into ${pr.baseRefName}; require MERGED into ${fetched.branch}.`);
+  // Fetch objects missing after squash/auto-delete, then compare the immutable recorded OID.
+  for (const sha of [pr.headRefOid, pr.mergeCommit.oid]) {
+    if (!oid.test(sha)) throw new Error("Incomplete PR commit evidence.");
+    await git(cwd, ["cat-file", "-e", `${sha}^{commit}`]).catch(() => git(cwd, ["fetch", "--no-tags", "--no-write-fetch-head", "--", trunk.remote, sha]));
   }
-  const result = { path: target.path, branch: target.branch, pr: pr?.number, dryRun };
-  if (dryRun) return result;
-  if (identity.root === target.path) throw new Error("Run cleanup from another checkout, so it cannot remove the caller's working directory.");
+  await contained(cwd, target.head, pr.headRefOid, "Local HEAD is not contained in the merged PR head; local commits or unavailable ancestry require manual action.");
+  await contained(cwd, pr.mergeCommit.oid, fetched.sha, "PR merge commit is not reachable from observed remote trunk.");
+  const remote = await remoteHead(cwd, target.branch);
+  if (remote) await contained(cwd, remote, pr.headRefOid, "Remote branch contains unmerged work or unavailable ancestry; retain it.");
+  return { pr, remote };
+}
+
+/** Revalidates, then deletes the remote branch, the worktree and the local branch, in that order. */
+async function removeTask(cwd: string, identity: Identity, target: Worktree, remote: string | null, releaseStaleSessions: boolean): Promise<void> {
   // Revalidate immediately before mutation. Git also refuses dirty/locked worktrees, without --force.
   const current = (await listWorktrees(cwd)).find(w => w.path === target.path);
   if (!current || current.head !== target.head || current.branch !== target.branch) throw new Error("Task changed during cleanup; retry after work stops.");
@@ -169,6 +227,7 @@ export async function cleanupTask(cwd: string, productDir: string, id: string, d
   // removal so a network/refusal failure leaves the local worktree available for recovery.
   if (target.branch && remote) await git(cwd, ["push", `--force-with-lease=refs/heads/${target.branch}:${remote}`, "origin", `:refs/heads/${target.branch}`]);
   if (target.branch && await remoteHead(cwd, target.branch) !== null) throw new Error("Remote branch still exists; retain local worktree.");
+  await archiveSearchState(target.path, identity.common);
   await git(cwd, ["worktree", "remove", "--", target.path]);
   await clearTaskBindings(identity.common, target.path);
   if (target.branch) {
@@ -177,7 +236,6 @@ export async function cleanupTask(cwd: string, productDir: string, id: string, d
     if (head !== target.head) throw new Error("Worktree removed, but local branch moved; branch retained for manual inspection.");
     await git(cwd, ["branch", "-D", "--", target.branch]);
   }
-  return result;
 }
 
 /** Local inventory: no fetch, no deletion. Missing directories are registrations, not completed tasks. */

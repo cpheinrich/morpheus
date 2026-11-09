@@ -1,7 +1,7 @@
 /**
  * The web overlay's script (MO-26-10-06-18.13.32, column layout MO-26-10-07-13.27.17). Plain
  * ES5-style JavaScript with no build step, kept free of backticks and template placeholders so it
- * can live here as a raw string; the server substitutes the project name.
+ * can live here as a raw string; the server substitutes the project name and declared build.
  *
  * Layout. A top-level page request gets the overlay's shell (`shellHtml` in server.ts): the site in
  * a same-origin frame on the left and a full-height comment column on the right, the same shape as

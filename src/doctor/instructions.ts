@@ -58,6 +58,11 @@ export const INSTRUCTION_ANCHORS: readonly InstructionAnchor[] = [
     pattern: /five turns run without anyone's approval/i,
     add: "\"Five turns run without anyone's approval … A reviewer blocks only on substantive problems … When a reviewer times out or cannot be resumed, start a fresh one with the earlier findings\" in the review loop, replacing any three-turn or same-reviewer wording",
   },
+  {
+    name: "early visual planning",
+    pattern: /before implementation.{0,400}morpheus skills guide visual-design/i,
+    add: "the **Plan visually early** rule: before implementation, sketch and show useful relationships (architecture, workflows/pipelines, async handoffs, state transitions, ownership or substantial alternatives); use `morpheus skills guide visual-design`, skip trivial edits, label current/proposed and assumptions, update retained Mermaid diagrams, with no approval pause or merge gate",
+  },
 ];
 
 /** Emphasis, code spans and wrapping removed, so `**Break\nloops.**` still reads as `Break loops.`. */

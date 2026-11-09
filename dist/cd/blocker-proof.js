@@ -36,50 +36,67 @@ export function assessBlockedResult(result, binding, completedAt, currentContext
         claim: { status: "rejected", reason, ...(proofDigest ? { proofDigest } : {}), attemptedResult },
         continueImmediately: stale,
     });
-    if (!Array.isArray(result.evidence) || result.evidence.some(item => typeof item !== "string"))
-        return reject("blocker evidence must be an array of references");
-    const entries = result.evidence.filter(item => item.startsWith(BLOCKER_PROOF_PREFIX));
-    if (entries.length !== 1)
-        return reject("exactly one versioned blocker proof is required");
-    const encoded = entries[0].slice(BLOCKER_PROOF_PREFIX.length);
-    if (Buffer.byteLength(encoded, "utf8") > BLOCKER_PROOF_MAX_BYTES)
-        return reject("blocker proof exceeds its byte bound");
-    let raw;
-    try {
-        raw = JSON.parse(encoded);
-    }
-    catch {
-        return reject("blocker proof is not valid JSON");
-    }
-    const parsed = blockerProofSchema.safeParse(raw);
-    if (!parsed.success)
-        return reject("blocker proof has missing, invalid or unsupported fields");
-    const proof = parsed.data, proofDigest = hash(proof);
-    if (!blockerBindingSchema.safeParse(binding).success || hash(proof.binding) !== hash(binding))
-        return reject("blocker proof belongs to another task, invocation or claim", proofDigest);
-    if (stale)
-        return reject("delivery or diagnostic context changed after the prompt was frozen", proofDigest);
-    if (typeof result.missingCapability !== "string" || proof.missingCapability !== result.missingCapability.trim())
-        return reject("missing capability differs from the claimed result", proofDigest);
-    const emptyPracticalSet = !proof.tried.length;
-    if ((emptyPracticalSet && (!proof.noPracticalAction || !proof.excluded.length || proof.noPracticalAction.authorityRef !== proof.authority.ref)) || (!emptyPracticalSet && proof.noPracticalAction))
-        return reject("an empty practical set needs an explicit authority boundary, capability evidence and excluded-route reasons", proofDigest);
-    const start = Date.parse(binding.claimedAt), deadline = Date.parse(binding.deadlineAt), end = Date.parse(completedAt), reported = Date.parse(proof.reportedAt);
-    const fresh = (at) => Date.parse(at) >= start && Date.parse(at) <= reported;
-    // Historical attempts may be reused without repeating spent effects, but the
-    // claimant must freshly check their evidence and the current authority.
-    if (!Number.isFinite(end) || deadline <= start || end < start || reported < start || reported > Math.min(end, deadline) ||
-        !fresh(proof.authority.checkedAt) || Date.parse(proof.symptom.observedAt) > reported ||
-        proof.tried.some(route => !fresh(route.checkedAt) || Date.parse(route.observedAt) > Date.parse(route.checkedAt)) ||
-        proof.excluded.some(route => !fresh(route.checkedAt)) || Date.parse(proof.nextWake.at) <= end)
-        return reject("blocker proof observations, authority or next wake are not current within the actual claim", proofDigest);
-    const routes = [...proof.tried, ...proof.excluded].map(route => route.route.toLowerCase());
-    if (new Set(routes).size !== routes.length)
-        return reject("practical routes must be distinct", proofDigest);
+    const parsed = parseBlockerProof(result);
+    if ("problem" in parsed)
+        return reject(parsed.problem);
+    const proof = parsed.proof, proofDigest = hash(proof);
+    const problem = proofProblem(proof, result, binding, completedAt, stale);
+    if (problem)
+        return reject(problem, proofDigest);
     return {
         result: { ...result, summary: `${result.summary}; blocker candidate requires independent CTO verification` },
         claim: { status: "cto-verification-required", reason: "Shape and binding checked; practical exhaustion and critical references remain unverified", proofDigest, attemptedResult },
         continueImmediately: false,
     };
+}
+/** Exactly one bounded, versioned proof entry that parses against the schema. */
+function parseBlockerProof(result) {
+    if (!Array.isArray(result.evidence) || result.evidence.some(item => typeof item !== "string"))
+        return { problem: "blocker evidence must be an array of references" };
+    const entries = result.evidence.filter(item => item.startsWith(BLOCKER_PROOF_PREFIX));
+    if (entries.length !== 1)
+        return { problem: "exactly one versioned blocker proof is required" };
+    const encoded = entries[0].slice(BLOCKER_PROOF_PREFIX.length);
+    if (Buffer.byteLength(encoded, "utf8") > BLOCKER_PROOF_MAX_BYTES)
+        return { problem: "blocker proof exceeds its byte bound" };
+    let raw;
+    try {
+        raw = JSON.parse(encoded);
+    }
+    catch {
+        return { problem: "blocker proof is not valid JSON" };
+    }
+    const parsed = blockerProofSchema.safeParse(raw);
+    if (!parsed.success)
+        return { problem: "blocker proof has missing, invalid or unsupported fields" };
+    return { proof: parsed.data };
+}
+/** Why a well-formed proof still cannot stand as a candidate, in the order the checks are reported. */
+function proofProblem(proof, result, binding, completedAt, stale) {
+    if (!blockerBindingSchema.safeParse(binding).success || hash(proof.binding) !== hash(binding))
+        return "blocker proof belongs to another task, invocation or claim";
+    if (stale)
+        return "delivery or diagnostic context changed after the prompt was frozen";
+    if (typeof result.missingCapability !== "string" || proof.missingCapability !== result.missingCapability.trim())
+        return "missing capability differs from the claimed result";
+    const emptyPracticalSet = !proof.tried.length;
+    if ((emptyPracticalSet && (!proof.noPracticalAction || !proof.excluded.length || proof.noPracticalAction.authorityRef !== proof.authority.ref)) || (!emptyPracticalSet && proof.noPracticalAction))
+        return "an empty practical set needs an explicit authority boundary, capability evidence and excluded-route reasons";
+    if (!proofIsCurrent(proof, binding, completedAt))
+        return "blocker proof observations, authority or next wake are not current within the actual claim";
+    const routes = [...proof.tried, ...proof.excluded].map(route => route.route.toLowerCase());
+    if (new Set(routes).size !== routes.length)
+        return "practical routes must be distinct";
+    return undefined;
+}
+function proofIsCurrent(proof, binding, completedAt) {
+    const start = Date.parse(binding.claimedAt), deadline = Date.parse(binding.deadlineAt), end = Date.parse(completedAt), reported = Date.parse(proof.reportedAt);
+    const fresh = (at) => Date.parse(at) >= start && Date.parse(at) <= reported;
+    // Historical attempts may be reused without repeating spent effects, but the
+    // claimant must freshly check their evidence and the current authority.
+    return !(!Number.isFinite(end) || deadline <= start || end < start || reported < start || reported > Math.min(end, deadline) ||
+        !fresh(proof.authority.checkedAt) || Date.parse(proof.symptom.observedAt) > reported ||
+        proof.tried.some(route => !fresh(route.checkedAt) || Date.parse(route.observedAt) > Date.parse(route.checkedAt)) ||
+        proof.excluded.some(route => !fresh(route.checkedAt)) || Date.parse(proof.nextWake.at) <= end);
 }
 //# sourceMappingURL=blocker-proof.js.map

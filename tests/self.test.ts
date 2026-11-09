@@ -114,6 +114,31 @@ describe("Morpheus installation freshness", () => {
   });
 });
 
+async function installerGitAnswer(args: string[], cwd: string, onClone?: (path: string) => Promise<void>) {
+  if (args[0] === "clone") {
+    const target = args.at(-1)!;
+    await onClone?.(target);
+    return ok();
+  }
+  const line = args.join(" ");
+  if (line === "rev-parse --show-toplevel") return ok(`${cwd}\n`);
+  if (line === "rev-parse HEAD") return ok(`${CURRENT}\n`);
+  if (line === "status --porcelain --untracked-files=all") return ok();
+  if (args[0] === "ls-remote") return ok(`${CURRENT}\trefs/heads/main\n`);
+  if (line === "diff --exit-code -- dist") return ok();
+  return undefined;
+}
+
+async function installerNpmAnswer(globalRoot: string, args: string[]) {
+  if (args[0] === "pack") return ok(JSON.stringify([{ filename: "morpheus-kit-0.1.0.tgz" }]));
+  if (args.join(" ").startsWith("install --global ")) {
+    await mkdir(join(globalRoot, MORPHEUS_PACKAGE), { recursive: true });
+    return ok();
+  }
+  if (args.join(" ") === "root --global") return ok(`${globalRoot}\n`);
+  return undefined;
+}
+
 function installerRunner(
   globalRoot: string,
   calls: string[],
@@ -121,28 +146,11 @@ function installerRunner(
 ): MorpheusCommandRunner {
   return async (command, args, cwd) => {
     calls.push([command, ...args].join(" "));
-    if (command === "git" && args[0] === "clone") {
-      const target = args.at(-1)!;
-      await onClone?.(target);
-      return ok();
-    }
-    if (command === "git" && args.join(" ") === "rev-parse --show-toplevel") return ok(`${cwd}\n`);
-    if (command === "git" && args.join(" ") === "rev-parse HEAD") return ok(`${CURRENT}\n`);
-    if (command === "git" && args.join(" ") === "status --porcelain --untracked-files=all") return ok();
-    if (command === "git" && args[0] === "ls-remote") {
-      return ok(`${CURRENT}\trefs/heads/main\n`);
-    }
-    if (command === "git" && args.join(" ") === "diff --exit-code -- dist") return ok();
-    if (command === "pnpm") return ok();
-    if (command === "npm" && args[0] === "pack") {
-      return ok(JSON.stringify([{ filename: "morpheus-kit-0.1.0.tgz" }]));
-    }
-    if (command === "npm" && args.join(" ").startsWith("install --global ")) {
-      await mkdir(join(globalRoot, MORPHEUS_PACKAGE), { recursive: true });
-      return ok();
-    }
-    if (command === "npm" && args.join(" ") === "root --global") return ok(`${globalRoot}\n`);
-    return fail(`unexpected ${command} ${args.join(" ")}`);
+    const answer = command === "git" ? await installerGitAnswer(args, cwd, onClone)
+      : command === "pnpm" ? ok()
+      : command === "npm" ? await installerNpmAnswer(globalRoot, args)
+      : undefined;
+    return answer ?? fail(`unexpected ${command} ${args.join(" ")}`);
   };
 }
 
