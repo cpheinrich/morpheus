@@ -74,9 +74,9 @@ export interface WebSurvey {
  * Where the Next.js app lives.
  *
  * `apps/web` is the canonical answer (§3), and it is also the answer for a
- * repository that has nothing yet. A root-level `app/` directory is accepted
- * because two personal sites predate the convention, and writing a second app
- * beside a working one would be worse than following it.
+ * repository that has nothing yet. Root-level and legacy `web/app/` apps are
+ * accepted when their package declares Next.js: writing a second app beside a
+ * working one would be worse than following it. Keep existing precedence.
  */
 export declare function findWebRoot(root: string): Promise<{
     webRoot: string;

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { renderFirestoreRules } from "../src/hq/rules.js";
 import { addWaitlistRules, mergeDependencies, scaffoldWeb } from "../src/web/scaffold.js";
 import {
+  findWebRoot,
   importPath,
   readFirebaseFacts,
   surveyWeb,
@@ -73,6 +74,47 @@ const options = (root: string, survey: Awaited<ReturnType<typeof surveyWeb>>) =>
   firebase: FIREBASE,
   waitlist: true,
   hq: true,
+});
+
+describe("established web layouts", () => {
+  it("surveys and extends a legacy web/ app without creating a second site", async () => {
+    const root = await establishedProject();
+    await rename(join(root, "apps/web"), join(root, "web"));
+    await write(root, "web/app/hq/page.tsx", "existing private dashboard");
+    await write(root, "web/proxy.ts", "existing route gate");
+    const survey = await surveyWeb(root);
+    expect(survey).toMatchObject({
+      webRoot: "web", webAppExists: true, hasHqRoute: true,
+      hasRouteGate: true, alias: "@/", testRunner: "node",
+    });
+    const result = await scaffoldWeb(options(root, survey));
+    expect(result.written).toContain("web/app/api/waitlist/route.ts");
+    expect(result.skipped).toContain("web/app/hq/page.tsx");
+    expect(await readFile(join(root, "web/app/hq/page.tsx"), "utf8")).toBe("existing private dashboard");
+    await expect(readFile(join(root, "apps/web/package.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("keeps canonical and root-level app precedence", async () => {
+    const root = await establishedProject();
+    await write(root, "web/package.json", JSON.stringify({ dependencies: { next: "16.2.9" } }));
+    await write(root, "web/app/page.tsx", "legacy app");
+    await write(root, "package.json", JSON.stringify({ dependencies: { next: "16.2.9" } }));
+    await write(root, "app/page.tsx", "root app");
+    expect(await findWebRoot(root)).toEqual({ webRoot: "apps/web", exists: true });
+    await rm(join(root, "apps/web"), { recursive: true });
+    expect(await findWebRoot(root)).toEqual({ webRoot: ".", exists: true });
+  });
+
+  it.each(["missing-package", "malformed-package", "not-next", "missing-app"])(
+    "does not select an unrelated web/ directory: %s", async (shape) => {
+      const root = await mkdtemp(join(tmpdir(), "morpheus-web-"));
+      roots.push(root);
+      if (shape !== "missing-app") await write(root, "web/app/page.tsx", "placeholder");
+      if (shape !== "missing-package") await write(root, "web/package.json",
+        shape === "malformed-package" ? "{" : JSON.stringify({ dependencies: shape === "not-next" ? {} : { next: "16.2.9" } }));
+      expect(await findWebRoot(root)).toEqual({ webRoot: "apps/web", exists: false });
+    },
+  );
 });
 
 describe("import specifiers", () => {

@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { searchContext } from "../src/context-search/engine.js";
+import { searchContext, warmTantivyIndex } from "../src/context-search/engine.js";
 
 const sources = [
   { path: "docs/near.md", text: "See EV-26-11-01-01.02.04 for a different deploy rule.\n" },
@@ -57,6 +57,18 @@ describe.skipIf(!hasTantivy)("with the pinned Tantivy binding", () => {
     const updated = await searchContext(edited, query, 1000, options);
     expect(updated.output).toContain("release checkpoint");
     expect(updated.cacheHit).toBe(false);
+  });
+
+  test("an overlapping search joins the warm build and gets the same immutable index", async () => {
+    const options = { engine: "tantivy", cacheDir } as const;
+    const pending = warmTantivyIndex(sources, cacheDir);
+    const overlapping = await searchContext(sources, "EV-26-11-01-01.02.03", 1000, options);
+    expect(await pending).toMatchObject({ cacheHit: false, waitMs: 0 });
+    expect(overlapping).toMatchObject({ cacheHit: false, buildMs: 0, resultCount: 1 });
+    expect(overlapping.excerpts[0]?.path).toBe("docs/target.md");
+    expect(await searchContext(sources, "EV-26-11-01-01.02.03", 1000, options)).toMatchObject({
+      cacheHit: true, buildMs: 0, waitMs: 0, output: overlapping.output,
+    });
   });
 
   test("rejects a cache hit that points to a file", async () => {

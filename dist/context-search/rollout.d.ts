@@ -30,9 +30,10 @@ export declare function isHumanInbox(path: string): boolean;
 export declare function parseSearchConfig(value: unknown): SearchConfig;
 export declare function getSearchConfig(root: string): Promise<SearchConfig>;
 export declare function armForBucket(bucket: number): "tantivy-bounded" | "ripgrep-bounded" | "ripgrep-full";
+export declare function contextTraceSession(rollout: string, session: string): string;
 export declare function contextArm(root: string, sessionId?: string | undefined, config?: SearchConfig): Promise<ContextArm>;
 export interface ContextTrace {
-    type: "assignment" | "query" | "tool" | "visible";
+    type: "assignment" | "query" | "tool" | "visible" | "session-start" | "prompt" | "warm";
     transport?: ContextTransport;
     operation?: ContextOperation;
     outcome?: ContextOutcome;
@@ -47,6 +48,9 @@ export interface ContextTrace {
     startupBytes?: number;
     startupTokens?: number;
     queryMs?: number;
+    queryStartedAt?: number;
+    mcpStartedAt?: number;
+    waitMs?: number;
     engineQueryMs?: number;
     buildMs?: number;
     cacheHit?: boolean;

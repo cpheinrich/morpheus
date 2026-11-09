@@ -10,6 +10,7 @@
  * not, which is worse than an absent file — the same rule the brand package
  * follows.
  */
+import { CONTEXT_GUIDANCE } from "../context-search/install.js";
 import { credentialsInstructions } from "../credentials/templates.js";
 import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
 import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
@@ -52,10 +53,8 @@ export const MORPHEUS_REPO = "https://github.com/cpheinrich/morpheus";
  */
 export const morpheusCalloutForAgents = () => `## This project is managed by Morpheus — read that first
 
-This repository is architected and operated according to
-[Morpheus](${MORPHEUS_REPO}), which is public. The directory layout,
-the roadmap and inbox formats, the \`morpheus\` CLI, and the conventions below all come from
-there. Very little of the *reasoning* behind them lives in this repo.
+This project follows public [Morpheus](${MORPHEUS_REPO}) conventions for its layout,
+records, CLI and agent workflow; the reasoning lives upstream.
 
 **Before reviewing or changing anything here, read:**
 
@@ -64,12 +63,10 @@ there. Very little of the *reasoning* behind them lives in this repo.
 - [\`AGENTS.md\`](${MORPHEUS_REPO}/blob/main/AGENTS.md)
   — the operating principles: claiming work, what a pull request must carry, the inbox cycle
 
-This is aimed at agents arriving with **no memory of this project**. Without that context the
-conventions here look arbitrary, and the resulting mistakes are confident ones: "tidying" a
-generated file that is rewritten from its source, renaming an id that a branch and a PR both
-depend on, deleting a worklog as clutter, or branching by hand instead of \`morpheus pm claim\`
-and colliding with another agent's work.
+These conventions apply to fresh agents too. Read the linked reasoning before changing
+project structure, generated records or claims.
 
+${CONTEXT_GUIDANCE}
 ### Found a gap in Morpheus itself?
 
 If something in Morpheus is wrong, missing, or gets in your way while working here, **send it
@@ -836,10 +833,11 @@ a framework pulled in to save 60 lines is worse than the 60 lines; build when th
 **When you hit real ambiguity, block — do not guess:** \`morpheus pm block <ID> --needs "<what
 would unblock you>"\`. Escalating is cheap; shipping half-baked is expensive.
 
-**Break loops.** If the same command fails the same way twice, or you have polled the same thing
-three times, stop: change approach, or \`pm block\` with what you learned. Never idle-loop or poll
-\`gh\`: prefer \`gh pr merge --auto\`, and when the next step needs the CI result run
-\`morpheus wait-ci <n>\` once, or \`wait-ci --run <id>\` for one Actions run (TestFlight, release).
+**Break loops.** If the same command fails the same way twice or three polls agree,
+change approach. Never idle-loop. For one run use \`morpheus wait-ci --run <id>\`.
+
+**Follow your PR through merge.** If authorized to merge, use \`morpheus wait-ci <n> --required-only\`.
+Fix or retry failures. Verify the merge or record the hard blocker. GitHub Manager is the backstop.
 
 **The authoring agent owns the entire review loop.** Finish the relevant focused tests and inspect
 results before the reviewer's first turn; send the full packet and available UI evidence. If a test
