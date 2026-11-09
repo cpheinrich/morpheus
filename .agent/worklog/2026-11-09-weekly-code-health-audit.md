@@ -39,7 +39,7 @@ duplication, structural complexity, tests/CI, and live governance.
   extraction was attempted across unproven state-machine boundaries.
 - Production Knip and graph zero-degree results were treated as candidates. Direct source checks
   disproved the sampled unused-dependency/function candidates; no deletion met the evidence bar.
-- Exact tree: 2,752 files, no tracked junk artifact, one documented and referenced media asset.
+- Exact tree: 2,751 files, no tracked junk artifact, one documented and referenced media asset.
 - Graph: exact-main full generation, 17,376 nodes / 65,171 edges, no skipped files, 13 partial
   parses; relevant flagged ranges were checked directly and negative claims remain bounded.
 - Live main protection requires four checks, disallows force pushes/deletion, and keeps
