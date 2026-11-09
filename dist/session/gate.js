@@ -65,6 +65,10 @@ export function offlineDeclared(flag) {
  * agent will work around rather than satisfy.
  */
 export async function gate(root, action, reach, options = {}) {
+    const { taskContextRefusal } = await import("../context-search/task-start.js");
+    const taskContext = await taskContextRefusal(root);
+    if (taskContext)
+        return { ok: false, message: taskContext };
     const { lease, issue, trunkMissing } = await check(root, options.now ?? new Date());
     if (!lease) {
         const why = issue

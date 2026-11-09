@@ -99,6 +99,9 @@ export async function gate(
   reach: Reach,
   options: { offline?: boolean; now?: Date } = {},
 ): Promise<GateResult> {
+  const { taskContextRefusal } = await import("../context-search/task-start.js");
+  const taskContext = await taskContextRefusal(root);
+  if (taskContext) return { ok: false, message: taskContext };
   const { lease, issue, trunkMissing } = await check(root, options.now ?? new Date());
 
   if (!lease) {

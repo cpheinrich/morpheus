@@ -1,0 +1,671 @@
+#!/usr/bin/env python3
+"""Reconcile an approved Xcode pin across host image, consumer, and host selection.
+
+The operator's private host manifest (worker/host_config.py) is the authority. Each tick does one bounded step;
+the next tick starts again from observed repository and host state. Consumer
+changes are deterministic draft PRs; a fresh, time-boxed agent only finishes a
+PR that cannot merge by itself, at most AGENT_RUN_CAP times per pin.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import fnmatch
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "worker"))
+import host_config  # noqa: E402  the one private-manifest boundary
+
+
+VERSION = re.compile(r"[0-9]+(?:\.[0-9]+){1,2}\Z")
+BUILD = re.compile(r"[A-Za-z0-9]+\Z")
+REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
+WORKFLOW_FILE = re.compile(r"[A-Za-z0-9_.-]+\.ya?ml\Z")
+DEFAULT_DELIVERY_WORKFLOW = "ios-delivery.yml"
+KEPT = "host-converged (previous Xcode kept until delivery is green)"
+ROLES = ("ci-image", "phone-gate")
+AGENT_RUN_CAP = 3
+AGENT_TIMEOUT_SECONDS = 7200
+DEFAULT_ASSERTION = "apps/ios/scripts/ci/assert-xcode-build.sh"
+WORKFLOW_DIR = ".github/workflows/"
+# Workflow runner lines are also judged for any xcode-<label>, so a stale
+# non-numeric label such as xcode-latest fails too.
+RUNNER_LINE = re.compile(r"(?m)^[\s-]*(?:runner|runs-on):[^\n]*")
+RUNNER_LABEL = re.compile(r"(?<![\w-])xcode-([A-Za-z0-9._]+)")
+# A version token ends where neither a word character nor ".<digit>" follows,
+# so 27.2 does not match inside 27.21 or 27.2.1.
+VERSION_END = r"(?![\w]|\.\d)"
+VERSION_TOKEN = r"[0-9]+(?:\.[0-9]+)*"
+# The one set of places a pin is written, as (kind, before, token shape, after). The pin check reads tokens with it and the pin PR rewrites with it, so a
+# new form is added here once. Templated values (${{ ... }}, ${XCODE_VERSION})
+# are not tokens: the literal they come from is. A shape of None marks a
+# rewrite-only form: a bare build such as 27B52 is safe to rewrite as the exact
+# old literal, but unanchored it cannot be told from data (a 2026-10-06T1600
+# timestamp in a consumer comment has the same shape), so it is not read as a token.
+PIN_PATTERNS = (
+    ("version", r"xcode-version:\s*['\"]?", VERSION_TOKEN, VERSION_END),
+    ("version", r"(?<![\w-])xcode-", VERSION_TOKEN, VERSION_END),          # runner label token
+    ("version", r"\bXcode_", VERSION_TOKEN, r"(?=\.app)"),
+    ("version", r"(?<![\w/])Xcode ", VERSION_TOKEN, VERSION_END),
+    ("version", r"(?<![\w/])Xcode\\ ", VERSION_TOKEN, VERSION_END),        # a bash [[ ]] escaped space
+    ("version", r"\bXCODE_VERSION\s*=\s*['\"]", VERSION_TOKEN, r"(?=['\"])"),  # JS/TS/Python constant
+    ("build", r"Build version ", r"[A-Za-z0-9]+", r"(?![A-Za-z0-9])"),
+    ("build", r"(?<![A-Za-z0-9])", None, r"(?![A-Za-z0-9])"),              # bare build token
+)
+
+
+def pin_tokens(text: str) -> tuple[list[str], list[str]]:
+    """Every pinned version and build literal in text, by PIN_PATTERNS."""
+    found = {"version": [], "build": []}
+    for kind, before, shape, after in PIN_PATTERNS:
+        if shape is not None:
+            found[kind] += re.findall(before + "(" + shape + ")" + after, text)
+    return found["version"], found["build"]
+
+
+class FleetError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class Pin:
+    version: str
+    build: str
+    phase: str
+
+    @property
+    def key(self) -> str:
+        return f"{self.version}-{self.build}"
+
+
+@dataclass(frozen=True)
+class Consumer:
+    repository: str = ""  # required: the manifest names the consumer repository
+    assertion: str = DEFAULT_ASSERTION
+    pin_paths: tuple[str, ...] = (WORKFLOW_DIR + "*.yml", DEFAULT_ASSERTION)
+    # Transitional lanes the consumer keeps on an older Xcode on purpose; they
+    # are neither judged nor rewritten. Remove entries when the files go.
+    ignore_paths: tuple[str, ...] = ()
+    # Declared, temporary (path glob, version) pairs the consumer runs on purpose
+    # beside the pin, such as a production lane held on an older Xcode while a
+    # UI-suite regression is triaged. They are not judged; they are not rewritten
+    # either, because substitution only touches the previous pin's tokens.
+    exceptions: tuple[tuple[str, str], ...] = ()
+    # The workflow whose green run on main, after a host's promotion, validates
+    # the pin and lets the host retire its previous Xcode.
+    delivery_workflow: str = DEFAULT_DELIVERY_WORKFLOW
+
+    def ignores(self, path: str) -> bool:
+        return any(fnmatch.fnmatch(path, pattern) for pattern in self.ignore_paths)
+
+    def excepted(self, path: str, version: str) -> bool:
+        return any(version == allowed and fnmatch.fnmatch(path, pattern) for pattern, allowed in self.exceptions)
+
+
+@dataclass(frozen=True)
+class HostConfig:
+    pin: Pin
+    role: str
+    has_ci: bool
+    consumer: Consumer = field(default_factory=Consumer)
+    paths: dict = field(default_factory=dict)
+    # A declared rollout hold: the tick does nothing for this host, not even
+    # staging or image activation, until the reviewed manifest removes it.
+    hold: str | None = None
+
+
+def _relative_path(value: object) -> str:
+    if not isinstance(value, str) or not value or value.startswith("/") or ".." in Path(value).parts:
+        raise FleetError("consumer paths must be relative and stay inside the repository")
+    return value
+
+
+def _consumer_repository(raw: dict) -> str:
+    repository = raw.get("repository")
+    if not isinstance(repository, str) or not REPOSITORY.fullmatch(repository):
+        raise FleetError("consumer repository must be owner/name")
+    return repository
+
+
+def _consumer_list(raw: dict, key: str, default: list, message: str, *, non_empty: bool = False) -> list:
+    value = raw.get(key, default)
+    if not isinstance(value, list) or (non_empty and not value):
+        raise FleetError(message)
+    return value
+
+
+def _exception_pair(entry: object) -> tuple[str, str]:
+    if not isinstance(entry, dict) or not isinstance(entry.get("version"), str) or not VERSION.fullmatch(entry["version"]) \
+            or not isinstance(entry.get("reason"), str) or not entry["reason"].strip():
+        raise FleetError("each consumer exception needs a relative path, an exact version and a reason")
+    return (_relative_path(entry.get("path")), entry["version"])
+
+
+def _delivery_workflow(raw: dict, default: str) -> str:
+    delivery_workflow = raw.get("deliveryWorkflow", default)
+    if not isinstance(delivery_workflow, str) or not WORKFLOW_FILE.fullmatch(delivery_workflow):
+        raise FleetError("consumer deliveryWorkflow must be a workflow file name")
+    return delivery_workflow
+
+
+def read_consumer(data: dict) -> Consumer:
+    raw = data.get("consumer")
+    if not isinstance(raw, dict):
+        raise FleetError("invalid consumer manifest entry")
+    default = Consumer()
+    repository = _consumer_repository(raw)
+    assertion = _relative_path(raw.get("assertion", default.assertion))
+    pin_paths = _consumer_list(raw, "pinPaths", list(default.pin_paths), "consumer pinPaths must be a non-empty list", non_empty=True)
+    ignore_paths = _consumer_list(raw, "ignorePaths", [], "consumer ignorePaths must be a list")
+    exceptions = _consumer_list(raw, "exceptions", [], "consumer exceptions must be a list")
+    pairs = [_exception_pair(entry) for entry in exceptions]
+    delivery_workflow = _delivery_workflow(raw, default.delivery_workflow)
+    return Consumer(repository, assertion, tuple(_relative_path(path) for path in pin_paths),
+                    tuple(_relative_path(path) for path in ignore_paths), tuple(pairs), delivery_workflow)
+
+
+def _host_pin(entry: dict) -> Pin:
+    xcode = entry.get("xcode", {})
+    version, build, phase = xcode.get("version"), xcode.get("build"), xcode.get("phase", "promote")
+    if not isinstance(version, str) or not VERSION.fullmatch(version) or not isinstance(build, str) or not BUILD.fullmatch(build) or phase not in ("stage", "promote"):
+        raise FleetError("invalid exact Xcode pin or phase")
+    return Pin(version, build, phase)
+
+
+def _host_role(entry: dict) -> tuple[str, bool]:
+    has_ci = isinstance(entry.get("ci"), dict)
+    role = entry.get("role", "ci-image" if has_ci else "phone-gate")
+    if role not in ROLES or (role == "ci-image") != has_ci:
+        raise FleetError("host role must be ci-image with a ci block, or phone-gate without one")
+    return role, has_ci
+
+
+def _host_paths(entry: dict) -> dict:
+    paths = entry.get("paths", {})
+    if not isinstance(paths, dict) or any(not isinstance(value, str) or not value.startswith("/") for value in paths.values()):
+        raise FleetError("host paths must be absolute")
+    return paths
+
+
+def _host_hold(entry: dict) -> str | None:
+    hold = entry.get("hold")
+    if hold is not None and (not isinstance(hold, str) or not hold.strip()):
+        raise FleetError("host hold must be a reason string")
+    return hold
+
+
+def read_host(manifest: Path, host: str) -> HostConfig:
+    try:
+        data = host_config.load(Path(os.path.abspath(manifest)))
+    except host_config.ConfigError as error:
+        raise FleetError(str(error)) from None
+    entry = data.get("hosts", {}).get(host, {})
+    pin = _host_pin(entry)
+    role, has_ci = _host_role(entry)
+    paths = _host_paths(entry)
+    hold = _host_hold(entry)
+    return HostConfig(pin, role, has_ci, read_consumer(data), dict(paths), hold)
+
+
+def read_pin(manifest: Path, host: str) -> Pin:
+    return read_host(manifest, host).pin
+
+
+def command(argv: list[str], *, cwd: Path | None = None, input_text: str | None = None, env: dict | None = None, timeout: int = 600) -> str:
+    try:
+        result = subprocess.run(argv, cwd=cwd, input=input_text, env=env, text=True, capture_output=True, check=False, timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        raise FleetError(f"command timed out: {Path(argv[0]).name} {argv[1] if len(argv) > 1 else ''}") from error
+    if result.returncode:
+        raise FleetError(f"command failed ({result.returncode}): {Path(argv[0]).name} {argv[1] if len(argv) > 1 else ''}")
+    return result.stdout.strip()
+
+
+def git_file(repo: Path, ref: str, path: str) -> str:
+    return command(["git", "-C", str(repo), "show", f"{ref}:{path}"])
+
+
+def path_matches(path: str, pattern: str) -> bool:
+    """Glob match segment by segment, as Path.glob does: * never crosses a /."""
+    parts, globs = path.split("/"), pattern.split("/")
+    return len(parts) == len(globs) and all(fnmatch.fnmatchcase(part, glob) for part, glob in zip(parts, globs))
+
+
+def _pinned_tokens(root: Path, path: str, consumer: Consumer) -> tuple[list[str], list[str]]:
+    body = git_file(root, "origin/main", path)
+    versions, builds = pin_tokens(body)
+    if path.endswith((".yml", ".yaml")):
+        versions += [label for line in RUNNER_LINE.findall(body) for label in RUNNER_LABEL.findall(line)]
+    return [version for version in versions if not consumer.excepted(path, version)], builds
+
+
+def consumer_has_pin(root: Path, pin: Pin, consumer: Consumer) -> bool:
+    """Inspect merged consumer main; a PR branch alone never advances the fleet."""
+    command(["git", "-C", str(root), "fetch", "origin", "main"])
+    listing = command(["git", "-C", str(root), "ls-tree", "-r", "--name-only", "origin/main"])
+    any_version = any_build = False
+    for path in (line.strip() for line in listing.splitlines()):
+        if not any(path_matches(path, pattern) for pattern in consumer.pin_paths) or consumer.ignores(path):
+            continue
+        versions, builds = _pinned_tokens(root, path, consumer)
+        # Every token must be the pin: a substring test would accept 27.21 for
+        # 27.2, or one updated line beside a stale one.
+        if any(version != pin.version for version in versions) or any(build != pin.build for build in builds):
+            return False
+        any_version, any_build = any_version or bool(versions), any_build or bool(builds)
+    # An empty match set is not a pass: nothing pinned is not correctly pinned.
+    return any_version and any_build
+
+
+def assertion_pin(assertion: str) -> tuple[str, str]:
+    versions, builds = pin_tokens(assertion)
+    if len(set(versions)) != 1 or len(set(builds)) != 1:
+        raise FleetError("cannot read one current Xcode version and build from the consumer assertion")
+    return versions[0], builds[0]
+
+
+def _old_pattern(before: str, value: str, after: str) -> str:
+    return "(" + before + ")" + re.escape(value) + after
+
+
+def substitute_pin(text: str, old: tuple[str, str], new: Pin) -> str:
+    for kind, before, _shape, after in PIN_PATTERNS:
+        value, replacement = (old[0], new.version) if kind == "version" else (old[1], new.build)
+        text = re.sub(_old_pattern(before, value, after), lambda m, r=replacement: m.group(1) + r, text)
+    return text
+
+
+def residual_pin(text: str, old: tuple[str, str], new: Pin) -> bool:
+    """True when the old version or build survives substitution.
+
+    PIN_PATTERNS covers the known forms. The extra net catches the old version
+    written next to "Xcode" in a form the set does not know (Xcode-26.6,
+    XCODE_26.6), which would otherwise leave a half-pinned file the check also
+    cannot see. Prose such as "a move off 27.2" is neither judged nor refused.
+    """
+    for kind, before, _shape, after in PIN_PATTERNS:
+        value, replacement = (old[0], new.version) if kind == "version" else (old[1], new.build)
+        if value != replacement and re.search(_old_pattern(before, value, after), text):
+            return True
+    return old[0] != new.version and re.search(r"(?i)xcode[\W_]{0,2}" + re.escape(old[0]) + VERSION_END, text) is not None
+
+
+def rewrite_pin_files(worktree: Path, tracked: set[str], patterns: tuple[str, ...], old: tuple[str, str], new: Pin,
+                      consumer_ignores=lambda path: False) -> list[str]:
+    changed = []
+    candidates = sorted({path.relative_to(worktree).as_posix() for pattern in patterns for path in worktree.glob(pattern) if path.is_file()})
+    for relative in candidates:
+        if relative not in tracked or consumer_ignores(relative):
+            continue
+        path = worktree / relative
+        before = path.read_text()
+        after = substitute_pin(before, old, new)
+        if residual_pin(after, old, new):
+            # A pattern this rewrite does not know would leave a half-pinned file.
+            raise FleetError(f"consumer pin substitution left the old Xcode pin in {relative}")
+        if after != before:
+            path.write_text(after)
+            changed.append(relative)
+    if not changed:
+        raise FleetError("consumer pin substitution changed nothing")
+    return changed
+
+
+def pin_branch(pin: Pin) -> str:
+    return f"factory/xcode-{pin.version}-{pin.build}"
+
+
+def open_pin_pr(root: Path, pin: Pin, consumer: Consumer) -> str:
+    """Create the substitution branch from origin/main and push it."""
+    branch = pin_branch(pin)
+    old = assertion_pin(git_file(root, "origin/main", consumer.assertion))
+    worktree = Path(tempfile.mkdtemp(prefix="factory-pin-"))
+    try:
+        command(["git", "-C", str(root), "worktree", "add", "--detach", str(worktree), "origin/main"])
+        tracked = set(command(["git", "-C", str(worktree), "ls-files"]).splitlines())
+        changed = rewrite_pin_files(worktree, tracked, consumer.pin_paths, old, pin, consumer.ignores)
+        command(["git", "-C", str(worktree), "checkout", "-B", branch])
+        command(["git", "-C", str(worktree), "add", "--", *changed])
+        command(["git", "-C", str(worktree), "-c", "user.name=morpheus-factory", "-c", "user.email=noreply@github.com",
+                 "commit", "-m", f"Pin iOS CI to Xcode {pin.version} (build {pin.build})"])
+        command(["git", "-C", str(worktree), "push", "-u", "origin", branch])
+    finally:
+        try:
+            command(["git", "-C", str(root), "worktree", "remove", "--force", str(worktree)])
+        except FleetError:
+            pass
+        shutil.rmtree(worktree, ignore_errors=True)
+    return "\n".join(f"- `{path}`" for path in changed)
+
+
+def ensure_consumer_pr(root: Path, pin: Pin, consumer: Consumer) -> tuple[str, str]:
+    """Return (PR URL, "opened" | "open" | "closed" | "merged"). Never rewrites an existing branch or PR.
+
+    Called only while merged main lacks the pin. An open PR wins; otherwise the
+    newest PR decides while its branch exists. A closed, unmerged PR is an
+    operator's rejection and is not recreated, or a fresh draft would appear
+    every tick and the agent cap would never apply. A merged PR whose branch
+    survives means main was reverted; GitHub refuses a new PR from that branch,
+    so a human decides. Deleting the branch is the retry in both cases, because
+    GitHub keeps listing old PRs; an operator who means to reject keeps the branch.
+    """
+    branch = pin_branch(pin)
+    listed = json.loads(command(["gh", "pr", "list", "--repo", consumer.repository, "--head", branch, "--state", "all",
+                                 "--json", "number,url,state,isDraft,mergedAt"]) or "[]")
+    for pr in listed:
+        if pr.get("state") == "OPEN":
+            return pr["url"], "open"
+    newest = max(listed, key=lambda pr: pr.get("number", 0), default=None)
+    branch_exists = bool(command(["git", "-C", str(root), "ls-remote", "--heads", "origin", branch]))
+    # Deleting the branch is the operator's "retry": with it gone, a rejected or
+    # reverted PR no longer holds the pin back and a fresh one may be opened.
+    if newest and branch_exists:
+        return newest["url"], "merged" if newest.get("mergedAt") else "closed"
+    if branch_exists:
+        files = "See the branch diff; the branch already existed when this PR was opened."
+    else:
+        files = open_pin_pr(root, pin, consumer)
+    body = (f"Factory pin substitution for the approved Xcode {pin.version} (build {pin.build}) from "
+            "the operator's private Factory host manifest. It rewrites the exact version, runner label and build "
+            f"in the configured pin paths; nothing else changes.\n\nFiles changed:\n{files}\n\n"
+            "🤖 Generated with Factory\n")
+    output = command(["gh", "pr", "create", "--repo", consumer.repository, "--draft", "--head", branch, "--base", "main",
+                      "--title", f"Pin iOS CI to Xcode {pin.version} (build {pin.build})", "--body", body])
+    return output.splitlines()[-1].strip(), "opened"
+
+
+def host_status(factory: Path, manifest: Path, host: str) -> dict:
+    raw = command([sys.executable, str(factory / "worker/update_controller.py"), "status", "--host", host, "--manifest", str(manifest)])
+    status = json.loads(raw)
+    if not isinstance(status, dict) or not isinstance(status.get("installedMatches"), bool) or not isinstance(status.get("selectedMatches"), bool):
+        raise FleetError("invalid host update status")
+    return status
+
+
+def host_action(factory: Path, credentials_project: Path, manifest: Path, host: str, action: str) -> str:
+    if action not in ("stage", "image-stage", "reconcile", "retire"):
+        raise FleetError("invalid host action")
+    # The credentials companion injects Apple login only into this child.
+    # Image staging also needs GitHub auth to fetch CI runner/action packages;
+    # the worker scopes its own builder/verifier/activator children separately.
+    excluded = () if action == "image-stage" else (
+        "GH_TOKEN", "FACTORY_GH_TOKEN", "GIT_ASKPASS", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0")
+    env = {key: value for key, value in os.environ.items() if key not in excluded}
+    return command(["morpheus", "credentials", "run", "--", sys.executable,
+                    str(factory / "worker/update_controller.py"), action,
+                    "--host", host, "--manifest", str(manifest)], cwd=credentials_project, env=env,
+                   timeout=14400 if action in ("stage", "image-stage") else 7200)
+
+
+def sync_host_tools(host_setup: Path) -> None:
+    if command(["git", "-C", str(host_setup), "branch", "--show-current"]) != "main":
+        raise FleetError("agent-host-setup is not on main")
+    if command(["git", "-C", str(host_setup), "status", "--porcelain"]):
+        raise FleetError("agent-host-setup is dirty; host tool update deferred")
+    command(["git", "-C", str(host_setup), "fetch", "origin", "main"])
+    command(["git", "-C", str(host_setup), "merge", "--ff-only", "origin/main"])
+
+
+def private_state(path: Path, pin: Pin) -> dict:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    state = json.loads(path.read_text()) if path.exists() else {}
+    runs = state.get("agentRuns") if state.get("pin") == pin.key else None
+    if not isinstance(runs, list) or not all(isinstance(run, str) for run in runs):
+        runs = []
+    return {"pin": pin.key, "agentRuns": runs}
+
+
+def save_state(path: Path, state: dict) -> None:
+    temp = path.with_suffix(".tmp")
+    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as output:
+        json.dump(state, output, sort_keys=True)
+        output.write("\n")
+    os.replace(temp, path)
+
+
+def agent_prompt(pin: Pin, pr_url: str, consumer: Consumer) -> str:
+    return (
+        f"Finish the existing consumer pin PR {pr_url} in {consumer.repository}. "
+        f"It pins iOS CI to Xcode {pin.version}, build {pin.build}; do not change that pin or relax exact version/build checks. "
+        "Read the repository's AGENTS.md and follow its rules. "
+        "Finish this PR: run the focused tests, obtain the independent review record if the repository requires one, "
+        "mark it ready, let CI pass and merge it under normal rules. "
+        "Never push protected main. Do not open another PR. Keep secrets out of files and output."
+    )
+
+
+def run_agent(pin: Pin, pr_url: str, consumer: Consumer, factory: Path, root: Path) -> None:
+    """One fresh, time-boxed agent run. No session is persisted or resumed."""
+    argv = ["codex", "exec", "--json", "--approve-for-me", "-C", str(root), "--add-dir", str(factory), "--worktree", "-"]
+    # Its own process group, so the watchdog also kills grandchildren that would
+    # otherwise hold stdout open past the timeout while this tick holds the lock.
+    with subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+                          start_new_session=True) as process:
+        def kill_group() -> None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+        watchdog = threading.Timer(AGENT_TIMEOUT_SECONDS, kill_group)
+        watchdog.daemon = True
+        watchdog.start()
+        assert process.stdin is not None and process.stdout is not None
+        try:
+            process.stdin.write(agent_prompt(pin, pr_url, consumer))
+            process.stdin.close()
+            completed = False
+            for line in process.stdout:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(event, dict) and event.get("type") == "turn.completed":
+                    completed = True
+            exit_code = process.wait()
+        finally:
+            watchdog.cancel()
+            kill_group()
+    if exit_code or not completed:
+        raise FleetError("consumer pin agent did not complete")
+
+
+def advance_consumer(config: HostConfig, factory: Path, root: Path, state_path: Path) -> str | None:
+    """Return a waiting result, or None once merged consumer main carries the pin."""
+    pin, consumer = config.pin, config.consumer
+    if consumer_has_pin(root, pin, consumer):
+        return None
+    # Only the image host drives the shared PR; others would duplicate agent runs.
+    if not config.has_ci:
+        return "waiting-consumer-merge"
+    url, pr_state = ensure_consumer_pr(root, pin, consumer)
+    if pr_state == "closed":
+        return f"waiting-human: consumer pin PR {url} was closed; delete branch {pin_branch(pin)} to retry"
+    if pr_state == "merged":
+        return f"waiting-human: consumer pin PR {url} merged but main no longer carries the pin; delete branch {pin_branch(pin)} to retry"
+    if pr_state == "opened":
+        return "waiting-consumer-pr"
+    state = private_state(state_path, pin)
+    if len(state["agentRuns"]) >= AGENT_RUN_CAP:
+        return f"waiting-human: consumer pin PR {url} needs attention"
+    # Record before starting, so a crashed or killed run still counts.
+    state["agentRuns"].append(datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    save_state(state_path, state)
+    run_agent(pin, url, consumer, factory, root)
+    return None if consumer_has_pin(root, pin, consumer) else "waiting-consumer-merge"
+
+
+def _instant(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else None
+
+
+def latest_delivery_run(consumer: Consumer) -> dict | None:
+    """The newest completed delivery run on consumer main, or None when unknown."""
+    try:
+        runs = json.loads(command(["gh", "run", "list", "--repo", consumer.repository, "--workflow", consumer.delivery_workflow,
+                                   "--branch", "main", "--status", "completed", "--limit", "1",
+                                   "--json", "createdAt,url,conclusion"]) or "[]")
+    except (FleetError, ValueError):
+        return None
+    return runs[0] if isinstance(runs, list) and runs and isinstance(runs[0], dict) else None
+
+
+def delivery_validated(config: HostConfig, consumer_root: Path, promoted_at: object) -> bool:
+    """Validated: merged consumer main carries the pin and the newest completed
+    delivery run started after the promotion and succeeded. Unknown is never validated."""
+    promoted = _instant(promoted_at)
+    if promoted is None:
+        return False
+    run = latest_delivery_run(config.consumer)
+    created = _instant(run.get("createdAt")) if run else None
+    return bool(run) and run.get("conclusion") == "success" and created is not None and created > promoted
+
+
+def retire_if_validated(config: HostConfig, factory: Path, credentials_project: Path, manifest: Path, host: str,
+                        consumer_root: Path, status: dict) -> str:
+    """On a converged host, remove the previous Xcode (and unreferenced CI images) once delivery is green."""
+    if status.get("retiredAt"):
+        return "host-converged"
+    try:
+        pinned = consumer_has_pin(consumer_root, config.pin, config.consumer)
+    except (FleetError, OSError, ValueError):
+        return KEPT
+    if not pinned:
+        return KEPT
+    if not status.get("promotedAt"):
+        # Selected before promotion records existed: the worker's reconcile
+        # records the window start now, so only a later delivery run counts.
+        host_action(factory, credentials_project, manifest, host, "reconcile")
+        return KEPT
+    if not delivery_validated(config, consumer_root, status["promotedAt"]):
+        return KEPT
+    output = host_action(factory, credentials_project, manifest, host, "retire")
+    try:
+        result = json.loads(output.splitlines()[-1])
+    except (IndexError, ValueError) as error:
+        raise FleetError("invalid host retire result") from error
+    if not isinstance(result, dict) or not isinstance(result.get("removed"), list):
+        raise FleetError("invalid host retire result")
+    if result.get("result") == "deferred-busy":
+        return "host-converged (retire deferred: host busy)"
+    removed = ", ".join(str(path) for path in result["removed"]) or "no Xcode bundles"
+    return f"host-converged (retired: {removed})"
+
+
+def reconcile(factory: Path, consumer_root: Path, host_setup: Path, manifest: Path, host: str, state_dir: Path, credentials_project: Path | None = None) -> str:
+    config = read_host(manifest, host)
+    if config.hold:
+        return f"held: {config.hold}"
+    credentials_project = credentials_project or consumer_root
+    status = host_status(factory, manifest, host)
+    if not status["installedMatches"]:
+        host_action(factory, credentials_project, manifest, host, "stage")
+        status = host_status(factory, manifest, host)
+        if not status["installedMatches"]:
+            return "waiting-host-stage"
+    if config.has_ci:
+        sync_host_tools(host_setup)
+        # The host-side command verifies the exact guest build and activates the
+        # repo-specific runner pool as one idempotent transaction.
+        host_action(factory, credentials_project, manifest, host, "image-stage")
+    if status["selectedMatches"]:
+        # The consumer gate protects the switch; once the host runs the pin it
+        # has nothing to wait for, and a tick must not open PRs for a done host.
+        # What remains is retiring the previous Xcode once delivery is green.
+        return retire_if_validated(config, factory, credentials_project, manifest, host, consumer_root, status)
+    # The hold comes before the consumer step, so a held pin opens no consumer
+    # PR and spends no agent runs.
+    if config.pin.phase == "stage":
+        return "held-at-stage"
+    waiting = advance_consumer(config, factory, consumer_root, state_dir / "fleet.json")
+    if waiting:
+        return waiting
+    host_action(factory, credentials_project, manifest, host, "reconcile")
+    status = host_status(factory, manifest, host)
+    if not status["selectedMatches"]:
+        return "waiting-host-promotion"
+    return retire_if_validated(config, factory, credentials_project, manifest, host, consumer_root, status)
+
+
+def resolve_paths(args: argparse.Namespace, config: HostConfig) -> tuple[Path, Path, Path]:
+    """CLI flags win, then the private manifest's host paths. There are no personal defaults."""
+    def pick(flag: Path | None, key: str) -> Path | None:
+        chosen = flag or (Path(config.paths[key]) if key in config.paths else None)
+        return chosen.resolve() if chosen else None
+    consumer = pick(args.consumer_root, "consumer")
+    if consumer is None:
+        raise FleetError("no consumer checkout: pass --consumer-root or set paths.consumer")
+    host_setup = pick(args.host_setup_root, "hostSetup")
+    if host_setup is None:
+        if config.role == "ci-image":
+            raise FleetError("ci-image host needs the host-setup checkout: pass --host-setup-root or set paths.hostSetup")
+        host_setup = consumer  # never read: only ci-image hosts sync host tools
+    credentials = pick(args.credentials_project, "credentialsProject") or consumer
+    return consumer, host_setup, credentials
+
+
+def consumer_pinned(root: Path, config: HostConfig) -> bool | None:
+    if not root.is_dir():
+        return None
+    try:
+        return consumer_has_pin(root, config.pin, config.consumer)
+    except (FleetError, OSError, ValueError):
+        return None
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=("status", "reconcile"))
+    parser.add_argument("--host", required=True)
+    parser.add_argument("--factory-root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--consumer-root", dest="consumer_root", type=Path,
+                        help="consumer checkout; defaults to the host's manifest paths.consumer")
+    parser.add_argument("--credentials-project", type=Path, help="host-scoped Morpheus credentials project; defaults to paths.credentialsProject, then the consumer checkout")
+    parser.add_argument("--host-setup-root", type=Path, help="host-setup checkout for ci-image hosts; defaults to paths.hostSetup")
+    parser.add_argument("--manifest", type=Path, default=None, help="private host manifest; defaults to $FACTORY_HOME/hosts.json")
+    parser.add_argument("--state-dir", type=Path, default=Path.home() / ".local/state/morpheus-factory/fleet")
+    args = parser.parse_args()
+    factory = args.factory_root.resolve()
+    manifest = Path(os.path.abspath(args.manifest or host_config.default_manifest()))
+    config = read_host(manifest, args.host)
+    consumer_root, host_setup, credentials_project = resolve_paths(args, config)
+    if args.command == "status":
+        print(json.dumps({"pin": config.pin.key, "phase": config.pin.phase, "role": config.role, "hold": config.hold,
+                          "consumerPinned": consumer_pinned(consumer_root, config),
+                          "host": host_status(factory, manifest, args.host)}, sort_keys=True))
+        return 0
+    args.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (args.state_dir / "fleet.lock").open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise FleetError("another fleet reconciliation is running") from error
+        result = reconcile(factory, consumer_root, host_setup, manifest, args.host, args.state_dir, credentials_project)
+    print(json.dumps({"pin": config.pin.key, "result": result}, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (FleetError, OSError, ValueError, json.JSONDecodeError) as error:
+        print(f"fleet-controller: {error}", file=sys.stderr)
+        raise SystemExit(1)

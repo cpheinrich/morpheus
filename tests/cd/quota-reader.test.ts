@@ -169,7 +169,10 @@ describe("native quota read bounds and protocol", () => {
     const bad = fakeReader(true, false), rejected = rejection(nativeQuota(["fixture"], "/fixture", bad.at));
     bad.initialize(); bad.response(bad.limits(true)); expect((await rejected).message).toContain("cleanup unknown");
     const stuck = fakeReader(false), failure = rejection(nativeQuota(["fixture"], "/fixture", stuck.at));
-    stuck.initialize(); stuck.response(stuck.limits(true)); await vi.advanceTimersByTimeAsync(3_000);
+    stuck.initialize(); stuck.response(stuck.limits(true));
+    await vi.advanceTimersByTimeAsync(2_999);
+    expect(stuck.signals).toEqual(["SIGTERM"]);
+    await vi.advanceTimersByTimeAsync(1);
     expect((await failure).message).toContain("phase=cleanup elapsedMs=3000");
     expect(stuck.signals).toEqual(["SIGTERM", "SIGKILL"]);
   });

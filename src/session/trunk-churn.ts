@@ -210,43 +210,54 @@ export function canonicalXml(text: string): string | null {
     const chunk = text.slice(i, lt < 0 ? n : lt);
     if (chunk.trim()) out.push(`text ${JSON.stringify(chunk)}`);
     if (lt < 0) break;
-    i = lt;
-    if (text.startsWith("<?", i)) {
-      const end = text.indexOf("?>", i);
-      if (end < 0) return null;
-      out.push(`pi ${text.slice(i + 2, end).trim().replace(/\s+/g, " ")}`);
-      i = end + 2;
-    } else if (text.startsWith("<!--", i)) {
-      const end = text.indexOf("-->", i);
-      if (end < 0) return null;
-      out.push(`comment ${JSON.stringify(text.slice(i + 4, end))}`);
-      i = end + 3;
-    } else if (text.startsWith("<!", i)) {
-      return null; // DOCTYPE, CDATA: not in Xcode's files, and not worth getting subtly wrong.
-    } else if (text.startsWith("</", i)) {
-      const m = /^<\/([A-Za-z_][\w.:-]*)\s*>/.exec(text.slice(i));
-      if (!m || stack.pop() !== m[1]) return null;
-      out.push(`close ${m[1]}`);
-      i += m[0].length;
-    } else {
-      const name = /^<([A-Za-z_][\w.:-]*)/.exec(text.slice(i));
-      if (!name) return null;
-      i += name[0].length;
-      const attrs = new Map<string, string>();
-      for (;;) {
-        const ws = /^\s*/.exec(text.slice(i))![0];
-        i += ws.length;
-        if (text.startsWith("/>", i)) { out.push(open(name[1]!, attrs), `close ${name[1]}`); i += 2; break; }
-        if (text[i] === ">") { out.push(open(name[1]!, attrs)); stack.push(name[1]!); i++; break; }
-        if (!ws) return null;
-        const attr = /^([A-Za-z_][\w.:-]*)\s*=\s*("([^"<]*)"|'([^'<]*)')/.exec(text.slice(i));
-        if (!attr || attrs.has(attr[1]!)) return null;
-        attrs.set(attr[1]!, attr[3] ?? attr[4] ?? "");
-        i += attr[0].length;
-      }
-    }
+    const next = readMarkup(text, lt, stack, out);
+    if (next === null) return null;
+    i = next;
   }
   return stack.length ? null : out.join("\n");
+}
+
+/** One piece of markup at `i`, appended to `out`; returns the index after it, or null when it is not plain XML. */
+function readMarkup(text: string, i: number, stack: string[], out: string[]): number | null {
+  if (text.startsWith("<?", i)) {
+    const end = text.indexOf("?>", i);
+    if (end < 0) return null;
+    out.push(`pi ${text.slice(i + 2, end).trim().replace(/\s+/g, " ")}`);
+    return end + 2;
+  }
+  if (text.startsWith("<!--", i)) {
+    const end = text.indexOf("-->", i);
+    if (end < 0) return null;
+    out.push(`comment ${JSON.stringify(text.slice(i + 4, end))}`);
+    return end + 3;
+  }
+  if (text.startsWith("<!", i)) return null; // DOCTYPE, CDATA: not in Xcode's files, and not worth getting subtly wrong.
+  if (text.startsWith("</", i)) {
+    const m = /^<\/([A-Za-z_][\w.:-]*)\s*>/.exec(text.slice(i));
+    if (!m || stack.pop() !== m[1]) return null;
+    out.push(`close ${m[1]}`);
+    return i + m[0].length;
+  }
+  return readStartTag(text, i, stack, out);
+}
+
+/** A start or empty-element tag with its attributes, duplicates refused. */
+function readStartTag(text: string, i: number, stack: string[], out: string[]): number | null {
+  const name = /^<([A-Za-z_][\w.:-]*)/.exec(text.slice(i));
+  if (!name) return null;
+  i += name[0].length;
+  const attrs = new Map<string, string>();
+  for (;;) {
+    const ws = /^\s*/.exec(text.slice(i))![0];
+    i += ws.length;
+    if (text.startsWith("/>", i)) { out.push(open(name[1]!, attrs), `close ${name[1]}`); return i + 2; }
+    if (text[i] === ">") { out.push(open(name[1]!, attrs)); stack.push(name[1]!); return i + 1; }
+    if (!ws) return null;
+    const attr = /^([A-Za-z_][\w.:-]*)\s*=\s*("([^"<]*)"|'([^'<]*)')/.exec(text.slice(i));
+    if (!attr || attrs.has(attr[1]!)) return null;
+    attrs.set(attr[1]!, attr[3] ?? attr[4] ?? "");
+    i += attr[0].length;
+  }
 }
 
 function open(name: string, attrs: Map<string, string>): string {
@@ -282,15 +293,27 @@ async function classifyOne(change: RawChange, trunk: ReadonlyMap<string, TreeEnt
 
   // Exactly what trunk has: the fast-forward after the reset puts it back. Regular files and
   // symlinks only — a submodule's checkout is not moved by a reset, so it is never assumed.
-  if (trunk && (deleted ? !onTrunk : onTrunk && FILE_MODES.has(change.newMode) && onTrunk.mode === change.newMode && onTrunk.blob === change.newBlob)) {
-    return "on-trunk";
-  }
+  if (trunk && sameAsTrunk(change, deleted, onTrunk)) return "on-trunk";
   if (existed && (change.status === "M" || change.status === "D") && userStatePath(change.path)) return "user-state";
 
-  if (change.status !== "M" || !existed || deleted) return null;
-  if (change.oldMode !== change.newMode || !FILE_MODES.has(change.newMode) || change.newMode === "120000") return null;
+  if (!modifiedRegularFile(change, existed, deleted)) return null;
   const canonical = canonicalizerFor(change.path);
-  if (!canonical) return null;
+  return canonical ? structuralChurn(change, onTrunk, canonical, read) : null;
+}
+
+/** A content modification of a regular file whose mode did not change: the only shape structure can explain. */
+function modifiedRegularFile(change: RawChange, existed: boolean, deleted: boolean): boolean {
+  if (change.status !== "M" || !existed || deleted) return false;
+  return change.oldMode === change.newMode && FILE_MODES.has(change.newMode) && change.newMode !== "120000";
+}
+
+function sameAsTrunk(change: RawChange, deleted: boolean, onTrunk: TreeEntry | undefined): boolean {
+  if (deleted) return !onTrunk;
+  return !!onTrunk && FILE_MODES.has(change.newMode) && onTrunk.mode === change.newMode && onTrunk.blob === change.newBlob;
+}
+
+/** A modification whose canonical structure equals the old file's (format-only) or trunk's (on-trunk). */
+async function structuralChurn(change: RawChange, onTrunk: TreeEntry | undefined, canonical: (text: string) => string | null, read: BlobReader): Promise<ChurnKind | null> {
   const after = await read(change.newBlob);
   const now = after === null ? null : canonical(after);
   if (now === null) return null;

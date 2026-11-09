@@ -71,49 +71,32 @@ export interface DeliveryAssessment {
  * review from certifying a broken current run.
  */
 export function assessReviewDelivery(input: ReviewDelivery): DeliveryAssessment {
+  const why = trackingCommentProblem(input) ?? reviewBodyProblem(input.body?.trim() ?? "");
+  return why ? { delivered: false, why } : { delivered: true, why: "a new tracking comment contains the completed review" };
+}
+
+/** Why the run's tracking comment is not a new, non-empty comment created after a readable snapshot. */
+function trackingCommentProblem(input: ReviewDelivery): string | undefined {
   const commentId = input.commentId?.trim();
   const beforeCommentId = input.beforeCommentId?.trim();
-  const body = input.body?.trim() ?? "";
+  if (!beforeCommentId) return "no pre-run tracking-comment snapshot reached the verifier";
+  if (beforeCommentId === UNREADABLE_COMMENT_SNAPSHOT) return "could not establish the tracking-comment state before the run";
+  if (!commentId) return "no tracking comment was created";
+  if (beforeCommentId !== NO_PRIOR_COMMENT && commentId === beforeCommentId) return "the latest tracking comment belongs to an earlier run";
+  if (!(input.body?.trim() ?? "")) return "the new tracking comment is empty";
+  return undefined;
+}
 
-  if (!beforeCommentId) {
-    return { delivered: false, why: "no pre-run tracking-comment snapshot reached the verifier" };
-  }
-  if (beforeCommentId === UNREADABLE_COMMENT_SNAPSHOT) {
-    return { delivered: false, why: "could not establish the tracking-comment state before the run" };
-  }
-  if (!commentId) {
-    return { delivered: false, why: "no tracking comment was created" };
-  }
-  if (beforeCommentId !== NO_PRIOR_COMMENT && commentId === beforeCommentId) {
-    return { delivered: false, why: "the latest tracking comment belongs to an earlier run" };
-  }
-  if (!body) {
-    return { delivered: false, why: "the new tracking comment is empty" };
-  }
+/** Why a finalized comment body does not hold a completed, sentinel-marked review. */
+function reviewBodyProblem(body: string): string | undefined {
   const separator = body.indexOf("\n---\n");
   const header = separator >= 0 ? body.slice(0, separator).trim() : body;
   const reviewBody = separator >= 0 ? body.slice(separator + 5).trim() : "";
-
-  if (header.startsWith(REVIEW_ERROR_PREFIX)) {
-    return { delivered: false, why: "the new tracking comment reports that Claude encountered an error" };
-  }
-  if (!header.startsWith(REVIEW_FINISHED_PREFIX)) {
-    return { delivered: false, why: "the new tracking comment has no completed-review marker" };
-  }
-  if (reviewBody === REVIEW_PLACEHOLDER) {
-    return { delivered: false, why: "the finalized tracking comment still contains only the initial placeholder" };
-  }
-  if (hasUnfinishedProgress(reviewBody)) {
-    return { delivered: false, why: "the finalized tracking comment still contains unfinished progress" };
-  }
-  if (!reviewBody.includes(REVIEW_DELIVERED_SENTINEL)) {
-    return { delivered: false, why: "the finalized tracking comment lacks Morpheus's delivery sentinel" };
-  }
-
-  const substantiveReview = reviewBody.split(REVIEW_DELIVERED_SENTINEL).join("").trim();
-  if (!substantiveReview) {
-    return { delivered: false, why: "the finalized tracking comment contains no review" };
-  }
-
-  return { delivered: true, why: "a new tracking comment contains the completed review" };
+  if (header.startsWith(REVIEW_ERROR_PREFIX)) return "the new tracking comment reports that Claude encountered an error";
+  if (!header.startsWith(REVIEW_FINISHED_PREFIX)) return "the new tracking comment has no completed-review marker";
+  if (reviewBody === REVIEW_PLACEHOLDER) return "the finalized tracking comment still contains only the initial placeholder";
+  if (hasUnfinishedProgress(reviewBody)) return "the finalized tracking comment still contains unfinished progress";
+  if (!reviewBody.includes(REVIEW_DELIVERED_SENTINEL)) return "the finalized tracking comment lacks Morpheus's delivery sentinel";
+  if (!reviewBody.split(REVIEW_DELIVERED_SENTINEL).join("").trim()) return "the finalized tracking comment contains no review";
+  return undefined;
 }

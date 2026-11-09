@@ -1,0 +1,9 @@
+FROM node:24-bookworm-slim
+WORKDIR /app
+RUN npm install --global pnpm@11.9.0
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --prod --frozen-lockfile
+COPY src ./src
+COPY scripts/fleet-service.mjs ./scripts/fleet-service.mjs
+USER node
+CMD ["node", "scripts/fleet-service.mjs"]

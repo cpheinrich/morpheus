@@ -112,11 +112,7 @@ def sandbox_profile(solution, runner, temporary, python_executable=None,
          _sb_string(Path(temporary).resolve()))
 
 
-def run_json_command(command, payload, timeout=TIME_LIMIT,
-                     output_limit=OUTPUT_LIMIT, cwd=None, env=None):
-    """One payload per isolated process; stderr counts toward the output cap."""
-    if not 0 < timeout <= TIME_LIMIT or not 0 < output_limit <= OUTPUT_LIMIT:
-        raise ValueError("transport bounds exceed the declared limits")
+def request_file(payload):
     try:
         request = json.dumps({"payload": payload}, allow_nan=False,
                              separators=(",", ":")).encode() + b"\n"
@@ -127,6 +123,50 @@ def run_json_command(command, payload, timeout=TIME_LIMIT,
     request_stream = tempfile.TemporaryFile()
     request_stream.write(request)
     request_stream.seek(0)
+    return request_stream
+
+
+def read_bounded(process, selector, chunks, deadline, output_limit):
+    """Drain stdout and stderr until both close, within the deadline and the shared output cap."""
+    for name in chunks:
+        pipe = getattr(process, name)
+        os.set_blocking(pipe.fileno(), False)
+        selector.register(pipe, selectors.EVENT_READ, name)
+    while selector.get_map():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RPCError("RPC timeout")
+        for key, _ in selector.select(min(remaining, 0.05)):
+            block = os.read(key.fileobj.fileno(), 65536)
+            if not block:
+                selector.unregister(key.fileobj)
+            else:
+                chunks[key.data].extend(block)
+                if sum(map(len, chunks.values())) > output_limit:
+                    raise RPCError("RPC output overflow")
+
+
+def rpc_result(stdout):
+    try:
+        reply = strict_json(bytes(stdout).decode("utf-8"))
+    except (ValueError, UnicodeError) as exc:
+        raise RPCError("malformed or multiple RPC answers") from exc
+    if (not isinstance(reply, dict) or type(reply.get("protocol")) is not int
+            or reply["protocol"] != 1):
+        raise RPCError("invalid RPC envelope")
+    if set(reply) == {"protocol", "result"}:
+        return reply["result"]
+    if reply == {"protocol": 1, "error": "ValueError"}:
+        raise ValueError("candidate rejected payload")
+    raise RPCError("invalid RPC envelope")
+
+
+def run_json_command(command, payload, timeout=TIME_LIMIT,
+                     output_limit=OUTPUT_LIMIT, cwd=None, env=None):
+    """One payload per isolated process; stderr counts toward the output cap."""
+    if not 0 < timeout <= TIME_LIMIT or not 0 < output_limit <= OUTPUT_LIMIT:
+        raise ValueError("transport bounds exceed the declared limits")
+    request_stream = request_file(payload)
     process = subprocess.Popen(command, stdin=request_stream,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                cwd=cwd, env=env, start_new_session=True)
@@ -134,22 +174,7 @@ def run_json_command(command, payload, timeout=TIME_LIMIT,
     chunks = {"stdout": bytearray(), "stderr": bytearray()}
     selector = selectors.DefaultSelector()
     try:
-        for name in chunks:
-            pipe = getattr(process, name)
-            os.set_blocking(pipe.fileno(), False)
-            selector.register(pipe, selectors.EVENT_READ, name)
-        while selector.get_map():
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise RPCError("RPC timeout")
-            for key, _ in selector.select(min(remaining, 0.05)):
-                block = os.read(key.fileobj.fileno(), 65536)
-                if not block:
-                    selector.unregister(key.fileobj)
-                else:
-                    chunks[key.data].extend(block)
-                    if sum(map(len, chunks.values())) > output_limit:
-                        raise RPCError("RPC output overflow")
+        read_bounded(process, selector, chunks, deadline, output_limit)
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise RPCError("RPC timeout")
@@ -159,18 +184,7 @@ def run_json_command(command, payload, timeout=TIME_LIMIT,
             raise RPCError("RPC timeout") from exc
         if code != 0:
             raise RPCError("RPC nonzero exit: %s" % code)
-        try:
-            reply = strict_json(bytes(chunks["stdout"]).decode("utf-8"))
-        except (ValueError, UnicodeError) as exc:
-            raise RPCError("malformed or multiple RPC answers") from exc
-        if (not isinstance(reply, dict) or type(reply.get("protocol")) is not int
-                or reply["protocol"] != 1):
-            raise RPCError("invalid RPC envelope")
-        if set(reply) == {"protocol", "result"}:
-            return reply["result"]
-        if reply == {"protocol": 1, "error": "ValueError"}:
-            raise ValueError("candidate rejected payload")
-        raise RPCError("invalid RPC envelope")
+        return rpc_result(chunks["stdout"])
     finally:
         selector.close()
         # Also kill descendants if the leader exited while leaving inherited

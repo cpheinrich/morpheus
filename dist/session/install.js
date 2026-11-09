@@ -36,8 +36,23 @@ export const READ_HOOK_MARKER = "context record-read";
  * a hook error after every tool call would be noise in every session, and
  * missing evidence already fails safe, to the assertion with a warning.
  */
-export const READ_HOOK_COMMAND = "sh -c 'PATH=\"${PATH:-/usr/bin:/bin}:${HOME:-/nonexistent}/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; " +
-    "command -v morpheus >/dev/null 2>&1 && morpheus context record-read >/dev/null 2>&1; exit 0'";
+const HOOK_SHELL = "sh -c 'PATH=\"${PATH:-/usr/bin:/bin}:${HOME:-/nonexistent}/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; " +
+    "command -v morpheus >/dev/null 2>&1 && morpheus context ";
+export const READ_HOOK_COMMAND = HOOK_SHELL + "record-read >/dev/null 2>&1; exit 0'";
+const TASK_PROMPT_COMMAND = HOOK_SHELL + "task-prompt; exit 0'";
+const TASK_PROMPT = {
+    blocks: () => ({ UserPromptSubmit: [{ hooks: [{ type: "command", command: TASK_PROMPT_COMMAND }] }] }),
+    marker: "context task-prompt",
+    label: "the task context hook",
+};
+const CLAUDE_MCP_READ = {
+    blocks: () => ({ PostToolUse: [{
+                matcher: "mcp__morpheus_context__(search_project_context|read_project_record)",
+                hooks: [{ type: "command", command: HOOK_SHELL + "record-read --mcp >/dev/null 2>&1; exit 0'" }],
+            }] }),
+    marker: "context record-read --mcp",
+    label: "the Morpheus Context MCP read hook",
+};
 const readHook = () => ({ type: "command", command: READ_HOOK_COMMAND });
 /**
  * Claude Code: after Read and Bash, and after a Bash that exited non-zero —
@@ -45,7 +60,7 @@ const readHook = () => ({ type: "command", command: READ_HOOK_COMMAND });
  * and `context refresh` exits 1 exactly when it prints lines to be read.
  */
 const claudeReadBlocks = () => ({
-    PostToolUse: [{ matcher: "Read|Bash", hooks: [readHook()] }],
+    PostToolUse: [{ matcher: "Read|Bash", hooks: [readHook()] }, ...CLAUDE_MCP_READ.blocks().PostToolUse],
     PostToolUseFailure: [{ matcher: "Bash", hooks: [readHook()] }],
 });
 /**
@@ -72,8 +87,8 @@ const POLL_GUARD = { blocks: pollGuardBlocks, marker: POLL_GUARD_SCRIPT, label: 
  * that also carries permissions, plugins and a theme, while
  * `.codex/hooks.json` holds hooks and nothing else.
  */
-export const claudeSettingsFile = (pollGuard = true) => JSON.stringify({ hooks: { ...sessionStartBlock(), ...claudeReadBlocks(), ...(pollGuard ? pollGuardBlocks() : {}) } }, null, 2) + "\n";
-export const codexHooksFile = (pollGuard = true) => JSON.stringify({ hooks: { ...sessionStartBlock(), ...codexReadBlocks(), ...(pollGuard ? pollGuardBlocks() : {}) } }, null, 2) + "\n";
+export const claudeSettingsFile = (pollGuard = true) => JSON.stringify({ hooks: { ...sessionStartBlock(), ...claudeReadBlocks(), ...TASK_PROMPT.blocks(), ...(pollGuard ? pollGuardBlocks() : {}) } }, null, 2) + "\n";
+export const codexHooksFile = (pollGuard = true) => JSON.stringify({ hooks: { ...sessionStartBlock(), ...codexReadBlocks(), ...TASK_PROMPT.blocks(), ...(pollGuard ? pollGuardBlocks() : {}) } }, null, 2) + "\n";
 export const CLAUDE_SETTINGS = ".claude/settings.json";
 export const CODEX_HOOKS = ".codex/hooks.json";
 export const MANIFEST = "morpheus.json";
@@ -152,6 +167,52 @@ async function writeJson(path, value) {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, JSON.stringify(value, null, 2) + "\n", "utf8");
 }
+async function createHookFile(path, rel, content, write, pollGuard) {
+    if (write) {
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, content, "utf8");
+    }
+    return {
+        target: rel,
+        outcome: "created",
+        detail: pollGuard ? "Wrote the session-start hook and the CI poll guard." : "Wrote the session-start hook.",
+    };
+}
+/** Adds the session shim to `hooks.SessionStart`, replacing a legacy direct brief; names what it did. */
+function mergeSessionShim(block) {
+    const sessionStart = block["SessionStart"];
+    if (sessionStart !== undefined && !Array.isArray(sessionStart)) {
+        return { blocked: 'Left untouched — its "hooks.SessionStart" is not an array.' };
+    }
+    const entries = Array.isArray(sessionStart) ? sessionStart : [];
+    if (alreadyWired(entries))
+        return { done: [] };
+    const legacy = withoutLegacyBrief(entries);
+    block["SessionStart"] = [...legacy.entries, sessionStartBlock().SessionStart[0]];
+    return { done: [
+            legacy.removed
+                ? "Replaced the legacy direct brief with the version-independent session shim."
+                : entries.length > 0
+                    ? "Added the Morpheus session shim alongside the SessionStart hooks already there."
+                    : "Added the session-start hook, keeping the rest of the file.",
+        ] };
+}
+/** Appends one kind of hook to every event it needs and is not yet wired on. */
+function mergeWanted(block, wanted) {
+    const missing = [];
+    for (const [event, entriesToAdd] of Object.entries(wanted.blocks())) {
+        const current = block[event];
+        if (current !== undefined && !Array.isArray(current)) {
+            return { blocked: `Left untouched — its "hooks.${event}" is not an array.` };
+        }
+        const list = Array.isArray(current) ? current : [];
+        if (alreadyWired(list, wanted.marker))
+            continue;
+        block[event] = [...list, ...entriesToAdd];
+        missing.push(event);
+    }
+    return { done: missing.length ? [`Added ${wanted.label} (${missing.join(", ")}) beside any hooks already there.`] : [] };
+}
 /**
  * Install the hook into one file, merging rather than replacing.
  *
@@ -169,17 +230,8 @@ async function ensureHook(root, rel, template, readBlocks, write, pollGuard = tr
             detail: `Left untouched — ${found.why}. Repair the file, then re-run.`,
         };
     }
-    if (found.kind === "absent") {
-        if (write) {
-            await mkdir(dirname(path), { recursive: true });
-            await writeFile(path, template(pollGuard), "utf8");
-        }
-        return {
-            target: rel,
-            outcome: "created",
-            detail: pollGuard ? "Wrote the session-start hook and the CI poll guard." : "Wrote the session-start hook.",
-        };
-    }
+    if (found.kind === "absent")
+        return createHookFile(path, rel, template(pollGuard), write, pollGuard);
     const doc = found.value;
     const hooks = doc["hooks"];
     if (hooks !== undefined && !isObject(hooks)) {
@@ -190,57 +242,32 @@ async function ensureHook(root, rel, template, readBlocks, write, pollGuard = tr
         };
     }
     const block = isObject(hooks) ? { ...hooks } : {};
-    const sessionStart = block["SessionStart"];
-    if (sessionStart !== undefined && !Array.isArray(sessionStart)) {
-        return {
-            target: rel,
-            outcome: "blocked",
-            detail: 'Left untouched — its "hooks.SessionStart" is not an array.',
-        };
-    }
-    const entries = Array.isArray(sessionStart) ? sessionStart : [];
-    const done = [];
-    if (!alreadyWired(entries)) {
-        const legacy = withoutLegacyBrief(entries);
-        block["SessionStart"] = [...legacy.entries, sessionStartBlock().SessionStart[0]];
-        done.push(legacy.removed
-            ? "Replaced the legacy direct brief with the version-independent session shim."
-            : entries.length > 0
-                ? "Added the Morpheus session shim alongside the SessionStart hooks already there."
-                : "Added the session-start hook, keeping the rest of the file.");
-    }
+    const merged = mergeSessionShim(block);
+    if ("blocked" in merged)
+        return { target: rel, outcome: "blocked", detail: merged.blocked };
+    const done = merged.done;
     // Every event checked before anything is written, so a malformed one leaves
     // the file exactly as it was rather than half-repaired. Each kind of hook is
     // found by its own marker, so one already wired is never added twice, and
     // entries are appended — a project's own hooks on the same event keep running.
-    const wantedAll = [{ blocks: readBlocks, ...READ_HOOK }, ...(pollGuard ? [POLL_GUARD] : [])];
+    const wantedAll = [
+        { blocks: readBlocks, ...READ_HOOK }, TASK_PROMPT,
+        ...(rel === CLAUDE_SETTINGS ? [CLAUDE_MCP_READ] : []),
+        ...(pollGuard ? [POLL_GUARD] : []),
+    ];
     for (const wanted of wantedAll) {
-        const missing = [];
-        for (const [event, entriesToAdd] of Object.entries(wanted.blocks())) {
-            const current = block[event];
-            if (current !== undefined && !Array.isArray(current)) {
-                return {
-                    target: rel,
-                    outcome: "blocked",
-                    detail: `Left untouched — its "hooks.${event}" is not an array.`,
-                };
-            }
-            const list = Array.isArray(current) ? current : [];
-            if (alreadyWired(list, wanted.marker))
-                continue;
-            block[event] = [...list, ...entriesToAdd];
-            missing.push(event);
-        }
-        if (missing.length)
-            done.push(`Added ${wanted.label} (${missing.join(", ")}) beside any hooks already there.`);
+        const added = mergeWanted(block, wanted);
+        if ("blocked" in added)
+            return { target: rel, outcome: "blocked", detail: added.blocked };
+        done.push(...added.done);
     }
     if (!done.length) {
         return {
             target: rel,
             outcome: "present",
             detail: pollGuard
-                ? "Already runs the Morpheus session shim, read hook and CI poll guard."
-                : "Already runs the Morpheus session shim and read hook.",
+                ? "Already runs the Morpheus session shim, read hook, task context hook and CI poll guard."
+                : "Already runs the Morpheus session shim, read hook and task context hook.",
         };
     }
     if (write)

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseOnboarding, renderOnboarding, setState, type TaskStatus } from "../src/onboarding/state.js";
-import { collectStatus, summarise } from "../src/onboarding/status.js";
+import { collectStatus, detectedStatus, formatStatus, summarise } from "../src/onboarding/status.js";
 import { firebaseGoogleAuthReady, TASKS, projectLabel, tasksFor, type Task } from "../src/onboarding/tasks.js";
 import { appendOpenItem } from "../src/inbox/append.js";
 import { TEAM_RESERVED } from "../src/paths.js";
@@ -321,6 +321,42 @@ describe("detection outranks the file, except when it cannot answer", () => {
     // This exits before any cloud request. An absent public domain is unknown,
     // not evidence that Firebase's default domains are sufficient for the app.
     await expect(firebaseGoogleAuthReady(dir)).resolves.toBeNull();
+  });
+});
+
+describe("a detector that could not answer", () => {
+  const branch = task({ id: "branch-protection", detect: async () => null });
+
+  it("keeps the recorded box but still says it could not check, on every run", () => {
+    // First run: nothing recorded, so the state itself is unknown.
+    const first = detectedStatus(branch, undefined, null);
+    const firstMd = renderOnboarding("Evo", [first], "company");
+    expect(firstMd).toContain("— `could not check`");
+
+    // Second run: the file now records `[ ]`, which parses back as todo. The
+    // detector still cannot answer, so the line must not claim a detection.
+    const recorded = parseOnboarding(firstMd).get("branch-protection");
+    expect(recorded?.state).toBe("todo");
+    const second = detectedStatus(branch, recorded, null);
+    expect(second).toMatchObject({ state: "todo", detected: true, unchecked: true });
+    const secondMd = renderOnboarding("Evo", [second], "company");
+    expect(secondMd).toContain("— `could not check`");
+    expect(secondMd).not.toContain("— `detected`");
+    expect(summarise([second]).unknown).toBe(1);
+    // `morpheus init status` prints the same thing in the terminal.
+    expect(formatStatus([second], "Evo", "hq/onboarding.md")).toContain("could not check — ");
+  });
+
+  it("says detected only when the detector answered", () => {
+    for (const answer of [true, false]) {
+      const s = detectedStatus(branch, { state: "todo" }, answer);
+      expect(s).toMatchObject({ state: answer ? "done" : "todo", detected: true });
+      expect(s.unchecked).toBeUndefined();
+      const md = renderOnboarding("Evo", [s], "company");
+      expect(md).toContain("— `detected`");
+      expect(md).not.toContain("could not check");
+      expect(summarise([s]).unknown).toBe(0);
+    }
   });
 });
 

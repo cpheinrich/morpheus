@@ -2,31 +2,59 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { CANONICAL_INPUTS } from "./lease.js";
+import { contextArm, isHumanInbox, parseSearchConfig } from "../context-search/rollout.js";
 const asStrings = (v) => Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
-export async function projectPolicy(root) {
-    let config = {};
+/** `morpheus.json`'s `context` block, `{}` when it has none, or null when the manifest cannot be read. */
+async function contextConfig(root) {
     try {
         const manifest = JSON.parse(await readFile(join(root, "morpheus.json"), "utf8"));
-        config = manifest.context ?? {};
+        return manifest.context ?? {};
     }
     catch {
-        return {};
+        return null;
     }
+}
+async function rolloutPolicy(root, config, runnerId) {
+    if (config.search === undefined)
+        return;
+    try {
+        const search = parseSearchConfig(config.search);
+        if (search.rollout)
+            return contextArm(root, runnerId, search);
+    }
+    catch {
+        return { arm: "legacy", engine: "ripgrep", startup: "full", unavailable: "Invalid context search settings; using the existing required reads." };
+    }
+}
+function requiredRecords(config, declared, rollout) {
+    if (!rollout?.id) {
+        const inbox = typeof config.handle === "string" ? [`hq/team/${config.handle}.md`] : [];
+        return [...CANONICAL_INPUTS, ...declared, ...inbox];
+    }
+    const extras = declared.filter(path => !isHumanInbox(path));
+    const startup = rollout.coreInputs ? ["CLAUDE.md", ...rollout.coreInputs] : CANONICAL_INPUTS;
+    return [...startup, ...extras];
+}
+export async function projectPolicy(root, runnerId) {
+    const config = await contextConfig(root);
+    if (!config)
+        return {};
     const trunk = typeof config.trunk === "string" && config.trunk ? { trunk: config.trunk } : {};
     const raw = Array.isArray(config.requiredInputs) ? config.requiredInputs : null;
-    const declared = raw ? asStrings(raw) : null;
-    const inbox = typeof config.handle === "string" ? [`hq/team/${config.handle}.md`] : [];
+    const declared = asStrings(raw);
+    const rollout = await rolloutPolicy(root, config, runnerId);
     // `[]` stays `[]` **only when it was written as `[]`**. Gating on the
     // filtered array instead would let `["…", {path: "x"}]` — a project trying
     // to *add* records — collapse into the one value that switches coverage
     // off. Declared-and-nothing-usable is not declared-as-none, and a filter
     // that erases the difference is the absent-reads-as-empty defect again.
-    if (raw !== null && raw.length === 0 && inbox.length === 0) {
+    if (!rollout && raw?.length === 0 && typeof config.handle !== "string") {
         return { requiredInputs: [], ...trunk };
     }
-    const dropped = raw && declared ? raw.length - declared.length : 0;
+    const dropped = (raw?.length ?? 0) - declared.length;
     return {
-        requiredInputs: [...new Set([...CANONICAL_INPUTS, ...(declared ?? []), ...inbox])],
+        requiredInputs: [...new Set(requiredRecords(config, declared, rollout))],
+        ...(rollout ? { rollout } : {}),
         ...trunk,
         ...(dropped > 0
             ? { droppedInputs: (raw ?? []).filter((v) => typeof v !== "string").map((v) => JSON.stringify(v)) }

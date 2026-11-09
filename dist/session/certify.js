@@ -7,7 +7,7 @@ import { gitSubprocessEnv } from "../git-env.js";
 import { contentLines, mergeRanges, readEvidence, runnerSession, subtractRanges, } from "./evidence.js";
 const exec = promisify(execFile);
 /** Every checkout of this repository: evidence is about content, not about which checkout held it. */
-async function checkouts(root) {
+export async function evidenceCheckouts(root) {
     try {
         const { stdout } = await exec("git", ["worktree", "list", "--porcelain", "-z"], { cwd: root, timeout: 15_000, env: gitSubprocessEnv() });
         const paths = stdout.split("\0").filter((f) => f.startsWith("worktree ")).map((f) => f.slice("worktree ".length));
@@ -36,7 +36,7 @@ export async function evidenceMode(root, env = process.env) {
     const reads = [];
     let live = false;
     let malformed = 0;
-    for (const checkout of await checkouts(root)) {
+    for (const checkout of await evidenceCheckouts(root)) {
         const log = await readEvidence(checkout);
         malformed += log.malformed;
         for (const entry of log.entries) {

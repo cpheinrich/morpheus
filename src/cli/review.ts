@@ -9,6 +9,8 @@ import { LOCAL_REVIEW_PROMPT } from "../review/local-prompt.js";
 import { committedConfig, git, reviewRecordLine, reviewRequired, verifyReviewRecord } from "../review/local.js";
 import { buildReviewPrompt } from "../review/prompt.js";
 import { projectCommands, reviewPacket } from "../review/packet.js";
+import { runCheck } from "../complexity/check.js";
+import { packetSummary } from "../complexity/format.js";
 
 /**
  * `morpheus review prompt` — assemble the rung 2 reviewer prompt and print it.
@@ -227,6 +229,7 @@ export async function prepareReview(productDir: string, root: string, base: stri
           head,
           ticket: { id: ctx.id, title: ctx.title, intent: ctx.intent, acceptance: ctx.acceptance, missingAcceptance: ctx.missingAcceptance },
           commands: await projectCommands(root),
+          complexity: packetSummary(await runCheck({ root, base, all: false })),
         }),
     );
     console.log("\nWorklog record template (replace placeholders; never mark an unfinished review complete):");

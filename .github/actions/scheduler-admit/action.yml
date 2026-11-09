@@ -1,0 +1,38 @@
+name: Scheduler admission guard
+description: >-
+  Decide whether this run is the first admitted run of its scheduled occurrence. Name this step
+  "Scheduler admission" and follow it with a no-op step named exactly "Scheduler occurrence
+  admitted" gated on the output; see docs/runbooks/scheduler.md.
+inputs:
+  scheduler-id:
+    description: The workflow's scheduler-id input; empty for a manual run.
+    default: ""
+  scheduled-for:
+    description: The workflow's scheduled-for input; empty for a manual run.
+    default: ""
+  token:
+    description: Token with actions read on this repository.
+    default: ${{ github.token }}
+outputs:
+  admitted:
+    description: "'true' or 'false'."
+    value: ${{ steps.guard.outputs.admitted }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: "22"
+    - name: Install Morpheus production dependencies from its lockfile
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      run: npx --yes pnpm@11.9.0 install --prod --frozen-lockfile --ignore-scripts
+    - id: guard
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        SCHEDULER_ID: ${{ inputs.scheduler-id }}
+        SCHEDULED_FOR: ${{ inputs.scheduled-for }}
+      run: >-
+        node "$GITHUB_ACTION_PATH/../../../dist/cli/index.js" scheduler admit
+        --scheduler-id "$SCHEDULER_ID" --scheduled-for "$SCHEDULED_FOR"

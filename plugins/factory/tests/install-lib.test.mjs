@@ -79,3 +79,54 @@ test("the personal marketplace loses only the codex-claude entry", () => {
   assert.equal(paths.install, "/Users/u/plugins/codex-claude");
   assert.equal(paths.config, "/Users/u/.local/share/codex-claude/config.json");
 });
+
+test("a staged install carries the nested host package but no build output or private config", async (t) => {
+  const { mkdtemp, mkdir, writeFile, cp, readdir, rm, stat } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join, relative } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const { installCopyFilter } = await import("../scripts/install-lib.mjs");
+  const root = await mkdtemp(join(tmpdir(), "factory-copy-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  // A source tree shaped like a used checkout: built, installed and with stray private files.
+  const source = join(root, "factory");
+  const host = join(source, "src", "host");
+  for (const dir of ["core", "worker/setup", "fleet", "tests", "node_modules/vitest", "dist", "worker/__pycache__", ".git"])
+    await mkdir(join(host, dir), { recursive: true });
+  for (const file of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "core/cli.ts", "worker/host_config.py",
+    "worker/setup.sh", "worker/setup/factory.sh", "fleet/controller.py", "tests/test_host_config.py",
+    "node_modules/vitest/index.js", "dist/cli.js", "worker/__pycache__/x.pyc", "hosts.json", "factory.json", ".env", ".env.local"])
+    await writeFile(join(host, file), "x");
+  const staged = join(root, "staged");
+  await cp(source, staged, { recursive: true, filter: installCopyFilter });
+  const files = [];
+  const walk = async (dir) => {
+    for (const entry of await readdir(dir, { withFileTypes: true }))
+      entry.isDirectory() ? await walk(join(dir, entry.name)) : files.push(relative(staged, join(dir, entry.name)));
+  };
+  await walk(staged);
+  assert.deepEqual(files.sort(), [
+    "src/host/core/cli.ts", "src/host/fleet/controller.py", "src/host/package.json", "src/host/pnpm-lock.yaml",
+    "src/host/pnpm-workspace.yaml", "src/host/tests/test_host_config.py", "src/host/worker/host_config.py",
+    "src/host/worker/setup.sh", "src/host/worker/setup/factory.sh",
+  ]);
+  // The real package: every committed host entry point survives the filter.
+  const real = fileURLToPath(new URL("../src/host/", import.meta.url));
+  for (const path of ["worker/host_config.py", "worker/setup.sh", "worker/install_updates.py", "worker/update_runner.sh",
+    "fleet/controller.py", "core/cli.ts", "scripts/setup-sub2api.sh", "package.json", "pnpm-lock.yaml"]) {
+    assert.ok(installCopyFilter(join(real, path)), path);
+    assert.ok((await stat(join(real, path))).isFile(), path);
+  }
+});
+
+test("installing the plugin never builds the host package, installs software or loads a service", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const installer = await readFile(new URL("../scripts/install.mjs", import.meta.url), "utf8");
+  const lib = await readFile(new URL("../scripts/install-lib.mjs", import.meta.url), "utf8");
+  for (const text of [installer, lib])
+    for (const forbidden of [/src\/host/, /setup\.sh/, /install_updates/, /setup-sub2api/, /launchctl/, /\bdocker\b/, /colima/, /\btart\b/, /xcodes/, /brew /])
+      assert.doesNotMatch(text, forbidden);
+  // The plugin's own test and check scripts stay shallow: the host suite runs only in its own package.
+  const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(pkg.scripts.test, "node --test tests/*.test.mjs");
+});

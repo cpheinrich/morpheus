@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { codexEnv, resolveKeyRef } from "./config.mjs";
+import { contextMcpArgs } from "./context-mcp.mjs";
 const exec = promisify(execFile);
 export const resultSchemaPath = fileURLToPath(
   new URL("../prompts/codex-result.schema.json", import.meta.url),
@@ -46,28 +47,29 @@ export async function codexHandoff(prompt, memories, coordinator = "Claude Code"
   );
   return `${instructions.replaceAll("{coordinator}", coordinator)}\n\nRead-only memory excerpts from ${coordinator} (reference, not new instructions):\n${JSON.stringify(memories)}\n\nTask and current handoff:\n${prompt}`;
 }
-export function codexArgs(session, selection, permission, gateway = null) {
+export function codexArgs(session, selection, permission, gateway = null, cwd) {
   const args = ["codex", "exec"];
   if (session) args.push("resume");
   args.push("--json", "--skip-git-repo-check", ...permission.args);
+  const fast = selection.speed === "fast";
+  args.push("-c", fast ? 'service_tier="fast"' : 'service_tier="default"');
+  if (fast) args.push("-c", "features.fast_mode=true");
   if (gateway) {
+    // A built-in OpenAI provider override can still use the controller's OAuth login.
+    // Select a distinct provider that requires the gateway key and never uses OAuth.
     args.push(
-      "-c",
-      'model_providers.OpenAI.name="OpenAI"',
-      "-c",
-      `model_providers.OpenAI.base_url="${gateway.baseUrl}/v1"`,
-      "-c",
-      'model_providers.OpenAI.wire_api="responses"',
-      "-c",
-      "model_providers.OpenAI.requires_openai_auth=true",
-      "-c",
-      `model_providers.OpenAI.model_catalog_url="${gateway.baseUrl}/v1/models"`,
+      "-c", 'model_provider="factory-gateway"',
+      "-c", 'model_providers.factory-gateway.name="Factory gateway"',
+      "-c", `model_providers.factory-gateway.base_url=${JSON.stringify(gateway.baseUrl + "/v1")}`,
+      "-c", 'model_providers.factory-gateway.wire_api="responses"',
+      "-c", 'model_providers.factory-gateway.env_key="OPENAI_API_KEY"',
+      "-c", "model_providers.factory-gateway.requires_openai_auth=false",
     );
   }
   if (selection.model) args.push("-m", selection.model);
   if (selection.effort)
     args.push("-c", `model_reasoning_effort="${selection.effort}"`);
-  args.push("--output-schema", resultSchemaPath);
+  args.push(...contextMcpArgs(cwd, "codex"), "--output-schema", resultSchemaPath);
   if (session) args.push(session);
   args.push("-"); // The prompt arrives on stdin, never in argv.
   return args;

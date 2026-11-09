@@ -78,7 +78,7 @@ function renderTask(s) {
     const lines = [ANCHOR(s.task.id)];
     const suffix = s.task.optional ? " *(optional)*" : "";
     const tag = s.detected
-        ? s.state === "unknown"
+        ? s.state === "unknown" || s.unchecked
             ? " — `could not check`"
             : " — `detected`"
         : "";

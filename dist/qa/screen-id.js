@@ -69,6 +69,11 @@ export function screenIdFromAxTree(roots) {
     const digest = createHash("sha256").update([...new Set(landmarks)].slice(0, 2).join("\n")).digest("hex").slice(0, 12);
     return `ax:${landmarks[0]}:${digest}`;
 }
+/** Two frames within half a point on every edge: an element that fills the screen is the screen. */
+function sameFrame(a, b) {
+    // Written as the negation of "differs" so a NaN coordinate counts as the screen, as it always has.
+    return !(Math.abs(a.x - b.x) >= 0.5 || Math.abs(a.y - b.y) >= 0.5 || Math.abs(a.width - b.width) >= 0.5 || Math.abs(a.height - b.height) >= 0.5);
+}
 /** Preserve serve-sim's element paths while retaining the screen ID from that same native tree. */
 export function qaAxSnapshotFromTree(roots) {
     const screenFrame = roots[0]?.frame;
@@ -78,10 +83,7 @@ export function qaAxSnapshotFromTree(roots) {
         if (elements.length >= 500)
             return;
         const frame = node.frame;
-        if (frame && screenFrame && (Math.abs(frame.x - screenFrame.x) >= 0.5 ||
-            Math.abs(frame.y - screenFrame.y) >= 0.5 ||
-            Math.abs(frame.width - screenFrame.width) >= 0.5 ||
-            Math.abs(frame.height - screenFrame.height) >= 0.5)) {
+        if (frame && screenFrame && !sameFrame(frame, screenFrame)) {
             elements.push({
                 id: node.AXUniqueId ?? path,
                 path,

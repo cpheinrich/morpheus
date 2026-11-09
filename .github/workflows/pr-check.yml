@@ -274,3 +274,80 @@ jobs:
             "$RUNNER_TEMP/live-pr.json" > "$RUNNER_TEMP/review-event.json"
           GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json" node .morpheus/dist/cli/index.js check pr \
             --dir "$PRODUCT_DIR" --base "origin/$BASE_REF"
+
+      # Function complexity of the PR head, from its own morpheus.json
+      # `complexity` block (docs/runbooks/complexity.md). Inside this required
+      # job, so an enforcing project needs no new required check. A project
+      # without the block is not enrolled and skips. Advisory never fails this
+      # job, not even when the analyzer cannot be installed or run; enforce fails
+      # on a blocking finding (exit 1) or a check that could not run (exit 2),
+      # and `--ci` measures every in-scope file there. It runs after the
+      # conventions check, so it never hides a conventions failure.
+      - name: Check function complexity
+        if: needs.head.outputs.superseded-by == ''
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # >>> pr-head
+          # Every check below must read the PR head: the review gate reads
+          # morpheus.json and the record there, the rest diff and read its tree.
+          # Normally the checkout is refs/pull/N/merge, whose second parent is
+          # the head. Some runs get a checkout of the base branch instead, or a
+          # merge ref GitHub has not recomputed for the newest push, and then
+          # the head may be absent — which `git show <sha>:morpheus.json`
+          # reports as "exists on disk, but not in <sha>". Fetch it by its pull
+          # ref (that also covers a fork, whose branch is not among origin's
+          # heads) and check it out, rather than judge some other tree.
+          # A failed fetch is not fatal here: `check pr` then names the missing
+          # commit, which says more than a raw fetch error would.
+          if ! git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null; then
+            git fetch --no-tags origin "+refs/pull/$PR_NUMBER/head:refs/remotes/pull/$PR_NUMBER/head" \
+              || echo "::warning::Could not fetch refs/pull/$PR_NUMBER/head."
+          fi
+          if git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null \
+            && [ "$(git rev-parse HEAD)" != "$EXPECTED_HEAD" ] \
+            && [ "$(git rev-parse --verify --quiet 'HEAD^2' || true)" != "$EXPECTED_HEAD" ]; then
+            echo "::notice::The checkout is not this pull request's merge commit; checking the PR head out directly."
+            git checkout --quiet --detach "$EXPECTED_HEAD"
+          fi
+          # <<< pr-head
+          if git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null; then
+            git checkout --quiet --detach "$EXPECTED_HEAD"
+          fi
+          # Only `advisory`, written or defaulted by an absent `mode` key, is non-blocking. Any other
+          # value (a typo such as "Enforce", "", null, false, a number or a non-object block) is
+          # invalid and enforces: the CLI then refuses the policy (exit 2) and the step fails,
+          # rather than a project believing it enforces. Only an absent block (or manifest) means
+          # not enrolled; a manifest jq cannot read is reported as unreadable, never as unenrolled.
+          if [ ! -e morpheus.json ]; then
+            echo "No morpheus.json: not enrolled, nothing checked."
+            exit 0
+          fi
+          if ! mode="$(jq -r 'if has("complexity") | not then ""
+            elif (.complexity | type) != "object" then "invalid"
+            elif (.complexity | has("mode")) | not then "advisory"
+            elif .complexity.mode == "advisory" or .complexity.mode == "enforce" then .complexity.mode
+            else "invalid" end' morpheus.json)"; then
+            mode="unreadable"
+          fi
+          if [ -z "$mode" ]; then
+            echo "morpheus.json has no complexity block: not enrolled, nothing checked."
+            exit 0
+          fi
+          rc=0
+          node .morpheus/dist/cli/index.js complexity install || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            node .morpheus/dist/cli/index.js complexity check --ci --base "origin/$BASE_REF" || rc=$?
+          fi
+          if [ "$rc" -eq 0 ]; then
+            exit 0
+          fi
+          if [ "$mode" != "advisory" ]; then
+            echo "::error::Function complexity failed (exit $rc) and this project's mode is '$mode', not advisory."
+            exit 1
+          fi
+          echo "::warning::Function complexity exited $rc; advisory mode reports it and never fails this job."
+          echo "Complexity (advisory): exited $rc, reported as a warning only." >> "$GITHUB_STEP_SUMMARY"

@@ -26,6 +26,31 @@ export interface InitOptions {
   owner?: string;
 }
 
+async function initPrefix(name: string, requested: string | undefined): Promise<string | undefined> {
+  const taken = new Set((await readRegistry()).projects.map((p) => p.prefix));
+  const prefix = (requested ?? suggestPrefix(name, taken)).toUpperCase();
+  if (!/^[A-Z]{2,4}$/.test(prefix)) {
+    console.error(`Prefix "${prefix}" must be 2-4 letters.`);
+    return undefined;
+  }
+  return prefix;
+}
+
+function printScaffoldResult(written: string[], skipped: string[], notes: string[]): void {
+  if (written.length) {
+    console.log(`\n\x1b[32mCreated ${written.length} file(s)\x1b[0m`);
+    for (const f of written) console.log(`  ${f}`);
+  }
+  if (skipped.length) {
+    console.log(`\n\x1b[2mLeft ${skipped.length} existing file(s) untouched:\x1b[0m`);
+    for (const f of skipped) console.log(`  \x1b[2m${f}\x1b[0m`);
+  }
+  if (!written.length && !skipped.length) {
+    console.log("\nNothing to do.");
+  }
+  for (const n of notes) console.log(`\n\x1b[2m${n}\x1b[0m`);
+}
+
 /**
  * Scaffold the repository, then show what is left.
  *
@@ -41,12 +66,8 @@ export async function init(opts: InitOptions): Promise<number> {
     return 1;
   }
 
-  const taken = new Set((await readRegistry()).projects.map((p) => p.prefix));
-  const prefix = (opts.prefix ?? suggestPrefix(name, taken)).toUpperCase();
-  if (!/^[A-Z]{2,4}$/.test(prefix)) {
-    console.error(`Prefix "${prefix}" must be 2-4 letters.`);
-    return 1;
-  }
+  const prefix = await initPrefix(name, opts.prefix);
+  if (!prefix) return 1;
 
   const owner = opts.owner ?? (await githubHandle(opts.root));
   if (!owner) {
@@ -60,18 +81,7 @@ export async function init(opts: InitOptions): Promise<number> {
   const { written, skipped, notes } = await scaffold(opts.root, { name, prefix, kind, owner });
 
   console.log(`\n\x1b[1m${name}\x1b[0m \x1b[2m· ${kind} · ids ${prefix}-001\x1b[0m`);
-  if (written.length) {
-    console.log(`\n\x1b[32mCreated ${written.length} file(s)\x1b[0m`);
-    for (const f of written) console.log(`  ${f}`);
-  }
-  if (skipped.length) {
-    console.log(`\n\x1b[2mLeft ${skipped.length} existing file(s) untouched:\x1b[0m`);
-    for (const f of skipped) console.log(`  \x1b[2m${f}\x1b[0m`);
-  }
-  if (!written.length && !skipped.length) {
-    console.log("\nNothing to do.");
-  }
-  for (const n of notes) console.log(`\n\x1b[2m${n}\x1b[0m`);
+  printScaffoldResult(written, skipped, notes);
 
   // Registering here rather than asking: the prefix is already decided, and a
   // collision is far cheaper to find now than after ids exist.

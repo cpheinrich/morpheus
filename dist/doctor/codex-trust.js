@@ -92,6 +92,31 @@ export function codexHookHash(event, matcher, handler, platform = process.platfo
         return null;
     if (matcher !== undefined && matcher !== null && typeof matcher !== "string")
         return null;
+    const normalized = normalizedHandler(event, command, handler);
+    if (!normalized)
+        return null;
+    const identity = { event_name: label, hooks: [normalized] };
+    if (typeof matcher === "string" && !MATCHERLESS.has(event))
+        identity["matcher"] = matcher;
+    const digest = createHash("sha256").update(JSON.stringify(sortKeys(identity))).digest("hex");
+    return `sha256:${digest}`;
+}
+/** The handler as Codex hashes it, defaults filled in, or null for a shape Codex would reject. */
+function normalizedHandler(event, command, handler) {
+    const fields = handlerFields(event, handler);
+    if (!fields)
+        return null;
+    const { timeout, runsAsync, status, limit } = fields;
+    const normalized = { type: "command", command, timeout, async: runsAsync };
+    if (typeof status === "string")
+        normalized["statusMessage"] = status;
+    if (CONTEXT_LIMIT_EVENTS.has(event) && typeof limit === "number" && limit !== DEFAULT_CONTEXT_LIMIT) {
+        normalized["additionalContextLimit"] = limit;
+    }
+    return normalized;
+}
+/** The handler's optional fields as Codex normalizes them, or null for a shape Codex would reject. */
+function handlerFields(event, handler) {
     const rawTimeout = handler["timeout"];
     if (rawTimeout !== undefined && !isWholeNumber(rawTimeout))
         return null;
@@ -107,17 +132,7 @@ export function codexHookHash(event, matcher, handler, platform = process.platfo
     const limit = handler["additionalContextLimit"];
     if (limit !== undefined && limit !== null && !isWholeNumber(limit))
         return null;
-    const normalized = { type: "command", command, timeout, async: runsAsync };
-    if (typeof status === "string")
-        normalized["statusMessage"] = status;
-    if (CONTEXT_LIMIT_EVENTS.has(event) && typeof limit === "number" && limit !== DEFAULT_CONTEXT_LIMIT) {
-        normalized["additionalContextLimit"] = limit;
-    }
-    const identity = { event_name: label, hooks: [normalized] };
-    if (typeof matcher === "string" && !MATCHERLESS.has(event))
-        identity["matcher"] = matcher;
-    const digest = createHash("sha256").update(JSON.stringify(sortKeys(identity))).digest("hex");
-    return `sha256:${digest}`;
+    return { timeout, runsAsync, status, limit };
 }
 /**
  * Every handler in a parsed `hooks.json`, keyed as Codex keys it. Indices are
@@ -183,6 +198,9 @@ export async function readCodexState(home) {
     catch (error) {
         return { kind: "unusable", path, why: `it is not valid TOML (${error.message.split("\n")[0]})` };
     }
+    return { kind: "ok", path, hookState: hookStateOf(doc), projects: projectTrustOf(doc) };
+}
+function hookStateOf(doc) {
     const hookState = new Map();
     const hooks = isObject(doc) ? doc["hooks"] : undefined;
     const state = isObject(hooks) ? hooks["state"] : undefined;
@@ -196,6 +214,9 @@ export async function readCodexState(home) {
             });
         }
     }
+    return hookState;
+}
+function projectTrustOf(doc) {
     const projects = new Map();
     const table = isObject(doc) ? doc["projects"] : undefined;
     if (isObject(table)) {
@@ -204,7 +225,7 @@ export async function readCodexState(home) {
                 projects.set(path, entry["trust_level"]);
         }
     }
-    return { kind: "ok", path, hookState, projects };
+    return projects;
 }
 async function isDirectory(path) {
     return stat(path).then((s) => s.isDirectory(), () => false);
@@ -331,20 +352,8 @@ export async function codexTrustReport(root, home = codexHome()) {
         return { kind: "unknown", location, hooksPath, why: `${hooksPath} — ${listed.problem}` };
     if (state.kind === "unusable")
         return { kind: "unknown", location, hooksPath, why: `${state.path} — ${state.why}` };
-    let worktreeDiffers;
-    if (own) {
-        const identity = (hooks) => hooks.map((h) => `${h.event}:${h.group}:${h.handler}:${h.hash ?? h.command}`).sort().join("\n");
-        worktreeDiffers =
-            own.kind !== "ok" ||
-                identity(listCodexHooks(own.doc, hooksPath).hooks) !== identity(listed.hooks);
-    }
-    const aliases = await aliasedState(state.hookState, hooksPath);
-    const lookup = new Map(state.hookState);
-    for (const hook of listed.hooks) {
-        const alias = aliases.get(hook.key.slice(hooksPath.length + 1));
-        if (!lookup.has(hook.key) && alias)
-            lookup.set(hook.key, alias);
-    }
+    const worktreeDiffers = own ? worktreeHooksDiffer(own, listed.hooks, hooksPath) : undefined;
+    const lookup = await trustLookup(state.hookState, listed.hooks, hooksPath);
     return {
         kind: "checked",
         location,
@@ -354,10 +363,27 @@ export async function codexTrustReport(root, home = codexHome()) {
         worktreeDiffers,
     };
 }
+function worktreeHooksDiffer(own, hooks, hooksPath) {
+    const identity = (list) => list.map((h) => `${h.event}:${h.group}:${h.handler}:${h.hash ?? h.command}`).sort().join("\n");
+    return own.kind !== "ok" || identity(listCodexHooks(own.doc, hooksPath).hooks) !== identity(hooks);
+}
+/** Recorded state per hook key, falling back to an aliased path's entry for a key Codex has no record of. */
+async function trustLookup(hookState, hooks, hooksPath) {
+    const aliases = await aliasedState(hookState, hooksPath);
+    const lookup = new Map(hookState);
+    for (const hook of hooks) {
+        const alias = aliases.get(hook.key.slice(hooksPath.length + 1));
+        if (!lookup.has(hook.key) && alias)
+            lookup.set(hook.key, alias);
+    }
+    return lookup;
+}
 /** A hook as a person scanning `/hooks` would recognise it. */
 export function describeHook(hook) {
     const command = hook.command ?? "";
     const position = hook.group === 0 && hook.handler === 0 ? "" : ` #${hook.group}.${hook.handler}`;
+    if (command.includes("context task-prompt"))
+        return `${hook.event}${position} task context hook (context task-prompt)`;
     const what = command.includes("context record-read")
         ? "read hook (context record-read)"
         : command.includes(".morpheus/poll-guard.sh")
@@ -397,22 +423,29 @@ export function codexTrustFindings(report) {
         add(`Codex does not trust ${main} as a project, so it loads none of ${hooksPath}. Open Codex in ` +
             `${main} and accept the trust prompt, then run /hooks.`);
     }
+    for (const message of hookStateWarnings(hooks, hooksPath, main, where))
+        add(message);
+    return out;
+}
+/** Hooks Codex will not run (untrusted or changed), has switched off, or cannot be verified. */
+function hookStateWarnings(hooks, hooksPath, main, where) {
+    const out = [];
     const needing = hooks.filter((h) => h.trust === "untrusted" || h.trust === "modified");
     if (needing.length) {
         const list = needing
             .map((h) => `${describeHook(h)}${h.trust === "modified" ? " (changed since it was trusted)" : ""}`)
             .join("; ");
-        add(`Codex will not run ${needing.length} of ${hooks.length} hook${hooks.length === 1 ? "" : "s"} in ` +
+        out.push(`Codex will not run ${needing.length} of ${hooks.length} hook${hooks.length === 1 ? "" : "s"} in ` +
             `${hooksPath}. Open Codex in ${main} and run /hooks; trust: ${list}.${where}`);
     }
     const disabled = hooks.filter((h) => h.trust === "disabled");
     if (disabled.length) {
-        add(`Codex has ${disabled.length} hook${disabled.length === 1 ? "" : "s"} in ${hooksPath} switched off in /hooks: ` +
+        out.push(`Codex has ${disabled.length} hook${disabled.length === 1 ? "" : "s"} in ${hooksPath} switched off in /hooks: ` +
             `${disabled.map(describeHook).join("; ")}. Re-enable ${disabled.length === 1 ? "it" : "them"} in /hooks if that was not deliberate.`);
     }
     const unverified = hooks.filter((h) => h.trust === "unverified");
     if (unverified.length) {
-        add(`Could not verify Codex trust for ${unverified.map(describeHook).join("; ")} in ${hooksPath}: ` +
+        out.push(`Could not verify Codex trust for ${unverified.map(describeHook).join("; ")} in ${hooksPath}: ` +
             "only command hooks on known events are reproduced. Check them in /hooks.");
     }
     return out;

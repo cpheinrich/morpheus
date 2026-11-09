@@ -7,7 +7,7 @@ import { join } from "node:path";
 // @ts-expect-error -- jsdom ships no type declarations, and @types/jsdom is not worth a dependency here.
 import { JSDOM } from "jsdom";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { parseBatch } from "../src/qa/comments.js";
+import { parseBatch, QaWebContext } from "../src/qa/comments.js";
 import { decode, injectOverlay, normalizeUpstream, ownHost, rewriteLocation, shellHtml, startWebQaServer, upstreamHeaders, wantsShell } from "../src/qa/web/server.js";
 import { WEB_OVERLAY_JS } from "../src/qa/web/overlay-client.js";
 import { defaultWebPort, frontable, frontedSite, overlayUrl, parseWebPreviewArgs, parseWebPreviewConfig, sitePort, spareDevPort, webKey } from "../src/qa/preview/web.js";
@@ -403,6 +403,29 @@ describe("qa.web configuration and arguments", () => {
     expect(parsed.ok).toBe(false);
     if (!parsed.ok) expect(parsed.issues).toHaveLength(4);
     expect(parseWebPreviewConfig({}, "P")).toEqual({ ok: false, issues: [expect.stringContaining("no qa.web block")] });
+  });
+
+  it("accepts operator build identity and rejects URLs or unknown build metadata", () => {
+    const url = "http://localhost:5173";
+    const build = { commit: "a".repeat(40), deployment: "build_123" };
+    expect(parseWebPreviewConfig({ web: { url, build } })).toMatchObject({ ok: true, config: { build } });
+    for (const invalid of [{}, { commit: "a".repeat(39) }, { deployment: "https://example.test" }, { ...build, secret: "x" }]) {
+      expect(parseWebPreviewConfig({ web: { url, build: invalid } })).toEqual({
+        ok: false, issues: [expect.stringContaining("qa.web.build")],
+      });
+    }
+  });
+
+  it("validates diagnostics independently at the persisted web context boundary", () => {
+    const schema = QaWebContext.shape.diagnostics;
+    const state = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`field${i}`, i]));
+    const diagnostics = { version: 1, build: null, browser: "firefox", os: "linux", devicePixelRatio: 2, theme: "unknown" };
+    const withState = (state: unknown) => schema.safeParse({ ...diagnostics, snapshot: { version: 1, state } });
+    expect(schema.parse(undefined)).toBeUndefined();
+    expect(withState(state).success).toBe(true);
+    for (const invalid of [{ ...state, ninth: 9 }, { email: "private" }, { route: "/hq" }, { nested: {} }, { count: 1000001 }]) {
+      expect(withState(invalid).success).toBe(false);
+    }
   });
 
   it("parses start, status and stop with their flags", () => {

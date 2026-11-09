@@ -1,0 +1,271 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, readdir, lstat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { observeFactory as nativeObserveFactory } from '../factory.mjs';
+import { readStoredQuota, storedQuota } from '../quota.mjs';
+import { githubSnapshot } from '../github.mjs';
+import { snapshot, send, configSchema } from '../reporter.mjs';
+import { parseReport, freshness } from '../protocol.mjs';
+import { installReporter } from '../install.mjs';
+import { privateConfig } from '../files.mjs';
+import { machine, dispatcher, persistentRunners } from '../sources.mjs';
+const observeFactory=options=>nativeObserveFactory({census:async()=>({identities:{},owned:{},markedRunIds:[]}),...options});
+const uuid='11111111-2222-4444-8888-555555555555';
+const at='2026-11-06T23:00:00.000Z';
+const binding={id:'gateway-a-2',instanceId:'gateway-a',accountId:2,provider:'codex',baseUrl:'https://gateway.example'};
+const baseConfig={version:1,hostId:'host-a',endpoint:'https://hq.example/api/infra/ingest',tokenEnv:'INFRA_TOKEN',projectPaths:{},routeAccounts:{},sources:[{id:'machine',kind:'machine'}]};
+const sample={kind:'machine',sampledAt:at,sourceObservedAt:at,status:'ok',errorCode:null,value:{cpuPercent:0,memoryTotalBytes:16,memoryActiveBytes:0,diskAvailableBytes:0,diskTotalBytes:32,uptimeSeconds:0,hardwareModel:'DemoMac',chip:'Apple M3',logicalCores:8,osVersion:'macOS 26.1'}};
+async function temp(t){const path=await mkdtemp(join(tmpdir(),'infra-test-'));t.after(()=>rm(path,{recursive:true,force:true}));return path;}
+async function put(path,data){await mkdir(dirname(path),{recursive:true});await writeFile(path,JSON.stringify(data),{mode:0o600});}
+async function tree(path){const rows=[];for(const name of (await readdir(path)).sort()){const p=join(path,name);const s=await lstat(p);rows.push([name,s.isDirectory()?await tree(p):(await readFile(p)).toString()]);}return rows;}
+test('desktop and unattended census never writes recovery or copies private fields',async t=>{
+ const root=await temp(t);const dir=join(root,'runs',uuid);
+ await put(join(dir,'run.json'),{id:uuid,threadId:'task-a',executor:'codex',gateway:'codex',createdAt:Date.parse(at),selection:{model:'gpt-demo-1',effort:'high'},cwd:'/repo/a',workspace:{other:{path:'/repo/b'}},state:'running',question:'PRIVATE',result:{secret:'PRIVATE'},terminal:false});
+ await put(join(dir,'process.json'),{runId:uuid,state:'running',guardianPid:12,guardianIdentity:'identity'});
+ await mkdir(join(root,'unattended'));const before=await tree(root);
+ const options={roots:[root,root],channel:'desktop',hostId:'host-a',projects:{'/repo/a':'example/a','/repo/b':'example/b'},accounts:{codex:'gateway-a-2'},lookup:async pid=>{assert.equal(pid,12);return 'identity';}};
+ const value=await observeFactory(options);
+ assert.equal(value.complete,true);assert.equal(value.instances.length,1);
+ assert.deepEqual(value.instances[0].projectIds,['example/a','example/b']);assert.equal(value.instances[0].accountId,'gateway-a-2');assert.equal(value.instances[0].state,'running');
+ assert.equal(value.instances[0].taskId,'task-a');assert.equal(value.instances[0].hostId,'host-a');assert.equal(value.instances[0].model,'gpt-demo-1');assert.equal(value.instances[0].effort,'high');assert.equal(value.instances[0].createdAt,at);
+ const stable=await observeFactory({...options,projects:{other:'example/b'}});
+ assert.deepEqual(stable.instances[0].projectIds,['example/b']);
+ assert.equal(JSON.stringify(value).includes('PRIVATE'),false);assert.equal(JSON.stringify(value).includes('/repo'),false);
+ assert.deepEqual(await tree(root),before);
+ await put(join(dir,'process.json'),{runId:uuid,state:'exited',cleanupVerified:false});
+ await put(join(dir,'run.json'),{id:uuid,executor:'codex',terminal:true,cwd:'/repo/a'});
+ assert.equal((await observeFactory(options)).instances[0].state,'cleanup-unverified');
+ assert.equal((await observeFactory({...options,channel:'unattended'})).instances.length,0);
+});
+test('unattended roots include service admissions; incomplete census cannot mean idle',async t=>{
+ const root=await temp(t);const dir=join(root,'unattended',uuid);
+ await put(join(dir,'admission.json'),{admissionId:uuid,binding:{jobId:'steward',cwd:'/repo/a',gateway:{provider:'codex',name:'codex'}}});
+ await put(join(dir,'process.json'),{runId:uuid,state:'running',guardianPid:12,guardianIdentity:'identity'});
+ const options={roots:[root],channel:'unattended',hostId:'host-a',projects:{'/repo/a':'example/a'},lookup:async()=> 'identity'};
+ assert.equal((await observeFactory(options)).instances[0].executor,'codex');
+ assert.equal((await observeFactory(options)).instances[0].createdAt,null);
+ await writeFile(join(dir,'admission.json'),'not-json');
+ assert.deepEqual(await observeFactory(options),{complete:false,instances:[],lastOutcome:null});
+});
+test('passive quota binds exact instance/account and preserves old timestamps/reset windows',async()=>{
+ const account={id:2,platform:'openai',extra:{codex_usage_updated_at:'2026-11-06T00:00:00Z',codex_5h_used_percent:9,codex_5h_reset_at:1794000000}};
+ const expected=storedQuota(account,binding);
+ assert.equal(expected.sourceObservedAt,'2026-11-06T00:00:00.000Z');assert.equal(expected.value.windows[0].usedPercent,9);
+ assert.equal(freshness({...sample,kind:'quota',sourceObservedAt:expected.sourceObservedAt,value:expected.value},Date.parse(at)),'stale');
+ const calls=[];
+ const result=await readStoredQuota(binding,{email:'user',password:'hidden',fetchImpl:async(url)=>{calls.push(new URL(url).pathname);return Response.json({data:calls.length===1?{access_token:'token'}:account});}});
+ assert.deepEqual(calls,['/api/v1/auth/login','/api/v1/admin/accounts/2']);assert.deepEqual(result,expected);
+ assert.throws(()=>storedQuota({...account,id:3},binding),/invalid-source/);
+ assert.throws(()=>storedQuota(account,{...binding,instanceId:'other'}),/invalid-source/);
+ const claude=storedQuota({id:1,platform:'anthropic',extra:{passive_usage_sampled_at:at,passive_usage_7d_utilization:0.82,passive_usage_7d_reset:at}},
+  {...binding,id:'gateway-a-1',accountId:1,provider:'claude'});
+ assert.equal(claude.value.windows[0].usedPercent,82);
+});
+test('GitHub de-duplicates projects and uses exact job attempts; errors are partial',async()=>{
+ const calls=[];
+ const result=await githubSnapshot(['example/a','example/a'],async path=>{
+  calls.push(path);
+  if(path.includes('runners'))throw Error('private provider error');
+  if(path.includes('/jobs'))return {total_count:1,jobs:[{id:7,runner_id:18,name:'Unit checks',steps:[{name:'Compile',status:'in_progress'}],status:'in_progress',conclusion:null}]};
+  return {total_count:1,workflow_runs:[{id:22,run_attempt:3}]};
+ });
+ assert.equal(calls.length,4);assert.equal(result.complete,false);assert.equal(result.value.jobs[0].attempt,3);
+ assert.equal(result.value.jobs[0].runnerId,18);assert.equal(result.value.jobs[0].url,'https://github.com/example/a/actions/runs/22/job/7');
+ assert.equal(result.value.jobs[0].name,'Unit checks');assert.equal(result.value.jobs[0].currentStep,'Compile');
+ assert.ok(calls.includes('repos/example/a/actions/runs/22/attempts/3/jobs?per_page=100&page=1'));
+ assert.equal(JSON.stringify(result).includes('private provider'),false);
+});
+test('protocol boundaries reject unknown fields, invalid ranges and clock skew',()=>{
+ const report={schemaVersion:1,hostId:'host-a',samples:{machine:sample}};
+ assert.equal(parseReport(report,Date.parse(at)).samples.machine.value.cpuPercent,0);
+ assert.throws(()=>parseReport({...report,secret:'x'},Date.parse(at)),/invalid-report/);
+ assert.throws(()=>parseReport({...report,samples:{machine:{...sample,value:{...sample.value,cpuPercent:101}}}},Date.parse(at)),/invalid-report/);
+ assert.throws(()=>parseReport(report,Date.parse(at)-60001),/source-clock/);
+ assert.equal(parseReport(report,Date.parse(at)-60000).hostId,'host-a');
+ assert.equal(freshness(sample,Date.parse(at)+180000),'fresh');assert.equal(freshness(sample,Date.parse(at)+180001),'stale');
+});
+async function observedJob(association) {
+ const calls=[];
+ const result=await githubSnapshot(['example/a'],async path=>{
+  calls.push(path);
+  if(path.includes('/runners'))return {total_count:0,runners:[]};
+  if(path.includes('/jobs'))return {total_count:1,jobs:[{id:7,runner_id:0,name:'Checks',status:'queued'}]};
+  return {total_count:1,workflow_runs:[{id:22,run_attempt:3,...association}]};
+ },()=>new Date(at));
+ assert.deepEqual(calls,['repos/example/a/actions/runners?per_page=100&page=1',
+  'repos/example/a/actions/runs?status=queued&per_page=5&page=1',
+  'repos/example/a/actions/runs?status=in_progress&per_page=5&page=1',
+  'repos/example/a/actions/runs/22/attempts/3/jobs?per_page=100&page=1']);
+ assert.equal(result.complete,true);
+ return result.value.jobs[0];
+}
+test('GitHub job PR projection preserves legacy shape without proven same-repository evidence',async()=>{
+ const legacy={repository:'example/a',runId:22,attempt:3,jobId:7,runnerId:null,
+  name:'Checks',currentStep:null,state:'queued',conclusion:null,url:'https://github.com/example/a/actions/runs/22/job/7'};
+ for(const association of [{},{pull_requests:[]},{pull_requests:null},{pull_requests:'private'},
+  {pull_requests:[{number:8,base:{repo:{full_name:'example/b'}}}]},
+  {pull_requests:[{number:8,base:{repo_url:'https://api.github.com/repos/example/b'}}]},
+  {pull_requests:[{number:8,base:{repo:{full_name:'example/a'},repo_url:'https://api.github.com/repos/example/b'}}]},
+  {pull_requests:[{number:8,base:{repo:{full_name:'example/b',url:'https://api.github.com/repos/example/a'}}}]},
+  {pull_requests:[{number:8,base:{repo_url:'https://api.github.com/repos/example/a?private'}}]},
+  {pull_requests:[{number:8},{number:8,base:{repo:{full_name:'example/a',url:null}}}]},
+  {pull_requests:[null,...[0,-1,1.5,Number.MAX_SAFE_INTEGER+1,'8'].map(number=>({number,base:{repo:{full_name:'example/a'}}}))]},
+ ])assert.deepEqual(await observedJob(association),legacy);
+});
+test('GitHub job PR projection deduplicates and bounds existing explicit run associations',async()=>{
+ const job=await observedJob({pull_requests:[
+  {number:8,base:{repo:{full_name:'example/b'}}},
+  {number:12,base:{repo:{full_name:'example/a'}},title:'PRIVATE'},
+  {number:12,base:{repo_url:'https://api.github.com/repos/example/a'}},
+  {number:14,base:{repo_url:'https://api.github.com/repos/example/a'}},
+  {number:16,base:{repo:{url:'https://api.github.com/repos/example/a'}}},
+  {number:18,base:{repo:{full_name:'example/a'}}},
+ ]});
+ assert.deepEqual(job.pullRequests,[12,14,16]);
+ assert.equal(JSON.stringify(job).includes('PRIVATE'),false);
+ const report={schemaVersion:1,hostId:'host-a',samples:{github:{...sample,kind:'github',value:{jobs:[job],runners:[],orgCensus:'unavailable'}}}};
+ assert.deepEqual(parseReport(report,Date.parse(at)),report);
+ for(const pullRequests of [[0],[-1],[1.5],[Number.MAX_SAFE_INTEGER+1],['12'],[12,12],[1,2,3,4],null]) {
+  const value={...report.samples.github.value,jobs:[{...job,pullRequests}]};
+  assert.throws(()=>parseReport({...report,samples:{github:{...report.samples.github,value}}},Date.parse(at)),/invalid-report/);
+ }
+});
+test('a failed/malformed source cannot leak its data or suppress healthy samples; transport refuses redirects',async()=>{
+ const config={...baseConfig,sources:[{id:'machine',kind:'machine'},{id:'bad',kind:'phone'}]};
+ const report=await snapshot(config,{now:()=>new Date(at),read:async source=>{if(source.id==='bad')return {value:{token:'PRIVATE'}};return {value:sample.value};}});
+ assert.equal(report.samples.machine.status,'ok');assert.deepEqual(report.samples.bad,{kind:'phone',sampledAt:at,sourceObservedAt:null,status:'error',errorCode:'invalid-source',value:null});
+ let sent;
+ await send(config,report,{env:{INFRA_TOKEN:'a'.repeat(32)},fetchImpl:async(url,options)=>{sent=options;return new Response(null,{status:200});}});
+ assert.equal(sent.redirect,'error');assert.equal(JSON.parse(sent.body).samples.machine.value.cpuPercent,0);
+ await assert.rejects(send(config,report,{env:{INFRA_TOKEN:'secret'},fetchImpl:()=>{throw Error('must not call');}}),/invalid-configuration/);
+});
+test('installer dry-run, actual isolated package import, unloaded-only install and rollback',async t=>{
+ const root=await temp(t);const configPath=join(root,'reporting.json');await put(configPath,baseConfig);
+ const options={destination:join(root,'runtime'),configPath,agentDir:join(root,'agents'),nodePath:process.execPath,label:'example.infra',dryRun:true};
+ const dry=await installReporter(options);assert.match(dry.plist,/<integer>60<\/integer>/);
+ await assert.rejects(lstat(options.destination),{code:'ENOENT'});
+ const target=join(options.agentDir,'example.infra.plist');await mkdir(options.agentDir);await writeFile(target,'previous');
+ const host=dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+ const run=async(command,args,opts)=>{
+  if(command==='/bin/launchctl')throw Object.assign(Error('not loaded'),{code:113});
+  if(command==='pnpm'){await symlink(join(host,'node_modules'),join(options.destination,'node_modules'));return;}
+  execFileSync(command,args,opts);
+ };
+ const result=await installReporter({...options,dryRun:false},{run});assert.equal(result.loaded,false);
+ assert.equal(await readFile(target+'.previous','utf8'),'previous');
+ await installReporter({...options,dryRun:false,rollback:true},{run});assert.equal(await readFile(target,'utf8'),'previous');
+ await assert.rejects(installReporter({...options,dryRun:false},{run:async()=>({})}),/unload-reporter/);
+});
+test('configuration refuses credential-shaped inline fields and service source project roots are explicit',()=>{
+ assert.equal(configSchema.safeParse(baseConfig).success,true);
+ assert.equal(configSchema.safeParse({...baseConfig,token:'PRIVATE'}).success,false);
+ assert.equal(configSchema.safeParse({...baseConfig,endpoint:'https://user:secret@example.test/'}).success,false);
+ const github={id:'github',kind:'github',repositories:['example/a'],organizationTokenEnv:'INFRA_ORG_READ',organizationRunners:[{organization:'example',runnerId:18,projectIds:['example/a']}]};
+ assert.equal(configSchema.safeParse({...baseConfig,sources:[github]}).success,true);
+ assert.equal(configSchema.safeParse({...baseConfig,sources:[{...github,organizationTokenEnv:'GH_TOKEN'}]}).success,false);
+ assert.equal(configSchema.safeParse({...baseConfig,sources:[{...github,organizationRunners:[{...github.organizationRunners[0],projectIds:['foreign/private']}]}]}).success,false);
+});
+test('reporting configuration cannot be tracked in Git or reached through a file symlink',async t=>{
+ const root=await temp(t);const config=join(root,'config.json');await put(config,baseConfig);
+ const link=join(root,'link.json');await symlink(config,link);await assert.rejects(privateConfig(link),/invalid-source/);
+ await mkdir(join(root,'.git'));await assert.rejects(privateConfig(config),/outside-git/);
+});
+test('machine inventory reports observed model, chip, logical cores and macOS version',async()=>{
+ const result=await machine({currentLoad:async()=>({currentLoad:12}),mem:async()=>({total:16,active:8}),fsSize:async()=>[{mount:'/',available:10,size:20}],
+  system:async()=>({model:'MacDemo1,1',serial:'PRIVATE'}),cpu:async()=>({brand:'Apple M3',cores:8}),osInfo:async()=>({distro:'macOS',release:'26.1'})});
+ assert.equal(result.value.hardwareModel,'MacDemo1,1');assert.equal(result.value.logicalCores,8);assert.equal(result.value.chip,'Apple M3');assert.equal(result.value.osVersion,'macOS 26.1');assert.equal(JSON.stringify(result).includes('PRIVATE'),false);
+});
+test('dispatcher and persistent metadata bind real runner IDs without guessing names',async t=>{
+ const root=await temp(t),configPath=join(root,'pool.json'),statePath=join(root,'state.json');
+ await put(configPath,{slots:2,cpu:6,memoryMb:16384,simulatorLanes:2,extraLabels:['macos-vm']});
+ await put(statePath,{updatedAt:at,slots:[{repo:'example/a',runnerId:18},{repo:'other/private',runnerId:19}]});
+ const result=await dispatcher({configPath,statePath,tartPath:'/tart',projectIds:['example/a'],roles:['ci']},{running:async()=>true,run:async()=>({stdout:'[]'})});
+ assert.equal(result.value.cpuPerSlot,6);assert.equal(result.value.memoryMbPerSlot,16384);assert.equal(result.value.simulatorLanes,2);
+ assert.deepEqual(result.value.allocations,[{slot:0,projectId:'example/a',runnerId:18}]);
+ const metadataPath=join(root,'.runner');await put(metadataPath,{agentId:21,agentName:'misleading-name',gitHubUrl:'https://github.com/example',workFolder:'PRIVATE'});
+ const runner=await persistentRunners({entries:[{metadataPath,scope:'organization',projectIds:['example/a'],roles:['device-gate'],labels:['physical-phone']}]});
+ assert.deepEqual(runner.value.registrations,[{runnerId:21,scope:'organization',projectId:'example/a',roles:['device-gate'],labels:['physical-phone']}]);
+ assert.equal(JSON.stringify(runner).includes('PRIVATE'),false);
+ const wrong=await persistentRunners({entries:[{metadataPath,scope:'repository',projectIds:['other/private'],roles:[],labels:[]}]});assert.equal(wrong.complete,false);
+});
+test('oversized valid source becomes unavailable without dropping the machine heartbeat',async()=>{
+ const report=await snapshot({...baseConfig,sources:[{id:'machine',kind:'machine'},{id:'github',kind:'github'}]},{now:()=>new Date(at),read:async source=>source.id==='machine'?{value:sample.value}:{value:{jobs:[],orgCensus:'unavailable',runners:Array.from({length:100},(_,runnerId)=>({projectId:'example/a',runnerId,online:true,busy:false,labels:Array(20).fill('x'.repeat(160))}))}}});
+ assert.equal(report.samples.machine.status,'ok');assert.equal(report.samples.github.status,'error');assert.equal(report.samples.github.errorCode,'incomplete');
+ assert.ok(Buffer.byteLength(JSON.stringify(report))<=65536);
+});
+test('persistent runner JSON accepts a leading UTF-8 BOM without rewriting the runner file',async t=>{
+ const root=await temp(t),metadataPath=join(root,'.runner');
+ const contents='\uFEFF'+JSON.stringify({agentId:21,gitHubUrl:'https://github.com/example',workFolder:'PRIVATE'});
+ await writeFile(metadataPath,contents,{mode:0o600});
+ const result=await persistentRunners({entries:[{metadataPath,scope:'organization',projectIds:['example/a'],roles:['device-gate'],labels:['phone']}]});
+ assert.equal(result.complete,true);assert.deepEqual(result.value.registrations,[{runnerId:21,projectId:'example/a',scope:'organization',roles:['device-gate'],labels:['phone']}]);
+ assert.equal(await readFile(metadataPath,'utf8'),contents);
+ await writeFile(metadataPath,'\uFEFFnot-json');
+ assert.deepEqual(await persistentRunners({entries:[{metadataPath,scope:'organization',projectIds:['example/a'],roles:[],labels:[]}]}),{complete:false,value:{complete:false,registrations:[]}});
+});
+for(const channel of ['desktop','unattended'])test(`${channel} validates terminal proof identity and never hides contradictory process evidence`,async t=>{
+ const root=await temp(t),dir=join(root,channel==='desktop'?'runs':'unattended',uuid);
+ const name=channel==='desktop'?'run.json':'admission.json';
+ const record=channel==='desktop'?{id:uuid,executor:'codex',cwd:'/repo/a',terminal:true}:
+  {admissionId:uuid,terminal:true,binding:{jobId:'steward',cwd:'/repo/a',gateway:{provider:'codex',name:'codex'}}};
+ await put(join(dir,name),record);
+ let probes=0;
+ const options={roots:[root],channel,hostId:'host-a',projects:{'/repo/a':'example/a'},lookup:async()=>{probes++;return 'exact';}};
+ await put(join(dir,'process.json'),{runId:uuid,state:'running',guardianPid:12,guardianIdentity:'exact'});
+ const before=await tree(root),live=await observeFactory(options);
+ assert.equal(live.complete,false);assert.equal(live.instances.length,1);assert.equal(live.instances[0].state,'running');
+ assert.deepEqual(await tree(root),before);assert.equal(probes,1);
+ await put(join(dir,'process.json'),{runId:uuid,state:'starting'});
+ const starting=await observeFactory(options);assert.equal(starting.complete,false);assert.equal(starting.instances[0].state,'unknown');
+ await put(join(dir,'process.json'),{runId:'foreign',state:'exited',cleanupVerified:true});
+ const foreign=await observeFactory(options);assert.equal(foreign.complete,false);assert.deepEqual(foreign.instances,[]);
+ await put(join(dir,name),{});
+ assert.equal((await observeFactory(options)).complete,false);
+ await put(join(dir,name),{...record,...(channel==='desktop'?{id:'foreign'}:{admissionId:'foreign'})});
+ assert.equal((await observeFactory(options)).complete,false);
+ await put(join(dir,name),record);
+ await put(join(dir,'process.json'),{runId:uuid,state:'exited',...(channel==='unattended'?{cleanupVerified:true}:{})});
+ probes=0;assert.deepEqual(await observeFactory(options),{complete:true,instances:[],lastOutcome:null});assert.equal(probes,0);
+ if(channel==='unattended'){
+  await put(join(dir,'result.json'),{admissionId:'foreign',result:{outcome:'completed'}});
+  assert.deepEqual(await observeFactory(options),{complete:true,instances:[],lastOutcome:null});
+ }
+});
+test('validated never-launched admissions need no process census, but contradictory process or invalid proof stays unknown',async t=>{
+ const root=await temp(t),dir=join(root,'unattended',uuid),record={admissionId:uuid,sessionId:null,
+  prelaunchFailure:{phase:'preparation',proof:'never-launched',summary:'Synthetic preparation failure'},binding:{jobId:'steward',cwd:'/repo/a',gateway:{provider:'codex',name:'codex'}}};
+ await put(join(dir,'admission.json'),record);
+ const options={roots:[root],channel:'unattended',hostId:'host-a',projects:{'/repo/a':'example/a'},lookup:async()=>{throw Error('historical records must not probe');}};
+ assert.deepEqual(await observeFactory(options),{complete:true,instances:[],lastOutcome:null});
+ await put(join(dir,'admission.json'),{...record,prelaunchFailure:{phase:'unknown',proof:'never-launched'}});
+ const invalid=await observeFactory(options);assert.equal(invalid.complete,false);assert.equal(invalid.instances[0].state,'unknown');
+ await put(join(dir,'admission.json'),record);await put(join(dir,'process.json'),{runId:uuid,state:'starting'});
+ const contradiction=await observeFactory(options);assert.equal(contradiction.complete,false);assert.equal(contradiction.instances[0].state,'unknown');
+});
+test('canonical wire refuses duplicate identities/projects and contradictory additive phone state',async()=>{
+ const {values}=await import('../protocol.mjs');
+ const row={projectId:'example/a',runnerId:18,online:true,busy:false,labels:[]},census={projectId:'example/a',runnerComplete:true,runnerObservedAt:at,jobComplete:true,jobObservedAt:at};
+ assert.equal(values.github.safeParse({jobs:[],runners:[row,row],orgCensus:'unavailable'}).success,false);
+ assert.equal(values.github.safeParse({jobs:[],runners:[],censuses:[census,census],orgCensus:'unavailable'}).success,false);
+ const invocation={id:'instance',invocationId:uuid,executor:'codex',accountId:null,projectIds:['example/a'],state:'running',createdAt:null,hostId:'host-a',taskId:null,model:null,effort:null};
+ assert.equal(values.factory.safeParse({complete:true,instances:[invocation,invocation],lastOutcome:null}).success,false);
+ const org={organization:'example',runnerId:18,projectIds:['example/a','example/b','example/b'],observedAt:at,readable:true,online:true,busy:false,labels:[],gap:null};
+ assert.equal(values.github.safeParse({jobs:[],runners:[],orgCensus:'unavailable',orgRunners:[org]}).success,false);
+ for(const value of [{lease:'held',ready:true,state:'busy',reasons:['lease-held']},{lease:'absent',ready:false,state:'ready',reasons:[]}])assert.equal(values.phone.safeParse(value).success,false);
+ assert.equal(values.phone.safeParse({lease:'held',ready:true}).success,true);
+});
+test('merged organization enrollment cap is rejected at configuration before collection',()=>{
+ const first={organization:'example',runnerId:18,projectIds:Array.from({length:16},(_,i)=>'example/p'+i)};
+ const config={...baseConfig,sources:[{id:'github',kind:'github',repositories:['example/a'],organizationRunners:[first,{...first,projectIds:['example/extra']}]}]};
+ assert.equal(configSchema.safeParse(config).success,false);config.sources[0].organizationRunners[1].projectIds=['example/p0'];assert.equal(configSchema.safeParse(config).success,true);
+});
+test('legacy task-derived instance IDs may repeat while invocation UUIDs remain distinct',()=>{
+ const row={id:'task-example',invocationId:uuid,executor:'codex',accountId:null,projectIds:[],state:'running',createdAt:null,hostId:'host-a',taskId:null,model:null,effort:null};
+ const report={schemaVersion:1,hostId:'host-a',samples:{factory:{...sample,kind:'factory',value:{complete:true,instances:[row,{...row,invocationId:'22222222-2222-4444-8888-555555555555'}],lastOutcome:null}}}};
+ assert.equal(parseReport(report,Date.parse(at)).samples.factory.value.instances.length,2);
+ report.samples.factory.value.instances[1].invocationId=uuid;assert.throws(()=>parseReport(report,Date.parse(at)),/invalid-report/);
+});

@@ -1,0 +1,60 @@
+# Worker bootstrap
+
+Run `bash worker/setup.sh` from this package (the installed plugin copy at
+`~/plugins/factory/src/host`, or a source checkout) on the Mac that will host workers.
+It is explicit capability setup: installing the Factory plugin never runs it.
+The entry point runs the scripts in `worker/setup/` in order. Each stage is
+rerunnable, and `--check` reports local readiness without changing the host.
+`--code-root /absolute/path` chooses where the Morpheus checkout lives.
+
+| Stage | Responsibility |
+| --- | --- |
+| `prerequisites.sh` | Check macOS, login user and Apple command-line tools; `--check` also reports whether the root helper `/usr/local/libexec/morpheus-factory-xcode` is installed and allowed by sudoers (the operator installs it once; see `docs/host-updates.md`). |
+| `apps.sh` | Remove iMovie, GarageBand, Keynote, Pages and Numbers after verifying their Apple bundle IDs, when `sudo -n` allows it (they are root-owned); otherwise report and leave them. Remove orphaned GarageBand audio content when no compatible app remains. |
+| `root-helper.sh` | Install `/usr/local/libexec/morpheus-factory-xcode` (the only command Factory runs as root) and its one sudoers line, asking the operator for their password once; `--check` reports missing, stale, or not allowed. Rerun setup after the helper script changes. |
+| `tools.sh` | Install Git, Node, pnpm and gh through Homebrew when missing; install `xcodes` 2.1.0 to `~/.local/bin` from the publisher's checksummed release binary (the Homebrew tap builds from source and fails on macOS 27); require `python3` from the command-line tools. |
+| `source.sh` | Clone Morpheus without resetting an existing checkout. |
+| `morpheus.sh` | Install the copied Morpheus CLI when missing; the watchdog uses its guarded worktree cleanup. |
+| `spotlight.sh` | Exclude existing source, worktree, VM and cache roots from Spotlight indexing. |
+| `factory.sh` | Install locked dependencies and build the factory package. |
+| `cleanup.sh` | Install the hourly storage watchdog launchd job. |
+
+This prepares the host locally. Fleet activation will need separate stages for
+the factory catalog, broker connectivity, provider CLIs and Morpheus's runner.
+Those stages should keep credentials out of this repository and should not
+start a worker unless their readiness checks pass.
+
+## Persistent Actions runners
+
+A host that serves CI/CD registers a GitHub Actions runner with `worker/runner.sh`.
+The registration token is read from stdin only, never from a terminal or argv:
+
+```sh
+gh api -X POST repos/<owner>/<repo>/actions/runners/registration-token --jq .token |
+  bash worker/runner.sh install --url https://github.com/<owner>/<repo> --name <name> --labels <a,b> --token-stdin
+bash worker/runner.sh check [--name <name>]
+gh api -X POST repos/<owner>/<repo>/actions/runners/remove-token --jq .token |
+  bash worker/runner.sh remove --name <name> --token-stdin
+```
+
+`install` downloads the latest `osx-arm64` runner into `~/actions-runner-<name>` (SHA-256
+checked against the release notes), registers it once with `--no-default-labels`, and loads
+a Factory-owned LaunchAgent, `com.morpheus-factory.runner.<name>`. The runner carries exactly
+the `--labels` given; list `self-hosted` explicitly if a workflow needs it, so that a job
+asking only for `self-hosted` cannot land on a test host. Names listed in `FACTORY_RESERVED_RUNNERS`
+(comma-separated) belong to another installer and are refused. Factory writes the plist instead of `svc.sh install` because the stock plist
+sets `SessionCreate`, which locks the login keychain inside the runner's session so `codesign`
+fails with `errSecInternalComponent`; `svc.sh` re-adds the key on every reinstall. `check`
+needs no token and fails when any runner LaunchAgent sets `SessionCreate`, printing the fix.
+`install` and `remove` refuse while the runner is running a job; `remove` leaves the directory.
+
+## Xcode version reconciliation
+
+The private host manifest (`$FACTORY_HOME/hosts.json`, owner-only; see
+[`docs/host-updates.md`](../docs/host-updates.md#private-manifest)) pins the host's Xcode
+version and build.
+`worker/update_controller.py` reports drift, stages a side-by-side Xcode, and
+promotes it only after declared validation passes. `worker/install_updates.py`
+installs the hourly LaunchAgent from this package, keeping the previous one for `--rollback`. See
+[`docs/host-updates.md`](../docs/host-updates.md) for the phase and credential
+contract. This does not replace the separate CI VM image rollout.

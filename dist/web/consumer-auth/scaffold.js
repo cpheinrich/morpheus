@@ -140,15 +140,10 @@ export function plannedFiles(survey, ctx) {
         ...withLayer(contract, "contract"),
     ];
 }
-export async function scaffoldConsumerAuth(opts) {
+/** Writes each absent planned file; an existing one is kept, upgraded only when it is byte-for-byte `web init` output, or named as drifted. */
+async function writePlannedFiles(opts, configPath, out) {
     const { root, survey, ctx } = opts;
-    const written = [];
-    const skipped = [];
-    const merged = [];
-    const upgraded = [];
-    const drifted = [];
-    const notes = [];
-    const configPath = survey.webRoot === "." ? "lib/firebase/config.ts" : `${survey.webRoot}/lib/firebase/config.ts`;
+    const { written, skipped, upgraded, drifted } = out;
     for (const file of plannedFiles(survey, ctx)) {
         const abs = join(root, file.path);
         if (await exists(abs)) {
@@ -179,6 +174,8 @@ export async function scaffoldConsumerAuth(opts) {
         await writeFile(abs, file.content, "utf8");
         written.push(file.path);
     }
+}
+function driftNotes(drifted, configPath, notes) {
     if (drifted.includes(configPath)) {
         notes.push(`${configPath} carries local edits, so it was neither replaced nor safe to ` +
             "delete — it is the source of the production facts a re-run needs. Fold the " +
@@ -194,19 +191,29 @@ export async function scaffoldConsumerAuth(opts) {
             "scaffold output, delete it and re-run; if it carries local edits, fold the template's " +
             "changes in by hand. `morpheus web add-consumer-auth --check` re-prints this list.");
     }
-    // --- merges ---------------------------------------------------------------
-    const rules = await addConsumerRules(root, survey.firestoreRulesPath);
+}
+/** The consumer accounts rules block and the emulators block in firebase.json. */
+async function mergeFirebase(root, rulesPath, out) {
+    const { written, merged, notes } = out;
+    const rules = await addConsumerRules(root, rulesPath);
     if (rules.kind === "merged")
         merged.push(`${rules.path} (+consumer accounts block)`);
     if (rules.kind === "note")
         notes.push(rules.message);
-    const firebaseJson = await ensureEmulatorsBlock(root, survey.firestoreRulesPath);
+    const firebaseJson = await ensureEmulatorsBlock(root, rulesPath);
     if (firebaseJson.kind === "written")
         written.push("firebase.json");
     if (firebaseJson.kind === "merged")
         merged.push("firebase.json (+emulators)");
     if (firebaseJson.kind === "note")
         notes.push(firebaseJson.message);
+}
+/** Merges rules, emulators, dependencies, scripts, overrides and tsconfig into what the project already has. */
+async function mergeProjectFiles(opts, out) {
+    const { root, survey, ctx } = opts;
+    const { merged, notes } = out;
+    // --- merges ---------------------------------------------------------------
+    await mergeFirebase(root, survey.firestoreRulesPath, out);
     const appDeps = await mergeDependencies(root, survey.webRoot, APP_DEPENDENCIES);
     const appManifest = survey.webRoot === "." ? "package.json" : `${survey.webRoot}/package.json`;
     if (appDeps.length)
@@ -240,8 +247,11 @@ export async function scaffoldConsumerAuth(opts) {
     if (await addSharedUserExport(root)) {
         merged.push("packages/shared/package.json (+./schema/user)");
     }
+    return { appDeps, appDevDeps, rootDevDeps };
+}
+function projectDecisionNotes(dependenciesAdded, written, ctx, notes) {
     // --- what only the project can decide --------------------------------------
-    if (appDeps.length || appDevDeps.length || rootDevDeps.length) {
+    if (dependenciesAdded) {
         notes.push("Run `pnpm install` — the generated code imports dependencies just added.");
     }
     notes.push("Import the starter styles once, from the app's global stylesheet: " +
@@ -264,6 +274,16 @@ export async function scaffoldConsumerAuth(opts) {
         "service-account key scoped to Vercel Preview ONLY, Resend domain and keys, the staging " +
         "domain on the Vercel project — is a human runbook: docs/runbooks/consumer-auth.md in " +
         "the Morpheus repo.");
+}
+export async function scaffoldConsumerAuth(opts) {
+    const { survey } = opts;
+    const out = { written: [], skipped: [], merged: [], upgraded: [], drifted: [], notes: [] };
+    const { written, skipped, merged, upgraded, drifted, notes } = out;
+    const configPath = survey.webRoot === "." ? "lib/firebase/config.ts" : `${survey.webRoot}/lib/firebase/config.ts`;
+    await writePlannedFiles(opts, configPath, out);
+    driftNotes(drifted, configPath, notes);
+    const { appDeps, appDevDeps, rootDevDeps } = await mergeProjectFiles(opts, out);
+    projectDecisionNotes(appDeps.length || appDevDeps.length || rootDevDeps.length, written, opts.ctx, notes);
     return { written, skipped, merged, upgraded, drifted, notes };
 }
 /**

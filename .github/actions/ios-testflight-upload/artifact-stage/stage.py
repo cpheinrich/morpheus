@@ -125,6 +125,55 @@ def tree(root, prefix='', direct=False, suffixes=None, budget=None):
     return found
 
 
+def native_selection(context, roots, temporary, budget):
+    channel = context['channel']
+    require(set(roots) == {'results', 'logs', 'screenshots'}, 'native roots')
+    results, logs, screenshots = [canonical_dir(roots[k]) for k in ('results', 'logs', 'screenshots')]
+    parent = results.parent
+    require(logs.parent == screenshots.parent == parent and
+            [results.name, logs.name, screenshots.name] == ['Results', 'Logs', 'Screenshots'], 'native sibling layout')
+    require(inside(parent, temporary) and parent.parent == temporary / 'ios-ci' and
+            parent.name.startswith('run-' + context['runId'] + '-' + context['runAttempt'] + '.'), 'native run root')
+    if channel == 'native-screenshots':
+        return tree(screenshots, budget=budget)
+    if channel == 'native-complete-evidence':
+        return tree(results, 'Results', direct=True, suffixes={'.json', '.txt'}, budget=budget) + tree(logs, 'Logs', budget=budget)
+    return tree(results, 'Results', budget=budget) + tree(logs, 'Logs', budget=budget)
+
+
+def qualified_selection(roots, workspace, budget):
+    require(set(roots) == {'evidence'}, 'qualified roots')
+    root = canonical_dir(roots['evidence'])
+    require(root == workspace / 'cd-v2-evidence', 'qualified root')
+    selected = tree(root, budget=budget)
+    require(QUALIFIED.issubset({name for _, name, _ in selected}), 'incomplete qualified payload')
+    return selected
+
+
+def receipt_selection(roots, temporary):
+    require(set(roots) == {'receiptDirectory', 'receiptPath', 'resourcePath'}, 'receipt roots')
+    root = canonical_dir(roots['receiptDirectory'])
+    require(root.parent == temporary and root.name.startswith('ios-upload-acceptance-'), 'receipt context root')
+    result = []
+    for key, name in [('receiptPath', 'accepted.json'), ('resourcePath', 'resource.json')]:
+        value = roots[key]
+        if value:
+            p = Path(value)
+            require(p == root / name, 'receipt output path')
+            result.append((p, name, signature(regular(p))))
+    return result
+
+
+def audit_selection(channel, roots, workspace, budget):
+    require(channel == 'fault-audit' and set(roots) == {'audit'}, 'audit roots')
+    root = Path(roots['audit'])
+    require(root == workspace / 'evo-fault-audits', 'audit root')
+    if not root.exists() and not root.is_symlink():
+        return []
+    return [row for row in tree(root, direct=True, budget=budget) if
+            re.fullmatch(r'(child-result-|provider-audit-)[A-Za-z0-9._-]+\.json', row[1])]
+
+
 def selection(context, deadline=None):
     channel = context['channel']
     workspace = canonical_dir(context['workspace'])
@@ -133,44 +182,12 @@ def selection(context, deadline=None):
     budget = {'scanned': 0, 'deadline': deadline if deadline is not None else time.monotonic() + MAX_SECONDS}
     require(type(roots) is dict, 'roots schema')
     if channel.startswith('native-'):
-        require(set(roots) == {'results', 'logs', 'screenshots'}, 'native roots')
-        results, logs, screenshots = [canonical_dir(roots[k]) for k in ('results', 'logs', 'screenshots')]
-        parent = results.parent
-        require(logs.parent == screenshots.parent == parent and
-                [results.name, logs.name, screenshots.name] == ['Results', 'Logs', 'Screenshots'], 'native sibling layout')
-        require(inside(parent, temporary) and parent.parent == temporary / 'ios-ci' and
-                parent.name.startswith('run-' + context['runId'] + '-' + context['runAttempt'] + '.'), 'native run root')
-        if channel == 'native-screenshots':
-            return tree(screenshots, budget=budget)
-        if channel == 'native-complete-evidence':
-            return tree(results, 'Results', direct=True, suffixes={'.json', '.txt'}, budget=budget) + tree(logs, 'Logs', budget=budget)
-        return tree(results, 'Results', budget=budget) + tree(logs, 'Logs', budget=budget)
+        return native_selection(context, roots, temporary, budget)
     if channel == 'qualified-tests':
-        require(set(roots) == {'evidence'}, 'qualified roots')
-        root = canonical_dir(roots['evidence'])
-        require(root == workspace / 'cd-v2-evidence', 'qualified root')
-        selected = tree(root, budget=budget)
-        require(QUALIFIED.issubset({name for _, name, _ in selected}), 'incomplete qualified payload')
-        return selected
+        return qualified_selection(roots, workspace, budget)
     if channel == 'upload-acceptance-resource':
-        require(set(roots) == {'receiptDirectory', 'receiptPath', 'resourcePath'}, 'receipt roots')
-        root = canonical_dir(roots['receiptDirectory'])
-        require(root.parent == temporary and root.name.startswith('ios-upload-acceptance-'), 'receipt context root')
-        result = []
-        for key, name in [('receiptPath', 'accepted.json'), ('resourcePath', 'resource.json')]:
-            value = roots[key]
-            if value:
-                p = Path(value)
-                require(p == root / name, 'receipt output path')
-                result.append((p, name, signature(regular(p))))
-        return result
-    require(channel == 'fault-audit' and set(roots) == {'audit'}, 'audit roots')
-    root = Path(roots['audit'])
-    require(root == workspace / 'evo-fault-audits', 'audit root')
-    if not root.exists() and not root.is_symlink():
-        return []
-    return [row for row in tree(root, direct=True, budget=budget) if
-            re.fullmatch(r'(child-result-|provider-audit-)[A-Za-z0-9._-]+\.json', row[1])]
+        return receipt_selection(roots, temporary)
+    return audit_selection(channel, roots, workspace, budget)
 
 
 def inventory(rows):
@@ -188,9 +205,7 @@ def inventory(rows):
             'storedUpperBytes': bound(raw, len(rows), names)}
 
 
-def diagnostic_selection(rows):
-    """Only oversized optional diagnostics may omit whole files/bundles."""
-    report_name = 'artifact-selection.json'
+def diagnostic_census(rows, report_name):
     seen = set()
     names = 0
     for _, name, _ in rows:
@@ -200,6 +215,23 @@ def diagnostic_selection(rows):
         require(alias != report_name and not alias.startswith(report_name + '/'), 'reserved diagnostic name')
         seen.add(alias)
     require(len(rows) <= MAX_FILES and names <= MAX_NAMES, 'census bound')
+
+
+def diagnostic_groups(rows):
+    """Rows by unit: a whole .xcresult bundle, or a single file."""
+    groups = {}
+    for index, row in enumerate(rows):
+        parts = row[1].split('/')
+        bundle = next((i for i, part in enumerate(parts) if part.endswith('.xcresult')), None)
+        key = '/'.join(parts[:bundle + 1]) if bundle is not None else row[1]
+        groups.setdefault(key, []).append((index, row))
+    return groups
+
+
+def diagnostic_selection(rows):
+    """Only oversized optional diagnostics may omit whole files/bundles."""
+    report_name = 'artifact-selection.json'
+    diagnostic_census(rows, report_name)
     try:
         inventory(rows)
         return rows, None
@@ -214,15 +246,9 @@ def diagnostic_selection(rows):
     encode = lambda: (json.dumps(report, sort_keys=True, indent=2) + '\n').encode('utf8')
     raw, count, total_names = len(encode()), 1, len(report_name)
     bound(raw, count, total_names)
-    groups = {}
-    for index, row in enumerate(rows):
-        parts = row[1].split('/')
-        bundle = next((i for i, part in enumerate(parts) if part.endswith('.xcresult')), None)
-        key = '/'.join(parts[:bundle + 1]) if bundle is not None else row[1]
-        groups.setdefault(key, []).append((index, row))
     selected = []
     # Smaller units first keeps useful logs/metadata ahead of large result bundles.
-    for _, group in sorted(groups.items(), key=lambda item: (sum(r[2][6] for _, r in item[1]), item[0])):
+    for _, group in sorted(diagnostic_groups(rows).items(), key=lambda item: (sum(r[2][6] for _, r in item[1]), item[0])):
         added_raw = sum(row[2][6] for _, row in group)
         added_names = sum(len(row[1].encode('utf8')) for _, row in group)
         try:
@@ -308,7 +334,8 @@ def verify_snapshot(manifest, deadline=None):
     return True
 
 
-def stage(context):
+def checked_dirs(context):
+    """(temporary, workspace) for a well-formed context whose workspace and temp do not overlap."""
     require(set(context) == {'schema', 'channel', 'runId', 'runAttempt', 'effectId', 'workspace', 'temporary', 'roots'}, 'context schema')
     require(context['schema'] == 'artifact-stage-context/1' and context['channel'] in CHANNELS, 'channel')
     require(all(isinstance(context[k], str) and re.fullmatch(r'[1-9][0-9]{0,19}', context[k]) for k in ('runId', 'runAttempt')), 'run identity')
@@ -317,16 +344,23 @@ def stage(context):
     workspace = canonical_dir(context['workspace'])
     require(workspace != temporary and not inside(workspace, temporary) and
             not inside(temporary, workspace), 'workspace and temp overlap')
-    invocation = ''
-    if context['channel'] == 'upload-acceptance-resource':
-        roots = context['roots']
-        require(type(roots) is dict and set(roots) == {'receiptDirectory', 'receiptPath', 'resourcePath'}, 'receipt roots')
-        receipt = canonical_dir(roots['receiptDirectory'])
-        require(receipt.parent == temporary and receipt.name.startswith('ios-upload-acceptance-'), 'receipt context root')
-        require(receipt.lstat().st_uid == os.getuid(), 'foreign receipt owner')
-        # The producer owns one stable directory per action invocation, including two apps.
-        # Output availability may change; it must never select a fresh retry namespace.
-        invocation = '-' + hashlib.sha256(str(receipt).encode('utf8')).hexdigest()
+    return temporary, workspace
+
+
+def invocation_suffix(context, temporary):
+    if context['channel'] != 'upload-acceptance-resource':
+        return ''
+    roots = context['roots']
+    require(type(roots) is dict and set(roots) == {'receiptDirectory', 'receiptPath', 'resourcePath'}, 'receipt roots')
+    receipt = canonical_dir(roots['receiptDirectory'])
+    require(receipt.parent == temporary and receipt.name.startswith('ios-upload-acceptance-'), 'receipt context root')
+    require(receipt.lstat().st_uid == os.getuid(), 'foreign receipt owner')
+    # The producer owns one stable directory per action invocation, including two apps.
+    # Output availability may change; it must never select a fresh retry namespace.
+    return '-' + hashlib.sha256(str(receipt).encode('utf8')).hexdigest()
+
+
+def stage_leaf(context, temporary, invocation):
     owner = temporary / 'artifact-byte-stage'
     try:
         owner.mkdir(mode=0o700)
@@ -337,54 +371,77 @@ def stage(context):
     require(s.st_uid == os.getuid() and stat.S_IMODE(s.st_mode) == 0o700, 'stage parent ownership')
     leaf = owner / (context['runId'] + '-' + context['runAttempt'] + '-' + context['channel'] + invocation)
     leaf.mkdir(mode=0o700)  # A duplicate attempt refuses, including after any failure.
+    return leaf
+
+
+def copy_payload(rows, payload, expired):
+    entries = []
+    for source, name, sig in rows:
+        expired()
+        dest = payload / name
+        dest.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        sha = copy_regular(source, dest, sig, expired)
+        entries.append({'name': name, 'bytes': sig[6], 'sha256': sha,
+                        'signature': list(signature(dest.lstat()))})
+    return entries
+
+
+def write_selection_report(payload, report):
+    dest = payload / 'artifact-selection.json'
+    fd = os.open(str(dest), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, 'wb') as out:
+        out.write(report)
+    dest.chmod(0o400)
+    return {'name': dest.name, 'bytes': len(report),
+            'sha256': hashlib.sha256(report).hexdigest(),
+            'signature': list(signature(dest.lstat()))}
+
+
+def seal_payload(payload):
+    for p in sorted([p for p in payload.rglob('*') if p.is_dir()], key=lambda p: len(p.parts), reverse=True):
+        p.chmod(0o500)
+    payload.chmod(0o500)
+
+
+def admit(context, leaf, started, expired):
+    deadline = started + MAX_SECONDS
+    rows = selection(context, deadline)
+    original_rows = rows
+    report = None
+    if context['channel'] in ('native-screenshots', 'native-failure-evidence'):
+        rows, report = diagnostic_selection(rows)
+    accounting = inventory(rows)
+    retention, required = CHANNELS[context['channel']]
+    require(rows or not required, 'mandatory artifact empty')
+    payload = leaf / 'payload'
+    payload.mkdir(mode=0o700)
+    entries = copy_payload(rows, payload, expired)
+    if report is not None:
+        entries.append(write_selection_report(payload, report))
+        accounting = inventory(tree(payload, budget={'scanned': 0, 'deadline': deadline}))
+    require(selection(context, deadline) == original_rows, 'source selection changed')
+    seal_payload(payload)
+    manifest = {'schema': 'artifact-stage-admission/1', 'status': 'ADMITTED' if entries else 'EMPTY',
+                'channel': context['channel'], 'context': context, 'payloadRoot': str(payload),
+                'accounting': accounting, 'retentionDays': retention, 'entries': entries,
+                'capBytes': CAP, 'archive': True, 'compressionLevel': 0,
+                'writerBoundary': 'source-owned private copied snapshot, not hostile same-UID isolation'}
+    verify_snapshot(manifest, deadline)
+    expired()
+    write_once(leaf / 'admission.json', manifest)
+    return manifest
+
+
+def stage(context):
+    temporary, _ = checked_dirs(context)
+    leaf = stage_leaf(context, temporary, invocation_suffix(context, temporary))
     started = time.monotonic()
     def expired():
         require(0 <= time.monotonic() - started <= MAX_SECONDS, 'staging deadline')
     write_once(leaf / 'claim.json', {'schema': 'artifact-stage-claim/1', 'context': context,
                'at': datetime.datetime.now(datetime.timezone.utc).isoformat()})
     try:
-        deadline = started + MAX_SECONDS
-        rows = selection(context, deadline)
-        original_rows = rows
-        report = None
-        if context['channel'] in ('native-screenshots', 'native-failure-evidence'):
-            rows, report = diagnostic_selection(rows)
-        accounting = inventory(rows)
-        retention, required = CHANNELS[context['channel']]
-        require(rows or not required, 'mandatory artifact empty')
-        payload = leaf / 'payload'
-        payload.mkdir(mode=0o700)
-        entries = []
-        for source, name, sig in rows:
-            expired()
-            dest = payload / name
-            dest.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            sha = copy_regular(source, dest, sig, expired)
-            entries.append({'name': name, 'bytes': sig[6], 'sha256': sha,
-                            'signature': list(signature(dest.lstat()))})
-        if report is not None:
-            dest = payload / 'artifact-selection.json'
-            fd = os.open(str(dest), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(fd, 'wb') as out:
-                out.write(report)
-            dest.chmod(0o400)
-            entries.append({'name': dest.name, 'bytes': len(report),
-                            'sha256': hashlib.sha256(report).hexdigest(),
-                            'signature': list(signature(dest.lstat()))})
-            accounting = inventory(tree(payload, budget={'scanned': 0, 'deadline': deadline}))
-        require(selection(context, deadline) == original_rows, 'source selection changed')
-        for p in sorted([p for p in payload.rglob('*') if p.is_dir()], key=lambda p: len(p.parts), reverse=True):
-            p.chmod(0o500)
-        payload.chmod(0o500)
-        manifest = {'schema': 'artifact-stage-admission/1', 'status': 'ADMITTED' if entries else 'EMPTY',
-                    'channel': context['channel'], 'context': context, 'payloadRoot': str(payload),
-                    'accounting': accounting, 'retentionDays': retention, 'entries': entries,
-                    'capBytes': CAP, 'archive': True, 'compressionLevel': 0,
-                    'writerBoundary': 'source-owned private copied snapshot, not hostile same-UID isolation'}
-        verify_snapshot(manifest, deadline)
-        expired()
-        write_once(leaf / 'admission.json', manifest)
-        return manifest
+        return admit(context, leaf, started, expired)
     except Exception as e:
         write_once(leaf / 'refusal.json', {'status': 'REFUSED', 'reason': str(e), 'uploadAttempted': False})
         raise

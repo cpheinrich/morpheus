@@ -27,10 +27,6 @@ export interface DigestInput {
     /** Checks dropped by `--required-only`, so an empty required set is not mistaken for no CI. */
     ignored: number;
 }
-/**
- * The whole output of a wait: one line when green, and otherwise only what an
- * agent acts on — which check, where, and the failing step's own words.
- */
 export declare function renderDigest(input: DigestInput): string;
 export interface RunDigestInput {
     /** The run the verdict is about; absent when nothing matched. */
@@ -53,8 +49,4 @@ export interface RunDigestInput {
     /** What was asked for, for the no-match line: `ci.yml on main`. */
     wanted: string;
 }
-/**
- * The whole output of a run wait, in the pull-request digest's shape: one line
- * when green, and otherwise which job, where, and the failing step's words.
- */
 export declare function renderRunDigest(input: RunDigestInput): string;

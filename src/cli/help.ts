@@ -80,6 +80,9 @@ Usage
   morpheus init status      [--offline]
   morpheus init done | doing | todo <task-id>
   morpheus skills list      [--json] — discover reusable Morpheus project skills
+  morpheus skills lifecycle <stage> <surface> [--gstack --host codex|claude] [--json]
+                            opt-in gstack handoffs from the project root
+  morpheus skills guide visual-design — early diagrams for relationship-heavy planning
   morpheus skills sync      [--check] — add missing loader-native skill entrypoints;
                             existing project-owned skill files are never overwritten
   morpheus meeting-intake guide
@@ -90,6 +93,12 @@ Usage
                             bounded metadata search; same-repo profiles need no projection
   morpheus meeting-intake notification --state <journal> --meeting <source-id>
                             format, but never send, a fully verified current-intake notice
+  morpheus scheduler tick --config <host.json> [--backup] [--dry-run]
+                            dispatch due repository-owned schedules (.morpheus/schedules.json)
+  morpheus scheduler status --config <host.json>
+                            last tick's status and health; exits 1 when stale or failing
+  morpheus scheduler admit --scheduler-id <id> --scheduled-for <instant>
+                            receiver guard: admitted=true|false to GITHUB_OUTPUT
   morpheus tokens build     [--source hq/brand/tokens.json] [--css <path>] [--ts <path>]
                             [--prefix brand] [--check]
   morpheus context refresh  take a receipt — after reading the records; idempotent, and where
@@ -97,6 +106,12 @@ Usage
   morpheus context check    exit non-zero unless context is fresh; for hooks and scripts
   morpheus context status   what the current lease says, and how old it is
   morpheus context brief    session start: fetches trunk, updates clean trunk, identifies task
+  morpheus context mcp                   # Local stdio MCP server
+  morpheus context profile [YYYY-MM-DD]  # Local pilot traces grouped by transport and arm
+  morpheus context task-read <indexed-path> [start-line] [--session-id <id>]
+  morpheus context search <query> [--max-tokens <n>] [--session-id <id>] [--json]
+  morpheus context engine <tantivy|ripgrep|auto> [--session-id <id>]
+  morpheus context coverage [--json]
   morpheus context record-read
                             the read hook: logs a tool result's record lines (stdin JSON)
   morpheus context install  [--check] [--handle <github-handle>]
@@ -109,6 +124,16 @@ Usage
                             install the pinned official package when absent,
                             configure detected agent clients, enable auto-index
                             and auto-watch, and fully index this exact checkout
+  morpheus complexity install [--check]
+                            install the pinned Lizard analyzer (commit + hashed wheels in a
+                            venv under ~/.morpheus/tools); --check runs its canary
+  morpheus complexity check [--base <ref>] [--all] [--json] [--ci]
+                            measure the functions your changes touch (committed, staged,
+                            unstaged, untracked) against morpheus.json complexity; exit 1 only
+                            in enforce mode, 2 when it could not run
+  morpheus complexity prompt
+                            print the canonical behaviour-preserving refactoring prompt to
+                            use on a finding, with how to supply its task inputs
   morpheus self check       verify the installed CLI contains current Morpheus main
   morpheus self update      install current main from a disposable clean checkout
   morpheus self install     install this clean current-main checkout as a copied package

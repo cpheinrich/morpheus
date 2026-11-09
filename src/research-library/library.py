@@ -113,7 +113,24 @@ def _valid_slug(value: str) -> bool:
     )
 
 
-def load_manifest(path: Path) -> BookManifest:
+def _check_field_types(path: Path, label: str, mapping: dict[str, Any], fields: dict[str, type[Any]]) -> None:
+    """Every named field has its type; an int field must be a true int, never a bool."""
+    for field, expected_type in fields.items():
+        field_value = mapping.get(field)
+        valid_type = (
+            type(field_value) is int
+            if expected_type is int
+            else isinstance(field_value, expected_type)
+        )
+        if not valid_type:
+            raise LibraryError(f"{path}: {label}.{field} has the wrong type")
+
+
+def _is_sha256(value: str) -> bool:
+    return len(value) == 64 and not any(c not in "0123456789abcdef" for c in value)
+
+
+def _read_manifest(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
@@ -126,13 +143,14 @@ def load_manifest(path: Path) -> BookManifest:
         raise LibraryError(
             f"{path}: schemaVersion must identify a research-library-book shape"
         )
+    return value
 
+
+def _check_identity(path: Path, value: dict[str, Any]) -> None:
     slug = value.get("slug")
     title = value.get("title")
     authors = value.get("authors")
     source_directory = value.get("sourceDirectory")
-    bundle = value.get("bundle")
-    reader = value.get("reader")
     if not isinstance(slug, str) or not _valid_slug(slug):
         raise LibraryError(f"{path}: invalid slug")
     if not isinstance(title, str) or not title.strip():
@@ -149,105 +167,92 @@ def load_manifest(path: Path) -> BookManifest:
         or source_directory in {".", ".."}
     ):
         raise LibraryError(f"{path}: sourceDirectory must be one directory name")
+
+
+def _manifest_bundle(path: Path, bundle: Any, slug: str) -> BundleIdentity:
     if not isinstance(bundle, dict):
         raise LibraryError(f"{path}: bundle is required")
-
-    expected_fields: dict[str, type[Any]] = {
+    _check_field_types(path, "bundle", bundle, {
         "bucket": str,
         "object": str,
         "sha256": str,
         "bytes": int,
         "files": int,
-    }
-    for field, expected_type in expected_fields.items():
-        field_value = bundle.get(field)
-        valid_type = (
-            type(field_value) is int
-            if expected_type is int
-            else isinstance(field_value, expected_type)
-        )
-        if not valid_type:
-            raise LibraryError(f"{path}: bundle.{field} has the wrong type")
-
+    })
     digest = bundle["sha256"]
     expected_object = f"{OBJECT_PREFIX}/{slug}/{digest}.zip"
     if bundle["bucket"] != BUCKET:
         raise LibraryError(f"{path}: bundle.bucket must be {BUCKET}")
-    if (
-        not isinstance(digest, str)
-        or len(digest) != 64
-        or any(c not in "0123456789abcdef" for c in digest)
-    ):
+    if not isinstance(digest, str) or not _is_sha256(digest):
         raise LibraryError(f"{path}: bundle.sha256 must be a lowercase SHA-256")
     if bundle["object"] != expected_object:
         raise LibraryError(f"{path}: bundle.object must be {expected_object}")
     if bundle["bytes"] <= 0 or bundle["files"] <= 0:
         raise LibraryError(f"{path}: bundle bytes and files must be positive")
+    return BundleIdentity(
+        bucket=bundle["bucket"],
+        object=bundle["object"],
+        sha256=digest,
+        bytes=bundle["bytes"],
+        files=bundle["files"],
+    )
+
+
+def _manifest_reader(path: Path, reader: Any, slug: str, digest: str) -> ReaderIdentity:
+    if not isinstance(reader, dict):
+        raise LibraryError(
+            f"{path}: reader is required for research-library-book-2"
+        )
+    _check_field_types(path, "reader", reader, {
+        "bucket": str,
+        "object": str,
+        "sha256": str,
+        "bytes": int,
+        "sourceBundleSha256": str,
+        "format": str,
+    })
+    reader_digest = reader["sha256"]
+    if not _is_sha256(reader_digest):
+        raise LibraryError(f"{path}: reader.sha256 must be a lowercase SHA-256")
+    expected_reader_object = f"{OBJECT_PREFIX}/{slug}/{reader_digest}.html"
+    if reader["bucket"] != BUCKET:
+        raise LibraryError(f"{path}: reader.bucket must be {BUCKET}")
+    if reader["object"] != expected_reader_object:
+        raise LibraryError(f"{path}: reader.object must be {expected_reader_object}")
+    if reader["bytes"] <= 0:
+        raise LibraryError(f"{path}: reader.bytes must be positive")
+    if reader["sourceBundleSha256"] != digest:
+        raise LibraryError(f"{path}: reader must bind the current bundle SHA-256")
+    if reader["format"] != READER_FORMAT:
+        raise LibraryError(f"{path}: reader.format must be {READER_FORMAT}")
+    return ReaderIdentity(
+        bucket=reader["bucket"],
+        object=reader["object"],
+        sha256=reader_digest,
+        bytes=reader["bytes"],
+        source_bundle_sha256=reader["sourceBundleSha256"],
+        format=reader["format"],
+    )
+
+
+def load_manifest(path: Path) -> BookManifest:
+    value = _read_manifest(path)
+    _check_identity(path, value)
+    slug = value["slug"]
+    bundle = _manifest_bundle(path, value.get("bundle"), slug)
     if path.stem != slug:
         raise LibraryError(f"{path}: filename must match slug")
-
     reader_identity: ReaderIdentity | None = None
     if value["schemaVersion"] == "research-library-book-2":
-        if not isinstance(reader, dict):
-            raise LibraryError(
-                f"{path}: reader is required for research-library-book-2"
-            )
-        reader_fields: dict[str, type[Any]] = {
-            "bucket": str,
-            "object": str,
-            "sha256": str,
-            "bytes": int,
-            "sourceBundleSha256": str,
-            "format": str,
-        }
-        for field, expected_type in reader_fields.items():
-            field_value = reader.get(field)
-            valid_type = (
-                type(field_value) is int
-                if expected_type is int
-                else isinstance(field_value, expected_type)
-            )
-            if not valid_type:
-                raise LibraryError(f"{path}: reader.{field} has the wrong type")
-        reader_digest = reader["sha256"]
-        if (
-            len(reader_digest) != 64
-            or any(c not in "0123456789abcdef" for c in reader_digest)
-        ):
-            raise LibraryError(f"{path}: reader.sha256 must be a lowercase SHA-256")
-        expected_reader_object = f"{OBJECT_PREFIX}/{slug}/{reader_digest}.html"
-        if reader["bucket"] != BUCKET:
-            raise LibraryError(f"{path}: reader.bucket must be {BUCKET}")
-        if reader["object"] != expected_reader_object:
-            raise LibraryError(f"{path}: reader.object must be {expected_reader_object}")
-        if reader["bytes"] <= 0:
-            raise LibraryError(f"{path}: reader.bytes must be positive")
-        if reader["sourceBundleSha256"] != digest:
-            raise LibraryError(f"{path}: reader must bind the current bundle SHA-256")
-        if reader["format"] != READER_FORMAT:
-            raise LibraryError(f"{path}: reader.format must be {READER_FORMAT}")
-        reader_identity = ReaderIdentity(
-            bucket=reader["bucket"],
-            object=reader["object"],
-            sha256=reader_digest,
-            bytes=reader["bytes"],
-            source_bundle_sha256=reader["sourceBundleSha256"],
-            format=reader["format"],
-        )
+        reader_identity = _manifest_reader(path, value.get("reader"), slug, bundle.sha256)
 
     return BookManifest(
         path=path,
         slug=slug,
-        title=title.strip(),
-        authors=tuple(author.strip() for author in authors),
-        source_directory=source_directory,
-        bundle=BundleIdentity(
-            bucket=bundle["bucket"],
-            object=bundle["object"],
-            sha256=digest,
-            bytes=bundle["bytes"],
-            files=bundle["files"],
-        ),
+        title=value["title"].strip(),
+        authors=tuple(author.strip() for author in value["authors"]),
+        source_directory=value["sourceDirectory"],
+        bundle=bundle,
         reader=reader_identity,
     )
 
@@ -1032,94 +1037,125 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _command_bundle(args: argparse.Namespace) -> None:
+    identity = create_bundle(args.source, args.output)
+    print(
+        json.dumps(
+            {
+                "sha256": identity.sha256,
+                "bytes": identity.bytes,
+                "files": identity.files,
+            }
+        )
+    )
+
+
+def _command_upload(args: argparse.Namespace) -> None:
+    manifest = load_manifest(args.manifest)
+    upload_bundle(manifest, args.bundle, args.gcloud)
+    print(f"uploaded {manifest.slug} -> gs://{manifest.bundle.bucket}/{manifest.bundle.object}")
+
+
+def _command_fetch(args: argparse.Namespace) -> None:
+    manifest = manifest_for_slug(args.slug)
+    output = fetch_book(manifest, args.output_root, args.gcloud)
+    print(output)
+
+
+def _command_push(args: argparse.Namespace) -> None:
+    selected = select_manifests(args.slugs)
+    missing = [
+        str(local_book_directory(manifest, args.local_root))
+        for manifest in selected
+        if not local_book_directory(manifest, args.local_root).is_dir()
+    ]
+    if missing:
+        raise LibraryError(
+            "local book directories are unavailable: " + ", ".join(missing)
+        )
+    for manifest in selected:
+        result = push_book(
+            manifest,
+            local_root=args.local_root,
+            gcloud=args.gcloud,
+        )
+        action = (
+            "uploaded"
+            if result.uploaded or result.reader_uploaded
+            else "linked"
+            if result.catalog_updated
+            else "current"
+        )
+        print(f"{action} {manifest.slug}: {result.local_path}")
+    print(f"synchronized {len(selected)} book(s) local -> remote")
+
+
+def _command_publish(args: argparse.Namespace) -> None:
+    result = publish_book(
+        args.source_directory,
+        args.slug,
+        args.title,
+        args.authors,
+        local_root=args.local_root,
+        gcloud=args.gcloud,
+        metadata={
+            "edition": args.edition,
+            "publisher": args.publisher,
+            "year": args.year,
+            "isbn": args.isbns,
+            "language": args.language,
+        },
+    )
+    print(f"published {result.manifest.slug}: {result.local_path}")
+
+
+def _command_pull(args: argparse.Namespace) -> None:
+    selected = select_manifests(args.slugs)
+    for manifest in selected:
+        result = pull_book(
+            manifest,
+            local_root=args.local_root,
+            gcloud=args.gcloud,
+            replace_local=args.replace,
+        )
+        print(f"{result.action} {manifest.slug}: {result.local_path}")
+    print(f"synchronized {len(selected)} book(s) remote -> local")
+
+
+def _command_verify(args: argparse.Namespace) -> None:
+    selected = select_manifests(args.slugs)
+    if args.remote:
+        for manifest in selected:
+            verify_remote(manifest, args.gcloud)
+    remote_suffix = " and remote bundle/reader object(s)" if args.remote else ""
+    print(f"verified {len(selected)} book manifest(s){remote_suffix}")
+
+
+def _command_verify_bundle(args: argparse.Namespace) -> None:
+    manifest = load_manifest(args.manifest)
+    verify_bundle(manifest, args.bundle)
+    print(f"verified {manifest.slug}")
+
+
+COMMANDS = {
+    "bundle": _command_bundle,
+    "upload": _command_upload,
+    "fetch": _command_fetch,
+    "push": _command_push,
+    "publish": _command_publish,
+    "pull": _command_pull,
+    "verify": _command_verify,
+    "verify-bundle": _command_verify_bundle,
+}
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         validate_configuration()
-        if args.command == "bundle":
-            identity = create_bundle(args.source, args.output)
-            print(
-                json.dumps(
-                    {
-                        "sha256": identity.sha256,
-                        "bytes": identity.bytes,
-                        "files": identity.files,
-                    }
-                )
-            )
-        elif args.command == "upload":
-            manifest = load_manifest(args.manifest)
-            upload_bundle(manifest, args.bundle, args.gcloud)
-            print(f"uploaded {manifest.slug} -> gs://{manifest.bundle.bucket}/{manifest.bundle.object}")
-        elif args.command == "fetch":
-            manifest = manifest_for_slug(args.slug)
-            output = fetch_book(manifest, args.output_root, args.gcloud)
-            print(output)
-        elif args.command == "push":
-            selected = select_manifests(args.slugs)
-            missing = [
-                str(local_book_directory(manifest, args.local_root))
-                for manifest in selected
-                if not local_book_directory(manifest, args.local_root).is_dir()
-            ]
-            if missing:
-                raise LibraryError(
-                    "local book directories are unavailable: " + ", ".join(missing)
-                )
-            for manifest in selected:
-                result = push_book(
-                    manifest,
-                    local_root=args.local_root,
-                    gcloud=args.gcloud,
-                )
-                action = (
-                    "uploaded"
-                    if result.uploaded or result.reader_uploaded
-                    else "linked"
-                    if result.catalog_updated
-                    else "current"
-                )
-                print(f"{action} {manifest.slug}: {result.local_path}")
-            print(f"synchronized {len(selected)} book(s) local -> remote")
-        elif args.command == "publish":
-            result = publish_book(
-                args.source_directory,
-                args.slug,
-                args.title,
-                args.authors,
-                local_root=args.local_root,
-                gcloud=args.gcloud,
-                metadata={
-                    "edition": args.edition,
-                    "publisher": args.publisher,
-                    "year": args.year,
-                    "isbn": args.isbns,
-                    "language": args.language,
-                },
-            )
-            print(f"published {result.manifest.slug}: {result.local_path}")
-        elif args.command == "pull":
-            selected = select_manifests(args.slugs)
-            for manifest in selected:
-                result = pull_book(
-                    manifest,
-                    local_root=args.local_root,
-                    gcloud=args.gcloud,
-                    replace_local=args.replace,
-                )
-                print(f"{result.action} {manifest.slug}: {result.local_path}")
-            print(f"synchronized {len(selected)} book(s) remote -> local")
-        elif args.command == "verify":
-            selected = select_manifests(args.slugs)
-            if args.remote:
-                for manifest in selected:
-                    verify_remote(manifest, args.gcloud)
-            remote_suffix = " and remote bundle/reader object(s)" if args.remote else ""
-            print(f"verified {len(selected)} book manifest(s){remote_suffix}")
-        elif args.command == "verify-bundle":
-            manifest = load_manifest(args.manifest)
-            verify_bundle(manifest, args.bundle)
-            print(f"verified {manifest.slug}")
+        command = COMMANDS.get(args.command)
+        if command is not None:
+            command(args)
         return 0
     except (LibraryError, OSError, subprocess.CalledProcessError) as error:
         raise SystemExit(f"research library: {error}") from error

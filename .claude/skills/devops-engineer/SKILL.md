@@ -90,7 +90,7 @@ add other applicable subject tags, such as `infrastructure` or `ios`, instead of
 Use `morpheus pm new roadmap "<title>" --tag engineering --tag devops` and copy the subject tags to
 new worklog frontmatter. `morpheus pm tagged engineering devops --json` finds their explicit
 metadata. Untagged historical records still need targeted reading and are not negative evidence.
-Tags narrow context; they never claim ownership or authorize execution. Paperclip or another queue
+Tags narrow context; they never claim ownership or authorize execution. A queue
 may project those tags, while the Morpheus ticket/worklog remains the durable contract.
 
 Close only after the configured user-visible delivery is verified and the normal schedule can

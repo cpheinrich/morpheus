@@ -11,6 +11,18 @@ export const home = () =>
   join(homedir(), ".local", "share", "factory");
 export const modeSchema = z.enum(["off", "manual", "automatic"]);
 /**
+ * Repository-owned release status. Factory is experimental and ships off: installing or
+ * updating it enables nothing. A machine opts in only through its own private
+ * `config.json` `mode` (`bridge.mjs enable manual|automatic`), which every reinstall keeps.
+ */
+export const release = Object.freeze({ status: "experimental", defaultMode: "off" });
+// Whether this machine has opted in. A global `off` beats every project or task choice.
+export const activation = (config) => ({
+  status: release.status,
+  mode: config.mode,
+  enabled: config.mode !== "off",
+});
+/**
  * A Claude model id or family alias as the CLI's --model accepts it, optionally with the
  * bracketed context suffix the CLI understands (`sonnet[1m]`). The first character may
  * not be a dash, so a value can never be read by the CLI as another flag.
@@ -45,7 +57,7 @@ export const secretRef = z
 export const configSchema = z
   .object({
     version: z.literal(1).default(1),
-    mode: modeSchema.default("off"),
+    mode: modeSchema.default(release.defaultMode),
     // A pooled gateway is used while its account is below this share of usage; at or
     // above it the coordinator falls back to native. 90 leaves a little headroom.
     threshold: z.number().min(1).max(100).default(90),
@@ -147,9 +159,12 @@ export const defaults = () => configSchema.parse({});
 // The primary is the agent coordinating the conversation, running on this host's native
 // login. A gateway is a separate pooled subscription reached as an API, so any gateway is a
 // delegate, including one of the coordinator's own provider: only the coordinator's own
-// native login is excluded, because handing work to it would be circular. Automatic routing
-// picks the gateway with the most headroom below the threshold and otherwise keeps the work
-// here. A result delegates when it names a gateway or another provider (see `delegates`).
+// native login is excluded, because handing work to it would be circular. Calling the Factory
+// delegation tool is itself the delegation decision: it picks the gateway with the most
+// headroom below the threshold, then falls back to the other provider's native subscription.
+// `manual` and the legacy `automatic` value therefore differ only as saved compatibility labels;
+// neither value dispatches a user prompt by itself. A result delegates when it names a gateway
+// or another provider (see `delegates`).
 export function route(config, task, gateways, operation, primary = "codex") {
   const mode = config.projects[task.project] ?? config.mode;
   if (config.mode === "off" || mode === "off" || task.disabled)
@@ -172,10 +187,13 @@ export function route(config, task, gateways, operation, primary = "codex") {
       ? { executor: primary, reason: `Explicit override; no ${override} gateway below ${config.threshold}%, so it stays here` }
       : { executor: override, reason: `Explicit override; native ${override} on this host` };
   }
-  if (mode === "manual")
-    return { executor: primary, reason: "Manual delegation only" };
-  if (below.length === 0)
-    return { executor: primary, reason: `No gateway below ${config.threshold}% used; work stays here` };
+  if (below.length === 0) {
+    const other = primary === "codex" ? "claude" : "codex";
+    return {
+      executor: other,
+      reason: `Factory delegation requested; no gateway is below ${config.threshold}% used, so use native ${other} on this host`,
+    };
+  }
   const best = roomiest(below);
   return { executor: best.provider, reason: `${describe(best)}; most headroom`, gateway: best };
 }
@@ -270,78 +288,163 @@ export async function resolveAdminCredentials(config, options = {}) {
   }
 }
 
-// Read each gateway's account usage from the sub2api admin API. Fails closed: an
-// unreadable quota is `usedPercent: null`, which route() treats as no headroom.
-// Assumes one sub2api instance (the first gateway's baseUrl) and one account per
-// provider; a multi-instance or multi-account pool needs a richer mapping.
+// Each gateway request is bounded so an unresponsive gateway reads as unknown quota
+// instead of holding an inspection or a start open.
+const GATEWAY_TIMEOUT_MS = 15000;
+
+// Read the provider pools in sub2api Simple Mode. The roomiest eligible account
+// gives its pool a score; sub2api chooses which account serves each request.
 export async function readGatewayQuota(
   gateways,
-  { adminEmail, adminPassword, fetchImpl = globalThis.fetch, now = Date.now() } = {},
+  { adminEmail, adminPassword, adminKey, fetchImpl = globalThis.fetch, now } = {},
 ) {
   if (!gateways.length) return [];
-  if (!adminEmail || !adminPassword)
+  if (!adminKey && (!adminEmail || !adminPassword))
     return gateways.map((g) => ({ ...g, usedPercent: null }));
   const baseUrl = gateways[0].baseUrl.replace(/\/+$/, "");
-  let token;
-  try {
-    const login = await fetchImpl(`${baseUrl}/api/v1/auth/login`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: adminEmail, password: adminPassword }),
-    });
-    if (!login.ok) throw new Error(`login HTTP ${login.status}`);
-    token = (await login.json())?.data?.access_token;
-    if (!token) throw new Error("no access token");
-  } catch (error) {
-    return gateways.map((g) => ({ ...g, usedPercent: null, error: error.message }));
-  }
-  let items;
-  try {
-    const accounts = await fetchImpl(`${baseUrl}/api/v1/admin/accounts`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    if (!accounts.ok) throw new Error(`accounts HTTP ${accounts.status}`);
-    items = (await accounts.json())?.data?.items ?? [];
-  } catch (error) {
-    return gateways.map((g) => ({ ...g, usedPercent: null, error: error.message }));
-  }
-  return gateways.map((g) => {
-    const platform = g.provider === "claude" ? "anthropic" : "openai";
-    const account = items.find((a) => a.platform === platform);
-    if (!account) return { ...g, usedPercent: null };
-    return { ...g, ...accountUsage(g.provider, account.extra ?? {}, now) };
+  const inventory = gatewayInventory(baseUrl, { adminEmail, adminPassword, adminKey, fetchImpl });
+  const pools = new Map();
+  return Promise.all(gateways.map(async (gateway) => {
+    if (gateway.baseUrl.replace(/\/+$/, "") !== baseUrl)
+      return { ...gateway, usedPercent: null, error: "Gateway origin differs from the admin origin" };
+    const { provider } = gateway;
+    if (!pools.has(provider))
+      pools.set(provider, inventory.then((result) => poolUsage(result, provider, now, Boolean(adminKey))));
+    try {
+      return { ...gateway, ...await pools.get(provider) };
+    } catch (error) {
+      return { ...gateway, usedPercent: null, error: error.message };
+    }
+  }));
+}
+
+async function quotaHeaders(baseUrl, { adminEmail, adminPassword, adminKey, fetchImpl }) {
+  if (adminKey) return { "x-api-key": adminKey };
+  const login = await fetchImpl(`${baseUrl}/api/v1/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: adminEmail, password: adminPassword }),
+    redirect: "error",
+    signal: AbortSignal.timeout(GATEWAY_TIMEOUT_MS),
   });
+  if (!login.ok) throw new Error(`login HTTP ${login.status}`);
+  const token = (await login.json())?.data?.access_token;
+  if (!token) throw new Error("no access token");
+  return { authorization: `Bearer ${token}` };
+}
+
+async function gatewayInventory(baseUrl, options) {
+  const headers = await quotaHeaders(baseUrl, options);
+  const get = (path) => options.fetchImpl(`${baseUrl}/api/v1/admin${path}`, {
+    headers, redirect: "error",
+    signal: AbortSignal.timeout(GATEWAY_TIMEOUT_MS),
+  });
+  const items = [];
+  for (let page = 1, pages = 1; page <= pages; page++) {
+    const response = await get(`/accounts?page=${page}`);
+    if (!response.ok) throw new Error(`accounts HTTP ${response.status}`);
+    const data = (await response.json())?.data;
+    if (!Array.isArray(data?.items)) throw new Error("accounts response has no items");
+    items.push(...data.items);
+    pages = data.pages ?? 1;
+  }
+  return { get, items };
+}
+
+function eligibleGatewayAccount(account, platform, now) {
+  const planType = account.credentials?.plan_type;
+  const plan = typeof planType === "string" ? planType.trim().toLowerCase() : "";
+  return account.platform === platform && account.type === "oauth"
+    && (platform !== "openai" || !["", "free", "abnormal"].includes(plan))
+    && account.status === "active" && account.schedulable === true
+    && !(account.auto_pause_on_expired && Number.isFinite(account.expires_at) && account.expires_at * 1000 <= now)
+    && ![account.rate_limit_reset_at, account.overload_until, account.temp_unschedulable_until]
+      .some((until) => until && Date.parse(until) > now);
+}
+
+async function poolUsage({ get, items }, provider, now, scoped) {
+  const platform = provider === "claude" ? "anthropic" : "openai";
+  const checkedAt = now ?? Date.now();
+  const accounts = items.filter((account) => eligibleGatewayAccount(account, platform, checkedAt) &&
+    (!scoped || !Number.isFinite(account.expires_at) || account.expires_at * 1000 > checkedAt));
+  const readings = await Promise.allSettled(
+    accounts.map((account) => gatewayAccountUsage(get, account, provider, now, scoped)),
+  );
+  let best = { usedPercent: null };
+  for (const reading of readings) {
+    if (reading.status === "rejected") {
+      if (best.usedPercent == null && !best.error) best = { usedPercent: null, error: reading.reason.message };
+      continue;
+    }
+    const usage = reading.value;
+    if (usage.usedPercent != null && (best.usedPercent == null || usage.usedPercent < best.usedPercent))
+      best = usage;
+  }
+  return best;
+}
+
+async function scopedCodexUsage(get, account, now) {
+  const response = await get(`/openai/accounts/${encodeURIComponent(account.id)}/quota`);
+  if (!response.ok) throw new Error(`Codex quota HTTP ${response.status}`);
+  const rate = (await response.json())?.data?.rate_limit;
+  if (rate?.limit_reached === true || rate?.allowed === false) return { usedPercent: 100 };
+  const source = {};
+  for (const window of [rate?.primary_window, rate?.secondary_window]) {
+    const name = { 18000: "5h", 604800: "7d" }[window?.limit_window_seconds];
+    if (!name || !Number.isFinite(window.reset_at)) continue;
+    source[`codex_${name}_used_percent`] = window.used_percent;
+    source[`codex_${name}_reset_at`] = window.reset_at;
+  }
+  return accountUsage("codex", source, now ?? Date.now());
+}
+
+async function gatewayAccountUsage(get, account, provider, now, scoped) {
+  // Scoped Codex reads use the dedicated upstream quota endpoint. The legacy
+  // account usage endpoint can spend a model request and timestamp an old snapshot.
+  if (scoped && provider === "codex") return scopedCodexUsage(get, account, now);
+  if (provider === "codex") return accountUsage(provider, account.extra ?? {}, now ?? Date.now());
+  // Claude's stored 5h counter has no reset. Read usage through sub2api's upstream cache.
+  const id = encodeURIComponent(account.id);
+  const response = await get(`/accounts/${id}/usage?source=active&force=true`);
+  if (!response.ok) throw new Error(`usage HTTP ${response.status}`);
+  const data = (await response.json())?.data;
+  if (!data || typeof data !== "object") throw new Error("usage response has no data");
+  return accountUsage(provider, data, now ?? Date.now());
 }
 
 // An account is as full as its most-used window: a subscription with an empty 5-hour
-// window but a nearly spent week has no headroom. A window whose reset time has passed
-// is skipped (sub2api only refreshes on use, so it reports the finished window's figure).
-// sub2api gives no reset time with Claude's 5-hour utilization, so that one window is
-// always counted as read.
+// window but a nearly spent week has no headroom. A window whose reset time has passed is
+// skipped, since its figure belongs to a finished window; a window with no reset time is
+// counted as read. A missing, non-numeric or negative figure is unreadable, not zero.
+// `source` is Claude's live usage data (`five_hour`/`seven_day` of
+// `{ utilization (percent), resets_at }` and `updated_at`) or Codex's stored account extra.
 // Returns usedPercent null when no window is readable, which routing treats as no headroom.
-export function accountUsage(provider, extra, now = Date.now()) {
+export function accountUsage(provider, source, now = Date.now()) {
   const live = (resetAt) => {
     if (resetAt == null) return true;
     const ms = typeof resetAt === "number" ? resetAt * 1000 : Date.parse(resetAt);
     return !Number.isFinite(ms) || ms > now;
   };
-  const windows =
-    provider === "claude"
-      ? [
-          { name: "5h", used: extra.session_window_utilization, resetAt: null, fraction: true },
-          { name: "7d", used: extra.passive_usage_7d_utilization, resetAt: extra.passive_usage_7d_reset, fraction: true },
-        ]
-      : [
-          { name: "5h", used: extra.codex_5h_used_percent, resetAt: extra.codex_5h_reset_at },
-          { name: "7d", used: extra.codex_7d_used_percent, resetAt: extra.codex_7d_reset_at },
-        ];
+  const claude = provider === "claude";
+  const windows = claude
+    ? [
+        { name: "5h", used: source.five_hour?.utilization, resetAt: source.five_hour?.resets_at },
+        { name: "7d", used: source.seven_day?.utilization, resetAt: source.seven_day?.resets_at },
+      ]
+    : [
+        { name: "5h", used: source.codex_5h_used_percent, resetAt: source.codex_5h_reset_at },
+        { name: "7d", used: source.codex_7d_used_percent, resetAt: source.codex_7d_reset_at },
+      ];
+  const stamp = claude ? source.updated_at : source.codex_usage_updated_at;
+  const updatedAt = typeof stamp === "string" && stamp ? stamp : null;
   const read = windows
-    .filter((w) => Number.isFinite(w.used) && live(w.resetAt))
-    .map((w) => ({ name: w.name, usedPercent: Math.round(w.fraction ? w.used * 100 : w.used) }));
-  if (!read.length) return { usedPercent: null, windows: {} };
+    .filter((w) => Number.isFinite(w.used) && w.used >= 0 && live(w.resetAt))
+    .map((w) => ({ name: w.name, usedPercent: Math.round(w.used) }));
+  if (!read.length) return { usedPercent: null, windows: {}, updatedAt };
   return {
     usedPercent: Math.max(...read.map((w) => w.usedPercent)),
     windows: Object.fromEntries(read.map((w) => [w.name, w.usedPercent])),
+    updatedAt,
   };
 }
 // Claude exposes subscription windows only to its status line, which records them.
@@ -377,32 +480,36 @@ export function claudeRemaining(snapshot, now = Date.now(), maxAgeMs = 20 * 6000
  * (modelFallback, when the active Codex model has no mapping). The provenance travels
  * with the run's selection so a coordinator can say what ran without asking.
  */
-export function modelSelection(config, snapshot, override = {}) {
-  const requested = snapshot.model ?? null;
+const UNSUPPORTED_MODEL =
+  "Unsupported Claude model identifier. Pass a full model id or a family alias as `claude --model` accepts it.";
+// Override first, then modelMap, then modelFallback; a source with an empty model is
+// reported as unsupported rather than falling through.
+function chosenModel(config, requested, override) {
   const mapped = requested == null ? undefined : config.modelMap[requested];
   const fallback = config.modelFallback ?? null;
-  let model;
-  let source;
-  if (override.model != null) [model, source] = [override.model, "override"];
-  else if (mapped != null) [model, source] = [mapped, "mapped"];
-  else if (fallback) [model, source] = [fallback, "fallback"];
-  const effort = override.effort ?? config.effortMap[snapshot.reasoningEffort];
-  if (!model && source)
-    throw new Error(
-      "Unsupported Claude model identifier. Pass a full model id or a family alias as `claude --model` accepts it.",
-    );
+  if (override.model != null) return [override.model, "override"];
+  if (mapped != null) return [mapped, "mapped"];
+  if (fallback) return [fallback, "fallback"];
+  return [undefined, undefined];
+}
+function assertModelAllowed(model, source, requested) {
+  if (!model && source) throw new Error(UNSUPPORTED_MODEL);
   if (!model)
     throw new Error(
       `No Claude model mapping for Codex model "${requested ?? "unknown"}" and modelFallback is disabled. Add it to modelMap, set modelFallback (for example "opus"), or pass an explicit model.`,
     );
   if (typeof model !== "string" || !modelIdPattern.test(model))
-    throw new Error(
-      "Unsupported Claude model identifier. Pass a full model id or a family alias as `claude --model` accepts it.",
-    );
+    throw new Error(UNSUPPORTED_MODEL);
   if (MOVING_MODEL_ALIASES.has(model.toLowerCase()))
     throw new Error(
       `Claude model alias "${model}" moves with releases and could select a paid-credit-only model; name the model explicitly.`,
     );
+}
+export function modelSelection(config, snapshot, override = {}) {
+  const requested = snapshot.model ?? null;
+  const [model, source] = chosenModel(config, requested, override);
+  const effort = override.effort ?? config.effortMap[snapshot.reasoningEffort];
+  assertModelAllowed(model, source, requested);
   if (!["low", "medium", "high", "xhigh", "max"].includes(effort))
     throw new Error("No effort mapping for the current Codex selection.");
   return {
@@ -425,23 +532,6 @@ export function permissionMode(snapshot) {
   if (snapshot.approvalPolicy === "on-request") return "default";
   throw new Error("Unsupported approval policy; delegation refused.");
 }
-// A remote pool profile may not exceed the calling Codex task's own sandbox. Writes
-// without a per-action user approval need a writable coordinator; read-only profiles
-// fit any verified sandbox. Unknown sandboxes or approval policies refuse.
-const POOL_SANDBOX_RANK = { readOnly: 0, workspaceWrite: 1, dangerFullAccess: 2 };
-const POOL_PERMISSION_RANK = { plan: 0, "read-only": 0, default: 1, acceptEdits: 1, "workspace-write": 1 };
-const APPROVAL_POLICIES = new Set(["never", "on-request", "on-failure", "untrusted"]);
-export function assertPoolAuthority(snapshot, permission) {
-  const rank = POOL_SANDBOX_RANK[snapshot?.sandbox?.type];
-  if (rank === undefined || !APPROVAL_POLICIES.has(snapshot?.approvalPolicy))
-    throw new Error("This Codex task's permissions could not be verified; pool delegation refused.");
-  const needed = POOL_PERMISSION_RANK[permission];
-  if (needed === undefined) throw new Error("Unknown pool permission; refused.");
-  if (needed > rank)
-    throw new Error(
-      `Pool permission ${permission} exceeds this Codex task's ${snapshot.sandbox.type} sandbox; permissions were not widened.`,
-    );
-}
 export function subscriptionEnv(env) {
   const clean = { ...env };
   for (const key of Object.keys(clean)) {
@@ -460,15 +550,29 @@ export function codexSelection(config, session = {}, override = {}) {
     String(session.model || "").replace(/[-_]/g, " "),
   )?.[1];
   const model = override.model ?? config.codexModelMap[family];
-  const effort = override.effort ?? config.codexEffortMap[session.effort];
+  const effort = codexWorkerEffort(config, override.effort ?? session.effort);
   if (model && !config.codexModels.includes(model))
     throw new Error(
       "No approved Codex model mapping. Configure codexModelMap/codexModels explicitly.",
     );
-  if (override.effort && !Object.values(config.codexEffortMap).includes(effort))
+  if (override.effort && !effort)
     throw new Error("Unsupported Codex effort override.");
   // An unknown Claude model or effort defers to Codex's own configured default.
   return { model: model ?? null, effort: effort ?? null };
+}
+const codexEfforts = new Set(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
+export function codexWorkerEffort(config, effort) {
+  if (!effort) return null;
+  if (!codexEfforts.has(effort)) return null;
+  // The provider-neutral contract includes the cross-provider edge values. Current Codex
+  // models use low/max at those edges, including saved configs created before these aliases.
+  return config.codexEffortMap[effort] ?? { minimal: "low", ultra: "max" }[effort] ?? effort;
+}
+export function codexRootEffort(effort) {
+  if (!effort || !codexEfforts.has(effort)) return null;
+  // A Codex root already speaks native Codex effort. Only translate the two neutral edge aliases;
+  // codexEffortMap belongs to the Claude-to-Codex boundary and must not rewrite native choices.
+  return { minimal: "low", ultra: "max" }[effort] ?? effort;
 }
 // Claude permission modes map onto Codex's sandbox. Nothing is widened: only an
 // explicit bypass reaches full access, and unknown modes refuse.
@@ -490,7 +594,8 @@ export function codexPermission(mode, writableRoots = []) {
     "-c",
     'approval_policy="never"',
   ];
-  // A linked worktree keeps its Git metadata outside the checkout; commits need it.
+  // A linked worktree keeps its Git metadata outside the checkout; commits need it. Other
+  // task-owned checkouts are writable roots too. A read-only sandbox receives none.
   if (sandbox === "workspace-write" && writableRoots.length)
     args.push(
       "-c",

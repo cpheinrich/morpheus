@@ -40,7 +40,22 @@ own tests, and does the wrong thing.
    approval step, state or option needs a reason in the item or in observed behaviour; without one
    it is a finding.
 
+7. **HQ brevity and hierarchy.** For a human-facing HQ change, apply
+   `docs/runbooks/hq-product-design.md`: current direction is a verb-led outcome of at most ten
+   words; the executive brief is at most 75 words or five one-sentence bullets; and a verbose
+   legacy page should usually lose 40–60% of its prose without losing the decision or action, owner,
+   deadline, thresholds, material evidence, caveats or compliance constraints. Check before/after counts and
+   the rendered first screen. Do not demand compression of legal/compliance documents, roadmap
+   tickets, worklogs, inboxes, agent logs or raw meeting/source records. Minor copy trims are notes;
+   verbosity that defeats an explicit HQ acceptance criterion or hides the decision/action is a
+   substantive intent or contract finding.
+
 ## How to report
+
+As an advisory question, would an early diagram have helped explain the design, and are retained
+diagrams useful and accurate? Skip trivial self-contained changes; missing or cosmetic diagrams
+never block. Substantive inaccuracies follow ordinary correctness and documentation review rules.
+This creates no approval pause, required artifact or merge gate.
 
 **Findings go inline, on the line they are about.** Use the inline-comment tool for every finding
 that names a line in the diff: GitHub renders it against the code, and the author replies to each

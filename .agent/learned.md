@@ -727,3 +727,12 @@ iteration, which is the shape of Evo's leftover-state UI failures. Related facts
   logged `Failure collecting diagnostics from simulator: Timed out after 600.0 seconds`, collecting
   nothing; the other finished promptly. Runs with `-collect-test-diagnostics never` never waited.
 - `xcodebuild -help` prints its usage to stderr, not stdout.
+
+## `process.exit` discards output still queued for a pipe on macOS
+
+2026-11-05 (MO-26-11-05-23.41.26). Node writes stdout/stderr pipes asynchronously on macOS (files
+and, per its docs, Linux pipes synchronously). A CLI that calls `process.exit` straight after
+printing delivers at most the pipe buffer (64 KiB) to a reader that is not keeping up, and the
+same command redirected to a file looks fine. Exit from the callback of an empty write to each
+stream instead. Testing it needs a reader that is slow on purpose, and Node's `child_process`
+resumes and discards an unlistened child stream at exit, so attach data listeners before pausing.

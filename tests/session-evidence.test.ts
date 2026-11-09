@@ -17,6 +17,7 @@ import {
   subtractRanges,
   type ReadEntry,
 } from "../src/session/evidence.js";
+import { runContextSearch } from "../src/cli/context-search.js";
 import { CLAUDE_TEXT_CAP_BYTES, OTHER_TEXT_CAP_BYTES, recordRead } from "../src/session/read-hook.js";
 import { changedHunks, evidenceMode } from "../src/session/certify.js";
 import { noteWrite, refresh } from "../src/session/context.js";
@@ -240,6 +241,23 @@ describe("the read hook", () => {
     expect(await reads(local)).toEqual([]);
     // Still live: the hook saw and understood a result.
     expect((await readEvidence(local)).entries.map((e) => e.kind)).toEqual(["live"]);
+  });
+
+  it("credits a direct read and gives search excerpts only liveness", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await runContextSearch(local, "Lesson", { json: false });
+    const text = String(log.mock.calls[0]?.[0]);
+    expect(text).toContain(LEARNED);
+    await recordRead(bashPayload(local, text));
+    log.mockClear();
+    await runContextSearch(local, "Lesson", { json: true });
+    const json = String(log.mock.calls[0]?.[0]);
+    expect(JSON.parse(json).output).toContain(LEARNED);
+    await recordRead(bashPayload(local, json));
+    log.mockRestore();
+    expect((await readEvidence(local)).entries.map(e => e.kind)).toEqual(["live"]);
+    await recordRead(bashPayload(local, LEARNED));
+    expect(await reads(local)).toEqual([expect.objectContaining({ record: ".agent/learned.md", from: 1, to: 14 })]);
   });
 
   it("credits nothing but liveness for a `cat … >/dev/null`", async () => {

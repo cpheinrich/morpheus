@@ -63,6 +63,12 @@ export declare const QaAnchor: z.ZodObject<{
         pageHeight: z.ZodNumber;
     }, z.core.$strict>>;
 }, z.core.$strict>;
+/** Operator-declared identity for the served app, never inferred from the proxy checkout. */
+export declare const QaWebBuildIdentity: z.ZodObject<{
+    commit: z.ZodOptional<z.ZodString>;
+    deployment: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>;
+export type QaWebBuildIdentity = z.infer<typeof QaWebBuildIdentity>;
 /** Small, allowlisted semantic HTML evidence, frozen synchronously at pin placement. */
 export declare const QaWebContext: z.ZodObject<{
     version: z.ZodLiteral<1>;
@@ -204,6 +210,40 @@ export declare const QaWebContext: z.ZodObject<{
         scrollY: z.ZodNumber;
     }, z.core.$strict>;
     limitations: z.ZodArray<z.ZodString>;
+    diagnostics: z.ZodOptional<z.ZodObject<{
+        version: z.ZodLiteral<1>;
+        build: z.ZodNullable<z.ZodObject<{
+            commit: z.ZodOptional<z.ZodString>;
+            deployment: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>>;
+        browser: z.ZodEnum<{
+            unknown: "unknown";
+            chrome: "chrome";
+            edge: "edge";
+            firefox: "firefox";
+            safari: "safari";
+            opera: "opera";
+        }>;
+        os: z.ZodEnum<{
+            unknown: "unknown";
+            android: "android";
+            linux: "linux";
+            windows: "windows";
+            macos: "macos";
+            ios: "ios";
+            chromeos: "chromeos";
+        }>;
+        devicePixelRatio: z.ZodNullable<z.ZodNumber>;
+        theme: z.ZodEnum<{
+            unknown: "unknown";
+            light: "light";
+            dark: "dark";
+        }>;
+        snapshot: z.ZodOptional<z.ZodObject<{
+            version: z.ZodLiteral<1>;
+            state: z.ZodRecord<z.ZodString, z.ZodUnion<readonly [z.ZodString, z.ZodNumber, z.ZodBoolean]>>;
+        }, z.core.$strict>>;
+    }, z.core.$strict>>;
     image: z.ZodOptional<z.ZodObject<{
         status: z.ZodEnum<{
             pending: "pending";
@@ -392,6 +432,40 @@ export declare const QaComment: z.ZodObject<{
             scrollY: z.ZodNumber;
         }, z.core.$strict>;
         limitations: z.ZodArray<z.ZodString>;
+        diagnostics: z.ZodOptional<z.ZodObject<{
+            version: z.ZodLiteral<1>;
+            build: z.ZodNullable<z.ZodObject<{
+                commit: z.ZodOptional<z.ZodString>;
+                deployment: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>>;
+            browser: z.ZodEnum<{
+                unknown: "unknown";
+                chrome: "chrome";
+                edge: "edge";
+                firefox: "firefox";
+                safari: "safari";
+                opera: "opera";
+            }>;
+            os: z.ZodEnum<{
+                unknown: "unknown";
+                android: "android";
+                linux: "linux";
+                windows: "windows";
+                macos: "macos";
+                ios: "ios";
+                chromeos: "chromeos";
+            }>;
+            devicePixelRatio: z.ZodNullable<z.ZodNumber>;
+            theme: z.ZodEnum<{
+                unknown: "unknown";
+                light: "light";
+                dark: "dark";
+            }>;
+            snapshot: z.ZodOptional<z.ZodObject<{
+                version: z.ZodLiteral<1>;
+                state: z.ZodRecord<z.ZodString, z.ZodUnion<readonly [z.ZodString, z.ZodNumber, z.ZodBoolean]>>;
+            }, z.core.$strict>>;
+        }, z.core.$strict>>;
         image: z.ZodOptional<z.ZodObject<{
             status: z.ZodEnum<{
                 pending: "pending";
@@ -623,6 +697,40 @@ export declare const QaCommentBatch: z.ZodObject<{
                 scrollY: z.ZodNumber;
             }, z.core.$strict>;
             limitations: z.ZodArray<z.ZodString>;
+            diagnostics: z.ZodOptional<z.ZodObject<{
+                version: z.ZodLiteral<1>;
+                build: z.ZodNullable<z.ZodObject<{
+                    commit: z.ZodOptional<z.ZodString>;
+                    deployment: z.ZodOptional<z.ZodString>;
+                }, z.core.$strict>>;
+                browser: z.ZodEnum<{
+                    unknown: "unknown";
+                    chrome: "chrome";
+                    edge: "edge";
+                    firefox: "firefox";
+                    safari: "safari";
+                    opera: "opera";
+                }>;
+                os: z.ZodEnum<{
+                    unknown: "unknown";
+                    android: "android";
+                    linux: "linux";
+                    windows: "windows";
+                    macos: "macos";
+                    ios: "ios";
+                    chromeos: "chromeos";
+                }>;
+                devicePixelRatio: z.ZodNullable<z.ZodNumber>;
+                theme: z.ZodEnum<{
+                    unknown: "unknown";
+                    light: "light";
+                    dark: "dark";
+                }>;
+                snapshot: z.ZodOptional<z.ZodObject<{
+                    version: z.ZodLiteral<1>;
+                    state: z.ZodRecord<z.ZodString, z.ZodUnion<readonly [z.ZodString, z.ZodNumber, z.ZodBoolean]>>;
+                }, z.core.$strict>>;
+            }, z.core.$strict>>;
             image: z.ZodOptional<z.ZodObject<{
                 status: z.ZodEnum<{
                     pending: "pending";

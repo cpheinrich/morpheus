@@ -104,9 +104,9 @@ describe("morpheus init", () => {
     expect(instructions).toContain("must spawn one fresh reviewer subagent/session");
     expect(instructions).toContain("does not\nlaunch a reviewer");
     expect(instructions).toContain("without inheriting the author's conversation history");
-    expect(instructions).toContain("Do not wait for a PR monitor");
-    expect(instructions).toContain("The author measures each turn from runner duration metadata or actual clock readings");
-    expect(instructions).toContain("New version 2 records require timing source, milliseconds and");
+    expect(instructions).toContain("CI and PR monitors never start this review");
+    expect(instructions).toContain("Measure each turn from runner metadata or actual clock readings, never estimates");
+    expect(instructions).toContain("timing source, milliseconds and evidence");
     expect(await read(".github/pull_request_template.md")).toContain("review prepare only prints the packet");
     expect(await read(".github/pull_request_template.md")).toContain("review-record:");
   });
@@ -176,6 +176,20 @@ describe("morpheus init", () => {
     expect(manifest.review.approval).toBe("two-person");
     expect(manifest.review.visualEvidence.enabled).toBe(true);
     expect(result.written).toContain("morpheus.json (visual evidence policy added)");
+  });
+
+  it("enrols a new project in advisory complexity, and never enrols an established manifest", async () => {
+    await scaffold(dir, SEED);
+    expect((JSON.parse(await read("morpheus.json")) as { complexity: unknown }).complexity).toEqual({ mode: "advisory" });
+    const agents = await read("AGENTS.md");
+    expect(agents).toContain("and `morpheus complexity install --check`; install whichever is not operational.");
+    expect(agents).toContain("**Run `morpheus complexity check` after each changed function family**, inspect it by hand and\nrefactor findings with `morpheus complexity prompt`; report it for review.");
+    expect(await read("README.md")).toContain("morpheus complexity install --check");
+
+    const established = await mkdtemp(join(tmpdir(), "init-established-"));
+    await writeFile(join(established, "morpheus.json"), `${JSON.stringify({ name: "Existing", prefix: "EX", kind: "company" })}\n`);
+    await scaffold(established, SEED);
+    expect(JSON.parse(await readFile(join(established, "morpheus.json"), "utf8"))).not.toHaveProperty("complexity");
   });
 
   it("preserves a repository's explicit visual-evidence opt-out", async () => {
