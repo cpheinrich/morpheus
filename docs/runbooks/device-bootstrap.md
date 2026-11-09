@@ -49,3 +49,17 @@ surface the same drift. `morpheus self update` is the one-time/manual repair; co
 call `morpheus self ensure` after later pulls and rebases. Both build in a disposable clone, install
 the copy, and remove the clone without touching active work. The codebase-memory version stays
 pinned until a reviewed Morpheus change advances it.
+
+## Context search after an automatic update
+
+With auto-update enabled, the managed hooks register Morpheus Context MCP in the
+local user's Codex, Claude Code and Cursor settings after updating or confirming
+the CLI is current. This applies to every Morpheus checkout the client launches,
+including linked worktrees and clones missing portable project configuration.
+Existing conflicting, disabled, unreadable or symlinked entries are preserved
+and reported. The server requires a Morpheus manifest in the active checkout.
+
+A hook from before this feature finishes its first upgrade using the old CLI.
+The first Morpheus session startup using the new CLI completes registration in
+that case. Reload an already running client so it discovers the new entry.
+To reconcile immediately on an opted-in device, run `morpheus self ensure`.

@@ -49,6 +49,13 @@ export async function readAutoUpdateConfig(path = autoUpdateConfigPath()) {
         };
     }
 }
+/** Device consent also authorizes local registration for the reviewed Context MCP. */
+export async function reconcileAutoUpdateContext(configPath = autoUpdateConfigPath(), env = process.env, home = homedir()) {
+    if ((await readAutoUpdateConfig(configPath)).preference !== "enabled")
+        return [];
+    const { installUserContextClients } = await import("./context-search/install.js");
+    return installUserContextClients(env, home);
+}
 async function writeAutoUpdateConfig(enabled, path, now) {
     await mkdir(dirname(path), { recursive: true });
     const config = {
