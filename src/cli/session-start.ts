@@ -86,7 +86,7 @@ async function printRollout(root: string, paths: readonly string[], arm: Context
 }
 
 /** Trunk lag, the records to read from this checkout, and how to keep the session's task association. */
-async function printReadInstructions(prepared: Prepared, sessionId: string | undefined): Promise<boolean> {
+async function printReadInstructions(prepared: Prepared, sessionId: string | undefined, started?: Date): Promise<boolean> {
   if (prepared.behind) {
     for (const line of formatLag(prepared.lag, prepared.trunk, new Date())) console.log(line);
     console.log(`Existing edits were preserved. Integrate trunk explicitly before certifying context; inspect latest source with git show ${prepared.sha}:<path>.`);
@@ -96,13 +96,17 @@ async function printReadInstructions(prepared: Prepared, sessionId: string | und
   const policy = await projectPolicy(prepared.root, sessionId);
   const paths = policy.requiredInputs ?? CANONICAL_INPUTS;
   for (const path of paths) console.log(`  ${join(prepared.root, path)}`);
-  if (policy.rollout) await printRollout(prepared.root, paths, policy.rollout, sessionId);
+  const arm = policy.rollout;
+  if (arm?.session && started) await traceContext(prepared.root, { type: "session-start",
+    arm: arm.arm, engine: arm.engine, session: arm.session, rollout: arm.id }, started);
+  if (arm) await printRollout(prepared.root, paths, arm, sessionId);
   if (sessionId) console.log(`To retain this session's task association, pass --session-id ${"'" + sessionId.replaceAll("'", "'\\''") + "'"} to pm claim or pm resume (Codex also supplies CODEX_THREAD_ID automatically).`);
   console.log("Then run morpheus context refresh there. No receipt is issued by startup.");
   return policy.rollout?.id !== undefined;
 }
 
 export async function startSession(root: string, input: SessionStartInput, opts: BriefOptions = {}): Promise<number> {
+  const started = new Date();
   try {
     // Even a failed fetch must not leave another session's receipt usable.
     await endTerm(root, input.sessionId);
@@ -114,7 +118,7 @@ export async function startSession(root: string, input: SessionStartInput, opts:
     printPreparation(prepared);
     console.log(`WORK IN: ${prepared.root}`);
     await reportTask(prepared, binding, input.sessionId);
-    const rollout = await printReadInstructions(prepared, input.sessionId);
+    const rollout = await printReadInstructions(prepared, input.sessionId, input.source === "startup" ? started : undefined);
     console.log("");
     return await brief(prepared.root, { ...opts, startup: { sessionId: input.sessionId, rollout } });
   } catch (error) {

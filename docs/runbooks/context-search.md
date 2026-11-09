@@ -45,6 +45,22 @@ grouped by observed interface. This cutover changes transport for every arm, so 
 CLI-to-MCP comparison is observational. The engine comparison still uses the existing arms.
 Traces omit raw queries, document text, local paths and provider session IDs.
 
+The MCP starts warming the current worktree's full Tantivy index when the host launches
+the server. Codex's app-server can do this as soon as it starts a project thread, before the
+first turn. The desktop controls when it creates that thread. Warming runs in the background
+while the server connects, and a search for the same index shares a build already in progress.
+The cache is content-addressed. A different checkout, changed sources or a kind-filtered corpus
+can still need a build. The experiment assigns its search arm when the session identity arrives.
+A pilot worktree can warm before that identity is known, including for a later ripgrep assignment.
+
+The `pipeline` report gives sample counts and timing from the earliest observed session hook or
+MCP process launch to the first prompt, then to the first search and first nonempty search result.
+The read hook supplies a separate time to the first result observed by the host. Warm-up
+duration, build time, cache hits, failures and first-search index waits are separate.
+Prompt times use the prompt hook when available and otherwise the first turn boundary from the
+matching local Codex transcript. The report counts missing boundaries and does not time the
+desktop click itself. It stores no prompt or search text.
+
 For the bounded arms, install the task prompt and read hooks with
 `morpheus context install` and make sure both are active in the client. On
 the first user prompt, Morpheus asks the agent to search when the task is

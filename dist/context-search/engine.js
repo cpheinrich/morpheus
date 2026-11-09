@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
@@ -145,20 +145,40 @@ function buildPayload(documents) {
     }
     return batches.join("\n") + "\n";
 }
-function python(action, directory, input) {
+function pythonExecutable() {
     const installed = join(homedir(), ".morpheus", "tools", "context-search", "bin", "python");
-    const executable = process.env.MORPHEUS_TANTIVY_PYTHON ?? (existsSync(installed) ? installed : "python3");
-    const result = spawnSync(executable, [WORKER, action, directory], {
+    return process.env.MORPHEUS_TANTIVY_PYTHON ?? (existsSync(installed) ? installed : "python3");
+}
+function unavailableTantivy() {
+    return new Error("Tantivy is unavailable. Install tantivy==0.27.0 in the configured Python environment or select ripgrep.");
+}
+function searchIndex(directory, input) {
+    const result = spawnSync(pythonExecutable(), [WORKER, "search", directory], {
         input, encoding: "utf8", timeout: 60_000, maxBuffer: 4 * 1024 * 1024,
     });
     if (result.status === 2)
-        throw new Error("Tantivy is unavailable. Install tantivy==0.27.0 in the configured Python environment or select ripgrep.");
-    if (action === "search" && result.status === 3)
-        return null;
+        throw unavailableTantivy();
+    if (result.status === 3)
+        throw new Error("Tantivy could not open the context index. Remove the worktree's search cache and retry.");
     if (result.error || result.status !== 0) {
-        throw new Error(`Tantivy ${action} failed: ${result.error?.message ?? result.status ?? result.signal}`);
+        throw new Error(`Tantivy search failed: ${result.error?.message ?? result.status ?? result.signal}`);
     }
     return result.stdout;
+}
+function buildIndex(directory, input) {
+    return new Promise((resolve, reject) => {
+        const child = execFile(pythonExecutable(), [WORKER, "build", directory], {
+            timeout: 60_000, maxBuffer: 4 * 1024 * 1024,
+        }, error => {
+            if (!error)
+                resolve();
+            else
+                reject(error.code === 2 ? unavailableTantivy() : new Error("Tantivy build failed", { cause: error }));
+        });
+        // The worker can exit before consuming stdin (for example, a missing module).
+        child.stdin?.on("error", () => { });
+        child.stdin?.end(input);
+    });
 }
 function fingerprint(sources) {
     const hash = createHash("sha256").update(INDEX_VERSION);
@@ -168,11 +188,11 @@ function fingerprint(sources) {
     }
     return hash.digest("hex");
 }
-function publishIndex(cacheDir, index, documents) {
+async function publishIndex(cacheDir, index, documents) {
     mkdirSync(cacheDir, { recursive: true, mode: 0o700 });
     const pending = mkdtempSync(join(cacheDir, "pending-"));
     try {
-        python("build", pending, buildPayload(documents));
+        await buildIndex(pending, buildPayload(documents));
         try {
             renameSync(pending, index);
         }
@@ -229,32 +249,50 @@ function tantivySpans(documents, query, reply) {
         return excerpt(document, strongestLine(document, first, last, terms));
     });
 }
-function tantivy(sources, documents, query, cacheDir) {
+const inFlightBuilds = new Map();
+async function ensureIndex(sources, documents, cacheDir) {
+    const index = join(cacheDir, `index-${fingerprint(sources)}`);
+    if (indexExists(index))
+        return { index, buildMs: 0, cacheHit: true, waitMs: 0 };
+    const started = performance.now();
+    const running = inFlightBuilds.get(index);
+    if (running) {
+        await running;
+        return { index, buildMs: 0, cacheHit: false, waitMs: performance.now() - started };
+    }
+    const build = publishIndex(cacheDir, index, documents);
+    inFlightBuilds.set(index, build);
+    try {
+        await build;
+        return { index, buildMs: performance.now() - started, cacheHit: false, waitMs: 0 };
+    }
+    finally {
+        inFlightBuilds.delete(index);
+    }
+}
+export async function warmTantivyIndex(sources, cacheDir) {
+    const documents = documentsFor(sources);
+    if (!documents.length)
+        return;
+    return ensureIndex(sources, documents, cacheDir);
+}
+async function tantivy(sources, documents, query, cacheDir) {
     const terms = nativeTerms(query);
     if (!terms || !documents.length)
-        return { spans: [], buildMs: 0, cacheHit: false };
-    const index = join(cacheDir, `index-${fingerprint(sources)}`);
-    const cacheHit = indexExists(index);
-    let buildMs = 0;
-    if (!cacheHit) {
-        const start = performance.now();
-        publishIndex(cacheDir, index, documents);
-        buildMs = performance.now() - start;
-    }
-    const reply = python("search", index, terms);
-    if (reply === null)
-        throw new Error("Tantivy could not open the context index. Remove the worktree's search cache and retry.");
-    return { spans: tantivySpans(documents, query, reply), buildMs, cacheHit };
+        return { spans: [], buildMs: 0, cacheHit: false, waitMs: 0 };
+    const { index, ...timing } = await ensureIndex(sources, documents, cacheDir);
+    const reply = searchIndex(index, terms);
+    return { spans: tantivySpans(documents, query, reply), ...timing };
 }
 export async function searchContext(sources, query, budget, options) {
     if (!Number.isSafeInteger(budget) || budget < 1 || budget > 2500)
         throw new Error("Search budget must be 1–2500 tokens");
     const start = performance.now();
     const documents = documentsFor(sources);
-    const { spans, buildMs, cacheHit } = options.engine === "tantivy"
-        ? tantivy(sources, documents, query, options.cacheDir)
-        : { spans: ripgrep(documents, query), buildMs: 0, cacheHit: false };
+    const { spans, buildMs, cacheHit, waitMs } = options.engine === "tantivy"
+        ? await tantivy(sources, documents, query, options.cacheDir)
+        : { spans: ripgrep(documents, query), buildMs: 0, cacheHit: false, waitMs: 0 };
     const result = format(spans, budget, options.maxBytes, options.maxLines);
-    return { ...result, buildMs, cacheHit, queryMs: performance.now() - start - buildMs };
+    return { ...result, buildMs, cacheHit, waitMs, queryMs: performance.now() - start - buildMs - waitMs };
 }
 //# sourceMappingURL=engine.js.map

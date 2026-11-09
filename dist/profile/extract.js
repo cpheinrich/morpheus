@@ -1,7 +1,7 @@
 import { createReadStream } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 import { pipeline } from "node:stream";
 // A namespace import, not a named one: zstd arrived in Node 22.15, and a named import of an export
@@ -114,6 +114,41 @@ async function streamLines(path, push) {
     const rl = createInterface({ input: openText(path), crlfDelay: Infinity });
     for await (const line of rl)
         push(line);
+}
+/** First turn boundary only. Read matching local Codex transcripts until the first turn starts. */
+export async function codexFirstTurnStarts(home, interested) {
+    const files = [];
+    await Promise.all(["sessions", "archived_sessions"].map(dir => walkRollouts(join(home, dir), files)));
+    const starts = new Map();
+    for (const path of files) {
+        const session = /([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})\.jsonl(?:\.zst)?$/i.exec(basename(path))?.[1];
+        if (!session || !interested(session))
+            continue;
+        const at = await firstCodexTurn(path, session).catch(() => undefined);
+        if (at !== undefined)
+            starts.set(session, Math.min(starts.get(session) ?? Infinity, at));
+    }
+    return starts;
+}
+async function firstCodexTurn(path, session) {
+    const input = openText(path);
+    const lines = createInterface({ input, crlfDelay: Infinity });
+    try {
+        let verified = false;
+        for await (const line of lines) {
+            const row = JSON.parse(line);
+            if (row?.type === "session_meta")
+                verified = row.payload?.id === session;
+            if (verified && row?.type === "event_msg" && row.payload?.type === "task_started") {
+                const at = Date.parse(row.timestamp);
+                return Number.isFinite(at) ? at : undefined;
+            }
+        }
+    }
+    finally {
+        lines.close();
+        input.destroy();
+    }
 }
 async function modifiedSince(path, from) {
     if (from === undefined)

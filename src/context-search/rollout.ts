@@ -117,6 +117,14 @@ export function armForBucket(bucket: number): "tantivy-bounded" | "ripgrep-bound
   return bucket < 60 ? "tantivy-bounded" : bucket < 80 ? "ripgrep-bounded" : "ripgrep-full";
 }
 
+function rolloutKey(rollout: string, session: string): Buffer {
+  return createHash("sha256").update("morpheus-context-v1\0").update(rollout).update("\0").update(session).digest();
+}
+
+export function contextTraceSession(rollout: string, session: string): string {
+  return rolloutKey(rollout, session).toString("hex").slice(8, 24);
+}
+
 export async function contextArm(root: string, sessionId = providerSessionId(), config?: SearchConfig): Promise<ContextArm> {
   const settings = config ?? await getSearchConfig(root);
   const { mode, rollout } = settings;
@@ -124,7 +132,7 @@ export async function contextArm(root: string, sessionId = providerSessionId(), 
   const manual: ContextArm = { arm: "manual", engine: mode ?? "ripgrep", startup: "full" };
   if (!rollout) return mode ? manual : legacy;
   const key = sessionId && sessionId.length <= 512
-    ? createHash("sha256").update("morpheus-context-v1\0").update(rollout.id).update("\0").update(sessionId).digest()
+    ? rolloutKey(rollout.id, sessionId)
     : undefined;
   const session = key?.toString("hex").slice(8, 24);
   if (mode) return { ...manual, id: rollout.id, session };
@@ -142,7 +150,7 @@ export async function contextArm(root: string, sessionId = providerSessionId(), 
 }
 
 export interface ContextTrace {
-  type: "assignment" | "query" | "tool" | "visible";
+  type: "assignment" | "query" | "tool" | "visible" | "session-start" | "prompt" | "warm";
   transport?: ContextTransport;
   operation?: ContextOperation;
   outcome?: ContextOutcome;
@@ -157,6 +165,9 @@ export interface ContextTrace {
   startupBytes?: number;
   startupTokens?: number;
   queryMs?: number;
+  queryStartedAt?: number;
+  mcpStartedAt?: number;
+  waitMs?: number;
   engineQueryMs?: number;
   buildMs?: number;
   cacheHit?: boolean;
@@ -186,7 +197,8 @@ function traceUsage(event: ContextTrace) {
 function traceLine(event: ContextTrace, now: Date): string {
   const numbers = {
     startupBytes: event.startupBytes, startupTokens: event.startupTokens,
-    queryMs: event.queryMs, engineQueryMs: event.engineQueryMs, buildMs: event.buildMs,
+    queryMs: event.queryMs, engineQueryMs: event.engineQueryMs, buildMs: event.buildMs, waitMs: event.waitMs,
+    queryStartedAt: event.queryStartedAt, mcpStartedAt: event.mcpStartedAt,
     resultCount: event.resultCount, returnedTokens: event.returnedTokens, budget: event.budget,
   };
   const safeNumbers = Object.fromEntries(Object.entries(numbers).filter(([, value]) =>
@@ -207,7 +219,7 @@ function traceLine(event: ContextTrace, now: Date): string {
 /** Keep traces in ignored workspace storage writable from the agent sandbox. */
 export async function traceContext(root: string, event: ContextTrace, now = new Date()): Promise<void> {
   try {
-    if (!["assignment", "query", "tool", "visible"].includes(event.type) ||
+    if (!["assignment", "query", "tool", "visible", "session-start", "prompt", "warm"].includes(event.type) ||
         !["tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"].includes(event.arm) ||
         !["tantivy", "ripgrep"].includes(event.engine)) return;
     const directory = await searchStateDirectory(root, "traces");

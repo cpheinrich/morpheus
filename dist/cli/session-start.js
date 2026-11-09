@@ -93,7 +93,7 @@ async function printRollout(root, paths, arm, id) {
         session: arm.session, rollout: arm.id, startup: arm.startup, startupBytes, startupTokens, transport: mcp ? "mcp" : "cli" });
 }
 /** Trunk lag, the records to read from this checkout, and how to keep the session's task association. */
-async function printReadInstructions(prepared, sessionId) {
+async function printReadInstructions(prepared, sessionId, started) {
     if (prepared.behind) {
         for (const line of formatLag(prepared.lag, prepared.trunk, new Date()))
             console.log(line);
@@ -105,14 +105,19 @@ async function printReadInstructions(prepared, sessionId) {
     const paths = policy.requiredInputs ?? CANONICAL_INPUTS;
     for (const path of paths)
         console.log(`  ${join(prepared.root, path)}`);
-    if (policy.rollout)
-        await printRollout(prepared.root, paths, policy.rollout, sessionId);
+    const arm = policy.rollout;
+    if (arm?.session && started)
+        await traceContext(prepared.root, { type: "session-start",
+            arm: arm.arm, engine: arm.engine, session: arm.session, rollout: arm.id }, started);
+    if (arm)
+        await printRollout(prepared.root, paths, arm, sessionId);
     if (sessionId)
         console.log(`To retain this session's task association, pass --session-id ${"'" + sessionId.replaceAll("'", "'\\''") + "'"} to pm claim or pm resume (Codex also supplies CODEX_THREAD_ID automatically).`);
     console.log("Then run morpheus context refresh there. No receipt is issued by startup.");
     return policy.rollout?.id !== undefined;
 }
 export async function startSession(root, input, opts = {}) {
+    const started = new Date();
     try {
         // Even a failed fetch must not leave another session's receipt usable.
         await endTerm(root, input.sessionId);
@@ -126,7 +131,7 @@ export async function startSession(root, input, opts = {}) {
         printPreparation(prepared);
         console.log(`WORK IN: ${prepared.root}`);
         await reportTask(prepared, binding, input.sessionId);
-        const rollout = await printReadInstructions(prepared, input.sessionId);
+        const rollout = await printReadInstructions(prepared, input.sessionId, input.source === "startup" ? started : undefined);
         console.log("");
         return await brief(prepared.root, { ...opts, startup: { sessionId: input.sessionId, rollout } });
     }
