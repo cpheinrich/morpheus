@@ -222,8 +222,9 @@ location, or `codex` on PATH otherwise. It requires a version that supports the 
 API.
 
 The command approves hooks from the root `.codex/hooks.json` and `.codex/config.toml` that
-Codex loads for the project. The checkout must have a committed Morpheus manifest, and the
-hook config must match the committed file. The command cross-checks each reported hash
+Codex loads for the project. The committed `morpheus.json` must identify the project by
+`name`, `kind` and `prefix`. A `morpheusVersion` field is optional. The hook config
+must match the committed file. The command cross-checks each reported hash
 against the committed command hook. Review unsupported or unverifiable hooks in Codex.
 A linked worktree uses the main checkout. Codex must already
 trust that project to load its hooks. User, plugin, managed, disabled, and other projects'
