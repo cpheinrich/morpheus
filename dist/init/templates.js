@@ -833,16 +833,11 @@ a framework pulled in to save 60 lines is worse than the 60 lines; build when th
 **When you hit real ambiguity, block — do not guess:** \`morpheus pm block <ID> --needs "<what
 would unblock you>"\`. Escalating is cheap; shipping half-baked is expensive.
 
-**Break loops.** If the same command fails the same way twice, or you have polled the same thing
-three times, stop: change approach, or \`pm block\` with what you learned. Never idle-loop or poll
-\`gh\`. Use \`morpheus wait-ci <n> --required-only\` for a PR, or \`wait-ci --run <id>\` for one Actions run
-(TestFlight, release).
+**Break loops.** If the same command fails the same way twice or three polls agree,
+change approach. Never idle-loop. For one run use \`morpheus wait-ci --run <id>\`.
 
-**Follow your PR through merge.** For a PR you are authorized to merge, wait for required CI,
-diagnose failures, and fix them or retry when the evidence warrants it. Follow the resulting
-checks and verify the merge even if auto-merge is enabled. If reasonable authorized recovery
-options are exhausted, record what failed, what you tried and the exact unblocker.
-GitHub Manager remains the backstop. See the [merge runbook](${MORPHEUS_REPO}/blob/main/docs/runbooks/pm-workflow.md#merging-the-board-and-the-worklog).
+**Follow your PR through merge.** If authorized to merge, use \`morpheus wait-ci <n> --required-only\`.
+Fix or retry failures. Verify the merge or record the hard blocker. GitHub Manager is the backstop.
 
 **The authoring agent owns the entire review loop.** Finish the relevant focused tests and inspect
 results before the reviewer's first turn; send the full packet and available UI evidence. If a test

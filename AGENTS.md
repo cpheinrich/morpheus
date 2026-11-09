@@ -156,17 +156,11 @@ unblock you>"`. Escalating is cheap; shipping half-baked is expensive. "Blocked 
 `needs`. A blocked item keeps its branch; resume with `pm resume`. Detail:
 [`pm-workflow.md`](docs/runbooks/pm-workflow.md#blocking).
 
-**Break loops.** If the same command fails the same way twice, or you have polled the same thing
-three times, stop: change approach, or `pm block` with what you learned. Never idle-loop
-(`sleep`/`true`/`echo` loops, repeated status checks). Use `morpheus wait-ci <n> --required-only` for a PR,
-or `morpheus wait-ci --run <id>` (or `--workflow <file> --branch <b>`) for one Actions run.
-A hook refuses the third poll of a target.
+**Break loops.** If the same command fails the same way twice or three polls agree,
+change approach. Never idle-loop. For one run use `morpheus wait-ci --run <id>`.
 
-**Follow your PR through merge.** For a PR you are authorized to merge, wait for required CI,
-diagnose failures, and fix them or retry when the evidence warrants it. Follow the resulting
-checks and verify the merge even if auto-merge is enabled. If reasonable authorized recovery
-options are exhausted, record what failed, what you tried and the exact unblocker.
-GitHub Manager remains the backstop. See the [merge runbook](docs/runbooks/pm-workflow.md#merging-the-board-and-the-worklog).
+**Follow your PR through merge.** If authorized to merge, use `morpheus wait-ci <n> --required-only`.
+Fix or retry failures. Verify the merge or record the hard blocker. GitHub Manager is the backstop.
 
 **Browser-reachable work is not blocked.** If the *single, entire* obstacle is that something has
 to happen in a browser — a console, a dashboard, a setting — do it yourself rather than describe
