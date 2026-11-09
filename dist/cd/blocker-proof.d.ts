@@ -8,8 +8,8 @@ export declare const blockerBindingSchema: z.ZodObject<{
     fence: z.ZodNumber;
     taskDigest: z.ZodString;
     contextDigest: z.ZodString;
-    claimedAt: z.ZodISODateTime;
-    deadlineAt: z.ZodISODateTime;
+    claimedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
+    deadlineAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
 }, z.core.$strict>;
 export type BlockerBinding = z.infer<typeof blockerBindingSchema>;
 export declare const blockerProofSchema: z.ZodObject<{
@@ -20,27 +20,27 @@ export declare const blockerProofSchema: z.ZodObject<{
         fence: z.ZodNumber;
         taskDigest: z.ZodString;
         contextDigest: z.ZodString;
-        claimedAt: z.ZodISODateTime;
-        deadlineAt: z.ZodISODateTime;
+        claimedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
+        deadlineAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
     }, z.core.$strict>;
-    reportedAt: z.ZodISODateTime;
+    reportedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
     symptom: z.ZodObject<{
         summary: z.ZodString;
         identityRef: z.ZodString;
-        observedAt: z.ZodISODateTime;
+        observedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
         evidenceRefs: z.ZodArray<z.ZodString>;
     }, z.core.$strict>;
     authority: z.ZodObject<{
         ref: z.ZodString;
         summary: z.ZodString;
-        checkedAt: z.ZodISODateTime;
+        checkedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
     }, z.core.$strict>;
     tried: z.ZodArray<z.ZodObject<{
         route: z.ZodString;
         action: z.ZodString;
         outcome: z.ZodString;
-        observedAt: z.ZodISODateTime;
-        checkedAt: z.ZodISODateTime;
+        observedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
+        checkedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
         evidenceRefs: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>;
     excluded: z.ZodArray<z.ZodObject<{
@@ -52,7 +52,7 @@ export declare const blockerProofSchema: z.ZodObject<{
             disproportionate: "disproportionate";
         }>;
         reason: z.ZodString;
-        checkedAt: z.ZodISODateTime;
+        checkedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
         evidenceRefs: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>;
     noPracticalAction: z.ZodOptional<z.ZodObject<{
@@ -71,7 +71,7 @@ export declare const blockerProofSchema: z.ZodObject<{
     independentWork: z.ZodArray<z.ZodString>;
     nextWake: z.ZodObject<{
         event: z.ZodString;
-        at: z.ZodISODateTime;
+        at: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
     }, z.core.$strict>;
 }, z.core.$strict>;
 export type BlockerProof = z.infer<typeof blockerProofSchema>;
