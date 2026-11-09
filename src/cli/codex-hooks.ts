@@ -1,7 +1,7 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { existsSync } from "node:fs";
-import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, rmdir, writeFile } from "node:fs/promises";
+import { constants, existsSync } from "node:fs";
+import { chmod, lstat, mkdir, mkdtemp, open, readFile, realpath, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { createInterface } from "node:readline";
@@ -81,7 +81,7 @@ async function committedFile(root: string, source: string): Promise<string | und
   return sessionGit(root, ["show", `HEAD:${path}`], false).catch(() => undefined);
 }
 
-async function requireMorpheusProject(root: string): Promise<void> {
+export async function requireMorpheusProject(root: string): Promise<void> {
   const committed = await committedFile(root, join(root, "morpheus.json"));
   const identity = z.object({ name: z.string().min(1), morpheusVersion: z.string().min(1) });
   if (committed) {
@@ -191,7 +191,27 @@ async function saveApprovals(
   }
 }
 
+async function withMacApprovalLock<T>(home: string, action: () => Promise<T>): Promise<T> {
+  const path = join(home, ".morpheus-hook-approval.flock");
+  const file = await open(path, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
+  try {
+    // lockf's fd mode locks the shared open file description. We keep the fd
+    // open across the operation, and macOS releases it even if we are killed.
+    const result = spawnSync("/usr/bin/lockf", ["-t", "0", "3"], {
+      stdio: ["ignore", "ignore", "ignore", file.fd], timeout: 5_000,
+    });
+    if (result.error) throw result.error;
+    if (result.status === 75) throw new Error("Another Morpheus hook approval is running. Retry when it finishes.");
+    if (result.status !== 0) throw new Error("Could not acquire the macOS hook approval lock.");
+    return await action();
+  } finally {
+    // Keep the file itself so every process locks the same inode.
+    await file.close();
+  }
+}
+
 async function withApprovalLock<T>(home: string, action: () => Promise<T>): Promise<T> {
+  if (process.platform === "darwin") return withMacApprovalLock(home, action);
   const lock = join(home, ".morpheus-hook-approval.lock");
   try {
     await mkdir(lock, { mode: 0o700 });
@@ -230,27 +250,39 @@ async function approve(rpc: Rpc, root: string, save: (approvals: Approvals) => P
   return approvals.size;
 }
 
-export async function approveCodexHooks(
-  cwd = process.cwd(),
-  binary = existsSync(desktopCli) ? desktopCli : "codex",
-): Promise<number> {
+export async function codexHookProject(cwd: string): Promise<{ root: string; gitDir: string }> {
   const checkout = await checkoutIdentity(cwd);
   if (checkout.linked && basename(checkout.common) !== ".git") {
     throw new Error("Run hook approval from the main checkout of this project.");
   }
-  const root = checkout.linked ? dirname(checkout.common) : checkout.root;
-  await requireMorpheusProject(root);
-  const home = await realpath(codexHome());
-  return withApprovalLock(home, async () => {
+  return { root: checkout.linked ? dirname(checkout.common) : checkout.root, gitDir: checkout.common };
+}
+
+export async function withCodexHookApproval<T>(
+  home: string, action: (approveProject: (root: string) => Promise<number>) => Promise<T>,
+  binary = existsSync(desktopCli) ? desktopCli : "codex",
+): Promise<T> {
+  return withApprovalLock(home, () => action(async (root) => {
+    await requireMorpheusProject(root);
     const snapshot = await snapshotConfig(home);
     return withCodex(binary, home, (rpc) => approve(rpc, root, (approvals) =>
       saveApprovals(binary, home, snapshot, approvals)));
-  });
+  }));
+}
+
+export async function approveCodexHooks(cwd = process.cwd(), binary?: string): Promise<number> {
+  const { root } = await codexHookProject(cwd);
+  const home = await realpath(codexHome());
+  return withCodexHookApproval(home, (approveProject) => approveProject(root), binary);
 }
 
 export async function runCodexHooks(args: string[]): Promise<number> {
-  if (args.length !== 2 || args[0] !== "hooks" || args[1] !== "approve") {
-    throw new Error("Usage: morpheus codex hooks approve");
+  const command = args[1];
+  if (args[0] !== "hooks" || !command || (args.length !== 2 && !(command === "disable" && args.length === 3))) {
+    throw new Error("Usage: morpheus codex hooks <approve|enable|disable [checkout]|status>");
+  }
+  if (command !== "approve") {
+    return (await import("./codex-hooks-auto.js")).runCodexHookEnrollment(command, { checkout: args[2] });
   }
   const count = await approveCodexHooks();
   console.log(count
