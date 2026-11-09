@@ -239,6 +239,21 @@ locks its own approvals per Codex config directory and checks for external chang
 replacing the config. Other Codex writers do not share that lock. If Codex produces invalid TOML
 or changes anything besides the intended approvals, the command discards the staged edit.
 
+### Opt in to future approvals on a Mac
+
+Run `morpheus codex hooks enable` inside a Morpheus checkout to approve its current
+eligible hooks and keep approving future committed changes. Enrollment is local to this
+Mac and Codex config directory. The login job checks enrolled projects about once a minute
+while you are logged in, so a badge may briefly appear before the next check. Changes to
+the project’s root hook file qualify under the same checks as the one-time command. A new
+clone at the same path needs its own opt-in.
+
+Run `morpheus codex hooks status` to list enrollments and `morpheus codex hooks disable`
+inside a project to stop future automatic approvals for it. Previously saved approvals stay
+in Codex. The job logs approvals and refusals to `morpheus-hook-approval.log` in the Codex
+config directory. To refresh the badge in an open chat, check Settings → Hooks or open a
+new chat.
+
 ### How Codex hook trust works
 
 Read from Codex's source at `rust-v0.163.0`, `0.164.0-alpha.11.1` and `0.165.0` (identical in these

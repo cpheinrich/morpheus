@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { approveCodexHooks } from "../src/cli/codex-hooks.js";
+import { runCodexHookEnrollment } from "../src/cli/codex-hooks-auto.js";
 
 let fixture: string;
 let repo: string;
@@ -176,5 +177,58 @@ describe("Codex project hook approval", () => {
     }
     expect(requests().filter(r => r.method === "config/batchWrite")).toHaveLength(1);
     await expect(approveCodexHooks(repo, binary)).resolves.toBe(0);
+  });
+});
+
+describe("automatic Codex project hook approval", () => {
+  it("checks future committed hooks only until the project is disabled", async () => {
+    const setAgent = vi.fn().mockResolvedValue(undefined);
+    const options = { cwd: repo, binary, setAgent };
+    const config = join(home, "config.toml");
+    backend([hook(0)]);
+    await expect(runCodexHookEnrollment("scan", options)).resolves.toBe(0);
+    expect(readFileSync(config, "utf8")).toBe('model = "original"\n');
+
+    await expect(runCodexHookEnrollment("enable", options)).resolves.toBe(0);
+    expect(readFileSync(config, "utf8")).toContain(JSON.stringify(hook(0).key));
+
+    const definitions = JSON.parse(readFileSync(source, "utf8"));
+    definitions.hooks.SessionStart[0].hooks.push({ type: "command", command: "/usr/bin/true" });
+    writeFileSync(source, JSON.stringify(definitions));
+    git(repo, "add", ".");
+    git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "new hook");
+    backend([hook(0), hook(9), hook(10, { source: "plugin" })]);
+    await expect(runCodexHookEnrollment("scan", { ...options, cwd: fixture })).resolves.toBe(0);
+    const approved = readFileSync(config, "utf8");
+    expect(approved).toContain(JSON.stringify(hook(9).key));
+    expect(approved).not.toContain(JSON.stringify(hook(10).key));
+
+    await expect(runCodexHookEnrollment("disable", options)).resolves.toBe(0);
+    backend([hook(1)]);
+    await expect(runCodexHookEnrollment("scan", options)).resolves.toBe(0);
+    expect(readFileSync(config, "utf8")).toBe(approved);
+    expect(setAgent.mock.calls).toEqual([[home, true], [home, false]]);
+  });
+
+  it("does not carry approval to a different checkout at the same path", async () => {
+    const options = { cwd: repo, binary, setAgent: vi.fn().mockResolvedValue(undefined) };
+    backend([hook(0)]);
+    await expect(runCodexHookEnrollment("enable", options)).resolves.toBe(0);
+    const before = requests().length;
+    renameSync(repo, join(fixture, "previous"));
+    mkdirSync(repo);
+    git(repo, "init");
+
+    await expect(runCodexHookEnrollment("scan", options)).resolves.toBe(1);
+    expect(requests()).toHaveLength(before);
+  });
+
+  it("does not record enrollment or approve a hook if the background job cannot start", async () => {
+    backend([hook(0)]);
+    const setAgent = vi.fn().mockRejectedValue(new Error("launch session unavailable"));
+    const options = { cwd: repo, binary, setAgent };
+    await expect(runCodexHookEnrollment("enable", options)).rejects.toThrow("launch session unavailable");
+    await expect(runCodexHookEnrollment("scan", options)).resolves.toBe(0);
+    expect(readFileSync(join(home, "config.toml"), "utf8")).toBe('model = "original"\n');
   });
 });

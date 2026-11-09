@@ -81,7 +81,7 @@ async function committedFile(root: string, source: string): Promise<string | und
   return sessionGit(root, ["show", `HEAD:${path}`], false).catch(() => undefined);
 }
 
-async function requireMorpheusProject(root: string): Promise<void> {
+export async function requireMorpheusProject(root: string): Promise<void> {
   const committed = await committedFile(root, join(root, "morpheus.json"));
   const identity = z.object({ name: z.string().min(1), morpheusVersion: z.string().min(1) });
   if (committed) {
@@ -230,27 +230,39 @@ async function approve(rpc: Rpc, root: string, save: (approvals: Approvals) => P
   return approvals.size;
 }
 
-export async function approveCodexHooks(
-  cwd = process.cwd(),
-  binary = existsSync(desktopCli) ? desktopCli : "codex",
-): Promise<number> {
+export async function codexHookProject(cwd: string): Promise<{ root: string; gitDir: string }> {
   const checkout = await checkoutIdentity(cwd);
   if (checkout.linked && basename(checkout.common) !== ".git") {
     throw new Error("Run hook approval from the main checkout of this project.");
   }
-  const root = checkout.linked ? dirname(checkout.common) : checkout.root;
-  await requireMorpheusProject(root);
-  const home = await realpath(codexHome());
-  return withApprovalLock(home, async () => {
+  return { root: checkout.linked ? dirname(checkout.common) : checkout.root, gitDir: checkout.common };
+}
+
+export async function withCodexHookApproval<T>(
+  home: string, action: (approveProject: (root: string) => Promise<number>) => Promise<T>,
+  binary = existsSync(desktopCli) ? desktopCli : "codex",
+): Promise<T> {
+  return withApprovalLock(home, () => action(async (root) => {
+    await requireMorpheusProject(root);
     const snapshot = await snapshotConfig(home);
     return withCodex(binary, home, (rpc) => approve(rpc, root, (approvals) =>
       saveApprovals(binary, home, snapshot, approvals)));
-  });
+  }));
+}
+
+export async function approveCodexHooks(cwd = process.cwd(), binary?: string): Promise<number> {
+  const { root } = await codexHookProject(cwd);
+  const home = await realpath(codexHome());
+  return withCodexHookApproval(home, (approveProject) => approveProject(root), binary);
 }
 
 export async function runCodexHooks(args: string[]): Promise<number> {
-  if (args.length !== 2 || args[0] !== "hooks" || args[1] !== "approve") {
-    throw new Error("Usage: morpheus codex hooks approve");
+  const command = args[1];
+  if (args.length !== 2 || args[0] !== "hooks" || !command) {
+    throw new Error("Usage: morpheus codex hooks <approve|enable|disable|status>");
+  }
+  if (command !== "approve") {
+    return (await import("./codex-hooks-auto.js")).runCodexHookEnrollment(command);
   }
   const count = await approveCodexHooks();
   console.log(count
