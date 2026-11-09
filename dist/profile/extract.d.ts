@@ -41,6 +41,8 @@ export declare function discoverClaude(root: string): Promise<{
     files: ClaudeFile[];
     issues: ProfileIssue[];
 }>;
+/** First turn boundary only. Read matching local Codex transcripts until the first turn starts. */
+export declare function codexFirstTurnStarts(home: string, interested: (session: string) => boolean): Promise<Map<string, number>>;
 /**
  * Read every transcript under the two providers' directories and return
  * session and span rows. A file not modified since `since` cannot hold a

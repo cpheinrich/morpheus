@@ -949,7 +949,11 @@ flowchart TB
 Search covers the manifest's project context plus default records, roadmaps, runbooks and
 meeting notes. Tantivy indexes overlapping 16-line Markdown windows beginning every two
 lines. Cache files and traces live under the worktree's ignored `local/context-search/`
-directory so sandboxed searches can acquire index locks and record timings.
+directory so sandboxed searches can acquire index locks and record timings. MCP launch warms the
+full worktree index in the background before a query arrives. An overlapping search shares the
+same in-process build, and a content fingerprint prevents reuse after a source change. The local
+pipeline report joins available launch, first-prompt, first-search and first-result timestamps
+without writing any prompt text.
 A session can pin the search engine for its checkout without changing its
 required startup records. Overrides and fallbacks are visible in traces. See [the trial runbook](docs/runbooks/context-search.md).
 

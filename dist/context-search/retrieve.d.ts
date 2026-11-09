@@ -5,6 +5,7 @@ interface RetrievalOptions {
     transport: ContextTransport;
     kinds?: readonly ContextKind[];
     started?: number;
+    mcpStartedAt?: number;
 }
 export declare function retrieveContext(root: string, query: string, budget: number, options: RetrievalOptions): Promise<{
     totalQueryMs: number;
