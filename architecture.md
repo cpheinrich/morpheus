@@ -1524,8 +1524,11 @@ With the same saved opt-in, the managed hook reconciles user-scoped Context MCP 
 for Codex, Claude Code and Cursor when the CLI is current or successfully updated.
 The server resolves the client working directory and requires a project manifest.
 This keeps registration off the project's Git tree and covers new clones and worktrees.
-The first session launched by a newly installed CLI can finish registration when an
-older hook ran the preceding version. The host may need to reload to see the tools.
+A legacy updater executes the new compile command in a private disposable clone.
+When the existing device lock and exact clean canonical main verify the update,
+this explicit build step registers the stable global executable before it is
+replaced. Regular builds and package installs remain inert. The first session
+startup can retry local registration, and the host may need to reload.
 
 Git intentionally cannot activate a hook delivered by that same pull; otherwise cloning or pulling
 an arbitrary repository could execute code on the device. The first-use bridge is therefore a

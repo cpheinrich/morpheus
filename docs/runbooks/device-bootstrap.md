@@ -59,7 +59,11 @@ including linked worktrees and clones missing portable project configuration.
 Existing conflicting, disabled, unreadable or symlinked entries are preserved
 and reported. The server requires a Morpheus manifest in the active checkout.
 
-A hook from before this feature finishes its first upgrade using the old CLI.
-The first Morpheus session startup using the new CLI completes registration in
-that case. Reload an already running client so it discovers the new entry.
+A legacy hook runs the old CLI throughout the first pull. The new build recognizes
+the private, locked auto-update checkout at reviewed main and registers the stable
+global executable before npm replaces its package. Registration is best effort.
+If installation subsequently fails, the entry can remain pointed at the previous
+CLI. Legacy hooks may suppress setup warnings. The next Morpheus session startup
+retries registration and reports any conflict. Reload an already running client
+so it discovers the new entry.
 To reconcile immediately on an opted-in device, run `morpheus self ensure`.

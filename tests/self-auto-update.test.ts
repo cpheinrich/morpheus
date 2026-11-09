@@ -5,6 +5,8 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  realpath,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -242,30 +244,42 @@ require("node:fs").writeFileSync(${JSON.stringify(callsPath)}, process.argv.slic
     await writeFile(config, original);
 
     await disableAutoUpdate(root, { configPath, registryPath });
-    expect(await reconcileAutoUpdateContext(configPath, env, home)).toEqual([]);
+    expect(await reconcileAutoUpdateContext(configPath, env, home, binaryPath)).toEqual([]);
     expect(await readFile(config, "utf8")).toBe(original);
 
     await enableAutoUpdate(root, {
       configPath, registryPath, binaryPath,
       status: async () => status("current", true),
     });
-    expect((await reconcileAutoUpdateContext(configPath, env, home)).map(repair => repair.outcome))
+    expect((await reconcileAutoUpdateContext(configPath, env, home, binaryPath)).map(repair => repair.outcome))
       .toEqual(["updated", "created", "created"]);
     const configured = await readFile(config, "utf8");
     expect(configured.startsWith(original)).toBe(true);
     expect(configured).toContain("[mcp_servers.morpheus_context]");
     for (const target of [".claude.json", ".cursor/mcp.json"]) {
       const config = JSON.parse(await readFile(join(home, target), "utf8"));
-      expect(config.mcpServers.morpheus_context.args[1]).toMatch(/exec morpheus context mcp$/);
+      expect(config.mcpServers.morpheus_context.args[1]).toContain(`exec '${binaryPath}' context mcp`);
+      await run(config.mcpServers.morpheus_context.command, config.mcpServers.morpheus_context.args, {
+        env: { PATH: "/usr/bin:/bin" },
+      }).catch(error => expect(error.code).toBe(9));
+      expect(await readFile(callsPath, "utf8")).toContain("context mcp\n");
     }
-    expect((await reconcileAutoUpdateContext(configPath, env, home)).map(repair => repair.outcome))
+    expect((await reconcileAutoUpdateContext(configPath, env, home, binaryPath)).map(repair => repair.outcome))
       .toEqual(["present", "present", "present"]);
     expect(await readFile(config, "utf8")).toBe(configured);
     await expect(access(join(root, ".codex", "config.toml"))).rejects.toMatchObject({ code: "ENOENT" });
 
     const disabled = configured.replace('command = "sh"', 'enabled = false\ncommand = "sh"');
     await writeFile(config, disabled);
-    expect((await reconcileAutoUpdateContext(configPath, env, home))[0]).toMatchObject({ outcome: "blocked" });
+    expect((await reconcileAutoUpdateContext(configPath, env, home, binaryPath))[0]).toMatchObject({ outcome: "blocked" });
+    expect(await readFile(config, "utf8")).toBe(disabled);
+
+    const outside = await realpath(base);
+    const linked = join(outside, "linked");
+    await symlink(home, linked, "dir");
+    const viaLink = { CODEX_HOME: join(linked, "codex-profile") };
+    expect((await reconcileAutoUpdateContext(configPath, viaLink, home, binaryPath))[0])
+      .toMatchObject({ outcome: "blocked", detail: expect.stringContaining("symbolic link preserved") });
     expect(await readFile(config, "utf8")).toBe(disabled);
   });
 

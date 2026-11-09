@@ -12,7 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { gitSubprocessEnv } from "./git-env.js";
 import { readRegistry } from "./registry/index.js";
@@ -89,10 +89,19 @@ export async function readAutoUpdateConfig(
 }
 
 /** Device consent also authorizes local registration for the reviewed Context MCP. */
-export async function reconcileAutoUpdateContext(configPath = autoUpdateConfigPath(), env = process.env, home = homedir()) {
+export async function reconcileAutoUpdateContext(
+  configPath = autoUpdateConfigPath(),
+  env = process.env,
+  home = homedir(),
+  invoked = process.argv[1],
+) {
   if ((await readAutoUpdateConfig(configPath)).preference !== "enabled") return [];
+  const binary = invoked && basename(invoked) === "morpheus"
+    ? resolve(invoked)
+    : await findMorpheusBinary(env.PATH);
+  if (!binary) return [{ target: "Morpheus executable", outcome: "blocked" as const, detail: "Could not find morpheus on PATH." }];
   const { installUserContextClients } = await import("./context-search/install.js");
-  return installUserContextClients(env, home);
+  return installUserContextClients(resolve(binary), env, home);
 }
 
 async function writeAutoUpdateConfig(

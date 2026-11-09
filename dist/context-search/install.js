@@ -1,7 +1,7 @@
 import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { parse as parseToml } from "smol-toml";
 // Resolve device-local tools at launch; never commit one operator's executable or home path.
 const CONTEXT_MCP_LAUNCH = 'PATH="${PATH:-/usr/bin:/bin}:${HOME:-/nonexistent}/.local/bin:/opt/homebrew/bin:/usr/local/bin"; export PATH; exec morpheus context mcp';
@@ -112,12 +112,15 @@ export async function installContextClients(root, write, guidance = true) {
     }
     return repairs;
 }
+function shellQuote(value) {
+    return "'" + value.replaceAll("'", "'\\''") + "'";
+}
 /** User-scoped registration covers clones and linked worktrees without editing either. */
-export async function installUserContextClients(env = process.env, home = homedir()) {
-    const nodeDirectory = "'" + dirname(process.execPath).replaceAll("'", "'\\''") + "'";
+export async function installUserContextClients(binary, env = process.env, home = homedir()) {
     const launch = {
         ...CONTEXT_MCP_COMMAND,
-        args: ["-c", CONTEXT_MCP_LAUNCH.replace("; export PATH", `:${nodeDirectory}; export PATH`)],
+        args: ["-c", CONTEXT_MCP_LAUNCH.replace("; export PATH", `:${shellQuote(dirname(process.execPath))}; export PATH`)
+                .replace("exec morpheus", `exec ${shellQuote(binary)}`)],
     };
     const targets = [
         join(env.CODEX_HOME || join(home, ".codex"), "config.toml"),
@@ -129,13 +132,8 @@ export async function installUserContextClients(env = process.env, home = homedi
         try {
             const fromHome = relative(home, path);
             const insideHome = !fromHome.startsWith("..") && !isAbsolute(fromHome);
-            const root = insideHome ? home : dirname(path);
-            const file = insideHome ? fromHome : basename(path);
-            if (!insideHome && (await lstat(root).catch(error => {
-                if (error.code !== "ENOENT")
-                    throw error;
-            }))?.isSymbolicLink())
-                throw new Error("symbolic link preserved; configure its owner explicitly");
+            const root = insideHome ? home : parse(path).root;
+            const file = relative(root, path).split(/[/\\]/).join("/");
             const repair = path.endsWith(".toml") ? await codexConfig(root, true, file, launch)
                 : await jsonConfig(root, file, true, launch);
             return { ...repair, target: path };

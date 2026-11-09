@@ -7,5 +7,5 @@ export declare const CONTEXT_GUIDANCE = "## Morpheus context tools\n\nDiscover l
 /** Explicit setup for portable, version-controlled project settings. */
 export declare function installContextClients(root: string, write: boolean, guidance?: boolean): Promise<Repair[]>;
 /** User-scoped registration covers clones and linked worktrees without editing either. */
-export declare function installUserContextClients(env?: NodeJS.ProcessEnv, home?: string): Promise<Repair[]>;
+export declare function installUserContextClients(binary: string, env?: NodeJS.ProcessEnv, home?: string): Promise<Repair[]>;
 export declare const CONTEXT_STARTUP_GUIDANCE = "Morpheus context tools: discover the live MCP catalog and inspect morpheus --help for current capabilities. Use get_context_overview and search_project_context once the task is known; read material citations and check_context_coverage. If absent, reload after device registration or check portable setup with morpheus context install --check; use morpheus context search in the actual checkout meanwhile. A configured server is not proof of a successful call. Remote-control/SSH sessions use their executing host; standalone cloud/mobile chats need a supported authorized repository connector or remote MCP.";

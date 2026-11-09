@@ -11,12 +11,12 @@ Reuse the installer and TOML/JSON parsing. No package lifecycle script or new
 dependency is needed. User settings are replaced atomically after a fresh read;
 existing server entries and unsupported file shapes are preserved.
 
-A first pull made with a legacy hook installs the new package using an already
-running old process. Registration completes on the first startup using the new
-CLI, or on an explicit ensure or next managed pull. A client that has already
-snapshotted MCP configuration needs to reload. Keeping that bridge in the trusted
-CLI avoids runtime npm lifecycle scripts and uncommitted changes in collaborators'
-repositories.
+A first pull using a legacy hook runs the old process through the whole update.
+The reviewed compile step is the only new code it runs before npm installation.
+It can register the stable executable when the existing live lock, private
+staging directory and exact canonical checkout verify an automatic update.
+Startup also retries local configuration. A client that already snapshotted its
+configuration needs a reload. No npm package lifecycle script is added.
 
 ## Verification
 
