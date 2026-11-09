@@ -283,6 +283,28 @@ require("node:fs").writeFileSync(${JSON.stringify(callsPath)}, process.argv.slic
     expect(await readFile(config, "utf8")).toBe(disabled);
   });
 
+  it("uses literal profile and executable paths on POSIX", async () => {
+    const home = join(base, "user");
+    const profile = join(home, "custom\\profile");
+    const prefix = join(base, "cash$&test", "bin");
+    const executable = join(prefix, "morpheus");
+    await mkdir(prefix, { recursive: true });
+    await symlink(binaryPath, executable);
+    await enableAutoUpdate(root, {
+      configPath, registryPath, binaryPath,
+      status: async () => status("current", true),
+    });
+
+    const repairs = await reconcileAutoUpdateContext(configPath, { CODEX_HOME: profile }, home, executable);
+    expect(repairs[0]).toMatchObject({ target: join(profile, "config.toml"), outcome: "created" });
+    expect(await readFile(join(profile, "config.toml"), "utf8")).toContain("morpheus_context");
+    await expect(access(join(home, "custom", "profile", "config.toml"))).rejects.toMatchObject({ code: "ENOENT" });
+    const config = JSON.parse(await readFile(join(home, ".claude.json"), "utf8"));
+    const { command, args } = config.mcpServers.morpheus_context;
+    await expect(run(command, args, { env: { PATH: "/usr/bin:/bin" } })).rejects.toMatchObject({ code: 9 });
+    expect(await readFile(callsPath, "utf8")).toBe("context mcp\n");
+  });
+
   it("serialises concurrent stale updates", async () => {
     await enableAutoUpdate(root, {
       configPath,
