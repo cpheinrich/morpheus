@@ -17,24 +17,59 @@ export async function bindTask(cwd: string, task: string, sessionId?: string, pe
   await mkdir(dir, { recursive: true });
   const path = join(dir, `${sessionKey(sessionId)}.json`);
   const temp = `${path}.${randomUUID()}.tmp`;
-  await writeFile(temp, JSON.stringify({ root, task, ...(pending ? { pending: true } : {}) }));
+  await writeFile(temp, JSON.stringify({ root, task, bindingId: randomUUID(), ...(pending ? { pending: true } : {}) }));
   await rename(temp, path);
+}
+
+async function readBinding(common: string, sessionId: string): Promise<{ path: string; raw: string; binding: TaskBinding } | null> {
+  const path = join(common, "morpheus-sessions", `${sessionKey(sessionId)}.json`);
+  let raw: string;
+  try { raw = await readFile(path, "utf8"); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
+  const binding = JSON.parse(raw) as TaskBinding;
+  if (typeof binding.root !== "string" || typeof binding.task !== "string" || !ROADMAP_ID.test(binding.task)) throw new Error("Invalid session task association.");
+  return { path, raw, binding };
+}
+
+async function pathMissing(root: string): Promise<boolean> {
+  try { await realpath(root); return false; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return true; throw error; }
+}
+
+function unboundMarker(saved: { path: string; raw: string }): string {
+  return `${saved.path}.${sessionKey(saved.raw)}.unbound`;
 }
 
 export async function boundTask(cwd: string, sessionId?: string): Promise<TaskBinding | null> {
   if (!sessionId) return null;
   const { common } = await checkoutIdentity(cwd);
-  let raw: string;
-  try { raw = await readFile(join(common, "morpheus-sessions", `${sessionKey(sessionId)}.json`), "utf8"); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
-  const binding = JSON.parse(raw) as TaskBinding;
-  if (typeof binding.root !== "string" || typeof binding.task !== "string" || !ROADMAP_ID.test(binding.task)) throw new Error("Invalid session task association.");
+  const saved = await readBinding(common, sessionId);
+  if (!saved) return null;
+  const { binding } = saved;
+  if (await pathMissing(binding.root)) {
+    if (!(await pathMissing(unboundMarker(saved)))) return null;
+    throw new Error(`Saved task ${binding.task} worktree is missing at ${binding.root}. If the task is complete, run morpheus pm unbind ${binding.task} from the primary checkout, then retry startup.`);
+  }
   const target = await checkoutIdentity(binding.root);
   const branch = await git(target.root, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (target.common !== common || target.root !== binding.root || (roadmapIdFromBranch(branch) !== binding.task && !(binding.pending === true && target.linked && branch === "HEAD"))) {
     throw new Error(`Saved task ${binding.task} no longer matches ${binding.root}. Resume a task explicitly with morpheus pm resume <ID>.`);
   }
   return binding;
+}
+
+/** Explicit recovery for one missing checkout, without changing any worktree or claim. */
+export async function unbindMissingTask(cwd: string, task: string, sessionId?: string): Promise<void> {
+  if (!sessionId) throw new Error("A session ID is required. Use --session-id for the affected session when the runner does not supply it.");
+  const { common, linked } = await checkoutIdentity(cwd);
+  if (linked) throw new Error("Run pm unbind from the primary checkout.");
+  const saved = await readBinding(common, sessionId);
+  if (saved?.binding.task !== task) throw new Error(`This session has no saved association for ${task}.`);
+  if (!(await pathMissing(saved.binding.root))) throw new Error("The saved worktree still exists. Retain its task association.");
+  // A concurrent claim or resume can replace the binding at any moment. A marker
+  // keyed to its contents retires only the stale association we actually read.
+  try { await writeFile(unboundMarker(saved), "", { flag: "wx", mode: 0o600 }); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
 }
 
 async function destination(root: string, task: string): Promise<string> {

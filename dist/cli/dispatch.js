@@ -1,6 +1,6 @@
 import { sessionHookInput, startSession } from "./session-start.js";
 import { resolve } from "node:path";
-import { block, claim, resume, cleanup, worktrees, claims, tagged, create, index, linkIssue, migrateIds, ship, unblock, validate, } from "./pm.js";
+import { block, claim, resume, unbind, cleanup, worktrees, claims, tagged, create, index, linkIssue, migrateIds, ship, unblock, validate, } from "./pm.js";
 import { INBOX_DIR } from "../paths.js";
 import { pr } from "./check.js";
 import { validate as validateInbox } from "./inbox.js";
@@ -517,6 +517,7 @@ const PM_COMMANDS = {
     index: ({ dir, flags }) => index(dir, flags.check),
     claim: ({ dir, rest, flags }) => claim(dir, rest[0] ?? "", process.cwd(), flags.sessionId, flags.offline),
     resume: ({ rest, flags }) => resume(rest[0] ?? "", process.cwd(), flags.sessionId),
+    unbind: ({ rest, flags }) => unbind(rest[0] ?? "", process.cwd(), flags.sessionId),
     cleanup: ({ dir, rest, flags }) => {
         if (flags.offline) {
             console.error("Cleanup requires fresh remote evidence; offline cleanup is refused.");
