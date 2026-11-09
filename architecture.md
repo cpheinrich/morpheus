@@ -929,6 +929,15 @@ the read hook to have observed a matching excerpt from an indexed task
 record. An exact-path `context task-read` can supply that excerpt. This check
 is separate from full read evidence for the startup core.
 
+Context client discovery is not restricted to the pilot. Explicit `context install` merges
+portable project MCP entries for Codex, Claude Code and Cursor and appends context-use guidance;
+`init` includes new-project guidance while preserving authored instructions. Every startup brief
+cues live discovery and the installed CLI fallback without mutating client settings. Project files
+reach collaborators through reviewed Git changes; each execution host still needs its own runtime
+and trust. Phone remote-control/SSH sessions use that host. Standalone cloud/mobile and Claude
+Desktop require their own supported client connection; local project configuration is not a remote
+MCP service. See [host boundaries](docs/runbooks/context-search.md#desktop-phone-and-cloud-boundaries).
+
 For an MCP pilot, set `context.search.transport` to `mcp`. The same rollout assignment
 selects the search engine in either interface. The local `morpheus_context` server resolves the
 host session and worktree, then exposes search, exact reads, coverage, overview and relationship

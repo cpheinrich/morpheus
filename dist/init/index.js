@@ -187,7 +187,7 @@ async function scaffoldInstructions({ root, seed, written, skipped, notes, put }
     // receive the hook, and would report as scaffolded while starting every
     // session unwarned. `installContext` never overwrites — a file it cannot
     // read safely is reported here instead.
-    for (const repair of await installContext(root, { write: true, handle: seed.owner })) {
+    for (const repair of await installContext(root, { write: true, handle: seed.owner, clientInstructions: false })) {
         if (repair.target === "morpheus.json")
             continue; // written above, with the handle
         if (repair.outcome === "created")
