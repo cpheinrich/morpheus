@@ -83,7 +83,13 @@ focused suites (283/283), typecheck, lint, compile, PM index/validation, audit, 
     {
       "commit": "4b371449faba0532fef5aa7359c1b72400578eca",
       "reason": "Merged current trunk; regenerated the conflicted root lockfile and source maps while preserving the reviewed optional-seconds contract."
+    },
+    {
+      "commit": "c372cbc1c99f5a3493520ec594c25d45d27f6b8b",
+      "reason": "Integrated main after #664. The only conflict was the root lockfile. Regenerated from current main and explicitly kept the reviewed Zod 4.6.6 resolution with MCP SDK 1.32.0. Frozen install, six focused suites (291 tests), typecheck, lint, compile, PM index, Git diff checks, and production audit passed."
     }
   ]
 }
 ```
+
+The triage integration preserved exact Zod 4.6.6 with MCP SDK 1.32.0. The production audit reported one remaining moderate advisory for the separate minimatch PR #570.
