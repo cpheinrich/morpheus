@@ -89,13 +89,19 @@ function rolloutKey(rollout, session) {
 export function contextTraceSession(rollout, session) {
     return rolloutKey(rollout, session).toString("hex").slice(8, 24);
 }
+function standaloneArm(settings, sessionId, manual, legacy) {
+    if (settings.mode === "tantivy" && settings.transport === "mcp" && sessionId && sessionId.length <= 512) {
+        return { ...manual, session: contextTraceSession("", sessionId) };
+    }
+    return settings.mode ? manual : legacy;
+}
 export async function contextArm(root, sessionId = providerSessionId(), config) {
     const settings = config ?? await getSearchConfig(root);
     const { mode, rollout } = settings;
     const legacy = { arm: "legacy", engine: "ripgrep", startup: "full" };
     const manual = { arm: "manual", engine: mode ?? "ripgrep", startup: "full" };
     if (!rollout)
-        return mode ? manual : legacy;
+        return standaloneArm(settings, sessionId, manual, legacy);
     const key = sessionId && sessionId.length <= 512
         ? rolloutKey(rollout.id, sessionId)
         : undefined;

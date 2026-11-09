@@ -3,7 +3,7 @@ import { roadmapIdFromBranch } from "../pm/id.js";
 import { boundTask, bindTask } from "../session/tasks.js";
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
-import { providerSessionId, traceContext, type ContextArm } from "../context-search/rollout.js";
+import { contextArm, providerSessionId, traceContext, type ContextArm } from "../context-search/rollout.js";
 import { prepareRepository, parseSessionInput, sessionGit, type SessionStartInput } from "../session/start.js";
 import { projectPolicy } from "../session/policy.js";
 import { CANONICAL_INPUTS } from "../session/lease.js";
@@ -96,10 +96,12 @@ async function printReadInstructions(prepared: Prepared, sessionId: string | und
   const policy = await projectPolicy(prepared.root, sessionId);
   const paths = policy.requiredInputs ?? CANONICAL_INPUTS;
   for (const path of paths) console.log(`  ${join(prepared.root, path)}`);
-  const arm = policy.rollout;
-  if (arm?.session && started) await traceContext(prepared.root, { type: "session-start",
-    arm: arm.arm, engine: arm.engine, session: arm.session, rollout: arm.id }, started);
-  if (arm) await printRollout(prepared.root, paths, arm, sessionId);
+  if (started) {
+    const arm = policy.rollout ?? await contextArm(prepared.root, sessionId).catch(() => undefined);
+    if (arm?.session) await traceContext(prepared.root, { type: "session-start",
+      arm: arm.arm, engine: arm.engine, session: arm.session, rollout: arm.id }, started);
+  }
+  if (policy.rollout) await printRollout(prepared.root, paths, policy.rollout, sessionId);
   if (sessionId) console.log(`To retain this session's task association, pass --session-id ${"'" + sessionId.replaceAll("'", "'\\''") + "'"} to pm claim or pm resume (Codex also supplies CODEX_THREAD_ID automatically).`);
   console.log("Then run morpheus context refresh there. No receipt is issued by startup.");
   return policy.rollout?.id !== undefined;

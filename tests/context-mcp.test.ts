@@ -231,3 +231,23 @@ it("profiles a first turn without a trusted prompt hook and excludes empty searc
     firstSearch: { p50Ms: 50 }, warmupBuild: { p50Ms: 180 }, warmedBeforePrompt: 1,
   });
 });
+
+
+it("joins prompt and result timings for explicitly enabled Tantivy without a rollout", async () => {
+  const { root, call, session } = await fixture();
+  await writeFile(join(root, "morpheus.json"), JSON.stringify({
+    name: "explicit", context: { search: { transport: "mcp", mode: "tantivy" } },
+  }));
+  const arm = await contextArm(root, session);
+  expect(arm).toMatchObject({ arm: "manual", engine: "tantivy", session: contextTraceSession("", session) });
+  const prompt = JSON.stringify({ cwd: root, session_id: session, prompt: "Verify release", hook_event_name: "UserPromptSubmit" });
+  expect(await taskPrompt(prompt, async path => path)).toBeUndefined();
+  // Exercise the trace and fallback path even on CI machines without Tantivy.
+  vi.stubEnv("MORPHEUS_TANTIVY_PYTHON", "/nonexistent/tantivy-python");
+  expect((await call("search_project_context", { query: secretQuery })).structuredContent).toMatchObject({
+    engine: "ripgrep", fallback: true, outcome: "ok",
+  });
+  expect((await summarizeContextTraces(root)).pipeline).toMatchObject({
+    sessions: 1, promptHooks: 1, firstSearches: 1, firstResults: 1, promptToFirstResult: { samples: 1 },
+  });
+});

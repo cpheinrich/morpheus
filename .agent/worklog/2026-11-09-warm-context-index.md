@@ -36,3 +36,10 @@ passed 170 tests. `morpheus complexity check` passed with two cognitive
 advisories in the trace serialization and aggregation entry points. The
 in-flight build and historical empty-result boundaries are covered by focused
 regressions. See [context search](../../docs/runbooks/context-search.md).
+
+Review found a missing timeline for projects with explicit Tantivy mode and no
+rollout. The standalone MCP mode now uses an opaque session key and emits the
+same lifecycle events without changing startup policy. A focused regression
+and the no-prompt app-server probe both pass for this mode. The report now
+counts first-search cache hits separately from warm-ups finished before the
+prompt. The expanded focused suite passed 171 tests.

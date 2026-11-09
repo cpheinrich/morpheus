@@ -56,7 +56,9 @@ A pilot worktree can warm before that identity is known, including for a later r
 The `pipeline` report gives sample counts and timing from the earliest observed session hook or
 MCP process launch to the first prompt, then to the first search and first nonempty search result.
 The read hook supplies a separate time to the first result observed by the host. Warm-up
-duration, build time, cache hits, failures and first-search index waits are separate.
+duration, build time, failures and first-search index waits are separate. A launch warm can
+finish before the prompt even if the actual search uses another corpus or ripgrep. The
+first-search cache-hit count measures whether that search reused its own index.
 Prompt times use the prompt hook when available and otherwise the first turn boundary from the
 matching local Codex transcript. The report counts missing boundaries and does not time the
 desktop click itself. It stores no prompt or search text.

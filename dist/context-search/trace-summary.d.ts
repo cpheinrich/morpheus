@@ -90,6 +90,7 @@ export declare function summarizeContextTraces(root: string, options?: {
         codexTurnFallbacks: number;
         noPromptTimestamp: number;
         firstSearches: number;
+        firstSearchCacheHits: number;
         firstResults: number;
         visibleSearchResults: number;
         startToPrompt: {

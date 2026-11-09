@@ -9,6 +9,7 @@ export declare class ContextPipeline {
         codexTurnFallbacks: number;
         noPromptTimestamp: number;
         firstSearches: number;
+        firstSearchCacheHits: number;
         firstResults: number;
         visibleSearchResults: number;
         startToPrompt: {

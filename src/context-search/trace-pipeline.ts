@@ -48,8 +48,8 @@ export class ContextPipeline {
       this.warm.set(trace.mcpStartedAt, trace);
       return;
     }
-    if (!trace.session || !trace.rollout) return;
-    const key = `${trace.rollout}/${trace.session}`;
+    if (!trace.session) return;
+    const key = `${trace.rollout ?? ""}/${trace.session}`;
     const session = this.sessions.get(key) ?? {};
     observeSession(session, trace);
     this.sessions.set(key, session);
@@ -76,6 +76,7 @@ export class ContextPipeline {
       codexTurnFallbacks: rows.filter(row => row.promptSource === "codexTurn").length,
       noPromptTimestamp: rows.filter(row => row.promptSource === "missing").length,
       firstSearches: rows.filter(row => row.firstSearch).length,
+      firstSearchCacheHits: rows.filter(row => row.firstSearch?.cacheHit).length,
       firstResults: rows.filter(row => row.firstResult).length,
       visibleSearchResults: rows.filter(row => row.visible).length,
       startToPrompt: timings(rows.map(row => elapsed(row.start, row.prompt))),
