@@ -22,5 +22,6 @@ export async function run(argv: string[]): Promise<number> {
     console.log(HELP);
     return 0;
   }
+  if (argv[0] === "codex") return (await import("./codex-hooks.js")).runCodexHooks(argv.slice(1));
   return dispatch(parseArgs(argv));
 }

@@ -211,6 +211,23 @@ whether it was never trusted or changed since, and the exact place to run `/hook
 `~/.codex/config.toml` (or `$CODEX_HOME`) and never writes it: trusting a hook is the user's
 security decision, and the desktop app rewrites that file itself.
 
+### Approve changes for one project
+
+When you want to approve all pending enabled hooks for the current Git project, run
+`morpheus codex hooks approve` from that project's checkout. You can explicitly ask an agent
+in the project to run it for you. Codex can execute the approved commands on subsequent
+events. Approval applies to the exact definitions Codex reported, and a later change needs a
+new invocation. The command uses the Mac desktop backend when installed at the standard
+location, or `codex` on PATH otherwise. It requires a version that supports the hook listing
+API.
+
+The command approves hooks from the root `.codex/hooks.json` and `.codex/config.toml` that
+Codex loads for the project. A linked worktree uses the main checkout. Codex must already
+trust that project to load its hooks. User, plugin, managed, disabled, and other projects'
+hooks keep their existing state. The command runs once and creates no schedule or enrollment.
+If the open composer still shows a badge, check Settings → Hooks or open a new chat in the
+same project.
+
 ### How Codex hook trust works
 
 Read from Codex's source at `rust-v0.163.0`, `0.164.0-alpha.11.1` and `0.165.0` (identical in these
