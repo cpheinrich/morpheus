@@ -633,7 +633,9 @@ function newlyFiledDeferralPaths(root, record, from, to) {
     const ids = new Set(record.findings.filter(f => f.disposition === "deferred" || f.disposition === "open").map(f => f.roadmap).filter((id) => Boolean(id)));
     return [...ids].flatMap(id => {
         const path = committedRoadmapPath(root, to, id);
-        return path && !git(root, ["ls-tree", from, "--", path]) && addedByAuthor(root, from, to, path) ? [path] : [];
+        if (!path || committedRoadmapPath(root, from, id))
+            return [];
+        return !git(root, ["ls-tree", from, "--", path]) && addedByAuthor(root, from, to, path) ? [path] : [];
     });
 }
 /** True when Git's own merge of the two parents reproduces this commit's tree exactly: nothing was hand-edited. */

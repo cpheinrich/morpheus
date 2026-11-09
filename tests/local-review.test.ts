@@ -573,6 +573,23 @@ describe("tracked deferrals", () => {
     };
     expect(check(save(r))[0]?.message).toContain("the final follow-up must clear the covered commit");
   });
+  it("rejects a second path for a deferral ID already present at clearance", () => {
+    const dir = join(root, "hq/product/roadmap");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "MO-26-09-22-08.00.00-z-original.md"), ticketBody());
+    const followUp = commit();
+    writeFileSync(join(dir, "MO-26-09-22-08.00.00-a-duplicate.md"), ticketBody());
+    const r: LocalReviewRecord = {
+      ...record(),
+      covered: commit(),
+      findings: [{ ...incidental, roadmap: "MO-26-09-22-08.00.00" }],
+      followUps: [{
+        reviewerSession: "a1b2c3d4e5f6a7b8c", commit: followUp, outcome: "cleared",
+        elapsedMinutes: 2, summary: "Cleared the original ticket.", scopeReason: "Reviewed the initial ticket filing.",
+      }],
+    };
+    expect(check(save(r))[0]?.message).toContain("the final follow-up must clear the covered commit");
+  });
   it("does not ask a fixed finding for a roadmap item", () => {
     expect(check(save({ ...record(), findings: [{ ...incidental, disposition: "fixed", response: "Added the year field to the schedule." }] }))).toEqual([]);
   });
