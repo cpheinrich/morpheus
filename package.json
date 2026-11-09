@@ -57,7 +57,7 @@
   },
   "dependencies": {
     "@11ty/gray-matter": "3.0.0",
-    "@modelcontextprotocol/sdk": "1.31.0",
+    "@modelcontextprotocol/sdk": "1.32.0",
     "croner": "11.0.0",
     "jose": "^6.2.5",
     "minimatch": "11.0.1",
