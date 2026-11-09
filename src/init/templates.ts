@@ -11,6 +11,7 @@
  * follows.
  */
 
+import { CONTEXT_GUIDANCE } from "../context-search/install.js";
 import { credentialsInstructions } from "../credentials/templates.js";
 import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
 import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
@@ -72,10 +73,8 @@ export const MORPHEUS_REPO = "https://github.com/cpheinrich/morpheus";
 export const morpheusCalloutForAgents = (): string =>
   `## This project is managed by Morpheus — read that first
 
-This repository is architected and operated according to
-[Morpheus](${MORPHEUS_REPO}), which is public. The directory layout,
-the roadmap and inbox formats, the \`morpheus\` CLI, and the conventions below all come from
-there. Very little of the *reasoning* behind them lives in this repo.
+This project follows public [Morpheus](${MORPHEUS_REPO}) conventions for its layout,
+records, CLI and agent workflow; the reasoning lives upstream.
 
 **Before reviewing or changing anything here, read:**
 
@@ -84,12 +83,10 @@ there. Very little of the *reasoning* behind them lives in this repo.
 - [\`AGENTS.md\`](${MORPHEUS_REPO}/blob/main/AGENTS.md)
   — the operating principles: claiming work, what a pull request must carry, the inbox cycle
 
-This is aimed at agents arriving with **no memory of this project**. Without that context the
-conventions here look arbitrary, and the resulting mistakes are confident ones: "tidying" a
-generated file that is rewritten from its source, renaming an id that a branch and a PR both
-depend on, deleting a worklog as clutter, or branching by hand instead of \`morpheus pm claim\`
-and colliding with another agent's work.
+These conventions apply to fresh agents too. Read the linked reasoning before changing
+project structure, generated records or claims.
 
+${CONTEXT_GUIDANCE}
 ### Found a gap in Morpheus itself?
 
 If something in Morpheus is wrong, missing, or gets in your way while working here, **send it

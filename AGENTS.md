@@ -4,12 +4,9 @@ Read first; `CLAUDE.md` symlinks here. Open runbooks only for their **Read when*
 
 ## What this repo is
 
-Morpheus scaffolds new company repositories and maintains the reusable packages they depend
-on. Read [`architecture.md`](./architecture.md) before making structural changes — it is the
-specification, and it is more current than the code.
-
-This repo is `kind: internal`. It has `hq/product/` and nothing else under `hq/` — no brand,
-marketing, finance, or support, because Morpheus is a tool, not a company.
+Morpheus scaffolds repositories and maintains their shared packages. Read the specification,
+[`architecture.md`](./architecture.md), before structural changes. This `kind: internal` repo
+has only `hq/product/` under `hq/`.
 
 ## Layout
 
@@ -85,6 +82,13 @@ honoured, never re-asked. Before structural code discovery or a code change, run
 `morpheus codebase-memory install --check` and `morpheus complexity install --check`; install
 whichever is not operational. **Read [`device-bootstrap.md`](docs/runbooks/device-bootstrap.md)** for what yes and no
 run and for anything the shim reports.
+
+## Morpheus context tools
+
+Discover live MCP tools at startup, resume and compaction. Use context overview, search,
+cited reads and coverage; retain the graph for code structure. If absent, check/repair
+`morpheus context install --check` and use CLI search meanwhile. See
+[host and phone boundaries](docs/runbooks/context-search.md#desktop-phone-and-cloud-boundaries).
 
 ## Context freshness
 
@@ -287,9 +291,6 @@ Match the surrounding code. This codebase favours:
 
 ## Things that have bitten us
 
-- **Older YAML parsers converted unquoted dates and timestamps into Date objects.** The current
-  parser returns strings; `isoDate` accepts a date, a Date, or a full ISO timestamp, keeping its day.
-- **A colon in a title breaks YAML.** `pm new` quotes scalars defensively; hand-written
-  frontmatter with a colon must be quoted.
-- Generated files (`hq/product/*/README.md` between the `morpheus:` markers) are never edited by
-  hand. Change the item files and regenerate.
+- `isoDate` accepts date strings, legacy YAML Date objects and full ISO timestamps, keeping the day.
+- Quote frontmatter titles containing colons; `pm new` does this automatically.
+- Regenerate marked `hq/product/*/README.md` sections from item files; never edit them by hand.

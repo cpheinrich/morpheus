@@ -19,6 +19,15 @@
             "command": "sh -c 'PATH=\"${PATH:-/usr/bin:/bin}:${HOME:-/nonexistent}/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; command -v morpheus >/dev/null 2>&1 && morpheus context record-read >/dev/null 2>&1; exit 0'"
           }
         ]
+      },
+      {
+        "matcher": "mcp__morpheus_context__(search_project_context|read_project_record)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'PATH=\"${PATH:-/usr/bin:/bin}:${HOME:-/nonexistent}/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; command -v morpheus >/dev/null 2>&1 && morpheus context record-read --mcp >/dev/null 2>&1; exit 0'"
+          }
+        ]
       }
     ],
     "PostToolUseFailure": [
@@ -40,6 +49,16 @@
             "type": "command",
             "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/.morpheus/poll-guard.sh\"; [ -f \"$f\" ] || f=\"$(git rev-parse --show-toplevel 2>/dev/null)/.morpheus/poll-guard.sh\"; [ -f \"$f\" ] || exit 0; exec sh \"$f\"'",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'PATH=\"${PATH:-/usr/bin:/bin}:${HOME:-/nonexistent}/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; command -v morpheus >/dev/null 2>&1 && morpheus context task-prompt; exit 0'"
           }
         ]
       }

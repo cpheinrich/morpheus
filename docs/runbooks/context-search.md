@@ -12,16 +12,45 @@ exclusions, tracked paths unavailable in the checkout and unmatched project patt
 ## Morpheus Context MCP
 
 The local stdio server uses the same source inventory, session assignment and search engines as
-the CLI. Register it for the device's agent clients after installing reviewed Morpheus:
+the CLI. `morpheus init` configures new projects. For an existing project, run:
 
 ```sh
-codex mcp add morpheus_context -- morpheus context mcp
-claude mcp add --scope user morpheus_context -- morpheus context mcp
+morpheus context install --check  # report missing project setup without writes
+morpheus context install          # merge setup, preserving unrelated settings
 ```
 
-Reopen the project session to load the server. Factory launchers register it for admitted Morpheus
-worktrees, including workers with isolated client configuration. The model supplies a query or a
-repository-relative citation. The host supplies the session identity and checkout.
+Setup adds `.mcp.json` for Claude Code, `.codex/config.toml` for Codex and
+`.cursor/mcp.json` for Cursor. These portable project settings travel with the repository,
+so collaborators and other execution hosts get the same server entry after pulling the rollout.
+They locate each device's installed Morpheus; they contain no credentials or personal paths.
+Existing conflicting or disabled entries, malformed settings and symlinks are left untouched
+and reported. `context install` appends discovery/fallback guidance to `AGENTS.md`; `init`
+keeps existing authored instructions unchanged and includes the guidance in new scaffolds.
+
+Install reviewed Morpheus and `rg` (ripgrep, required by the default search engine) on each execution host, grant the client's project/server trust and
+reload the session. Codex CLI, IDE and desktop share Codex configuration. A user-level MCP entry
+can be used when project setup is unavailable, but is not a substitute for verifying the launch
+checkout and an actual tool call. Session startup now cues discovery even outside the pilot;
+it does not rewrite configuration or install software. Factory launchers continue registering the
+server for admitted worktrees, including workers with isolated client configuration.
+
+### Desktop, phone and cloud boundaries
+
+| Surface | Where tools execute and what must be configured |
+|---|---|
+| Codex / Claude Code / Cursor on a Mac | Project settings plus that Mac's installed Morpheus, checkout and client trust |
+| Phone via SSH or remote desktop | On the selected Mac; reconnect/reload the host session after setup |
+| ChatGPT mobile remote Codex | On the paired desktop host; each host needs setup and the phone must be paired with it |
+| Claude Desktop local MCP | Its separate desktop client configuration; bind each server to an explicit project checkout, since the app's launch directory is not a project |
+| Standalone ChatGPT / Claude web or mobile | A separately authorized supported remote connector; local stdio project files cannot register a cloud connector |
+
+For a standalone cloud chat without a connected execution host, use its authorized repository
+connector to read governing records and cite the revision; disclose the fallback and any missing
+checkout state. If neither repository access nor an authenticated remote MCP exists, report the
+missing connection. Do not claim all devices/users are configured merely because project files
+were committed. Never expose a private checkout through an unauthenticated network endpoint.
+See [Codex remote connections](https://learn.chatgpt.com/docs/remote-connections) and
+[Codex MCP configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
 | Tool | Use |
 |---|---|
