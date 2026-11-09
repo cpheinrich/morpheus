@@ -3,7 +3,7 @@ import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { generateKeyPair, exportPKCS8, jwtVerify } from "jose";
 import { AppleAdapter, AppleHttp, AppleRequestError, applePages, type AppleApi } from "../../src/cd/apple.js";
 import { ActionsAdapter, matchesEffect, uploadEvidence } from "../../src/cd/actions.js";
@@ -168,6 +168,15 @@ describe("real Git source evidence", () => {
     git(root, ["remote", "add", "origin", bare]); git(root, ["push", "origin", "main"]);
     const api: GitHubApi = { async request<T>(): Promise<T> { return [{ number: 1, merged_at: "2026-10-18T17:00:00.000Z", merge_commit_sha: revision, base: { ref: "main" } }] as T; } };
     const sources = await loadSources(root, config(), api, now); expect(sources).toHaveLength(1); expect(sources[0]!.mainEnteredAt).toBe("2026-10-18T17:00:00.000Z"); expect(sources[0]!.evidence.kind).toBe("merged-pr"); expect(sources[0]!.inputDigest).toBe(inputDigest(root, revision, ["app"]));
+    const shallow = join(directory, "shallow");
+    git(directory, ["clone", "--depth", "1", "--branch", "main", pathToFileURL(bare).href, shallow]);
+    const listPulls = vi.spyOn(api, "request");
+    await expect(loadSources(shallow, config(), api, now)).rejects.toThrow("CD source history is shallow. In the source checkout, run git fetch --unshallow origin and retry.");
+    expect(listPulls).not.toHaveBeenCalled();
+    git(shallow, ["fetch", "--unshallow", "origin"]);
+    expect(await loadSources(shallow, config(), api, now)).toEqual(sources);
+    expect(sources[0]!.order).toBe(1);
+
     verifySource(root, config(), revision, sources[0]!.inputDigest);
     await writeFile(join(root, "app", "Injected.swift"), "injected untracked app source"); expect(inputDigest(root, revision, ["app"])).toBe(sources[0]!.inputDigest); expect(() => verifySource(root, config(), revision, sources[0]!.inputDigest)).toThrow("injected"); await rm(join(root, "app", "Injected.swift"));
     await writeFile(join(root, "app", "source"), "changed after tests"); expect(() => verifySource(root, config(), revision, sources[0]!.inputDigest)).toThrow("modified");
