@@ -32,6 +32,7 @@ export interface Snapshot {
   checks: Check[];
   /** GitHub had more than one page of contexts; the rest were not read. */
   truncated: boolean;
+  conflicting?: true;
 }
 
 export type Verdict = "green" | "failed" | "pending" | "no-checks";
@@ -48,6 +49,7 @@ export const ROLLUP_QUERY = `query($owner: String!, $name: String!, $number: Int
     pullRequest(number: $number) {
       number
       url
+      mergeable
       commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) {
         pageInfo { hasNextPage }
         nodes {
@@ -152,7 +154,7 @@ export function parseRollup(json: unknown): Snapshot | { error: string } {
   const data = json as { data?: { repository?: { pullRequest?: unknown } }; errors?: { message?: string }[] } | null;
   if (data?.errors?.length) return { error: data.errors.map((e) => e.message ?? "unknown GraphQL error").join("; ") };
   const pr = data?.data?.repository?.pullRequest as
-    | { number?: number; url?: string; commits?: { nodes?: { commit?: { oid?: string; statusCheckRollup?: { contexts?: { pageInfo?: { hasNextPage?: boolean }; nodes?: RawNode[] } } | null } }[] } }
+    | { number?: number; url?: string; mergeable?: string; commits?: { nodes?: { commit?: { oid?: string; statusCheckRollup?: { contexts?: { pageInfo?: { hasNextPage?: boolean }; nodes?: RawNode[] } } | null } }[] } }
     | null
     | undefined;
   if (!pr || typeof pr.number !== "number") return { error: "pull request not found in the response" };
@@ -171,6 +173,7 @@ export function parseRollup(json: unknown): Snapshot | { error: string } {
     headSha: commit.oid,
     checks: dedupe(checks),
     truncated: contexts?.pageInfo?.hasNextPage === true,
+    ...(pr.mergeable === "CONFLICTING" ? { conflicting: true } : {}),
   };
 }
 

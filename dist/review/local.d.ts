@@ -7,7 +7,7 @@ declare const FollowUp: z.ZodObject<{
     scopeReason: z.ZodOptional<z.ZodString>;
     humanAuthorization: z.ZodOptional<z.ZodObject<{
         approvedBy: z.ZodString;
-        approvedAt: z.ZodISODateTime;
+        approvedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
         reason: z.ZodString;
     }, z.core.$strict>>;
     handoff: z.ZodOptional<z.ZodObject<{
@@ -146,7 +146,7 @@ export declare const ReviewRecord: z.ZodObject<{
         scopeReason: z.ZodOptional<z.ZodString>;
         humanAuthorization: z.ZodOptional<z.ZodObject<{
             approvedBy: z.ZodString;
-            approvedAt: z.ZodISODateTime;
+            approvedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
             reason: z.ZodString;
         }, z.core.$strict>>;
         handoff: z.ZodOptional<z.ZodObject<{
@@ -190,7 +190,7 @@ export declare const ReviewRecord: z.ZodObject<{
         scopeReason: z.ZodOptional<z.ZodString>;
         humanAuthorization: z.ZodOptional<z.ZodObject<{
             approvedBy: z.ZodString;
-            approvedAt: z.ZodISODateTime;
+            approvedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
             reason: z.ZodString;
         }, z.core.$strict>>;
         handoff: z.ZodOptional<z.ZodObject<{

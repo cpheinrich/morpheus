@@ -78,6 +78,25 @@ describe("waitCi", () => {
     expect(calls.filter((c) => c[0] === "run")).toEqual([["run", "list", "--repo", "cpheinrich/morpheus", "--commit", SHA_A, "--limit", "100", "--json", "headSha,status,conclusion,databaseId,workflowDatabaseId,createdAt"]]);
   });
 
+  it.each([false, true])("refuses a conflicted PR with only a green external check (requiredOnly=%s)", async (requiredOnly) => {
+    const external = { __typename: "StatusContext", context: "External analysis", state: "SUCCESS", isRequired: true };
+    const { deps, calls } = fakeGh([ok(rollup(SHA_A, [external], false, "CONFLICTING"))]);
+    expect(await waitCi(deps, { ...opts, requiredOnly })).toEqual({
+      exitCode: 3,
+      output: "wait-ci: cpheinrich/morpheus#354 has merge conflicts; resolve them before verifying CI.",
+    });
+    expect(calls.map(args => args[0])).toEqual(["pr", "api"]);
+  });
+
+  it("refuses a conflict reported during green confirmation", async () => {
+    const conflict = ok(rollup(SHA_A, [run("node / check", "COMPLETED", "SUCCESS")], false, "CONFLICTING"));
+    const { deps } = fakeGh([green(), conflict]);
+    expect(await waitCi(deps, opts)).toEqual({
+      exitCode: 3,
+      output: "wait-ci: cpheinrich/morpheus#354 has merge conflicts; resolve them before verifying CI.",
+    });
+  });
+
   it.each([false, true])("reports a failed sibling workflow with requiredOnly=%s", async (requiredOnly) => {
     const snapshot = ok(rollup(SHA_A, [
       run("pr / conventions", "COMPLETED", "FAILURE", { required: true, workflow: "CI", suite: "suite-ci", job: "121087621483", startedAt: "2026-10-25T05:37:16Z" }),

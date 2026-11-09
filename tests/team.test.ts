@@ -85,6 +85,10 @@ describe("the meeting-note schema", () => {
     expect(MeetingNote.safeParse(base).success).toBe(true);
   });
 
+  it("accepts the established minute-precision qualified timestamp", () => {
+    expect(MeetingNote.safeParse({ ...base, occurred: "2026-08-03T09:30-07:00" }).success).toBe(true);
+  });
+
   /**
    * The finding that mattered: `.default(true)` meant the only note refused was
    * one that *declared* it had skipped the pass, while the person who forgot the
