@@ -46,12 +46,18 @@ prompt. The expanded focused suite passed 171 tests.
 
 Independent review cleared background warming and launch-to-result profiling after the standalone Tantivy and cache attribution fixes.
 
+The base and both PR CI attempts also hit the same expired Factory quota fixture.
+Its seven-day reset had passed by the actual run date. A late, independently
+reviewed correction advances a test clock as the account response arrives.
+`node --test plugins/factory/tests/config.test.mjs` passed 23 tests. An isolated
+reviewer mutation sampling the clock before the fetch still failed the test.
+
 ```morpheus-review
 {
   "version": 2,
   "base": "db1c3f76c367d0f39739126e20aeda0d2b5dea42",
   "reviewed": "3179d79ce0a714de745042085021818fa2066928",
-  "covered": "6f6104e32f991f3451a2a8840a2c9a6cc8f229c2",
+  "covered": "9bb1c0b3aca9bf654045f0fad0f3e55eb63212c6",
   "authorSession": "01a1b4d0-b0d9-7cd1-9f03-33349cd7f590",
   "reviewerSession": "/root/context_warm_review",
   "risk": "normal",
@@ -100,6 +106,19 @@ Independent review cleared background warming and launch-to-result profiling aft
         "evidence": "Root clock around follow-up invocation and verdict: 2026-11-09T19:27:29.055Z to 2026-11-09T19:28:08.314Z."
       },
       "summary": "Both original findings fixed. Reviewer verified the exact commit and independently passed 31 focused tests."
+    },
+    {
+      "reviewerSession": "/root/context_warm_review",
+      "commit": "9bb1c0b3aca9bf654045f0fad0f3e55eb63212c6",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.7222333333333333,
+      "timing": {
+        "source": "clock",
+        "durationMs": 43334,
+        "evidence": "Root clock around late correction reviewer invocation and verdict: 2026-11-09T19:33:46.887Z to 2026-11-09T19:34:30.221Z."
+      },
+      "scopeReason": "Factory CI failed at the exact base and both PR attempts when the fixed quota fixture expired. Change only that test's clock so the required check can pass without changing product behavior.",
+      "summary": "One test fixture corrected. Reviewer independently passed all 23 config tests and demonstrated that sampling time before inventory still fails the corrected fixture."
     }
   ]
 }
