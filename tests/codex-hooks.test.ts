@@ -23,7 +23,7 @@ function hook(index: number, overrides: Record<string, unknown> = {}) {
   };
 }
 
-function backend(hooks: ReturnType<typeof hook>[], options: { error?: boolean; conflict?: boolean } = {}) {
+function backend(hooks: ReturnType<typeof hook>[], options: { error?: boolean; corrupt?: boolean; conflict?: boolean; hold?: boolean } = {}) {
   writeFileSync(join(fixture, "fixture.json"), JSON.stringify({ repo, home, hooks, ...options }));
 }
 
@@ -37,6 +37,7 @@ beforeEach(() => {
   home = join(fixture, "codex");
   mkdirSync(join(repo, ".codex"), { recursive: true });
   mkdirSync(home);
+  writeFileSync(join(home, "config.toml"), 'model = "original"\n', { mode: 0o640 });
   git(repo, "init");
   source = join(repo, ".codex/hooks.json");
   writeFileSync(source, "{}");
@@ -47,29 +48,34 @@ const fs = require("node:fs");
 const readline = require("node:readline");
 const path = require("node:path");
 const fixture = require("./fixture.json");
-let saved = {};
+const live = path.join(fixture.home, "config.toml");
 readline.createInterface({ input: process.stdin }).on("line", line => {
   const request = JSON.parse(line);
   if (!request.id) return;
   fs.appendFileSync(path.join(__dirname, "requests.jsonl"), line + "\\n");
   const { id, method, params } = request;
   let result;
-  if (method === "initialize") result = { codexHome: fixture.home };
-  if (method === "config/read") result = { layers: [
-    { name: { type: "user", file: path.join(fixture.home, "config.toml") }, version: "snapshot" },
-  ] };
+  if (method === "initialize") result = { codexHome: process.env.CODEX_HOME };
   if (method === "hooks/list") result = { data: [{
     cwd: fixture.repo, errors: fixture.error ? ["broken hook file"] : [],
     hooks: fixture.hooks.map(hook => ({
-      ...hook, trustStatus: saved[hook.key] ? "trusted" : hook.trustStatus,
+      ...hook, trustStatus: fs.readFileSync(live, "utf8").includes(JSON.stringify(hook.key)) ? "trusted" : hook.trustStatus,
     })),
   }] };
   if (method === "config/batchWrite") {
-    if (fixture.conflict) {
-      console.log(JSON.stringify({ id, error: { code: -32001 } }));
+    if (fixture.conflict) fs.writeFileSync(live, 'model = "external"\\n');
+    for (const [key, approval] of Object.entries(params.edits[0].value)) {
+      fs.appendFileSync(params.filePath, '[hooks.state.' + JSON.stringify(key) + ']\\ntrusted_hash = ' + JSON.stringify(approval.trusted_hash) + '\\n');
+    }
+    if (fixture.corrupt) fs.appendFileSync(params.filePath, '[broken');
+    if (fixture.hold) {
+      const timer = setInterval(() => {
+        if (!fs.existsSync(path.join(__dirname, "release"))) return;
+        clearInterval(timer);
+        console.log(JSON.stringify({ id, result: { status: "ok" } }));
+      }, 10);
       return;
     }
-    saved = params.edits[0].value;
     result = { status: "ok" };
   }
   console.log(JSON.stringify({ id, result }));
@@ -98,8 +104,9 @@ describe("Codex project hook approval", () => {
     await expect(approveCodexHooks(linked, binary)).resolves.toBe(2);
     const log = requests();
     expect(log.filter(r => r.method === "hooks/list").map(r => r.params.cwds)).toEqual([[repo], [repo]]);
-    expect(log.filter(r => r.method === "config/batchWrite").map(r => r.params)).toEqual([{
-      filePath: join(home, "config.toml"), expectedVersion: "snapshot",
+    const writes = log.filter(r => r.method === "config/batchWrite").map(r => r.params);
+    expect(writes).toEqual([{
+      filePath: expect.stringMatching(/\.morpheus-hook-approval-.*[\\/]config\.toml$/),
       edits: [{ keyPath: "hooks.state", mergeStrategy: "upsert", value: {
         [eligible.key]: { trusted_hash: hash }, [newHook.key]: { trusted_hash: hash },
       } }],
@@ -109,18 +116,38 @@ describe("Codex project hook approval", () => {
   it("leaves the user config alone when no project hooks need approval", async () => {
     backend([hook(0, { trustStatus: "trusted" }), hook(1, { enabled: false })]);
     await expect(approveCodexHooks(repo, binary)).resolves.toBe(0);
-    expect(requests().map(r => r.method)).toEqual(["initialize", "config/read", "hooks/list"]);
+    expect(requests().map(r => r.method)).toEqual(["initialize", "hooks/list"]);
   });
 
   it("fails without writing when Codex could not list the project cleanly", async () => {
     backend([hook(0)], { error: true });
     await expect(approveCodexHooks(repo, binary)).rejects.toThrow("could not reliably list hooks");
-    expect(requests().map(r => r.method)).toEqual(["initialize", "config/read", "hooks/list"]);
+    expect(requests().map(r => r.method)).toEqual(["initialize", "hooks/list"]);
   });
 
-  it("surfaces a version conflict without overwriting newer config", async () => {
+  it("preserves an external edit made during staging", async () => {
     backend([hook(0)], { conflict: true });
-    await expect(approveCodexHooks(repo, binary)).rejects.toThrow("config/batchWrite failed");
-    expect(requests().map(r => r.method)).toEqual(["initialize", "config/read", "hooks/list", "config/batchWrite"]);
+    await expect(approveCodexHooks(repo, binary)).rejects.toThrow("config changed during approval");
+    expect(readFileSync(join(home, "config.toml"), "utf8")).toBe('model = "external"\n');
+  });
+
+  it("leaves live config untouched if Codex produces invalid TOML", async () => {
+    backend([hook(0)], { corrupt: true });
+    await expect(approveCodexHooks(repo, binary)).rejects.toThrow("invalid or unexpected config edit");
+    expect(readFileSync(join(home, "config.toml"), "utf8")).toBe('model = "original"\n');
+  });
+
+  it("refuses a simultaneous approval against the same user config", async () => {
+    backend([hook(0)], { hold: true });
+    const first = approveCodexHooks(repo, binary);
+    try {
+      await vi.waitFor(() => expect(requests().some(r => r.method === "config/batchWrite")).toBe(true));
+      await expect(approveCodexHooks(repo, binary)).rejects.toThrow("Another Morpheus hook approval");
+    } finally {
+      writeFileSync(join(fixture, "release"), "");
+      await expect(first).resolves.toBe(1);
+    }
+    expect(requests().filter(r => r.method === "config/batchWrite")).toHaveLength(1);
+    await expect(approveCodexHooks(repo, binary)).resolves.toBe(0);
   });
 });

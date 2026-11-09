@@ -10,7 +10,7 @@ summary: Added an explicit one-shot command that approves enabled Codex hook cha
 # Approve pending Codex project hooks
 
 A person can ask their agent to run `morpheus codex hooks approve` inside a checkout.
-Codex lists its current definitions and owns the versioned config update. We filter to
+Codex lists its current definitions and prepares the staged config update. We filter to
 enabled project hooks at the root, use the main checkout for a linked worktree, and verify
 the recorded hashes. The helper is never invoked by project setup or startup.
 
@@ -24,9 +24,13 @@ connection open for the full approval and verification exchange.
 
 - `pnpm typecheck`, `pnpm compile`, and `pnpm morpheus pm index`.
 - `pnpm exec vitest run tests/codex-hooks.test.ts tests/doctor-codex-trust.test.ts`
-  (29 tests). The new tests cover the exact write scope, linked checkout routing, no-op
-  and list-error paths, and config conflicts.
+  (31 tests). The new tests cover the exact write scope, linked checkout routing, no-op
+  and list-error paths, concurrent approvals, and preservation when staging fails or the live file changes.
 - `morpheus complexity check` passed (CCN limit 15).
 - The compiled CLI against the Mac app's bundled backend with an isolated `CODEX_HOME`:
   approved a new hook, made a repeat invocation a no-op, approved a changed definition,
-  and preserved unrelated trust. The live config was left for the user's later trial.
+  and preserved unrelated trust and the config mode. Reproduced the bundled backend's
+  commented inline TOML corruption with a private fixture and confirmed the live fixture
+  remained byte-identical. Two concurrent CLI invocations for distinct repos sharing a
+  Codex home refused one overlapping operation, and its retry retained both approvals.
+  The live config was left for the user's later trial.

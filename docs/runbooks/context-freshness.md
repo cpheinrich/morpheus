@@ -228,6 +228,11 @@ hooks keep their existing state. The command runs once and creates no schedule o
 If the open composer still shows a badge, check Settings → Hooks or open a new chat in the
 same project.
 
+Run one approval at a time and avoid editing Codex settings during the command. Morpheus
+locks its own approvals per Codex config directory and checks for external changes just before
+replacing the config. Other Codex writers do not share that lock. If Codex produces invalid TOML
+or changes anything besides the intended approvals, the command discards the staged edit.
+
 ### How Codex hook trust works
 
 Read from Codex's source at `rust-v0.163.0`, `0.164.0-alpha.11.1` and `0.165.0` (identical in these

@@ -1,10 +1,12 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { realpath } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { createInterface } from "node:readline";
+import { isDeepStrictEqual } from "node:util";
+import { parse } from "smol-toml";
 import { z } from "zod";
 import { codexHome } from "../doctor/codex-trust.js";
 import { checkoutIdentity } from "../session/start.js";
@@ -84,13 +86,94 @@ async function pendingApproval(hook, root) {
     }
     return true;
 }
-const layersResponse = z.object({ layers: z.array(z.object({
-        name: z.object({ type: z.string(), file: z.string().optional() }),
-        version: z.string().min(1),
-    })) });
-async function approve(rpc, root, target) {
-    const { layers } = layersResponse.parse(await rpc("config/read", { includeLayers: true, cwd: root }));
-    const userLayer = layers.find(({ name }) => name.type === "user" && name.file === target);
+function table(value) {
+    if (value === undefined)
+        return Object.create(null);
+    if (typeof value === "object" && value !== null && !Array.isArray(value) && !(value instanceof Date)) {
+        return value;
+    }
+    throw new Error("Unexpected shape in Codex hooks.state.");
+}
+function assertApprovalDelta(before, after, approvals) {
+    try {
+        const expected = parse(before.toString("utf8"), { integersAsBigInt: true });
+        const hooks = table(expected.hooks);
+        const state = table(hooks.state);
+        for (const [key, approval] of approvals) {
+            const entry = table(state[key]);
+            entry.trusted_hash = approval.trusted_hash;
+            state[key] = entry;
+        }
+        hooks.state = state;
+        expected.hooks = hooks;
+        if (isDeepStrictEqual(expected, parse(after.toString("utf8"), { integersAsBigInt: true })))
+            return;
+    }
+    catch {
+        // Do not print config content in diagnostics.
+    }
+    throw new Error("Codex produced an invalid or unexpected config edit. Your config was not changed.");
+}
+async function snapshotConfig(home) {
+    const target = join(home, "config.toml");
+    const original = await lstat(target).catch((error) => {
+        if (error.code !== "ENOENT")
+            throw error;
+        return undefined;
+    });
+    if (!original)
+        return undefined;
+    if (!original.isFile() || original.nlink !== 1)
+        throw new Error("Codex config must be a regular, unlinked file.");
+    return { target, original, before: await readFile(target) };
+}
+async function saveApprovals(binary, home, snapshot, approvals) {
+    if (!snapshot)
+        throw new Error("Codex user config is missing.");
+    const { target, original, before } = snapshot;
+    // Codex can corrupt some inline TOML tables while preserving comments. Let it
+    // edit a private copy and check the whole semantic delta before replacing live config.
+    const staging = await mkdtemp(join(home, ".morpheus-hook-approval-"));
+    const staged = join(staging, "config.toml");
+    try {
+        await writeFile(staged, before, { mode: 0o600 });
+        await withCodex(binary, staging, async (rpc) => {
+            z.object({ status: z.literal("ok") }).parse(await rpc("config/batchWrite", {
+                filePath: staged,
+                edits: [{ keyPath: "hooks.state", value: Object.fromEntries(approvals), mergeStrategy: "upsert" }],
+            }));
+        });
+        assertApprovalDelta(before, await readFile(staged), approvals);
+        await chmod(staged, original.mode & 0o777);
+        const current = await lstat(target);
+        if (current.ino !== original.ino || current.mode !== original.mode || current.nlink !== 1
+            || !(await readFile(target)).equals(before)) {
+            throw new Error("Codex config changed during approval. Retry once the other edit is complete.");
+        }
+        await rename(staged, target);
+    }
+    finally {
+        await rm(staging, { recursive: true, force: true });
+    }
+}
+async function withApprovalLock(home, action) {
+    const lock = join(home, ".morpheus-hook-approval.lock");
+    try {
+        await mkdir(lock, { mode: 0o700 });
+    }
+    catch (error) {
+        if (error.code !== "EEXIST")
+            throw error;
+        throw new Error(`Another Morpheus hook approval holds ${lock}. Retry when it finishes. If interrupted, remove the lock only after confirming no approval is running.`);
+    }
+    try {
+        return await action();
+    }
+    finally {
+        await rmdir(lock);
+    }
+}
+async function approve(rpc, root, save) {
     const approvals = new Map();
     for (const hook of await projectHooks(rpc, root)) {
         if (await pendingApproval(hook, root))
@@ -98,14 +181,7 @@ async function approve(rpc, root, target) {
     }
     if (!approvals.size)
         return 0;
-    if (!userLayer)
-        throw new Error("Codex did not report a version for the active user config.");
-    // Codex owns TOML updates. Guard against a config edit between listing and saving.
-    const write = z.object({ status: z.literal("ok") });
-    write.parse(await rpc("config/batchWrite", {
-        filePath: target, expectedVersion: userLayer.version,
-        edits: [{ keyPath: "hooks.state", value: Object.fromEntries(approvals), mergeStrategy: "upsert" }],
-    }));
+    await save(approvals);
     const saved = new Map((await projectHooks(rpc, root)).map((hook) => [hook.key, hook]));
     for (const [key, { trusted_hash }] of approvals) {
         const hook = saved.get(key);
@@ -122,7 +198,10 @@ export async function approveCodexHooks(cwd = process.cwd(), binary = existsSync
     }
     const root = checkout.linked ? dirname(checkout.common) : checkout.root;
     const home = await realpath(codexHome());
-    return withCodex(binary, home, (rpc) => approve(rpc, root, join(home, "config.toml")));
+    return withApprovalLock(home, async () => {
+        const snapshot = await snapshotConfig(home);
+        return withCodex(binary, home, (rpc) => approve(rpc, root, (approvals) => saveApprovals(binary, home, snapshot, approvals)));
+    });
 }
 export async function runCodexHooks(args) {
     if (args.length !== 2 || args[0] !== "hooks" || args[1] !== "approve") {
@@ -131,7 +210,7 @@ export async function runCodexHooks(args) {
     const count = await approveCodexHooks();
     console.log(count
         ? `Approved ${count} Codex project hook(s) in this repository.`
-        : "No enabled project hooks awaiting approval in this repository.");
+        : "Codex listed no enabled project hooks awaiting approval. It only lists hooks from projects it trusts.");
     return 0;
 }
 //# sourceMappingURL=codex-hooks.js.map
