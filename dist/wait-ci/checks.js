@@ -16,6 +16,7 @@ export const ROLLUP_QUERY = `query($owner: String!, $name: String!, $number: Int
     pullRequest(number: $number) {
       number
       url
+      mergeable
       commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) {
         pageInfo { hasNextPage }
         nodes {
@@ -122,6 +123,7 @@ export function parseRollup(json) {
         headSha: commit.oid,
         checks: dedupe(checks),
         truncated: contexts?.pageInfo?.hasNextPage === true,
+        ...(pr.mergeable === "CONFLICTING" ? { conflicting: true } : {}),
     };
 }
 /**
