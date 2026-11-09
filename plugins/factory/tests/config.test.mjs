@@ -461,7 +461,13 @@ test("a failed Claude usage read is unknown and leaves Codex alone", async () =>
 
 test("without a now override, reset times are judged when the responses arrive", async () => {
   // The Codex 5-hour window resets 50ms from the start; the account list arrives after it.
-  const extra = { ...codexExtra, codex_5h_reset_at: new Date(Date.now() + 50).toISOString(), codex_7d_used_percent: 10 };
+  const startedAt = Date.now();
+  const extra = {
+    ...codexExtra,
+    codex_5h_reset_at: new Date(startedAt + 50).toISOString(),
+    codex_7d_used_percent: 10,
+    codex_7d_reset_at: new Date(startedAt + 60_000).toISOString(),
+  };
   const { fetchImpl: inner } = fakeGateway({}, { extra });
   const fetchImpl = async (url, opts) => {
     if (url.endsWith("/api/v1/admin/accounts?page=1")) await new Promise((r) => setTimeout(r, 80));
