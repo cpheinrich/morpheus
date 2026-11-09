@@ -223,7 +223,8 @@ API.
 
 The command approves hooks from the root `.codex/hooks.json` and `.codex/config.toml` that
 Codex loads for the project. The checkout must have a committed Morpheus manifest, and the
-hook config must match the committed file so local installer writes cannot become approvals.
+hook config must match the committed file. The command cross-checks each reported hash
+against the committed command hook. Review unsupported or unverifiable hooks in Codex.
 A linked worktree uses the main checkout. Codex must already
 trust that project to load its hooks. User, plugin, managed, disabled, and other projects'
 hooks keep their existing state. Installing a dependency does not register its own hook

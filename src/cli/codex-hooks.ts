@@ -8,7 +8,7 @@ import { createInterface } from "node:readline";
 import { isDeepStrictEqual } from "node:util";
 import { parse, type TomlTable, type TomlValue } from "smol-toml";
 import { z } from "zod";
-import { codexHome } from "../doctor/codex-trust.js";
+import { codexHome, listCodexHooks } from "../doctor/codex-trust.js";
 import { checkoutIdentity, sessionGit } from "../session/start.js";
 
 const desktopCli = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex";
@@ -108,6 +108,21 @@ async function pendingApproval(hook: Hook, root: string): Promise<boolean> {
 
 type Approvals = Map<string, { trusted_hash: string }>;
 
+async function assertCommittedHashes(root: string, source: string, approvals: Approvals): Promise<void> {
+  const committed = await committedFile(root, source);
+  const path = relative(root, source);
+  if (committed === undefined || committed !== await readFile(source, "utf8")) {
+    throw new Error(`Hook config must match the committed project file: ${path}. Review local changes in Codex Settings → Hooks.`);
+  }
+  const doc: unknown = source.endsWith(".toml") ? parse(committed) : JSON.parse(committed);
+  const hashes = new Map(listCodexHooks(doc, source).hooks.map(({ key, hash }) => [key, hash]));
+  for (const [key, { trusted_hash }] of approvals) {
+    if (key.startsWith(`${source}:`) && hashes.get(key) !== trusted_hash) {
+      throw new Error(`Could not verify a Codex hook hash against committed ${path}. Review it in Codex Settings → Hooks.`);
+    }
+  }
+}
+
 function table(value: TomlValue | undefined): TomlTable {
   if (value === undefined) return Object.create(null) as TomlTable;
   if (typeof value === "object" && value !== null && !Array.isArray(value) && !(value instanceof Date)) {
@@ -200,11 +215,9 @@ async function approve(rpc: Rpc, root: string, save: (approvals: Approvals) => P
       sources.add(hook.sourcePath);
     }
   }
-  for (const source of sources) {
-    if (await committedFile(root, source) !== await readFile(source, "utf8")) {
-      throw new Error(`Hook config must match the committed project file: ${relative(root, source)}. Review local changes in Codex Settings → Hooks.`);
-    }
-  }
+  // Checking the file alone cannot tie a hash to HEAD: the file may have
+  // changed during hooks/list and then been restored before we read it.
+  for (const source of sources) await assertCommittedHashes(root, source, approvals);
   if (!approvals.size) return 0;
   await save(approvals);
   const saved = new Map((await projectHooks(rpc, root)).map((hook) => [hook.key, hook]));

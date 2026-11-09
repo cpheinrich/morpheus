@@ -10,7 +10,7 @@ let repo: string;
 let home: string;
 let binary: string;
 let source: string;
-const hash = "sha256:" + "a".repeat(64);
+const hash = "sha256:5bcf5439a4b245c57c9e7f3910368077fa8b85b8231cd151f801f58f1414d57e";
 
 function git(cwd: string, ...args: string[]): void {
   execFileSync("git", args, { cwd, stdio: "ignore" });
@@ -40,7 +40,9 @@ beforeEach(() => {
   writeFileSync(join(home, "config.toml"), 'model = "original"\n', { mode: 0o640 });
   git(repo, "init");
   source = join(repo, ".codex/hooks.json");
-  writeFileSync(source, "{}");
+  writeFileSync(source, JSON.stringify({ hooks: { SessionStart: [{ hooks: Array.from(
+    { length: 9 }, () => ({ type: "command", command: "/usr/bin/true" }),
+  ) }] } }));
   writeFileSync(join(repo, "morpheus.json"), JSON.stringify({ name: "fixture", morpheusVersion: "0.1.0" }));
   git(repo, "add", ".");
   git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "base");
@@ -139,6 +141,13 @@ describe("Codex project hook approval", () => {
     backend([hook(0)]);
     writeFileSync(source, '{"hooks":{}}');
     await expect(approveCodexHooks(repo, binary)).rejects.toThrow("match the committed project file");
+    expect(requests().map(r => r.method)).toEqual(["initialize", "hooks/list"]);
+    expect(readFileSync(join(home, "config.toml"), "utf8")).toBe('model = "original"\n');
+  });
+
+  it("refuses a reported hash that differs from the committed handler", async () => {
+    backend([hook(0, { currentHash: "sha256:" + "a".repeat(64) })]);
+    await expect(approveCodexHooks(repo, binary)).rejects.toThrow("verify a Codex hook hash against committed");
     expect(requests().map(r => r.method)).toEqual(["initialize", "hooks/list"]);
     expect(readFileSync(join(home, "config.toml"), "utf8")).toBe('model = "original"\n');
   });

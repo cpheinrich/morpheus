@@ -8,7 +8,7 @@ import { createInterface } from "node:readline";
 import { isDeepStrictEqual } from "node:util";
 import { parse } from "smol-toml";
 import { z } from "zod";
-import { codexHome } from "../doctor/codex-trust.js";
+import { codexHome, listCodexHooks } from "../doctor/codex-trust.js";
 import { checkoutIdentity, sessionGit } from "../session/start.js";
 const desktopCli = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex";
 async function withCodex(binary, home, operation) {
@@ -103,6 +103,20 @@ async function pendingApproval(hook, root) {
         throw new Error("Codex returned an unexpected project hook identity.");
     }
     return true;
+}
+async function assertCommittedHashes(root, source, approvals) {
+    const committed = await committedFile(root, source);
+    const path = relative(root, source);
+    if (committed === undefined || committed !== await readFile(source, "utf8")) {
+        throw new Error(`Hook config must match the committed project file: ${path}. Review local changes in Codex Settings → Hooks.`);
+    }
+    const doc = source.endsWith(".toml") ? parse(committed) : JSON.parse(committed);
+    const hashes = new Map(listCodexHooks(doc, source).hooks.map(({ key, hash }) => [key, hash]));
+    for (const [key, { trusted_hash }] of approvals) {
+        if (key.startsWith(`${source}:`) && hashes.get(key) !== trusted_hash) {
+            throw new Error(`Could not verify a Codex hook hash against committed ${path}. Review it in Codex Settings → Hooks.`);
+        }
+    }
 }
 function table(value) {
     if (value === undefined)
@@ -200,11 +214,10 @@ async function approve(rpc, root, save) {
             sources.add(hook.sourcePath);
         }
     }
-    for (const source of sources) {
-        if (await committedFile(root, source) !== await readFile(source, "utf8")) {
-            throw new Error(`Hook config must match the committed project file: ${relative(root, source)}. Review local changes in Codex Settings → Hooks.`);
-        }
-    }
+    // Checking the file alone cannot tie a hash to HEAD: the file may have
+    // changed during hooks/list and then been restored before we read it.
+    for (const source of sources)
+        await assertCommittedHashes(root, source, approvals);
     if (!approvals.size)
         return 0;
     await save(approvals);
