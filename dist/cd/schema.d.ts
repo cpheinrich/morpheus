@@ -2,10 +2,10 @@ import { z } from "zod";
 export declare const sha: z.ZodString;
 export declare const digest: z.ZodString;
 export declare const decimal: z.ZodString;
-export declare const timestamp: z.ZodISODateTime;
+export declare const timestamp: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
 export declare const sourceAgeWaiverSchema: z.ZodObject<{
     authorizationRef: z.ZodString;
-    grantedAt: z.ZodISODateTime;
+    grantedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
 }, z.core.$strict>;
 export type SourceAgeWaiver = z.infer<typeof sourceAgeWaiverSchema>;
 /** Consumers must check this exported capability before adopting an opt-in policy. */
@@ -148,7 +148,7 @@ export declare const budgetSpendingPolicySchema: z.ZodObject<{
     campaignId: z.ZodString;
     capMicros: z.ZodNumber;
     authorizationRef: z.ZodString;
-    adoptedAt: z.ZodISODateTime;
+    adoptedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
 }, z.core.$strict>;
 export type BudgetSpendingPolicy = z.infer<typeof budgetSpendingPolicySchema>;
 export declare const postResumeOriginSchema: z.ZodObject<{
@@ -162,13 +162,13 @@ export declare const postResumeOriginSchema: z.ZodObject<{
     previousIosTreeSha: z.ZodString;
     receiptIosTreeSha: z.ZodString;
     sourceReviewRef: z.ZodString;
-    createdAt: z.ZodISODateTime;
+    createdAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
 }, z.core.$strict>;
 export declare const postResumeQualificationSchema: z.ZodObject<{
     fingerprint: z.ZodString;
-    qualifiedAt: z.ZodISODateTime;
-    expiresAt: z.ZodISODateTime;
-    executionDeadlineAt: z.ZodISODateTime;
+    qualifiedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
+    expiresAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
+    executionDeadlineAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
     evidenceRef: z.ZodString;
 }, z.core.$strict>;
 export type PostResumeOrigin = z.infer<typeof postResumeOriginSchema>;
@@ -178,8 +178,8 @@ export declare const postResumeExecutionProofSchema: z.ZodObject<{
     authorityClosureDigest: z.ZodString;
     evidenceRef: z.ZodString;
     fingerprint: z.ZodString;
-    qualifiedAt: z.ZodISODateTime;
-    expiresAt: z.ZodISODateTime;
+    qualifiedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
+    expiresAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
 }, z.core.$strict>;
 export declare const postResumeAcceptanceSchema: z.ZodObject<{
     origin: z.ZodObject<{
@@ -193,38 +193,38 @@ export declare const postResumeAcceptanceSchema: z.ZodObject<{
         previousIosTreeSha: z.ZodString;
         receiptIosTreeSha: z.ZodString;
         sourceReviewRef: z.ZodString;
-        createdAt: z.ZodISODateTime;
+        createdAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
     }, z.core.$strict>;
     intentId: z.ZodString;
     qualifications: z.ZodArray<z.ZodObject<{
         fingerprint: z.ZodString;
-        qualifiedAt: z.ZodISODateTime;
-        expiresAt: z.ZodISODateTime;
-        executionDeadlineAt: z.ZodISODateTime;
+        qualifiedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
+        expiresAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
+        executionDeadlineAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
         evidenceRef: z.ZodString;
     }, z.core.$strict>>;
     yielded: z.ZodOptional<z.ZodObject<{
         attemptId: z.ZodString;
-        at: z.ZodISODateTime;
+        at: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
     }, z.core.$strict>>;
     releases: z.ZodRecord<z.ZodUnion<[z.ZodString, z.ZodString]>, z.ZodObject<{
         quiescenceDigest: z.ZodString;
         authorityClosureDigest: z.ZodString;
         evidenceRef: z.ZodString;
         fingerprint: z.ZodString;
-        qualifiedAt: z.ZodISODateTime;
-        expiresAt: z.ZodISODateTime;
+        qualifiedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
+        expiresAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
         identityDigest: z.ZodString;
         leaseOwner: z.ZodString;
         fence: z.ZodNumber;
-        at: z.ZodISODateTime;
+        at: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
     }, z.core.$strict>>;
     groups: z.ZodRecord<z.ZodString, z.ZodObject<{
         attemptId: z.ZodString;
         groupId: z.ZodString;
         buildId: z.ZodString;
-        claimedAt: z.ZodISODateTime;
-        observedAt: z.ZodOptional<z.ZodISODateTime>;
+        claimedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
+        observedAt: z.ZodOptional<z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>>;
     }, z.core.$strict>>;
 }, z.core.$strict>;
 export type PostResumeAcceptance = z.infer<typeof postResumeAcceptanceSchema>;

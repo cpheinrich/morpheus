@@ -160,6 +160,8 @@ export async function waitCi(deps, opts) {
             wait.runsPending = false;
         }
         const snapshot = wait.snapshot;
+        if (snapshot?.conflicting)
+            return conflictingPr(repo, pr);
         const visible = snapshot ? relevant(snapshot.checks, opts.requiredOnly) : [];
         if (snapshot && settled(visible)) {
             const decided = await confirmSettled(deps, repo, pr, opts, wait, visible);
@@ -232,6 +234,8 @@ async function confirmSettled(deps, repo, pr, opts, wait, visible) {
     if ("error" in confirmed) {
         return { exitCode: EXIT.error, output: `wait-ci: could not confirm current-head checks on ${repo}#${pr}: ${confirmed.error}` };
     }
+    if (confirmed.conflicting)
+        return conflictingPr(repo, pr);
     wait.adopt(confirmed);
     // The run census belonged to candidateSha. A replacement head (or an
     // incomplete confirmation rollup) has not been verified, including
@@ -240,6 +244,9 @@ async function confirmSettled(deps, repo, pr, opts, wait, visible) {
     if (!confirmed.truncated && confirmed.headSha === candidateSha && settled(relevant(confirmed.checks, false)) && verdict(confirmed.checks) === "green")
         return "done";
     return "continue";
+}
+function conflictingPr(repo, pr) {
+    return { exitCode: EXIT.error, output: `wait-ci: ${repo}#${pr} has merge conflicts; resolve them before verifying CI.` };
 }
 async function finalDigest(deps, repo, pr, opts, wait, start) {
     const { snapshot, timedOut, runsPending, movedFrom } = wait;
