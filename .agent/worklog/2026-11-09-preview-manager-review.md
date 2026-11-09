@@ -52,6 +52,12 @@ Independent review cleared the Manager preflight with two minor wording notes. T
       "disposition": "fixed",
       "response": "Document that the local check leaves the working tree, refs and GitHub untouched."
     }
+  ],
+  "trunkIntegrations": [
+    {
+      "commit": "a408b9fd8d8ef9888df94490fb7979af00a18b79",
+      "reason": "Integrated #680 and #683. Git merged the CLI TypeScript sources automatically. Regenerated the conflicted dispatch/help source maps and help declaration using the integrated TypeScript. Manager, review-record and CLI dispatch tests, typecheck, compile, PM index and diff checks passed."
+    }
   ]
 }
 ```
