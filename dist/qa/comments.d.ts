@@ -497,8 +497,8 @@ export declare const QaPreview: z.ZodObject<{
     url: z.ZodString;
     kind: z.ZodOptional<z.ZodEnum<{
         other: "other";
-        "serve-sim": "serve-sim";
         web: "web";
+        "serve-sim": "serve-sim";
     }>>;
     label: z.ZodOptional<z.ZodString>;
 }, z.core.$strict>;
@@ -517,8 +517,8 @@ export declare const QaCommentBatch: z.ZodObject<{
         url: z.ZodString;
         kind: z.ZodOptional<z.ZodEnum<{
             other: "other";
-            "serve-sim": "serve-sim";
             web: "web";
+            "serve-sim": "serve-sim";
         }>>;
         label: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>;
