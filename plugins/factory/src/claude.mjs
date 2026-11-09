@@ -128,14 +128,21 @@ function applyClaudeText(run, event) {
   }
 }
 function applyClaudeResult(run, event) {
-  run.result = event.structured_output || {
-    outcome: event.is_error ? "failed" : "needs_input",
+  const result = event.structured_output || {
+    outcome: "failed",
     summary:
       event.result || "Claude ended without a structured completion report.",
     evidence: [],
   };
-  if (event.is_error) run.result.outcome = "failed";
-  run.state = run.result.outcome;
+  if (!event.structured_output && !event.is_error) {
+    // A result without a report is not a question. Keep it private until exit
+    // so a still-running worker remains observable and a later report can win.
+    run.unstructuredClaudeResult = result;
+    return;
+  }
+  if (event.is_error) result.outcome = "failed";
+  run.result = result;
+  run.state = result.outcome;
 }
 export function applyClaudeEvent(run, event) {
   const effects = { ended: false, overage: false, session: null };

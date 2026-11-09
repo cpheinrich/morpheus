@@ -72,6 +72,12 @@ sessions with tasks; `--session-id` on claim/resume supplies one explicitly (Cod
 `CODEX_THREAD_ID`). Without an ID, the currently checked-out claimed branch identifies the task.
 Do not run concurrent authors on the same task worktree.
 
+If startup reports a missing bound worktree, verify the task's disposition. For a completed
+task, run `morpheus pm unbind <ID>` from the primary checkout for the affected session, then
+retry `morpheus context brief`. Supply `--session-id <id>` if the runner does not provide the
+affected session ID. This clears only the matching session association. For an active task
+with a remote claim, recover its worktree through `pm worktrees` and `pm resume`.
+
 After the task PR has merged, return to the primary checkout and run
 `morpheus pm cleanup <ID>`. The command verifies the exact merged PR and current trunk,
 then removes only that task's clean, unlocked linked worktree and its obsolete local and
