@@ -1,10 +1,11 @@
 /** The shape `gh api graphql` returned for cpheinrich/morpheus#354, plus a commit status and a re-run. */
-export function rollup(sha: string, nodes: unknown[], hasNextPage = false): unknown {
+export function rollup(sha: string, nodes: unknown[], hasNextPage = false, mergeable = "MERGEABLE"): unknown {
   return {
     data: {
       repository: {
         pullRequest: {
           number: 354,
+          mergeable,
           url: "https://github.com/cpheinrich/morpheus/pull/354",
           commits: { nodes: [{ commit: { oid: sha, statusCheckRollup: { contexts: { pageInfo: { hasNextPage }, nodes } } } }] },
         },

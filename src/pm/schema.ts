@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isoDatetimeWithOptionalSeconds } from "../iso-datetime.js";
 import { ROADMAP_ID } from "./id.js";
 
 /**
@@ -34,7 +35,7 @@ export function prefixOf(id: string): string | null {
  * `isoDate` keeps a timestamp's date part. Checking the whole value, not a
  * `YYYY-MM-DDT` prefix, keeps `2026-08-18Tnonsense` an error.
  */
-const timestampForDate = z.iso.datetime({ offset: true, local: true });
+const timestampForDate = isoDatetimeWithOptionalSeconds({ offset: true, local: true });
 
 /**
  * An ISO date (YYYY-MM-DD) compatible with legacy YAML date handling.
@@ -68,7 +69,7 @@ export const isoDate = z.preprocess((v) => {
  */
 export const isoDateTime = z.preprocess(
   (v) => (v instanceof Date ? v.toISOString() : v),
-  z.iso.datetime({ offset: true }),
+  isoDatetimeWithOptionalSeconds({ offset: true }),
 );
 
 /**

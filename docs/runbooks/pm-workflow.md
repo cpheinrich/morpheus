@@ -207,7 +207,7 @@ value. Say what cannot be tested and why.
 ## Merging, the board and the worklog
 
 The author owns a PR authorized to merge until the merge is verified or a hard blocker is
-recorded. Use `morpheus wait-ci <n> --required-only` to follow required checks. It exits 0 for green,
+recorded. Use `morpheus wait-ci <n> --required-only` to follow required checks. Resolve any reported merge conflict before relying on a CI verdict. It exits 0 for green,
 1 for failure, 2 for timeout and 3 for an observer error. On failure, read the failing step,
 fix the cause within scope or rerun the failed job when there is evidence of a transient failure.
 Keep any required review current after a fix and use `wait-ci` again for the new attempt.
