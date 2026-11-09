@@ -8,7 +8,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, expect, it, vi } from "vitest";
 import { contextMcpSession } from "../src/context-search/mcp-scope.js";
 import { createContextMcp } from "../src/context-search/mcp.js";
-import { contextArm } from "../src/context-search/rollout.js";
+import { contextArm, contextTraceSession, traceContext } from "../src/context-search/rollout.js";
 import { summarizeContextTraces } from "../src/context-search/trace-summary.js";
 import { armMcpTaskContext, taskContextRefusal, taskPrompt } from "../src/context-search/task-start.js";
 import { bindTask } from "../src/session/tasks.js";
@@ -200,4 +200,54 @@ it("supports the MCP backstop with the existing startup and read hooks even befo
   }), async path => path)).toContain("search_project_context");
   await observe(await call("search_project_context", { query: secretQuery }));
   expect(await taskContextRefusal(root, session)).toBeUndefined();
+});
+
+
+it("profiles a first turn without a trusted prompt hook and excludes empty searches from first results", async () => {
+  const { root } = await fixture();
+  const home = join(root, "fixture-codex");
+  vi.stubEnv("CODEX_HOME", home);
+  const day = join(home, "sessions", "2026", "11", "09");
+  await mkdir(day, { recursive: true });
+  const providerId = "00000000-0000-4000-8000-000000000009";
+  const rollout = "fixture-pilot";
+  const session = contextTraceSession(rollout, providerId);
+  const t = Date.UTC(2026, 10, 9, 12);
+  const stamp = (offset: number) => new Date(t + offset);
+  await writeFile(join(day, `rollout-2026-11-09T12-00-00-${providerId}.jsonl`), [
+    { type: "session_meta", payload: { id: providerId } },
+    { type: "event_msg", timestamp: stamp(250).toISOString(), payload: { type: "task_started" } },
+  ].map(row => JSON.stringify(row)).join("\n") + "\n");
+  const arm = "tantivy-bounded" as const;
+  const base = { arm, engine: "tantivy", rollout, session, transport: "mcp" } as const;
+  await traceContext(root, { ...base, type: "session-start" }, stamp(10));
+  await traceContext(root, { ...base, type: "warm", session: undefined, mcpStartedAt: t, outcome: "ok", buildMs: 180 }, stamp(200));
+  await traceContext(root, { ...base, type: "query", mcpStartedAt: t, queryStartedAt: t + 300, queryMs: 50, outcome: "empty" }, stamp(350));
+  await traceContext(root, { ...base, type: "query", mcpStartedAt: t, queryStartedAt: t + 400, queryMs: 75, outcome: "ok" }, stamp(475));
+  expect((await summarizeContextTraces(root, { since: "2026-11-09" })).pipeline).toMatchObject({
+    sessions: 1, promptHooks: 0, codexTurnFallbacks: 1, firstSearches: 1, firstResults: 1,
+    startToPrompt: { samples: 1, p50Ms: 250 }, promptToFirstSearch: { p50Ms: 50 },
+    promptToFirstResult: { p50Ms: 225 }, startToFirstResult: { p50Ms: 475 },
+    firstSearch: { p50Ms: 50 }, warmupBuild: { p50Ms: 180 }, warmedBeforePrompt: 1,
+  });
+});
+
+
+it("joins prompt and result timings for explicitly enabled Tantivy without a rollout", async () => {
+  const { root, call, session } = await fixture();
+  await writeFile(join(root, "morpheus.json"), JSON.stringify({
+    name: "explicit", context: { search: { transport: "mcp", mode: "tantivy" } },
+  }));
+  const arm = await contextArm(root, session);
+  expect(arm).toMatchObject({ arm: "manual", engine: "tantivy", session: contextTraceSession("", session) });
+  const prompt = JSON.stringify({ cwd: root, session_id: session, prompt: "Verify release", hook_event_name: "UserPromptSubmit" });
+  expect(await taskPrompt(prompt, async path => path)).toBeUndefined();
+  // Exercise the trace and fallback path even on CI machines without Tantivy.
+  vi.stubEnv("MORPHEUS_TANTIVY_PYTHON", "/nonexistent/tantivy-python");
+  expect((await call("search_project_context", { query: secretQuery })).structuredContent).toMatchObject({
+    engine: "ripgrep", fallback: true, outcome: "ok",
+  });
+  expect((await summarizeContextTraces(root)).pipeline).toMatchObject({
+    sessions: 1, promptHooks: 1, firstSearches: 1, firstResults: 1, promptToFirstResult: { samples: 1 },
+  });
 });

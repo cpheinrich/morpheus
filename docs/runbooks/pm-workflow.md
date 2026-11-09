@@ -206,19 +206,19 @@ value. Say what cannot be tested and why.
 
 ## Merging, the board and the worklog
 
-Do not wait on checks by polling. Two better options:
+The author owns a PR authorized to merge until the merge is verified or a hard blocker is
+recorded. Use `morpheus wait-ci <n> --required-only` to follow required checks. It exits 0 for green,
+1 for failure, 2 for timeout and 3 for an observer error. On failure, read the failing step,
+fix the cause within scope or rerun the failed job when there is evidence of a transient failure.
+Keep any required review current after a fix and use `wait-ci` again for the new attempt.
+On timeout or observer error, determine the actual CI state and resume the wait or diagnosis.
+Use the blocking procedure above only after exhausting reasonable authorized options. Record the
+failure, attempts and their results, and the smallest external action that would unblock the PR.
 
-```sh
-gh pr merge <n> --squash --auto --delete-branch   # merges itself when checks go green
-morpheus wait-ci <n>                              # blocks once, then a digest of what failed
-morpheus pm cleanup <ID>                           # from primary checkout, after merge
-```
-
-Prefer `--auto` — it hands the merge to GitHub so the session is not held open waiting, and a
-failing check simply leaves the PR unmerged rather than merging something broken. Use `wait-ci`
-only when the next step depends on the result: it prints nothing while it waits, then one line when
-green or the failing step's log when not, and exits 0 green, 1 failed, 2 timeout, 3 error. Never
-poll `gh run view` or `gh pr checks` in a loop — each poll re-reads the whole session context.
+After review and required CI pass, merge through GitHub. Auto-merge can handle the merge when
+GitHub is ready. The author still verifies the PR is merged into the intended base before running
+`morpheus pm cleanup <ID>` from the primary checkout. GitHub Manager remains the backstop.
+Use the blocking wait instead of polling `gh run view` or `gh pr checks` in a loop.
 
 PR waits reconcile cancellations against later runs of the same workflow on the same head.
 Creation time orders runs, with the higher run ID breaking same-second ties. A pending replacement

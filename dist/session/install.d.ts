@@ -40,6 +40,8 @@ export interface Repair {
     detail: string;
 }
 export interface InstallOptions {
+    /** Init preserves authored instructions; explicit context install may append guidance. */
+    clientInstructions?: boolean;
     /** `false` inspects and reports without touching the filesystem. */
     write: boolean;
     /** The inbox handle to declare. Looked up from `gh` when omitted. */

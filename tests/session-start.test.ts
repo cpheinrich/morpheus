@@ -235,6 +235,9 @@ describe("one worktree per implementation task", () => {
     const output = log.mock.calls.flat().join("\n");
     expect(output).toContain(`WORK IN: ${await git(local, "rev-parse", "--show-toplevel")}`);
     expect(output).toContain("Investigation needs no new worktree");
+    expect(output).toContain("discover the live MCP catalog");
+    expect(output).toContain("search_project_context");
+    expect(output).toContain("morpheus context install --check");
     expect(output).toContain("This session has no context receipt");
     expect((await check(local)).lease).toBeNull();
   });
