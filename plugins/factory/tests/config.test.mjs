@@ -459,12 +459,14 @@ test("a failed Claude usage read is unknown and leaves Codex alone", async () =>
   }
 });
 
-test("without a now override, reset times are judged when the responses arrive", async () => {
-  // The Codex 5-hour window resets 50ms from the start; the account list arrives after it.
-  const extra = { ...codexExtra, codex_5h_reset_at: new Date(Date.now() + 50).toISOString(), codex_7d_used_percent: 10 };
+test("without a now override, reset times are judged when the responses arrive", async (t) => {
+  let now = quotaNow;
+  t.mock.method(Date, "now", () => now);
+  const extra = { ...codexExtra, codex_5h_reset_at: new Date(now + 50).toISOString(), codex_7d_used_percent: 10 };
   const { fetchImpl: inner } = fakeGateway({}, { extra });
   const fetchImpl = async (url, opts) => {
-    if (url.endsWith("/api/v1/admin/accounts?page=1")) await new Promise((r) => setTimeout(r, 80));
+    // The account list arrives after the short window resets and before the long one resets.
+    if (url.endsWith("/api/v1/admin/accounts?page=1")) now = quotaNow + 80;
     return inner(url, opts);
   };
   const [, codex] = await readGatewayQuota(quotaGateways, { adminEmail: "a", adminPassword: "b", fetchImpl });

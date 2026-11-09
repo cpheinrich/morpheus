@@ -17,7 +17,7 @@ async function runEngine(root, sources, query, budget, engine, transport) {
     }
 }
 export async function retrieveContext(root, query, budget, options) {
-    const { session, transport, kinds, started = performance.now() } = options;
+    const { session, transport, kinds, started = performance.now(), mcpStartedAt } = options;
     if (!query.trim() || !Number.isInteger(budget) || budget < 1 || budget > 2500) {
         throw new Error("Use a nonempty query and a return budget from 1 to 2,500 tokens.");
     }
@@ -27,17 +27,17 @@ export async function retrieveContext(root, query, budget, options) {
     }
     const arm = await contextArm(root, session, config);
     const overrideEngine = await sessionEngine(root, session);
-    const trace = { arm: arm.arm, engine: arm.engine, overrideEngine, session: arm.session, rollout: arm.id, transport, operation: "search" };
+    const trace = { queryStartedAt: performance.timeOrigin + started, mcpStartedAt, arm: arm.arm, engine: arm.engine, overrideEngine, session: arm.session, rollout: arm.id, transport, operation: "search" };
     try {
         const coverage = await discoverSources(root, config);
         const eligible = kinds?.length ? coverage.included.filter(path => kinds.includes(contextKind(path))) : coverage.included;
         const sources = await readContextSources(root, eligible);
         const result = await runEngine(root, sources, query, budget, overrideEngine ?? arm.engine, transport);
         const totalQueryMs = performance.now() - started;
-        const { queryMs, buildMs, cacheHit, resultCount, returnedTokens } = result.data;
+        const { queryMs, buildMs, waitMs, cacheHit, resultCount, returnedTokens } = result.data;
         await traceContext(root, {
             type: "query", ...trace, actualEngine: result.engine, budget, engineQueryMs: queryMs,
-            queryMs: totalQueryMs, buildMs, cacheHit, resultCount, returnedTokens,
+            queryMs: totalQueryMs, buildMs, waitMs, cacheHit, resultCount, returnedTokens,
             outcome: resultCount ? "ok" : "empty",
         });
         return { ...result, totalQueryMs };

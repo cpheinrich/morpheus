@@ -83,15 +83,27 @@ async function coreBytes(root, paths) {
 export function armForBucket(bucket) {
     return bucket < 60 ? "tantivy-bounded" : bucket < 80 ? "ripgrep-bounded" : "ripgrep-full";
 }
+function rolloutKey(rollout, session) {
+    return createHash("sha256").update("morpheus-context-v1\0").update(rollout).update("\0").update(session).digest();
+}
+export function contextTraceSession(rollout, session) {
+    return rolloutKey(rollout, session).toString("hex").slice(8, 24);
+}
+function standaloneArm(settings, sessionId, manual, legacy) {
+    if (settings.mode === "tantivy" && settings.transport === "mcp" && sessionId && sessionId.length <= 512) {
+        return { ...manual, session: contextTraceSession("", sessionId) };
+    }
+    return settings.mode ? manual : legacy;
+}
 export async function contextArm(root, sessionId = providerSessionId(), config) {
     const settings = config ?? await getSearchConfig(root);
     const { mode, rollout } = settings;
     const legacy = { arm: "legacy", engine: "ripgrep", startup: "full" };
     const manual = { arm: "manual", engine: mode ?? "ripgrep", startup: "full" };
     if (!rollout)
-        return mode ? manual : legacy;
+        return standaloneArm(settings, sessionId, manual, legacy);
     const key = sessionId && sessionId.length <= 512
-        ? createHash("sha256").update("morpheus-context-v1\0").update(rollout.id).update("\0").update(sessionId).digest()
+        ? rolloutKey(rollout.id, sessionId)
         : undefined;
     const session = key?.toString("hex").slice(8, 24);
     if (mode)
@@ -129,7 +141,8 @@ function traceUsage(event) {
 function traceLine(event, now) {
     const numbers = {
         startupBytes: event.startupBytes, startupTokens: event.startupTokens,
-        queryMs: event.queryMs, engineQueryMs: event.engineQueryMs, buildMs: event.buildMs,
+        queryMs: event.queryMs, engineQueryMs: event.engineQueryMs, buildMs: event.buildMs, waitMs: event.waitMs,
+        queryStartedAt: event.queryStartedAt, mcpStartedAt: event.mcpStartedAt,
         resultCount: event.resultCount, returnedTokens: event.returnedTokens, budget: event.budget,
     };
     const safeNumbers = Object.fromEntries(Object.entries(numbers).filter(([, value]) => typeof value === "number" && Number.isFinite(value) && value >= 0));
@@ -148,7 +161,7 @@ function traceLine(event, now) {
 /** Keep traces in ignored workspace storage writable from the agent sandbox. */
 export async function traceContext(root, event, now = new Date()) {
     try {
-        if (!["assignment", "query", "tool", "visible"].includes(event.type) ||
+        if (!["assignment", "query", "tool", "visible", "session-start", "prompt", "warm"].includes(event.type) ||
             !["tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"].includes(event.arm) ||
             !["tantivy", "ripgrep"].includes(event.engine))
             return;
