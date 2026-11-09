@@ -1,16 +1,19 @@
 ---
 owner: cpheinrich
-date: 2026-11-06
+date: 2026-11-09
 agents:
   - codex
-previous: .agent/inbox-archive/2026-11-06-1426-cpheinrich.md
+previous: .agent/inbox-archive/2026-11-09-1014-cpheinrich.md
 ---
-# Inbox — 2026-11-06
+# Inbox — 2026-11-09
 
-Visual planning guidance and the authorized consumer rollout are complete. The implementation
-PRs merged after independent review and green CI; active working copies were preserved.
-Unreplied items below are carried forward unchanged. The previous exchange is
-[archived](../../.agent/inbox-archive/2026-11-06-1426-cpheinrich.md).
+The issue automation reconciled all open GitHub issues and preserved the completed ledger.
+The retired Paperclip-pool request #585 is closed with merged retirement evidence. The legacy
+web-layout fix (#666) and delivery-documentation correction (#667) passed independent review;
+both remain open because the confirmed [GitHub Actions outage](https://stspg.io/7yw63xl9ztrv)
+interrupted required checks. The automation will resume their review-to-merge loop after recovery.
+Unreplied decisions below remain unchanged.
+The prior inbox is [archived](../../.agent/inbox-archive/2026-11-09-1014-cpheinrich.md).
 
 ## ❗ 1. Kairos certificate-chain evidence · `codex`
 
@@ -40,10 +43,14 @@ Unreplied items below are carried forward unchanged. The previous exchange is
 
 ~
 
-## ✅ 4. Visual planning rollout complete · `codex`
+## ✅ 4. Issue-resolution progress · `codex`
 
-Merged [PR633](https://github.com/cpheinrich/morpheus/pull/633) and completed the authorized
-consumer rollout with independent clearance and passing CI. Useful relationship diagrams now
-belong early in planning; trivial edits need none, and no approval pause or merge gate was added.
-The [canonical guide](../../.agents/skills/visual-design/SKILL.md) remains centrally refinable
-and is available through `morpheus skills guide visual-design`. No action is needed for this rollout.
+[#585](https://github.com/cpheinrich/morpheus/issues/585) no longer applies after the authorized
+Paperclip retirement in [#644](https://github.com/cpheinrich/morpheus/pull/644); current-source
+retirement tests passed. [#666](https://github.com/cpheinrich/morpheus/pull/666) recognizes the
+existing `web/` app without scaffolding a second site. [#667](https://github.com/cpheinrich/morpheus/pull/667)
+labels the old watchdog migration proposal historical and points to the current release-owner guide.
+The operational ledger retains every remaining issue, evidence and concrete next action. Next priorities
+include HQ unauthorized-payload reproduction (#600), missing-worktree recovery (#430), required-CI
+census (#616), native retry coverage (#618), and Factory/review tooling defects. Intentional Manager
+logs #335/#451 remain open; separate audit PR holds remain intact.
