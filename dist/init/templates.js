@@ -835,7 +835,7 @@ would unblock you>"\`. Escalating is cheap; shipping half-baked is expensive.
 
 **Break loops.** If the same command fails the same way twice, or you have polled the same thing
 three times, stop: change approach, or \`pm block\` with what you learned. Never idle-loop or poll
-\`gh\`. Use \`morpheus wait-ci <n>\` for a PR, or \`wait-ci --run <id>\` for one Actions run
+\`gh\`. Use \`morpheus wait-ci <n> --required-only\` for a PR, or \`wait-ci --run <id>\` for one Actions run
 (TestFlight, release).
 
 **Follow your PR through merge.** For a PR you are authorized to merge, wait for required CI,

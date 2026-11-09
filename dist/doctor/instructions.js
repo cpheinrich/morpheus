@@ -2,7 +2,7 @@ export const INSTRUCTION_ANCHORS = [
     {
         name: "wait-ci",
         pattern: /morpheus wait-ci/,
-        add: "\"Follow your PR through merge. Use `morpheus wait-ci <n>` to follow required checks, fix or retry failures, and verify the merge or record the exact blocker.\"",
+        add: "\"Follow your PR through merge. Use `morpheus wait-ci <n> --required-only` to follow required checks, fix or retry failures, and verify the merge or record the exact blocker.\"",
     },
     {
         name: "wait-ci for workflow runs",

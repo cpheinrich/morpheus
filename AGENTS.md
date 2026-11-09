@@ -70,7 +70,7 @@ pnpm morpheus review prepare --base origin/main   # the reviewer packet
 pnpm morpheus review validate      # CI's review-record check, run before pushing
 pnpm morpheus inbox validate       # before finishing an inbox
 pnpm morpheus context refresh      # once, after reading the records — see below
-pnpm morpheus wait-ci <pr>         # block once on CI, then a digest of failures — never poll gh
+pnpm morpheus wait-ci <pr> --required-only   # wait for required CI and report failures
 ```
 
 ## Device bootstrap
@@ -158,7 +158,7 @@ unblock you>"`. Escalating is cheap; shipping half-baked is expensive. "Blocked 
 
 **Break loops.** If the same command fails the same way twice, or you have polled the same thing
 three times, stop: change approach, or `pm block` with what you learned. Never idle-loop
-(`sleep`/`true`/`echo` loops, repeated status checks). Use `morpheus wait-ci <n>` for a PR,
+(`sleep`/`true`/`echo` loops, repeated status checks). Use `morpheus wait-ci <n> --required-only` for a PR,
 or `morpheus wait-ci --run <id>` (or `--workflow <file> --branch <b>`) for one Actions run.
 A hook refuses the third poll of a target.
 
