@@ -12,7 +12,7 @@ Issue #433: the shared survey selected a missing `apps/web` instead of an existi
 - Initial regression failed: the legacy app, HQ, gate, alias and test runner were all reported missing.
 - `pnpm install --frozen-lockfile`: passed.
 - `pnpm exec vitest run tests/web-scaffold.test.ts tests/consumer-auth.test.ts`: 70 passed, including legacy in-place scaffolding, unchanged HQ bytes, absence of a second app, precedence and invalid-directory cases.
-- `pnpm typecheck`, `pnpm compile`, `pnpm morpheus pm index`: passed. Removed unrelated declaration-order churn produced by this Node/compiler environment.
+- `pnpm typecheck`, `pnpm compile`, `pnpm morpheus pm index`: passed. Initial omission of declaration-order churn was corrected after CI proved the same deterministic output is required there.
 - `morpheus complexity check`: passes enforced CCN 15; seven touched functions, 80 measured functions in two files; no new finding. Hand inspection confirms one fixed candidate loop reuses existing detection.
 - Read-only built-code survey against the reported consumer finds `webRoot: web`, app/HQ/gate present. No consumer files or cloud resources changed.
 - `pnpm test` ran once: 4,275 passed, two skipped, six failures exclusively from absent `actionlint`. Installed pinned actionlint 1.7.12 in ignored operational tools; the affected `tests/workflow-expressions.test.ts` then passed all seven tests. No unchanged full-suite rerun.
@@ -42,3 +42,7 @@ Independent normal-risk review cleared the exact implementation with no findings
   "findings": []
 }
 ```
+
+## CI correction
+
+Required Node CI on `197b6edf` failed build-clean verification only: `pnpm compile` also reorders two equivalent generated enum declaration keys in `dist/qa/comments.d.ts`. Retain the compiler output rather than leaving a dirty generated tree. No source/schema or runtime behavior changes. A second bounded review covers this CI-discovered generated-only correction.
