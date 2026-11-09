@@ -28,10 +28,13 @@ and reported. `context install` appends discovery/fallback guidance to `AGENTS.m
 keeps existing authored instructions unchanged and includes the guidance in new scaffolds.
 
 Install reviewed Morpheus and `rg` (ripgrep, required by the default search engine) on each execution host, grant the client's project/server trust and
-reload the session. Codex CLI, IDE and desktop share Codex configuration. A user-level MCP entry
+reload the session. Opted-in CLI auto-updates also provision user-scoped
+registrations for existing checkouts on that device, without changing project files.
+See [device bootstrap](device-bootstrap.md#context-search-after-an-automatic-update)
+for upgrade and reload behavior. Codex CLI, IDE and desktop share Codex configuration. A user-level MCP entry
 can be used when project setup is unavailable, but is not a substitute for verifying the launch
 checkout and an actual tool call. Session startup now cues discovery even outside the pilot;
-it does not rewrite configuration or install software. Factory launchers continue registering the
+it can complete local registration on opted-in devices after a legacy upgrade. Factory launchers continue registering the
 server for admitted worktrees, including workers with isolated client configuration.
 
 ### Desktop, phone and cloud boundaries

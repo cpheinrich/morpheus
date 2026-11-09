@@ -1,6 +1,8 @@
 vi.mock("../src/cli/session-start.js", () => ({ sessionHookInput: vi.fn(async () => ({})), startSession: vi.fn(async () => 73) }));
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/cli/run.js";
+import { startSession } from "../src/cli/session-start.js";
+import { reportContextMcpSetup } from "../src/cli/self.js";
 import { create, ship, tagged } from "../src/cli/pm.js";
 import { HELP } from "../src/cli/help.js";
 import { guard } from "../src/cli/context.js";
@@ -27,7 +29,7 @@ vi.mock("../src/cli/context.js", () => ({ check: vi.fn(async () => 73), guard: v
 vi.mock("../src/session/context.js", () => ({ noteWrite: vi.fn(async () => 73) }));
 vi.mock("../src/cli/codebase-memory.js", () => ({ install: vi.fn(async () => 73) }));
 vi.mock("../src/cli/research-library.js", () => ({ initResearchLibrary: vi.fn(async () => 73), runResearchLibrary: vi.fn(async () => 73) }));
-vi.mock("../src/cli/self.js", () => ({ autoUpdate: vi.fn(async () => 73), check: vi.fn(async () => 73), ensure: vi.fn(async () => 73), install: vi.fn(async () => 73), update: vi.fn(async () => 73) }));
+vi.mock("../src/cli/self.js", () => ({ autoUpdate: vi.fn(async () => 73), check: vi.fn(async () => 73), ensure: vi.fn(async () => 73), install: vi.fn(async () => 73), update: vi.fn(async () => 73), reportContextMcpSetup: vi.fn(async () => {}) }));
 vi.mock("../src/cli/registry.js", () => ({ list: vi.fn(async () => 73), add: vi.fn(async () => 73), remove: vi.fn(async () => 73) }));
 vi.mock("../src/cli/profile.js", () => ({ profileExtract: vi.fn(async () => 73), profileReport: vi.fn(async () => 73) }));
 
@@ -48,8 +50,13 @@ describe("CLI invocation contract", () => {
     expect(await run([group])).toBe(1);
     expect(error).toHaveBeenCalledWith(`Unknown command "${group}".\n\n${HELP}`);
   });
-  it.each(["self", "self check", "self update", "self install", "self ensure", "self auto-update enable", "doctor", "codebase-memory", "codebase-memory install", "heartbeat", "voice knowledge", "voice brief a topic", "tokens", "tokens build", "research-library init", "research-library bundle", "research-library publish book --author A", "init", "init status", "init done task", "init doing task", "init todo task", "web", "web status", "web init", "web add-consumer-auth", "registry list", "registry add", "registry remove item", "hq rules", "hq rules --print", "access sync", "firebase auth setup", "firebase auth check", "brand", "brand status", "brand build", "brand explore", "brand refresh", "brand finalize", "brand migrate", "brand check", "brand init", "inbox validate", "review prepare", "review prompt", "review needed", "review delivery", "team validate", "context", "context refresh", "context check", "context brief", "context start", "context install", "context status", "check pr", "ios changed-swift apps/ios", "pm validate", "pm index", "pm claim MO-001", "pm claims", "pm tagged engineering devops --json", "pm resume MO-001", "pm cleanup MO-001", "pm worktrees", "pm link-issue MO-001 1", "pm block MO-001 --needs approval", "pm unblock MO-001", "pm ship MO-001", "pm migrate-ids", "pm new roadmap title", "profile", "profile report --since 2026-09-01 --json", "profile extract --repo evo --out x.jsonl"])("routes %s to its handler", async (line) => {
+  it.each(["self", "self check", "self update", "self install", "self ensure", "self auto-update enable", "doctor", "codebase-memory", "codebase-memory install", "heartbeat", "voice knowledge", "voice brief a topic", "tokens", "tokens build", "research-library init", "research-library bundle", "research-library publish book --author A", "init", "init status", "init done task", "init doing task", "init todo task", "web", "web status", "web init", "web add-consumer-auth", "registry list", "registry add", "registry remove item", "hq rules", "hq rules --print", "access sync", "firebase auth setup", "firebase auth check", "brand", "brand status", "brand build", "brand explore", "brand refresh", "brand finalize", "brand migrate", "brand check", "brand init", "inbox validate", "review prepare", "review prompt", "review needed", "review delivery", "team validate", "context", "context refresh", "context check", "context install", "context status", "check pr", "ios changed-swift apps/ios", "pm validate", "pm index", "pm claim MO-001", "pm claims", "pm tagged engineering devops --json", "pm resume MO-001", "pm cleanup MO-001", "pm worktrees", "pm link-issue MO-001 1", "pm block MO-001 --needs approval", "pm unblock MO-001", "pm ship MO-001", "pm migrate-ids", "pm new roadmap title", "profile", "profile report --since 2026-09-01 --json", "profile extract --repo evo --out x.jsonl"])("routes %s to its handler", async (line) => {
     expect(await run(line.split(" "))).toBe(73);
+  });
+  it.each(["brief", "start"])("reconciles device context setup before context %s", async command => {
+    expect(await run(["context", command])).toBe(73);
+    expect(reportContextMcpSetup).toHaveBeenCalledExactlyOnceWith();
+    expect(reportContextMcpSetup).toHaveBeenCalledBefore(vi.mocked(startSession));
   });
   it.each([["pm", "ship", "MO-020", "--check"], ["pm", "ship", "--check", "MO-020"]])("forwards explicit IDs and --check together for validation", async (...argv) => {
     expect(await run(argv)).toBe(73);
