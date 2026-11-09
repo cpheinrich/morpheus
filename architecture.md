@@ -1771,7 +1771,9 @@ shape, whether it lands in a markdown file or a database row.**
 
 > **Gotchas.** Older YAML parsers converted an unquoted `2026-07-01`, or a full timestamp, into a
 > Date object. The current parser returns strings, and `isoDate` accepts all three forms, keeping a
-> timestamp's day as written. A colon in a title breaks YAML — `pm
+> timestamp's day as written. Qualified timestamps may omit seconds, preserving the metadata
+> contract that predates Zod 4.5; `isoDatetimeWithOptionalSeconds` centralizes that compatibility
+> for PM, CD, review and meeting-intake schemas. A colon in a title breaks YAML — `pm
 > new` quotes scalars defensively, and hand-written frontmatter with a colon must be quoted.
 
 ## 9. Testing and QA

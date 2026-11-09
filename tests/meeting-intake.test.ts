@@ -324,6 +324,12 @@ describe("publication completion gate", () => {
     );
   });
 
+  it("preserves minute-precision qualified occurrence timestamps", () => {
+    const minutePrecision = ready(projected);
+    minutePrecision.occurred = "2026-10-26T11:39-07:00";
+    expect(completionNotice(minutePrecision, projected)).toContain("October 26, 2026");
+  });
+
   it("includes a bounded summary only when the authorized profile requests it", () => {
     expect(completionNotice(ready(directWithSummary), directWithSummary)).toBe(
       "Meeting notes for October 26, 2026 have been summarized and recorded. " +

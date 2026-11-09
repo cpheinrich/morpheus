@@ -760,6 +760,14 @@ describe("human-authorized turns beyond the automatic five", () => {
     r.followUps[2]!.humanAuthorization = authorization;
     expect(check(save(r))).toEqual([]);
   });
+  it.each(["2026-09-25T18:00Z", "2026-09-25T18:00+00:00"])(
+    "preserves minute-precision authorization timestamp %s",
+    approvedAt => {
+      const r = extraTurns();
+      r.followUps![4]!.humanAuthorization = { ...authorization, approvedAt };
+      expect(check(save(r))).toEqual([]);
+    },
+  );
 });
 
 describe("one bounded automatic final verification", () => {
