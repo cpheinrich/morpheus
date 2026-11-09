@@ -18,6 +18,7 @@ export declare function linkIssue(productDir: string, id: string, rawIssue: stri
 export declare function claim(productDir: string, id: string, cwd: string, sessionId?: string | undefined, offline?: boolean): Promise<number>;
 /** Reuse an explicitly named task's existing branch and checkout. */
 export declare function resume(id: string, cwd: string, sessionId?: string | undefined): Promise<number>;
+export declare function unbind(id: string, cwd: string, sessionId?: string | undefined): Promise<number>;
 /**
  * List live claims, oldest activity flagged as possibly stale.
  *

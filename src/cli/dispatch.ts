@@ -4,6 +4,7 @@ import {
   block,
   claim,
   resume,
+  unbind,
   cleanup,
   worktrees,
   claims,
@@ -564,6 +565,7 @@ const PM_COMMANDS: Record<string, (invocation: Invocation) => Promise<number> | 
   index: ({ dir, flags }) => index(dir, flags.check),
   claim: ({ dir, rest, flags }) => claim(dir, rest[0] ?? "", process.cwd(), flags.sessionId, flags.offline),
   resume: ({ rest, flags }) => resume(rest[0] ?? "", process.cwd(), flags.sessionId),
+  unbind: ({ rest, flags }) => unbind(rest[0] ?? "", process.cwd(), flags.sessionId),
   cleanup: ({ dir, rest, flags }) => {
     if (flags.offline) { console.error("Cleanup requires fresh remote evidence; offline cleanup is refused."); return 1; }
     if (rest.slice(1).some(arg => arg !== "--release-stale-sessions")) { console.error("Usage: morpheus pm cleanup <ID> [--dry-run] [--release-stale-sessions]"); return 1; }
