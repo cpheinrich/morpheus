@@ -159,6 +159,8 @@ Usage
                             what should happen next, and whether anything should
   morpheus gh-manager sweep <owner/repo> [--out file]
                             route every open pull request from facts; no model
+  morpheus gh-manager check-record <base-ref> --body-file <file>
+                            validate the committed Manager record against a proposed PR body
   morpheus gh-manager routes|prompt|apply|digest ...
                             the steps the GitHub Manager operations workflow runs;
                             see docs/runbooks/gh-manager.md
