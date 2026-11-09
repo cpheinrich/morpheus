@@ -45,7 +45,7 @@ beforeEach(() => {
   writeFileSync(source, JSON.stringify({ hooks: { SessionStart: [{ hooks: Array.from(
     { length: 9 }, () => ({ type: "command", command: "/usr/bin/true" }),
   ) }] } }));
-  writeFileSync(join(repo, "morpheus.json"), JSON.stringify({ name: "fixture", morpheusVersion: "0.1.0" }));
+  writeFileSync(join(repo, "morpheus.json"), JSON.stringify({ name: "fixture", kind: "personal", prefix: "FIX" }));
   git(repo, "add", ".");
   git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "base");
   vi.stubEnv("CODEX_HOME", home);
@@ -137,6 +137,21 @@ describe("Codex project hook approval", () => {
     mkdirSync(unrelated);
     git(unrelated, "init");
     await expect(approveCodexHooks(unrelated, binary)).rejects.toThrow("in a Morpheus project");
+  });
+
+  it.each([
+    ["{", "Fix invalid JSON in the committed morpheus.json"],
+    ['{"name":"fixture","morpheusVersion":"0.1.0"}', "project identity (kind, prefix)"],
+  ])("rejects invalid committed project identity: %s", async (manifest, diagnostic) => {
+    writeFileSync(join(repo, "morpheus.json"), manifest);
+    git(repo, "add", "morpheus.json");
+    git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "invalid manifest");
+    // A corrected working copy must not satisfy the committed-manifest guard.
+    writeFileSync(join(repo, "morpheus.json"), '{"name":"fixture","kind":"personal","prefix":"FIX"}');
+    backend([hook(0)]);
+
+    await expect(approveCodexHooks(repo, binary)).rejects.toThrow(diagnostic);
+    expect(readFileSync(join(home, "config.toml"), "utf8")).toBe('model = "original"\n');
   });
 
   it("refuses a project hook config that was changed locally", async () => {
