@@ -54,8 +54,8 @@ Durable facts worth knowing before starting work here. Append; do not rewrite hi
   it merged *without* a fix pushed afterwards — the roadmap item that PR added was silently lost
   from `main`.
 
-  **Only enable auto-merge once the branch is complete.** Before that, `gh pr checks --watch`,
-  fix, then set `--auto`. Auto-merge is a queue, not a promise to merge whatever arrives later.
+  **Only enable auto-merge once the branch is complete.** Follow CI with `morpheus wait-ci`,
+  fix or retry failures, and verify the merge. GitHub queues auto-merge for the branch you submit.
 
 - **`pnpm/action-setup` fails if both `version` and `packageManager` are specified.** Reusable
   workflows must leave `pnpm-version` empty so the lockfile-pinned `packageManager` wins.
