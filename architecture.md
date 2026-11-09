@@ -3915,7 +3915,18 @@ sources still build, failed runs retry, and manual forced builds always run. An 
 screenshots is distinguishable from one that failed to capture them. This is bounded recovery,
 not an independent scheduler.
 
-**Stateless iOS delivery (CD V3) — the target design, 2026-10-30.** CD V2 (`src/cd/`,
+**Stateless iOS delivery (CD V3) — historical proposal, 2026-10-30.**
+
+**Current consumer authority (checked 2026-11-09):** Evo's
+[pipeline map](https://github.com/darwin-health/evo/blob/main/docs/runbooks/ios-cicd-pipeline.md#release-owner)
+owns its current release model. The CD steward is one release owner on the CD host,
+observing at load and every 60 seconds and starting its repair worker when needed.
+The GitHub delivery watchdog (`ios-delivery-watchdog.yml`) has been deleted.
+The proposal, actor list, stages and rollback instructions below retain historical design
+context; they are not the current operating or installation instructions. Use the consumer
+pipeline map for its current cadence, admission, promotion and recovery rules.
+
+CD V2 (`src/cd/`,
 [its design](docs/cd-pipeline-v2.md)) put a deterministic controller, a Git ledger and a repair
 queue between `main` and TestFlight. In its first ten days it failed 17 deliveries and stalled
 staging for four days. Most of its machinery existed only to serve its own ledger: configuration
@@ -3924,7 +3935,7 @@ leases, per-file pins with import manifests, a validation campaign with fault dr
 gates on the repair worker. Chris's decisions of 2026-10-30 (`.agent/decisions.md`) remove the
 reasons for all of it. Delivery is therefore rebuilt as **one stateless run per slot** and V2 is
 deleted rather than slimmed. Until the stages below land, V2 keeps delivering and its code and
-documents remain. This paragraph is the specification; the V2 documents are history.
+documents remain. These were the original migration assumptions; the current consumer guide above supersedes them.
 
 **One run, one channel, fresh `main`.** Evo's `ios-delivery.yml` is the whole pipeline.
 Staging runs every six hours when watched inputs changed; production runs daily. Both are GitHub
@@ -4021,7 +4032,7 @@ the workflow. A change merges like any
 other file, and the next run uses it. Its digest goes into the receipt, so every attempt says what
 it used, and there are no migrations.
 
-**One repair owner, one independent alarm.**
+**One repair owner, one independent alarm (historical proposal, superseded).**
 
 - The **CD steward** is a cheap, credential-free health check on the always-on host, run every
   few hours. It reads only the delivery runs. When a channel is failing, stuck or stale, it starts
@@ -4031,7 +4042,7 @@ it used, and there are no migrations.
 - **`ios-delivery-watchdog.yml`** is an independent GitHub cron. When an eligible change misses its
   delivery SLO it opens one issue and texts Chris. It never repairs.
 
-Retired actors: the Pro controller tick, the Mini repair worker, the recovery watchdog, and
+Historical retirement plan: the Pro controller tick, the Mini repair worker, the recovery watchdog, and
 long-lived supervising sessions. The GitHub Manager stays a PR backstop and has no delivery role.
 
 **Stages.** Each stage keeps real delivery working.
