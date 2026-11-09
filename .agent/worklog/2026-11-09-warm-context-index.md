@@ -43,3 +43,64 @@ same lifecycle events without changing startup policy. A focused regression
 and the no-prompt app-server probe both pass for this mode. The report now
 counts first-search cache hits separately from warm-ups finished before the
 prompt. The expanded focused suite passed 171 tests.
+
+Independent review cleared background warming and launch-to-result profiling after the standalone Tantivy and cache attribution fixes.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "db1c3f76c367d0f39739126e20aeda0d2b5dea42",
+  "reviewed": "3179d79ce0a714de745042085021818fa2066928",
+  "covered": "6f6104e32f991f3451a2a8840a2c9a6cc8f229c2",
+  "authorSession": "01a1b4d0-b0d9-7cd1-9f03-33349cd7f590",
+  "reviewerSession": "/root/context_warm_review",
+  "risk": "normal",
+  "elapsedMinutes": 1.6528166666666666,
+  "timing": {
+    "source": "clock",
+    "durationMs": 99169,
+    "evidence": "Root clock around reviewer invocation and initial verdict: 2026-11-09T19:24:59.377Z to 2026-11-09T19:26:38.546Z."
+  },
+  "outcome": "complete",
+  "summary": "Independent review cleared background warming and launch-to-result profiling after the standalone Tantivy and cache attribution fixes.",
+  "findings": [
+    {
+      "id": "CTX-1",
+      "severity": "substantive",
+      "description": "An explicit Tantivy MCP project without a rollout warmed but could not join launch, prompt, search and result timing.",
+      "paths": [
+        "src/context-search/rollout.ts",
+        "src/context-search/trace-pipeline.ts",
+        "src/cli/session-start.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Assign an opaque session key to explicit Tantivy MCP, allow the profile to join without an experiment and prove the standalone mode."
+    },
+    {
+      "id": "CTX-2",
+      "severity": "minor",
+      "description": "A launch warm can complete even when the first search uses a different corpus or ripgrep.",
+      "paths": [
+        "src/context-search/trace-pipeline.ts",
+        "docs/runbooks/context-search.md"
+      ],
+      "disposition": "fixed",
+      "response": "Clarify launch-corpus scope and count first-search cache hits separately."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/context_warm_review",
+      "commit": "6f6104e32f991f3451a2a8840a2c9a6cc8f229c2",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.6543166666666667,
+      "timing": {
+        "source": "clock",
+        "durationMs": 39259,
+        "evidence": "Root clock around follow-up invocation and verdict: 2026-11-09T19:27:29.055Z to 2026-11-09T19:28:08.314Z."
+      },
+      "summary": "Both original findings fixed. Reviewer verified the exact commit and independently passed 31 focused tests."
+    }
+  ]
+}
+```
