@@ -434,6 +434,9 @@ async function dispatchContext({ flags, command, rest }) {
         return contextCheck(process.cwd(), off);
     if (command === "brief" || command === "start") {
         const input = await sessionHookInput();
+        // Legacy update hooks run the previous CLI until the pull finishes.
+        // Finish device setup when the newly installed CLI first starts a project session.
+        await (await import("./self.js")).reportContextMcpSetup();
         return startSession(process.cwd(), { ...input, ...(flags.sessionId ? { sessionId: flags.sessionId } : {}) }, { offline: off });
     }
     // Not gated, and deliberately: this is the command that makes a project

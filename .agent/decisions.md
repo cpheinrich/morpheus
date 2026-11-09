@@ -842,7 +842,8 @@ correctness. `morpheus.json` holds the prefix and travels with the repo.
 
 **`main` is protected everywhere; agents merge their own PRs** — 2026-07-29. Branch, PR, and
 merge once checks pass — Chris is not a merge bottleneck. Use `gh pr merge --auto` so GitHub
-merges when checks go green rather than holding a session open polling.
+can merge when checks go green. On 2026-11-09 Chris clarified that the author still
+[follows CI through a verified merge or a hard blocker](../docs/runbooks/pm-workflow.md#merging-the-board-and-the-worklog).
 
 **Set `--auto` only when the branch is finished** — 2026-07-29. Enabling auto-merge on a PR with
 failing checks lost a commit pushed afterwards. Watch, fix, *then* auto-merge.

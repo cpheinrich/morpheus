@@ -12,6 +12,11 @@ morpheus web status   # what the surface has, and what it is missing
 morpheus web init     # add whatever is missing
 ```
 
+`web status` and `web init` share layout detection: an existing `apps/web` takes
+precedence, followed by a root-level Next.js app, then an established `web/app`
+whose `web/package.json` declares Next.js. Missing pieces are added inside the
+detected app; a new project still defaults to `apps/web`.
+
 It does the half `morpheus init` deliberately does not: it provisions the GCP project, Firebase,
 Firestore (`nam5`), the registered web app, and the Workload Identity a Vercel deployment
 authenticates as — then scaffolds the code that depends on those. A Next.js app when there is
