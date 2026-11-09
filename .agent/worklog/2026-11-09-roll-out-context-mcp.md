@@ -41,14 +41,14 @@ reproduced the normal hook environment, and the rerun succeeded.
 
 ## Independent review
 
-The independent review blocked on the first legacy pull, executable selection and symlinked settings. A locked compile bridge closed the first-pull gap and clean-profile pulls on the Pro and Studio both installed the candidate and served cited searches. The follow-up conditionally cleared two literal path fixes. Regression tests now execute a launcher with a dollar-ampersand prefix and confirm that a POSIX backslash stays in the profile name.
+The independent review blocked on the first legacy pull, executable selection and symlinked settings. A locked compile bridge closed the first-pull gap and clean-profile pulls on the Pro and Studio both installed the candidate and served cited searches. The follow-up conditionally cleared two literal path fixes. Regression tests now execute a launcher with a dollar-ampersand prefix and confirm that a POSIX backslash stays in the profile name. The final review cleared a test-only CI correction for the startup dispatcher.
 
 ```morpheus-review
 {
   "version": 2,
   "base": "1cabdf008d46d909a4edb6cd187aa365d50b4fcd",
   "reviewed": "4379414583b68b5bb13902661557708f3fb51855",
-  "covered": "70681bf1df49b18c98cd2496b1cb03ec9e6b77e2",
+  "covered": "aa409189001f1d036c0006e33ea731e21d9902d3",
   "authorSession": "01a1c1df-749d-79f2-b01e-6d55d4791967",
   "reviewerSession": "/root/context_rollout_reviewer",
   "risk": "normal",
@@ -59,7 +59,7 @@ The independent review blocked on the first legacy pull, executable selection an
     "evidence": "Codex transcript tool dispatch and verdict timestamps: 2026-11-09T22:02:18.246Z through 2026-11-09T22:03:44.459Z."
   },
   "outcome": "complete",
-  "summary": "The independent review blocked on the first legacy pull, executable selection and symlinked settings. A locked compile bridge closed the first-pull gap and clean-profile pulls on the Pro and Studio both installed the candidate and served cited searches. The follow-up conditionally cleared two literal path fixes. Regression tests now execute a launcher with a dollar-ampersand prefix and confirm that a POSIX backslash stays in the profile name.",
+  "summary": "The independent review blocked on the first legacy pull, executable selection and symlinked settings. A locked compile bridge closed the first-pull gap and clean-profile pulls on the Pro and Studio both installed the candidate and served cited searches. The follow-up conditionally cleared two literal path fixes. Regression tests now execute a launcher with a dollar-ampersand prefix and confirm that a POSIX backslash stays in the profile name. The final review cleared a test-only CI correction for the startup dispatcher.",
   "findings": [
     {
       "id": "CTX-1",
@@ -149,6 +149,19 @@ The independent review blocked on the first legacy pull, executable selection an
         "evidence": "Codex transcript tool dispatch and verdict timestamps: 2026-11-09T22:06:55.039Z through 2026-11-09T22:07:34.488Z."
       },
       "summary": "Confirmed the first-pull bridge and conditionally cleared exact fixes for JavaScript replacement expansion and POSIX literal path handling."
+    },
+    {
+      "reviewerSession": "/root/context_rollout_reviewer",
+      "commit": "aa409189001f1d036c0006e33ea731e21d9902d3",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.2505833333333333,
+      "timing": {
+        "source": "clock",
+        "durationMs": 15035,
+        "evidence": "Codex transcript follow-up dispatch and verdict: 2026-11-09T22:13:16.709Z through 2026-11-09T22:13:31.744Z."
+      },
+      "scopeReason": "Late CI correction: the existing dispatcher mock lacked reportContextMcpSetup; no production code changed.",
+      "summary": "Cleared the test-only mock correction and ordering assertions. Both targeted cases passed in review."
     }
   ]
 }
