@@ -61,6 +61,10 @@ export function readConfig(root) {
         fail("The committed credentials path must be relative; use MORPHEUS_CREDENTIALS_REPO for an absolute device override.");
     if (value.command !== undefined && (typeof value.command !== "string" || !/^bin\/[A-Za-z0-9_.-]+$/.test(value.command)))
         fail("The companion command must be a single executable under bin/.");
+    checkLegacyFields(value);
+    return value;
+}
+function checkLegacyFields(value) {
     for (const field of ["legacyRepositories", "legacyEnvironment"]) {
         const entries = value[field];
         if (entries !== undefined && (!Array.isArray(entries) || !entries.every((entry) => typeof entry === "string")))
@@ -71,7 +75,6 @@ export function readConfig(root) {
     for (const key of value.legacyEnvironment ?? [])
         if (!/^[A-Z_][A-Z0-9_]*$/.test(key))
             fail("Invalid legacy environment name.");
-    return value;
 }
 export function locate(cwd, env = process.env) {
     const roots = projectRoots(cwd);
@@ -161,87 +164,23 @@ export function credentials(argv, cwd = process.cwd()) {
     const previousMask = process.umask(0o077);
     try {
         const [action = "status", ...args] = argv;
-        if (action === "init") {
-            const repository = args.shift();
-            if (!repository)
-                fail("Usage: morpheus credentials init <repository-url> [--path <relative-path>] [--command bin/<wrapper>]");
-            const options = {};
-            while (args.length) {
-                const option = args.shift();
-                const value = args.shift();
-                if (!value || (option !== "--path" && option !== "--command"))
-                    fail("Invalid credentials init option.");
-                options[option === "--path" ? "path" : "command"] = value;
-            }
-            configure(cwd, repository, options);
-            console.log("Credentials pointer written. Run morpheus credentials setup (or setup --create for a new private store).");
-            return 0;
-        }
-        if (!["setup", "status", "sync", "list", "doctor", "run"].includes(action))
-            fail("Unknown credentials command. Use init, setup, status, sync, list, doctor or run.");
-        const create = action === "setup" && args.length === 1 && args[0] === "--create";
-        if (action !== "run" && args.length && !create)
-            fail("Unexpected credentials arguments.");
-        if (action === "run" && args[0] !== "--")
-            fail("Use morpheus credentials run -- <trusted-command> [args...].");
-        if (action === "run" && args.length < 2)
-            fail("run requires a command after --.");
+        if (action === "init")
+            return initCredentials(cwd, args);
+        const create = checkCredentialsArgs(action, args);
         const { config, path, root } = locate(cwd);
         if (action === "status" && !existsSync(path)) {
             console.log("Credentials checkout missing. Run morpheus credentials setup; access is separate from project access.");
             return 0;
         }
-        if (action === "setup") {
-            if (create) {
-                if ((config.command ?? "bin/credentials") !== "bin/credentials")
-                    fail("New stores require bin/credentials.");
-                if (existsSync(path))
-                    fail("Refusing to create over an existing checkout; use setup without --create.");
-                capture("gh", ["repo", "create", repositoryId(config.repository), "--private"], root);
-            }
-            if (capture("gh", ["api", `repos/${repositoryId(config.repository)}`, "--jq", ".private"], root) !== "true")
-                fail("The credentials companion must be private.");
-            if (!existsSync(path)) {
-                mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-                capture("git", ["clone", "--", config.repository, path], root);
-            }
-            validateStore(path, config, true);
-            if (create) {
-                if ((config.command ?? "bin/credentials") !== "bin/credentials")
-                    fail("New stores use bin/credentials; configure a custom wrapper only for an existing store.");
-                for (const [name, content] of Object.entries(companionFiles())) {
-                    const file = join(path, name);
-                    mkdirSync(dirname(file), { recursive: true });
-                    writeFileSync(file, content, { flag: "wx", mode: name.startsWith("bin/") ? 0o700 : 0o600 });
-                }
-                capture("git", ["add", "--", "README.md", "AGENTS.md", "bin/credentials", "secrets/credentials.env"], path);
-                capture("git", ["commit", "-m", "Initialize private credentials companion"], path);
-                capture("git", ["push", "-u", "origin", "HEAD"], path);
-                capture("git", ["remote", "set-head", "origin", "--auto"], path);
-            }
-            secureDirectory(join(path, "secrets"));
-            if (existsSync(join(path, ".githooks")))
-                capture("git", ["config", "core.hooksPath", ".githooks"], path);
-            executable(path, config);
-            console.log("Credentials ready. Run morpheus credentials doctor. Existing edits were preserved; no global launcher was changed.");
-            return 0;
-        }
+        if (action === "setup")
+            return setupCredentials(config, path, root, create);
         validateStore(path, config);
         if (action === "status") {
             console.log(`Credentials companion: ${path}. Use morpheus credentials list | doctor | run -- <command>.`);
             return 0;
         }
-        if (action === "sync") {
-            if (capture("git", ["status", "--porcelain"], path))
-                fail("Credentials checkout has local edits; commit or resolve them separately before sync.");
-            const branch = capture("git", ["symbolic-ref", "--short", "HEAD"], path);
-            const defaultRef = capture("git", ["symbolic-ref", "refs/remotes/origin/HEAD"], path);
-            if (`refs/remotes/origin/${branch}` !== defaultRef)
-                fail("Sync only updates the default branch; leave task branches alone.");
-            capture("git", ["pull", "--ff-only", "--quiet", "origin", branch], path);
-            console.log("Credentials checkout synchronized without displaying its diff.");
-            return 0;
-        }
+        if (action === "sync")
+            return syncCredentials(path);
         const wrapper = executable(path, config);
         const result = spawnSync(wrapper, [action, ...args], { cwd, stdio: "inherit" });
         if (result.error)
@@ -256,5 +195,83 @@ export function credentials(argv, cwd = process.cwd()) {
     finally {
         process.umask(previousMask);
     }
+}
+function initCredentials(cwd, args) {
+    const repository = args.shift();
+    if (!repository)
+        fail("Usage: morpheus credentials init <repository-url> [--path <relative-path>] [--command bin/<wrapper>]");
+    const options = {};
+    while (args.length) {
+        const option = args.shift();
+        const value = args.shift();
+        if (!value || (option !== "--path" && option !== "--command"))
+            fail("Invalid credentials init option.");
+        options[option === "--path" ? "path" : "command"] = value;
+    }
+    configure(cwd, repository, options);
+    console.log("Credentials pointer written. Run morpheus credentials setup (or setup --create for a new private store).");
+    return 0;
+}
+/** Refuses an unknown action or stray arguments; returns whether this is `setup --create`. */
+function checkCredentialsArgs(action, args) {
+    if (!["setup", "status", "sync", "list", "doctor", "run"].includes(action))
+        fail("Unknown credentials command. Use init, setup, status, sync, list, doctor or run.");
+    const create = action === "setup" && args.length === 1 && args[0] === "--create";
+    if (action !== "run" && args.length && !create)
+        fail("Unexpected credentials arguments.");
+    if (action === "run" && args[0] !== "--")
+        fail("Use morpheus credentials run -- <trusted-command> [args...].");
+    if (action === "run" && args.length < 2)
+        fail("run requires a command after --.");
+    return create;
+}
+function setupCredentials(config, path, root, create) {
+    if (create) {
+        if ((config.command ?? "bin/credentials") !== "bin/credentials")
+            fail("New stores require bin/credentials.");
+        if (existsSync(path))
+            fail("Refusing to create over an existing checkout; use setup without --create.");
+        capture("gh", ["repo", "create", repositoryId(config.repository), "--private"], root);
+    }
+    if (capture("gh", ["api", `repos/${repositoryId(config.repository)}`, "--jq", ".private"], root) !== "true")
+        fail("The credentials companion must be private.");
+    if (!existsSync(path)) {
+        mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+        capture("git", ["clone", "--", config.repository, path], root);
+    }
+    validateStore(path, config, true);
+    if (create)
+        initializeStore(config, path);
+    secureDirectory(join(path, "secrets"));
+    if (existsSync(join(path, ".githooks")))
+        capture("git", ["config", "core.hooksPath", ".githooks"], path);
+    executable(path, config);
+    console.log("Credentials ready. Run morpheus credentials doctor. Existing edits were preserved; no global launcher was changed.");
+    return 0;
+}
+/** Writes, commits and pushes the companion's starter files into a newly created private store. */
+function initializeStore(config, path) {
+    if ((config.command ?? "bin/credentials") !== "bin/credentials")
+        fail("New stores use bin/credentials; configure a custom wrapper only for an existing store.");
+    for (const [name, content] of Object.entries(companionFiles())) {
+        const file = join(path, name);
+        mkdirSync(dirname(file), { recursive: true });
+        writeFileSync(file, content, { flag: "wx", mode: name.startsWith("bin/") ? 0o700 : 0o600 });
+    }
+    capture("git", ["add", "--", "README.md", "AGENTS.md", "bin/credentials", "secrets/credentials.env"], path);
+    capture("git", ["commit", "-m", "Initialize private credentials companion"], path);
+    capture("git", ["push", "-u", "origin", "HEAD"], path);
+    capture("git", ["remote", "set-head", "origin", "--auto"], path);
+}
+function syncCredentials(path) {
+    if (capture("git", ["status", "--porcelain"], path))
+        fail("Credentials checkout has local edits; commit or resolve them separately before sync.");
+    const branch = capture("git", ["symbolic-ref", "--short", "HEAD"], path);
+    const defaultRef = capture("git", ["symbolic-ref", "refs/remotes/origin/HEAD"], path);
+    if (`refs/remotes/origin/${branch}` !== defaultRef)
+        fail("Sync only updates the default branch; leave task branches alone.");
+    capture("git", ["pull", "--ff-only", "--quiet", "origin", branch], path);
+    console.log("Credentials checkout synchronized without displaying its diff.");
+    return 0;
 }
 //# sourceMappingURL=index.js.map

@@ -1,17 +1,13 @@
 name: Schedule
 
-# Morpheus's own scheduled runs — the counterpart to ci.yml, which covers
-# push and pull_request. It calls the same reusable workflows it ships, so a
-# broken schedule breaks here first.
+# Morpheus's own heartbeat, now run by hand only. It calls the same reusable
+# workflow it ships, so a broken heartbeat still breaks here first.
 #
-# Hourly, every day — Chris's call: "if there is nothing to do then it is
-# cheap." It is. The beat is a deterministic ranking function with no model in
-# it, so a run that picks nothing costs a runner minute and writes a job
-# summary. That is the property that makes this cadence affordable, and it is
-# the reason assess was built as a ranker rather than a prompt.
+# The hourly cron was removed deliberately on Chris's instruction (2026-11-03):
+# recurring runs move to repository-owned schedules in .morpheus/schedules.json,
+# dispatched by the shared scheduler (docs/runbooks/scheduler.md), and Morpheus
+# registers none. Re-enable by adding an entry there, not a cron here.
 on:
-  schedule:
-    - cron: "0 * * * *"
   workflow_dispatch:
 
 jobs:

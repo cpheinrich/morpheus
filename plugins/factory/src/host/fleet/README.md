@@ -1,0 +1,163 @@
+# Fleet Xcode updates
+
+`controller.py` carries the exact `version`/`build` pin in the private host manifest
+(`$FACTORY_HOME/hosts.json`, see [host updates](../docs/host-updates.md#private-manifest))
+across a host, its CI image and the consumer repository. The hourly runner
+validates the manifest and calls it through `with_github.py`. The controller
+holds its own lock; each tick re-reads repository and host state and does one
+bounded step.
+
+## Hosts
+
+| Host | `role` | What reconcile does |
+|---|---|---|
+| CI-image host | `ci-image` (has a `ci` block) | Stages Xcode, fast-forwards `agent-host-setup`, runs `image-stage` to build/verify the `ci-xcode-27.2` Tart image (with the iOS 26.5 and 27.2 simulator runtimes from `ci.runtimes`) and make it the host's one CI image for every repository, then promotes. |
+| Phone-gate host | `phone-gate` (no `ci` block) | Physical-iPhone gate host. Builds with the host's selected Xcode: stages and promotes only, no image and no host-tool sync. |
+
+`role` defaults to `ci-image` when the entry has `ci`, otherwise `phone-gate`;
+a `ci-image` role without `ci` (or the reverse) is refused.
+
+## Hold
+
+A host entry with `"hold": "<reason>"` makes the tick return `held: <reason>`
+before any action: no staging, no image activation, no consumer PR, no switch.
+It is the way to pause a rollout. `status` shows the hold.
+
+## Order
+
+1. Stage the approved app through the host's credentials companion.
+2. `ci-image` hosts only: sync host tools and run `image-stage`.
+3. If `phase` is `"stage"`, hold (`held-at-stage`) before touching the consumer:
+   a held pin opens no consumer PR and spends no agent runs. `"promote"` or
+   absent goes on.
+4. Require **merged consumer main** to carry the pin: in every tracked file
+   matching `consumer.pinPaths`, every pin token (see *One pattern set* below)
+   and every `xcode-<X>` label on a workflow `runner:`/`runs-on:` line equals the
+   pin, with at least one version and one build token across them all (27.21 is
+   not 27.2; nothing found is not a pass). No workflow names are listed;
+   `consumer.ignorePaths` names lanes the consumer keeps on an older Xcode on
+   purpose (for example a legacy lane), which are neither judged
+   nor rewritten. A host that already selects the pin reports `host-converged`
+   without touching the consumer: the gate protects the switch, not the past.
+5. Run the host reconciler (validate with `DEVELOPER_DIR`, switch `xcode-select`,
+   roll back a failed switch) and report `host-converged` once it is selected.
+6. On a converged host, [retire the previous Xcode](#retiring-the-previous-xcode)
+   once delivery has validated the pin.
+
+## Retiring the previous Xcode
+
+A host keeps one Xcode in steady state and the previous one only through the
+migration window (see [host updates](../docs/host-updates.md#retention-one-xcode-per-host)).
+On every `host-converged` tick the controller asks whether the pin is
+**validated**:
+
+1. the host selects the pin (`selectedMatches`);
+2. merged consumer main carries the pin (the same check as step 4);
+3. the newest completed run of `consumer.deliveryWorkflow` on main —
+   `gh run list --repo <consumer.repository> --workflow <deliveryWorkflow> --branch main --status completed --limit 1 --json createdAt,url,conclusion` —
+   succeeded and its `createdAt` is after the host's `promotedAt`.
+
+All three: it runs the worker's `retire` through the same credentials wrapper as
+`reconcile` (GitHub variables dropped), which prunes to `xcode.retain` (default
+1, so the previous app goes) and, on ci-image hosts, deletes unreferenced
+`ci-xcode-*` images; the result is `host-converged (retired: <apps>)`, or
+`host-converged (retire deferred: host busy)`. Otherwise, including any `gh` or
+consumer-check failure, a failed or cancelled newest run, or a run no newer than
+the promotion, it is `host-converged (previous Xcode kept until delivery is green)`
+and nothing is removed: unknown never retires. A host with no promotion record
+(it selected the pin before records existed) gets one through a `reconcile`
+first, so only a later run counts. Once `retiredAt` is recorded the tick reports
+plain `host-converged`. Phone-gate hosts have no delivery evidence of their own
+and use the same consumer evidence.
+
+## Consumer pin PR
+
+When consumer main is not pinned, the controller opens a deterministic **draft**
+PR on branch `factory/xcode-<version>-<build>`: in a temporary detached worktree
+of `origin/main` it reads the old version/build from the assertion script and
+rewrites them in the tracked files matching `consumer.pinPaths`
+with the same pattern set. An unreadable assertion, a substitution that
+changes nothing, or a rewritten file in which a pattern (or an unknown
+`Xcode<sep><old>` form) still finds the old version or build is an error, not
+agent work. An existing branch or open PR is
+reused, never rewritten. A closed, unmerged PR for the branch is an operator's
+rejection while its branch exists: the result is `waiting-human: consumer pin
+PR <url> was closed; delete branch <branch> to retry`, and no new PR is opened.
+If the newest PR merged but main no longer carries the pin and its branch still
+exists (a revert), the result is `waiting-human: … merged but main no longer
+carries the pin; delete branch <branch> to retry`. Deleting the branch is the
+retry in both cases: GitHub keeps listing the old PR, so the branch, not the PR
+list, decides. An operator who means to reject a pin keeps the branch. Only `ci-image` hosts open or drive this PR; a `phone-gate`
+host with an unpinned consumer just returns `waiting-consumer-merge`.
+
+On a later tick, if that PR has still not merged, one **fresh** `codex exec`
+run (no resume; its whole process group is killed after 2 h) is asked to finish it under the consumer's
+normal review and CI rules. At most **3 runs per pin**; after that the result is
+`waiting-human: consumer pin PR <url> needs attention`. No agent pushes protected
+main or opens a second PR.
+
+Results: `held: …`, `waiting-host-stage`, `waiting-consumer-pr`, `waiting-consumer-merge`,
+`waiting-human: …`, `held-at-stage`, `waiting-host-promotion`, `host-converged`,
+`host-converged (previous Xcode kept until delivery is green)`,
+`host-converged (retired: …)`, `host-converged (retire deferred: host busy)`.
+
+## One pattern set
+
+`PIN_PATTERNS` in `controller.py` is the only list of places a pin is written:
+`xcode-version: <v>`, the `xcode-<v>` label token, `Xcode_<v>.app`, `Xcode <v>`,
+`Xcode\ <v>`, the constant `XCODE_VERSION = '<v>'` (JS, TS or Python), `Build
+version <b>`, and the bare `<b>` (rewrite-only: unanchored, a build cannot be told
+from a timestamp). The pin check reads tokens with it and the pin PR rewrites
+with it, so a new form is added once. Templated values such as
+`${{ needs.plan.outputs.xcode-version }}` are not tokens; the literal they come
+from is; when that literal is an `XCODE_VERSION` constant in a delivery script, list the
+script as a pin path.
+
+## Manifest fields
+
+```json
+"consumer": {
+  "repository": "example-org/example-app",
+  "assertion": "apps/ios/scripts/ci/assert-xcode-build.sh",
+  "pinPaths": [".github/workflows/*.yml", "apps/ios/scripts/ci/assert-xcode-build.sh", "apps/ios/scripts/ci/delivery/v3.mjs"],
+  "ignorePaths": [".github/workflows/cd-v2-*.yml"],
+  "exceptions": [{"path": ".github/workflows/ios-delivery.yml", "version": "26.6", "reason": "…"}],
+  "deliveryWorkflow": "ios-delivery.yml"
+}
+```
+
+`exceptions` declares a version the consumer runs on purpose beside the pin in
+one path (a production lane held on an older Xcode while a regression is
+triaged). Such a value is not judged, and substitution never touches it because
+only the previous pin's tokens are rewritten; it never stands in for the pin
+itself, and the same version in any other path still fails. Each entry needs a
+reason; remove it when the lane returns to the pin.
+
+`deliveryWorkflow` is the workflow file whose green run on main validates a
+pin for retirement (default `ios-delivery.yml`).
+
+Optional and top-level; those are the defaults except `ignorePaths` (default
+none), `exceptions` (default none) and
+any extra pin path (such as a delivery script holding `XCODE_VERSION`), which the manifest adds to the default
+`pinPaths`. Paths must be relative with no
+`..`. Each host may set `paths.consumer`, `paths.hostSetup` and
+`paths.credentialsProject` (absolute); `--consumer-root`,
+`--host-setup-root` and `--credentials-project` override them.
+
+## Credentials and state
+
+`with_github.py` passes only GitHub auth (via a temporary askpass helper) and
+ordinary process variables to the controller; Apple credentials and SMS tokens
+stay in the host credentials companion and never reach the PR or the agent.
+Non-image host actions also drop the GitHub variables. `codex exec` uses its
+existing local login.
+
+```sh
+python3 fleet/controller.py status --host ci-mini
+```
+
+prints the pin, phase, role, host status and `consumerPinned` (`null` when it
+cannot be determined). Logs: `~/Library/Logs/morpheus-factory/host-updates.log`.
+State: `~/.local/state/morpheus-factory/fleet/fleet.json`, mode 0600, shaped
+`{"pin": "<version>-<build>", "agentRuns": [<ISO timestamps>]}`; it resets on a
+new pin and holds no credentials.

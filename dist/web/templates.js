@@ -1943,14 +1943,11 @@ export function GET() {
 }
 `;
 };
-export const hqLayout = (ctx, name) => {
-    const self = "app/hq/layout.tsx";
+export const hqLayout = (_ctx, name) => {
     return `import type { Metadata } from "next";
 import Link from "next/link";
 
 import { SectionLinks } from "morpheus-kit/section-links/react";
-
-import { currentUser } from "${ctx.imp(self, "lib/auth/current-user")}";
 
 import { HqSearch } from "./HqSearch";
 import { SignOutButton } from "./SignOutButton";
@@ -1964,8 +1961,11 @@ export const metadata: Metadata = {
 
 const NAV = [{ href: "/hq", label: "Overview" }];
 
-export default async function HqLayout({ children }: { children: React.ReactNode }) {
-  const user = await currentUser();
+/**
+ * Shared HQ chrome is static. The proxy authenticates shared repository content;
+ * pages or endpoints that expose identity or live data re-authorise themselves.
+ */
+export default function HqLayout({ children }: { children: React.ReactNode }) {
   const searchVersion = process.env.VERCEL_GIT_COMMIT_SHA ?? "dev";
 
   return (
@@ -1986,7 +1986,6 @@ export default async function HqLayout({ children }: { children: React.ReactNode
           </div>
           <div className="flex items-center gap-4">
             <HqSearch indexUrl={\`/hq/search-index?v=\${encodeURIComponent(searchVersion)}\`} />
-            {user?.email && <span className="hidden text-xs opacity-60 md:block">{user.email}</span>}
             <SignOutButton />
           </div>
         </div>
@@ -2000,11 +1999,8 @@ export default async function HqLayout({ children }: { children: React.ReactNode
 }
 `;
 };
-export const hqPage = (ctx, name) => {
-    const self = "app/hq/page.tsx";
-    return `import { currentUser } from "${ctx.imp(self, "lib/auth/current-user")}";
-
-/**
+export const hqPage = (_ctx, name) => {
+    return `/**
  * The first HQ page. It exists to prove the whole chain works end to end —
  * Google sign-in, a session cookie, a verified \`role\` claim — and says so
  * plainly rather than rendering an empty dashboard that cannot be distinguished
@@ -2013,16 +2009,15 @@ export const hqPage = (ctx, name) => {
  * Everything in §11 of Morpheus's architecture hangs off this route. Add pages
  * beside it; the gate already covers them.
  */
-export default async function HqPage() {
-  const user = await currentUser();
+export const dynamic = "force-static";
 
+export default function HqPage() {
   return (
     <main className="space-y-6">
       <div className="space-y-2">
         <h1 className="text-2xl font-medium tracking-tight">${name} HQ</h1>
         <p className="text-sm opacity-80">
-          Signed in as <strong>{user?.email ?? "unknown"}</strong> · role{" "}
-          <strong>{user?.role ?? "none"}</strong>
+          Private operating workspace
         </p>
       </div>
 
@@ -2037,6 +2032,165 @@ export default async function HqPage() {
 }
 `;
 };
+export const hqBuildContract = () => `import { realpathSync } from "node:fs";
+import path from "node:path";
+
+/**
+ * Extend these lists when the HQ grows. A dynamic route needs a live-data or
+ * action rationale in the project's architecture/worklog; repository content
+ * belongs in EXPECTED_STATIC_HQ_ROUTES after generateStaticParams emits it.
+ */
+export const EXPECTED_STATIC_HQ_ROUTES = [
+  "/hq",
+  "/hq/no-access",
+  "/hq/search-index",
+];
+
+export const EXPECTED_DYNAMIC_HQ_ROUTES = [];
+
+export function routeFromAppManifestKey(key) {
+  return key.replace(/\\\/(?:page|route)$/, "") || "/";
+}
+
+export function classifyDynamicHqRoutes(appPaths, prerenderManifest) {
+  const exact = prerenderManifest.routes ?? {};
+  const generated = prerenderManifest.dynamicRoutes ?? {};
+  const generatedSources = new Set(
+    Object.values(exact)
+      .map((entry) => entry.srcRoute)
+      .filter((source) => source && generated[source]?.fallback === false),
+  );
+
+  return Object.keys(appPaths)
+    .filter((key) => key.startsWith("/hq/") || key === "/hq/page")
+    .map(routeFromAppManifestKey)
+    // A concrete URL may have been emitted by a different catch-all route.
+    // That does not make the explicit page at this app-manifest key static.
+    .filter((route) => {
+      const entry = exact[route];
+      return !entry || (entry.srcRoute != null && entry.srcRoute !== route);
+    })
+    .filter((route) => generated[route]?.fallback !== false)
+    // Emitted concrete entries close a pattern only when the manifest also
+    // proves there is no request-time fallback.
+    .filter((route) => !generatedSources.has(route))
+    .sort();
+}
+
+export function staticHqRoutes(prerenderManifest) {
+  return Object.keys(prerenderManifest.routes ?? {})
+    .filter((route) => route === "/hq" || route.startsWith("/hq/"))
+    .sort();
+}
+
+export function revalidatedStaticRoutes(routes, prerenderManifest) {
+  const exact = prerenderManifest.routes ?? {};
+  return routes.filter((route) => {
+    const entry = exact[route];
+    return entry && entry.initialRevalidateSeconds !== false;
+  });
+}
+
+export function markdownTraceEntries(files, repositoryRoot, traceDirectory) {
+  const canonical = (file) => {
+    try {
+      return realpathSync(file);
+    } catch {
+      return file;
+    }
+  };
+  const canonicalRepositoryRoot = canonical(path.resolve(repositoryRoot));
+  return files.filter((file) => {
+    const absolute = canonical(path.isAbsolute(file)
+      ? path.resolve(file)
+      : path.resolve(traceDirectory, file));
+    const relative = path.relative(canonicalRepositoryRoot, absolute);
+    return relative !== "" && !relative.startsWith(".." + path.sep) &&
+      !path.isAbsolute(relative) && !relative.split(path.sep).includes("node_modules") &&
+      /\\.md$/i.test(relative);
+  });
+}
+
+export function nftPath(nextDirectory, compiledPath) {
+  return path.join(nextDirectory, "server", \`\${compiledPath}.nft.json\`);
+}
+`;
+export const hqBuildCheck = () => `import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import {
+  classifyDynamicHqRoutes,
+  EXPECTED_DYNAMIC_HQ_ROUTES,
+  EXPECTED_STATIC_HQ_ROUTES,
+  markdownTraceEntries,
+  nftPath,
+  revalidatedStaticRoutes,
+  routeFromAppManifestKey,
+  staticHqRoutes,
+} from "./hq-build-contract.mjs";
+
+const webRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const repositoryRoot = path.resolve(webRoot, "../..");
+const nextDirectory = path.join(webRoot, ".next");
+
+async function readJson(file) {
+  return JSON.parse(await readFile(file, "utf8"));
+}
+
+function sameMembers(actual, expected) {
+  return actual.length === expected.length && actual.every((value, index) => value === expected[index]);
+}
+
+const [appPaths, prerender] = await Promise.all([
+  readJson(path.join(nextDirectory, "server/app-paths-manifest.json")),
+  readJson(path.join(nextDirectory, "prerender-manifest.json")),
+]);
+
+const expectedDynamic = [...EXPECTED_DYNAMIC_HQ_ROUTES].sort();
+const actualDynamic = classifyDynamicHqRoutes(appPaths, prerender);
+if (!sameMembers(actualDynamic, expectedDynamic)) {
+  throw new Error(
+    "HQ route contract changed.\\nExpected dynamic: " + expectedDynamic.join(", ") +
+    "\\nActual dynamic: " + actualDynamic.join(", "),
+  );
+}
+
+const expectedStatic = [...EXPECTED_STATIC_HQ_ROUTES].sort();
+const actualStatic = staticHqRoutes(prerender);
+if (!sameMembers(actualStatic, expectedStatic)) {
+  throw new Error(
+    "Static HQ route contract changed.\\nExpected static: " + expectedStatic.join(", ") +
+    "\\nActual static: " + actualStatic.join(", "),
+  );
+}
+const revalidatedStatic = revalidatedStaticRoutes(actualStatic, prerender);
+if (revalidatedStatic.length) {
+  throw new Error(
+    "Repository-backed HQ routes must be immutable build artifacts, not ISR:\\n" +
+    revalidatedStatic.join("\\n"),
+  );
+}
+
+const appPathByRoute = new Map(
+  Object.entries(appPaths).map(([key, value]) => [routeFromAppManifestKey(key), value]),
+);
+for (const route of expectedDynamic) {
+  const compiledPath = appPathByRoute.get(route);
+  if (!compiledPath) throw new Error("Declared dynamic HQ route is absent: " + route);
+  const tracePath = nftPath(nextDirectory, compiledPath);
+  const trace = await readJson(tracePath);
+  const markdown = markdownTraceEntries(trace.files ?? [], repositoryRoot, path.dirname(tracePath));
+  if (markdown.length) {
+    throw new Error("Dynamic HQ route " + route + " traces repository Markdown:\\n" + markdown.join("\\n"));
+  }
+}
+
+console.log(
+  "[hq-content] verified " + EXPECTED_STATIC_HQ_ROUTES.length + " required static routes, " +
+  expectedDynamic.length + " declared dynamic routes, and no dynamic Markdown traces",
+);
+`;
 export const noAccessPage = () => `import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -2061,13 +2215,14 @@ export default function NoAccessPage() {
 }
 `;
 // ------------------------------------------------------------- a new app ---
-export const appPackageJson = (scope, sharedName) => `${JSON.stringify({
+export const appPackageJson = (scope, sharedName, hqBuildGuard = false) => `${JSON.stringify({
     name: `${scope}/web`,
     version: "0.1.0",
     private: true,
     scripts: {
         dev: "next dev",
         build: "next build",
+        ...(hqBuildGuard ? { postbuild: "node scripts/check-hq-build.mjs" } : {}),
         start: "next start",
         lint: "eslint",
         typecheck: "tsc --noEmit",

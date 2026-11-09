@@ -80,6 +80,16 @@ export function migrateConfig(legacy) {
   return { config: next, dropped };
 }
 
+// Whether an install writes settings at all. It never replaces a factory config.json, whose
+// `mode` is this machine's own opt-in choice, and with no old install it writes nothing, so
+// Factory stays at its default `off`. Only an old install's saved settings carry over.
+export function settingsMigration(hasFactoryConfig, legacy) {
+  if (!legacy) return { skip: "no old config.json" };
+  if (hasFactoryConfig)
+    return { skip: "factory already has a config.json; the old one was left alone" };
+  return migrateConfig(legacy);
+}
+
 // What the Claude status line should be once the old recorder is gone: whatever it
 // had chained, or nothing. Returns undefined when the old recorder is not installed.
 export function legacyStatusLine(settings, chain) {
@@ -95,4 +105,13 @@ export function withoutLegacyMarketplaceEntry(catalog) {
   const kept = plugins.filter((p) => p?.name !== LEGACY.name);
   if (kept.length === plugins.length) return null;
   return { ...catalog, plugins: kept };
+}
+
+// What a staged install never copies: dependency and build output (the nested host package
+// builds only when its explicit setup runs) and private operator configuration,
+// which lives in FACTORY_HOME and must not ride along if one was dropped into a checkout.
+const NOT_INSTALLED = new Set(["node_modules", ".git", "__pycache__", "dist", "hosts.json", "factory.json", "fleet-controller.json", "fleet-studio.json", ".env"]);
+export function installCopyFilter(path) {
+  const name = path.split("/").pop();
+  return !NOT_INSTALLED.has(name) && !name.startsWith(".env.");
 }

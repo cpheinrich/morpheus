@@ -87,7 +87,8 @@ const TOOL_PHASES: Record<string, Phase> = {
 const MCP_PREFIX_PHASES: ReadonlyArray<[RegExp, Phase]> = [
   [/^mcp__Claude_Browser__|^mcp__.*(playwright|browser|chrome)/i, "browser"],
   [/^mcp__Claude_Code_iOS_Simulator__|^mcp__.*simulator/i, "simulator"],
-  [/^mcp__codebase-memory/i, "read/search"],
+  [/^mcp__morpheus_context__/, "context"],
+  [/^mcp__codebase[-_]memory/i, "read/search"],
   [/^mcp__cua_/, "browser"],
 ];
 
@@ -148,6 +149,16 @@ export function classifyCommand(command: string): Phase {
   return "other";
 }
 
+const stringOr = (value: unknown, fallback: string): string => (typeof value === "string" ? value : fallback);
+
+/** A spawned agent is a review when any of its naming fields says so. */
+function agentPhase(fields: Record<string, unknown>): Phase {
+  const hint = [fields.subagent_type, fields.description, fields.agent_type, fields.name]
+    .filter((v): v is string => typeof v === "string")
+    .join(" ");
+  return REVIEW_HINT.test(hint) ? "review" : "subagent";
+}
+
 /**
  * Classify one tool call. `input` is the tool's input object as recorded; only
  * the fields named here are read.
@@ -155,15 +166,9 @@ export function classifyCommand(command: string): Phase {
 export function classifyTool(tool: string, input: unknown): Phase {
   const fields = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   if (SHELL_TOOLS.has(tool)) {
-    const command = typeof fields.command === "string" ? fields.command : typeof fields.cmd === "string" ? fields.cmd : "";
-    return classifyCommand(command);
+    return classifyCommand(typeof fields.command === "string" ? fields.command : stringOr(fields.cmd, ""));
   }
-  if (tool === "Agent" || tool === "Task" || tool === "spawn_agent") {
-    const hint = [fields.subagent_type, fields.description, fields.agent_type, fields.name]
-      .filter((v): v is string => typeof v === "string")
-      .join(" ");
-    return REVIEW_HINT.test(hint) ? "review" : "subagent";
-  }
+  if (tool === "Agent" || tool === "Task" || tool === "spawn_agent") return agentPhase(fields);
   if (tool === "Read" && typeof fields.file_path === "string" && CONTEXT_PATH.test(fields.file_path)) {
     return "context";
   }

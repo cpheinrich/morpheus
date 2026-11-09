@@ -56,9 +56,16 @@ export declare class ClaudeTranscript {
     private cost;
     constructor(options: ParseOptions);
     push(line: string): void;
+    /** The line as a JSON object; anything else is recorded as an issue. */
+    private parse;
+    /** Session id, each change of working directory and branch, and the sidechain flag. */
+    private noteContext;
     private issue;
     private assistant;
     private user;
+    private identity;
+    /** One span per tool use, timed to its result, with busy and human-wait intervals for active time. */
+    private toolSpans;
     finish(): ParsedSession;
 }
 /** Convenience for tests and small inputs: parse a whole transcript held in memory. */

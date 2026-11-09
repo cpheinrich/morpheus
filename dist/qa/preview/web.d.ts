@@ -1,3 +1,4 @@
+import { QaWebBuildIdentity } from "../comments.js";
 import { type Run } from "./ios.js";
 /**
  * `morpheus qa preview web` — comment QA on a local website (MO-26-10-06-18.13.32).
@@ -23,6 +24,8 @@ export interface WebPreviewConfig {
     path: string;
     /** Legacy namespace retained for configuration compatibility; new session identity is root-based. */
     namespace: string;
+    /** Identity of the build actually served by the dev server, when known. */
+    build?: QaWebBuildIdentity;
 }
 export type WebConfigResult = {
     ok: true;
@@ -66,6 +69,7 @@ export interface WebPreviewState {
     command?: string[];
     cwd: string;
     project: string;
+    build?: WebPreviewConfig["build"];
 }
 interface WebContext {
     root: string;

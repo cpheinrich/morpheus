@@ -19,6 +19,7 @@ import { ctoSkillDescription } from "../cto/guide.js";
 import { AGENTIC_CTO_SKILL, RESEARCH_ENGINEER_SKILL, DEVOPS_ENGINEER_SKILL } from "../cto/skill.js";
 import { productSkillDescription } from "../product/guide.js";
 import { CHIEF_PRODUCT_OFFICER_SKILL, VP_DESIGN_SKILL } from "../product/skill.js";
+import { VISUAL_DESIGN_SKILL } from "../design/visual-design.js";
 
 export interface Seed {
   name: string;
@@ -40,6 +41,9 @@ export const manifest = (s: Seed): string =>
       // exists for — and the policy cannot derive a handle on its own.
       context: { handle: s.owner },
       review: { required: true, visualEvidence: DEFAULT_VISUAL_EVIDENCE },
+      // Advisory: the check reports from day one and never blocks; a project
+      // enforces once its own baseline is within the limit.
+      complexity: { mode: "advisory" },
     },
     null,
     2,
@@ -102,9 +106,8 @@ hides the defect from every other one, and leaves the next agent to rediscover i
    **you** were on, so both only mean anything when recorded at the moment you hit the problem.
    Written afterwards by someone else, they record the wrong repository and a date days late.
 
-A pull request from outside the project needs a fork; an issue does not. Note that a fork's CI
-runs without secrets, so some checks skip and a first-time contributor's workflows need manual
-approval — that is GitHub's behaviour, not a problem with your change.`;
+A pull request from outside the project needs a fork; an issue does not. A fork's CI runs
+without secrets and a first-time contributor's workflows need approval: GitHub's behaviour.`;
 
 export const morpheusCalloutForReadme = (): string =>
   `## Built and managed with Morpheus
@@ -146,10 +149,12 @@ updates after pulls on this device?"** Do not infer consent, and never re-ask an
 The bootstrap installs from a disposable directory cloned from reviewed Morpheus \`main\`, never
 from the stale binary. \`morpheus self check\` is the read-only freshness check.
 
-Before structural code discovery, run \`morpheus codebase-memory install --check\`; if it is not
-operational, run \`morpheus codebase-memory install\` (idempotent, pinned).
-A worktree needs its own exact-checkout index even when the main clone is indexed. Installing it is
-an explicit device action, never an npm lifecycle script or a session-hook download. Detail:
+Before structural code discovery or a code change, run \`morpheus codebase-memory install --check\`
+and \`morpheus complexity install --check\`; install whichever is not operational.
+**Run \`morpheus complexity check\` after each changed function family**, inspect it by hand and
+refactor findings with \`morpheus complexity prompt\`; report it for review.
+A worktree needs its own exact-checkout index even when the main clone is indexed; installing is an
+explicit device action, never an npm lifecycle script or hook download. Detail:
 [device bootstrap](${MORPHEUS_REPO}/blob/main/docs/runbooks/device-bootstrap.md).`;
 
 /**
@@ -172,6 +177,7 @@ ${morpheusCalloutForReadme()}
 \`\`\`sh
 morpheus init status    # how far through setup this repo is
 morpheus codebase-memory install --check   # verify this device and exact checkout
+morpheus complexity install --check        # verify the pinned complexity analyzer
 morpheus pm claims      # what work is already taken
 morpheus pm claim ${s.prefix}-001   # stake a branch and start
 \`\`\`
@@ -832,6 +838,11 @@ win. Add a state, option, gate or approval step only when observed behaviour pro
 a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
 tightening one; removing one is a recorded decision.
 
+**Plan visually early.** Before implementation, show useful architecture, workflow/pipeline, async,
+state, ownership or substantial-alternative diagrams with \`morpheus skills guide visual-design\`.
+Skip trivial edits; label current/proposed and assumptions, update retained Mermaid. No approval
+pause or merge gate.
+
 **Claim work before starting it:**
 
 \`\`\`sh
@@ -847,18 +858,18 @@ its branch, test it, open a PR and merge it. A trusted author can authorize the 
 cannot waive the records or review path. Never edit or release directly from a transcript.
 
 **An external mutation ships with an exact target and proof.** Prefer a pasted one-shot CLI command
-with explicit account, project and full resource identifiers; console prose is fallback only. Put
-the caller-perspective verification probe and expected result beside the mutation. Upload, archive
-or deploy success proves delivery, not acceptance: close the item only with evidence of the
-requested user-visible result. Release jobs must depend on
+with explicit account, project and full resource identifiers (console prose is fallback only), with
+the caller-perspective verification probe and expected result beside it. Upload, archive or deploy
+success proves delivery, not acceptance: close the item only with evidence of the user-visible
+result. Release jobs must depend on
 \`cpheinrich/morpheus/.github/workflows/release-preflight.yml@main\` and check out its \`sha\` output.
 Do not extract a recurring production probe until a second project needs the same one.
 
 **Build vs. borrow — check before writing a generic module.** Before implementing anything not
-specific to this product's domain — parsing, diffing, scheduling, retries, rate limiting, fuzzy
+specific to this domain — parsing, diffing, scheduling, retries, rate limiting, fuzzy
 search, date handling, CLI plumbing — make one quick search of the registry for a maintained
 package; check its last publish and dependency footprint. **Propose, don't decide silently — in
-either direction:** an open (❗) inbox item when the choice shapes the architecture, a PR-body line
+either direction:** a ❗ inbox item when the choice shapes the architecture, a PR-body line
 ("considered X, built instead because Y") when small. **Prefer lightweight:**
 a framework pulled in to save 60 lines is worse than the 60 lines; build when the need is under
 ~100 lines, domain-specific, or every candidate is unmaintained. Record the outcome in
@@ -881,18 +892,15 @@ cannot be resumed, start a fresh one with the earlier findings. After committing
 run \`morpheus review prepare --base origin/main\`; this prints a review packet and does not
 launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
 repository access and that packet, without inheriting the author's conversation history.
-The author handles findings, follow-ups, the record, CI and merge. Do not wait for a PR monitor
-or GitHub Actions to start this review; CI checks the evidence and does not perform it.
-The author measures each turn from runner duration metadata or actual clock readings, never a
-reviewer's workload estimate. New version 2 records require timing source, milliseconds and
-evidence for every turn; compute elapsedMinutes as durationMs / 60000 without rounding.
+The author handles findings, records, CI and merge; CI and PR monitors never start this review.
+Measure each turn from runner metadata or actual clock readings, never estimates; record version 2
+timing source, milliseconds and evidence, with elapsedMinutes = durationMs / 60000.
 If no independent session can start, say so and keep the PR open with auto-merge disabled;
 never self-review.
 
 **Independent review is required before merge.** Before spawning the reviewer, read the
-[review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md): the turn
-cap, fresh-reviewer handoffs, budgets, finalization, \`humanAuthorization\`, deferrals naming a
-roadmap item, and the record fields. Record the review in the task worklog, commit
+[review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md).
+Record the review in the task worklog, commit
 it, and run \`morpheus review validate\`. Then label the PR and mark it ready, or create it labelled
 with a visible \`review-record:\` line. For CI or PR evidence, open an unlabelled draft before
 review; drafts wait instead of failing. Merge trunk rather
@@ -915,7 +923,7 @@ the rule only with \`enabled: false\` and a substantive \`reason\` in the manife
 
 **Before opening a PR**, run \`morpheus pm index\` and commit any one-time roadmap README migration
 or generated goal/request index changes. The roadmap README is static after that migration. CI runs
-the same check and will fail otherwise.
+the same check.
 
 **Append a worklog entry** to \`.agent/worklog/YYYY-MM-DD-slug.md\`, including dead ends and the
 ticket's subject \`tags\`. CI/CD and infrastructure work uses \`[engineering, devops]\` plus relevant
@@ -926,7 +934,7 @@ tags. Read matches with \`pm tagged devops\`.
 Run the tests for the files you changed and their direct dependents, filtered to them, while
 iterating. **CI runs the full suites and must pass before merge.** Run a full suite locally at most
 once per PR, and only when you touched shared code; never re-run an unchanged suite to see whether
-it passes this time. Record the focused commands, and why that scope was selected, in the PR test
+it passes this time. Record the focused commands, and why that scope, in the PR test
 plan and worklog.
 
 - **iOS:** focused tests only, with the repository's build/test wrapper and explicit test
@@ -1105,6 +1113,12 @@ Use applicable lowercase subject tags on the roadmap item and each new worklog. 
 are encouraged: CI/CD work uses both \`engineering\` and \`devops\`; add \`infrastructure\` or
 \`ios\` when relevant. Find explicit matches with \`morpheus pm tagged engineering devops --json\`.
 Older untagged history remains valid and unclassified; do not infer its subject or mass-rewrite it.
+
+**Link relevant records.** In new roadmap items and worklogs, link the decisions, runbooks,
+prior attempts or follow-up items that explain or constrain the work. Use the existing roadmap,
+PR and issue fields for those relationships. Use an explicit \`Supersedes: [prior decision](...)\`
+link when replacing a decision.
+
 `;
 
 export const inboxArchiveReadme = (): string => `# Inbox archive
@@ -1936,4 +1950,19 @@ reuse the shared owner, validate responsive/accessibility states, and inspect fi
 Morpheus holds the reviewed copy and this installed CLI prints it.
 
 If \`morpheus product guide vp-design\` is unknown, run \`morpheus self update\`.
+`;
+
+/** Early planning stays visible even before the installed canonical guide is read. */
+export const visualDesignPointerSkill = (): string => `${VISUAL_DESIGN_SKILL.slice(0, VISUAL_DESIGN_SKILL.indexOf("\n---", 4) + 4)}
+
+# Visual design planning
+
+Before implementation, sketch and show relationships when they help explain architecture,
+workflows/pipelines, async handoffs, state transitions, ownership or substantial alternatives.
+Skip trivial self-contained edits. Run \`morpheus skills guide visual-design\` and follow it;
+Morpheus holds the reviewed procedure and the installed CLI prints it.
+
+Distinguish current from proposed and label assumptions. Render in the conversation or a preview;
+use fenced Mermaid for durable docs and update retained diagrams after material design changes.
+This adds no approval pause or merge gate. If the guide is unknown, run \`morpheus self update\`.
 `;

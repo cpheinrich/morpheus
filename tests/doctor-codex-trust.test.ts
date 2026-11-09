@@ -232,14 +232,16 @@ describe("codexTrustReport and its findings", () => {
     expect(report.hooks!.map((h) => [h.event, h.trust])).toEqual([
       ["SessionStart", "modified"],
       ["PostToolUse", "untrusted"],
+      ["UserPromptSubmit", "untrusted"],
       ["PreToolUse", "untrusted"],
     ]);
     const [finding, ...rest] = codexTrustFindings(report);
     expect(rest).toEqual([]);
     expect(finding!.message).toBe(
-      `Codex will not run 3 of 3 hooks in ${hooksPath()}. Open Codex in ${main} and run /hooks; trust: ` +
+      `Codex will not run 4 of 4 hooks in ${hooksPath()}. Open Codex in ${main} and run /hooks; trust: ` +
         "SessionStart session shim (.morpheus/session-start.sh) (changed since it was trusted); " +
-        "PostToolUse read hook (context record-read); PreToolUse CI poll guard.",
+        "PostToolUse read hook (context record-read); UserPromptSubmit task context hook (context task-prompt); " +
+        "PreToolUse CI poll guard.",
     );
   });
 
@@ -297,7 +299,12 @@ describe("codexTrustReport and its findings", () => {
     await trust(hooks.map((h) => entry(h.key, h.hash!)), { [link]: "trusted" });
     const report = await codexTrustReport(main, home);
     expect(report.projectTrusted).toBe(true);
-    expect(report.hooks!.map((h) => h.trust)).toEqual(["trusted", "trusted", "trusted"]);
+    expect(report.hooks!.map((h) => [h.event, h.trust])).toEqual([
+      ["SessionStart", "trusted"],
+      ["PostToolUse", "trusted"],
+      ["UserPromptSubmit", "trusted"],
+      ["PreToolUse", "trusted"],
+    ]);
     expect(codexTrustFindings(report)).toEqual([]);
     // Stale under the alias is still stale.
     await trust([entry(hooks[0]!.key, "sha256:stale")], { [link]: "trusted" });
@@ -348,10 +355,8 @@ describe("codexTrustReport and its findings", () => {
 
   it("reports a disabled hook separately from an untrusted one", async () => {
     const { hooks } = listCodexHooks(JSON.parse(codexHooksFile()), hooksPath());
-    await trust([
-      ...hooks.slice(0, 2).map((h) => entry(h.key, h.hash!)),
-      `[hooks.state."${hooks[2]!.key}"]\ntrusted_hash = "${hooks[2]!.hash}"\nenabled = false\n`,
-    ]);
+    const guard = hooks.find(hook => hook.event === "PreToolUse")!;
+    await trust(hooks.map(hook => entry(hook.key, hook.hash!) + (hook === guard ? "enabled = false\n" : "")));
     const findings = codexTrustFindings(await codexTrustReport(main, home));
     expect(findings.map((f) => f.message)).toEqual([
       `Codex has 1 hook in ${hooksPath()} switched off in /hooks: PreToolUse CI poll guard. ` +

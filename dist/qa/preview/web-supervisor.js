@@ -24,21 +24,29 @@ function endGroup(child) {
         kill("SIGTERM");
     });
 }
+/** Spawns the dev server in its own process group when this preview owns it. */
+function startDevServer(state) {
+    if (!state.spawned || !state.command)
+        return undefined;
+    const [command, ...args] = state.command;
+    const child = spawn(command, args, { cwd: resolve(state.root, state.cwd), stdio: "inherit", detached: true, env: process.env });
+    // A missing binary emits "error", not "exit"; unhandled, it would crash the supervisor silently.
+    child.once("error", (error) => { console.error(`dev server could not start: ${error.message}; ending the preview.`); process.exit(1); });
+    return child;
+}
 async function main([stateFile]) {
     if (!stateFile)
         throw new Error("usage: web-supervisor <state.json>");
     const state = JSON.parse(readFileSync(stateFile, "utf8"));
-    let child;
-    if (state.spawned && state.command) {
-        const [command, ...args] = state.command;
-        child = spawn(command, args, { cwd: resolve(state.root, state.cwd), stdio: "inherit", detached: true, env: process.env });
-        // A missing binary emits "error", not "exit"; unhandled, it would crash the supervisor silently.
-        child.once("error", (error) => { console.error(`dev server could not start: ${error.message}; ending the preview.`); process.exit(1); });
-    }
+    const child = startDevServer(state);
     let server;
     try {
         const publicOrigin = frontedSite(state);
-        server = await startWebQaServer({ root: state.root, project: state.project, upstream: state.upstream, port: state.port, ...(publicOrigin ? { publicOrigin } : {}) });
+        server = await startWebQaServer({
+            root: state.root, project: state.project, upstream: state.upstream, port: state.port,
+            ...(publicOrigin ? { publicOrigin } : {}),
+            ...(state.build ? { build: state.build } : {}),
+        });
     }
     catch (error) {
         // The dev server runs in its own process group, so nothing else would end it if the overlay
@@ -69,17 +77,20 @@ async function main([stateFile]) {
     }
     for (;;) {
         await sleep(5000);
-        try {
-            const current = JSON.parse(readFileSync(stateFile, "utf8"));
-            if (!Number.isFinite(current.expiresAt) || Date.now() >= current.expiresAt || current.port !== state.port) {
-                await stop(0);
-                return;
-            }
-        }
-        catch {
+        if (!stillCurrent(stateFile, state)) {
             await stop(0);
             return;
         }
+    }
+}
+/** The state file still exists, has not expired and still names this port. */
+function stillCurrent(stateFile, state) {
+    try {
+        const current = JSON.parse(readFileSync(stateFile, "utf8"));
+        return Number.isFinite(current.expiresAt) && Date.now() < current.expiresAt && current.port === state.port;
+    }
+    catch {
+        return false;
     }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -165,6 +165,61 @@ export interface CodebaseMemoryOptions {
  * agent client names it, automatic indexing and watching are enabled, and the
  * exact checkout (worktrees included) has a ready index at its current HEAD.
  */
+
+/** Automatic indexing and watching, each null when the config could not be listed. */
+async function watchSettings(runner: CodebaseMemoryCommandRunner, invocation: Invocation, cwd: string, issues: string[]): Promise<{ autoIndex: boolean | null; autoWatch: boolean | null }> {
+  const configResult = await invoke(runner, invocation, ["config", "list"], cwd);
+  const autoIndex = configResult.code === 0 ? enabled(configResult.stdout, "auto_index") : null;
+  const autoWatch = configResult.code === 0 ? enabled(configResult.stdout, "auto_watch") : null;
+  if (autoIndex !== true) issues.push("automatic indexing is not enabled");
+  if (autoWatch !== true) issues.push("background index watching is not enabled");
+  return { autoIndex, autoWatch };
+}
+
+/** This exact checkout's index and whether it is at the current HEAD (null when that cannot be verified). */
+async function checkoutIndex(runner: CodebaseMemoryCommandRunner, invocation: Invocation, cwd: string, codebaseIssues: string[]) {
+  const canonicalRoot = await realpath(cwd).catch(() => cwd);
+  const projectsResult = await invoke(
+    runner,
+    invocation,
+    ["cli", "--json", "list_projects", "--limit", "50000"],
+    cwd,
+  );
+  const projects = projectsResult.code === 0
+    ? structured<Projects>(projectsResult.stdout)?.projects ?? []
+    : [];
+  const project = projects.find((candidate) => candidate.root_path === canonicalRoot);
+  if (!project) codebaseIssues.push("this exact checkout has no codebase-memory index");
+
+  let projectFresh: boolean | null = null;
+  if (project) {
+    const [statusResult, headResult] = await Promise.all([
+      invoke(
+        runner,
+        invocation,
+        ["cli", "--json", "index_status", "--project", project.name, "--verbose"],
+        cwd,
+      ),
+      runner("git", ["rev-parse", "HEAD"], cwd),
+    ]);
+    const status = statusResult.code === 0
+      ? structured<IndexStatus>(statusResult.stdout)
+      : null;
+    if (!status || status.status !== "ready") {
+      codebaseIssues.push(`the index for ${project.name} is not ready`);
+    } else if (headResult.code !== 0 || !status.git?.head_sha) {
+      projectFresh = null;
+      codebaseIssues.push("the index exists, but its git freshness could not be verified");
+    } else {
+      projectFresh = status.git.head_sha === headResult.stdout.trim();
+      if (!projectFresh) {
+        codebaseIssues.push("the index does not match this checkout's current HEAD");
+      }
+    }
+  }
+  return { project, projectFresh };
+}
+
 export async function codebaseMemoryStatus(
   root: string,
   opts: CodebaseMemoryOptions = {},
@@ -206,56 +261,14 @@ export async function codebaseMemoryStatus(
       `codebase-memory-mcp ${version || "unknown"} does not match Morpheus's reviewed ${CODEBASE_MEMORY_VERSION} pin`,
     );
   }
-  const configResult = await invoke(runner, invocation, ["config", "list"], cwd);
-  const autoIndex = configResult.code === 0 ? enabled(configResult.stdout, "auto_index") : null;
-  const autoWatch = configResult.code === 0 ? enabled(configResult.stdout, "auto_watch") : null;
-  if (autoIndex !== true) codebaseIssues.push("automatic indexing is not enabled");
-  if (autoWatch !== true) codebaseIssues.push("background index watching is not enabled");
+  const { autoIndex, autoWatch } = await watchSettings(runner, invocation, cwd, codebaseIssues);
 
   const clients = await configuredClients(opts.home ?? homedir());
   if (!clients.length) {
     codebaseIssues.push("no supported local agent client is configured for the MCP server");
   }
 
-  const canonicalRoot = await realpath(cwd).catch(() => cwd);
-  const projectsResult = await invoke(
-    runner,
-    invocation,
-    ["cli", "--json", "list_projects", "--limit", "50000"],
-    cwd,
-  );
-  const projects = projectsResult.code === 0
-    ? structured<Projects>(projectsResult.stdout)?.projects ?? []
-    : [];
-  const project = projects.find((candidate) => candidate.root_path === canonicalRoot);
-  if (!project) codebaseIssues.push("this exact checkout has no codebase-memory index");
-
-  let projectFresh: boolean | null = null;
-  if (project) {
-    const [statusResult, headResult] = await Promise.all([
-      invoke(
-        runner,
-        invocation,
-        ["cli", "--json", "index_status", "--project", project.name, "--verbose"],
-        cwd,
-      ),
-      runner("git", ["rev-parse", "HEAD"], cwd),
-    ]);
-    const status = statusResult.code === 0
-      ? structured<IndexStatus>(statusResult.stdout)
-      : null;
-    if (!status || status.status !== "ready") {
-      codebaseIssues.push(`the index for ${project.name} is not ready`);
-    } else if (headResult.code !== 0 || !status.git?.head_sha) {
-      projectFresh = null;
-      codebaseIssues.push("the index exists, but its git freshness could not be verified");
-    } else {
-      projectFresh = status.git.head_sha === headResult.stdout.trim();
-      if (!projectFresh) {
-        codebaseIssues.push("the index does not match this checkout's current HEAD");
-      }
-    }
-  }
+  const { project, projectFresh } = await checkoutIndex(runner, invocation, cwd, codebaseIssues);
 
   return {
     available: true,

@@ -44,9 +44,10 @@ export interface RepairCheckProof {
         successorRun: Run;
     }[];
 }
-/** Read-only cancellation exception; all other conclusions retain the strict gate. */
-export declare function verifyRepairChecks(api: GitHubApi, name: string, subject: RepairCheckSubject, baseRepository?: {
+type Base = {
     id: number;
     full_name: string;
-} | null): Promise<RepairCheckProof>;
+};
+/** Read-only cancellation exception; all other conclusions retain the strict gate. */
+export declare function verifyRepairChecks(api: GitHubApi, name: string, subject: RepairCheckSubject, baseRepository?: Base | null): Promise<RepairCheckProof>;
 export {};

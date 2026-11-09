@@ -148,6 +148,51 @@ function fuller(candidate, incumbent) {
         return candidate.requests > incumbent.requests;
     return candidate.toolCalls > incumbent.toolCalls;
 }
+async function readCodexCopies(options, home, roots, from, result) {
+    const codex = new Map();
+    const locations = [
+        [options.codexDir ?? join(home, ".codex", "sessions"), "codex-sessions"],
+        [options.codexArchivedDir ?? join(home, ".codex", "archived_sessions"), "codex-archived"],
+    ];
+    for (const [dir, source] of locations) {
+        const files = [];
+        await walkRollouts(dir, files);
+        for (const path of files.sort()) {
+            if (!(await modifiedSince(path, from)))
+                continue;
+            result.files++;
+            const parsed = await readTranscript(new CodexTranscript({ file: path, roots, home, source }), path, result.issues);
+            if (!parsed)
+                continue;
+            result.issues.push(...parsed.issues);
+            if (parsed.session)
+                keepFullerCopy(codex, parsed);
+        }
+    }
+    return codex;
+}
+/** Streams a transcript into its parser; an unreadable file is an issue and yields null. */
+async function readTranscript(t, path, issues) {
+    try {
+        await streamLines(path, (l) => t.push(l));
+    }
+    catch (error) {
+        issues.push({ file: path, line: null, message: `unreadable: ${error.message}` });
+        return null;
+    }
+    return t.finish();
+}
+/** Counts each copy of a Codex session and keeps the fullest. */
+function keepFullerCopy(codex, parsed) {
+    const seen = codex.get(parsed.session.sessionId);
+    if (!seen)
+        codex.set(parsed.session.sessionId, { parsed, copies: 1 });
+    else {
+        seen.copies++;
+        if (fuller(parsed.session, seen.parsed.session))
+            seen.parsed = parsed;
+    }
+}
 /**
  * Read every transcript under the two providers' directories and return
  * session and span rows. A file not modified since `since` cannot hold a
@@ -171,52 +216,13 @@ export async function extract(options = {}) {
         if (!(await modifiedSince(f.path, from)))
             continue;
         result.files++;
-        const t = new ClaudeTranscript({ file: f.path, subagent: f.subagent, roots, home });
-        try {
-            await streamLines(f.path, (l) => t.push(l));
-        }
-        catch (error) {
-            result.issues.push({ file: f.path, line: null, message: `unreadable: ${error.message}` });
-            continue;
-        }
-        accept(t.finish());
+        const parsed = await readTranscript(new ClaudeTranscript({ file: f.path, subagent: f.subagent, roots, home }), f.path, result.issues);
+        if (parsed)
+            accept(parsed);
     }
     // A session can exist in both places — archived, then resumed — so copies are collected by id
     // before any is accepted, and each session is counted once.
-    const codex = new Map();
-    const locations = [
-        [options.codexDir ?? join(home, ".codex", "sessions"), "codex-sessions"],
-        [options.codexArchivedDir ?? join(home, ".codex", "archived_sessions"), "codex-archived"],
-    ];
-    for (const [dir, source] of locations) {
-        const files = [];
-        await walkRollouts(dir, files);
-        for (const path of files.sort()) {
-            if (!(await modifiedSince(path, from)))
-                continue;
-            result.files++;
-            const t = new CodexTranscript({ file: path, roots, home, source });
-            try {
-                await streamLines(path, (l) => t.push(l));
-            }
-            catch (error) {
-                result.issues.push({ file: path, line: null, message: `unreadable: ${error.message}` });
-                continue;
-            }
-            const parsed = t.finish();
-            result.issues.push(...parsed.issues);
-            if (!parsed.session)
-                continue;
-            const seen = codex.get(parsed.session.sessionId);
-            if (!seen)
-                codex.set(parsed.session.sessionId, { parsed, copies: 1 });
-            else {
-                seen.copies++;
-                if (fuller(parsed.session, seen.parsed.session))
-                    seen.parsed = parsed;
-            }
-        }
-    }
+    const codex = await readCodexCopies(options, home, roots, from, result);
     for (const { parsed, copies } of codex.values()) {
         const kept = result.sessions.length;
         accept({ ...parsed, issues: [] });

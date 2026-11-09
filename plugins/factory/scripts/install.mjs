@@ -11,7 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join, basename, dirname } from "node:path";
+import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 import {
@@ -19,8 +19,9 @@ import {
   findHelper,
   helperCandidates,
   legacyPaths,
+  installCopyFilter,
   legacyStatusLine,
-  migrateConfig,
+  settingsMigration,
   withoutLegacyMarketplaceEntry,
 } from "./install-lib.mjs";
 const source = fileURLToPath(new URL("..", import.meta.url));
@@ -95,11 +96,12 @@ async function legacyPresent(catalog) {
 }
 async function migrateLegacySettings() {
   await step("settings", async () => {
-    const old = await readJSON(legacy.config, null);
-    if (!old) return "no old config.json";
-    if (await exists(join(factoryHome, "config.json")))
-      return "factory already has a config.json; the old one was left alone";
-    const { config, dropped } = migrateConfig(old);
+    const plan = settingsMigration(
+      await exists(join(factoryHome, "config.json")),
+      await readJSON(legacy.config, null),
+    );
+    if (plan.skip) return plan.skip;
+    const { config, dropped } = plan;
     const { configWrite } = await import(
       pathToFileURL(join(destination, "src", "store.mjs")).href
     );
@@ -126,8 +128,17 @@ async function migrateLegacySettings() {
 async function removeLegacy(catalogName) {
   if (withClaude) {
     await step("Claude plugin", () => {
-      quiet("claude", ["plugin", "uninstall", LEGACY.claudePlugin]);
-      quiet("claude", ["plugin", "marketplace", "remove", LEGACY.claudeMarketplace]);
+      for (const args of [
+        ["plugin", "uninstall", LEGACY.claudePlugin],
+        ["plugin", "marketplace", "remove", LEGACY.claudeMarketplace],
+      ]) {
+        try {
+          quiet("claude", args);
+        } catch (e) {
+          if (!/not installed|not found|unknown|does not exist/i.test(String(e.stderr ?? e.message)))
+            throw e;
+        }
+      }
       return `uninstalled ${LEGACY.claudePlugin} and its marketplace`;
     });
   }
@@ -155,13 +166,8 @@ async function removeLegacy(catalogName) {
   );
 }
 let migrating = false;
-try {
-  if (process.platform !== "darwin")
-    throw new Error("This release is supported on macOS execution hosts only.");
-  // Fail before changing user state if the supported marketplace helper is missing.
-  const helper = await findHelper(
-    helperCandidates(codexHome, process.env.CODEX_PLUGIN_CREATOR),
-  );
+// The personal marketplace catalog, refusing one whose name or factory entry is not ours.
+async function readCatalog() {
   let catalog = null;
   try {
     catalog = JSON.parse(await readFile(marketplace, "utf8"));
@@ -179,17 +185,16 @@ try {
     throw new Error(
       "Existing factory marketplace entry has a different source. Resolve it explicitly before installing.",
     );
+  return catalog;
+}
+// Copy, install, check and test the package in a staging directory before anything is replaced.
+async function stageVerified() {
   const staged = join(temp, "factory");
-  await cp(source, staged, {
-    recursive: true,
-    filter: (path) =>
-      !["node_modules", ".git", "__pycache__"].includes(basename(path)),
-  });
+  await cp(source, staged, { recursive: true, filter: installCopyFilter });
   run(
     "pnpm",
     [
       "install",
-      "--ignore-workspace",
       "--frozen-lockfile",
       "--config.node-linker=hoisted",
     ],
@@ -199,19 +204,9 @@ try {
   );
   run(process.execPath, ["scripts/check.mjs"], { cwd: staged });
   run("pnpm", ["test"], { cwd: staged });
-  const { probe, probeClaude } = await import(
-    pathToFileURL(join(staged, "scripts", "probe.mjs")).href
-  );
-  // Use the official helper to update only the requested personal marketplace entry.
-  // It also creates a throwaway scaffold; the reviewed package supplies the installed files.
-  run("python3", [
-    helper,
-    "factory",
-    "--path",
-    join(temp, "scaffold"),
-    "--with-marketplace",
-    "--force",
-  ]);
+  return staged;
+}
+async function stampInstallation(staged) {
   const manifestPath = join(staged, ".codex-plugin", "plugin.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   const installationId = `codex.${Date.now()}`;
@@ -221,6 +216,33 @@ try {
     join(staged, "src", "installation.mjs"),
     `export const installationId = ${JSON.stringify(installationId)};\n`,
   );
+}
+// Register and verify the new copy; the caller restores the previous copy on failure.
+async function activate(catalogName, { probe, probeClaude }) {
+  const installed = JSON.parse(
+    execFileSync(
+      "codex",
+      ["plugin", "add", `factory@${catalogName}`, "--json"],
+      { encoding: "utf8" },
+    ),
+  );
+  await probe(installed.installedPath);
+  console.log(`Verified installed MCP tools at ${installed.installedPath}`);
+  // The old name's status line must be gone before ours installs, or ours would chain
+  // the dead recorder; so its settings migrate between the Codex and Claude halves.
+  if (migrating) await migrateLegacySettings();
+  if (withClaude) {
+    await probeClaude(destination);
+    installClaudePlugin(join(destination, "claude-plugin"));
+    run(process.execPath, [
+      join(destination, "scripts", "bridge.mjs"),
+      "statusline",
+      "install",
+    ]);
+    console.log("Registered the Claude Code plugin and status-line recorder.");
+  }
+}
+async function swapInstall(staged, catalog, probes) {
   await mkdir(dirname(destination), { recursive: true });
   const next = destination + ".next-" + process.pid;
   await cp(staged, next, { recursive: true, dereference: true });
@@ -235,28 +257,7 @@ try {
   migrating = await legacyPresent(catalog);
   try {
     await rename(next, destination);
-    const installed = JSON.parse(
-      execFileSync(
-        "codex",
-        ["plugin", "add", `factory@${catalogName}`, "--json"],
-        { encoding: "utf8" },
-      ),
-    );
-    await probe(installed.installedPath);
-    console.log(`Verified installed MCP tools at ${installed.installedPath}`);
-    // The old name's status line must be gone before ours installs, or ours would chain
-    // the dead recorder; so its settings migrate between the Codex and Claude halves.
-    if (migrating) await migrateLegacySettings();
-    if (withClaude) {
-      await probeClaude(destination);
-      installClaudePlugin(join(destination, "claude-plugin"));
-      run(process.execPath, [
-        join(destination, "scripts", "bridge.mjs"),
-        "statusline",
-        "install",
-      ]);
-      console.log("Registered the Claude Code plugin and status-line recorder.");
-    }
+    await activate(catalogName, probes);
   } catch (e) {
     await rm(destination, { recursive: true, force: true });
     try {
@@ -267,9 +268,37 @@ try {
   await rm(previous, { recursive: true, force: true });
   // Only now, with factory committed, is the old plugin removed.
   if (migrating) await removeLegacy(catalogName);
-  console.log(
-    `Installed a standalone copy at ${destination}. Routing remains at its existing setting (off on first install). Start a new Codex task (and Claude session) to load the plugin and review/trust its hooks. Then run doctor and explicitly enable manual or automatic mode.`,
+}
+async function install() {
+  if (process.platform !== "darwin")
+    throw new Error("This release is supported on macOS execution hosts only.");
+  // Fail before changing user state if the supported marketplace helper is missing.
+  const helper = await findHelper(
+    helperCandidates(codexHome, process.env.CODEX_PLUGIN_CREATOR),
   );
+  const catalog = await readCatalog();
+  const staged = await stageVerified();
+  const probes = await import(
+    pathToFileURL(join(staged, "scripts", "probe.mjs")).href
+  );
+  // Use the official helper to update only the requested personal marketplace entry.
+  // It also creates a throwaway scaffold; the reviewed package supplies the installed files.
+  run("python3", [
+    helper,
+    "factory",
+    "--path",
+    join(temp, "scaffold"),
+    "--with-marketplace",
+    "--force",
+  ]);
+  await stampInstallation(staged);
+  await swapInstall(staged, catalog, probes);
+  console.log(
+    `Installed a standalone copy at ${destination}. Factory is experimental; routing remains at this machine's saved setting (off on first install). Start a new Codex task (and Claude session) to load the plugin and review/trust its hooks. Then run doctor and explicitly enable model-directed mode with \`enable manual\` (\`automatic\` remains a compatibility alias).`,
+  );
+}
+try {
+  await install();
 } catch (e) {
   console.error(e.message);
   if (migrating)

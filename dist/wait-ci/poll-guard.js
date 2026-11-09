@@ -26,67 +26,80 @@ const SEPARATORS = new Set([";", "&", "|", "(", ")", "\n", "`"]);
  * is where the polls in the transcripts sit.
  */
 export function simpleCommands(command) {
-    const commands = [];
-    let words = [];
-    let word = "";
-    let inWord = false;
-    const endWord = () => {
-        if (inWord)
-            words.push(word);
-        word = "";
-        inWord = false;
-    };
-    const endCommand = () => {
-        endWord();
-        if (words.length > 0)
-            commands.push(words);
-        words = [];
-    };
-    for (let i = 0; i < command.length; i++) {
-        const c = command[i];
-        if (c === "'") {
-            const close = command.indexOf("'", i + 1);
-            const end = close < 0 ? command.length : close;
-            word += command.slice(i + 1, end);
-            inWord = true;
-            i = end;
-        }
-        else if (c === '"') {
-            inWord = true;
-            for (i++; i < command.length && command[i] !== '"'; i++) {
-                if (command[i] === "\\" && i + 1 < command.length)
-                    i++;
-                word += command[i];
-            }
-        }
-        else if (c === "\\") {
-            if (command[i + 1] !== "\n") {
-                word += command[i + 1] ?? "";
-                inWord = true;
-            }
-            i++;
-        }
-        else if (c === "$" && command[i + 1] === "(") {
-            endCommand();
-            i++;
-        }
-        else if (SEPARATORS.has(c)) {
-            endCommand();
-        }
-        else if (c === " " || c === "\t" || c === "\r") {
-            endWord();
-        }
-        else if (c === "#" && !inWord) {
-            const newline = command.indexOf("\n", i);
-            i = (newline < 0 ? command.length : newline) - 1;
-        }
-        else {
-            word += c;
-            inWord = true;
-        }
+    const splitter = new CommandSplitter(command);
+    for (let i = 0; i < command.length; i++)
+        i = splitter.step(i);
+    splitter.endCommand();
+    return splitter.commands;
+}
+/** Word and command boundaries for {@link simpleCommands}; each step consumes one token and returns its last index. */
+class CommandSplitter {
+    command;
+    commands = [];
+    words = [];
+    word = "";
+    inWord = false;
+    constructor(command) {
+        this.command = command;
     }
-    endCommand();
-    return commands;
+    step(i) {
+        const c = this.command[i];
+        if (c === "'")
+            return this.singleQuoted(i);
+        if (c === '"')
+            return this.doubleQuoted(i);
+        if (c === "\\")
+            return this.escaped(i);
+        if (c === "$" && this.command[i + 1] === "(") {
+            this.endCommand();
+            return i + 1;
+        }
+        if (SEPARATORS.has(c))
+            this.endCommand();
+        else if (c === " " || c === "\t" || c === "\r")
+            this.endWord();
+        else if (c === "#" && !this.inWord) {
+            const newline = this.command.indexOf("\n", i);
+            return (newline < 0 ? this.command.length : newline) - 1;
+        }
+        else
+            this.append(c);
+        return i;
+    }
+    append(text) { this.word += text; this.inWord = true; }
+    singleQuoted(i) {
+        const close = this.command.indexOf("'", i + 1);
+        const end = close < 0 ? this.command.length : close;
+        this.append(this.command.slice(i + 1, end));
+        return end;
+    }
+    doubleQuoted(i) {
+        const command = this.command;
+        this.inWord = true;
+        for (i++; i < command.length && command[i] !== '"'; i++) {
+            if (command[i] === "\\" && i + 1 < command.length)
+                i++;
+            this.word += command[i];
+        }
+        return i;
+    }
+    escaped(i) {
+        if (this.command[i + 1] !== "\n")
+            this.append(this.command[i + 1] ?? "");
+        return i + 1;
+    }
+    endWord() {
+        if (this.inWord)
+            this.words.push(this.word);
+        this.word = "";
+        this.inWord = false;
+    }
+    endCommand() {
+        this.endWord();
+        if (this.words.length > 0)
+            this.commands.push(this.words);
+        this.words = [];
+    }
 }
 /** Words that run the next word as the command. */
 const PREFIXES = new Set(["command", "builtin", "exec", "time", "nohup", "env", "do", "then", "else", "elif", "while", "until", "if", "!", "{"]);
@@ -130,7 +143,14 @@ export function shellWord(value) {
     return /^[\w./:@%+=,-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
 }
 function target(sub, args, cwd) {
-    const spec = SPECS[sub];
+    const scanned = scanGhArgs(SPECS[sub], args);
+    if (!scanned)
+        return null;
+    return sub === "pr checks" ? prTarget(scanned.positional, scanned.repo, cwd) : runTarget(sub, scanned.positional, scanned.repo);
+}
+const repoFlag = (r) => (r ? ` --repo ${shellWord(r)}` : "");
+/** The `--repo` value and first positional argument; null when an exempt flag makes the call not a poll. */
+function scanGhArgs(spec, args) {
     let repo;
     let positional;
     for (let i = 0; i < args.length; i++) {
@@ -154,21 +174,23 @@ function target(sub, args, cwd) {
         if (!arg.startsWith("-") && positional === undefined)
             positional = arg;
     }
-    const repoFlag = (r) => (r ? ` --repo ${shellWord(r)}` : "");
-    if (sub === "pr checks") {
-        let pr = positional?.replace(/^#/, "");
-        const url = pr ? PR_URL.exec(pr) : null;
-        if (url) {
-            repo = url[1];
-            pr = url[2];
-        }
-        return {
-            kind: "pr",
-            key: `pr|${repo ?? ""}|${pr ?? `@${cwd}`}`,
-            display: `gh pr checks${pr ? ` ${pr}` : ""}${repoFlag(repo)}`,
-            waitCommand: `morpheus wait-ci${pr ? ` ${shellWord(pr)}` : ""}${repoFlag(repo)}`,
-        };
+    return { repo, positional };
+}
+function prTarget(positional, repo, cwd) {
+    let pr = positional?.replace(/^#/, "");
+    const url = pr ? PR_URL.exec(pr) : null;
+    if (url) {
+        repo = url[1];
+        pr = url[2];
     }
+    return {
+        kind: "pr",
+        key: `pr|${repo ?? ""}|${pr ?? `@${cwd}`}`,
+        display: `gh pr checks${pr ? ` ${pr}` : ""}${repoFlag(repo)}`,
+        waitCommand: `morpheus wait-ci${pr ? ` ${shellWord(pr)}` : ""}${repoFlag(repo)}`,
+    };
+}
+function runTarget(sub, positional, repo) {
     // Without a run id the only exact replacement is unknown: `--job` alone
     // names a job, and no argument at all is gh's interactive picker.
     if (positional === undefined)
@@ -278,28 +300,35 @@ export function parseState(raw, sessionId) {
         return empty;
     }
 }
+/** The Bash command, session and directory a hook payload names; null for anything else. */
+function bashCall(input, fallbackCwd) {
+    let payload;
+    try {
+        payload = JSON.parse(input);
+    }
+    catch {
+        return null;
+    }
+    if (!payload || typeof payload !== "object")
+        return null;
+    if (payload.tool_name !== undefined && payload.tool_name !== "Bash")
+        return null;
+    const command = payload.tool_input?.command;
+    const sessionId = payload.session_id;
+    if (typeof command !== "string" || typeof sessionId !== "string" || sessionId === "")
+        return null;
+    return { command, sessionId, cwd: typeof payload.cwd === "string" && payload.cwd ? payload.cwd : fallbackCwd };
+}
 /**
  * One PreToolUse invocation. Anything it cannot read — no session id, no
  * repository, an unwritable state file — allows the call: the guard steers,
  * it must never be the reason a session cannot run a command.
  */
 export async function runPollGuard(input, deps, fallbackCwd = process.cwd()) {
-    let payload;
-    try {
-        payload = JSON.parse(input);
-    }
-    catch {
+    const call = bashCall(input, fallbackCwd);
+    if (!call)
         return { exitCode: 0 };
-    }
-    if (!payload || typeof payload !== "object")
-        return { exitCode: 0 };
-    if (payload.tool_name !== undefined && payload.tool_name !== "Bash")
-        return { exitCode: 0 };
-    const command = payload.tool_input?.command;
-    const sessionId = payload.session_id;
-    if (typeof command !== "string" || typeof sessionId !== "string" || sessionId === "")
-        return { exitCode: 0 };
-    const cwd = typeof payload.cwd === "string" && payload.cwd ? payload.cwd : fallbackCwd;
+    const { command, sessionId, cwd } = call;
     const targets = pollTargets(command, cwd);
     if (targets.length === 0)
         return { exitCode: 0 };

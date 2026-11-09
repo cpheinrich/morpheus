@@ -158,7 +158,11 @@ describe("release-preflight.yml", () => {
 
     expect(call).toBeDefined();
     expect(wf.on).toHaveProperty("workflow_dispatch");
-    expect(call?.inputs).toBeUndefined();
+    // One opt-in and no caller-selected source: the source is always github.sha.
+    expect(call?.inputs).toEqual({
+      "allow-pinned-source": expect.objectContaining({ type: "boolean", default: false }),
+    });
+    expect((wf.on as { workflow_dispatch?: unknown }).workflow_dispatch ?? null).toBeNull();
     expect(call?.secrets).toBeUndefined();
     expect(call?.outputs?.sha?.value).toBe("${{ jobs.verify.outputs.sha }}");
     expect(wf.permissions).toEqual({ contents: "read", "pull-requests": "read" });
@@ -176,17 +180,21 @@ describe("release-preflight.yml", () => {
     });
   });
 
-  it("pins clean current main to an exact merged pull request", async () => {
+  it("pins a clean source contained in main to an exact merged pull request", async () => {
     const steps = ((await read("release-preflight.yml")) as ReleasePreflight).jobs?.verify
       ?.steps ?? [];
     const verify = steps.find((step) => step.name === "Verify reviewed release source");
     const script = String(verify?.run);
 
     expect(verify?.env?.GH_TOKEN).toBe("${{ github.token }}");
+    expect(verify?.env?.ALLOW_PINNED_SOURCE).toBe("${{ inputs.allow-pinned-source }}");
     expect(script).toContain('GITHUB_REF" != "refs/heads/main');
     expect(script).toContain("git rev-parse HEAD");
     expect(script).toContain("git status --porcelain --untracked-files=all");
     expect(script).toContain("/git/ref/heads/main");
+    expect(script).toContain("/compare/${EXPECTED_SHA}...${main_sha}?per_page=1");
+    expect(script).toContain('"$ancestry" != "ahead"');
+    expect(script).toContain('"${ALLOW_PINNED_SOURCE:-}" != "true"');
     expect(script).toContain("/commits/${EXPECTED_SHA}/pulls");
     expect(script).toContain("[.number, .base.ref, .merge_commit_sha] | @tsv");
     expect(script).toContain('candidate_base" = "main');
@@ -194,75 +202,210 @@ describe("release-preflight.yml", () => {
     expect(script).toContain('echo "sha=$EXPECTED_SHA"');
   });
 
-  it("rejects dirty and direct-push fixtures before a release can run", async () => {
-    const root = await mkdtemp(join(tmpdir(), "morpheus-release-preflight-"));
-    const repo = join(root, "repo");
-    const bin = join(root, "bin");
-    const output = join(root, "output");
+  describe("executes the verification script against a fake GitHub API", () => {
+    type Fixture = {
+      main?: string;
+      compare?: string;
+      prSha?: string | null;
+      dirty?: boolean;
+      ref?: string;
+      /** The requested source when it is not the checked-out commit. */
+      expected?: string;
+      /** ALLOW_PINNED_SOURCE as GitHub renders the input; undefined is a dispatch (no inputs). */
+      allow?: string;
+    };
 
-    try {
-      await mkdir(repo, { recursive: true });
-      await mkdir(bin, { recursive: true });
-      await execFileAsync("git", ["init", "--quiet", "--initial-branch=main"], { cwd: repo });
-      await execFileAsync("git", ["config", "user.name", "Morpheus Test"], { cwd: repo });
-      await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: repo });
-      await writeFile(join(repo, "source.txt"), "reviewed\n", "utf8");
-      await execFileAsync("git", ["add", "source.txt"], { cwd: repo });
-      await execFileAsync("git", ["commit", "--quiet", "-m", "reviewed"], { cwd: repo });
-      const { stdout } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: repo });
-      const sha = stdout.trim();
+    async function runPreflight(fixture: (shas: { source: string; later: string }) => Fixture) {
+      const root = await mkdtemp(join(tmpdir(), "morpheus-release-preflight-"));
+      const repo = join(root, "repo");
+      const bin = join(root, "bin");
+      const output = join(root, "output");
+      const calls = join(root, "gh-calls");
+      const git = (...args: string[]) => execFileAsync("git", args, { cwd: repo });
+      try {
+        await mkdir(repo, { recursive: true });
+        await mkdir(bin, { recursive: true });
+        await git("init", "--quiet", "--initial-branch=main");
+        await git("config", "user.name", "Morpheus Test");
+        await git("config", "user.email", "test@example.com");
+        await writeFile(join(repo, "source.txt"), "reviewed\n", "utf8");
+        await git("add", "source.txt");
+        await git("commit", "--quiet", "-m", "reviewed");
+        const source = (await git("rev-parse", "HEAD")).stdout.trim();
+        // A later main commit exists only as an identity the fake API reports; the checkout
+        // stays at the pinned source, as the workflow's own checkout does.
+        const later = "f".repeat(40);
+        const f = fixture({ source, later });
+        if (f.dirty) await writeFile(join(repo, "dirty.txt"), "unreviewed\n", "utf8");
 
-      const fakeGh = join(bin, "gh");
-      await writeFile(
-        fakeGh,
-        `#!/usr/bin/env bash
+        const fakeGh = join(bin, "gh");
+        // Answers only the exact routes the workflow should ask for. The compare route answers
+        // `ahead` only in the base=source, head=main order; the reversed order reads `behind`,
+        // so swapping the operands refuses rather than passing.
+        await writeFile(
+          fakeGh,
+          `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$PREFLIGHT_CALLS"
 case "$*" in
-  *"/git/ref/heads/main"*) printf '%s\\n' "$EXPECTED_SHA" ;;
-  *"/commits/"*"/pulls"*)
-    if [ "$PREFLIGHT_ASSOCIATED_PR" = "true" ]; then
-      printf '42\\tmain\\t%s\\n' "$EXPECTED_SHA"
-    fi
-    ;;
+  *"/git/ref/heads/main "*) printf '%s\\n' "$PREFLIGHT_MAIN" ;;
+  *"/compare/$EXPECTED_SHA...$PREFLIGHT_MAIN?per_page=1 "*)
+    [ "$PREFLIGHT_COMPARE" = "fail" ] && exit 1
+    printf '%s\\n' "$PREFLIGHT_COMPARE" ;;
+  *"/compare/$PREFLIGHT_MAIN...$EXPECTED_SHA"*) printf 'behind\\n' ;;
+  *"/commits/$EXPECTED_SHA/pulls "*)
+    if [ -n "$PREFLIGHT_PR_SHA" ]; then printf '42\\tmain\\t%s\\n' "$PREFLIGHT_PR_SHA"; fi ;;
   *) exit 2 ;;
 esac
 `,
-        "utf8",
-      );
-      await chmod(fakeGh, 0o755);
+          "utf8",
+        );
+        await chmod(fakeGh, 0o755);
 
-      const steps = ((await read("release-preflight.yml")) as ReleasePreflight).jobs?.verify
-        ?.steps ?? [];
-      const script = steps.find((step) => step.name === "Verify reviewed release source")?.run;
-      expect(script).toBeTruthy();
+        const steps = ((await read("release-preflight.yml")) as ReleasePreflight).jobs?.verify
+          ?.steps ?? [];
+        const script = steps.find((step) => step.name === "Verify reviewed release source")?.run;
+        expect(script).toBeTruthy();
 
-      const run = (associated: boolean) =>
-        execFileAsync("bash", ["-c", script!], {
+        const result = await execFileAsync("bash", ["-c", script!], {
           cwd: repo,
           env: {
             ...process.env,
             PATH: `${bin}:${process.env.PATH}`,
-            GITHUB_REF: "refs/heads/main",
+            GITHUB_REF: f.ref ?? "refs/heads/main",
             GITHUB_REPOSITORY: "cpheinrich/example",
             GITHUB_OUTPUT: output,
-            EXPECTED_SHA: sha,
+            EXPECTED_SHA: f.expected ?? source,
+            ...(f.allow === undefined ? {} : { ALLOW_PINNED_SOURCE: f.allow }),
             GH_TOKEN: "fixture",
-            PREFLIGHT_ASSOCIATED_PR: String(associated),
+            PREFLIGHT_CALLS: calls,
+            PREFLIGHT_MAIN: f.main ?? source,
+            PREFLIGHT_COMPARE: f.compare ?? "",
+            PREFLIGHT_PR_SHA: f.prSha === null ? "" : (f.prSha ?? source),
           },
-        });
-
-      await expect(run(true)).resolves.toBeDefined();
-      expect(await readFile(output, "utf8")).toContain(`sha=${sha}`);
-
-      await writeFile(join(repo, "dirty.txt"), "unreviewed\n", "utf8");
-      await expect(run(true)).rejects.toMatchObject({ stderr: expect.stringContaining("not clean") });
-      await rm(join(repo, "dirty.txt"));
-
-      await expect(run(false)).rejects.toMatchObject({
-        stderr: expect.stringContaining("not associated with a merged pull request"),
-      });
-    } finally {
-      await rm(root, { recursive: true, force: true });
+        }).then(
+          () => ({ ok: true as const, stderr: "" }),
+          (error: { stderr?: string }) => ({ ok: false as const, stderr: String(error.stderr) }),
+        );
+        const outputText = await readFile(output, "utf8").catch(() => "");
+        const ghCalls = (await readFile(calls, "utf8").catch(() => "")).trim().split("\n").filter(Boolean);
+        return { ...result, source, later, output: outputText, ghCalls };
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
     }
+
+    it("releases the current head of main without asking for ancestry, opted in or not", async () => {
+      for (const allow of [undefined, "false", "true"]) {
+        const run = await runPreflight(() => ({ allow }));
+        expect(run, String(allow)).toMatchObject({ ok: true });
+        expect(run.output).toBe(`sha=${run.source}\npr=42\n`);
+        expect(run.ghCalls.some((call) => call.includes("/compare/"))).toBe(false);
+      }
+    });
+
+    it("by default refuses a source main has moved past, without asking for ancestry", async () => {
+      // A dispatch (no inputs), the default false, and anything but the exact string "true".
+      for (const allow of [undefined, "", "false", "TRUE", "1"]) {
+        const run = await runPreflight(({ later }) => ({ main: later, compare: "ahead", allow }));
+        expect(run.ok, String(allow)).toBe(false);
+        expect(run.stderr).toContain(`Release source ${run.source} is not current origin/main (${run.later})`);
+        expect(run.ghCalls.some((call) => call.includes("/compare/") || call.includes("/pulls"))).toBe(false);
+        expect(run.output).toBe("");
+      }
+    });
+
+    it("releases a pinned reviewed source after main has moved past it only when opted in", async () => {
+      const run = await runPreflight(({ later }) => ({ main: later, compare: "ahead", allow: "true" }));
+      expect(run).toMatchObject({ ok: true });
+      // The pinned source, never the newer head, is what the release job checks out.
+      expect(run.output).toBe(`sha=${run.source}\npr=42\n`);
+      expect(run.ghCalls).toContainEqual(expect.stringContaining(`/compare/${run.source}...${run.later}?per_page=1`));
+    });
+
+    it.each(["behind", "diverged", "identical", ""])(
+      "refuses an opted-in source main does not contain (compare status %j)",
+      async (status) => {
+        const run = await runPreflight(({ later }) => ({ main: later, compare: status, allow: "true" }));
+        expect(run.ok).toBe(false);
+        expect(run.stderr).toContain("is not contained in current main");
+        expect(run.output).toBe("");
+      },
+    );
+
+    it("refuses an opted-in source when the ancestry comparison itself fails", async () => {
+      const run = await runPreflight(({ later }) => ({ main: later, compare: "fail", allow: "true" }));
+      expect(run.ok).toBe(false);
+      expect(run.output).toBe("");
+      expect(run.ghCalls.some((call) => call.includes("/pulls"))).toBe(false);
+    });
+
+    it.each(["", "not-a-sha", "F".repeat(40)])("refuses an unreadable main head %j, opted in or not", async (main) => {
+      for (const allow of [undefined, "true"]) {
+        const run = await runPreflight(() => ({ main, allow }));
+        expect(run.ok, String(allow)).toBe(false);
+        expect(run.stderr).toContain("Could not read current main");
+        expect(run.output).toBe("");
+      }
+    });
+
+    it("still requires the pinned source itself to be a merged pull request", async () => {
+      // An ancestor commit from a merged branch (not its merge commit) is reachable from main,
+      // and main's head has its own merged PR; neither makes the ancestor a reviewed release.
+      const unassociated = await runPreflight(({ later }) => ({ main: later, compare: "ahead", prSha: null, allow: "true" }));
+      expect(unassociated.ok).toBe(false);
+      expect(unassociated.stderr).toContain("not associated with a merged pull request");
+
+      const headsPr = await runPreflight(({ later }) => ({ main: later, compare: "ahead", prSha: later, allow: "true" }));
+      expect(headsPr.ok).toBe(false);
+      expect(headsPr.stderr).toContain("not associated with a merged pull request");
+      expect(headsPr.output).toBe("");
+
+      const headWithoutPr = await runPreflight(() => ({ prSha: null }));
+      expect(headWithoutPr.ok).toBe(false);
+      expect(headWithoutPr.stderr).toContain("not associated with a merged pull request");
+    });
+
+    it("keeps every in-repository caller on the default, so a cached build decision cannot re-ship an older source", async () => {
+      // Re-running failed jobs reuses a successful `changes` job's build=true. The preflight that then
+      // runs gets the caller's inputs, and ios-nightly-build passes none: the rendered input is the
+      // default, and main having moved past the run's SHA refuses (night A re-run after B uploaded).
+      const nightly = (await read("ios-nightly-build.yml")) as { jobs?: Record<string, { uses?: string; with?: Record<string, unknown> }> };
+      const call = Object.values(nightly.jobs ?? {}).find((job) => job.uses === "./.github/workflows/release-preflight.yml");
+      expect(call).toBeDefined();
+      const preflight = (await read("release-preflight.yml")) as ReleasePreflight;
+      const declared = preflight.on?.workflow_call?.inputs?.["allow-pinned-source"] as { default?: boolean };
+      const rendered = String(call?.with?.["allow-pinned-source"] ?? declared.default);
+      expect(rendered).toBe("false");
+      const rerun = await runPreflight(({ later }) => ({ main: later, compare: "ahead", allow: rendered }));
+      expect(rerun.ok).toBe(false);
+      expect(rerun.stderr).toContain("is not current origin/main");
+      expect(rerun.output).toBe("");
+      // No other workflow here opts in either; the Evo controller is the first, in its own PR.
+      for (const file of (await readdir(DIR)).filter((f) => f.endsWith(".yml") && f !== "release-preflight.yml")) {
+        expect(await readFile(join(DIR, file), "utf8"), file).not.toMatch(/allow-pinned-source:\s*true/);
+      }
+    });
+
+    it("rejects a non-main ref and a mismatched checkout before asking GitHub anything", async () => {
+      const branch = await runPreflight(() => ({ ref: "refs/heads/feature" }));
+      expect(branch.ok).toBe(false);
+      expect(branch.stderr).toContain("Release source must be refs/heads/main; got refs/heads/feature");
+      expect(branch.ghCalls).toEqual([]);
+      expect(branch.output).toBe("");
+
+      const mismatched = await runPreflight(({ later }) => ({ expected: later }));
+      expect(mismatched.ok).toBe(false);
+      expect(mismatched.stderr).toContain(`does not equal requested source ${mismatched.later}`);
+      expect(mismatched.ghCalls).toEqual([]);
+      expect(mismatched.output).toBe("");
+    });
+
+    it("rejects a dirty checkout before asking GitHub anything", async () => {
+      const run = await runPreflight(() => ({ dirty: true }));
+      expect(run.ok).toBe(false);
+      expect(run.stderr).toContain("not clean");
+      expect(run.ghCalls).toEqual([]);
+    });
   });
 });
 
@@ -376,10 +519,9 @@ describe("pm-check.yml", () => {
 });
 
 describe("schedule.yml", () => {
-  it("runs on a cron and can be triggered by hand", async () => {
+  it("runs only by hand: the hourly cron was deliberately removed", async () => {
     const wf = await read("schedule.yml");
-    expect(wf.on).toHaveProperty("schedule");
-    expect(wf.on).toHaveProperty("workflow_dispatch");
+    expect(Object.keys(wf.on as object)).toEqual(["workflow_dispatch"]);
   });
 
   it("calls the heartbeat", async () => {
@@ -1221,15 +1363,6 @@ describe("agent-review cost controls", () => {
   });
 });
 
-describe("schedule.yml cadence", () => {
-  it("beats hourly, every day", async () => {
-    const wf = (await read("schedule.yml")) as {
-      on?: { schedule?: Array<{ cron?: string }> };
-    };
-    expect(wf.on?.schedule?.[0]?.cron).toBe("0 * * * *");
-  });
-});
-
 /**
  * `${{ }}` substitutes before bash parses, so any attacker-controlled value
  * interpolated into a `run:` block is executed. A branch name is
@@ -1505,76 +1638,151 @@ describe("ios-nightly-build.yml", () => {
 
     expect(checkout?.with).toEqual({ "fetch-depth": 0, "persist-credentials": false });
     expect(decision?.env?.GH_TOKEN).toBe("${{ github.token }}");
-    expect(script).toContain("/actions/workflows/${WORKFLOW_FILE}/runs?branch=main&status=success");
+    expect(script).toContain("/actions/workflows/${WORKFLOW_FILE}/runs?branch=main&status=success&per_page=20&page=${page}");
+    expect(script).toContain("/actions/runs/${id}/jobs?filter=all&per_page=100");
     expect(script).toContain('git diff --quiet "$baseline" "$CURRENT_SHA" -- "${paths[@]}"');
     expect(script).toContain("building conservatively");
   });
 
-  it("skips an unchanged app and builds after a watched-path change", async () => {
+  /**
+   * Runs the real decision step against a git repository and a fake `gh` that answers from
+   * fixture files with the real `jq`, so the step's own queries and filters are what decide.
+   */
+  async function nightlyDecision() {
     const root = await mkdtemp(join(tmpdir(), "morpheus-nightly-ios-"));
     const repo = join(root, "repo");
     const bin = join(root, "bin");
+    const fixtures = join(root, "fixtures");
     const output = join(root, "output");
     const summary = join(root, "summary");
+    await mkdir(join(repo, "apps/ios"), { recursive: true });
+    await mkdir(join(repo, "docs"), { recursive: true });
+    await mkdir(bin, { recursive: true });
+    await mkdir(fixtures, { recursive: true });
+    const git = (...args: string[]) => execFileAsync("git", args, { cwd: repo }).then((r) => r.stdout.trim());
+    await git("init", "--quiet", "--initial-branch=main");
+    await git("config", "user.name", "Morpheus Test");
+    await git("config", "user.email", "test@example.com");
+    const commit = async (file: string, text: string) => {
+      await writeFile(join(repo, file), text, "utf8");
+      await git("add", ".");
+      await git("commit", "--quiet", "-m", file);
+      return git("rev-parse", "HEAD");
+    };
+    // Every `gh api` call: find the route and its --jq, answer from a fixture, fail when absent.
+    await writeFile(join(bin, "gh"), `#!/usr/bin/env bash
+set -euo pipefail
+route=""; expr="."
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --jq) expr="$2"; shift 2 ;;
+    -H) shift 2 ;;
+    /repos/*) route="$1"; shift ;;
+    *) shift ;;
+  esac
+done
+case "$route" in
+  */actions/runs/*/jobs*) id="\${route#*/actions/runs/}"; file="jobs-\${id%%/*}.json" ;;
+  */workflows/*/runs*) file="runs-\${route##*page=}.json" ;;
+  *) echo "unexpected route $route" >&2; exit 1 ;;
+esac
+[ -f "$FIXTURES/$file" ] || { echo "HTTP 502" >&2; exit 1; }
+jq -r "$expr" "$FIXTURES/$file"
+`, "utf8");
+    await chmod(join(bin, "gh"), 0o755);
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const script = wf.jobs?.changes?.steps?.find((step) => step.name === "Compare with the last successful upload")?.run;
+    expect(script).toBeTruthy();
+    type Fixture = { id: number; sha: string; jobs: Array<{ name: string; conclusion: string | null; run_attempt?: number }> | null };
+    /** Newest first, as GitHub lists them. `jobs: null` makes that run's jobs unreadable. */
+    const history = async (runs: Fixture[]) => {
+      await rm(fixtures, { recursive: true, force: true });
+      await mkdir(fixtures, { recursive: true });
+      await writeFile(join(fixtures, "runs-1.json"), JSON.stringify({ workflow_runs: runs.map((r) => ({ id: r.id, head_sha: r.sha })) }));
+      await writeFile(join(fixtures, "runs-2.json"), JSON.stringify({ workflow_runs: [] }));
+      for (const run of runs) {
+        if (run.jobs) await writeFile(join(fixtures, `jobs-${run.id}.json`), JSON.stringify({ total_count: run.jobs.length, jobs: run.jobs }));
+      }
+    };
+    const decide = async () => {
+      await writeFile(output, "", "utf8");
+      await writeFile(summary, "", "utf8");
+      await execFileAsync("bash", ["-euo", "pipefail", "-c", script!], {
+        cwd: repo,
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          FIXTURES: fixtures,
+          CURRENT_SHA: await git("rev-parse", "HEAD"),
+          FORCE_BUILD: "false",
+          GH_TOKEN: "fixture",
+          GITHUB_OUTPUT: output,
+          GITHUB_REPOSITORY: "example-org/example-app",
+          GITHUB_STEP_SUMMARY: summary,
+          WATCH_PATHS: "apps/ios\npackages/shared",
+          WORKFLOW_FILE: "testflight.yml",
+        },
+      });
+      return Object.fromEntries((await readFile(output, "utf8")).trim().split("\n").map((line) => line.split(/=(.*)/s).slice(0, 2)));
+    };
+    const cleanup = () => rm(root, { recursive: true, force: true });
+    return { commit, history, decide, cleanup };
+  }
 
+  const admissionOnly = [
+    { name: "Scheduler admission", conclusion: "success" },
+    { name: "release / Check iOS changes", conclusion: "skipped" },
+    { name: "Upload TestFlight build", conclusion: "skipped" },
+  ];
+
+  it("skips an unchanged app and builds after a watched-path change", async () => {
+    const t = await nightlyDecision();
     try {
-      await mkdir(join(repo, "apps/ios"), { recursive: true });
-      await mkdir(join(repo, "docs"), { recursive: true });
-      await mkdir(bin, { recursive: true });
-      await execFileAsync("git", ["init", "--quiet", "--initial-branch=main"], { cwd: repo });
-      await execFileAsync("git", ["config", "user.name", "Morpheus Test"], { cwd: repo });
-      await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: repo });
-      await writeFile(join(repo, "apps/ios/app.txt"), "one\n", "utf8");
-      await writeFile(join(repo, "docs/readme.md"), "one\n", "utf8");
-      await execFileAsync("git", ["add", "."], { cwd: repo });
-      await execFileAsync("git", ["commit", "--quiet", "-m", "baseline"], { cwd: repo });
-      const baseline = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: repo })).stdout.trim();
-
-      await writeFile(join(repo, "docs/readme.md"), "two\n", "utf8");
-      await execFileAsync("git", ["add", "."], { cwd: repo });
-      await execFileAsync("git", ["commit", "--quiet", "-m", "docs"], { cwd: repo });
-
-      const fakeGh = join(bin, "gh");
-      await writeFile(fakeGh, "#!/usr/bin/env bash\nprintf '%s\\n' \"$BASELINE_SHA\"\n", "utf8");
-      await chmod(fakeGh, 0o755);
-
-      const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
-      const script = wf.jobs?.changes?.steps?.find(
-        (step) => step.name === "Compare with the last successful upload",
-      )?.run;
-      expect(script).toBeTruthy();
-
-      const run = async () => {
-        const current = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: repo })).stdout.trim();
-        await writeFile(output, "", "utf8");
-        await writeFile(summary, "", "utf8");
-        await execFileAsync("bash", ["-c", script!], {
-          cwd: repo,
-          env: {
-            ...process.env,
-            PATH: `${bin}:${process.env.PATH}`,
-            BASELINE_SHA: baseline,
-            CURRENT_SHA: current,
-            FORCE_BUILD: "false",
-            GH_TOKEN: "fixture",
-            GITHUB_OUTPUT: output,
-            GITHUB_REPOSITORY: "cpheinrich/example",
-            GITHUB_STEP_SUMMARY: summary,
-            WATCH_PATHS: "apps/ios\npackages/shared",
-            WORKFLOW_FILE: "testflight.yml",
-          },
-        });
-        return readFile(output, "utf8");
-      };
-
-      expect(await run()).toContain("build=false");
-
-      await writeFile(join(repo, "apps/ios/app.txt"), "two\n", "utf8");
-      await execFileAsync("git", ["add", "."], { cwd: repo });
-      await execFileAsync("git", ["commit", "--quiet", "-m", "ios"], { cwd: repo });
-      expect(await run()).toContain("build=true");
+      await t.commit("apps/ios/app.txt", "one\n");
+      const a = await t.commit("docs/readme.md", "one\n");
+      await t.history([{ id: 1, sha: a, jobs: [{ name: "release / Upload TestFlight build", conclusion: "success" }] }]);
+      await t.commit("docs/readme.md", "two\n");
+      expect(await t.decide()).toMatchObject({ build: "false", baseline: a });
+      await t.commit("apps/ios/app.txt", "two\n");
+      expect(await t.decide()).toMatchObject({ build: "true", baseline: a });
     } finally {
-      await rm(root, { recursive: true, force: true });
+      await t.cleanup();
+    }
+  });
+
+  it("baselines on the last actual upload, never a newer admission-only or no-op success", async () => {
+    const t = await nightlyDecision();
+    try {
+      const a = await t.commit("apps/ios/app.txt", "one\n");
+      const b = await t.commit("apps/ios/app.txt", "two\n");
+      // A uploaded through a caller-owned job; B's newer runs succeeded without uploading:
+      // a duplicate turned away by admission, and an unchanged-night no-op whose upload was skipped.
+      await t.history([
+        { id: 3, sha: b, jobs: admissionOnly },
+        { id: 2, sha: b, jobs: [{ name: "release / Check iOS changes", conclusion: "success" }, { name: "Upload TestFlight build", conclusion: "skipped" }] },
+        { id: 1, sha: a, jobs: [{ name: "Scheduler admission", conclusion: "success" }, { name: "Upload TestFlight build", conclusion: "success" }] },
+      ]);
+      expect(await t.decide()).toMatchObject({ build: "true", baseline: a });
+    } finally {
+      await t.cleanup();
+    }
+  });
+
+  it("recognizes each upload job shape and earlier attempts, and stays conservative when unreadable", async () => {
+    const t = await nightlyDecision();
+    try {
+      const a = await t.commit("apps/ios/app.txt", "one\n");
+      await t.commit("docs/readme.md", "unwatched\n");
+      for (const name of ["upload", "Upload TestFlight build", "release / Upload TestFlight build"]) {
+        await t.history([{ id: 1, sha: a, jobs: [{ name, conclusion: "success", run_attempt: 1 }, { name, conclusion: "failure", run_attempt: 2 }] }]);
+        expect(await t.decide(), name).toMatchObject({ build: "false", baseline: a });
+      }
+      await t.history([{ id: 1, sha: a, jobs: [{ name: "Test before release / test", conclusion: "success" }] }]);
+      expect(await t.decide()).toEqual({ build: "true", baseline: "", reason: "no successful upload found among the latest 100 successful runs" });
+      await t.history([{ id: 2, sha: a, jobs: null }, { id: 1, sha: a, jobs: [{ name: "upload", conclusion: "success" }] }]);
+      expect(await t.decide()).toEqual({ build: "true", baseline: "", reason: "the upload baseline could not be read; building conservatively" });
+    } finally {
+      await t.cleanup();
     }
   });
 
@@ -2886,7 +3094,9 @@ describe("local review metadata", () => {
     // Everything else, the checks above all, runs only for a run that is not superseded.
     expect(rest.length).toBeGreaterThan(0);
     for (const step of rest) expect(step.if, step.name ?? step.uses).toBe(NOT_SUPERSEDED);
-    expect(rest.at(-1)?.name).toBe("Check PR conventions");
+    expect(rest.at(-2)?.name).toBe("Check PR conventions");
+    // Complexity follows, so it can never hide a conventions failure.
+    expect(rest.at(-1)?.name).toBe("Check function complexity");
     // Cancelling `head` would turn the required job red, exactly as 790ae1ff found for cancelled runs.
     expect(head.concurrency).toBeUndefined();
     expect(head["timeout-minutes"]).toBeGreaterThan(0);
@@ -3377,5 +3587,117 @@ describe("shared workflows do not float under a consumer's pin", () => {
       expect(concurrency?.group, job).toBe(`firebase-tests-${job}-\${{ inputs.concurrency-key || github.ref }}`);
       expect(concurrency?.["cancel-in-progress"], job).toBe("${{ inputs.concurrency-key == '' }}");
     }
+  });
+});
+
+describe("pr-check complexity step", () => {
+  type Step = { name?: string; if?: string; run?: string; env?: Record<string, string> };
+  const steps = async () =>
+    (await read("pr-check.yml") as unknown as { jobs: { conventions: { steps: Step[] } } }).jobs.conventions.steps;
+  const complexityStep = async () => {
+    const step = (await steps()).find((s) => s.name === "Check function complexity");
+    expect(step?.run).toBeDefined();
+    return step!;
+  };
+
+  it("runs inside the required conventions job, after the conventions check, only when not superseded", async () => {
+    const names = (await steps()).map((s) => s.name);
+    expect(names.indexOf("Check function complexity")).toBe(names.indexOf("Check PR conventions") + 1);
+    const step = await complexityStep();
+    expect(step.if).toBe("needs.head.outputs.superseded-by == ''");
+    expect(step.run).not.toContain("${{");
+    expect(step.env).toMatchObject({ EXPECTED_HEAD: "${{ github.event.pull_request.head.sha }}", BASE_REF: "${{ github.base_ref }}" });
+  });
+
+  it("reuses the conventions step's pr-head block verbatim", async () => {
+    const block = (run: string) => /^# >>> pr-head$.*?^# <<< pr-head$/ms.exec(run)?.[0];
+    const conventions = (await steps()).find((s) => s.name === "Check PR conventions")!.run!;
+    expect(block((await complexityStep()).run!)).toBe(block(conventions));
+    expect(block(conventions)).toBeDefined();
+  });
+
+  /** Runs the step's own script against a stub CLI that exits as told and logs its arguments. */
+  async function runStep(complexity: unknown, codes: { install?: number; check?: number }, manifestText?: string) {
+    const tmp = await mkdtemp(join(tmpdir(), "pr-complexity-"));
+    try {
+      const git = (...args: string[]) => execFileAsync("git", args, { cwd: tmp }).then((r) => r.stdout.trim());
+      await git("init", "-q", "-b", "main");
+      await git("config", "user.email", "t@example.com");
+      await git("config", "user.name", "T");
+      await writeFile(join(tmp, "morpheus.json"), manifestText ?? JSON.stringify(complexity === undefined ? {} : { complexity }));
+      await git("add", ".");
+      await git("commit", "-qm", "head");
+      const head = await git("rev-parse", "HEAD");
+      await mkdir(join(tmp, ".morpheus/dist/cli"), { recursive: true });
+      await writeFile(join(tmp, ".morpheus/dist/cli/index.js"), [
+        "const fs = require('node:fs');",
+        "fs.appendFileSync(process.env.STUB_LOG, process.argv.slice(2).join(' ') + '\\n');",
+        "process.exit(Number(process.argv[3] === 'install' ? process.env.STUB_INSTALL : process.env.STUB_CHECK));",
+      ].join("\n"));
+      await writeFile(join(tmp, ".morpheus/package.json"), '{"type":"commonjs"}');
+      const log = join(tmp, "calls.log");
+      const summary = join(tmp, "summary.md");
+      await writeFile(log, "");
+      await writeFile(summary, "");
+      const run = (await complexityStep()).run!;
+      const result = await execFileAsync("bash", ["-c", run], {
+        cwd: tmp,
+        env: { ...process.env, EXPECTED_HEAD: head, PR_NUMBER: "7", BASE_REF: "main", STUB_LOG: log, GITHUB_STEP_SUMMARY: summary,
+          STUB_INSTALL: String(codes.install ?? 0), STUB_CHECK: String(codes.check ?? 0) },
+      }).then((r) => ({ code: 0, stdout: r.stdout }), (e: { code: number; stdout: string }) => ({ code: e.code, stdout: e.stdout }));
+      return { ...result, calls: (await readFile(log, "utf8")).trim().split("\n").filter(Boolean), summary: await readFile(summary, "utf8") };
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  }
+
+  it("skips a project with no complexity block without installing anything", async () => {
+    const out = await runStep(undefined, {});
+    expect(out.code).toBe(0);
+    expect(out.calls).toEqual([]);
+    expect(out.stdout).toContain("not enrolled");
+  });
+
+  it("installs, then checks in CI mode against the PR base", async () => {
+    const out = await runStep({ mode: "enforce" }, {});
+    expect(out.code).toBe(0);
+    expect(out.calls).toEqual(["complexity install", "complexity check --ci --base origin/main"]);
+  });
+
+  it("never fails advisory: a blocking finding, a check that could not run, or a failed install all warn", async () => {
+    for (const codes of [{ check: 1 }, { check: 2 }, { install: 1 }]) {
+      const out = await runStep({ mode: "advisory" }, codes);
+      expect(out.code, JSON.stringify(codes)).toBe(0);
+      expect(out.stdout).toMatch(/::warning::Function complexity exited [12]; advisory mode/);
+      expect(out.summary).toContain("Complexity (advisory): exited");
+    }
+    // A block without a mode is advisory, the schema default.
+    expect((await runStep({}, { check: 1 })).code).toBe(0);
+  });
+
+  it("fails enforce on a blocking finding, a check that could not run, and a failed install", async () => {
+    for (const codes of [{ check: 1 }, { check: 2 }, { install: 1 }]) {
+      const out = await runStep({ mode: "enforce" }, codes);
+      expect(out.code, JSON.stringify(codes)).toBe(1);
+      expect(out.stdout).toContain("::error::Function complexity failed");
+    }
+    expect((await runStep({ mode: "enforce" }, { install: 1 })).calls).toEqual(["complexity install"]);
+  });
+
+  it("fails closed on a mode that is not exactly advisory, and on a block that is not an object", async () => {
+    const invalid = [{ mode: "Enforce" }, { mode: "enforced" }, { mode: 5 }, { mode: "" }, { mode: null }, { mode: false },
+      { mode: 0 }, { mode: [] }, { mode: {} }, true, null, "advisory", []];
+    for (const block of invalid) {
+      const out = await runStep(block, { check: 2 });
+      expect(out.code, JSON.stringify(block)).toBe(1);
+      expect(out.stdout).toContain("not advisory");
+    }
+    // A manifest jq cannot read is reported as such and fails; it is never "not enrolled".
+    const unreadable = await runStep(undefined, { check: 2 }, "{ not json");
+    expect(unreadable.code).toBe(1);
+    expect(unreadable.stdout).not.toContain("not enrolled");
+    expect(unreadable.stdout).toContain("mode is 'unreadable'");
+    // An explicit advisory with some other invalid field still only warns.
+    expect((await runStep({ mode: "advisory", ccn: "x" }, { check: 2 })).code).toBe(0);
   });
 });

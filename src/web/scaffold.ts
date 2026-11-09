@@ -61,15 +61,9 @@ const WORKLOAD_IDENTITY_DEPENDENCIES = {
   "google-auth-library": "^10.9.1",
 };
 
-export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult> {
-  const { root, survey, name } = opts;
-  const written: string[] = [];
-  const skipped: string[] = [];
-  const merged: string[] = [];
-  const notes: string[] = [];
-
-  const schema = waitlistSchemaLocation(survey);
-  const ctx: t.TemplateContext = {
+function templateContext(opts: ScaffoldOptions, schema: ReturnType<typeof waitlistSchemaLocation>): t.TemplateContext {
+  const { survey, name } = opts;
+  return {
     name,
     imp: (from, to) => importPath(survey, from, to),
     relative: (from, to) => importPath({ alias: null }, from, to),
@@ -77,33 +71,15 @@ export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult
     schema: (from) => schema.specifier(from),
     ...(opts.firebase ? { firebase: opts.firebase } : {}),
   };
+}
 
-  /** Write a repository-relative path, or report that it was already there. */
-  const put = scaffoldWriter(root, written, skipped);
-
-  /** Write a path inside the web app. */
-  const app = (rel: string, content: string): Promise<void> =>
-    put(survey.webRoot === "." ? rel : `${survey.webRoot}/${rel}`, content);
-
-  // --- a new app, only when there is not one already ------------------------
-  if (!survey.webAppExists) {
-    await app("package.json", t.appPackageJson(opts.scope, survey.shared?.name));
-    await app("tsconfig.json", t.appTsconfig());
-    await app("next.config.ts", t.nextConfig());
-    await app("postcss.config.mjs", t.postcssConfig());
-    await app("app/globals.css", t.globalsCss());
-    await app("app/layout.tsx", t.rootLayout(name, opts.description));
-    notes.push(
-      "Created a Next.js app. Run `pnpm install` from the repository root before " +
-        "`pnpm dev`, and add the app to pnpm-workspace.yaml if it is not covered by an " +
-        "existing glob.",
-    );
-  }
-
-  // A static export has no server at all, so both halves below would be
-  // written, compile, and then fail the project's next build. Refusing here
-  // makes that a sentence instead of a build log — and the fix is a decision
-  // about how the site deploys, which is not one a scaffold may take.
+/**
+ * A static export has no server at all, so both halves below would be
+ * written, compile, and then fail the project's next build. Refusing here
+ * makes that a sentence instead of a build log — and the fix is a decision
+ * about how the site deploys, which is not one a scaffold may take.
+ */
+function staticExport({ opts, survey, notes }: WebRun): boolean {
   const serverless = survey.staticExport && survey.webAppExists;
   if (serverless && (opts.waitlist || opts.hq)) {
     notes.push(
@@ -114,180 +90,252 @@ export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult
         "statically prerendered; keep `trailingSlash` as it is so no live URL moves.",
     );
   }
+  return serverless;
+}
 
-  // --- waitlist -------------------------------------------------------------
-  if (opts.waitlist && !serverless) {
-    if (!opts.firebase) {
-      notes.push(
-        "Skipped the waitlist: it writes to Firestore, and no Firebase project is known " +
-          "yet. Provision one (`morpheus web init` without --no-provision), then re-run.",
-      );
-    } else {
-      await put(schema.path, t.waitlistSchema());
-      await app("lib/waitlist/record.ts", t.waitlistRecord(ctx));
-      await app("lib/waitlist/firestore-value.ts", t.firestoreValue());
-      await app("lib/waitlist/throttle.ts", t.waitlistThrottle());
-      await app("lib/waitlist/store.ts", t.waitlistStore(ctx));
-      await app("app/api/waitlist/route.ts", t.waitlistRoute(ctx));
-      await app("app/WaitlistForm.tsx", t.waitlistForm(ctx));
+async function mergeWaitlistRules({ root, survey, merged, notes }: WebRun): Promise<void> {
+  const rules = await addWaitlistRules(root, survey.firestoreRulesPath);
+  if (rules.kind === "merged") merged.push(`${rules.path} (+waitlist deny block)`);
+  if (rules.kind === "note") notes.push(rules.message);
+}
 
-      if (survey.testRunner) {
-        const test = t.waitlistRecordTest(ctx, survey.testRunner);
-        await app(test.path, test.content);
-        if (survey.testRunner === "node") {
-          notes.push(
-            `Add ${test.path} to the web app's \`test\` script — a \`node --test\` project ` +
-              "names its files explicitly, so a new one runs nowhere until it is listed.",
-          );
-        }
-      } else {
-        notes.push(
-          "No test runner detected in the web app, so no test was generated. " +
-            "`lib/waitlist/record.ts` is pure and is the module worth covering.",
-        );
-      }
+interface WebRun {
+  opts: ScaffoldOptions; root: string; survey: ScaffoldOptions["survey"]; name: string; ctx: t.TemplateContext;
+  schema: ReturnType<typeof waitlistSchemaLocation>;
+  put: ReturnType<typeof scaffoldWriter>; app: (rel: string, content: string) => Promise<void>;
+  written: string[]; skipped: string[]; merged: string[]; notes: string[];
+}
 
-      if (!survey.webAppExists) {
-        await app("app/page.tsx", t.homePage(ctx, name, opts.description));
-      } else {
-        notes.push(
-          "The home page was left alone. Render `<WaitlistForm source=\"hero\" />` where " +
-            "the page currently asks for nothing — a `mailto:` link or an anchor to " +
-            "another section is the usual thing it replaces.",
-        );
-      }
+export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult> {
+  const { root, survey, name } = opts;
+  const written: string[] = [];
+  const skipped: string[] = [];
+  const merged: string[] = [];
+  const notes: string[] = [];
 
-      notes.push(
-        "Wire a `waitlist_joined` event into the project's analytics contract and pass " +
-          "it to the form's `onJoined` prop. The form deliberately imports no analytics " +
-          "module: the event name belongs to the project's vocabulary, not to Morpheus.",
-      );
+  const schema = waitlistSchemaLocation(survey);
+  const ctx = templateContext(opts, schema);
 
-      notes.push(
-        "The signup write needs `roles/datastore.user` on whichever identity the deployment " +
-          "runs as. It goes over the Firestore REST API rather than through " +
-          "`firebase-admin`'s Firestore client, which rejects a federated credential — so a " +
-          "403 here is a missing role, not the credential shape.",
-      );
-    }
-  }
+  /** Write a repository-relative path, or report that it was already there. */
+  const put = scaffoldWriter(root, written, skipped);
 
-  // --- /hq and Google sign-in ----------------------------------------------
-  if (opts.hq && !serverless) {
-    if (!opts.firebase) {
-      notes.push(
-        "Skipped /hq: Google sign-in needs a Firebase project, and none is known yet. " +
-          "A sign-in page with a placeholder config looks finished and cannot work.",
-      );
-    } else {
-      await app("lib/firebase/config.ts", t.firebaseConfigFile(opts.firebase));
+  /** Write a path inside the web app. */
+  const app = (rel: string, content: string): Promise<void> =>
+    put(survey.webRoot === "." ? rel : `${survey.webRoot}/${rel}`, content);
 
-      // Never-overwrite has one sharp edge, and this is it. An earlier run whose
-      // federation step failed wrote a config with no `WORKLOAD_IDENTITY` block;
-      // a later run that provisions federation successfully then *keeps* that
-      // file, and the deployment silently falls back to Application Default
-      // Credentials — which do not exist on Vercel. Local dev works, production
-      // does not, and nothing says so. Reported rather than rewritten: the file
-      // may have been edited since.
-      if (opts.firebase.workloadIdentity) {
-        const stale: string[] = [];
-        for (const [file, marker] of [
-          ["lib/firebase/config.ts", "WORKLOAD_IDENTITY"],
-          ["lib/firebase/admin.ts", "workloadIdentity"],
-        ] as const) {
-          const path = join(root, survey.webRoot === "." ? file : `${survey.webRoot}/${file}`);
-          const existing = await readFile(path, "utf8").catch(() => "");
-          if (existing && !existing.includes(marker)) stale.push(file);
-        }
-        if (stale.length) {
-          notes.push(
-            `${stale.join(" and ")} predate${stale.length === 1 ? "s" : ""} this run's Workload ` +
-              "Identity setup and carr" +
-              (stale.length === 1 ? "ies" : "y") +
-              " no federation branch, so the deployment would fall back to Application Default " +
-              "Credentials — which Vercel does not have. Delete them and re-run; they are " +
-              "generated, and nothing here rewrites a file you may have edited.",
-          );
-        }
-      }
-      await app("lib/firebase/client.ts", t.firebaseClient(ctx));
-      await app("lib/firebase/admin.ts", t.firebaseAdmin(ctx, opts.firebase));
-      await app("lib/auth/roles.ts", t.authRoles());
-      const manifestImport = relative(
-        dirname(join(survey.webRoot, "lib/auth/hq-allowlist.ts")),
-        "morpheus.json",
-      ).replaceAll("\\", "/");
-      await app("lib/auth/hq-allowlist.ts", t.hqAllowlist(
-        manifestImport.startsWith(".") ? manifestImport : `./${manifestImport}`,
-      ));
-      await app("lib/auth/session-cookie.ts", t.authSessionCookie(ctx));
-      await app("lib/auth/current-user.ts", t.authCurrentUser(ctx));
-      await app("app/api/auth/session/route.ts", t.apiAuthSession(ctx, name));
-      await app("app/sign-in/page.tsx", t.signInPage(ctx, name));
-      await app("app/sign-in/SignInForm.tsx", t.signInForm(ctx));
-      await app("app/hq/layout.tsx", t.hqLayout(ctx, name));
-      await app("app/hq/page.tsx", t.hqPage(ctx, name));
-      await app("app/hq/HqSearch.tsx", t.hqSearch(name));
-      await app("app/hq/search-index/route.ts", t.hqSearchRoute(ctx));
-      await app("app/hq/SignOutButton.tsx", t.signOutButton(ctx));
-      await app("app/hq/no-access/page.tsx", t.noAccessPage());
-      await app("lib/hq/search.ts", t.hqSearchBuild(name));
+  const run: WebRun = { opts, root, survey, name, ctx, schema, put, app, written, skipped, merged, notes };
 
-      if (survey.hasRouteGate) {
-        notes.push(
-          "An existing proxy.ts or middleware.ts was left untouched. Add the `/hq` " +
-            "matcher and the session check to it by hand — two gates on one route is " +
-            "worse than one, and only one of them can be first.",
-        );
-      } else {
-        await app("proxy.ts", t.routeGate(ctx));
-      }
+  // --- a new app, only when there is not one already ------------------------
+  if (!survey.webAppExists) await scaffoldNewApp(run);
 
-      notes.push(
-        "A verified Google account on the deployed HQ allowlist receives its role on first " +
-          "sign-in. Run `morpheus access sync` after allowlist changes to update existing " +
-          "accounts promptly, including users who have not signed in again.",
-      );
-    }
-  }
+  const serverless = staticExport(run);
+  if (opts.waitlist && !serverless) await scaffoldWaitlist(run);
+  if (opts.hq && !serverless) await scaffoldHq(run);
 
   // Documents server credentials, so it belongs to the half a static export
   // does not have.
   if (!serverless) await app(".env.example", t.envExample(opts.firebase));
 
-  // --- merges ---------------------------------------------------------------
-  if (opts.firebase && !serverless) {
-    const dependencies = {
-      ...(opts.waitlist ? WAITLIST_DEPENDENCIES : {}),
-      ...(opts.hq ? HQ_DEPENDENCIES : {}),
-      ...(opts.firebase.workloadIdentity ? WORKLOAD_IDENTITY_DEPENDENCIES : {}),
-    };
-    const added = await mergeDependencies(root, survey.webRoot, dependencies);
-    if (added.length) {
-      merged.push(
-        `${survey.webRoot === "." ? "" : `${survey.webRoot}/`}package.json (+${added.join(", ")})`,
-      );
-      notes.push("Run `pnpm install` — the generated code imports dependencies just added.");
-    }
-
-    if (opts.hq) {
-      const override = await addJwksJoseOverride(root);
-      if (override) merged.push("pnpm-workspace.yaml (+jwks-rsa>jose override)");
-    }
-
-    if (survey.shared && !survey.shared.exportsWaitlist && survey.shared.hasExportsMap) {
-      const path = `${survey.shared.dir}/package.json`;
-      if (await addSharedExport(root, path)) merged.push(`${path} (+./schema/waitlist)`);
-    }
-  }
-
-  if (opts.waitlist && opts.firebase && !serverless) {
-    const rules = await addWaitlistRules(root, survey.firestoreRulesPath);
-    if (rules.kind === "merged") merged.push(`${rules.path} (+waitlist deny block)`);
-    if (rules.kind === "note") notes.push(rules.message);
-  }
+  if (opts.firebase && !serverless) await mergeWebDependencies(run);
+  if (opts.waitlist && opts.firebase && !serverless) await mergeWaitlistRules(run);
 
   return { written, skipped, merged, notes };
+}
+
+async function scaffoldNewApp({ opts, survey, name, app, notes }: WebRun): Promise<void> {
+  await app(
+    "package.json",
+    t.appPackageJson(opts.scope, survey.shared?.name, Boolean(opts.hq && opts.firebase)),
+  );
+  await app("tsconfig.json", t.appTsconfig());
+  await app("next.config.ts", t.nextConfig());
+  await app("postcss.config.mjs", t.postcssConfig());
+  await app("app/globals.css", t.globalsCss());
+  await app("app/layout.tsx", t.rootLayout(name, opts.description));
+  notes.push(
+    "Created a Next.js app. Run `pnpm install` from the repository root before " +
+      "`pnpm dev`, and add the app to pnpm-workspace.yaml if it is not covered by an " +
+      "existing glob.",
+  );
+}
+
+/** The waitlist endpoint, store, form, test and notes; skipped with a note while no Firebase project is known. */
+async function scaffoldWaitlist(run: WebRun): Promise<void> {
+  const { opts, survey, name, ctx, schema, put, app, notes } = run;
+  if (!opts.firebase) {
+    notes.push(
+      "Skipped the waitlist: it writes to Firestore, and no Firebase project is known " +
+        "yet. Provision one (`morpheus web init` without --no-provision), then re-run.",
+    );
+  } else {
+    await put(schema.path, t.waitlistSchema());
+    await app("lib/waitlist/record.ts", t.waitlistRecord(ctx));
+    await app("lib/waitlist/firestore-value.ts", t.firestoreValue());
+    await app("lib/waitlist/throttle.ts", t.waitlistThrottle());
+    await app("lib/waitlist/store.ts", t.waitlistStore(ctx));
+    await app("app/api/waitlist/route.ts", t.waitlistRoute(ctx));
+    await app("app/WaitlistForm.tsx", t.waitlistForm(ctx));
+
+    if (survey.testRunner) {
+      const test = t.waitlistRecordTest(ctx, survey.testRunner);
+      await app(test.path, test.content);
+      if (survey.testRunner === "node") {
+        notes.push(
+          `Add ${test.path} to the web app's \`test\` script — a \`node --test\` project ` +
+            "names its files explicitly, so a new one runs nowhere until it is listed.",
+        );
+      }
+    } else {
+      notes.push(
+        "No test runner detected in the web app, so no test was generated. " +
+          "`lib/waitlist/record.ts` is pure and is the module worth covering.",
+      );
+    }
+
+    if (!survey.webAppExists) {
+      await app("app/page.tsx", t.homePage(ctx, name, opts.description));
+    } else {
+      notes.push(
+        "The home page was left alone. Render `<WaitlistForm source=\"hero\" />` where " +
+          "the page currently asks for nothing — a `mailto:` link or an anchor to " +
+          "another section is the usual thing it replaces.",
+      );
+    }
+
+    notes.push(
+      "Wire a `waitlist_joined` event into the project's analytics contract and pass " +
+        "it to the form's `onJoined` prop. The form deliberately imports no analytics " +
+        "module: the event name belongs to the project's vocabulary, not to Morpheus.",
+    );
+
+    notes.push(
+      "The signup write needs `roles/datastore.user` on whichever identity the deployment " +
+        "runs as. It goes over the Firestore REST API rather than through " +
+        "`firebase-admin`'s Firestore client, which rejects a federated credential — so a " +
+        "403 here is a missing role, not the credential shape.",
+    );
+  }
+}
+
+/** /hq behind Google sign-in; skipped with a note while no Firebase project is known. */
+async function scaffoldHq(run: WebRun): Promise<void> {
+  const { opts, survey, name, ctx, app, notes } = run;
+  if (!opts.firebase) {
+    notes.push(
+      "Skipped /hq: Google sign-in needs a Firebase project, and none is known yet. " +
+        "A sign-in page with a placeholder config looks finished and cannot work.",
+    );
+  } else {
+    await app("lib/firebase/config.ts", t.firebaseConfigFile(opts.firebase));
+
+    if (opts.firebase.workloadIdentity) await staleFederationNote(run);
+    await app("lib/firebase/client.ts", t.firebaseClient(ctx));
+    await app("lib/firebase/admin.ts", t.firebaseAdmin(ctx, opts.firebase));
+    await app("lib/auth/roles.ts", t.authRoles());
+    const manifestImport = relative(
+      dirname(join(survey.webRoot, "lib/auth/hq-allowlist.ts")),
+      "morpheus.json",
+    ).replaceAll("\\", "/");
+    await app("lib/auth/hq-allowlist.ts", t.hqAllowlist(
+      manifestImport.startsWith(".") ? manifestImport : `./${manifestImport}`,
+    ));
+    await app("lib/auth/session-cookie.ts", t.authSessionCookie(ctx));
+    await app("lib/auth/current-user.ts", t.authCurrentUser(ctx));
+    await app("app/api/auth/session/route.ts", t.apiAuthSession(ctx, name));
+    await app("app/sign-in/page.tsx", t.signInPage(ctx, name));
+    await app("app/sign-in/SignInForm.tsx", t.signInForm(ctx));
+    await app("app/hq/layout.tsx", t.hqLayout(ctx, name));
+    await app("app/hq/page.tsx", t.hqPage(ctx, name));
+    await app("app/hq/HqSearch.tsx", t.hqSearch(name));
+    await app("app/hq/search-index/route.ts", t.hqSearchRoute(ctx));
+    await app("app/hq/SignOutButton.tsx", t.signOutButton(ctx));
+    await app("app/hq/no-access/page.tsx", t.noAccessPage());
+    await app("lib/hq/search.ts", t.hqSearchBuild(name));
+    await app("scripts/hq-build-contract.mjs", t.hqBuildContract());
+    await app("scripts/check-hq-build.mjs", t.hqBuildCheck());
+
+    if (survey.webAppExists) {
+      notes.push(
+        "Generated the HQ build contract and checker without changing this existing app's " +
+          "package scripts. After classifying its existing HQ routes, add " +
+          "`node scripts/check-hq-build.mjs` to postbuild; new Morpheus web apps wire it " +
+          "automatically.",
+      );
+    }
+
+    if (survey.hasRouteGate) {
+      notes.push(
+        "An existing proxy.ts or middleware.ts was left untouched. Add the `/hq` " +
+          "matcher and the session check to it by hand — two gates on one route is " +
+          "worse than one, and only one of them can be first.",
+      );
+    } else {
+      await app("proxy.ts", t.routeGate(ctx));
+    }
+
+    notes.push(
+      "A verified Google account on the deployed HQ allowlist receives its role on first " +
+        "sign-in. Run `morpheus access sync` after allowlist changes to update existing " +
+        "accounts promptly, including users who have not signed in again.",
+    );
+  }
+}
+
+/**
+ * Never-overwrite has one sharp edge, and this is it. An earlier run whose
+ * federation step failed wrote a config with no `WORKLOAD_IDENTITY` block;
+ * a later run that provisions federation successfully then *keeps* that
+ * file, and the deployment silently falls back to Application Default
+ * Credentials — which do not exist on Vercel. Local dev works, production
+ * does not, and nothing says so. Reported rather than rewritten: the file
+ * may have been edited since.
+ */
+async function staleFederationNote({ root, survey, notes }: WebRun): Promise<void> {
+  const stale: string[] = [];
+  for (const [file, marker] of [
+    ["lib/firebase/config.ts", "WORKLOAD_IDENTITY"],
+    ["lib/firebase/admin.ts", "workloadIdentity"],
+  ] as const) {
+    const path = join(root, survey.webRoot === "." ? file : `${survey.webRoot}/${file}`);
+    const existing = await readFile(path, "utf8").catch(() => "");
+    if (existing && !existing.includes(marker)) stale.push(file);
+  }
+  if (stale.length) {
+    notes.push(
+      `${stale.join(" and ")} predate${stale.length === 1 ? "s" : ""} this run's Workload ` +
+        "Identity setup and carr" +
+        (stale.length === 1 ? "ies" : "y") +
+        " no federation branch, so the deployment would fall back to Application Default " +
+        "Credentials — which Vercel does not have. Delete them and re-run; they are " +
+        "generated, and nothing here rewrites a file you may have edited.",
+    );
+  }
+}
+
+async function mergeWebDependencies({ opts, root, survey, merged, notes }: WebRun): Promise<void> {
+  const firebase = opts.firebase!;
+  const dependencies = {
+    ...(opts.waitlist ? WAITLIST_DEPENDENCIES : {}),
+    ...(opts.hq ? HQ_DEPENDENCIES : {}),
+    ...(firebase.workloadIdentity ? WORKLOAD_IDENTITY_DEPENDENCIES : {}),
+  };
+  const added = await mergeDependencies(root, survey.webRoot, dependencies);
+  if (added.length) {
+    merged.push(
+      `${survey.webRoot === "." ? "" : `${survey.webRoot}/`}package.json (+${added.join(", ")})`,
+    );
+    notes.push("Run `pnpm install` — the generated code imports dependencies just added.");
+  }
+
+  if (opts.hq) {
+    const override = await addJwksJoseOverride(root);
+    if (override) merged.push("pnpm-workspace.yaml (+jwks-rsa>jose override)");
+  }
+
+  if (survey.shared && !survey.shared.exportsWaitlist && survey.shared.hasExportsMap) {
+    const path = `${survey.shared.dir}/package.json`;
+    if (await addSharedExport(root, path)) merged.push(`${path} (+./schema/waitlist)`);
+  }
 }
 
 /**

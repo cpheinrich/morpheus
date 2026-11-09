@@ -39,6 +39,9 @@ export declare class CodexTranscript {
     private turnCwd;
     constructor(options: CodexParseOptions);
     push(line: string): void;
+    /** The line as a JSON object; an unparseable line is recorded as an issue, a non-object skipped. */
+    private parse;
+    private turnContext;
     /**
      * `token_count` events repeat: the same cumulative total is re-emitted
      * around tool calls. A response is counted only when the cumulative total

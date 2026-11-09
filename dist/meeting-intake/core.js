@@ -177,10 +177,20 @@ export function completionNotice(record, config) {
     })
         .parse(record);
     const includeSummary = config.notification.includeSummary;
+    const summary = noticeSummary(record, includeSummary);
+    assertNoticeReady(record, config, note, delivery);
+    const date = new Intl.DateTimeFormat("en-US", {
+        dateStyle: "long",
+        timeZone: config.timeZone,
+    }).format(new Date(note.occurred));
+    return noticeText(date, summary, includeSummary, delivery.actions, note.hqUrl);
+}
+/** The one-line verified summary when the profile includes one, else empty. */
+function noticeSummary(record, includeSummary) {
     if (includeSummary && record.summary === undefined) {
         throw new Error("This profile requires the verified note summary in the journal");
     }
-    const summary = includeSummary
+    return includeSummary
         ? z
             .string()
             .min(12)
@@ -188,6 +198,9 @@ export function completionNotice(record, config) {
             .refine((value) => !/[\r\n]/.test(value), "must be one line")
             .parse(record.summary)
         : "";
+}
+/** In project scope, with a current index when one is required, not already sent, and linking into canonical HQ. */
+function assertNoticeReady(record, config, note, delivery) {
     if (!note.projects.includes(config.project)) {
         throw new Error(`Meeting is outside the ${config.project} project scope`);
     }
@@ -214,12 +227,10 @@ export function completionNotice(record, config) {
         url.hash) {
         throw new Error("Notice URL is outside canonical HQ");
     }
-    const date = new Intl.DateTimeFormat("en-US", {
-        dateStyle: "long",
-        timeZone: config.timeZone,
-    }).format(new Date(note.occurred));
-    const actionsRecorded = delivery.actions.status === "recorded";
-    const recordedActionCount = delivery.actions.status === "recorded" ? delivery.actions.count : 0;
+}
+function noticeText(date, summary, includeSummary, actions, hqUrl) {
+    const actionsRecorded = actions.status === "recorded";
+    const recordedActionCount = actions.status === "recorded" ? actions.count : 0;
     const actionStatus = actionsRecorded
         ? recordedActionCount
             ? "The action items were also recorded."
@@ -231,12 +242,12 @@ export function completionNotice(record, config) {
                 (recordedActionCount
                     ? ", along with the action items"
                     : "; no new action items were filed") +
-                `. ${note.hqUrl}`);
+                `. ${hqUrl}`);
         }
-        return (`Meeting notes for ${date} have been summarized and recorded. ${actionStatus} ` + note.hqUrl);
+        return (`Meeting notes for ${date} have been summarized and recorded. ${actionStatus} ` + hqUrl);
     }
     return (`Meeting notes for ${date} have been summarized and recorded. ${summary} ` +
         actionStatus +
-        ` ${note.hqUrl}`);
+        ` ${hqUrl}`);
 }
 //# sourceMappingURL=core.js.map

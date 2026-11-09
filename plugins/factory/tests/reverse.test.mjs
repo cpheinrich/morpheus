@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { linkedCheckout } from "./git-fixtures.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, chmod, readFile, mkdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,6 +11,7 @@ import {
   route,
   claudeRemaining,
   codexSelection,
+  codexRootEffort,
   codexPermission,
   codexEnv,
 } from "../src/config.mjs";
@@ -25,6 +27,7 @@ import {
   readClaudeUsage,
   statusText,
   transcriptModel,
+  transcriptPermissionMode,
 } from "../src/claude-usage.mjs";
 import {
   atomic,
@@ -81,13 +84,13 @@ test("Claude-coordinated routing delegates to Codex strictly below the threshold
   const c = { ...defaults(), mode: "automatic" };
   const task = { project: "/repo/.git", override: "auto" };
   assert.equal(c.threshold, 90);
-  assert.equal(route(c, task, [gw("codex", "codex", 90)], undefined, "claude").executor, "claude");
+  assert.equal(route(c, task, [gw("codex", "codex", 90)], undefined, "claude").executor, "codex");
   assert.equal(route(c, task, [gw("codex", "codex", 89.99)], undefined, "claude").executor, "codex");
   assert.match(route(c, task, [gw("codex", "codex", 10)], undefined, "claude").reason, /most headroom/);
-  assert.equal(route(c, task, [], undefined, "claude").executor, "claude");
+  assert.equal(route(c, task, [], undefined, "claude").executor, "codex");
   assert.equal(route(c, task, [gw("codex", "codex", 5)], "codex", "claude").executor, "codex");
   assert.equal(route(c, { ...task, override: "claude" }, [gw("codex", "codex", 5)], undefined, "claude").executor, "claude");
-  assert.equal(route({ ...c, mode: "manual" }, task, [gw("codex", "codex", 5)], undefined, "claude").executor, "claude");
+  assert.equal(route({ ...c, mode: "manual" }, task, [gw("codex", "codex", 5)], undefined, "claude").executor, "codex");
   assert.equal(route({ ...c, mode: "off" }, task, [gw("codex", "codex", 5)], "codex", "claude").executor, "claude");
   assert.equal(route(c, { ...task, disabled: true }, [gw("codex", "codex", 5)], "codex", "claude").executor, "claude");
 });
@@ -129,8 +132,15 @@ test("Claude model and effort map to approved Codex selections only", () => {
     model: "gpt-5.5",
     effort: "low",
   });
+  assert.equal(codexSelection(c, {}, { effort: "minimal" }).effort, "low");
+  assert.equal(codexSelection(c, {}, { effort: "ultra" }).effort, "max");
+  c.codexEffortMap.high = "medium";
+  assert.equal(codexSelection(c, { effort: "high" }).effort, "medium");
+  assert.equal(codexRootEffort("high"), "high");
+  assert.equal(codexRootEffort("minimal"), "low");
+  assert.equal(codexRootEffort("ultra"), "max");
   assert.throws(() => codexSelection(c, {}, { model: "o3-pro" }), /approved Codex model/);
-  assert.throws(() => codexSelection(c, {}, { effort: "ultra" }), /effort/);
+  assert.throws(() => codexSelection(c, {}, { effort: "unknown" }), /effort/);
 });
 
 test("Codex worker environment drops API credentials and marks delegation", () => {
@@ -170,6 +180,50 @@ test("Codex argv resumes by session id and keeps the prompt out of argv", () => 
   const schema = JSON.parse(readFileSync(resultSchemaPath, "utf8"));
   // Codex structured output requires every property to be listed as required.
   assert.deepEqual(schema.required.sort(), Object.keys(schema.properties).sort());
+});
+
+test("Factory registers context MCP for an admitted Morpheus checkout on both providers", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "factory-context-mcp-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { claudeArgs } = await import("../src/claude.mjs");
+  const selection = { model: "test-model", effort: "high" };
+  const codex = () => codexArgs(null, selection, codexPermission("auto"), null, root);
+  const claude = () => claudeArgs(null, selection, "default", [], root);
+  assert.equal(codex().some(arg => arg.startsWith("mcp_servers.morpheus_context.")), false);
+  assert.equal(claude().includes("--mcp-config"), false);
+
+  await writeFile(join(root, "morpheus.json"), "{}");
+  assert.deepEqual(codex().filter(arg => arg.startsWith("mcp_servers.morpheus_context.")), [
+    'mcp_servers.morpheus_context.command="morpheus"',
+    'mcp_servers.morpheus_context.args=["context","mcp"]',
+    'mcp_servers.morpheus_context.env.MORPHEUS_CONTEXT_WORKTREE_PIN="1"',
+    `mcp_servers.morpheus_context.cwd=${JSON.stringify(root)}`,
+  ]);
+  const argv = claude();
+  assert.deepEqual(JSON.parse(argv[argv.indexOf("--mcp-config") + 1]), {
+    mcpServers: { morpheus_context: { command: "morpheus", args: ["context", "mcp"], env: { MORPHEUS_CONTEXT_WORKTREE_PIN: "1" } } },
+  });
+  const subdir = join(root, "src");
+  await mkdir(subdir);
+  execFileSync("git", ["init", "-q"], { cwd: root });
+  const other = await mkdtemp(join(tmpdir(), "factory-other-context-mcp-"));
+  t.after(() => rm(other, { recursive: true, force: true }));
+  execFileSync("git", ["init", "-q"], { cwd: other });
+  await writeFile(join(other, "morpheus.json"), "{}");
+  const previous = { GIT_DIR: process.env.GIT_DIR, GIT_WORK_TREE: process.env.GIT_WORK_TREE };
+  try {
+    process.env.GIT_DIR = join(other, ".git");
+    process.env.GIT_WORK_TREE = other;
+    const codexFromSubdir = codexArgs(null, selection, codexPermission("auto"), null, subdir);
+    assert.ok(codexFromSubdir.includes(`mcp_servers.morpheus_context.cwd=${JSON.stringify(await realpath(root))}`));
+    assert.ok(claudeArgs(null, selection, "default", [], subdir).includes("--mcp-config"));
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+  assert.equal(argv.includes("--strict-mcp-config"), false);
 });
 
 test("recorded codex exec events fold into a structured result", () => {
@@ -245,9 +299,7 @@ async function fakeCodex(root, body) {
 
 test("a Claude session delegates to Codex end to end through the guardian", async (t) => {
   const root = await isolatedHome(t);
-  const repo = join(root, "repo");
-  await mkdir(repo);
-  execFileSync("git", ["init", "-q", repo]);
+  const repo = await linkedCheckout(root, "repo");
   // Fake codex: records argv, stdin and environment, then streams real event shapes.
   const restore = await fakeCodex(
     root,
@@ -272,7 +324,7 @@ echo '{"type":"turn.completed","usage":{}}'
     m.codexStart({ sessionId, prompt: "x", operation: "codex" }),
     /No verified Claude session settings/,
   );
-  // Manual mode advises staying in Claude, and does not start Codex unasked.
+  // Session start advertises the model-directed contract but launches nothing.
   const advice = await m.dispatch("codex.hook", {
     sessionId,
     event: "SessionStart",
@@ -281,8 +333,7 @@ echo '{"type":"turn.completed","usage":{}}'
     model: "claude-opus-5-5",
     effort: "high",
   });
-  assert.match(advice.additionalContext, /"executor":"claude"/);
-  await assert.rejects(m.codexStart({ sessionId, prompt: "x" }), /Manual delegation only/);
+  assert.match(advice.additionalContext, /"executor":"codex"/);
   const started = await m.codexStart({
     sessionId,
     prompt: "Implement the thing",
@@ -316,11 +367,9 @@ echo '{"type":"turn.completed","usage":{}}'
 
 test("one Claude session runs Codex concurrently only in different worktrees", async (t) => {
   const root = await isolatedHome(t);
-  const repo = join(root, "repo");
+  const repo = await linkedCheckout(root, "repo");
   const other = join(root, "other");
   const third = join(root, "third");
-  await mkdir(repo);
-  execFileSync("git", ["init", "-q", repo]);
   execFileSync("git", ["-C", repo, "config", "user.email", "test@example.com"]);
   execFileSync("git", ["-C", repo, "config", "user.name", "Test"]);
   await writeFile(join(repo, "README.md"), "test\n");
@@ -368,7 +417,9 @@ test("one Claude session runs Codex concurrently only in different worktrees", a
     cwd: other,
     prompt: "second",
     operation: "codex",
+    fresh: true,
   });
+  assert.equal((await taskRead(claudeTaskId(sessionId))).primaryCwd, await realpath(repo));
   const inspected = await m.claudeInspect(sessionId);
   assert.deepEqual(
     new Set(inspected.runs.active.map((run) => run.id)),
@@ -389,7 +440,7 @@ test("one Claude session runs Codex concurrently only in different worktrees", a
   assert.ok(m.runs.get(first.id).lastLease > 0);
   assert.equal(m.runs.get(second.id).lastLease, 0);
   await assert.rejects(
-    m.codexStart({ sessionId, cwd: third, prompt: "third", operation: "codex" }),
+    m.codexStart({ sessionId, cwd: third, prompt: "third", operation: "codex", fresh: true }),
     /Delegation concurrency limit reached/,
   );
 
@@ -410,6 +461,10 @@ test("one Claude session runs Codex concurrently only in different worktrees", a
   });
   assert.equal(resumed.cwd, await realpath(other));
   assert.equal(resumed.codexSession, "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0002");
+  assert.equal(resumed.taskId, second.taskId);
+  assert.notEqual(resumed.id, second.id);
+  assert.equal(resumed.fresh, true);
+  assert.equal((await taskRead(claudeTaskId(sessionId))).primaryCwd, await realpath(repo));
 
   Object.assign(m.runs.get(first.id), {
     terminal: true,
@@ -480,9 +535,186 @@ test("concurrent Codex session discoveries both persist", async (t) => {
     ),
   );
   assert.deepEqual((await taskRead(taskId)).codexSessions, {
-    "/worktree-1": "20000000-0000-0000-0000-000000000001",
-    "/worktree-2": "20000000-0000-0000-0000-000000000002",
+    "primary:/worktree-1": "20000000-0000-0000-0000-000000000001",
+    "primary:/worktree-2": "20000000-0000-0000-0000-000000000002",
   });
+});
+
+test("a worker binding is committed only after launch and then rejects provider changes", async (t) => {
+  const root = await isolatedHome(t);
+  const repo = await linkedCheckout(root, "repo");
+  const bin = join(root, "bin");
+  await mkdir(bin, { recursive: true });
+  await writeFile(
+    join(bin, "claude"),
+    '#!/bin/sh\nprintf \'%s\\n\' \'{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","subscriptionType":"max"}\'\n',
+  );
+  await chmod(join(bin, "claude"), 0o755);
+  const oldPath = process.env.PATH;
+  process.env.PATH = `${bin}:${oldPath}`;
+  t.after(() => { process.env.PATH = oldPath; });
+  await configWrite({ ...defaults(), mode: "manual" });
+
+  const snapshot = {
+    cwd: repo,
+    model: "gpt-6-astra",
+    reasoningEffort: "high",
+    sandbox: { type: "dangerFullAccess" },
+    approvalPolicy: "never",
+  };
+  const failedRoot = "binding-preflight-failure";
+  const failed = new Manager();
+  t.after(() => failed.viewer.close());
+  failed.snapshot = async () => snapshot;
+  failed.launch = async () => { throw new Error("fixture launch failed"); };
+  await assert.rejects(
+    failed.start({ threadId: failedRoot, prompt: "fail before commit" }),
+    /fixture launch failed/,
+  );
+  assert.equal((await taskRead(failedRoot)).workerBinding, undefined);
+
+  const rootId = "binding-success";
+  const m = new Manager();
+  t.after(() => m.viewer.close());
+  m.snapshot = async () => snapshot;
+  m.launch = async (record) => {
+    m.runs.set(record.id, { ...record, lastLease: 0, sequence: 0, progress: "" });
+  };
+  m.begin = (id) => m.public(m.runs.get(id));
+  const started = await m.start({ threadId: rootId, prompt: "commit binding" });
+  assert.equal(started.executor, "claude");
+  assert.deepEqual((await taskRead(rootId)).workerBinding, {
+    executor: "claude",
+    gateway: null,
+  });
+  await assert.rejects(
+    m.start({ threadId: rootId, prompt: "switch", operation: "codex" }),
+    /already pinned to native claude/,
+  );
+});
+
+test("Codex-root fresh runs require a binding, persist together, and resume their own question", async (t) => {
+  const root = await isolatedHome(t);
+  const repo = await linkedCheckout(root, "repo");
+  const other = join(root, "other");
+  execFileSync("git", ["-C", repo, "config", "user.email", "test@example.com"]);
+  execFileSync("git", ["-C", repo, "config", "user.name", "Test"]);
+  await writeFile(join(repo, "README.md"), "test\n");
+  execFileSync("git", ["-C", repo, "add", "README.md"]);
+  execFileSync("git", ["-C", repo, "commit", "-qm", "fixture"]);
+  execFileSync("git", ["-C", repo, "worktree", "add", "-q", "-b", "other", other]);
+  const bin = join(root, "bin");
+  await mkdir(bin, { recursive: true });
+  await writeFile(
+    join(bin, "claude"),
+    '#!/bin/sh\nprintf \'%s\\n\' \'{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","subscriptionType":"max"}\'\n',
+  );
+  await chmod(join(bin, "claude"), 0o755);
+  const oldPath = process.env.PATH;
+  process.env.PATH = `${bin}:${oldPath}`;
+  t.after(() => { process.env.PATH = oldPath; });
+  await configWrite({ ...defaults(), mode: "manual", maxConcurrent: 2 });
+  const threadId = "codex-fresh-root";
+  const m = new Manager();
+  t.after(() => m.viewer.close());
+  m.snapshot = async () => ({
+    cwd: repo,
+    model: "gpt-6-astra",
+    reasoningEffort: "high",
+    sandbox: { type: "dangerFullAccess" },
+    approvalPolicy: "never",
+  });
+  m.launch = async (record) => {
+    const live = { ...record, state: "running", lastLease: 0, sequence: 0, progress: "" };
+    m.runs.set(record.id, live);
+    await mkdir(runDir(record.id), { recursive: true });
+    await atomic(join(runDir(record.id), "run.json"), m.public(live));
+  };
+  m.begin = (id) => m.public(m.runs.get(id));
+
+  await assert.rejects(
+    m.start({ threadId, cwd: other, prompt: "too early", fresh: true }),
+    /fresh worker requires an established primary worker binding/i,
+  );
+  const primary = await m.start({ threadId, prompt: "primary" });
+  const fresh = await m.start({ threadId, cwd: other, prompt: "isolated", fresh: true });
+  const stored = await taskRead(threadId);
+  assert.deepEqual(new Set(stored.runIds), new Set([primary.id, fresh.id]));
+
+  // A restarted bridge discovers and guards both writers from persisted task/run records.
+  const restarted = new Manager();
+  t.after(() => restarted.viewer.close());
+  const active = await restarted.taskRuns(await taskRead(threadId));
+  assert.deepEqual(new Set(active.active.map((run) => run.id)), new Set([primary.id, fresh.id]));
+  for (const [cwd, file] of [[repo, "README.md"], [other, "README.md"]]) {
+    const guarded = await restarted.guard(threadId, {
+      cwd,
+      tool: "apply_patch",
+      toolInput: `*** Begin Patch\n*** Update File: ${join(cwd, file)}\n*** End Patch`,
+    });
+    assert.match(guarded.deny, /Factory run/);
+  }
+
+  Object.assign(m.runs.get(primary.id), { terminal: true, state: "completed" });
+  await atomic(join(runDir(primary.id), "run.json"), m.public(m.runs.get(primary.id)));
+  Object.assign(m.runs.get(fresh.id), {
+    terminal: true,
+    state: "needs_input",
+    claudeSession: "fresh-claude-session",
+  });
+  await atomic(join(runDir(fresh.id), "run.json"), m.public(m.runs.get(fresh.id)));
+  const resumed = await m.start({
+    threadId,
+    runId: fresh.id,
+    prompt: "answer",
+    replySource: "user",
+    replyReason: "User answered",
+  });
+  assert.equal(resumed.fresh, true);
+  assert.equal(resumed.cwd, await realpath(other));
+  assert.equal(resumed.claudeSession, "fresh-claude-session");
+  assert.equal(resumed.taskId, fresh.taskId);
+  assert.notEqual(resumed.id, fresh.id);
+  assert.equal((await taskRead(threadId)).primaryCwd, await realpath(repo));
+
+  Object.assign(m.runs.get(resumed.id), { terminal: true, state: "completed" });
+  await atomic(join(runDir(resumed.id), "run.json"), m.public(m.runs.get(resumed.id)));
+  const historical = await m.factoryRun({ rootKind: "codex", rootId: threadId, runId: fresh.id });
+  assert.equal(historical.state, "needs_input");
+  assert.equal(historical.task.status.state, "TASK_STATE_COMPLETED");
+  await assert.rejects(m.start({
+    threadId, runId: fresh.id, prompt: "late duplicate answer",
+    replySource: "user", replyReason: "Previously answered",
+  }), /superseded Factory attempt/);
+  const withPrimarySession = await taskRead(threadId);
+  withPrimarySession.sessions = { [`primary:${await realpath(repo)}`]: "primary-claude-session" };
+  await taskWrite(withPrimarySession);
+  const backToPrimary = await m.start({ threadId, prompt: "ordinary next step" });
+  assert.equal(backToPrimary.fresh, false);
+  assert.equal(backToPrimary.cwd, await realpath(repo));
+  assert.equal(backToPrimary.claudeSession, "primary-claude-session");
+});
+
+test("provider-neutral run controls reject a run owned by another root", async (t) => {
+  await isolatedHome(t);
+  const runId = "50000000-0000-4000-8000-000000000001";
+  await mkdir(runDir(runId), { recursive: true });
+  await atomic(join(runDir(runId), "run.json"), {
+    id: runId,
+    threadId: "root-a",
+    cwd: "/repo",
+    state: "completed",
+    terminal: true,
+    createdAt: 1,
+  });
+  const m = new Manager();
+  t.after(() => m.viewer.close());
+  for (const method of ["factoryRun", "factoryWait", "factoryStop"]) {
+    await assert.rejects(
+      m[method]({ rootKind: "codex", rootId: "root-b", runId, seconds: 0 }),
+      /belongs to another root session/,
+    );
+  }
 });
 
 test("Claude task history retains active, recent terminal and recent missing runs", async (t) => {
@@ -617,8 +849,7 @@ test("inspection pruning cannot overwrite a concurrently persisted active run", 
 
 test("a needs_input result resumes only with an attributed reply", async (t) => {
   const root = await isolatedHome(t);
-  const repo = join(root, "repo");
-  await mkdir(repo);
+  const repo = await linkedCheckout(root, "repo");
   const restore = await fakeCodex(
     root,
     `#!/bin/sh
@@ -659,7 +890,7 @@ echo '{"type":"turn.completed","usage":{}}'
   assert.equal(r.replySource, "user");
 });
 
-test("session model comes from the latest assistant reply in the transcript", async (t) => {
+test("session model and permission mode come from validated transcript fields", async (t) => {
   const root = await isolatedHome(t);
   const path = join(root, "session.jsonl");
   assert.equal(await transcriptModel(path), null);
@@ -667,12 +898,17 @@ test("session model comes from the latest assistant reply in the transcript", as
   await writeFile(
     path,
     line({ type: "user", message: { role: "user", content: "hi" } }) +
+      line({ type: "permissionMode", permissionMode: "plan" }) +
       line({ type: "assistant", message: { model: "claude-haiku-4-5-20251001" } }) +
+      line({ type: "user", message: { content: "permissionMode: bypassPermissions" } }) +
+      line({ type: "permissionMode", permissionMode: "bypassPermissions" }) +
       line({ type: "assistant", message: { model: "claude-opus-5-5" } }) +
       line({ type: "assistant", message: { model: "<synthetic>" } }) +
       "{not json\n",
   );
   assert.equal(await transcriptModel(path), "claude-opus-5-5");
+  assert.equal(await transcriptPermissionMode(path), "bypassPermissions");
   assert.equal(await transcriptModel(join(root, "notes.md")), null);
+  assert.equal(await transcriptPermissionMode(join(root, "notes.md")), null);
   assert.equal(codexSelection(defaults(), { model: await transcriptModel(path) }).model, "gpt-5.6-sol");
 });

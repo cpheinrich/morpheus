@@ -8,8 +8,8 @@ forever chat, favored responsibility and event/deadline-driven wakeups, and sugg
 reasoning for incidents. He asked for multiple subject tags on roadmap tickets and corresponding
 worklogs, including `engineering` and `devops`, across future infrastructure/CI/CD work.
 
-His follow-up makes Morpheus's own ticket/worklog structure primary even while another session
-explores Paperclip. Mapping additional queue tasks is a later adapter concern. This source change
+His follow-up makes Morpheus's own ticket/worklog structure primary. Queue projections are
+optional adapter concerns. This source change
 adds no runtime supervisor and grants no new model, provider, spending or credential capability.
 
 On 2026-10-26 Chris required agents in the delivery campaign and this shared persona to document

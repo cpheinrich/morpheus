@@ -17,18 +17,19 @@ export async function collectStatus(root, opts = {}) {
             // A detector that throws is a detector that does not know.
             result = null;
         }
-        if (result === null) {
-            // Could not check. Keep whatever was recorded rather than inventing a
-            // verdict, and say so.
-            return {
-                task,
-                state: saved?.state ?? "unknown",
-                detected: true,
-                note: saved?.note,
-            };
-        }
-        return { task, state: result ? "done" : "todo", detected: true, note: saved?.note };
+        return detectedStatus(task, saved, result);
     }));
+}
+/**
+ * A detector's answer merged with what was recorded. `null` means it could not
+ * check: keep the recorded state rather than inventing a verdict, and say so —
+ * on every run, not only the first, when nothing was recorded yet.
+ */
+export function detectedStatus(task, saved, result) {
+    if (result === null) {
+        return { task, state: saved?.state ?? "unknown", detected: true, unchecked: true, note: saved?.note };
+    }
+    return { task, state: result ? "done" : "todo", detected: true, note: saved?.note };
 }
 export function summarise(statuses) {
     const required = statuses.filter((s) => !s.task.optional);
@@ -39,7 +40,7 @@ export function summarise(statuses) {
         requiredDone,
         optionalTotal: optional.length,
         optionalDone: optional.filter((s) => s.state === "done").length,
-        unknown: statuses.filter((s) => s.state === "unknown").length,
+        unknown: statuses.filter((s) => s.state === "unknown" || s.unchecked).length,
         complete: requiredDone === required.length,
     };
 }
@@ -66,7 +67,7 @@ export function formatStatus(statuses, name, path) {
         const optional = t.task.optional ? " \x1b[2m(optional)\x1b[0m" : "";
         const dim = t.state === "done" ? "\x1b[2m" : "";
         lines.push(`  ${GLYPH[t.state]} ${dim}${t.task.title}\x1b[0m${optional}`);
-        if (t.state === "unknown") {
+        if (t.state === "unknown" || t.unchecked) {
             lines.push(`      \x1b[2mcould not check — ${t.task.how}\x1b[0m`);
         }
     }

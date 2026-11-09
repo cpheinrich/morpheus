@@ -1,4 +1,4 @@
-import { createHqSearchIndex } from "./index.js";
+import { createHqSearchIndex, searchExcerpt, } from "./index.js";
 export const HQ_SEARCH_PRIVATE_CACHE_CONTROL = "private, max-age=31536000, immutable";
 export function hqSearchResponseHeaders() {
     return {
@@ -68,6 +68,7 @@ export function markdownSearchDocument(input) {
         metadata,
         aliases: [input.aliases, discoveredAliases].filter(Boolean).join(" "),
         text,
+        excerpt: searchExcerpt(text),
     };
 }
 export function createHqSearchPayload(documents, options = {}) {

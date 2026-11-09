@@ -64,13 +64,7 @@ export async function waitRun(deps, opts) {
     const deadline = start + opts.timeoutMs;
     const byId = opts.run !== undefined;
     const wanted = describeWanted(opts);
-    let selected;
-    let polled = false;
-    let alreadyComplete = false;
-    const movedFrom = [];
-    let errors = 0;
-    let delay = null;
-    let timedOut = false;
+    const watch = new RunWatch(byId, opts.sha);
     for (;;) {
         const result = byId
             ? await viewRun(deps, opts.run, opts.repo).then((r) => ("error" in r ? r : { run: r }))
@@ -78,59 +72,69 @@ export async function waitRun(deps, opts) {
         if ("error" in result) {
             // Before any successful read the cause is a mistyped id or workflow, or
             // missing auth; retrying for half a minute only delays saying so.
-            if (!polled)
+            if (!watch.polled)
                 return { exitCode: EXIT.error, output: `wait-ci: could not read ${wanted}: ${result.error}` };
-            errors++;
-            if (errors >= MAX_POLL_ERRORS) {
+            if (++watch.errors >= MAX_POLL_ERRORS) {
                 return { exitCode: EXIT.error, output: `wait-ci: ${MAX_POLL_ERRORS} consecutive polls of ${wanted} failed; last: ${result.error}` };
             }
         }
-        else {
-            polled = true;
-            errors = 0;
-            const run = result.run;
-            if (run && !selected) {
-                // A finished run found by branch alone may be the previous push's,
-                // with the expected run not created yet. Said in the digest rather
-                // than guessed at: `--sha` is the exact form.
-                alreadyComplete = !byId && !opts.sha && run.status === "completed";
-            }
-            else if (run && selected && run.id !== selected.id) {
-                movedFrom.push(selected.id);
-                alreadyComplete = false;
-                delay = null;
-            }
-            if (run)
-                selected = run;
-        }
+        else
+            watch.observe(result.run);
         const now = deps.now();
-        if (selected?.status === "completed" && !(alreadyComplete && now - start < ALREADY_COMPLETE_SETTLE_MS))
+        const selected = watch.selected;
+        if (selected?.status === "completed" && !(watch.alreadyComplete && now - start < ALREADY_COMPLETE_SETTLE_MS))
             break;
         if (!selected && now - start >= NO_CHECKS_GRACE_MS)
             break;
         if (now >= deadline) {
-            timedOut = true;
+            watch.timedOut = true;
             break;
         }
-        delay = nextDelay(delay, deadline - now);
-        await deps.sleep(delay);
+        watch.delay = nextDelay(watch.delay, deadline - now);
+        await deps.sleep(watch.delay);
     }
+    return runDigest(deps, opts, watch, wanted, start);
+}
+/** The run being followed. By workflow a newer matching run replaces it, is named, and restarts the backoff. */
+class RunWatch {
+    byId;
+    sha;
+    selected;
+    polled = false;
+    alreadyComplete = false;
+    movedFrom = [];
+    errors = 0;
+    delay = null;
+    timedOut = false;
+    constructor(byId, sha) {
+        this.byId = byId;
+        this.sha = sha;
+    }
+    observe(run) {
+        this.polled = true;
+        this.errors = 0;
+        if (run && !this.selected) {
+            // A finished run found by branch alone may be the previous push's,
+            // with the expected run not created yet. Said in the digest rather
+            // than guessed at: `--sha` is the exact form.
+            this.alreadyComplete = !this.byId && !this.sha && run.status === "completed";
+        }
+        else if (run && this.selected && run.id !== this.selected.id) {
+            this.movedFrom.push(this.selected.id);
+            this.alreadyComplete = false;
+            this.delay = null;
+        }
+        if (run)
+            this.selected = run;
+    }
+}
+async function runDigest(deps, opts, watch, wanted, start) {
+    const { selected, timedOut, movedFrom, alreadyComplete } = watch;
     if (!selected) {
         const output = renderRunDigest({ verdict: "no-checks", jobs: [], elapsedMs: deps.now() - start, timedOut, details: new Map(), movedFrom, alreadyComplete: false, wanted });
         return { exitCode: EXIT.timeout, output };
     }
-    // `gh run list` has no jobs; the digest needs them to say what failed.
-    let final = selected;
-    let jobsError;
-    if (!final.jobs) {
-        const viewed = await viewRun(deps, final.id, opts.repo);
-        if ("error" in viewed)
-            jobsError = viewed.error;
-        else if (viewed.attempt !== final.attempt)
-            jobsError = `attempt ${viewed.attempt} started after attempt ${final.attempt} was read`;
-        else
-            final = { ...final, jobs: viewed.jobs };
-    }
+    const { final, jobsError } = await withJobs(deps, selected, opts.repo);
     const verdict = runVerdict(final);
     const repo = opts.repo ?? repoFromRunUrl(final.url);
     const jobs = final.jobs ?? [];
@@ -149,5 +153,16 @@ export async function waitRun(deps, opts) {
         wanted,
     });
     return { exitCode: exitCode(verdict), output };
+}
+/** `gh run list` has no jobs; the digest needs them to say what failed. */
+async function withJobs(deps, selected, repo) {
+    if (selected.jobs)
+        return { final: selected, jobsError: undefined };
+    const viewed = await viewRun(deps, selected.id, repo);
+    if ("error" in viewed)
+        return { final: selected, jobsError: viewed.error };
+    if (viewed.attempt !== selected.attempt)
+        return { final: selected, jobsError: `attempt ${viewed.attempt} started after attempt ${selected.attempt} was read` };
+    return { final: { ...selected, jobs: viewed.jobs }, jobsError: undefined };
 }
 //# sourceMappingURL=wait-run.js.map

@@ -94,18 +94,4 @@ export declare function mergeRanges(ranges: readonly Range[]): Range[];
 /** What of `needed` is not inside `covered`. */
 export declare function subtractRanges(needed: readonly Range[], covered: readonly Range[]): Range[];
 export declare function formatRanges(ranges: readonly Range[]): string;
-/**
- * Which of a record's lines appear, verbatim and in order, in text a tool
- * returned — credit by **content**, not by parsing the command.
- *
- * Parsing shell commands for `>/dev/null`, `| head`, `| wc` would be a guess
- * about what reached the model; the tool's own output is the answer. A
- * discarded or truncated read leaves nothing to match, so it earns nothing,
- * and `cat -n`/`grep -n` prefixes do not match either — conservative in the
- * direction that costs a re-read rather than a false certification.
- *
- * Runs start only at non-blank lines (blank lines repeat everywhere and would
- * make this quadratic) and then extend backwards over matching blank lines, so
- * a record's blank lines are still creditable as part of a real run.
- */
 export declare function creditRuns(recordLines: readonly string[], outputLines: readonly string[]): Range[];

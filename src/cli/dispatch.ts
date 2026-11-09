@@ -55,6 +55,7 @@ import {
 import { GATED, offlineDeclared } from "../session/gate.js";
 import { noteWrite } from "../session/context.js";
 import { install as codebaseMemoryInstall } from "./codebase-memory.js";
+import { check as complexityCheck, install as complexityInstall, prompt as complexityPrompt } from "./complexity.js";
 import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
 import {
   autoUpdate as selfAutoUpdate,
@@ -69,7 +70,7 @@ import { profileExtract, profileReport } from "./profile.js";
 import { pollGuardCommand, waitCiCommand } from "./wait-ci.js";
 import { ctoGuide } from "../cto/guide.js";
 import { productGuide } from "../product/guide.js";
-import { listProjectSkills, syncProjectSkillEntrypoints } from "./skills.js";
+import { listProjectSkills, showProjectSkillGuide, syncProjectSkillEntrypoints } from "./skills.js";
 import { HELP } from "./help.js";
 import type { Flags } from "./args.js";
 
@@ -125,6 +126,21 @@ async function dispatchCodebaseMemory({ flags, command }: Invocation): Promise<n
     console.error(`Unknown codebase-memory command "${command}".\n\n${HELP}`);
     return 1;
   
+}
+
+async function dispatchComplexity({ flags, command }: Invocation): Promise<number> {
+  if (command === "install") return complexityInstall(flags.check);
+  if (command === "prompt") return complexityPrompt();
+  if (command === "check") {
+    return complexityCheck(process.cwd(), {
+      ...(flags.baseGiven ? { base: flags.base } : {}),
+      all: flags.all,
+      json: flags.json,
+      ci: flags.ci,
+    });
+  }
+  console.error(`Unknown complexity command "${command ?? ""}".\n\n${HELP}`);
+  return 1;
 }
 
 async function dispatchHeartbeat({ flags, dir }: Invocation): Promise<number> {
@@ -428,12 +444,33 @@ async function dispatchTeam({ command }: Invocation): Promise<number> {
   
 }
 
-async function dispatchContext({ flags, command }: Invocation): Promise<number> {
+async function dispatchContextLookup(command: string | undefined, rest: string[], flags: Invocation["flags"]): Promise<number | undefined> {
+  if (command === "profile") {
+    if (rest.length > 1) throw new Error("Use morpheus context profile [YYYY-MM-DD].");
+    const { summarizeContextTraces } = await import("../context-search/trace-summary.js");
+    console.log(JSON.stringify(await summarizeContextTraces(process.cwd(), { since: rest[0] }), null, 2));
+    return 0;
+  }
+  if (command === "task-prompt") return (await import("../context-search/task-start.js")).runTaskPromptHook();
+  if (command !== "search" && command !== "coverage" && command !== "engine" && command !== "task-read") return;
+  const search = await import("./context-search.js");
+  const cwd = process.cwd();
+  if (command === "engine") return search.runContextEngine(cwd, rest, flags.sessionId);
+  if (command === "coverage") return search.runContextCoverage(cwd, flags.json);
+  if (command === "task-read") return search.runTaskRead(cwd, rest, flags.sessionId);
+  return search.runContextSearch(cwd, rest.join(" "), {
+    json: flags.json, maxTokens: flags.maxTokens, sessionId: flags.sessionId,
+  });
+}
+
+async function dispatchContext({ flags, command, rest }: Invocation): Promise<number> {
     // `--offline` reaches these the way it reaches `doctor`: each consults a
     // remote, and on an unreachable one the declaration already answers the
     // question. `brief` also checks the installed CLI and is
     // a preparation step that fails visibly if current source cannot be obtained.
     const off = offlineDeclared(flags.offline);
+    const search = await dispatchContextLookup(command, rest, flags);
+    if (search !== undefined) return search;
     if (command === "refresh") return contextRefresh(process.cwd(), off);
     // The PostToolUse read hook. `index.ts` routes it before loading the CLI;
     // this is the same entry for anything that calls `run` directly.
@@ -496,7 +533,8 @@ async function dispatchProduct({ command, rest }: Invocation): Promise<number> {
     return 1;
 }
 
-async function dispatchSkills({ flags, command }: Invocation): Promise<number> {
+async function dispatchSkills({ flags, command, rest }: Invocation): Promise<number> {
+    if (command === "guide") return showProjectSkillGuide(rest[0]);
     if (command === "list" || command === undefined) return listProjectSkills(flags.json);
     if (command === "sync") return syncProjectSkillEntrypoints(process.cwd(), flags.check);
     console.error(`Unknown skills command "${command}".\n\n${HELP}`);
@@ -510,90 +548,86 @@ async function dispatchCheck({ flags, command, dir }: Invocation): Promise<numbe
   
 }
 
-async function dispatchPm({ flags, command, rest, dir }: Invocation): Promise<number> {
-  switch (command) {
-    case "validate":
-      return validate(dir);
-    case "index":
-      return index(dir, flags.check);
-    case "claim": {
-      return claim(dir, rest[0] ?? "", process.cwd(), flags.sessionId, flags.offline);
-    }
-    case "resume":
-      return resume(rest[0] ?? "", process.cwd(), flags.sessionId);
-    case "cleanup":
-      if (flags.offline) { console.error("Cleanup requires fresh remote evidence; offline cleanup is refused."); return 1; }
-      if (rest.slice(1).some(arg => arg !== "--release-stale-sessions")) { console.error("Usage: morpheus pm cleanup <ID> [--dry-run] [--release-stale-sessions]"); return 1; }
-      return cleanup(dir, rest[0] ?? "", process.cwd(), flags.dryRun || flags.check, rest.includes("--release-stale-sessions"));
-    case "worktrees":
-      return worktrees(process.cwd(), rest[0], flags.dryRun || flags.check);
-    case "claims":
-      return claims(dir, process.cwd());
-    case "tagged":
-      return tagged(dir, process.cwd(), rest, flags.json);
-    case "link-issue": {
-      const { refused } = await guard(
-        process.cwd(),
-        "pm link-issue",
-        GATED["pm link-issue"]!,
-        flags.offline,
-      );
-      if (refused !== null) return refused;
-      return linkIssue(dir, rest[0] ?? "", rest[1] ?? "");
-    }
-    case "block": {
-      const { refused, contained } = await guard(
-        process.cwd(),
-        "pm block",
-        GATED["pm block"]!,
-        flags.offline,
-      );
-      if (refused !== null) return refused;
-      // `block` raises an `❗` item in the owner's inbox, which is a required
-      // record. Without the `noteWrite` below, the next gated command is
-      // refused for drift this session authored, naming a file it just wrote.
-      const outcome = await block(dir, process.cwd(), rest[0] ?? "", {
-        ...(flags.needs ? { needs: flags.needs } : {}),
-        ...(flags.owner ? { owner: flags.owner } : {}),
-        ...(flags.context ? { context: flags.context } : {}),
-        // From what the gate actually did, not from the declaration alone. A
-        // sticky `MORPHEUS_OFFLINE=1` — set by a wrapper, outliving the
-        // condition — would otherwise stop the one command whose purpose is
-        // visibility from being visible, in a session where nothing else is
-        // degraded and while claiming still pushes fine.
-        push: !contained,
-      });
-      // Exactly what it wrote, and only when it wrote. A failed `block`
-      // touches nothing, and re-fingerprinting there would silently clear
-      // drift the session never read; passing the whole required inbox set
-      // would have the receipt assert a record was read that this session
-      // neither read nor wrote.
-      await noteWrite(process.cwd(), outcome.written);
-      return outcome.code;
-    }
-    case "unblock":
-      return unblock(dir, rest[0] ?? "");
-    case "ship":
-      return ship(dir, rest, process.cwd(), flags.check);
-    case "migrate-ids":
-      return migrateIds(dir, flags.check);
-    case "new": {
-      const { refused } = await guard(process.cwd(), "pm new", GATED["pm new"]!, flags.offline);
-      if (refused !== null) return refused;
-      const [kind, ...titleParts] = rest;
-      return create(
-        dir,
-        kind ?? "",
-        titleParts.join(" "),
-        { priority: flags.priority, goal: flags.goal, slug: flags.slug, issue: flags.issue, tags: flags.tags },
-        process.cwd(),
-      );
-    }
-    default:
-      console.error(`Unknown pm command "${command ?? ""}".\n\n${HELP}`);
-      return 1;
-  }
+async function dispatchPm(invocation: Invocation): Promise<number> {
+  const command = invocation.command;
+  const handler = command !== undefined && Object.hasOwn(PM_COMMANDS, command) ? PM_COMMANDS[command] : undefined;
+  if (handler) return handler(invocation);
+  console.error(`Unknown pm command "${command ?? ""}".\n\n${HELP}`);
+  return 1;
 }
+
+const PM_COMMANDS: Record<string, (invocation: Invocation) => Promise<number> | number> = {
+  validate: ({ dir }) => validate(dir),
+  index: ({ dir, flags }) => index(dir, flags.check),
+  claim: ({ dir, rest, flags }) => claim(dir, rest[0] ?? "", process.cwd(), flags.sessionId, flags.offline),
+  resume: ({ rest, flags }) => resume(rest[0] ?? "", process.cwd(), flags.sessionId),
+  cleanup: ({ dir, rest, flags }) => {
+    if (flags.offline) { console.error("Cleanup requires fresh remote evidence; offline cleanup is refused."); return 1; }
+    if (rest.slice(1).some(arg => arg !== "--release-stale-sessions")) { console.error("Usage: morpheus pm cleanup <ID> [--dry-run] [--release-stale-sessions]"); return 1; }
+    return cleanup(dir, rest[0] ?? "", process.cwd(), flags.dryRun || flags.check, rest.includes("--release-stale-sessions"));
+  },
+  worktrees: ({ rest, flags }) => worktrees(process.cwd(), rest[0], flags.dryRun || flags.check),
+  claims: ({ dir }) => claims(dir, process.cwd()),
+  tagged: ({ dir, rest, flags }) => tagged(dir, process.cwd(), rest, flags.json),
+  "link-issue": async ({ dir, rest, flags }) => {
+    const { refused } = await guard(
+      process.cwd(),
+      "pm link-issue",
+      GATED["pm link-issue"]!,
+      flags.offline,
+    );
+    if (refused !== null) return refused;
+    return linkIssue(dir, rest[0] ?? "", rest[1] ?? "");
+  },
+  block: pmBlock,
+  unblock: ({ dir, rest }) => unblock(dir, rest[0] ?? ""),
+  ship: ({ dir, rest, flags }) => ship(dir, rest, process.cwd(), flags.check),
+  "migrate-ids": ({ dir, flags }) => migrateIds(dir, flags.check),
+  new: async ({ dir, rest, flags }) => {
+    const { refused } = await guard(process.cwd(), "pm new", GATED["pm new"]!, flags.offline);
+    if (refused !== null) return refused;
+    const [kind, ...titleParts] = rest;
+    return create(
+      dir,
+      kind ?? "",
+      titleParts.join(" "),
+      { priority: flags.priority, goal: flags.goal, slug: flags.slug, issue: flags.issue, tags: flags.tags },
+      process.cwd(),
+    );
+  },
+};
+
+async function pmBlock({ dir, rest, flags }: Invocation): Promise<number> {
+  const { refused, contained } = await guard(
+    process.cwd(),
+    "pm block",
+    GATED["pm block"]!,
+    flags.offline,
+  );
+  if (refused !== null) return refused;
+  // `block` raises an `❗` item in the owner's inbox, which is a required
+  // record. Without the `noteWrite` below, the next gated command is
+  // refused for drift this session authored, naming a file it just wrote.
+  const outcome = await block(dir, process.cwd(), rest[0] ?? "", {
+    ...(flags.needs ? { needs: flags.needs } : {}),
+    ...(flags.owner ? { owner: flags.owner } : {}),
+    ...(flags.context ? { context: flags.context } : {}),
+    // From what the gate actually did, not from the declaration alone. A
+    // sticky `MORPHEUS_OFFLINE=1` — set by a wrapper, outliving the
+    // condition — would otherwise stop the one command whose purpose is
+    // visibility from being visible, in a session where nothing else is
+    // degraded and while claiming still pushes fine.
+    push: !contained,
+  });
+  // Exactly what it wrote, and only when it wrote. A failed `block`
+  // touches nothing, and re-fingerprinting there would silently clear
+  // drift the session never read; passing the whole required inbox set
+  // would have the receipt assert a record was read that this session
+  // neither read nor wrote.
+  await noteWrite(process.cwd(), outcome.written);
+  return outcome.code;
+}
+
 
 async function dispatchProfile({ flags, command }: Invocation): Promise<number> {
   const options = { since: flags.since, repo: flags.repo, out: flags.out, json: flags.json };
@@ -630,6 +664,7 @@ const groups: Record<string, (invocation: Invocation) => Promise<number>> = {
   "doctor": dispatchDoctor,
   "ios": dispatchIos,
   "codebase-memory": dispatchCodebaseMemory,
+  "complexity": dispatchComplexity,
   "heartbeat": dispatchHeartbeat,
   "gh-manager": dispatchGhManager,
   "voice": dispatchVoice,

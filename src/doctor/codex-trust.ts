@@ -103,29 +103,42 @@ export function codexHookHash(
   if (typeof command !== "string" || command.trim() === "") return null;
   if (matcher !== undefined && matcher !== null && typeof matcher !== "string") return null;
 
+  const normalized = normalizedHandler(event, command, handler);
+  if (!normalized) return null;
+  const identity: Json = { event_name: label, hooks: [normalized] };
+  if (typeof matcher === "string" && !MATCHERLESS.has(event)) identity["matcher"] = matcher;
+
+  const digest = createHash("sha256").update(JSON.stringify(sortKeys(identity))).digest("hex");
+  return `sha256:${digest}`;
+}
+
+/** The handler as Codex hashes it, defaults filled in, or null for a shape Codex would reject. */
+function normalizedHandler(event: string, command: string, handler: Record<string, unknown>): Json | null {
+  const fields = handlerFields(event, handler);
+  if (!fields) return null;
+  const { timeout, runsAsync, status, limit } = fields;
+  const normalized: Json = { type: "command", command, timeout, async: runsAsync };
+  if (typeof status === "string") normalized["statusMessage"] = status;
+  if (CONTEXT_LIMIT_EVENTS.has(event) && typeof limit === "number" && limit !== DEFAULT_CONTEXT_LIMIT) {
+    normalized["additionalContextLimit"] = limit;
+  }
+  return normalized;
+}
+
+/** The handler's optional fields as Codex normalizes them, or null for a shape Codex would reject. */
+function handlerFields(event: string, handler: Record<string, unknown>): { timeout: number; runsAsync: boolean; status: unknown; limit: unknown } | null {
   const rawTimeout = handler["timeout"];
   if (rawTimeout !== undefined && !isWholeNumber(rawTimeout)) return null;
   const timeout = SHORT_TIMEOUT.has(event)
     ? Math.min(Math.max(rawTimeout ?? 1, 1), 3)
     : Math.max(rawTimeout ?? 600, 1);
-
   const runsAsync = handler["async"] ?? false;
   if (typeof runsAsync !== "boolean") return null;
   const status = handler["statusMessage"];
   if (status !== undefined && status !== null && typeof status !== "string") return null;
   const limit = handler["additionalContextLimit"];
   if (limit !== undefined && limit !== null && !isWholeNumber(limit)) return null;
-
-  const normalized: Json = { type: "command", command, timeout, async: runsAsync };
-  if (typeof status === "string") normalized["statusMessage"] = status;
-  if (CONTEXT_LIMIT_EVENTS.has(event) && typeof limit === "number" && limit !== DEFAULT_CONTEXT_LIMIT) {
-    normalized["additionalContextLimit"] = limit;
-  }
-  const identity: Json = { event_name: label, hooks: [normalized] };
-  if (typeof matcher === "string" && !MATCHERLESS.has(event)) identity["matcher"] = matcher;
-
-  const digest = createHash("sha256").update(JSON.stringify(sortKeys(identity))).digest("hex");
-  return `sha256:${digest}`;
+  return { timeout, runsAsync, status, limit };
 }
 
 export type HookTrust = "trusted" | "modified" | "untrusted" | "disabled" | "unverified";
@@ -221,6 +234,10 @@ export async function readCodexState(home: string): Promise<CodexState> {
   } catch (error) {
     return { kind: "unusable", path, why: `it is not valid TOML (${(error as Error).message.split("\n")[0]})` };
   }
+  return { kind: "ok", path, hookState: hookStateOf(doc), projects: projectTrustOf(doc) };
+}
+
+function hookStateOf(doc: unknown): Map<string, HookState> {
   const hookState = new Map<string, HookState>();
   const hooks = isObject(doc) ? doc["hooks"] : undefined;
   const state = isObject(hooks) ? hooks["state"] : undefined;
@@ -233,6 +250,10 @@ export async function readCodexState(home: string): Promise<CodexState> {
       });
     }
   }
+  return hookState;
+}
+
+function projectTrustOf(doc: unknown): Map<string, string> {
   const projects = new Map<string, string>();
   const table = isObject(doc) ? doc["projects"] : undefined;
   if (isObject(table)) {
@@ -240,7 +261,7 @@ export async function readCodexState(home: string): Promise<CodexState> {
       if (isObject(entry) && typeof entry["trust_level"] === "string") projects.set(path, entry["trust_level"]);
     }
   }
-  return { kind: "ok", path, hookState, projects };
+  return projects;
 }
 
 async function isDirectory(path: string): Promise<boolean> {
@@ -384,21 +405,8 @@ export async function codexTrustReport(root: string, home: string = codexHome())
   if (listed.problem) return { kind: "unknown", location, hooksPath, why: `${hooksPath} — ${listed.problem}` };
   if (state.kind === "unusable") return { kind: "unknown", location, hooksPath, why: `${state.path} — ${state.why}` };
 
-  let worktreeDiffers: boolean | undefined;
-  if (own) {
-    const identity = (hooks: CodexHook[]) =>
-      hooks.map((h) => `${h.event}:${h.group}:${h.handler}:${h.hash ?? h.command}`).sort().join("\n");
-    worktreeDiffers =
-      own.kind !== "ok" ||
-      identity(listCodexHooks(own.doc, hooksPath).hooks) !== identity(listed.hooks);
-  }
-
-  const aliases = await aliasedState(state.hookState, hooksPath);
-  const lookup = new Map(state.hookState);
-  for (const hook of listed.hooks) {
-    const alias = aliases.get(hook.key.slice(hooksPath.length + 1));
-    if (!lookup.has(hook.key) && alias) lookup.set(hook.key, alias);
-  }
+  const worktreeDiffers = own ? worktreeHooksDiffer(own, listed.hooks, hooksPath) : undefined;
+  const lookup = await trustLookup(state.hookState, listed.hooks, hooksPath);
 
   return {
     kind: "checked",
@@ -410,10 +418,28 @@ export async function codexTrustReport(root: string, home: string = codexHome())
   };
 }
 
+function worktreeHooksDiffer(own: Awaited<ReturnType<typeof readHooksFile>>, hooks: CodexHook[], hooksPath: string): boolean {
+  const identity = (list: CodexHook[]) =>
+    list.map((h) => `${h.event}:${h.group}:${h.handler}:${h.hash ?? h.command}`).sort().join("\n");
+  return own.kind !== "ok" || identity(listCodexHooks(own.doc, hooksPath).hooks) !== identity(hooks);
+}
+
+/** Recorded state per hook key, falling back to an aliased path's entry for a key Codex has no record of. */
+async function trustLookup(hookState: Map<string, HookState>, hooks: CodexHook[], hooksPath: string): Promise<Map<string, HookState>> {
+  const aliases = await aliasedState(hookState, hooksPath);
+  const lookup = new Map(hookState);
+  for (const hook of hooks) {
+    const alias = aliases.get(hook.key.slice(hooksPath.length + 1));
+    if (!lookup.has(hook.key) && alias) lookup.set(hook.key, alias);
+  }
+  return lookup;
+}
+
 /** A hook as a person scanning `/hooks` would recognise it. */
 export function describeHook(hook: CodexHook): string {
   const command = hook.command ?? "";
   const position = hook.group === 0 && hook.handler === 0 ? "" : ` #${hook.group}.${hook.handler}`;
+  if (command.includes("context task-prompt")) return `${hook.event}${position} task context hook (context task-prompt)`;
   const what = command.includes("context record-read")
     ? "read hook (context record-read)"
     : command.includes(".morpheus/poll-guard.sh")
@@ -466,26 +492,33 @@ export function codexTrustFindings(report: CodexTrustReport): TrustFinding[] {
         `${main} and accept the trust prompt, then run /hooks.`,
     );
   }
+  for (const message of hookStateWarnings(hooks, hooksPath, main, where)) add(message);
+  return out;
+}
+
+/** Hooks Codex will not run (untrusted or changed), has switched off, or cannot be verified. */
+function hookStateWarnings(hooks: (CodexHook & { trust: HookTrust })[], hooksPath: string | undefined, main: string, where: string): string[] {
+  const out: string[] = [];
   const needing = hooks.filter((h) => h.trust === "untrusted" || h.trust === "modified");
   if (needing.length) {
     const list = needing
       .map((h) => `${describeHook(h)}${h.trust === "modified" ? " (changed since it was trusted)" : ""}`)
       .join("; ");
-    add(
+    out.push(
       `Codex will not run ${needing.length} of ${hooks.length} hook${hooks.length === 1 ? "" : "s"} in ` +
         `${hooksPath}. Open Codex in ${main} and run /hooks; trust: ${list}.${where}`,
     );
   }
   const disabled = hooks.filter((h) => h.trust === "disabled");
   if (disabled.length) {
-    add(
+    out.push(
       `Codex has ${disabled.length} hook${disabled.length === 1 ? "" : "s"} in ${hooksPath} switched off in /hooks: ` +
         `${disabled.map(describeHook).join("; ")}. Re-enable ${disabled.length === 1 ? "it" : "them"} in /hooks if that was not deliberate.`,
     );
   }
   const unverified = hooks.filter((h) => h.trust === "unverified");
   if (unverified.length) {
-    add(
+    out.push(
       `Could not verify Codex trust for ${unverified.map(describeHook).join("; ")} in ${hooksPath}: ` +
         "only command hooks on known events are reproduced. Check them in /hooks.",
     );

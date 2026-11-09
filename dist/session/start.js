@@ -46,6 +46,24 @@ export async function fetchTrunk(root) {
         await sessionGit(root, ["update-ref", "-d", ref]).catch(() => undefined);
     }
 }
+/** Fast-forwards a clean trunk checkout that is strictly behind; reports Git's refusal instead of throwing. */
+async function fastForwardTrunk(root, before, sha) {
+    // Only behind, never ahead/diverged: ff-only alone could keep local-only
+    // trunk commits and misleadingly describe that checkout as exact trunk.
+    const ancestor = await sessionGit(root, ["merge-base", "--is-ancestor", before, sha]).then(() => true, () => false);
+    if (!ancestor)
+        return { advanced: false, fastForwardError: undefined };
+    try {
+        // Untracked files no longer block this; Git refuses by itself when
+        // the merge would overwrite one, and that refusal is reported.
+        await sessionGit(root, ["merge", "--ff-only", "--quiet", sha]);
+        return { advanced: true, fastForwardError: undefined };
+    }
+    catch (error) {
+        const failed = error;
+        return { advanced: false, fastForwardError: (failed.stderr || failed.message || String(error)).trim() };
+    }
+}
 /**
  * Startup does not allocate a task. Only an exactly named local trunk may
  * fast-forward. Feature branches and detached work stay untouched, with the
@@ -70,25 +88,9 @@ export async function prepareRepository(cwd, offline = false, rescueDeps = {}) {
     }
     const before = await sessionGit(root, ["rev-parse", "HEAD"]);
     const trackedDirty = (await readDirt(root)).tracked.length > 0;
-    let advanced = false;
-    let fastForwardError;
-    if (branch === fetched.branch && !trackedDirty && before !== fetched.sha) {
-        // Only behind, never ahead/diverged: ff-only alone could keep local-only
-        // trunk commits and misleadingly describe that checkout as exact trunk.
-        const ancestor = await sessionGit(root, ["merge-base", "--is-ancestor", before, fetched.sha]).then(() => true, () => false);
-        if (ancestor) {
-            try {
-                // Untracked files no longer block this; Git refuses by itself when
-                // the merge would overwrite one, and that refusal is reported.
-                await sessionGit(root, ["merge", "--ff-only", "--quiet", fetched.sha]);
-                advanced = true;
-            }
-            catch (error) {
-                const failed = error;
-                fastForwardError = (failed.stderr || failed.message || String(error)).trim();
-            }
-        }
-    }
+    const { advanced, fastForwardError } = branch === fetched.branch && !trackedDirty && before !== fetched.sha
+        ? await fastForwardTrunk(root, before, fetched.sha)
+        : { advanced: false, fastForwardError: undefined };
     const lag = await measureLag(root, fetched.sha);
     return {
         root, sha: fetched.sha, trunk: fetched.trunk, branch, task: roadmapIdFromBranch(branch) ?? undefined,

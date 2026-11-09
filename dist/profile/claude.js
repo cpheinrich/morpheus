@@ -68,23 +68,38 @@ export class ClaudeTranscript {
         this.lineNo++;
         if (line.trim() === "")
             return;
+        const o = this.parse(line);
+        if (!o)
+            return;
+        const type = str(o.type);
+        const at = time(o.timestamp);
+        if (at !== null && (type === "user" || type === "assistant" || type === "attachment" || type === "system")) {
+            this.timestamps.push(at);
+        }
+        this.noteContext(o);
+        if (type === "assistant")
+            this.assistant(o, at);
+        else if (type === "user")
+            this.user(o, at);
+        else if (type === "cost-state")
+            this.cost = typeof o.totalCostUSD === "number" ? o.totalCostUSD : this.cost;
+    }
+    /** The line as a JSON object; anything else is recorded as an issue. */
+    parse(line) {
         let o;
         try {
             o = obj(JSON.parse(line));
         }
         catch {
             this.issue("unparseable JSON");
-            return;
+            return null;
         }
-        if (!o) {
+        if (!o)
             this.issue("line is not a JSON object");
-            return;
-        }
-        const type = str(o.type);
-        const at = time(o.timestamp);
-        if (at !== null && (type === "user" || type === "assistant" || type === "attachment" || type === "system")) {
-            this.timestamps.push(at);
-        }
+        return o;
+    }
+    /** Session id, each change of working directory and branch, and the sidechain flag. */
+    noteContext(o) {
         this.sessionId ??= str(o.sessionId);
         const cwd = str(o.cwd);
         if (cwd && this.cwds[this.cwds.length - 1] !== cwd)
@@ -94,12 +109,6 @@ export class ClaudeTranscript {
             this.branches.push(branch);
         if (o.isSidechain === true)
             this.sidechain = true;
-        if (type === "assistant")
-            this.assistant(o, at);
-        else if (type === "user")
-            this.user(o, at);
-        else if (type === "cost-state")
-            this.cost = typeof o.totalCostUSD === "number" ? o.totalCostUSD : this.cost;
     }
     issue(message) {
         this.issues.push({ file: this.options.file, line: this.lineNo, message });
@@ -152,15 +161,8 @@ export class ClaudeTranscript {
                 this.results.set(toolId, { at, background, rejected });
         }
     }
-    finish() {
-        const { file, subagent } = this.options;
-        if (!this.sessionId && !subagent) {
-            if (this.lineNo > 0)
-                this.issues.push({ file, line: null, message: "no sessionId in any line" });
-            return { session: null, spans: [], issues: this.issues };
-        }
-        const parentSessionId = subagent?.parentSessionId ?? null;
-        const sessionId = subagent ? `${subagent.parentSessionId}:${subagent.agentId}` : this.sessionId;
+    identity() {
+        const subagent = this.options.subagent;
         const isSidechain = Boolean(subagent) || this.sidechain;
         const agentType = subagent?.agentType ?? null;
         const role = !isSidechain
@@ -168,24 +170,15 @@ export class ClaudeTranscript {
             : REVIEW.test(`${agentType ?? ""} ${subagent?.description ?? ""}`)
                 ? "reviewer"
                 : "subagent";
-        const cwd = this.cwds[0] ?? null;
-        const repo = deriveRepo(cwd, this.options.roots, this.options.home);
-        const branch = this.branches[this.branches.length - 1] ?? null;
-        const item = deriveItem(...this.branches, ...this.cwds);
-        const real = [...this.requests.values()].filter((r) => r.model !== "<synthetic>").sort((a, b) => a.order - b.order);
-        const tokens = emptyTokens();
-        const byModel = new Map();
-        for (const r of real) {
-            addTokens(tokens, r.usage);
-            const key = `${r.model}\u0000${r.effort ?? ""}`;
-            let m = byModel.get(key);
-            if (!m)
-                byModel.set(key, (m = { model: r.model, effort: r.effort, requests: 0, tokens: emptyTokens() }));
-            m.requests++;
-            addTokens(m.tokens, r.usage);
-        }
-        const first = real[0];
-        const firstTurnContextTokens = first ? first.usage.input + first.usage.cacheRead + first.usage.cacheCreation : null;
+        return {
+            parentSessionId: subagent?.parentSessionId ?? null,
+            sessionId: subagent ? `${subagent.parentSessionId}:${subagent.agentId}` : this.sessionId,
+            isSidechain, agentType, role,
+        };
+    }
+    /** One span per tool use, timed to its result, with busy and human-wait intervals for active time. */
+    toolSpans(owner) {
+        const { sessionId, isSidechain, role, repo } = owner;
         const spans = [];
         const busy = [];
         const waiting = [];
@@ -222,6 +215,25 @@ export class ClaudeTranscript {
                 outputTokens: share ? Math.round(request.usage.output / share) : null,
             });
         }
+        return { spans, busy, waiting };
+    }
+    finish() {
+        const { file, subagent } = this.options;
+        if (!this.sessionId && !subagent) {
+            if (this.lineNo > 0)
+                this.issues.push({ file, line: null, message: "no sessionId in any line" });
+            return { session: null, spans: [], issues: this.issues };
+        }
+        const { parentSessionId, sessionId, isSidechain, agentType, role } = this.identity();
+        const cwd = this.cwds[0] ?? null;
+        const repo = deriveRepo(cwd, this.options.roots, this.options.home);
+        const branch = this.branches[this.branches.length - 1] ?? null;
+        const item = deriveItem(...this.branches, ...this.cwds);
+        const real = [...this.requests.values()].filter((r) => r.model !== "<synthetic>").sort((a, b) => a.order - b.order);
+        const { tokens, byModel } = usageByModel(real);
+        const first = real[0];
+        const firstTurnContextTokens = first ? first.usage.input + first.usage.cacheRead + first.usage.cacheCreation : null;
+        const { spans, busy, waiting } = this.toolSpans({ sessionId, isSidechain, role, repo });
         const sorted = [...this.timestamps].sort((a, b) => a - b);
         const start = sorted[0];
         const end = sorted[sorted.length - 1];
@@ -254,6 +266,20 @@ export class ClaudeTranscript {
         };
         return { session, spans, issues: this.issues };
     }
+}
+function usageByModel(real) {
+    const tokens = emptyTokens();
+    const byModel = new Map();
+    for (const r of real) {
+        addTokens(tokens, r.usage);
+        const key = `${r.model}\u0000${r.effort ?? ""}`;
+        let m = byModel.get(key);
+        if (!m)
+            byModel.set(key, (m = { model: r.model, effort: r.effort, requests: 0, tokens: emptyTokens() }));
+        m.requests++;
+        addTokens(m.tokens, r.usage);
+    }
+    return { tokens, byModel };
 }
 function unique(values) {
     return [...new Set(values)];

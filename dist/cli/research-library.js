@@ -15,21 +15,25 @@ async function readManifest(root) {
             (error instanceof Error ? error.message : String(error)));
     }
 }
+/** The configuration to write: each option, else the existing value, else the default. Project and bucket have no default. */
+function libraryConfig(options, existing) {
+    const project = options.project ?? existing?.project;
+    const bucket = options.bucket ?? existing?.bucket;
+    if (!project || !bucket) {
+        throw new Error("Pass --project and --bucket the first time a research library is initialized.");
+    }
+    return {
+        project, bucket,
+        objectPrefix: options.objectPrefix ?? existing?.objectPrefix ?? DEFAULT_OBJECT_PREFIX,
+        catalogDir: options.catalogDir ?? existing?.catalogDir ?? DEFAULT_CATALOG_DIR,
+        localRoot: options.localRoot ?? existing?.localRoot ?? DEFAULT_LOCAL_ROOT,
+    };
+}
 export async function initResearchLibrary(options) {
     try {
         const manifest = await readManifest(options.root);
         const existing = manifest.value.researchLibrary;
-        const project = options.project ?? existing?.project;
-        const bucket = options.bucket ?? existing?.bucket;
-        if (!project || !bucket) {
-            throw new Error("Pass --project and --bucket the first time a research library is initialized.");
-        }
-        const next = {
-            project, bucket,
-            objectPrefix: options.objectPrefix ?? existing?.objectPrefix ?? DEFAULT_OBJECT_PREFIX,
-            catalogDir: options.catalogDir ?? existing?.catalogDir ?? DEFAULT_CATALOG_DIR,
-            localRoot: options.localRoot ?? existing?.localRoot ?? DEFAULT_LOCAL_ROOT,
-        };
+        const next = libraryConfig(options, existing);
         if (existing && JSON.stringify(existing) !== JSON.stringify(next)) {
             throw new Error("researchLibrary already exists in morpheus.json with different values; edit it deliberately.");
         }

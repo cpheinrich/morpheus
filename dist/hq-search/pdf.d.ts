@@ -1,4 +1,4 @@
-import type { HqSearchDocument } from "./index.js";
+import { type HqSearchDocument } from "./index.js";
 export type PdfSearchDocumentInput = {
     id: string;
     title: string;

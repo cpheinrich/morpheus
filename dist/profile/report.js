@@ -1,5 +1,6 @@
 import { markdownTable } from "../markdown.js";
 import { credible, MAX_CREDIBLE_SPAN_MS, percentile } from "./derive.js";
+import { contextUsage } from "./context-usage.js";
 import { displayCommand } from "./classify.js";
 import { PHASES, SOURCES, addTokens, emptyTokens, totalTokens, } from "./types.js";
 export const TOP_N = 10;
@@ -26,80 +27,11 @@ export function commandKey(command) {
     return displayCommand(command.replace(/…$/, "")).slice(0, 80);
 }
 export function buildReport(sessions, spans, options = {}) {
-    const tokens = emptyTokens();
-    let activeMs = 0;
-    let wallMs = 0;
-    let costUSD = 0;
-    for (const s of sessions) {
-        addTokens(tokens, s.tokens);
-        activeMs += s.activeMs;
-        if (!s.isSidechain)
-            wallMs += s.wallMs;
-        costUSD += s.costUSD ?? 0;
-    }
-    const phases = new Map(PHASES.map((phase) => [phase, { phase, calls: 0, mainMs: 0, sidechainMs: 0, tokens: 0, outputTokens: 0 }]));
-    for (const span of spans) {
-        const line = phases.get(span.phase);
-        line.calls++;
-        const d = span.background || !credible(span.durationMs) ? 0 : span.durationMs;
-        if (span.isSidechain)
-            line.sidechainMs += d;
-        else
-            line.mainMs += d;
-        line.tokens += (span.inputTokens ?? 0) + (span.outputTokens ?? 0);
-        line.outputTokens += span.outputTokens ?? 0;
-    }
-    const models = new Map();
-    for (const s of sessions) {
-        let dominant;
-        let dominantRequests = -1;
-        for (const m of s.byModel) {
-            const key = `${m.model}\u0000${m.effort ?? "-"}`;
-            let line = models.get(key);
-            if (!line)
-                models.set(key, (line = { model: m.model, effort: m.effort ?? "-", requests: 0, tokens: emptyTokens(), activeMs: 0 }));
-            line.requests += m.requests;
-            addTokens(line.tokens, m.tokens);
-            if (m.requests > dominantRequests) {
-                dominant = line;
-                dominantRequests = m.requests;
-            }
-        }
-        if (dominant)
-            dominant.activeMs += s.activeMs;
-    }
-    const providers = [...new Set(sessions.map((s) => s.provider))].sort();
-    const firstTurn = providers.map((provider) => {
-        const values = sessions
-            .filter((s) => s.provider === provider && !s.isSidechain && s.firstTurnContextTokens !== null)
-            .map((s) => s.firstTurnContextTokens);
-        return {
-            provider,
-            sessions: values.length,
-            p50: percentile(values, 50),
-            p90: percentile(values, 90),
-            max: values.length ? Math.max(...values) : null,
-        };
-    });
-    const commands = spans.filter((s) => s.command !== null && !s.background && credible(s.durationMs));
-    const slowest = [...commands]
-        .sort((a, b) => b.durationMs - a.durationMs)
-        .slice(0, TOP_N)
-        .map((s) => ({ command: s.command, durationMs: s.durationMs, phase: s.phase, repo: s.repo, start: s.start }));
-    const repeatedMap = new Map();
-    for (const s of commands) {
-        const key = commandKey(s.command);
-        let line = repeatedMap.get(key);
-        if (!line)
-            repeatedMap.set(key, (line = { command: key, calls: 0, totalMs: 0, maxMs: 0, phase: s.phase }));
-        line.calls++;
-        line.totalMs += s.durationMs;
-        line.maxMs = Math.max(line.maxMs, s.durationMs);
-    }
-    const repeated = [...repeatedMap.values()]
-        .filter((l) => l.calls > 1)
-        .sort((a, b) => b.calls - a.calls || b.totalMs - a.totalMs)
-        .slice(0, TOP_N);
+    const { tokens, activeMs, wallMs, costUSD } = sessionTotals(sessions);
+    const phases = phaseLines(spans);
+    const models = modelLines(sessions);
+    const firstTurn = firstTurnByProvider(sessions);
+    const { slowest, repeated } = commandLines(spans);
     const side = sessions.filter((s) => s.isSidechain);
     const sideActive = side.reduce((n, s) => n + s.activeMs, 0);
     const sideTokens = side.reduce((n, s) => n + totalTokens(s.tokens), 0);
@@ -123,6 +55,7 @@ export function buildReport(sessions, spans, options = {}) {
         byRole: group(sessions, (s) => s.role),
         byModel: [...models.values()].sort((a, b) => totalTokens(b.tokens) - totalTokens(a.tokens)),
         firstTurn,
+        contextUsage: contextUsage(sessions, spans),
         slowest,
         repeated,
         outliers: spans
@@ -133,6 +66,96 @@ export function buildReport(sessions, spans, options = {}) {
             tokens: totalTokens(tokens) ? sideTokens / totalTokens(tokens) : 0,
         },
     };
+}
+function sessionTotals(sessions) {
+    const tokens = emptyTokens();
+    let activeMs = 0;
+    let wallMs = 0;
+    let costUSD = 0;
+    for (const s of sessions) {
+        addTokens(tokens, s.tokens);
+        activeMs += s.activeMs;
+        if (!s.isSidechain)
+            wallMs += s.wallMs;
+        costUSD += s.costUSD ?? 0;
+    }
+    return { tokens, activeMs, wallMs, costUSD };
+}
+function phaseLines(spans) {
+    const phases = new Map(PHASES.map((phase) => [phase, { phase, calls: 0, mainMs: 0, sidechainMs: 0, tokens: 0, outputTokens: 0 }]));
+    for (const span of spans) {
+        const line = phases.get(span.phase);
+        line.calls++;
+        const d = span.background || !credible(span.durationMs) ? 0 : span.durationMs;
+        if (span.isSidechain)
+            line.sidechainMs += d;
+        else
+            line.mainMs += d;
+        line.tokens += (span.inputTokens ?? 0) + (span.outputTokens ?? 0);
+        line.outputTokens += span.outputTokens ?? 0;
+    }
+    return phases;
+}
+/** Tokens and requests per model and effort; each session's active time goes to its dominant model. */
+function modelLines(sessions) {
+    const models = new Map();
+    for (const s of sessions) {
+        let dominant;
+        let dominantRequests = -1;
+        for (const m of s.byModel) {
+            const key = `${m.model}\u0000${m.effort ?? "-"}`;
+            let line = models.get(key);
+            if (!line)
+                models.set(key, (line = { model: m.model, effort: m.effort ?? "-", requests: 0, tokens: emptyTokens(), activeMs: 0 }));
+            line.requests += m.requests;
+            addTokens(line.tokens, m.tokens);
+            if (m.requests > dominantRequests) {
+                dominant = line;
+                dominantRequests = m.requests;
+            }
+        }
+        if (dominant)
+            dominant.activeMs += s.activeMs;
+    }
+    return models;
+}
+function firstTurnByProvider(sessions) {
+    const providers = [...new Set(sessions.map((s) => s.provider))].sort();
+    return providers.map((provider) => {
+        const values = sessions
+            .filter((s) => s.provider === provider && !s.isSidechain && s.firstTurnContextTokens !== null)
+            .map((s) => s.firstTurnContextTokens);
+        return {
+            provider,
+            sessions: values.length,
+            p50: percentile(values, 50),
+            p90: percentile(values, 90),
+            max: values.length ? Math.max(...values) : null,
+        };
+    });
+}
+/** The slowest single commands and the most repeated ones, background and implausible durations excluded. */
+function commandLines(spans) {
+    const commands = spans.filter((s) => s.command !== null && !s.background && credible(s.durationMs));
+    const slowest = [...commands]
+        .sort((a, b) => b.durationMs - a.durationMs)
+        .slice(0, TOP_N)
+        .map((s) => ({ command: s.command, durationMs: s.durationMs, phase: s.phase, repo: s.repo, start: s.start }));
+    const repeatedMap = new Map();
+    for (const s of commands) {
+        const key = commandKey(s.command);
+        let line = repeatedMap.get(key);
+        if (!line)
+            repeatedMap.set(key, (line = { command: key, calls: 0, totalMs: 0, maxMs: 0, phase: s.phase }));
+        line.calls++;
+        line.totalMs += s.durationMs;
+        line.maxMs = Math.max(line.maxMs, s.durationMs);
+    }
+    const repeated = [...repeatedMap.values()]
+        .filter((l) => l.calls > 1)
+        .sort((a, b) => b.calls - a.calls || b.totalMs - a.totalMs)
+        .slice(0, TOP_N);
+    return { slowest, repeated };
 }
 export function formatDuration(ms) {
     const s = Math.round(ms / 1000);
@@ -213,6 +236,10 @@ export function renderReport(r, heading) {
         f.p90 === null ? "-" : formatTokens(f.p90),
         f.max === null ? "-" : formatTokens(f.max),
     ]), "_none_"), "");
+    if (r.contextUsage.length) {
+        out.push("### Project context use in main sessions", "", markdownTable(["interface", "sessions", "active p50", "requests p50", "tokens p50"], r.contextUsage.map(row => [row.transport, String(row.sessions), formatDuration(row.activeMsP50 ?? 0),
+            String(row.requestsP50 ?? 0), formatTokens(row.tokensP50 ?? 0)]), "_none_"), "", "_Grouped by observed search or read calls. Task mix and session duration may differ across groups._", "");
+    }
     out.push(`### Slowest commands (top ${TOP_N})`, "");
     out.push(markdownTable(["duration", "phase", "repo", "command"], r.slowest.map((s) => [formatDuration(s.durationMs), s.phase, s.repo ?? "-", code(s.command)]), "_none_"), "");
     out.push(`### Most repeated commands (top ${TOP_N})`, "");

@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import net from "node:net";
-import { createReadStream } from "node:fs";
+import { open } from "node:fs/promises";
+import zlib from "node:zlib";
 import { createInterface } from "node:readline";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -99,15 +100,48 @@ export class Codex extends EventEmitter {
 
 // Contract-gated fallback for Desktop runtimes not attached to the managed daemon.
 // Read only turn metadata; never forward the chat transcript or hidden instructions.
-export async function recordedSnapshot(thread) {
-  if (typeof thread.path !== "string" || thread.path.length === 0)
-    throw new Error(
-      "Unsupported Desktop metadata adapter; run doctor after updating Codex.",
-    );
-  let context = null,
-    active = null;
-  const stream = createReadStream(thread.path, { encoding: "utf8" });
-  const lines = createInterface({ input: stream, crlfDelay: Infinity });
+// Codex compresses rollouts in place; thread/read can still name the plain file.
+// Never search for a different session or revive an archived turn's authority.
+async function openRollout(recorded) {
+  let path = recorded;
+  try {
+    return { path, file: await open(path) };
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  path += ".zst";
+  try {
+    return { path, file: await open(path) };
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    throw new Error("Codex task metadata is unavailable; reopen this task and send a message. No worker was started.");
+  }
+}
+// The latest turn_context and the turn still running at the end of the rollout.
+function foldRolloutRecord(state, r) {
+  if (r.type === "turn_context") state.context = r;
+  if (r.type === "event_msg" && r.payload?.type === "task_started")
+    state.active = r.payload.turn_id;
+  if (
+    r.type === "event_msg" &&
+    ["task_complete", "turn_aborted"].includes(r.payload?.type) &&
+    (!r.payload.turn_id || r.payload.turn_id === state.active)
+  )
+    state.active = null;
+}
+async function scanRollout(file, path) {
+  if (path.endsWith(".zst") && typeof zlib.createZstdDecompress !== "function") {
+    await file.close();
+    throw new Error("Compressed Codex task metadata requires Node 22.15 or newer; no worker was started.");
+  }
+  const stream = file.createReadStream();
+  const input = path.endsWith(".zst") ? zlib.createZstdDecompress() : stream;
+  if (input !== stream) {
+    stream.on("error", (error) => input.destroy(error));
+    stream.pipe(input);
+  }
+  const state = { context: null, active: null };
+  const lines = createInterface({ input, crlfDelay: Infinity });
   try {
     for await (const line of lines) {
       let r;
@@ -116,20 +150,16 @@ export async function recordedSnapshot(thread) {
       } catch {
         continue;
       }
-      if (r.type === "turn_context") context = r;
-      if (r.type === "event_msg" && r.payload?.type === "task_started")
-        active = r.payload.turn_id;
-      if (
-        r.type === "event_msg" &&
-        ["task_complete", "turn_aborted"].includes(r.payload?.type) &&
-        (!r.payload.turn_id || r.payload.turn_id === active)
-      )
-        active = null;
+      foldRolloutRecord(state, r);
     }
   } finally {
     lines.close();
+    input.destroy();
     stream.destroy();
   }
+  return state;
+}
+function verifiedTurnSettings({ context, active }) {
   const p = context?.payload;
   const timestamp = Date.parse(context?.timestamp);
   if (
@@ -157,6 +187,15 @@ export async function recordedSnapshot(thread) {
     throw new Error(
       "Recorded restricted permissions are not supported; delegation refused.",
     );
+  return p;
+}
+export async function recordedSnapshot(thread) {
+  if (typeof thread.path !== "string" || thread.path.length === 0)
+    throw new Error(
+      "Unsupported Desktop metadata adapter; run doctor after updating Codex.",
+    );
+  const { path, file } = await openRollout(thread.path);
+  const p = verifiedTurnSettings(await scanRollout(file, path));
   return {
     ...thread,
     cwd: p.cwd,

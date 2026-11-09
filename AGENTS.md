@@ -1,7 +1,6 @@
 # Morpheus — agent instructions
 
-Read this first. `CLAUDE.md` symlinks here. Detail lives in the runbooks named by the **Read when**
-table; open one only when its trigger applies.
+Read first; `CLAUDE.md` symlinks here. Open runbooks only for their **Read when** triggers.
 
 ## What this repo is
 
@@ -26,8 +25,8 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `.github/workflows/` | Reusable workflows called by every project |
 | `docs/runbooks/` | Procedures, for humans and agents — read on demand (index below) |
 | `.github/agent-review-prompt.md` | The rung-2 reviewer persona — versioned, so it is reviewable |
-| `.claude/skills/` | Canonical Claude procedures; project-facing entries are classified in `src/project-skills.ts` |
-| `.agents/skills/` | Canonical Codex/Grok procedures; project-facing entries are classified in `src/project-skills.ts` |
+| `.claude/skills/` | Canonical Claude procedures, classified in `src/project-skills.ts` |
+| `.agents/skills/` | Canonical Codex/Grok procedures, classified in `src/project-skills.ts` |
 | `local/handoffs/` | Handoff docs, both directions. Gitignored — never committed |
 | `qa/acceptance/` | Acceptance criteria per item, named by `RoadmapItem.acceptance` |
 | `tests/` | Vitest, mirroring `src/` |
@@ -42,7 +41,7 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 
 | Read | When |
 |---|---|
-| [`pm-workflow.md`](docs/runbooks/pm-workflow.md) | Filing or claiming an item, roadmap ids and slugs, blocking/resuming, records-only or meeting-note PRs, waivers, closing issues, visual evidence, or `check pr` refuses |
+| [`pm-workflow.md`](docs/runbooks/pm-workflow.md) | Filing or claiming an item, linking records, roadmap ids and slugs, blocking/resuming, records-only or meeting-note PRs, waivers, closing issues, visual evidence, or `check pr` refuses |
 | [`independent-review.md`](docs/runbooks/independent-review.md) | Before spawning a reviewer, and before writing the review record — budgets, turns, finalization, conditions, record fields |
 | [`context-freshness.md`](docs/runbooks/context-freshness.md) | A gated command refuses; offline; on a fork; hooks not firing; `context install` |
 | [`device-bootstrap.md`](docs/runbooks/device-bootstrap.md) | Startup reports Morpheus stale or bootstrap required; installing codebase-memory |
@@ -52,6 +51,7 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | [`hq-product-design.md`](docs/runbooks/hq-product-design.md) | Changing an HQ page, its information hierarchy, or a component that renders HQ content |
 | [`gh-manager.md`](docs/runbooks/gh-manager.md) | A PR may sit unattended, or the manager has touched yours |
 | [`folder-readmes.md`](docs/runbooks/folder-readmes.md) | Creating a directory, or deciding whether it needs a README |
+| [`scheduler.md`](docs/runbooks/scheduler.md) | Adding, enrolling or debugging a recurring scheduled run |
 | [`cli-commands.md`](docs/runbooks/cli-commands.md) | You need a command not listed below |
 
 ## Commands
@@ -81,9 +81,9 @@ pnpm morpheus wait-ci <pr>         # block once on CI, then a digest of failures
 Startup's `.morpheus/session-start.sh` diagnoses the CLI. Only when no device preference is saved
 and startup reports automatic updates unconfigured, ask exactly: **"Morpheus is stale. Enable
 automatic updates after pulls on this device?"** Do not infer consent; an existing choice is
-honoured, never re-asked. Before structural code discovery run
-`morpheus codebase-memory install --check`, and `morpheus codebase-memory install` if it is not
-operational. **Read [`device-bootstrap.md`](docs/runbooks/device-bootstrap.md)** for what yes and no
+honoured, never re-asked. Before structural code discovery or a code change, run
+`morpheus codebase-memory install --check` and `morpheus complexity install --check`; install
+whichever is not operational. **Read [`device-bootstrap.md`](docs/runbooks/device-bootstrap.md)** for what yes and no
 run and for anything the shim reports.
 
 ## Context freshness
@@ -92,9 +92,10 @@ Run `morpheus context brief` at session start if the hook did not; follow its `W
 On a dirty trunk it moves tracked edits to a `wip/trunk-*` branch (a draft PR only if the repo is private), then
 fast-forwards; `doctor --all` lists stuck trunks and unpushed rescues.
 
-**Read `AGENTS.md`, `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md` once
-at session start — `AGENTS.md` too, because an injected copy leaves no read evidence — then run
-`morpheus context refresh` once.** After that, just run the gated command
+**Read `AGENTS.md` (an injected copy leaves no read evidence), `.agent/decisions.md`,
+`.agent/learned.md` and `hq/team/<your handle>.md` once at session start, then run
+`morpheus context refresh` once.**
+After that, just run the gated command
 (`pm claim`, `pm new`, `pm link-issue`, `pm block`, `access sync`, `firebase auth setup`,
 `web init` provisioning); past the five-minute term the gate re-certifies when nothing moved.
 **Refresh again only when a gated command refuses.** Refresh is idempotent: unchanged state
@@ -115,6 +116,11 @@ win. Add a state, option, gate or approval step only when observed behaviour pro
 a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
 tightening one; removing one is a recorded decision.
 
+**Plan visually early.** Before implementation, show useful architecture, workflow/pipeline, async,
+state, ownership or substantial-alternative diagrams with `morpheus skills guide visual-design`.
+Skip trivial edits; label current/proposed and assumptions, update retained Mermaid. No approval
+pause or merge gate.
+
 **Claim before starting**, with `morpheus pm claim <ID>` — the remote branch **is** the claim.
 Never create the branch by hand. Use **one worktree per implementation task**: from a shared
 checkout `pm claim` prints a fresh worktree; read its records, refresh there, and claim again
@@ -123,16 +129,16 @@ there. Do not run concurrent authors on one task worktree. **Name slugs like bra
 `morpheus pm cleanup <ID>` from the primary checkout. Ids, worktrees, resume and cleanup:
 [`pm-workflow.md`](docs/runbooks/pm-workflow.md).
 
-**A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
-voice and browser chat enter the same lifecycle: create or link the roadmap item, claim it, work
-on its branch, test it, open a PR and merge it. A trusted author can authorize the work; the
-channel cannot waive the records or review path. Never edit or release directly from a transcript.
+**Conversation is intake.** Authorized requests from any channel follow the same lifecycle:
+create or link the roadmap item, claim it, work on its branch, test, review and merge a PR.
+Never edit or release directly from a transcript.
 
-**Register every reusable skill once.** Classify each new canonical directory under
-`.agents/skills/` or `.claude/skills/` in `src/project-skills.ts` as project-facing or
-Morpheus-only; that registry drives `morpheus init`, `skills list [--json]` and `skills sync`, with
-descriptions from the rendered `SKILL.md` frontmatter. Add no second JSON catalog; tests refuse an
-unclassified directory or an unregistered provider entrypoint.
+When asked to use gstack in this session, follow the [gstack lifecycle guide](docs/runbooks/gstack-lifecycle.md).
+
+**Register every reusable skill once.** Classify canonical `.agents/skills/` and `.claude/skills/`
+directories in `src/project-skills.ts` as project-facing or Morpheus-only. It drives scaffold,
+discovery and sync; descriptions come from rendered frontmatter. No second catalog. Tests check
+classification and provider drift.
 
 **An external mutation ships with an exact target and proof.** Prefer a pasted one-shot CLI command
 with explicit account, project and resource identifiers (console prose is fallback only), with a
@@ -180,8 +186,7 @@ item to `review` and open an unlabelled draft PR first so the reviewer sees them
 **one fresh reviewer** with repository access and that packet and no inherited history, then
 handle findings, record, CI and merge yourself. If no independent session can start, leave the PR open with
 auto-merge off — never self-review. **Read [`independent-review.md`](docs/runbooks/independent-review.md)
-before spawning the reviewer**: it defines the turn cap, fresh-reviewer handoffs, budgets, timing,
-clearance, finalization, `humanAuthorization`, record fields, `review-record:` and `agent-reviewed`. Commit the record and run `morpheus review validate` before
+before spawning or recording a review**. Commit the record and run `morpheus review validate` before
 pushing; open the PR with the label already applied (`gh pr create --label agent-reviewed`), or as a
 draft if it must exist earlier — an unlabelled draft waits instead of failing. Merge trunk rather
 than rebase after review.
@@ -212,6 +217,10 @@ pass before merge.** Run the full `pnpm test` locally **at most once per PR**, a
 touched shared core (`src/pm/`, `src/check/`, `src/session/`, `src/review/`,
 `src/init/templates.ts`). Never re-run an unchanged suite to see whether it passes this time.
 Record the focused commands, and why that scope, in the test plan.
+
+**Complexity:** after each changed function family run `morpheus complexity check` and inspect it
+by hand; refactor findings with `morpheus complexity prompt`; report the summary before review
+([`complexity.md`](docs/runbooks/complexity.md)).
 
 **Before opening a PR**, run `pnpm typecheck`, the focused tests, `pnpm compile` and
 `pnpm morpheus pm index`, and commit any generated changes. CI runs the same checks.
@@ -273,9 +282,8 @@ Match the surrounding code. This codebase favours:
 - Explicit types at boundaries; inference inside
 - Errors surfaced as data (`ParseIssue[]`) rather than thrown, so one bad input cannot abort a
   batch — see `src/pm/parse.ts`
-- Comments that explain *why*, not *what*. The backward-compatible YAML-date preprocessing in
-  `src/pm/schema.ts` is the model: it accepts `Date` values produced by older parsers, and that is
-  not obvious from the current parser's string output.
+- Comments that explain *why*, not *what*; the YAML-date preprocessing in `src/pm/schema.ts` is
+  the model.
 
 ## Things that have bitten us
 

@@ -269,16 +269,53 @@ async function gitLines(root, args) {
 export async function doctor(opts) {
     const { root } = opts;
     const findings = [];
-    const add = (severity, check, message) => findings.push({ severity, check, message });
-    // --- manifest -----------------------------------------------------------
-    let manifest = null;
+    const add = (severity, check, message) => { findings.push({ severity, check, message }); };
+    const manifest = await readManifest(root, add);
+    if (!manifest)
+        return findings; // Everything else keys off the manifest.
+    const { prefix, kind } = manifestIdentity(manifest, add);
+    const raw = checkContextShape(manifest, add);
+    const { handle, handleReported } = await checkContextHandle(root, raw, add);
+    await checkSessionScripts(root, add);
+    await checkProviderHooks(root, add);
+    // Wired is not running for Codex: it skips every hook nobody trusted with
+    // `/hooks`, silently. Read-only — trusting is the user's decision, and the
+    // desktop app rewrites ~/.codex/config.toml itself.
+    for (const finding of codexTrustFindings(await codexTrustReport(root, opts.codexHome))) {
+        add(finding.severity, finding.check, finding.message);
+    }
+    await checkInstructions(root, add);
+    await checkRequiredInputs(root, add);
+    // The handle check names the same file when a declared inbox is absent, and
+    // its message is the more useful of the two because it names the fix.
+    // Reporting one condition twice cuts against the rule two commits back: an
+    // operator whose gate is shut should not read past redundant lines to find
+    // the one that names it.
+    await checkRequiredRecords(root, add, handleReported ? [`hq/team/${handle}.md`] : []);
+    const declaredTrunk = typeof raw["trunk"] === "string" ? raw["trunk"] : undefined;
+    const remoteTrunkSha = await checkTrunk(root, declaredTrunk, opts.offline === true, add);
+    await checkTrunkCheckout(root, declaredTrunk, remoteTrunkSha ?? null, add);
+    const inherited = checkInherits(manifest, add);
+    await checkStructure(root, kind, inherited, add);
+    if (kind !== "internal") {
+        await checkMarketingBriefs(root, inherited, add);
+        await checkAnalyticsContract(root, add);
+    }
+    await checkRegistry(root, manifest, prefix, add);
+    await checkContent(root, prefix, add);
+    await checkInboxes(root, add);
+    return findings;
+}
+async function readManifest(root, add) {
     try {
-        manifest = Manifest.parse(JSON.parse(await readFile(join(root, "morpheus.json"), "utf8")));
+        return Manifest.parse(JSON.parse(await readFile(join(root, "morpheus.json"), "utf8")));
     }
     catch (err) {
         add("error", "manifest", `morpheus.json missing or invalid — ${err instanceof Error ? err.message.split("\n")[0] : err}`);
-        return findings; // Everything else keys off the manifest.
+        return null;
     }
+}
+function manifestIdentity(manifest, add) {
     // Narrowed like `kind` is, and the narrowed value is what everything
     // downstream reads. Reporting the bad field while still *using* it turned
     // one true error into eighty-two: `"mo"` is truthy, so the id-prefix loop
@@ -304,6 +341,9 @@ export async function doctor(opts) {
         add("error", "kind", `"kind" must be one of ${Kind.options.join(", ")}; got ${JSON.stringify(manifest.kind)}. ` +
             `Defaulting expectations to personal.`);
     }
+    return { prefix, kind };
+}
+function checkContextShape(manifest, add) {
     // --- context freshness ---------------------------------------------------
     // Adoption reporting, not enforcement. `doctor` never writes, so it says
     // which projects have the protocol wired and which are still open.
@@ -331,6 +371,9 @@ export async function doctor(opts) {
                 `Nothing else reports this: the gate falls back silently.`);
         }
     }
+    return raw;
+}
+async function checkContextHandle(root, raw, add) {
     const handle = typeof raw["handle"] === "string" ? raw["handle"] : undefined;
     // Whether the handle check *fired*, not whether a handle was declared. It
     // only fires when the inbox is **absent** — an inbox that exists and cannot
@@ -353,6 +396,9 @@ export async function doctor(opts) {
             "session-freshness required set, so an agent can resume without re-reading the " +
             "inbox a human replies in. Run `morpheus context install`.");
     }
+    return { handle, handleReported };
+}
+async function checkSessionScripts(root, add) {
     for (const [rel, marker] of [
         [MORPHEUS_BOOTSTRAP, BOOTSTRAP_MARKER],
         [MORPHEUS_SESSION_START, SESSION_START_MARKER],
@@ -363,6 +409,8 @@ export async function doctor(opts) {
                 "repair an absent or pre-self CLI. Run `morpheus context install`.");
         }
     }
+}
+async function checkProviderHooks(root, add) {
     // Read, not merely stat'd. A settings file that exists but wires nothing is
     // the "check skips what is absent and reports the empty thing as correct"
     // shape — and it would report the hook adopted in exactly the projects
@@ -399,12 +447,8 @@ export async function doctor(opts) {
         add("warning", "instructions", `${POLL_GUARD_SCRIPT} is missing or not the generated Morpheus version, so the CI poll ` +
             "guard cannot run. Run `morpheus context install`.");
     }
-    // Wired is not running for Codex: it skips every hook nobody trusted with
-    // `/hooks`, silently. Read-only — trusting is the user's decision, and the
-    // desktop app rewrites ~/.codex/config.toml itself.
-    for (const finding of codexTrustFindings(await codexTrustReport(root, opts.codexHome))) {
-        add(finding.severity, finding.check, finding.message);
-    }
+}
+async function checkInstructions(root, add) {
     // The scaffold's AGENTS.md is written once; guidance added to the template
     // later reaches a project only by hand. Name each rule that never arrived.
     const instructions = await readFile(join(root, "AGENTS.md"), "utf8").catch(() => null);
@@ -414,6 +458,8 @@ export async function doctor(opts) {
                 "Source: `agents()` in Morpheus's src/init/templates.ts.");
         }
     }
+}
+async function checkRequiredInputs(root, add) {
     const { droppedInputs } = await projectPolicy(root);
     if (droppedInputs?.length) {
         add("error", "context", `context.requiredInputs has ${droppedInputs.length} entr${droppedInputs.length === 1 ? "y" : "ies"} ` +
@@ -421,15 +467,8 @@ export async function doctor(opts) {
             `session-freshness required set, so every session certifies without them — which is the ` +
             `opposite of what declaring them was for.`);
     }
-    // The handle check names the same file when a declared inbox is absent, and
-    // its message is the more useful of the two because it names the fix.
-    // Reporting one condition twice cuts against the rule two commits back: an
-    // operator whose gate is shut should not read past redundant lines to find
-    // the one that names it.
-    await checkRequiredRecords(root, add, handleReported ? [`hq/team/${handle}.md`] : []);
-    const declaredTrunk = typeof raw["trunk"] === "string" ? raw["trunk"] : undefined;
-    const remoteTrunkSha = await checkTrunk(root, declaredTrunk, opts.offline === true, add);
-    await checkTrunkCheckout(root, declaredTrunk, remoteTrunkSha ?? null, add);
+}
+function checkInherits(manifest, add) {
     // --- structure ----------------------------------------------------------
     const inheritsRaw = manifest.inherits;
     const inherits = inheritsRaw && typeof inheritsRaw === "object" && !Array.isArray(inheritsRaw)
@@ -439,6 +478,9 @@ export async function doctor(opts) {
         add("error", "manifest", `"inherits" is not an object, so it is ignored.`);
     }
     const inherited = new Set(Object.keys(inherits).map((k) => `hq/${k}`));
+    return inherited;
+}
+async function checkStructure(root, kind, inherited, add) {
     for (const dir of EXPECTED[kind ?? "personal"]) {
         if ([...inherited].some((parent) => dir === parent || dir.startsWith(`${parent}/`))) {
             continue; // owned by a parent project, including the whole declared subtree
@@ -452,51 +494,55 @@ export async function doctor(opts) {
             add("warning", "structure", `Missing ${file}.`);
         }
     }
-    if (kind !== "internal") {
-        for (const [path, marker] of MARKETING_BRIEFS) {
-            if ([...inherited].some((parent) => path === parent || path.startsWith(`${parent}/`))) {
-                continue;
-            }
-            const content = await readFile(join(root, path), "utf8").catch(() => null);
-            if (content === null) {
-                add("warning", "marketing", `Missing ${path} — run morpheus init to add the project-owned initialization brief.`);
-            }
-            else if (content.includes(`morpheus:template ${marker}`)) {
-                add("warning", "marketing", `${path} is still the initialization scaffold — replace it with current project evidence before treating this area as ready.`);
-            }
+}
+async function checkMarketingBriefs(root, inherited, add) {
+    for (const [path, marker] of MARKETING_BRIEFS) {
+        if ([...inherited].some((parent) => path === parent || path.startsWith(`${parent}/`))) {
+            continue;
         }
-        const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
-        let discovery = null;
-        try {
-            discovery = await findAnalyticsContracts(schemaDir);
+        const content = await readFile(join(root, path), "utf8").catch(() => null);
+        if (content === null) {
+            add("warning", "marketing", `Missing ${path} — run morpheus init to add the project-owned initialization brief.`);
         }
-        catch (error) {
-            if (error.code === "ENOENT") {
-                discovery = { contracts: [], unreadable: [] };
-            }
-            else {
-                add("warning", "analytics", `Could not inspect ${ANALYTICS_SCHEMA_DIRECTORY}/ for an analytics contract.`);
-            }
-        }
-        if (discovery?.unreadable.length) {
-            add("warning", "analytics", `Could not read analytics schema candidate${discovery.unreadable.length === 1 ? "" : "s"}: ${discovery.unreadable.join(", ")}. Contract state is unknown.`);
-        }
-        else if (discovery !== null && discovery.contracts.length === 0) {
-            add("warning", "analytics", `Missing analytics contract in ${ANALYTICS_SCHEMA_DIRECTORY}/ — run morpheus init or add the provider-neutral schema.`);
-        }
-        else if (discovery !== null && discovery.contracts.length > 1) {
-            add("warning", "analytics", `Multiple analytics contracts found in ${ANALYTICS_SCHEMA_DIRECTORY}/: ${discovery.contracts.join(", ")}. Keep one canonical vocabulary.`);
-        }
-        else if (discovery !== null) {
-            const analytics = await readFile(join(schemaDir, discovery.contracts[0]), "utf8").catch(() => null);
-            if (analytics === null) {
-                add("warning", "analytics", `Could not read analytics contract ${discovery.contracts[0]}.`);
-            }
-            else if (analytics.includes(EMPTY_ANALYTICS_EVENT_MAP)) {
-                add("warning", "analytics", "Analytics contract is still the empty scaffold — populate ProjectAnalyticsEvents before launch.");
-            }
+        else if (content.includes(`morpheus:template ${marker}`)) {
+            add("warning", "marketing", `${path} is still the initialization scaffold — replace it with current project evidence before treating this area as ready.`);
         }
     }
+}
+async function checkAnalyticsContract(root, add) {
+    const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
+    let discovery = null;
+    try {
+        discovery = await findAnalyticsContracts(schemaDir);
+    }
+    catch (error) {
+        if (error.code === "ENOENT") {
+            discovery = { contracts: [], unreadable: [] };
+        }
+        else {
+            add("warning", "analytics", `Could not inspect ${ANALYTICS_SCHEMA_DIRECTORY}/ for an analytics contract.`);
+        }
+    }
+    if (discovery?.unreadable.length) {
+        add("warning", "analytics", `Could not read analytics schema candidate${discovery.unreadable.length === 1 ? "" : "s"}: ${discovery.unreadable.join(", ")}. Contract state is unknown.`);
+    }
+    else if (discovery !== null && discovery.contracts.length === 0) {
+        add("warning", "analytics", `Missing analytics contract in ${ANALYTICS_SCHEMA_DIRECTORY}/ — run morpheus init or add the provider-neutral schema.`);
+    }
+    else if (discovery !== null && discovery.contracts.length > 1) {
+        add("warning", "analytics", `Multiple analytics contracts found in ${ANALYTICS_SCHEMA_DIRECTORY}/: ${discovery.contracts.join(", ")}. Keep one canonical vocabulary.`);
+    }
+    else if (discovery !== null) {
+        const analytics = await readFile(join(schemaDir, discovery.contracts[0]), "utf8").catch(() => null);
+        if (analytics === null) {
+            add("warning", "analytics", `Could not read analytics contract ${discovery.contracts[0]}.`);
+        }
+        else if (analytics.includes(EMPTY_ANALYTICS_EVENT_MAP)) {
+            add("warning", "analytics", "Analytics contract is still the empty scaffold — populate ProjectAnalyticsEvents before launch.");
+        }
+    }
+}
+async function checkRegistry(root, manifest, prefix, add) {
     // --- registry -----------------------------------------------------------
     const reg = await readRegistry();
     const entry = reg.projects.find((p) => p.path === root);
@@ -506,6 +552,8 @@ export async function doctor(opts) {
     else if (prefix && entry.prefix !== prefix) {
         add("error", "registry", `Registry says prefix ${entry.prefix} but morpheus.json says ${manifest.prefix}. The manifest wins.`);
     }
+}
+async function checkContent(root, prefix, add) {
     // --- content ------------------------------------------------------------
     const productDir = join(root, "hq/product");
     if (await exists(productDir)) {
@@ -523,6 +571,8 @@ export async function doctor(opts) {
             }
         }
     }
+}
+async function checkInboxes(root, add) {
     const inboxDir = join(root, INBOX_DIR);
     if (await exists(inboxDir)) {
         const { readdir } = await import("node:fs/promises");
@@ -544,7 +594,6 @@ export async function doctor(opts) {
                 add("error", "inbox", `${f}: ${i.message}`);
         }
     }
-    return findings;
 }
 export function formatFindings(findings, label) {
     const head = label ? `${label}\n` : "";

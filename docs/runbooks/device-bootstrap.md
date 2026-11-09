@@ -38,6 +38,11 @@ clone is already indexed.
 
 Installing codebase-memory is an explicit device action, never an npm lifecycle script or a
 session-hook download.
+
+Before a code change, run `morpheus complexity install --check` the same way, and
+`morpheus complexity install` if it is not operational: the pinned Lizard commit plus hash-locked
+wheels in a venv under `~/.morpheus/tools`, needing Python 3.9 or newer. Then run
+`morpheus complexity check` after each changed function family; see [complexity](complexity.md).
 Morpheus's global CLI is a self-contained copy, never a link to a source checkout or worktree.
 `morpheus self check` compares its commit receipt to current `main`; `context brief` and `doctor`
 surface the same drift. `morpheus self update` is the one-time/manual repair; consented Git hooks

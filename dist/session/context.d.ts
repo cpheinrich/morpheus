@@ -85,7 +85,7 @@ export declare function refresh(root: string, now?: Date, opts?: RefreshOptions)
  * *resumed* session after a context compaction, which is precisely when an
  * agent has lost what it read.
  */
-export declare function endTerm(root: string): Promise<SessionLease | null>;
+export declare function endTerm(root: string, runner?: string): Promise<SessionLease | null>;
 /**
  * Re-fingerprint records this session just wrote into its own receipt.
  *
@@ -123,15 +123,4 @@ export interface RecordWrite {
     before: string | null;
 }
 export declare function noteWrite(root: string, writes: readonly RecordWrite[]): Promise<void>;
-/**
- * Read the current verdict, going to the network only when the term has run
- * out.
- *
- * **This is what the five-minute term is for.** Inside it, the last
- * observation stands and the check costs nothing; past it, the stored
- * *receipt* — not the stored verdict — is re-observed against the trunk and
- * the records as they are now. Re-reading the persisted status instead would
- * make a lease that was fresh at 12:05 answer for 18:00, which is the failure
- * the whole item opens with.
- */
 export declare function check(root: string, now?: Date, offline?: boolean): Promise<ContextResult>;

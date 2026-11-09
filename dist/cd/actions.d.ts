@@ -29,5 +29,6 @@ export declare class ActionsAdapter {
         uploads: UploadEvidence[];
         failures: unknown[];
     }>;
+    private collectArtifact;
 }
 export declare function uploadEvidence(raw: Record<string, unknown>): UploadEvidence;

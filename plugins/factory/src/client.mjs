@@ -116,59 +116,67 @@ export async function useRunning(method, args) {
   }
   return { found: true, result: await request(method, args) };
 }
-export async function call(method, args = {}) {
-  const current = await useRunning(method, args);
-  if (current.found) return current.result;
-  await initStore();
-  const lock = join(home(), "startup.lock");
-  let owned = false;
+// A running service's answer, or { found: false } when none is reachable yet.
+async function runningOrNone(method, args) {
+  try {
+    return await useRunning(method, args);
+  } catch (e) {
+    if (!unavailable(e)) throw e;
+    return { found: false };
+  }
+}
+// Takes the startup lock; returns a running service's answer instead when another
+// caller's start finished first. A lock older than 30 seconds is abandoned.
+async function acquireStartupLock(lock, method, args) {
   for (let i = 0; i < 100; i++) {
     try {
       await mkdir(lock, { mode: 0o700 });
-      owned = true;
-      break;
+      return { owned: true };
     } catch (e) {
       if (e.code !== "EEXIST") throw e;
     }
-    try {
-      const current = await useRunning(method, args);
-      if (current.found) return current.result;
-    } catch (e) {
-      if (!unavailable(e)) throw e;
-    }
+    const current = await runningOrNone(method, args);
+    if (current.found) return current;
     const info = await stat(lock).catch(() => null);
     if (info && Date.now() - info.mtimeMs > 30000)
       await rm(lock, { recursive: true, force: true });
     await sleep(100);
   }
-  if (!owned) throw new Error("Bridge startup busy; retry.");
+  return { owned: false };
+}
+async function spawnService() {
+  await rm(join(home(), "bridge.sock"), { force: true });
+  const log = await open(join(home(), "service.log"), "a", 0o600);
+  const child = spawn(
+    process.execPath,
+    [fileURLToPath(new URL("./service.mjs", import.meta.url))],
+    { stdio: ["ignore", log.fd, log.fd], detached: true, env: process.env },
+  );
+  child.on("error", () => {});
+  child.unref();
+  await log.close();
+}
+async function awaitService(method, args) {
+  for (let i = 0; i < 100; i++) {
+    await sleep(100);
+    const current = await runningOrNone(method, args);
+    if (current.found) return current.result;
+  }
+  throw new Error("Bridge did not start; inspect service.log.");
+}
+export async function call(method, args = {}) {
+  const current = await useRunning(method, args);
+  if (current.found) return current.result;
+  await initStore();
+  const lock = join(home(), "startup.lock");
+  const acquired = await acquireStartupLock(lock, method, args);
+  if (acquired.found) return acquired.result;
+  if (!acquired.owned) throw new Error("Bridge startup busy; retry.");
   try {
-    try {
-      const current = await useRunning(method, args);
-      if (current.found) return current.result;
-    } catch (e) {
-      if (!unavailable(e)) throw e;
-    }
-    await rm(join(home(), "bridge.sock"), { force: true });
-    const log = await open(join(home(), "service.log"), "a", 0o600);
-    const child = spawn(
-      process.execPath,
-      [fileURLToPath(new URL("./service.mjs", import.meta.url))],
-      { stdio: ["ignore", log.fd, log.fd], detached: true, env: process.env },
-    );
-    child.on("error", () => {});
-    child.unref();
-    await log.close();
-    for (let i = 0; i < 100; i++) {
-      await sleep(100);
-      try {
-        const current = await useRunning(method, args);
-        if (current.found) return current.result;
-      } catch (e) {
-        if (!unavailable(e)) throw e;
-      }
-    }
-    throw new Error("Bridge did not start; inspect service.log.");
+    const running = await runningOrNone(method, args);
+    if (running.found) return running.result;
+    await spawnService();
+    return await awaitService(method, args);
   } finally {
     await rm(lock, { recursive: true, force: true });
   }
