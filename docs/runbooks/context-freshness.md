@@ -213,7 +213,7 @@ security decision, and the desktop app rewrites that file itself.
 
 ### Approve changes for one project
 
-When you want to approve all pending enabled hooks for the current Git project, run
+When you want to approve all pending enabled hooks for the current Morpheus project, run
 `morpheus codex hooks approve` from that project's checkout. You can explicitly ask an agent
 in the project to run it for you. Codex can execute the approved commands on subsequent
 events. Approval applies to the exact definitions Codex reported, and a later change needs a
@@ -222,9 +222,14 @@ location, or `codex` on PATH otherwise. It requires a version that supports the 
 API.
 
 The command approves hooks from the root `.codex/hooks.json` and `.codex/config.toml` that
-Codex loads for the project. A linked worktree uses the main checkout. Codex must already
+Codex loads for the project. The checkout must have a committed Morpheus manifest, and the
+hook config must match the committed file so local installer writes cannot become approvals.
+A linked worktree uses the main checkout. Codex must already
 trust that project to load its hooks. User, plugin, managed, disabled, and other projects'
-hooks keep their existing state. The command runs once and creates no schedule or enrollment.
+hooks keep their existing state. Installing a dependency does not register its own hook
+config. A Codex plugin can supply hooks separately. The command scopes approval by where the
+hook is defined, and does not inspect the scripts or dependencies a committed project hook
+invokes. The command runs once and creates no schedule or enrollment.
 If the open composer still shows a badge, check Settings → Hooks or open a new chat in the
 same project.
 

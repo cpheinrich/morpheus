@@ -24,7 +24,7 @@ connection open for the full approval and verification exchange.
 
 - `pnpm typecheck`, `pnpm compile`, and `pnpm morpheus pm index`.
 - `pnpm exec vitest run tests/codex-hooks.test.ts tests/doctor-codex-trust.test.ts`
-  (31 tests). The new tests cover the exact write scope, linked checkout routing, no-op
+  (33 tests). The new tests cover the exact write scope, linked checkout routing, no-op
   and list-error paths, concurrent approvals, and preservation when staging fails or the live file changes.
 - `morpheus complexity check` passed (CCN limit 15).
 - The compiled CLI against the Mac app's bundled backend with an isolated `CODEX_HOME`:
@@ -34,6 +34,12 @@ connection open for the full approval and verification exchange.
   remained byte-identical. Two concurrent CLI invocations for distinct repos sharing a
   Codex home refused one overlapping operation, and its retry retained both approvals.
   The live config was left for the user's later trial.
+
+The requester narrowed approval to Morpheus project hooks while the PR was in CI. The
+command now requires a committed Morpheus manifest and exact committed bytes for each
+eligible root hook file. Added coverage for unrelated checkouts, dependency-path hooks,
+and a dirty hook file. The real backend probe confirmed the dirty definition was refused,
+then approved when committed.
 
 The independent review found that concurrent Codex servers could lose a hook approval and that Codex could corrupt valid commented inline TOML. Morpheus now locks its own approvals and validates a private staged edit before replacing live config. It also qualifies the no-op message. The reviewer reran the isolated Mac backend probe and cleared all findings. Other Codex writers do not share the Morpheus lock.
 

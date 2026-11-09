@@ -114,7 +114,7 @@ Usage
   morpheus context coverage [--json]
   morpheus context record-read
                             the read hook: logs a tool result's record lines (stdin JSON)
-  morpheus codex hooks approve   approve pending enabled Codex hooks for this Git project once
+  morpheus codex hooks approve   approve pending enabled Codex hooks for this Morpheus project once
   morpheus context install  [--check] [--handle <github-handle>]
                             wire .claude/settings.json, .codex/hooks.json and context.handle
                             — the repair path for a project scaffolded before they existed

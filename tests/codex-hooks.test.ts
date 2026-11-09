@@ -41,6 +41,9 @@ beforeEach(() => {
   git(repo, "init");
   source = join(repo, ".codex/hooks.json");
   writeFileSync(source, "{}");
+  writeFileSync(join(repo, "morpheus.json"), JSON.stringify({ name: "fixture", morpheusVersion: "0.1.0" }));
+  git(repo, "add", ".");
+  git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "base");
   vi.stubEnv("CODEX_HOME", home);
   binary = join(fixture, "codex-stub");
   writeFileSync(binary, `#!/usr/bin/env node
@@ -91,7 +94,6 @@ afterEach(() => {
 describe("Codex project hook approval", () => {
   it("writes only pending enabled hooks owned by the main checkout", async () => {
     const linked = join(fixture, "linked");
-    git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "--allow-empty", "-m", "base");
     git(repo, "worktree", "add", "--detach", linked);
     const eligible = hook(0);
     const newHook = hook(1, { trustStatus: "untrusted" });
@@ -99,6 +101,7 @@ describe("Codex project hook approval", () => {
       eligible, newHook, hook(2, { enabled: false }), hook(3, { trustStatus: "trusted" }),
       hook(4, { source: "plugin" }), hook(5, { source: "user" }), hook(6, { isManaged: true }),
       hook(7, { sourcePath: join(fixture, "other/.codex/hooks.json") }),
+      hook(8, { sourcePath: join(repo, "node_modules/package/.codex/hooks.json") }),
     ]);
 
     await expect(approveCodexHooks(linked, binary)).resolves.toBe(2);
@@ -123,6 +126,21 @@ describe("Codex project hook approval", () => {
     backend([hook(0)], { error: true });
     await expect(approveCodexHooks(repo, binary)).rejects.toThrow("could not reliably list hooks");
     expect(requests().map(r => r.method)).toEqual(["initialize", "hooks/list"]);
+  });
+
+  it("refuses an unrelated Git checkout before asking Codex to list hooks", async () => {
+    const unrelated = join(fixture, "unrelated");
+    mkdirSync(unrelated);
+    git(unrelated, "init");
+    await expect(approveCodexHooks(unrelated, binary)).rejects.toThrow("in a Morpheus project");
+  });
+
+  it("refuses a project hook config that was changed locally", async () => {
+    backend([hook(0)]);
+    writeFileSync(source, '{"hooks":{}}');
+    await expect(approveCodexHooks(repo, binary)).rejects.toThrow("match the committed project file");
+    expect(requests().map(r => r.method)).toEqual(["initialize", "hooks/list"]);
+    expect(readFileSync(join(home, "config.toml"), "utf8")).toBe('model = "original"\n');
   });
 
   it("preserves an external edit made during staging", async () => {

@@ -3,13 +3,13 @@ import { once } from "node:events";
 import { existsSync } from "node:fs";
 import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { createInterface } from "node:readline";
 import { isDeepStrictEqual } from "node:util";
 import { parse } from "smol-toml";
 import { z } from "zod";
 import { codexHome } from "../doctor/codex-trust.js";
-import { checkoutIdentity } from "../session/start.js";
+import { checkoutIdentity, sessionGit } from "../session/start.js";
 const desktopCli = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex";
 async function withCodex(binary, home, operation) {
     const child = spawn(binary, ["app-server", "--listen", "stdio://"], {
@@ -70,6 +70,24 @@ async function projectHooks(rpc, root) {
         throw new Error("Codex could not reliably list hooks for this project.");
     }
     return project.hooks;
+}
+async function committedFile(root, source) {
+    const path = relative(root, source).split("\\").join("/");
+    return sessionGit(root, ["show", `HEAD:${path}`], false).catch(() => undefined);
+}
+async function requireMorpheusProject(root) {
+    const committed = await committedFile(root, join(root, "morpheus.json"));
+    const identity = z.object({ name: z.string().min(1), morpheusVersion: z.string().min(1) });
+    if (committed) {
+        try {
+            if (identity.safeParse(JSON.parse(committed)).success)
+                return;
+        }
+        catch {
+            // Invalid JSON is treated the same as a missing project manifest.
+        }
+    }
+    throw new Error("Run this command in a Morpheus project with a committed morpheus.json.");
 }
 async function pendingApproval(hook, root) {
     if (hook.source !== "project" || hook.isManaged || !hook.enabled)
@@ -175,9 +193,17 @@ async function withApprovalLock(home, action) {
 }
 async function approve(rpc, root, save) {
     const approvals = new Map();
+    const sources = new Set();
     for (const hook of await projectHooks(rpc, root)) {
-        if (await pendingApproval(hook, root))
+        if (await pendingApproval(hook, root)) {
             approvals.set(hook.key, { trusted_hash: hook.currentHash });
+            sources.add(hook.sourcePath);
+        }
+    }
+    for (const source of sources) {
+        if (await committedFile(root, source) !== await readFile(source, "utf8")) {
+            throw new Error(`Hook config must match the committed project file: ${relative(root, source)}. Review local changes in Codex Settings → Hooks.`);
+        }
     }
     if (!approvals.size)
         return 0;
@@ -197,6 +223,7 @@ export async function approveCodexHooks(cwd = process.cwd(), binary = existsSync
         throw new Error("Run hook approval from the main checkout of this project.");
     }
     const root = checkout.linked ? dirname(checkout.common) : checkout.root;
+    await requireMorpheusProject(root);
     const home = await realpath(codexHome());
     return withApprovalLock(home, async () => {
         const snapshot = await snapshotConfig(home);
