@@ -81,7 +81,7 @@ export function reviewPacket(opts) {
     else {
         lines.push("Acceptance: none declared — review against the ticket context and the PR description. That is a supported state, not a gap to fill by creating an item.");
     }
-    lines.push("Suggested context (read with read_project_record before the diff):", ...(opts.suggested ?? []).map(path => `- ${path}`), `- ${AUTHOR_CONTEXT_SLOT}`);
+    lines.push("PR description and test plan: run `gh pr view --json title,body` from the repository; if no PR exists yet, ask the author for the test plan.", "Suggested context (read with read_project_record before the diff):", ...(opts.suggested ?? []).map(path => `- ${path}`), `- ${AUTHOR_CONTEXT_SLOT}`);
     if (opts.complexity)
         lines.push(opts.complexity);
     return lines.join("\n");

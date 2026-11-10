@@ -14,6 +14,9 @@ the packet lists under Suggested context plus each material citation. Use the pa
 review evidence. If the MCP cannot search that project or returns another checkout's version of a
 changed record, use \`morpheus context search\` from the packet's checkout and explain the fallback.
 A decision, lesson or prior worklog that contradicts the change is a finding like any other.
+Read the PR description too, and its Test plan above all: check that what the author ran covers the
+change, rerun what would settle a doubt, and add checks of your own wherever it falls short. The
+author's plan is a starting point, never the limit of your review.
 Use normal Git and code tools for the diff, source and exact literals.
 For front-end changes, open the PR's visual evidence and inspect the rendered pixels for each
 materially changed screen and state. Check layout, clipping, text, accessibility-visible states,

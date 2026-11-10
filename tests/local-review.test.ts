@@ -157,6 +157,9 @@ describe("measured review timing", () => {
       expect(template.contextRead).toEqual(["Replace with the record paths the reviewer reported reading"]);
       expect(output).toContain("Suggested context (read with read_project_record before the diff):");
       expect(output).toContain(AUTHOR_CONTEXT_SLOT);
+      expect(output).toContain("Read the PR description too, and its Test plan above all");
+      expect(output).toContain("never the limit of your review");
+      expect(output).toContain("PR description and test plan: run `gh pr view --json title,body` from the repository");
       expect(output).toContain("mechanism that the requirements do not need is substantive; a local simplification is minor");
       expect(output).not.toContain("risk class; elapsed minutes;");
     } finally { log.mockRestore(); }
