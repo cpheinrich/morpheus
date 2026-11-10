@@ -142,6 +142,8 @@ describe("loadReviewContext", () => {
     expect(ctx.id).toBe("MO-051");
     expect(ctx.title).toBe("Agent code review");
     expect(ctx.intent).toContain("Why this matters");
+    // The packet's Suggested context starts with the item, as a repository-relative path.
+    expect(ctx.records).toEqual(["hq/product/roadmap/MO-051.md"]);
   });
 
   it("returns just the persona for a branch that names no item", async () => {
@@ -169,6 +171,7 @@ describe("loadReviewContext", () => {
     const ctx = await loadReviewContext(opts("mo-051-x"));
     expect(ctx.acceptance).toContain("Posts one comment");
     expect(ctx.missingAcceptance).toBeUndefined();
+    expect(ctx.records).toEqual(["hq/product/roadmap/MO-051.md", "qa/acceptance/MO-051.md"]);
   });
 
   it("flags a declared acceptance file that is not there", async () => {
@@ -178,6 +181,8 @@ describe("loadReviewContext", () => {
     const ctx = await loadReviewContext(opts("mo-051-x"));
     expect(ctx.missingAcceptance).toBe("qa/acceptance/MO-051.md");
     expect(ctx.acceptance).toBeUndefined();
+    // A reviewer is never sent to a file that does not exist.
+    expect(ctx.records).toEqual(["hq/product/roadmap/MO-051.md"]);
   });
 
   it("does not set either acceptance field when the item declares none", async () => {

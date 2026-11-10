@@ -166,7 +166,8 @@ describe("measured review timing", () => {
     const { contextRead: _read, ...bare } = record();
     expect(check(save(bare))).toEqual([{ level: "warning", rule: "review-context", message: MISSING_CONTEXT_READ }]);
     expect(check(save(record()))).toEqual([]);
-    expect(check(save({ ...record(), contextRead: [] }))[0]?.level).toBe("error");
+    // An empty list (no record governed the change) is the same report as an absent one.
+    expect(check(save({ ...record(), contextRead: [] }))).toEqual([{ level: "warning", rule: "review-context", message: MISSING_CONTEXT_READ }]);
     expect(check(save({ ...record(), contextRead: ["/etc/passwd"] }))[0]?.level).toBe("error");
   });
   it("accepts the measured duration from issue281 instead of the reviewer's 40-minute estimate", () => {

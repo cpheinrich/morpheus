@@ -121,9 +121,9 @@ export const ReviewRecord = z.object({
     summary: Text,
     /**
      * Project records the reviewer read while orienting, as it reported them. Optional so older
-     * records stay valid; a record without it is reported, never refused.
+     * records stay valid; a record without it, or with an empty list, is reported, never refused.
      */
-    contextRead: z.array(Path).min(1).max(50).optional(),
+    contextRead: z.array(Path).max(50).optional(),
     /**
      * Hand-resolved trunk merges after coverage. A merge Git reproduces exactly needs no entry;
      * one an author resolved by hand carries unreviewed edits, so it is accepted only when named.
