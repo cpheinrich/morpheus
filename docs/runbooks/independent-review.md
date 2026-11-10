@@ -46,13 +46,13 @@ hook. A reviewer that read only code missed the history that explained a fix (ev
 the author. Before spawning the reviewer, the author replaces that line with the decisions,
 runbooks, earlier worklogs or meeting notes that govern the change, or writes "none beyond the
 ticket". The reviewer returns the paths it read as **Context read**, and the author records them as
-`contextRead` in the review record.
+`contextRead` in the review record. A record without `contextRead`, or with an empty list, is
+reported as a `review-context` warning by `review validate` and `check pr`. It is never refused,
+so older records and reviews of trivial changes still pass.
 
 The reviewer also reads the PR description, above all its **Test plan**. It checks that what the
 author ran covers the change, reruns what would settle a doubt, and adds its own checks wherever
-the plan falls short. The plan is where review starts, not where it stops. A record without `contextRead` is reported as a
-`review-context` warning by `review validate` and `check pr`. It is never refused, so older records
-and reviews of trivial changes still pass.
+the plan falls short. The plan is where review starts, not where it stops.
 
 The canonical contract ships in `src/review/local-prompt.ts`; the old `review prompt` command and
 `.github/agent-review-prompt.md` remain for explicitly enabled legacy GitHub reviewers.
