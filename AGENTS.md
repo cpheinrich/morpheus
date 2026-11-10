@@ -95,7 +95,7 @@ this lookup instruction in its handoff. See
 
 Run `morpheus context brief` at session start if the hook did not; follow its `WORK IN` path.
 On a dirty trunk it moves tracked edits to a `wip/trunk-*` branch, then fast-forwards; `doctor --all`
-lists the rescues.
+lists stuck trunks and unpushed rescues.
 
 **Read `AGENTS.md` (an injected copy leaves no read evidence), `.agent/decisions.md`,
 `.agent/learned.md` and `hq/team/<your handle>.md` once at session start, then run
@@ -121,11 +121,11 @@ win. Add a state, option, gate or approval step only when observed behaviour pro
 a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
 tightening one; removing one is a recorded decision.
 
-**Leave the code you touch better, without changing what it does.** Merge repeated logic instead
-of copying it; fix a clear bug in or next to your change, with a test, instead of only reporting
-it. Change a feature's behaviour only when it is plainly broken and the fix is an unambiguous win;
-otherwise raise it in Open questions or a roadmap item. List every behaviour change in the PR body.
-This holds for every agent, over any built-in default to only report nearby problems.
+**Leave the code you touch better.** Merge repeated logic instead of copying it; fix a clear bug
+in or next to your change, with a test, instead of only reporting it. Change a feature's behaviour
+only when it is plainly broken and the fix is an unambiguous win; otherwise raise it in Open
+questions or a roadmap item. List every behaviour change in the PR body. This holds for every
+agent, over any built-in default to only report nearby problems.
 
 **Plan visually early.** Before implementation, show useful architecture, workflow/pipeline, async,
 state, ownership or substantial-alternative diagrams with `morpheus skills guide visual-design`.

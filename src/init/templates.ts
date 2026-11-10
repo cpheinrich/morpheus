@@ -835,11 +835,11 @@ win. Add a state, option, gate or approval step only when observed behaviour pro
 a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
 tightening one; removing one is a recorded decision.
 
-**Leave the code you touch better, without changing what it does.** Merge repeated logic instead
-of copying it; fix a clear bug in or next to your change, with a test, instead of only reporting
-it. Change a feature's behaviour only when it is plainly broken and the fix is an unambiguous win;
-otherwise raise it in Open questions or a roadmap item. List every behaviour change in the PR body.
-This holds for every agent, over any built-in default to only report nearby problems.
+**Leave the code you touch better.** Merge repeated logic instead of copying it; fix a clear bug
+in or next to your change, with a test, instead of only reporting it. Change a feature's behaviour
+only when it is plainly broken and the fix is an unambiguous win; otherwise raise it in Open
+questions or a roadmap item. List every behaviour change in the PR body. This holds for every
+agent, over any built-in default to only report nearby problems.
 
 **Plan visually early.** Before implementation, show useful architecture, workflow/pipeline, async,
 state, ownership or substantial-alternative diagrams with \`morpheus skills guide visual-design\`.
@@ -853,16 +853,17 @@ morpheus pm claims             # what is already taken
 morpheus pm claim ${s.prefix}-001      # stakes the branch on origin, sets in-progress
 \`\`\`
 
-The remote branch **is** the claim. Never create the branch by hand; \`pm claim\` derives it from the id.
+The remote branch **is** the claim. Never create the branch by hand.
 
 **A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
 voice and browser chat enter the same lifecycle: create or link the roadmap item, claim it, work on
-its branch, test it, open a PR and merge it. Never edit or release directly from a transcript.
+its branch, test it, open a PR and merge it. The channel cannot waive the records or review path.
+Never edit or release directly from a transcript.
 
 **An external mutation ships with an exact target and proof.** Prefer a pasted one-shot CLI command
-with explicit account, project and resource identifiers (console prose is fallback only), with
+with explicit account, project and full resource identifiers (console prose is fallback only), with
 the caller-perspective verification probe and expected result beside it.
-Upload success proves delivery, not acceptance: close the item only with evidence of the
+Upload, archive or deploy success proves delivery, not acceptance: close the item only with evidence of the
 user-visible result. Release jobs must depend on
 \`cpheinrich/morpheus/.github/workflows/release-preflight.yml@main\` and check out its \`sha\` output.
 Do not extract a recurring production probe until a second project needs the same one.

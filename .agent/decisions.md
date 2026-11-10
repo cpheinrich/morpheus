@@ -1,6 +1,6 @@
 # Decisions
 
-## Agents leave touched code better without changing what it does — 2026-11-10
+## Agents leave the code they touch better — 2026-11-10
 
 MO-26-11-10-01.03.46. Anthropic's Fable 5.2 guide reports that, unless told the code is its own,
 the model adds parallel copies of existing code and reports nearby problems instead of fixing them.
