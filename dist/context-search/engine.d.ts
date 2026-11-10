@@ -3,7 +3,6 @@ export interface ContextSource {
     readonly text: string;
 }
 export interface SearchOptions {
-    readonly engine: "tantivy" | "ripgrep";
     readonly cacheDir: string;
     readonly maxBytes?: number;
     readonly maxLines?: number;

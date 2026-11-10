@@ -52,6 +52,10 @@ pinned until a reviewed Morpheus change advances it.
 
 ## Context search after an automatic update
 
+The update installs the pinned Tantivy binding before replacing the CLI. Python 3.11+
+with venv support and access to PyPI are needed for the first install. If that fails,
+the old CLI remains in place. For a manual repair use `morpheus context runtime install`.
+
 With auto-update enabled, the managed hooks register Morpheus Context MCP in the
 local user's Codex, Claude Code and Cursor settings after updating or confirming
 the CLI is current. This applies to every Morpheus checkout the client launches,

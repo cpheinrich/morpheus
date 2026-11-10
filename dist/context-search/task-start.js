@@ -12,6 +12,7 @@ import { discoverSources, readContextSources } from "./sources.js";
 const SEARCH = 'morpheus context search "<task terms>"';
 const READ = "morpheus context task-read <indexed-path>";
 const PROMPT = "UserPromptSubmit";
+const SUBAGENT = "SubagentStart";
 const MCP_SEARCH = "search_project_context";
 const MCP_READ = "read_project_record";
 async function preferredLookup(root) {
@@ -197,15 +198,26 @@ export async function taskPrompt(raw, locateRoot) {
     }
     return `For the first project task, once its scope is clear and before implementation, load task context in ${root} with \`${prefix}${SEARCH}\` (1,000 tokens by default). For a known governing record use \`${prefix}${READ}\`. Read the returned excerpts and open any governing sources they cite. Refine an empty search. Conversational replies can proceed without a lookup.`;
 }
+/** Child sessions may not see the parent's startup or first-prompt hook. */
+export async function subagentContext(input, locateRoot) {
+    if (typeof input.cwd !== "string" || !isAbsolute(input.cwd) || !await locateRoot(input.cwd))
+        return;
+    return "For project records in your assigned worktree (decisions, lessons, roadmap, worklogs, runbooks, meeting notes), use the live Morpheus Context MCP search_project_context before shell search. Open relevant citations with read_project_record. If MCP is unavailable or cannot query the assigned checkout, use morpheus context search from that checkout and report the fallback. Use codebase-memory for code structure and exact reads for known source files.";
+}
 export async function runTaskPromptHook() {
     const { projectRoot } = await import("../session/read-hook.js");
     try {
-        const additionalContext = await taskPrompt(readFileSync(0, "utf8"), projectRoot);
+        const raw = readFileSync(0, "utf8");
+        const input = JSON.parse(raw);
+        const event = input?.hook_event_name;
+        const additionalContext = event === SUBAGENT
+            ? await subagentContext(input, projectRoot)
+            : await taskPrompt(raw, projectRoot);
         if (additionalContext)
-            console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: PROMPT, additionalContext } }));
+            console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext } }));
     }
     catch {
-        // An unsupported prompt payload must not interrupt the conversation.
+        // An unsupported hook payload must not interrupt the conversation.
     }
     return 0;
 }

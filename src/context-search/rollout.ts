@@ -14,10 +14,9 @@ export type ContextOperation = "search" | "read" | "coverage" | "overview" | "re
 export type ContextOutcome = "ok" | "empty" | "error";
 
 export type SearchEngine = "tantivy" | "ripgrep";
-export type Arm = "tantivy-bounded" | "ripgrep-bounded" | "ripgrep-full" | "manual" | "legacy";
+export type Arm = "tantivy-full" | "tantivy-bounded" | "ripgrep-bounded" | "ripgrep-full" | "manual" | "legacy";
 export interface SearchRollout { id: string; coreInputs: string[] }
 export interface SearchConfig {
-  mode?: SearchEngine;
   transport?: ContextTransport;
   include: string[];
   exclude: string[];
@@ -29,7 +28,7 @@ export interface ContextArm {
   /** An opaque key shared between assignment and query traces, never the provider ID. */
   session?: string;
   arm: Arm;
-  engine: SearchEngine;
+  engine: "tantivy";
   startup: "bounded" | "full";
   coreInputs?: string[];
   unavailable?: string;
@@ -87,8 +86,7 @@ export function parseSearchConfig(value: unknown): SearchConfig {
     throw new Error("context.search.transport must be cli or mcp.");
   }
   return {
-    ...(raw.transport ? { transport: raw.transport } : {}),
-    mode: raw.mode as SearchEngine | undefined,
+    transport: raw.transport === "cli" ? "cli" : "mcp",
     include: strings(raw.include, "include"),
     exclude: strings(raw.exclude, "exclude"),
     rollout: rolloutConfig(raw.rollout),
@@ -113,10 +111,6 @@ async function coreBytes(root: string, paths: readonly string[]): Promise<number
   return sizes.reduce((total, size) => total + size, 0);
 }
 
-export function armForBucket(bucket: number): "tantivy-bounded" | "ripgrep-bounded" | "ripgrep-full" {
-  return bucket < 60 ? "tantivy-bounded" : bucket < 80 ? "ripgrep-bounded" : "ripgrep-full";
-}
-
 function rolloutKey(rollout: string, session: string): Buffer {
   return createHash("sha256").update("morpheus-context-v1\0").update(rollout).update("\0").update(session).digest();
 }
@@ -125,35 +119,18 @@ export function contextTraceSession(rollout: string, session: string): string {
   return rolloutKey(rollout, session).toString("hex").slice(8, 24);
 }
 
-function standaloneArm(settings: SearchConfig, sessionId: string | undefined, manual: ContextArm, legacy: ContextArm): ContextArm {
-  if (settings.mode === "tantivy" && settings.transport === "mcp" && sessionId && sessionId.length <= 512) {
-    return { ...manual, session: contextTraceSession("", sessionId) };
-  }
-  return settings.mode ? manual : legacy;
-}
-
 export async function contextArm(root: string, sessionId = providerSessionId(), config?: SearchConfig): Promise<ContextArm> {
-  const settings = config ?? await getSearchConfig(root);
-  const { mode, rollout } = settings;
-  const legacy: ContextArm = { arm: "legacy", engine: "ripgrep", startup: "full" };
-  const manual: ContextArm = { arm: "manual", engine: mode ?? "ripgrep", startup: "full" };
-  if (!rollout) return standaloneArm(settings, sessionId, manual, legacy);
-  const key = sessionId && sessionId.length <= 512
-    ? rolloutKey(rollout.id, sessionId)
-    : undefined;
-  const session = key?.toString("hex").slice(8, 24);
-  if (mode) return { ...manual, id: rollout.id, session };
-  if (!key) return { ...legacy, id: rollout.id, unavailable: "No provider session ID; using full startup and ripgrep." };
-  const arm = armForBucket(key.readUInt32BE(0) % 100);
-  if (arm === "ripgrep-full") return { arm, engine: "ripgrep", startup: "full", id: rollout.id, session };
+  const { rollout } = config ?? await getSearchConfig(root);
+  const id = rollout?.id;
+  const session = sessionId && sessionId.length <= 512 ? contextTraceSession(id ?? "", sessionId) : undefined;
+  const full: ContextArm = { arm: "tantivy-full", engine: "tantivy", startup: "full", id, session };
+  if (!rollout) return full;
+  if (!session) return { ...full, unavailable: "No provider session ID; using full startup." };
   const size = await coreBytes(root, rollout.coreInputs).catch(() => Infinity);
-  if (!Number.isFinite(size) || size <= 0 || size > MAX_CORE_BYTES) {
-    return { ...legacy, id: rollout.id, session, unavailable: "Rollout core is missing, empty, unsafe, or over 8 KiB; using full startup and ripgrep." };
+  if (size <= 0 || size > MAX_CORE_BYTES) {
+    return { ...full, unavailable: "Startup core is missing, empty, unsafe, or over 8 KiB; using full startup." };
   }
-  return {
-    id: rollout.id, session, arm, startup: "bounded", coreInputs: rollout.coreInputs,
-    engine: arm === "tantivy-bounded" ? "tantivy" : "ripgrep",
-  };
+  return { ...full, arm: "tantivy-bounded", startup: "bounded", coreInputs: rollout.coreInputs };
 }
 
 export interface ContextTrace {
@@ -227,7 +204,7 @@ function traceLine(event: ContextTrace, now: Date): string {
 export async function traceContext(root: string, event: ContextTrace, now = new Date()): Promise<void> {
   try {
     if (!["assignment", "query", "tool", "visible", "session-start", "prompt", "warm"].includes(event.type) ||
-        !["tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"].includes(event.arm) ||
+        !["tantivy-full", "tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"].includes(event.arm) ||
         !["tantivy", "ripgrep"].includes(event.engine)) return;
     const directory = await searchStateDirectory(root, "traces");
     await expireTrace(directory, now);

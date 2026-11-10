@@ -42,13 +42,7 @@ async function fixture() {
   git("init", "-q", "-b", "main");
   git("add", ".");
   git("remote", "add", "origin", "git@github.com:example/fixture.git");
-  const sessions = new Map();
-  for (let i = 0; i < 100 && sessions.size < 3; i++) {
-    const id = "host-" + i;
-    const arm = await contextArm(root, id);
-    sessions.set(arm.arm, id);
-  }
-  const session = sessions.get("ripgrep-bounded") as string;
+  const session = "fresh-reviewer";
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "probe", version: "1" });
   clients.push(client);
@@ -56,7 +50,7 @@ async function fixture() {
   await client.connect(clientTransport);
   const call = async (name: string, args: Record<string, unknown> = {}, id = session) =>
     await client.callTool({ name, arguments: args, _meta: { threadId: id } }) as CallToolResult;
-  return { root, client, session, sessions, call };
+  return { root, client, session, call };
 }
 
 afterEach(async () => {
@@ -100,7 +94,7 @@ it("preserves arm, records MCP timing, and only credits the excerpt shown by the
   await observe("search_project_context", await call("search_project_context", { query: "zzzzunused" }));
   expect(await taskContextRefusal(root, session)).toContain("Load context");
   const search = await call("search_project_context", { query: secretQuery });
-  expect(search.structuredContent).toMatchObject({ engine: "ripgrep", citations: expect.arrayContaining([{ path: ".agent/decisions.md", from: 1, to: 3, kind: "decision" }]) });
+  expect(search.structuredContent).toMatchObject({ engine: "tantivy", citations: expect.arrayContaining([{ path: ".agent/decisions.md", from: 1, to: 3, kind: "decision" }]) });
   expect(await taskContextRefusal(root, session)).toContain("Load context");
   await observe("search_project_context", { ...search, structuredContent: { excerpt: "No model-visible citation." } });
   expect(await taskContextRefusal(root, session)).toContain("Load context");
@@ -115,11 +109,11 @@ it("preserves arm, records MCP timing, and only credits the excerpt shown by the
   expect(log).not.toContain(secretQuery);
   expect(log).not.toContain(session);
   expect(log.split("\n").filter(Boolean).map(line => JSON.parse(line))).toEqual(expect.arrayContaining([
-    expect.objectContaining({ type: "query", transport: "mcp", arm: "ripgrep-bounded", actualEngine: "ripgrep", outcome: "ok" }),
+    expect.objectContaining({ type: "query", transport: "mcp", arm: "tantivy-bounded", actualEngine: "tantivy", outcome: "ok" }),
     expect.objectContaining({ type: "visible", transport: "mcp", operation: "read" }),
   ]));
   expect((await summarizeContextTraces(root)).byArmTransport).toEqual(expect.arrayContaining([
-    expect.objectContaining({ arm: "ripgrep-bounded", transport: "mcp", visibleSessions: 1 }),
+    expect.objectContaining({ arm: "tantivy-bounded", transport: "mcp", visibleSessions: 1 }),
   ]));
 });
 
@@ -152,7 +146,7 @@ it("uses the session worktree and refuses to move a pinned Factory worker outsid
 });
 
 it("profiles visible startup citations without treating them as additional task context", async () => {
-  const { root, session, call, sessions } = await fixture();
+  const { root, session, call } = await fixture();
   await armMcpTaskContext(root, session);
   const read = async (path: string, id: string) => recordRead(JSON.stringify({
     cwd: root, session_id: id, turn_id: "turn", hook_event_name: "PostToolUse",
@@ -161,10 +155,11 @@ it("profiles visible startup citations without treating them as additional task 
   }));
   await read(".agent/context-core.md", session);
   expect(await taskContextRefusal(root, session)).toContain("Load context");
-  await read(".agent/decisions.md", sessions.get("ripgrep-full"));
+  await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "fixture" }));
+  await read(".agent/decisions.md", "full-reviewer");
   expect((await summarizeContextTraces(root)).byArmTransport).toEqual(expect.arrayContaining([
-    expect.objectContaining({ arm: "ripgrep-bounded", transport: "mcp", visibleSessions: 1 }),
-    expect.objectContaining({ arm: "ripgrep-full", transport: "mcp", visibleSessions: 1 }),
+    expect.objectContaining({ arm: "tantivy-bounded", transport: "mcp", visibleSessions: 1 }),
+    expect.objectContaining({ arm: "tantivy-full", transport: "mcp", visibleSessions: 1 }),
   ]));
 });
 
@@ -233,21 +228,34 @@ it("profiles a first turn without a trusted prompt hook and excludes empty searc
 });
 
 
-it("joins prompt and result timings for explicitly enabled Tantivy without a rollout", async () => {
+it("profiles Tantivy for an unconfigured project and fails explicitly without the runtime", async () => {
   const { root, call, session } = await fixture();
   await writeFile(join(root, "morpheus.json"), JSON.stringify({
-    name: "explicit", context: { search: { transport: "mcp", mode: "tantivy" } },
+    name: "explicit", context: { search: { mode: "ripgrep" } },
   }));
   const arm = await contextArm(root, session);
-  expect(arm).toMatchObject({ arm: "manual", engine: "tantivy", session: contextTraceSession("", session) });
+  expect(arm).toMatchObject({ arm: "tantivy-full", engine: "tantivy", session: contextTraceSession("", session) });
   const prompt = JSON.stringify({ cwd: root, session_id: session, prompt: "Verify release", hook_event_name: "UserPromptSubmit" });
   expect(await taskPrompt(prompt, async path => path)).toBeUndefined();
-  // Exercise the trace and fallback path even on CI machines without Tantivy.
   vi.stubEnv("MORPHEUS_TANTIVY_PYTHON", "/nonexistent/tantivy-python");
-  expect((await call("search_project_context", { query: secretQuery })).structuredContent).toMatchObject({
-    engine: "ripgrep", fallback: true, outcome: "ok",
+  expect(await call("search_project_context", { query: secretQuery })).toMatchObject({
+    isError: true, content: [{ text: expect.stringContaining("morpheus context runtime install") }],
   });
+  vi.unstubAllEnvs();
+  expect((await call("search_project_context", { query: secretQuery })).structuredContent)
+    .toMatchObject({ engine: "tantivy", fallback: false, outcome: "ok" });
   expect((await summarizeContextTraces(root)).pipeline).toMatchObject({
     sessions: 1, promptHooks: 1, firstSearches: 1, firstResults: 1, promptToFirstResult: { samples: 1 },
   });
+});
+
+it("allows a fresh delegated host without session metadata to search its launch checkout", async () => {
+  const { client } = await fixture();
+  vi.stubEnv("MORPHEUS_CONTEXT_SESSION_ID", "");
+  vi.stubEnv("CLAUDE_CODE_SESSION_ID", "");
+  vi.stubEnv("CODEX_THREAD_ID", "");
+  expect((await client.callTool({ name: "search_project_context", arguments: { query: secretQuery } })).structuredContent)
+    .toMatchObject({ engine: "tantivy", outcome: "ok", citations: expect.arrayContaining([
+      expect.objectContaining({ path: ".agent/decisions.md" }),
+    ]) });
 });

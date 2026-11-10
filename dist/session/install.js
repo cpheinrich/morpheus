@@ -42,7 +42,10 @@ const HOOK_SHELL = "sh -c 'PATH=\"${PATH:-/usr/bin:/bin}:${HOME:-/nonexistent}/.
 export const READ_HOOK_COMMAND = HOOK_SHELL + "record-read >/dev/null 2>&1; exit 0'";
 const TASK_PROMPT_COMMAND = HOOK_SHELL + "task-prompt; exit 0'";
 const TASK_PROMPT = {
-    blocks: () => ({ UserPromptSubmit: [{ hooks: [{ type: "command", command: TASK_PROMPT_COMMAND }] }] }),
+    blocks: () => ({
+        UserPromptSubmit: [{ hooks: [{ type: "command", command: TASK_PROMPT_COMMAND }] }],
+        SubagentStart: [{ hooks: [{ type: "command", command: TASK_PROMPT_COMMAND }] }],
+    }),
     marker: "context task-prompt",
     label: "the task context hook",
 };

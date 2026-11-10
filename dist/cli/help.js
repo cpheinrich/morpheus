@@ -111,7 +111,7 @@ Usage
   morpheus context profile [YYYY-MM-DD]  # Local pilot traces grouped by transport and arm
   morpheus context task-read <indexed-path> [start-line] [--session-id <id>]
   morpheus context search <query> [--max-tokens <n>] [--session-id <id>] [--json]
-  morpheus context engine <tantivy|ripgrep|auto> [--session-id <id>]
+  morpheus context runtime install       # Install the pinned Tantivy runtime
   morpheus context coverage [--json]
   morpheus context record-read
                             the read hook: logs a tool result's record lines (stdin JSON)

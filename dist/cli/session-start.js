@@ -70,7 +70,7 @@ async function printRollout(root, paths, arm, id) {
         console.log(`! ${arm.unavailable}`);
     if (!arm.id)
         return;
-    console.log(`Context search rollout ${arm.id}: ${arm.arm}; engine ${arm.engine}.`);
+    console.log(`Context startup ${arm.id}: ${arm.startup}; search uses Tantivy.`);
     const { getSearchConfig } = await import("../context-search/rollout.js");
     const mcp = (await getSearchConfig(root)).transport === "mcp";
     const sessionId = id ?? providerSessionId();
@@ -84,7 +84,7 @@ async function printRollout(root, paths, arm, id) {
     console.log("Use 1,000 returned tokens for a focused lookup, or up to 2,500 when several sources are needed.");
     if (id && id !== providerSessionId()) {
         const quoted = "'" + id.replaceAll("'", "'\\''") + "'";
-        console.log(`Provider session ID is not available in this shell. Prefix Morpheus commands in this session with MORPHEUS_CONTEXT_SESSION_ID=${quoted} to retain its assignment and receipt.`);
+        console.log(`Provider session ID is not available in this shell. Prefix Morpheus commands in this session with MORPHEUS_CONTEXT_SESSION_ID=${quoted} to retain its startup evidence and receipt.`);
     }
     const contents = await Promise.all(paths.map(path => readFile(join(root, path), "utf8"))).catch(() => undefined);
     const startupBytes = contents?.reduce((total, content) => total + Buffer.byteLength(content), 0);

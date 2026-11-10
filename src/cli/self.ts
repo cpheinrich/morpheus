@@ -23,6 +23,8 @@ export async function check(offline: boolean): Promise<number> {
 export async function install(source: string): Promise<number> {
   try {
     const result = await installCurrentMorpheus(source);
+    const { installTantivyRuntime } = await import("../context-search/runtime.js");
+    await installTantivyRuntime();
     console.log(
       `Installed Morpheus ${result.commit.slice(0, 7)} as a standalone global package.\n` +
         `Source checkout left unchanged: ${source}`,

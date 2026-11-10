@@ -35,6 +35,11 @@ resume it; when it cannot be resumed, a fresh reviewer takes the next turn
 ([below](#any-fresh-reviewer-may-take-a-turn)). A reviewer is a bounded task started by the
 author, not a standing PR-monitoring agent.
 
+The fresh reviewer uses Morpheus Context MCP for governing records and prior work, reads its
+citations, and uses the packet checkout for the diff and tests. When the host cannot search
+that checkout through MCP, use the context CLI there and report why. This keeps project
+record lookup consistent even when a child receives no startup hook.
+
 The canonical contract ships in `src/review/local-prompt.ts`; the old `review prompt` command and
 `.github/agent-review-prompt.md` remain for explicitly enabled legacy GitHub reviewers.
 

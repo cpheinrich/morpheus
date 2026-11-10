@@ -4,13 +4,12 @@ import { searchStateDirectory } from "./local-state.js";
 import { getSearchConfig, traceContext } from "./rollout.js";
 import { discoverSources, readContextSources } from "./sources.js";
 
-/** A host can start MCP before it knows the arm. Only opted-in projects warm. */
+/** Build in the background when the MCP host starts, before the first search. */
 export async function warmContextMcp(cwd: string): Promise<void> {
   const started = performance.now();
   const { root } = await checkoutIdentity(cwd);
   const config = await getSearchConfig(root);
-  if (config.transport !== "mcp" || config.mode === "ripgrep" || (!config.rollout && config.mode !== "tantivy")) return;
-  const base = { type: "warm", transport: "mcp", arm: "legacy", engine: "tantivy", rollout: config.rollout?.id, mcpStartedAt: performance.timeOrigin } as const;
+  const base = { type: "warm", transport: "mcp", arm: "tantivy-full", engine: "tantivy", rollout: config.rollout?.id, mcpStartedAt: performance.timeOrigin } as const;
   try {
     const { included } = await discoverSources(root, config);
     const sources = await readContextSources(root, included);
