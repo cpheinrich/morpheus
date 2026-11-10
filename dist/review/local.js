@@ -359,7 +359,7 @@ export function validateReviewRecord(record, opts = {}) {
     checkHandoffs(record, turns);
     const finalization = checkFinalization(turns, resumed, unconditional);
     checkFinalVerification(record, turns, finalization, budget);
-    checkTurnBudgets(record, turns, budget);
+    checkTurnBudgets(record, turns, budget, opts.hasNewDeferral);
     return waivers;
 }
 /**
@@ -505,7 +505,7 @@ function checkFinalVerification(record, turns, finalization, budget) {
         throw new Error("final verification exceeded the cumulative two-initial-budget limit");
     }
 }
-function checkTurnBudgets(record, turns, budget) {
+function checkTurnBudgets(record, turns, budget, hasNewDeferral) {
     turns.forEach((turn, index) => {
         // A follow-up is half the initial budget because its reviewer already holds the context. A fresh
         // reviewer taking over does not, so its ordinary turn gets the initial ceiling (no extension).
@@ -515,10 +515,11 @@ function checkTurnBudgets(record, turns, budget) {
             throw new Error(fresh ? "a fresh reviewer's turn exceeded the initial-review budget; record it incomplete and continue with another turn" : "follow-up exceeded its budget; record it incomplete and continue with another turn instead of claiming a verdict");
         const next = turns[index + 1];
         if (!next) {
-            // With a conditional clearance the author's fix may land after the final turn; the commit
-            // check then happens in checkLocalReview, which can see the paths.
-            const coversLast = turn.commit === record.covered || conditionallyCleared(record).length > 0;
-            if (turn.outcome !== "cleared" || !coversLast)
+            if (turn.outcome !== "cleared")
+                throw new Error("the final follow-up must clear the covered commit");
+            // Git checks every commit after clearance against the approved conditions and new ticket paths.
+            const coversLast = turn.commit === record.covered || conditionallyCleared(record).length > 0 || hasNewDeferral?.(turn.commit);
+            if (!coversLast)
                 throw new Error("the final follow-up must clear the covered commit");
         }
         else if (turn.outcome === "cleared" && !next.scopeReason) {
@@ -633,7 +634,9 @@ function newlyFiledDeferralPaths(root, record, from, to) {
     const ids = new Set(record.findings.filter(f => f.disposition === "deferred" || f.disposition === "open").map(f => f.roadmap).filter((id) => Boolean(id)));
     return [...ids].flatMap(id => {
         const path = committedRoadmapPath(root, to, id);
-        return path && !git(root, ["ls-tree", from, "--", path]) && addedByAuthor(root, from, to, path) ? [path] : [];
+        if (!path || committedRoadmapPath(root, from, id))
+            return [];
+        return !git(root, ["ls-tree", from, "--", path]) && addedByAuthor(root, from, to, path) ? [path] : [];
     });
 }
 /** True when Git's own merge of the two parents reproduces this commit's tree exactly: nothing was hand-edited. */
@@ -805,14 +808,17 @@ export function verifyReviewRecord(opts) {
     const record = parseReviewRecord(git(opts.root, ["show", `${opts.head}:${path}`]));
     // The whole reviewed change, base to covered. A trunk merge inside it only adds lines, which errs
     // toward keeping the floor; a range that cannot be measured keeps it too.
-    const waivers = validateReviewRecord(record, { trivialChange: () => {
+    const waivers = validateReviewRecord(record, {
+        trivialChange: () => {
             try {
                 return trivialDiff(opts.root, record.base, record.covered);
             }
             catch {
                 return { trivial: false, reason: "the reviewed range could not be measured", nonTestLines: 0, testLines: 0 };
             }
-        } });
+        },
+        hasNewDeferral: from => isAncestor(opts.root, from, record.covered) && newlyFiledDeferralPaths(opts.root, record, from, record.covered).length > 0,
+    });
     checkFreshReviewer(opts.root, record, path, opts.head);
     checkTrackedDeferrals(opts.root, record, opts.head);
     checkRecordChain(opts, record);
@@ -856,7 +862,7 @@ function coveredMerges(opts, record, path) {
     }
     const last = turns[turns.length - 1];
     if (last && last.commit !== record.covered) {
-        // Only a conditional clearance lets `covered` run past the final turn, and only within its paths.
+        // After the final turn, only conditions, newly filed deferrals and the review record are allowed.
         if (!isAncestor(opts.root, last.commit, record.covered))
             throw new Error("the final follow-up must clear the covered commit");
         add(verifyUncoveredCommits(opts.root, record, last.commit, record.covered, opts.base, new Set([path, ...conditional, ...newlyFiledDeferralPaths(opts.root, record, last.commit, record.covered)]), "author fixes after the final follow-up exceed the reviewer's recorded conditions"));

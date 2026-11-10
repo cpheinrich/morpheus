@@ -372,7 +372,8 @@ follow-up ceiling; a fresh reviewer's ordinary turn against the initial ceiling;
 
 `base` is the merge base; `reviewed` is the initial code commit; `covered` is the final commit
 covered by reviewer clearance or the author's minor fixes. All are full 40-character SHAs and
-must form an ancestor chain. The final follow-up must cover `covered`. Without a follow-up, changed
+must form an ancestor chain. After the final follow-up, `covered` may include an approved conditional fix or a newly filed
+deferred/open finding ticket as described above. Without a follow-up, changed
 paths between `reviewed` and `covered` must belong to fixed minor findings (plus this worklog).
 This is path-level verification: the reviewer/author remain responsible for ensuring those edits
 are actually the stated fixes. Unrelated changes invalidate coverage and require an explicit scope

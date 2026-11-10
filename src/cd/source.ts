@@ -26,6 +26,8 @@ export function verifyValidator(root: string, evidence: TestEvidence | TestProof
 /** Merge time is evidence only for the exact merge commit on the first-parent main chain. */
 export async function loadSources(root: string, config: CdConfig, api: GitHubApi, now: string): Promise<SourceRevision[]> {
   git(root, ["fetch", "origin", config.mainBranch]);
+  invariant(git(root, ["rev-parse", "--is-shallow-repository"]) === "false",
+    "CD source history is shallow. In the source checkout, run git fetch --unshallow origin and retry.");
   const chain = git(root, ["rev-list", "--first-parent", "--reverse", `origin/${config.mainBranch}`]).split("\n").filter(Boolean);
   const pulls = await pages<{ number: number; merged_at: string | null; merge_commit_sha: string | null; base: { ref: string } }>(api, `repos/${config.repository}/pulls?state=closed&base=${encodeURIComponent(config.mainBranch)}&sort=updated&direction=desc`);
   const merged = new Map(pulls.filter(pull => pull.merged_at && pull.merge_commit_sha && pull.base.ref === config.mainBranch).map(pull => [pull.merge_commit_sha!, pull]));
