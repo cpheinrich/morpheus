@@ -324,7 +324,8 @@ require("node:fs").writeFileSync(${JSON.stringify(callsPath)}, process.argv.slic
     }
     const own = JSON.stringify({ mcpServers: { morpheus_context: { command: "my-wrapper", args: ["context", "mcp"] } } });
     await writeFile(claude, own);
-    expect((await reconcileAutoUpdateContext(configPath, {}, home, binaryPath))[1]).toMatchObject({ outcome: "blocked" });
+    expect((await reconcileAutoUpdateContext(configPath, {}, home, binaryPath))[1])
+      .toMatchObject({ outcome: "present", detail: expect.stringContaining("Kept your own") });
     expect(await readFile(claude, "utf8")).toBe(own);
   });
 

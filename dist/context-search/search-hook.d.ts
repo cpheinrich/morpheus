@@ -13,6 +13,12 @@ export interface SearchTarget {
     /** A glob or type filter limits the search to Markdown. */
     markdown: boolean;
 }
+/**
+ * Split a command line into simple commands of words. Quotes are honoured, so a pattern
+ * such as `"a|b"` stays one word; unquoted `|`, `;`, `&` and newlines end a command.
+ * Enough for a hint, not a shell interpreter.
+ */
+export declare function commands(line: string): string[][];
 /** The search a Grep or Bash call is about to run, if it is one. */
 export declare function searchTarget(tool: unknown, input: unknown): SearchTarget | undefined;
 /** Free-text terms from a regular expression, for a ranked search rather than a literal one. */

@@ -27,31 +27,35 @@ const VALUE_FLAGS = new Set([
   "-e", "--regexp", "-f", "--file", "-g", "--glob", "--iglob", "-t", "--type", "-T", "--type-not",
   "-m", "--max-count", "-A", "--after-context", "-B", "--before-context", "-C", "--context",
   "--include", "--exclude", "--exclude-dir", "-d", "--max-depth", "--color", "--colors", "-j", "--threads",
-  "-M", "--max-columns", "--sort", "--sortr", "--type-add", "-E", "--encoding",
+  "-M", "--max-columns", "--sort", "--sortr", "--type-add", "--encoding",
 ]);
 const MARKDOWN = /(^|[^a-z])(md|markdown)$/i;
 
-/** Split one shell segment into words, honouring quotes; enough for a hint, not an interpreter. */
-function words(segment: string): string[] {
-  const out: string[] = [];
-  let word = "";
+/**
+ * Split a command line into simple commands of words. Quotes are honoured, so a pattern
+ * such as `"a|b"` stays one word; unquoted `|`, `;`, `&` and newlines end a command.
+ * Enough for a hint, not a shell interpreter.
+ */
+export function commands(line: string): string[][] {
+  const out: string[][] = [[]];
+  let word: string | undefined;
   let quote: string | undefined;
-  let open = false;
-  for (const char of segment) {
+  const end = () => { if (word !== undefined) out.at(-1)!.push(word); word = undefined; };
+  for (const char of line) {
     if (quote) {
       if (char === quote) quote = undefined;
       else word += char;
     } else if (char === "'" || char === '"') {
       quote = char;
-      open = true;
-    } else if (/\s/.test(char)) {
-      if (word || open) out.push(word);
-      word = "";
-      open = false;
-    } else word += char;
+      word ??= "";
+    } else if (/[|;&\n]/.test(char)) {
+      end();
+      out.push([]);
+    } else if (/\s/.test(char)) end();
+    else word = (word ?? "") + char;
   }
-  if (word || open) out.push(word);
-  return out;
+  end();
+  return out.filter(argv => argv.length);
 }
 
 const MARKDOWN_FLAGS = new Set(["-g", "--glob", "--iglob", "--include", "-t", "--type"]);
@@ -92,8 +96,7 @@ function searchArguments(argv: readonly string[]): SearchTarget | undefined {
 }
 
 function shellTarget(command: string): SearchTarget | undefined {
-  for (const segment of command.split(/\|\||&&|[|;\n]/)) {
-    const argv = words(segment.trim());
+  for (const argv of commands(command)) {
     const start = searchStart(argv);
     const target = start < 0 ? undefined : searchArguments(argv.slice(start));
     if (target) return target;

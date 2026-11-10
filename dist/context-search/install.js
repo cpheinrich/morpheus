@@ -172,8 +172,9 @@ async function removeClaudeUserEntry(root, file) {
     if (!object(servers) || !Object.hasOwn(servers, "morpheus_context")) {
         return { target, outcome: "present", detail: "Claude uses each project's Morpheus Context MCP; no user-level copy." };
     }
-    if (!morpheusLaunch(servers.morpheus_context))
-        return existing(target, servers.morpheus_context, CONTEXT_MCP_COMMAND);
+    if (!morpheusLaunch(servers.morpheus_context)) {
+        return { target, outcome: "present", detail: "Kept your own user-level morpheus_context entry; Morpheus no longer manages one." };
+    }
     const { morpheus_context: _removed, ...rest } = servers;
     await save(root, file, JSON.stringify({ ...doc, mcpServers: rest }, null, 2) + "\n", true, raw);
     return { target, outcome: "updated", detail: "Removed the user-level Morpheus Context MCP; each project's .mcp.json provides it." };

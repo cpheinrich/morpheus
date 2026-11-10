@@ -54,6 +54,17 @@ describe("searchTarget", () => {
     expect(searchTarget("Bash", { command: "rg toggle .agent/worklog/*.md" })?.markdown).toBe(true);
     expect(searchTarget("Bash", { command: "pnpm test && git status" })).toBeUndefined();
   });
+
+  it("keeps quoted alternation in the pattern and reads grep -E as a plain option", () => {
+    expect(searchTarget("Bash", { command: `rg "decision|approval" docs/` }))
+      .toEqual({ pattern: "decision|approval", paths: ["docs/"], markdown: false });
+    expect(searchTarget("Bash", { command: `grep -rE "foo|bar" .agent/worklog; echo done` }))
+      .toEqual({ pattern: "foo|bar", paths: [".agent/worklog"], markdown: false });
+    expect(searchTarget("Bash", { command: "grep -E review docs/runbooks" }))
+      .toEqual({ pattern: "review", paths: ["docs/runbooks"], markdown: false });
+    // An empty quoted pattern is still one word, so the path is not misread as the pattern.
+    expect(searchTarget("Bash", { command: "rg -n '' docs" })).toBeUndefined();
+  });
 });
 
 describe("queryTerms", () => {

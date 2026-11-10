@@ -50,5 +50,8 @@ Codex and Cursor user entries are unchanged. Morpheus's own settings carry the n
   `settings.local.json`; it does not reflect `enabledMcpjsonServers`. Only an interactive session
   shows the real behaviour.
 - `codex exec` over SSH waited on stdin until given `< /dev/null`.
-- A per-machine Claude registration was kept by the previous rollout to cover clones without
-  project files; it is removed only after every managed project carries `.mcp.json`.
+- The previous rollout registered a per-machine Claude entry to cover clones without project
+  files. Every managed project already has `.mcp.json`, but none pre-approves it yet. This PR
+  therefore merges only after each project's `context install` PR puts `enabledMcpjsonServers`
+  on its `main`. Otherwise auto-update would remove the user entry before the project's
+  approved one exists.
