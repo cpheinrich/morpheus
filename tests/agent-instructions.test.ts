@@ -156,6 +156,14 @@ describe("the scaffolded AGENTS.md", () => {
     expect(text).toContain("Never idle-loop");
   });
 
+  it("carries the code-improvement rule, word for word with Morpheus's own", async () => {
+    // Codex's built-in prompt says not to fix unrelated bugs; this rule overrides it for every agent.
+    const rule = (text: string) => text.match(/\*\*Leave the code you touch better[\s\S]*?nearby problems\./)?.[0];
+    const own = rule(await readFile(join(ROOT, "AGENTS.md"), "utf8"));
+    expect(own).toContain("plainly broken and the fix is an unambiguous win");
+    expect(rule(agents(SEED))).toBe(own);
+  });
+
   it("points at the review contract instead of restating it", () => {
     const text = agents(SEED);
     expect(text).toContain("/blob/main/docs/runbooks/independent-review.md");

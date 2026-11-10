@@ -1,5 +1,21 @@
 # Decisions
 
+## Agents leave the code they touch better — 2026-11-10
+
+MO-26-11-10-01.03.46. Anthropic's Fable 5.2 guide reports that, unless told the code is its own,
+the model adds parallel copies of existing code and reports nearby problems instead of fixing them.
+Codex's built-in prompt asks for the same restraint on purpose ("Do not attempt to fix unrelated
+bugs"). Chris wants repeated logic merged and clear nearby bugs fixed, but no unrequested feature
+changes. He judged Anthropic's suggested sentence ("what it's for and how it's built are your
+call") too permissive. Every agent in use is Opus 5.5, GPT 6.1 or newer. One model-neutral working
+convention follows **Simplicity first** in `AGENTS.md` and the scaffold: merge repeated logic, fix
+a clear bug in or next to the change with a test, change feature behaviour only when it is plainly
+broken and the fix is an unambiguous win, and list every behaviour change in the PR body. It
+overrides any built-in default to only report nearby problems. There is no `doctor` anchor yet.
+Chris is trying it in Evo before other projects are asked to adopt it. To fit the size budgets
+(20 KB here, 16 KB scaffolded), a few repeated or informational sentences were shortened and no
+rule was removed. No dependency.
+
 ## Context MCP is project-scoped, pre-approved and hinted at search time in Claude — 2026-11-09
 
 MO-26-11-09-23.33.40. Chris: the context MCP is home-grown and trusted, must never need a

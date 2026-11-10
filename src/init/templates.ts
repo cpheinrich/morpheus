@@ -835,6 +835,12 @@ win. Add a state, option, gate or approval step only when observed behaviour pro
 a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
 tightening one; removing one is a recorded decision.
 
+**Leave the code you touch better.** Merge repeated logic instead of copying it; fix a clear bug
+in or next to your change, with a test, instead of only reporting it. Change a feature's behaviour
+only when it is plainly broken and the fix is an unambiguous win; otherwise raise it in Open
+questions or a roadmap item. List every behaviour change in the PR body. This holds for every
+agent, over any built-in default to only report nearby problems.
+
 **Plan visually early.** Before implementation, show useful architecture, workflow/pipeline, async,
 state, ownership or substantial-alternative diagrams with \`morpheus skills guide visual-design\`.
 Skip trivial edits; label current/proposed and assumptions, update retained Mermaid. No approval
@@ -847,33 +853,31 @@ morpheus pm claims             # what is already taken
 morpheus pm claim ${s.prefix}-001      # stakes the branch on origin, sets in-progress
 \`\`\`
 
-The remote branch **is** the claim. Never create the branch by hand; \`pm claim\` derives it from the id.
+The remote branch **is** the claim. Never create the branch by hand.
 
 **A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
 voice and browser chat enter the same lifecycle: create or link the roadmap item, claim it, work on
-its branch, test it, open a PR and merge it. A trusted author can authorize the work; the channel
-cannot waive the records or review path. Never edit or release directly from a transcript.
+its branch, test it, open a PR and merge it. The channel cannot waive the records or review path.
+Never edit or release directly from a transcript.
 
 **An external mutation ships with an exact target and proof.** Prefer a pasted one-shot CLI command
 with explicit account, project and full resource identifiers (console prose is fallback only), with
-the caller-perspective verification probe and expected result beside it. Upload, archive or deploy
-success proves delivery, not acceptance: close the item only with evidence of the user-visible
-result. Release jobs must depend on
+the caller-perspective verification probe and expected result beside it.
+Upload, archive or deploy success proves delivery, not acceptance: close the item only with evidence of the
+user-visible result. Release jobs must depend on
 \`cpheinrich/morpheus/.github/workflows/release-preflight.yml@main\` and check out its \`sha\` output.
 Do not extract a recurring production probe until a second project needs the same one.
 
 **Build vs. borrow — check before writing a generic module.** Before implementing anything not
-specific to this domain — parsing, diffing, scheduling, retries, rate limiting, fuzzy
-search, date handling, CLI plumbing — make one quick search of the registry for a maintained
-package; check its last publish and dependency footprint. **Propose, don't decide silently — in
+specific to this domain (parsing, diffing, scheduling, retries, date handling, CLI plumbing),
+make one quick search of the registry for a maintained package; check its last publish and dependency footprint. **Propose, don't decide silently — in
 either direction:** a ❗ inbox item when the choice shapes the architecture, a PR-body line
-("considered X, built instead because Y") when small. **Prefer lightweight:**
-a framework pulled in to save 60 lines is worse than the 60 lines; build when the need is under
-~100 lines, domain-specific, or every candidate is unmaintained. Record the outcome in
+("considered X, built instead because Y") when small. **Prefer lightweight:** build when the
+need is under ~100 lines, domain-specific, or every candidate is unmaintained. Record the outcome in
 \`.agent/decisions.md\`.
 
 **When you hit real ambiguity, block — do not guess:** \`morpheus pm block <ID> --needs "<what
-would unblock you>"\`. Escalating is cheap; shipping half-baked is expensive.
+would unblock you>"\`.
 
 **Break loops.** If the same command fails the same way twice or three polls agree,
 change approach. Never idle-loop. For one run use \`morpheus wait-ci --run <id>\`.
@@ -891,8 +895,8 @@ run \`morpheus review prepare --base origin/main\`; this prints a review packet 
 launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
 repository access and that packet, without inheriting the author's conversation history.
 The author handles findings, records, CI and merge; CI and PR monitors never start this review.
-Measure each turn from runner metadata or actual clock readings, never estimates; record version 2
-timing source, milliseconds and evidence, with elapsedMinutes = durationMs / 60000.
+Measure each turn from runner metadata or actual clock readings, never estimates; record the
+timing source, milliseconds and evidence.
 If no independent session can start, say so and keep the PR open with auto-merge disabled;
 never self-review.
 
@@ -915,17 +919,15 @@ and fail when a stated invariant is broken; coverage alone is not evidence of qu
 to the PR when practical, otherwise screenshots, and list them under \`## Visual evidence\`.
 Capture final-build screens/states; author and reviewer inspect pixels. Refresh after fixes.
 \`morpheus check pr\` accepts GitHub attachments and exact public HTTPS prefixes declared in
-\`allowedUrlPrefixes\`, without fetching them. The path and media-location contracts are
-deterministic; they do not claim to infer whether rendered pixels changed. A repository may disable
+\`allowedUrlPrefixes\`, without fetching them or judging the pixels. A repository may disable
 the rule only with \`enabled: false\` and a substantive \`reason\` in the manifest.
 
 **Before opening a PR**, run \`morpheus pm index\` and commit any one-time roadmap README migration
-or generated goal/request index changes. The roadmap README is static after that migration. CI runs
-the same check.
+or generated goal/request index changes. CI runs the same check.
 
 **Append a worklog entry** to \`.agent/worklog/YYYY-MM-DD-slug.md\`, including dead ends and the
-ticket's subject \`tags\`. CI/CD and infrastructure work uses \`[engineering, devops]\` plus relevant
-tags. Read matches with \`pm tagged devops\`.
+ticket's subject \`tags\`. CI/CD and infrastructure work uses \`[engineering, devops]\`; read
+matches with \`pm tagged devops\`.
 
 ## Local testing: focused first
 

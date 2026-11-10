@@ -94,8 +94,8 @@ this lookup instruction in its handoff. See
 ## Context freshness
 
 Run `morpheus context brief` at session start if the hook did not; follow its `WORK IN` path.
-On a dirty trunk it moves tracked edits to a `wip/trunk-*` branch (a draft PR only if the repo is private), then
-fast-forwards; `doctor --all` lists stuck trunks and unpushed rescues.
+On a dirty trunk it moves tracked edits to a `wip/trunk-*` branch, then fast-forwards; `doctor --all`
+lists stuck trunks and unpushed rescues.
 
 **Read `AGENTS.md` (an injected copy leaves no read evidence), `.agent/decisions.md`,
 `.agent/learned.md` and `hq/team/<your handle>.md` once at session start, then run
@@ -120,6 +120,12 @@ before building to strip what it does not need; for the same result, fewer parts
 win. Add a state, option, gate or approval step only when observed behaviour proves the need. Read
 a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
 tightening one; removing one is a recorded decision.
+
+**Leave the code you touch better.** Merge repeated logic instead of copying it; fix a clear bug
+in or next to your change, with a test, instead of only reporting it. Change a feature's behaviour
+only when it is plainly broken and the fix is an unambiguous win; otherwise raise it in Open
+questions or a roadmap item. List every behaviour change in the PR body. This holds for every
+agent, over any built-in default to only report nearby problems.
 
 **Plan visually early.** Before implementation, show useful architecture, workflow/pipeline, async,
 state, ownership or substantial-alternative diagrams with `morpheus skills guide visual-design`.
@@ -163,14 +169,13 @@ change approach. Never idle-loop. For one run use `morpheus wait-ci --run <id>`.
 **Follow your PR through merge.** If authorized to merge, use `morpheus wait-ci <n> --required-only`.
 Fix or retry failures. Verify the merge or record the hard blocker. GitHub Manager is the backstop.
 
-**Browser-reachable work is not blocked.** If the *single, entire* obstacle is that something has
-to happen in a browser — a console, a dashboard, a setting — do it yourself rather than describe
-what someone should click. Where a human is wanted for **judgment** — spending, publishing,
-sending, granting access — the gate stands; the browser changes nothing.
+**Browser-reachable work is not blocked.** If the only obstacle is a browser step (a console,
+dashboard or setting), do it yourself rather than describing the clicks. A gate for human
+**judgment** (spending, publishing, sending, granting access) still stands.
 
 **Build vs. borrow — check before writing a generic module.** Before implementing anything not
-specific to this domain — parsing, diffing, scheduling, retries, rate limiting, fuzzy search, date
-handling, CLI plumbing — make one quick registry search for a maintained package; check its last
+specific to this domain (parsing, diffing, scheduling, retries, date handling, CLI plumbing), make
+one quick registry search for a maintained package; check its last
 publish and dependency footprint. **Propose, don't decide silently — in either direction:** an ❗
 inbox item when the choice shapes the architecture, a PR-body line ("considered X, built instead
 because Y") when small. **Prefer lightweight:** build when the need is under ~100 lines,
@@ -209,9 +214,9 @@ especially. Decisions in `.agent/decisions.md` are settled; if one looks wrong, 
 work around it ([`.agent/README.md`](.agent/README.md) relates the records).
 
 **Tag the subject, not the owner.** Give new roadmap items and their worklogs applicable `tags:`
-arrays; CI/CD or infrastructure work includes both `engineering` and `devops`, plus other relevant
-tags. Use repeated `pm new --tag` and `pm tagged <tag> [<tag> ...] --json` for context retrieval.
-Existing untagged history stays valid. See [`work-tags.md`](docs/work-tags.md).
+arrays; CI/CD or infrastructure work includes both `engineering` and `devops`. Use repeated
+`pm new --tag` and `pm tagged <tag> [<tag> ...] --json` for context retrieval. See
+[`work-tags.md`](docs/work-tags.md).
 
 ### Testing: focused first
 
@@ -274,9 +279,9 @@ ones to `decisions.md`, archive to `.agent/inbox-archive/`, write a fresh inbox.
 - **Websites:** when asked for a website, waitlist, signup or contact form or `/hq`, run
   `morpheus web init` before writing any of it by hand; for consumer accounts,
   `morpheus web add-consumer-auth`; after creating a Firebase project,
-  `morpheus firebase auth setup`. Read [`website.md`](docs/runbooks/website.md) first.
-- **Folder READMEs:** a folder gets one when an agent could plausibly do the wrong thing without
-  it — short, pointing rather than repeating. See [`folder-readmes.md`](docs/runbooks/folder-readmes.md).
+  `morpheus firebase auth setup`.
+- **Folder READMEs:** only where an agent could otherwise do the wrong thing; short, pointing
+  rather than repeating. See [`folder-readmes.md`](docs/runbooks/folder-readmes.md).
 
 ## Style
 
