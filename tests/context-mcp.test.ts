@@ -1,11 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, expect, it, vi } from "vitest";
+import { runContextSearch } from "../src/cli/context-search.js";
 import { contextMcpSession } from "../src/context-search/mcp-scope.js";
 import { createContextMcp } from "../src/context-search/mcp.js";
 import { contextArm, contextTraceSession, traceContext } from "../src/context-search/rollout.js";
@@ -109,11 +110,11 @@ it("preserves arm, records MCP timing, and only credits the excerpt shown by the
   expect(log).not.toContain(secretQuery);
   expect(log).not.toContain(session);
   expect(log.split("\n").filter(Boolean).map(line => JSON.parse(line))).toEqual(expect.arrayContaining([
-    expect.objectContaining({ type: "query", transport: "mcp", arm: "tantivy-bounded", actualEngine: "tantivy", outcome: "ok" }),
+    expect.objectContaining({ type: "query", transport: "mcp", arm: "tantivy-compact", actualEngine: "tantivy", outcome: "ok" }),
     expect.objectContaining({ type: "visible", transport: "mcp", operation: "read" }),
   ]));
   expect((await summarizeContextTraces(root)).byArmTransport).toEqual(expect.arrayContaining([
-    expect.objectContaining({ arm: "tantivy-bounded", transport: "mcp", visibleSessions: 1 }),
+    expect.objectContaining({ arm: "tantivy-compact", transport: "mcp", visibleSessions: 1 }),
   ]));
 });
 
@@ -158,7 +159,7 @@ it("profiles visible startup citations without treating them as additional task 
   await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "fixture" }));
   await read(".agent/decisions.md", "full-reviewer");
   expect((await summarizeContextTraces(root)).byArmTransport).toEqual(expect.arrayContaining([
-    expect.objectContaining({ arm: "tantivy-bounded", transport: "mcp", visibleSessions: 1 }),
+    expect.objectContaining({ arm: "tantivy-compact", transport: "mcp", visibleSessions: 1 }),
     expect.objectContaining({ arm: "tantivy-full", transport: "mcp", visibleSessions: 1 }),
   ]));
 });
@@ -258,4 +259,37 @@ it("allows a fresh delegated host without session metadata to search its launch 
     .toMatchObject({ engine: "tantivy", outcome: "ok", citations: expect.arrayContaining([
       expect.objectContaining({ path: ".agent/decisions.md" }),
     ]) });
+});
+
+
+it("reports a resumed session separately from its historical Tantivy cohort", async () => {
+  const { root, session, call } = await fixture();
+  const current = await contextArm(root, session);
+  const now = new Date();
+  await traceContext(root, {
+    type: "query", arm: "tantivy-bounded", engine: "tantivy", rollout: current.id, session: current.session,
+    transport: "mcp", operation: "search", outcome: "ok", queryStartedAt: now.valueOf() - 600, queryMs: 500,
+  }, new Date(now.valueOf() - 100));
+  expect((await call("search_project_context", { query: secretQuery })).structuredContent?.engine).toBe("tantivy");
+  const report = await summarizeContextTraces(root);
+  expect(report.byArmTransport.map(row => row.arm)).toEqual(["tantivy-bounded", "tantivy-compact"]);
+  expect(report.pipeline).toMatchObject({ sessions: 2, firstSearches: 2, firstResults: 2 });
+});
+
+
+it("searches an older checkout with no safe persistent cache without writing project state", async () => {
+  const { root, call } = await fixture();
+  await rm(join(root, ".gitignore"));
+  expect((await call("search_project_context", { query: secretQuery })).structuredContent)
+    .toMatchObject({ engine: "tantivy", outcome: "ok", citations: expect.arrayContaining([
+      expect.objectContaining({ path: ".agent/decisions.md", from: 1, to: 3 }),
+    ]) });
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  try {
+    expect(await runContextSearch(root, secretQuery, { json: true })).toBe(0);
+    expect(JSON.parse(log.mock.calls[0]![0])).toMatchObject({ engine: "tantivy", output: expect.stringContaining(".agent/decisions.md:1-3") });
+  } finally {
+    log.mockRestore();
+  }
+  await expect(access(join(root, "local"))).rejects.toMatchObject({ code: "ENOENT" });
 });

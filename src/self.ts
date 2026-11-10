@@ -289,6 +289,7 @@ export class MorpheusInstallError extends Error {}
 
 export interface MorpheusInstallOptions {
   runner?: MorpheusCommandRunner;
+  prepareRuntime?: () => Promise<unknown>;
   tempRoot?: string;
   now?: Date;
 }
@@ -379,6 +380,7 @@ export async function installCurrentMorpheus(
   await requireSuccess(runner, "pnpm", ["install", "--frozen-lockfile"], source);
   await requireSuccess(runner, "pnpm", ["compile"], source);
   await requireSuccess(runner, "git", ["diff", "--exit-code", "--", "dist"], source);
+  await opts.prepareRuntime?.();
 
   const packDir = await mkdtemp(join(opts.tempRoot ?? tmpdir(), "morpheus-pack-"));
   try {

@@ -98,7 +98,7 @@ export async function contextArm(root, sessionId = providerSessionId(), config) 
     if (size <= 0 || size > MAX_CORE_BYTES) {
         return { ...full, unavailable: "Startup core is missing, empty, unsafe, or over 8 KiB; using full startup." };
     }
-    return { ...full, arm: "tantivy-bounded", startup: "bounded", coreInputs: rollout.coreInputs };
+    return { ...full, arm: "tantivy-compact", startup: "bounded", coreInputs: rollout.coreInputs };
 }
 async function expireTrace(directory, now) {
     const cutoff = new Date(now.valueOf() - (TRACE_DAYS - 1) * DAY_MS).toISOString().slice(0, 10);
@@ -140,7 +140,7 @@ function traceLine(event, now) {
 export async function traceContext(root, event, now = new Date()) {
     try {
         if (!["assignment", "query", "tool", "visible", "session-start", "prompt", "warm"].includes(event.type) ||
-            !["tantivy-full", "tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"].includes(event.arm) ||
+            !["tantivy-compact", "tantivy-full", "tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"].includes(event.arm) ||
             !["tantivy", "ripgrep"].includes(event.engine))
             return;
         const directory = await searchStateDirectory(root, "traces");

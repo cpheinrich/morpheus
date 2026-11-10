@@ -11,7 +11,7 @@ exclusions, tracked paths unavailable in the checkout and unmatched project patt
 
 ## Morpheus Context MCP
 
-The local stdio server uses the same source inventory, and pinned Tantivy engine as
+The local stdio server uses the same source inventory and pinned Tantivy engine as
 the CLI. `morpheus init` configures new projects. For an existing project, run:
 
 ```sh
@@ -125,7 +125,8 @@ source checkout. The installer reuses a working environment. Restart the client 
 fresh session so it launches the new MCP process. A missing or broken runtime produces a
 setup error; search does not switch engines.
 
-The index is disposable per-worktree state under ignored `local/context-search/cache/`. Sources
+The index is disposable per-worktree state under ignored `local/context-search/cache/`.
+If that checkout cannot safely store a cache, searches use a private temporary index. Sources
 include decisions, lessons, worklogs, roadmap and other product records,
 project instructions, runbooks and canonical meeting notes. Add custom
 locations such as `hq/research/**/*.md` to the project manifest. Run

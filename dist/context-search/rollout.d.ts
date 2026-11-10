@@ -2,7 +2,7 @@ export type ContextTransport = "cli" | "mcp";
 export type ContextOperation = "search" | "read" | "coverage" | "overview" | "related";
 export type ContextOutcome = "ok" | "empty" | "error";
 export type SearchEngine = "tantivy" | "ripgrep";
-export type Arm = "tantivy-full" | "tantivy-bounded" | "ripgrep-bounded" | "ripgrep-full" | "manual" | "legacy";
+export type Arm = "tantivy-compact" | "tantivy-full" | "tantivy-bounded" | "ripgrep-bounded" | "ripgrep-full" | "manual" | "legacy";
 export interface SearchRollout {
     id: string;
     coreInputs: string[];

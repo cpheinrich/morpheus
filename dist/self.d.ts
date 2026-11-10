@@ -31,6 +31,7 @@ export declare class MorpheusInstallError extends Error {
 }
 export interface MorpheusInstallOptions {
     runner?: MorpheusCommandRunner;
+    prepareRuntime?: () => Promise<unknown>;
     tempRoot?: string;
     now?: Date;
 }

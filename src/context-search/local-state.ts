@@ -1,5 +1,6 @@
-import { mkdir, realpath } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { sessionGit } from "../session/start.js";
 
 const STATE = "local/context-search";
@@ -21,4 +22,18 @@ export async function searchStateDirectory(root: string, child: "cache" | "trace
 
 export function validSearchSession(session?: string): session is string {
   return !!session && session.length <= 512;
+}
+
+
+// An older checkout may lack the ignore rule. Keep its query working without
+// putting a private index in Git's view or changing the project's ignore file.
+export async function withContextSearchCache<T>(root: string, use: (cache: string) => Promise<T>): Promise<T> {
+  const persistent = await searchStateDirectory(root, "cache").catch(() => undefined);
+  if (persistent) return use(persistent);
+  const scratch = await mkdtemp(join(tmpdir(), "morpheus-context-cache-"));
+  try {
+    return await use(scratch);
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
 }

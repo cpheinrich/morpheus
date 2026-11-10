@@ -7,7 +7,7 @@ import { evidenceCheckouts } from "../session/certify.js";
 import { checkoutIdentity } from "../session/start.js";
 import { ContextPipeline } from "./trace-pipeline.js";
 
-const ARMS = ["tantivy-full", "tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"] as const;
+const ARMS = ["tantivy-compact", "tantivy-full", "tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"] as const;
 const ENGINES = ["tantivy", "ripgrep"] as const;
 const OPERATIONS = ["search", "read", "coverage", "overview", "related"] as const;
 const TYPES = ["assignment", "query", "tool", "visible", "session-start", "prompt", "warm"] as const;

@@ -1,5 +1,5 @@
 import { searchContext } from "./engine.js";
-import { searchStateDirectory } from "./local-state.js";
+import { withContextSearchCache } from "./local-state.js";
 import { contextArm, getSearchConfig, traceContext } from "./rollout.js";
 import { MCP_EXCERPT_BYTES, MCP_EXCERPT_LINES } from "./output.js";
 import { contextKind, discoverSources, readContextSources } from "./sources.js";
@@ -16,7 +16,7 @@ export async function retrieveContext(root, query, budget, options) {
         const eligible = kinds?.length ? coverage.included.filter(path => kinds.includes(contextKind(path))) : coverage.included;
         const sources = await readContextSources(root, eligible);
         const caps = transport === "mcp" ? { maxBytes: MCP_EXCERPT_BYTES, maxLines: MCP_EXCERPT_LINES } : {};
-        const data = await searchContext(sources, query, budget, { cacheDir: await searchStateDirectory(root, "cache"), ...caps });
+        const data = await withContextSearchCache(root, cacheDir => searchContext(sources, query, budget, { cacheDir, ...caps }));
         const totalQueryMs = performance.now() - started;
         const { queryMs, buildMs, waitMs, cacheHit, resultCount, returnedTokens } = data;
         await traceContext(root, {

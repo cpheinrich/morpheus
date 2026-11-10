@@ -14,7 +14,7 @@ export type ContextOperation = "search" | "read" | "coverage" | "overview" | "re
 export type ContextOutcome = "ok" | "empty" | "error";
 
 export type SearchEngine = "tantivy" | "ripgrep";
-export type Arm = "tantivy-full" | "tantivy-bounded" | "ripgrep-bounded" | "ripgrep-full" | "manual" | "legacy";
+export type Arm = "tantivy-compact" | "tantivy-full" | "tantivy-bounded" | "ripgrep-bounded" | "ripgrep-full" | "manual" | "legacy";
 export interface SearchRollout { id: string; coreInputs: string[] }
 export interface SearchConfig {
   transport?: ContextTransport;
@@ -130,7 +130,7 @@ export async function contextArm(root: string, sessionId = providerSessionId(), 
   if (size <= 0 || size > MAX_CORE_BYTES) {
     return { ...full, unavailable: "Startup core is missing, empty, unsafe, or over 8 KiB; using full startup." };
   }
-  return { ...full, arm: "tantivy-bounded", startup: "bounded", coreInputs: rollout.coreInputs };
+  return { ...full, arm: "tantivy-compact", startup: "bounded", coreInputs: rollout.coreInputs };
 }
 
 export interface ContextTrace {
@@ -204,7 +204,7 @@ function traceLine(event: ContextTrace, now: Date): string {
 export async function traceContext(root: string, event: ContextTrace, now = new Date()): Promise<void> {
   try {
     if (!["assignment", "query", "tool", "visible", "session-start", "prompt", "warm"].includes(event.type) ||
-        !["tantivy-full", "tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"].includes(event.arm) ||
+        !["tantivy-compact", "tantivy-full", "tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"].includes(event.arm) ||
         !["tantivy", "ripgrep"].includes(event.engine)) return;
     const directory = await searchStateDirectory(root, "traces");
     await expireTrace(directory, now);

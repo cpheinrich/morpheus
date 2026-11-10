@@ -1,4 +1,4 @@
-declare const ARMS: readonly ["tantivy-full", "tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"];
+declare const ARMS: readonly ["tantivy-compact", "tantivy-full", "tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"];
 declare const ENGINES: readonly ["tantivy", "ripgrep"];
 declare const OPERATIONS: readonly ["search", "read", "coverage", "overview", "related"];
 declare const TYPES: readonly ["assignment", "query", "tool", "visible", "session-start", "prompt", "warm"];

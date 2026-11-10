@@ -49,7 +49,8 @@ export class ContextPipeline {
       return;
     }
     if (!trace.session) return;
-    const key = `${trace.rollout ?? ""}/${trace.session}`;
+    const phase = trace.arm === "tantivy-compact" || trace.arm === "tantivy-full" ? "current" : "pilot";
+    const key = `${trace.rollout ?? ""}/${trace.session}/${phase}`;
     const session = this.sessions.get(key) ?? {};
     observeSession(session, trace);
     this.sessions.set(key, session);
@@ -100,7 +101,7 @@ export class ContextPipeline {
     if (!missing.length) return new Map();
     const missingKeys = new Set(missing.map(([key]) => key));
     const ids = new Set(missing.map(([key]) => key.split("/")[0]!));
-    const keys = (session: string) => [...ids].map(id => `${id}/${contextTraceSession(id, session)}`);
+    const keys = (session: string) => [...ids].flatMap(id => ["current", "pilot"].map(phase => `${id}/${contextTraceSession(id, session)}/${phase}`));
     const codex = await codexFirstTurnStarts(codexHome(), session => keys(session).some(key => missingKeys.has(key)));
     const result = new Map<string, number>();
     for (const [session, at] of codex) {

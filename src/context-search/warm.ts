@@ -9,11 +9,13 @@ export async function warmContextMcp(cwd: string): Promise<void> {
   const started = performance.now();
   const { root } = await checkoutIdentity(cwd);
   const config = await getSearchConfig(root);
+  const cache = await searchStateDirectory(root, "cache").catch(() => undefined);
+  if (!cache) return;
   const base = { type: "warm", transport: "mcp", arm: "tantivy-full", engine: "tantivy", rollout: config.rollout?.id, mcpStartedAt: performance.timeOrigin } as const;
   try {
     const { included } = await discoverSources(root, config);
     const sources = await readContextSources(root, included);
-    const timing = await warmTantivyIndex(sources, await searchStateDirectory(root, "cache"));
+    const timing = await warmTantivyIndex(sources, cache);
     const { buildMs, waitMs, cacheHit } = timing ?? {};
     await traceContext(root, { ...base, outcome: timing ? "ok" : "empty", queryMs: performance.now() - started, buildMs, waitMs, cacheHit });
   } catch {

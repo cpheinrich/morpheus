@@ -43,7 +43,7 @@ describe("context rollout", () => {
     config.context.search.mode = "ripgrep";
     await writeFile(manifest, JSON.stringify(config));
     for (const session of ["provider-private-id-0", "provider-private-id-79", "provider-private-id-99"]) {
-      expect(await contextArm(root, session)).toMatchObject({ engine: "tantivy", startup: "bounded", arm: "tantivy-bounded" });
+      expect(await contextArm(root, session)).toMatchObject({ engine: "tantivy", startup: "bounded", arm: "tantivy-compact" });
       expect((await projectPolicy(root, session)).requiredInputs).toEqual(["CLAUDE.md", ".agent/core.md", "docs/guard.md"]);
     }
     expect((await projectPolicy(root, "")).requiredInputs).toEqual(["CLAUDE.md", ".agent/decisions.md", ".agent/learned.md", "docs/guard.md"]);
@@ -72,7 +72,7 @@ describe("context rollout", () => {
     await traceContext(root, event, new Date("2026-11-07T12:00:00Z"));
     const trace = JSON.parse(await readFile(join(root, "local/context-search/traces/2026-11-07.jsonl"), "utf8"));
     expect(trace).toEqual({
-      version: 1, at: "2026-11-07T12:00:00.000Z", type: "query", arm: "tantivy-bounded",
+      version: 1, at: "2026-11-07T12:00:00.000Z", type: "query", arm: "tantivy-compact",
       engine: "tantivy", rollout: "pilot", session: selected.session, queryMs: 12, resultCount: 3,
     });
   });
