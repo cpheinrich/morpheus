@@ -1,6 +1,6 @@
 // Explicit unattended admission is separate from desktop task/permission discovery.
 import { z } from 'zod';
-import { mkdir, readFile, realpath, stat } from 'node:fs/promises';
+import { mkdir, open, readFile, realpath, stat } from 'node:fs/promises';
 import { join, dirname, isAbsolute, relative } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn, execFileSync, spawnSync } from 'node:child_process';
@@ -209,7 +209,11 @@ async function foldWorkerEvents(directory, record) {
   const events = await readFile(join(directory, 'events.jsonl'), 'utf8').catch(() => '');
   for (const line of events.split('\n')) {
     if (!line.trim()) continue;
-    try { applyCodexEvent(run, JSON.parse(line)); } catch { /* Incomplete bounded event is checkpoint evidence. */ }
+    try {
+      const event = JSON.parse(line);
+      if (event.type === 'turn.started') run.startedTurn = true;
+      applyCodexEvent(run, event);
+    } catch { /* Incomplete bounded event is checkpoint evidence. */ }
   }
   return run;
 }
@@ -229,6 +233,33 @@ function workerOutcome(state, terminationVerified, run) {
   if (state.exitCode !== 0 || !run.result)
     return { outcome: 'failed', summary: run.error || 'Gateway worker exited without a successful structured turn; no fallback.', evidence: [], question: '' };
   return run.result;
+}
+// The Codex CLI reports a turn/start rejection on stderr, before an inference turn exists.
+// Read a bounded tail and expose only a recognized code, never the provider's data or message.
+async function inputDiagnostic(directory) {
+  const log = await open(join(directory, 'stderr.log'), 'r').catch(() => null);
+  if (!log) return null;
+  try {
+    const { size } = await log.stat();
+    const tail = Buffer.alloc(Math.min(size, 8192));
+    const offset = size - tail.length;
+    const { bytesRead } = await log.read(tail, 0, tail.length, offset);
+    const text = tail.toString('utf8', 0, bytesRead);
+    const lines = offset ? text.replace(/^[^\n]*(?:\n|$)/, '') : text;
+    const rejection = /^Error: turn\/start: turn\/start failed: [^\r\n]* \(code -32602\), data: (\{[^\r\n]*\})\r?$/gm;
+    for (const [, data] of lines.matchAll(rejection)) {
+      try {
+        if (JSON.parse(data)?.input_error_code === 'input_too_large') return 'input_too_large';
+      } catch { /* Ignore truncated or malformed provider data. */ }
+    }
+  } catch { /* Older or unreadable logs keep the generic result. */ }
+  finally { await log.close().catch(() => {}); }
+  return null;
+}
+async function workerDiagnostic(directory, state, verified, run) {
+  if (!verified || state.admissionRejected || state.interrupted || !Number.isInteger(state.exitCode)
+      || state.exitCode === 0 || run.startedTurn || run.result) return null;
+  return inputDiagnostic(directory);
 }
 const isoMillis = (value) => typeof value === 'string'
   && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && Number.isFinite(Date.parse(value));
@@ -254,6 +285,8 @@ export async function workerResult(admissionId) {
   const { reconciled, terminationVerified } = workerTermination(state, directory, admissionId);
   const result = workerOutcome(state, terminationVerified, run);
   const output = { ...record, sessionId: run.newSession || null, state: result.outcome, terminationVerified, exitCode: state?.exitCode ?? null, result };
+  const diagnosticCode = await workerDiagnostic(directory, state, terminationVerified, run);
+  if (diagnosticCode) output.diagnosticCode = diagnosticCode;
   const timing = terminationVerified && output.sessionId ? runnerTiming(state?.timing, admissionId, reconciled) : null;
   if (timing) output.timing = timing;
   if (terminationVerified || state?.admissionRejected) await atomic(join(directory, 'result.json'), output);
