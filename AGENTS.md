@@ -192,7 +192,7 @@ substantive problems; style and wording notes never block. When a reviewer times
 resumed, start a fresh one with the earlier findings. Commit implementation and tests. When CI,
 visual evidence or PR metadata matters to review, move the
 item to `review` and open an unlabelled draft PR first so the reviewer sees them. Then run
-`morpheus review prepare --base origin/main` (it prints a packet), name governing records
+`morpheus review prepare --base origin/main`, name governing records
 in Suggested context, spawn
 **one fresh reviewer** with repository access, that packet and no inherited history, then
 handle findings, record, CI and merge yourself. If no independent session can start, leave the PR open with
