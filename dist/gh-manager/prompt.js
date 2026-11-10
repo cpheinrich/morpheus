@@ -74,8 +74,8 @@ Work in this repository is written by agent sessions that open a pull request, s
       \`\`\`
       \`\`\`\`
 
-      \`noted\` is only for an incidental finding. If you resolved a merge conflict by hand after \`reviewed\`, add \`"trunkIntegrations": [{ "commit": "<merge sha>", "reason": "..." }]\`. Commit the worklog on its own, after \`covered\`, and push.
-   g. Decide \`merge\` with \`usedManagerReview: true\`, and supply \`body\`: the full pull request body with a visible line \`manager-review-record: <worklog path>\` added (outside any code fence or comment), and any other repair the body needed. Keep everything the author wrote.
+      \`noted\` is only for an incidental finding. If you resolved a merge conflict by hand after \`reviewed\`, add \`"trunkIntegrations": [{ "commit": "<merge sha>", "reason": "..." }]\`. Commit the worklog on its own, after \`covered\`.
+   g. Write the full proposed pull request body to a temporary file, then run \`${brief.cli} gh-manager check-record origin/${brief.base} --body-file <file>\`. Fix any validation error and repeat before pushing the final head. Use the same body for the decision. Decide \`merge\` with \`usedManagerReview: true\`, and supply \`body\`: the full pull request body with a visible line \`manager-review-record: <worklog path>\` added (outside any code fence or comment), and any other repair the body needed. Keep everything the author wrote.
 
 7. **When you cannot land it, say so.** Decide \`escalate\`, with \`needsHuman\` stating the one decision or action a person has to take. Escalate when: the change is wrong in a way that is a product decision; a required check fails for a reason you could not fix in two honest attempts (revert your own attempts first with new commits, so the branch is no worse than you found it); visual evidence is required and the section below does not let you capture it (an iOS or simulator screen, a page behind sign-in, or a repository that has not approved your screenshots); or a rule above forbids you to proceed. A clear escalation is a good outcome. A plausible guess that merges is not.
 
