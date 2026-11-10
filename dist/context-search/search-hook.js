@@ -46,6 +46,7 @@ export function commands(line) {
     end();
     return out.filter(argv => argv.length);
 }
+const REDIRECT = /^\d*[<>]/;
 const MARKDOWN_FLAGS = new Set(["-g", "--glob", "--iglob", "--include", "-t", "--type"]);
 const isMarkdown = (filter) => MARKDOWN.test(filter.replace(/\W+$/, ""));
 /** Where the search tool's own arguments begin, or -1. */
@@ -72,7 +73,10 @@ function searchArguments(argv) {
             break;
         }
         const [flag, inline] = splitOption(word);
-        if (!flag.startsWith("-") || flag === "-")
+        // A redirection such as `2>/dev/null` or `2>&1` is not a search path.
+        if (REDIRECT.test(word))
+            i += /^\d*[<>]+&?$/.test(word) ? 1 : 0;
+        else if (!flag.startsWith("-") || flag === "-")
             parsed.rest.push(word);
         else if (VALUE_FLAGS.has(flag))
             applyOption(parsed, flag, inline ?? argv[++i] ?? "");

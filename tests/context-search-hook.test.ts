@@ -62,6 +62,10 @@ describe("searchTarget", () => {
       .toEqual({ pattern: "foo|bar", paths: [".agent/worklog"], markdown: false });
     expect(searchTarget("Bash", { command: "grep -E review docs/runbooks" }))
       .toEqual({ pattern: "review", paths: ["docs/runbooks"], markdown: false });
+    expect(searchTarget("Bash", { command: "grep -rn review docs 2>/dev/null" }))
+      .toEqual({ pattern: "review", paths: ["docs"], markdown: false });
+    expect(searchTarget("Bash", { command: "rg review docs 2>&1 > out.txt" }))
+      .toEqual({ pattern: "review", paths: ["docs"], markdown: false });
     // An empty quoted pattern is still one word, so the path is not misread as the pattern.
     expect(searchTarget("Bash", { command: "rg -n '' docs" })).toBeUndefined();
   });
