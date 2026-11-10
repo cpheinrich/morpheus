@@ -13,12 +13,10 @@ export const CONTEXT_MCP_COMMAND = {
 };
 export const CONTEXT_GUIDANCE = `## Morpheus context tools
 
-Discover live MCP tools at startup/resume/compaction. Use \`get_context_overview\`,
-\`search_project_context\`, cited reads and coverage; keep the graph for code structure.
-If absent, check/repair with \`morpheus context install\`, reload, and use
-\`morpheus context search\` meanwhile. Verify checkout/task freshness.
-For fresh subagents, include the task checkout and the same MCP lookup in the handoff.
-Phone remote sessions use their host; standalone cloud/mobile needs an authorized connector.
+Discover live tools at startup/resume/compaction. Use \`search_project_context\` for project
+records, \`read_project_record\` for citations, and the graph for code structure.
+Pass the task checkout and this rule to fresh subagents. If MCP is unavailable, use
+\`morpheus context search\` in that checkout. See the [setup guide](https://github.com/cpheinrich/morpheus/blob/main/docs/runbooks/context-search.md).
 `;
 
 function object(value: unknown): value is Record<string, unknown> {

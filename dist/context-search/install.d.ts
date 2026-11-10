@@ -3,7 +3,7 @@ export declare const CONTEXT_MCP_COMMAND: {
     command: string;
     args: string[];
 };
-export declare const CONTEXT_GUIDANCE = "## Morpheus context tools\n\nDiscover live MCP tools at startup/resume/compaction. Use `get_context_overview`,\n`search_project_context`, cited reads and coverage; keep the graph for code structure.\nIf absent, check/repair with `morpheus context install`, reload, and use\n`morpheus context search` meanwhile. Verify checkout/task freshness.\nFor fresh subagents, include the task checkout and the same MCP lookup in the handoff.\nPhone remote sessions use their host; standalone cloud/mobile needs an authorized connector.\n";
+export declare const CONTEXT_GUIDANCE = "## Morpheus context tools\n\nDiscover live tools at startup/resume/compaction. Use `search_project_context` for project\nrecords, `read_project_record` for citations, and the graph for code structure.\nPass the task checkout and this rule to fresh subagents. If MCP is unavailable, use\n`morpheus context search` in that checkout. See the [setup guide](https://github.com/cpheinrich/morpheus/blob/main/docs/runbooks/context-search.md).\n";
 /** Explicit setup for portable, version-controlled project settings. */
 export declare function installContextClients(root: string, write: boolean, guidance?: boolean): Promise<Repair[]>;
 /** User-scoped registration covers clones and linked worktrees without editing either. */
