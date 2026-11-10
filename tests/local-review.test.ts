@@ -4,9 +4,10 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checkLocalReview, committedConfig, git, MISSING_LABEL, parseReviewRecord, REVIEW_FLOOR_RULE, reviewRequired, trivialDiff, type LocalReviewRecord } from "../src/review/local.js";
+import { checkLocalReview, committedConfig, git, MISSING_CONTEXT_READ, MISSING_LABEL, parseReviewRecord, REVIEW_FLOOR_RULE, reviewRequired, trivialDiff, type LocalReviewRecord } from "../src/review/local.js";
 import { checkPr, formatFindings } from "../src/check/pr.js";
 import { prepareReview, validateReview } from "../src/cli/review.js";
+import { AUTHOR_CONTEXT_SLOT } from "../src/review/packet.js";
 import { authorRecordProblem } from "../src/gh-manager/verify.js";
 
 let root: string;
@@ -28,7 +29,7 @@ function commit() {
   return git(root, ["rev-parse", "HEAD"]);
 }
 function record(): LocalReviewRecord {
-  return { version: 1, base, reviewed, covered: reviewed, authorSession: "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d", reviewerSession: "a1b2c3d4e5f6a7b8c", risk: "normal", elapsedMinutes: 3, outcome: "complete", summary: "Independent review found no actionable defects.", findings: [] };
+  return { version: 1, base, reviewed, covered: reviewed, authorSession: "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d", reviewerSession: "a1b2c3d4e5f6a7b8c", risk: "normal", elapsedMinutes: 3, outcome: "complete", summary: "Independent review found no actionable defects.", contextRead: [".agent/decisions.md"], findings: [] };
 }
 function save(r: LocalReviewRecord) {
   writeFileSync(join(root, path), `${r.summary}\n\n\`\`\`morpheus-review\n${JSON.stringify(r)}\n\`\`\`\n`);
@@ -151,13 +152,23 @@ describe("measured review timing", () => {
       expect(output).toContain("Do not estimate\nelapsed time from workload");
       expect(output).toContain("Zero is a placeholder, not a measurement");
       expect(output).toContain("Find concrete defects and unneeded complexity");
-      expect(output).toContain("Discover the live Morpheus Context MCP in this session.");
-      expect(output).toContain("passages with `read_project_record`.");
+      expect(output).toContain("Orient before you read the diff, using the live Morpheus Context MCP");
+      expect(output).toContain("Context read, the\nrepository-relative record paths you read while orienting");
+      expect(template.contextRead).toEqual(["Replace with the record paths the reviewer reported reading"]);
+      expect(output).toContain("Suggested context (read with read_project_record before the diff):");
+      expect(output).toContain(AUTHOR_CONTEXT_SLOT);
       expect(output).toContain("mechanism that the requirements do not need is substantive; a local simplification is minor");
       expect(output).not.toContain("risk class; elapsed minutes;");
     } finally { log.mockRestore(); }
   });
 
+  it("warns, without refusing, when a record names no records the reviewer read", () => {
+    const { contextRead: _read, ...bare } = record();
+    expect(check(save(bare))).toEqual([{ level: "warning", rule: "review-context", message: MISSING_CONTEXT_READ }]);
+    expect(check(save(record()))).toEqual([]);
+    expect(check(save({ ...record(), contextRead: [] }))[0]?.level).toBe("error");
+    expect(check(save({ ...record(), contextRead: ["/etc/passwd"] }))[0]?.level).toBe("error");
+  });
   it("accepts the measured duration from issue281 instead of the reviewer's 40-minute estimate", () => {
     expect(check(save(measured()))).toEqual([]);
     expect(check(save({ ...measured(), elapsedMinutes: 40 }))[0]?.message).toContain("elapsedMinutes must equal timing.durationMs / 60000");

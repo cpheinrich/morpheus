@@ -120,6 +120,11 @@ export const ReviewRecord = z.object({
     initialOutcome: z.literal("incomplete").optional(),
     summary: Text,
     /**
+     * Project records the reviewer read while orienting, as it reported them. Optional so older
+     * records stay valid; a record without it is reported, never refused.
+     */
+    contextRead: z.array(Path).min(1).max(50).optional(),
+    /**
      * Hand-resolved trunk merges after coverage. A merge Git reproduces exactly needs no entry;
      * one an author resolved by hand carries unreviewed edits, so it is accepted only when named.
      */
@@ -771,6 +776,8 @@ export function committedConfig(root, commit) {
  * and an unreported required check blocks merge where a passing or skipped one would not.
  */
 export const MISSING_LABEL = "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is under way, keep the PR a draft (gh pr ready --undo): conventions then wait, unreported, until it is labelled or marked ready.";
+/** The warning when a record names no project records the reviewer read while orienting. */
+export const MISSING_CONTEXT_READ = "review record has no contextRead: the reviewer should orient with the Morpheus Context MCP and report the records it read";
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts) {
     try {
@@ -779,8 +786,11 @@ export function checkLocalReview(opts) {
             return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
         if (!opts.labels.includes("agent-reviewed"))
             throw new Error(MISSING_LABEL);
-        const { waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
-        return waivers.map(message => ({ level: "waived", rule: REVIEW_FLOOR_RULE, message }));
+        const { record, waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
+        const findings = waivers.map(message => ({ level: "waived", rule: REVIEW_FLOOR_RULE, message }));
+        if (!record.contextRead?.length)
+            findings.push({ level: "warning", rule: "review-context", message: MISSING_CONTEXT_READ });
+        return findings;
     }
     catch (error) {
         return [{ level: "error", rule: "agent-review", message: error instanceof Error ? error.message : String(error) }];

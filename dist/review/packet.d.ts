@@ -9,6 +9,11 @@
  * actually define them rather than guessed.
  */
 export declare function projectCommands(root: string): Promise<string[]>;
+/**
+ * The author knows which decisions, runbooks and earlier worklogs govern a change; the reviewer
+ * starts cold. This line asks the author to name them before handing the packet over.
+ */
+export declare const AUTHOR_CONTEXT_SLOT = "AUTHOR: before spawning the reviewer, replace this line with the decisions, runbooks, worklogs or meeting notes that govern this change, or write \"none beyond the ticket\".";
 export interface PacketTicket {
     id?: string;
     title?: string;
@@ -30,4 +35,6 @@ export declare function reviewPacket(opts: {
     commands: string[];
     /** `morpheus complexity check` on the range, or why it did not run; never just the command. */
     complexity?: string;
+    /** Records the reviewer reads while orienting; the ticket's own files come first. */
+    suggested?: string[];
 }): string;

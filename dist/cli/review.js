@@ -6,7 +6,7 @@ import { addressesPriorFindings, pathsMentioned } from "../review/findings.js";
 import { assessReviewDelivery } from "../review/delivery.js";
 import { loadReviewContext, ReviewError } from "../review/context.js";
 import { LOCAL_REVIEW_PROMPT } from "../review/local-prompt.js";
-import { committedConfig, git, reviewRecordLine, reviewRequired, verifyReviewRecord } from "../review/local.js";
+import { MISSING_CONTEXT_READ, committedConfig, git, reviewRecordLine, reviewRequired, verifyReviewRecord } from "../review/local.js";
 import { buildReviewPrompt } from "../review/prompt.js";
 import { projectCommands, reviewPacket } from "../review/packet.js";
 import { runCheck } from "../complexity/check.js";
@@ -190,9 +190,10 @@ export async function prepareReview(productDir, root, base) {
                 ticket: { id: ctx.id, title: ctx.title, intent: ctx.intent, acceptance: ctx.acceptance, missingAcceptance: ctx.missingAcceptance },
                 commands: await projectCommands(root),
                 complexity: packetSummary(await runCheck({ root, base, all: false })),
+                suggested: ctx.records,
             }));
         console.log("\nWorklog record template (replace placeholders; never mark an unfinished review complete):");
-        console.log("```morpheus-review\n" + JSON.stringify({ version: 2, base: fork, reviewed: head, covered: head, authorSession: "AUTHOR_SESSION", reviewerSession: "RUNNER_ISSUED_REVIEWER_SESSION_ID", risk: "normal", elapsedMinutes: 0, timing: { source: "runner", durationMs: 0, evidence: "Replace with this turn's runner result reference and measured duration." }, outcome: "incomplete", summary: "Replace with the actual review summary and repeat it as a paragraph.", findings: [] }, null, 2) + "\n```");
+        console.log("```morpheus-review\n" + JSON.stringify({ version: 2, base: fork, reviewed: head, covered: head, authorSession: "AUTHOR_SESSION", reviewerSession: "RUNNER_ISSUED_REVIEWER_SESSION_ID", risk: "normal", elapsedMinutes: 0, timing: { source: "runner", durationMs: 0, evidence: "Replace with this turn's runner result reference and measured duration." }, outcome: "incomplete", summary: "Replace with the actual review summary and repeat it as a paragraph.", contextRead: ["Replace with the record paths the reviewer reported reading"], findings: [] }, null, 2) + "\n```");
         console.log("The author replaces timing.durationMs from measured runner metadata or actual clock readings, records its source/evidence, and computes elapsedMinutes = timing.durationMs / 60000 without rounding. Zero is a placeholder, not a measurement. Version 2 requires timing on every turn; never use the reviewer's workload estimate.");
         // Records are rejected by the same schema and checker whether that happens here or in CI, and
         // a round trip through CI to learn a field name is the expensive way to find out.
@@ -257,12 +258,14 @@ export function validateReview(root, base, worklog, prBodyFile) {
             }
             path = found[0];
         }
-        const { waivers } = verifyReviewRecord({ root, path, head, base });
+        const { record, waivers } = verifyReviewRecord({ root, path, head, base });
         // CI reads the committed file. Uncommitted edits are neither validated nor seen there.
         const dirty = git(root, ["status", "--porcelain", "--", path]);
         console.log(`✓ ${path} validates at ${head.slice(0, 12)} against ${base}.`);
         for (const waiver of waivers)
             console.log(`~ ${waiver}`);
+        if (!record.contextRead?.length)
+            console.log(`! ${MISSING_CONTEXT_READ}`);
         if (dirty)
             console.log(`! ${path} has uncommitted changes; they were not validated and CI will not see them until committed.`);
         console.log(`  The PR also needs the visible line "review-record: ${path}" and the agent-reviewed label (gh pr create --label agent-reviewed).`);
