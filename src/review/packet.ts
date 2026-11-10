@@ -48,6 +48,13 @@ async function packageRunner(root: string, packageManager?: string): Promise<str
   return manager === "npm" ? "npm run" : manager === "bun" ? "bun run" : manager;
 }
 
+/**
+ * The author knows which decisions, runbooks and earlier worklogs govern a change; the reviewer
+ * starts cold. This line asks the author to name them before handing the packet over.
+ */
+export const AUTHOR_CONTEXT_SLOT =
+  "AUTHOR: before spawning the reviewer, replace this line with the decisions, runbooks, worklogs or meeting notes that govern this change, or write \"none beyond the ticket\".";
+
 export interface PacketTicket {
   id?: string;
   title?: string;
@@ -70,6 +77,8 @@ export function reviewPacket(opts: {
   commands: string[];
   /** `morpheus complexity check` on the range, or why it did not run; never just the command. */
   complexity?: string;
+  /** Records the reviewer reads while orienting; the ticket's own files come first. */
+  suggested?: string[];
 }): string {
   const { ticket } = opts;
   const lines = [
@@ -95,6 +104,12 @@ export function reviewPacket(opts: {
       "Acceptance: none declared — review against the ticket context and the PR description. That is a supported state, not a gap to fill by creating an item.",
     );
   }
+  lines.push(
+    "PR description and test plan: run `gh pr view --json title,body` from the repository; if no PR exists yet, ask the author for the test plan.",
+    "Suggested context (read with read_project_record before the diff):",
+    ...(opts.suggested ?? []).map(path => `- ${path}`),
+    `- ${AUTHOR_CONTEXT_SLOT}`,
+  );
   if (opts.complexity) lines.push(opts.complexity);
   return lines.join("\n");
 }

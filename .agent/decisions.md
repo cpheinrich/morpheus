@@ -1,5 +1,16 @@
 # Decisions
 
+## Reviewers orient with the context MCP on records the author names — 2026-11-10
+
+MO-26-11-10-02.18.11. Chris, after the evo#863 reviewer read only code: reviewers orient with the
+context MCP before reviewing, and authors suggest the records to read. The contract makes
+orientation the first step and asks for a Context read list; `review prepare` prints a Suggested
+context section with the ticket, its acceptance file and an author line to replace, so every
+project gets it through the CLI. The record's optional `contextRead` warns when absent and is never
+refused, per the rule that only user-protecting checks block; CD repair verification ignores
+warnings. Considered requiring a citation in the record; rejected as a gate the requirement does
+not need. No dependency.
+
 ## Agents leave the code they touch better — 2026-11-10
 
 MO-26-11-10-01.03.46. Anthropic's Fable 5.2 guide reports that, unless told the code is its own,

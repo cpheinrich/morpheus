@@ -26,6 +26,8 @@ export interface ReviewContext {
     acceptance?: string;
     /** Path that `acceptance` pointed at but which does not exist. */
     missingAcceptance?: string;
+    /** Repository-relative records the reviewer should read first: the item, then its acceptance. */
+    records?: string[];
 }
 /**
  * Build the reviewer's prompt.

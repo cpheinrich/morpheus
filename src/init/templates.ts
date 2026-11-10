@@ -890,9 +890,9 @@ results before the reviewer's first turn; send the full packet and available UI 
 cannot run, document why and keep the PR draft until validation finishes. Aim for one review and
 one response; five turns run without anyone's approval, a ceiling, not a plan. A reviewer blocks
 only on substantive problems; style and wording notes never block. When a reviewer times out or
-cannot be resumed, start a fresh one with the earlier findings. After committing implementation/tests,
-run \`morpheus review prepare --base origin/main\`; this prints a review packet and does not
-launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
+cannot be resumed, start a fresh one with the earlier findings. After committing, run
+\`morpheus review prepare --base origin/main\` (it only prints a packet) and name the governing
+records in its Suggested context. The authoring agent must spawn one fresh reviewer subagent/session with
 repository access and that packet, without inheriting the author's conversation history.
 The author handles findings, records, CI and merge; CI and PR monitors never start this review.
 Measure each turn from runner metadata or actual clock readings, never estimates; record the

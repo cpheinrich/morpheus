@@ -102,7 +102,8 @@ describe("morpheus init", () => {
     const instructions = await read("AGENTS.md");
     expect(instructions).toContain("The authoring agent owns the entire review loop");
     expect(instructions).toContain("must spawn one fresh reviewer subagent/session");
-    expect(instructions).toContain("does not\nlaunch a reviewer");
+    expect(instructions).toContain("(it only prints a packet)");
+    expect(instructions).toContain("name the governing\nrecords in its Suggested context");
     expect(instructions).toContain("without inheriting the author's conversation history");
     expect(instructions).toContain("CI and PR monitors never start this review");
     expect(instructions).toContain("Measure each turn from runner metadata or actual clock readings, never estimates");

@@ -35,10 +35,24 @@ resume it; when it cannot be resumed, a fresh reviewer takes the next turn
 ([below](#any-fresh-reviewer-may-take-a-turn)). A reviewer is a bounded task started by the
 author, not a standing PR-monitoring agent.
 
-The fresh reviewer uses Morpheus Context MCP for governing records and prior work, reads its
-citations, and uses the packet checkout for the diff and tests. When the host cannot search
-that checkout through MCP, use the context CLI there and report why. This keeps project
-record lookup consistent even when a child receives no startup hook.
+The fresh reviewer orients with Morpheus Context MCP before reading the diff: an overview if the
+project is new to it, a search for the ticket's subject and the changed area, and a cited read of
+every path under the packet's **Suggested context**. It uses the packet checkout for the diff and
+tests. When the host cannot search that checkout through MCP, it uses the context CLI there and
+reports why. This keeps project record lookup consistent even when a child receives no startup
+hook. A reviewer that read only code missed the history that explained a fix (evo#863).
+
+`review prepare` lists the ticket and its acceptance file under Suggested context, then a line for
+the author. Before spawning the reviewer, the author replaces that line with the decisions,
+runbooks, earlier worklogs or meeting notes that govern the change, or writes "none beyond the
+ticket". The reviewer returns the paths it read as **Context read**, and the author records them as
+`contextRead` in the review record. A record without `contextRead`, or with an empty list, is
+reported as a `review-context` warning by `review validate` and `check pr`. It is never refused,
+so older records and reviews of trivial changes still pass.
+
+The reviewer also reads the PR description, above all its **Test plan**. It checks that what the
+author ran covers the change, reruns what would settle a doubt, and adds its own checks wherever
+the plan falls short. The plan is where review starts, not where it stops.
 
 The canonical contract ships in `src/review/local-prompt.ts`; the old `review prompt` command and
 `.github/agent-review-prompt.md` remain for explicitly enabled legacy GitHub reviewers.
