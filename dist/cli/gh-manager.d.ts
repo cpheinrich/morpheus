@@ -14,6 +14,8 @@ export declare function planTriageApply(live: LiveState & {
 /** Check the live WIP signal before any evidence publication or session fallback. */
 export declare function planWithLiveWipGuard(live: LiveState, routed: Routed, ctx: Parameters<typeof planRoute>[2], proceed: () => Plan): Plan;
 export declare function ghManagerDigest(repoArg: string | undefined, sweepPath: string | undefined, outcomesDir: string | undefined, dryRun: boolean): number;
+/** Preview the apply step's record check against the committed checkout and exact proposed body. */
+export declare function ghManagerCheckRecord(base: string | undefined, bodyFile: string | undefined, cwd?: string): number;
 /**
  * Print the preview URL(s) for a commit, one per line. Exit 0 when ready, 2 while Vercel is still
  * building or has not yet described the commit, 1 when there is no preview to capture.

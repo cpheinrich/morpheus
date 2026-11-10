@@ -2,9 +2,10 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { git } from "../src/review/local.js";
 import { checkManagerReview, type ManagerReviewRecord, usesManagerReview } from "../src/review/manager.js";
+import { ghManagerCheckRecord } from "../src/cli/gh-manager.js";
 import { managerRecordProblem, sessionPushed } from "../src/gh-manager/verify.js";
 
 const APP = "morpheus-gh-manager[bot]";
@@ -244,6 +245,22 @@ describe("what the apply step verifies with Git", () => {
     expect(sessionPushed(root, reviewed, "d".repeat(40), "main")).toBe("unverified");
     expect(sessionPushed(root, "d".repeat(40), "d".repeat(40), "main")).toBe("unverified");
     expect(sessionPushed(root, reviewed, reviewed, "no-such-ref")).toBe("unverified");
+  });
+
+  it("previews the exact committed record and reports a repairable formatting error", () => {
+    const candidate = join(root, ".git", "candidate.md");
+    writeFileSync(candidate, body);
+    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      save(record(), "A different paragraph.");
+      expect(ghManagerCheckRecord("main", candidate, root)).toBe(1);
+      expect(stderr).toHaveBeenCalledWith(expect.stringContaining("visible paragraph"));
+      const fixed = save(record());
+      expect(ghManagerCheckRecord("main", candidate, root)).toBe(0);
+      expect(stdout).toHaveBeenCalledWith(expect.stringContaining(fixed));
+      expect(() => ghManagerCheckRecord("main", undefined, root)).toThrow("Usage:");
+    } finally { stdout.mockRestore(); stderr.mockRestore(); }
   });
 
   it("reports why a record would be refused, and nothing when it would be accepted", () => {

@@ -49,6 +49,11 @@ the `manager:needs-human` queue crowded out a real decision. The close is re-che
 state, so a rescue pushed to, queued, reviewed or taken out of draft in the meantime is left alone,
 and one a person reopens is not closed again until it gets a new push.
 
+A session proposing its own review can validate its committed record before pushing and deciding.
+From the target checkout, run `morpheus gh-manager check-record origin/<base> --body-file <file>`
+with the exact proposed PR body. This local check leaves the working tree, refs, and GitHub
+untouched. Apply still validates the record against the live head and enforces repository policy.
+
 ## Triaging drafts and WIP pull requests
 
 Drafts pile up for three different reasons, and a plain skip treated them alike. Chris's direction
