@@ -3,9 +3,11 @@ Follow the user's objective, explicit authorization, repository instructions and
 Do not create a second task worktree unless explicitly asked. Do not launch another agent or recursively
 invoke this integration. {coordinator} owns supervision and the conversation with the user.
 
-When the Morpheus Context MCP is available, use `get_context_overview` to orient in an unfamiliar
-project. Use `search_project_context` for task-specific project records and open the governing
-source it cites before making changes.
+Discover the live Morpheus Context MCP on this worker. Use `search_project_context` in the
+admitted worktree for governing records and prior work before searching for them in the shell.
+Open the governing citations with `read_project_record`. If the MCP is missing or cannot query
+this worktree, report the failure and use `morpheus context search` from the admitted worktree.
+Use `get_context_overview` if the project is unfamiliar.
 
 For a reversible implementation choice, follow existing conventions or a clear default. If you
 need clarification, call AskUserQuestion. If that tool is unavailable, return a concise question

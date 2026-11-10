@@ -1,11 +1,11 @@
 import { execFile, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
+import { lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Tiktoken } from "js-tiktoken/lite";
 import ranks from "js-tiktoken/ranks/o200k_base";
+import { tantivyPython } from "./runtime.js";
 
 export interface ContextSource {
   readonly path: string;
@@ -13,7 +13,6 @@ export interface ContextSource {
 }
 
 export interface SearchOptions {
-  readonly engine: "tantivy" | "ripgrep";
   readonly cacheDir: string;
   readonly maxBytes?: number;
   readonly maxLines?: number;
@@ -40,7 +39,6 @@ export interface SearchResult {
 interface Document {
   readonly path: string;
   readonly lines: readonly string[];
-  readonly firstLine: number;
   readonly firstChunk: number;
 }
 
@@ -72,12 +70,10 @@ function nativeTerms(input: string): string {
 }
 
 function documentsFor(sources: readonly ContextSource[]): Document[] {
-  let firstLine = 0;
   let firstChunk = 0;
   return sources.map(({ path, text }) => {
     const lines = text.replace(/\r?\n$/, "").split(/\r?\n/);
-    const result = { path, lines, firstLine, firstChunk };
-    firstLine += lines.length;
+    const result = { path, lines, firstChunk };
     firstChunk += Math.ceil(lines.length / INDEX_STRIDE);
     return result;
   });
@@ -127,51 +123,15 @@ function format(spans: Iterable<Span>, budget: number, maxBytes = Infinity, maxL
   return { output, returnedTokens, resultCount: excerpts.length, excerpts };
 }
 
-function documentAt(documents: readonly Document[], target: number, offset: "firstChunk" | "firstLine"): Document | undefined {
+function documentAt(documents: readonly Document[], target: number): Document | undefined {
   let left = 0;
   let right = documents.length;
   while (left < right) {
     const middle = Math.floor((left + right) / 2);
-    if (documents[middle]![offset] <= target) left = middle + 1;
+    if (documents[middle]!.firstChunk <= target) left = middle + 1;
     else right = middle;
   }
   return documents[left - 1];
-}
-
-interface Match {
-  readonly type: string;
-  readonly data?: {
-    readonly line_number: number;
-    readonly submatches: readonly { readonly match: { readonly text: string } }[];
-  };
-}
-
-function ripgrep(documents: readonly Document[], query: string): Span[] {
-  const identifier = query.match(IDENTIFIER)?.[0];
-  const expression = identifier ? identifier.replaceAll(".", "[.]") : [...new Set(words(query))].join("|");
-  if (!expression) return [];
-  const result = spawnSync("rg", ["--no-config", "--json", "--text", "-i", "-e", `\\b(?:${expression})\\b`, "-"], {
-    input: documents.map(({ lines }) => lines.join("\n") + "\n").join(""),
-    encoding: "utf8",
-    timeout: 15_000,
-    maxBuffer: 32 * 1024 * 1024,
-  });
-  if (result.error || (result.status !== 0 && result.status !== 1)) {
-    throw new Error(`ripgrep query failed: ${result.error?.message ?? result.status ?? result.signal}`);
-  }
-  const hits: { document: Document; line: number; score: number }[] = [];
-  for (const json of result.stdout.split("\n")) {
-    if (!json) continue;
-    const event = JSON.parse(json) as Match;
-    if (event.type !== "match" || !event.data) continue;
-    const line = event.data.line_number - 1;
-    const document = documentAt(documents, line, "firstLine");
-    if (!document) throw new Error("ripgrep returned an unknown source line");
-    const score = new Set(event.data.submatches.map(({ match }) => match.text.toLowerCase())).size;
-    hits.push({ document, line: line - document.firstLine, score });
-  }
-  hits.sort((a, b) => b.score - a.score || a.document.path.localeCompare(b.document.path, "en") || a.line - b.line);
-  return hits.map(({ document, line }) => excerpt(document, line));
 }
 
 function buildPayload(documents: readonly Document[]): string {
@@ -198,20 +158,15 @@ function buildPayload(documents: readonly Document[]): string {
   return batches.join("\n") + "\n";
 }
 
-function pythonExecutable(): string {
-  const installed = join(homedir(), ".morpheus", "tools", "context-search", "bin", "python");
-  return process.env.MORPHEUS_TANTIVY_PYTHON ?? (existsSync(installed) ? installed : "python3");
-}
-
 function unavailableTantivy(): Error {
-  return new Error("Tantivy is unavailable. Install tantivy==0.27.0 in the configured Python environment or select ripgrep.");
+  return new Error("Tantivy is unavailable. Run morpheus context runtime install, then reload the client.");
 }
 
 function searchIndex(directory: string, input: string): string {
-  const result = spawnSync(pythonExecutable(), [WORKER, "search", directory], {
+  const result = spawnSync(tantivyPython(), ["-I", WORKER, "search", directory], {
     input, encoding: "utf8", timeout: 60_000, maxBuffer: 4 * 1024 * 1024,
   });
-  if (result.status === 2) throw unavailableTantivy();
+  if (result.status === 2 || (result.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") throw unavailableTantivy();
   if (result.status === 3) throw new Error("Tantivy could not open the context index. Remove the worktree's search cache and retry.");
   if (result.error || result.status !== 0) {
     throw new Error(`Tantivy search failed: ${result.error?.message ?? result.status ?? result.signal}`);
@@ -221,11 +176,11 @@ function searchIndex(directory: string, input: string): string {
 
 function buildIndex(directory: string, input: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = execFile(pythonExecutable(), [WORKER, "build", directory], {
+    const child = execFile(tantivyPython(), ["-I", WORKER, "build", directory], {
       timeout: 60_000, maxBuffer: 4 * 1024 * 1024,
     }, error => {
       if (!error) resolve();
-      else reject(error.code === 2 ? unavailableTantivy() : new Error("Tantivy build failed", { cause: error }));
+      else reject(error.code === 2 || error.code === "ENOENT" ? unavailableTantivy() : new Error("Tantivy build failed", { cause: error }));
     });
     // The worker can exit before consuming stdin (for example, a missing module).
     child.stdin?.on("error", () => {});
@@ -289,7 +244,7 @@ function tantivySpans(documents: readonly Document[], query: string, reply: stri
   const terms = new Set(words(query));
   return ids.map((id: unknown) => {
     if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) throw new Error("Invalid Tantivy candidate ID");
-    const document = documentAt(documents, id, "firstChunk");
+    const document = documentAt(documents, id);
     const first = document ? (id - document.firstChunk) * INDEX_STRIDE : -1;
     if (!document || first < 0 || first >= document.lines.length) throw new Error("Tantivy candidate is outside the source");
     const last = Math.min(first + WINDOW, document.lines.length);
@@ -338,9 +293,7 @@ export async function searchContext(
   if (!Number.isSafeInteger(budget) || budget < 1 || budget > 2500) throw new Error("Search budget must be 1–2500 tokens");
   const start = performance.now();
   const documents = documentsFor(sources);
-  const { spans, buildMs, cacheHit, waitMs } = options.engine === "tantivy"
-    ? await tantivy(sources, documents, query, options.cacheDir)
-    : { spans: ripgrep(documents, query), buildMs: 0, cacheHit: false, waitMs: 0 };
+  const { spans, buildMs, cacheHit, waitMs } = await tantivy(sources, documents, query, options.cacheDir);
   const result = format(spans, budget, options.maxBytes, options.maxLines);
   return { ...result, buildMs, cacheHit, waitMs, queryMs: performance.now() - start - buildMs - waitMs };
 }

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import { autoUpdateConfigPath, readAutoUpdateConfig, reconcileAutoUpdateContext } from "../self-auto-update.js";
 import { morpheusInstallStatus, runMorpheusCommand } from "../self.js";
+import { installTantivyRuntime } from "./runtime.js";
 
 function livePid(raw: string): boolean {
   const pid = Number(raw.split("\n", 1)[0]);
@@ -35,12 +36,18 @@ async function isUpdateCheckout(root: string): Promise<boolean> {
  * existing global executable before npm replaces its package.
  */
 export async function finishLegacyContextUpdate(root = process.cwd()): Promise<void> {
+  if (!(await isUpdateCheckout(root))) return;
+  const status = await morpheusInstallStatus({ packageRoot: root });
+  if (status.kind !== "checkout" || status.relation !== "current") {
+    throw new Error("Could not verify the update checkout against current Morpheus main; retry the update.");
+  }
+  // This runs from the incoming checkout even when the outgoing CLI knows nothing
+  // about Tantivy. Do not replace a working CLI with one that cannot search.
+  await installTantivyRuntime();
   try {
     const config = autoUpdateConfigPath();
-    if (!(await isUpdateCheckout(root)) || (await readAutoUpdateConfig(config)).preference !== "enabled") return;
+    if ((await readAutoUpdateConfig(config)).preference !== "enabled") return;
     if (!(await hasUpdateLock(join(dirname(config), "auto-update.lock")))) return;
-    const status = await morpheusInstallStatus({ packageRoot: root });
-    if (status.kind !== "checkout" || status.relation !== "current") return;
     const prefix = await runMorpheusCommand("npm", ["prefix", "--global"], root);
     if (prefix.code !== 0 || !isAbsolute(prefix.stdout.trim())) return;
     const executable = join(prefix.stdout.trim(), "bin", "morpheus");

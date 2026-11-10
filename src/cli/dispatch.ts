@@ -454,10 +454,15 @@ async function dispatchContextLookup(command: string | undefined, rest: string[]
     return 0;
   }
   if (command === "task-prompt") return (await import("../context-search/task-start.js")).runTaskPromptHook();
-  if (command !== "search" && command !== "coverage" && command !== "engine" && command !== "task-read") return;
+  if (command === "engine") throw new Error("Context search now uses only Tantivy; engine overrides are retired.");
+  if (command === "runtime" && rest.length === 1 && rest[0] === "install") {
+    const { installTantivyRuntime } = await import("../context-search/runtime.js");
+    console.log("Tantivy ready: " + await installTantivyRuntime());
+    return 0;
+  }
+  if (command !== "search" && command !== "coverage" && command !== "task-read") return;
   const search = await import("./context-search.js");
   const cwd = process.cwd();
-  if (command === "engine") return search.runContextEngine(cwd, rest, flags.sessionId);
   if (command === "coverage") return search.runContextCoverage(cwd, flags.json);
   if (command === "task-read") return search.runTaskRead(cwd, rest, flags.sessionId);
   return search.runContextSearch(cwd, rest.join(" "), {

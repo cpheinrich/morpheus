@@ -6,7 +6,7 @@ import { percentile } from "../profile/derive.js";
 import { evidenceCheckouts } from "../session/certify.js";
 import { checkoutIdentity } from "../session/start.js";
 import { ContextPipeline } from "./trace-pipeline.js";
-const ARMS = ["tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"];
+const ARMS = ["tantivy-compact", "tantivy-full", "tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"];
 const ENGINES = ["tantivy", "ripgrep"];
 const OPERATIONS = ["search", "read", "coverage", "overview", "related"];
 const TYPES = ["assignment", "query", "tool", "visible", "session-start", "prompt", "warm"];

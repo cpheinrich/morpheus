@@ -87,7 +87,8 @@ run and for anything the shim reports.
 
 Discover live MCP tools at startup, resume and compaction. Use context overview, search,
 cited reads and coverage; retain the graph for code structure. If absent, check/repair
-`morpheus context install --check` and use CLI search meanwhile. See
+`morpheus context install --check` and use CLI search meanwhile. Give every fresh reviewer or subagent the task checkout and
+this lookup instruction in its handoff. See
 [host and phone boundaries](docs/runbooks/context-search.md#desktop-phone-and-cloud-boundaries).
 
 ## Context freshness

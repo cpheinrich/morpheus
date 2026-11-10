@@ -151,6 +151,8 @@ describe("measured review timing", () => {
       expect(output).toContain("Do not estimate\nelapsed time from workload");
       expect(output).toContain("Zero is a placeholder, not a measurement");
       expect(output).toContain("Find concrete defects and unneeded complexity");
+      expect(output).toContain("Discover the live Morpheus Context MCP in this session.");
+      expect(output).toContain("passages with `read_project_record`.");
       expect(output).toContain("mechanism that the requirements do not need is substantive; a local simplification is minor");
       expect(output).not.toContain("risk class; elapsed minutes;");
     } finally { log.mockRestore(); }

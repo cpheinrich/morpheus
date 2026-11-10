@@ -48,7 +48,7 @@ async function search(scope, input, started, mcpStartedAt) {
     const message = output ? `${CONTEXT_SEARCH_HEADER}\n${output}`
         : "No matching excerpts within the return budget. Refine the search or read a known source.";
     return result(message, {
-        excerpt: message, outcome: output ? "ok" : "empty", engine: found.engine, fallback: found.fallback, returnedTokens,
+        excerpt: message, outcome: output ? "ok" : "empty", engine: found.engine, fallback: false, returnedTokens,
         citations: excerpts.map(({ path, from, to }) => ({ path, from, to, kind: contextKind(path) })),
     });
 }
@@ -100,7 +100,7 @@ async function related(scope, input) {
 export function createContextMcp(cwd, mcpStartedAt) {
     const server = new McpServer({ name: "morpheus_context", version: "1.0.0" });
     server.registerTool("search_project_context", {
-        description: "Find decisions, prior attempts, roadmap items, runbooks and meeting notes in the active project. Returns ranked excerpts and citations. Use for project history and governing records.",
+        description: "Find decisions, prior attempts, roadmap items, runbooks and meeting notes in the active project. Returns ranked excerpts and citations. Use this first for governing records and project history, including in reviews and delegated tasks.",
         inputSchema: {
             query: z.string().trim().min(1).max(4000), max_tokens: tokenInput,
             kinds: z.array(z.enum(CONTEXT_KINDS)).min(1).max(CONTEXT_KINDS.length).optional()

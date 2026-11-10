@@ -1,11 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, expect, it, vi } from "vitest";
+import { runContextSearch } from "../src/cli/context-search.js";
 import { contextMcpSession } from "../src/context-search/mcp-scope.js";
 import { createContextMcp } from "../src/context-search/mcp.js";
 import { contextArm, contextTraceSession, traceContext } from "../src/context-search/rollout.js";
@@ -42,13 +43,7 @@ async function fixture() {
   git("init", "-q", "-b", "main");
   git("add", ".");
   git("remote", "add", "origin", "git@github.com:example/fixture.git");
-  const sessions = new Map();
-  for (let i = 0; i < 100 && sessions.size < 3; i++) {
-    const id = "host-" + i;
-    const arm = await contextArm(root, id);
-    sessions.set(arm.arm, id);
-  }
-  const session = sessions.get("ripgrep-bounded") as string;
+  const session = "fresh-reviewer";
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "probe", version: "1" });
   clients.push(client);
@@ -56,7 +51,7 @@ async function fixture() {
   await client.connect(clientTransport);
   const call = async (name: string, args: Record<string, unknown> = {}, id = session) =>
     await client.callTool({ name, arguments: args, _meta: { threadId: id } }) as CallToolResult;
-  return { root, client, session, sessions, call };
+  return { root, client, session, call };
 }
 
 afterEach(async () => {
@@ -100,7 +95,7 @@ it("preserves arm, records MCP timing, and only credits the excerpt shown by the
   await observe("search_project_context", await call("search_project_context", { query: "zzzzunused" }));
   expect(await taskContextRefusal(root, session)).toContain("Load context");
   const search = await call("search_project_context", { query: secretQuery });
-  expect(search.structuredContent).toMatchObject({ engine: "ripgrep", citations: expect.arrayContaining([{ path: ".agent/decisions.md", from: 1, to: 3, kind: "decision" }]) });
+  expect(search.structuredContent).toMatchObject({ engine: "tantivy", citations: expect.arrayContaining([{ path: ".agent/decisions.md", from: 1, to: 3, kind: "decision" }]) });
   expect(await taskContextRefusal(root, session)).toContain("Load context");
   await observe("search_project_context", { ...search, structuredContent: { excerpt: "No model-visible citation." } });
   expect(await taskContextRefusal(root, session)).toContain("Load context");
@@ -115,11 +110,11 @@ it("preserves arm, records MCP timing, and only credits the excerpt shown by the
   expect(log).not.toContain(secretQuery);
   expect(log).not.toContain(session);
   expect(log.split("\n").filter(Boolean).map(line => JSON.parse(line))).toEqual(expect.arrayContaining([
-    expect.objectContaining({ type: "query", transport: "mcp", arm: "ripgrep-bounded", actualEngine: "ripgrep", outcome: "ok" }),
+    expect.objectContaining({ type: "query", transport: "mcp", arm: "tantivy-compact", actualEngine: "tantivy", outcome: "ok" }),
     expect.objectContaining({ type: "visible", transport: "mcp", operation: "read" }),
   ]));
   expect((await summarizeContextTraces(root)).byArmTransport).toEqual(expect.arrayContaining([
-    expect.objectContaining({ arm: "ripgrep-bounded", transport: "mcp", visibleSessions: 1 }),
+    expect.objectContaining({ arm: "tantivy-compact", transport: "mcp", visibleSessions: 1 }),
   ]));
 });
 
@@ -152,7 +147,7 @@ it("uses the session worktree and refuses to move a pinned Factory worker outsid
 });
 
 it("profiles visible startup citations without treating them as additional task context", async () => {
-  const { root, session, call, sessions } = await fixture();
+  const { root, session, call } = await fixture();
   await armMcpTaskContext(root, session);
   const read = async (path: string, id: string) => recordRead(JSON.stringify({
     cwd: root, session_id: id, turn_id: "turn", hook_event_name: "PostToolUse",
@@ -161,10 +156,11 @@ it("profiles visible startup citations without treating them as additional task 
   }));
   await read(".agent/context-core.md", session);
   expect(await taskContextRefusal(root, session)).toContain("Load context");
-  await read(".agent/decisions.md", sessions.get("ripgrep-full"));
+  await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "fixture" }));
+  await read(".agent/decisions.md", "full-reviewer");
   expect((await summarizeContextTraces(root)).byArmTransport).toEqual(expect.arrayContaining([
-    expect.objectContaining({ arm: "ripgrep-bounded", transport: "mcp", visibleSessions: 1 }),
-    expect.objectContaining({ arm: "ripgrep-full", transport: "mcp", visibleSessions: 1 }),
+    expect.objectContaining({ arm: "tantivy-compact", transport: "mcp", visibleSessions: 1 }),
+    expect.objectContaining({ arm: "tantivy-full", transport: "mcp", visibleSessions: 1 }),
   ]));
 });
 
@@ -233,21 +229,67 @@ it("profiles a first turn without a trusted prompt hook and excludes empty searc
 });
 
 
-it("joins prompt and result timings for explicitly enabled Tantivy without a rollout", async () => {
+it("profiles Tantivy for an unconfigured project and fails explicitly without the runtime", async () => {
   const { root, call, session } = await fixture();
   await writeFile(join(root, "morpheus.json"), JSON.stringify({
-    name: "explicit", context: { search: { transport: "mcp", mode: "tantivy" } },
+    name: "explicit", context: { search: { mode: "ripgrep" } },
   }));
   const arm = await contextArm(root, session);
-  expect(arm).toMatchObject({ arm: "manual", engine: "tantivy", session: contextTraceSession("", session) });
+  expect(arm).toMatchObject({ arm: "tantivy-full", engine: "tantivy", session: contextTraceSession("", session) });
   const prompt = JSON.stringify({ cwd: root, session_id: session, prompt: "Verify release", hook_event_name: "UserPromptSubmit" });
   expect(await taskPrompt(prompt, async path => path)).toBeUndefined();
-  // Exercise the trace and fallback path even on CI machines without Tantivy.
   vi.stubEnv("MORPHEUS_TANTIVY_PYTHON", "/nonexistent/tantivy-python");
-  expect((await call("search_project_context", { query: secretQuery })).structuredContent).toMatchObject({
-    engine: "ripgrep", fallback: true, outcome: "ok",
+  expect(await call("search_project_context", { query: secretQuery })).toMatchObject({
+    isError: true, content: [{ text: expect.stringContaining("morpheus context runtime install") }],
   });
+  vi.unstubAllEnvs();
+  expect((await call("search_project_context", { query: secretQuery })).structuredContent)
+    .toMatchObject({ engine: "tantivy", fallback: false, outcome: "ok" });
   expect((await summarizeContextTraces(root)).pipeline).toMatchObject({
     sessions: 1, promptHooks: 1, firstSearches: 1, firstResults: 1, promptToFirstResult: { samples: 1 },
   });
+});
+
+it("allows a fresh delegated host without session metadata to search its launch checkout", async () => {
+  const { client } = await fixture();
+  vi.stubEnv("MORPHEUS_CONTEXT_SESSION_ID", "");
+  vi.stubEnv("CLAUDE_CODE_SESSION_ID", "");
+  vi.stubEnv("CODEX_THREAD_ID", "");
+  expect((await client.callTool({ name: "search_project_context", arguments: { query: secretQuery } })).structuredContent)
+    .toMatchObject({ engine: "tantivy", outcome: "ok", citations: expect.arrayContaining([
+      expect.objectContaining({ path: ".agent/decisions.md" }),
+    ]) });
+});
+
+
+it("reports a resumed session separately from its historical Tantivy cohort", async () => {
+  const { root, session, call } = await fixture();
+  const current = await contextArm(root, session);
+  const now = new Date();
+  await traceContext(root, {
+    type: "query", arm: "tantivy-bounded", engine: "tantivy", rollout: current.id, session: current.session,
+    transport: "mcp", operation: "search", outcome: "ok", queryStartedAt: now.valueOf() - 600, queryMs: 500,
+  }, new Date(now.valueOf() - 100));
+  expect((await call("search_project_context", { query: secretQuery })).structuredContent?.engine).toBe("tantivy");
+  const report = await summarizeContextTraces(root);
+  expect(report.byArmTransport.map(row => row.arm)).toEqual(["tantivy-bounded", "tantivy-compact"]);
+  expect(report.pipeline).toMatchObject({ sessions: 2, firstSearches: 2, firstResults: 2 });
+});
+
+
+it("searches an older checkout with no safe persistent cache without writing project state", async () => {
+  const { root, call } = await fixture();
+  await rm(join(root, ".gitignore"));
+  expect((await call("search_project_context", { query: secretQuery })).structuredContent)
+    .toMatchObject({ engine: "tantivy", outcome: "ok", citations: expect.arrayContaining([
+      expect.objectContaining({ path: ".agent/decisions.md", from: 1, to: 3 }),
+    ]) });
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  try {
+    expect(await runContextSearch(root, secretQuery, { json: true })).toBe(0);
+    expect(JSON.parse(log.mock.calls[0]![0])).toMatchObject({ engine: "tantivy", output: expect.stringContaining(".agent/decisions.md:1-3") });
+  } finally {
+    log.mockRestore();
+  }
+  await expect(access(join(root, "local"))).rejects.toMatchObject({ code: "ENOENT" });
 });

@@ -916,39 +916,40 @@ checked against reality and killed rather than built.
 
 ### 7.10 Context freshness
 
-A project can opt into the local context search pilot in `morpheus.json` with
-`context.search.rollout`. A stable hash of experiment and provider session IDs assigns
-60% to bounded startup with Tantivy, 20% to bounded startup with ripgrep, and 20% to
-full decisions and lessons with ripgrep. The trial omits human inboxes from all arms.
-Project instructions and configured mandatory records still govern. The required reads
-come from the selected checkout, and a bounded startup receipt is scoped to that provider
-session and worktree. The first-prompt hook cues a bounded search once the task
-is known. In the MCP pilot the startup hook also arms the check. With read
-evidence active, the existing gate requires
-the read hook to have observed a matching excerpt from an indexed task
-record. An exact-path `context task-read` can supply that excerpt. This check
-is separate from full read evidence for the startup core.
+Morpheus Context uses Tantivy for every MCP and CLI search. The engine experiment
+is retired; old engine settings and session pins no longer select an engine. Historical
+profiling remains readable. Projects with a valid `context.search.rollout.coreInputs`
+in `morpheus.json` use compact startup whenever the provider session is known. Other
+projects keep their full required reads. Project instructions and mandatory records still
+govern, and human inboxes stay outside the search index.
 
-Context client discovery is not restricted to the pilot. Explicit `context install` merges
-portable project MCP entries for Codex, Claude Code and Cursor and appends context-use guidance;
-`init` includes new-project guidance while preserving authored instructions. Every startup brief
-cues live discovery and the installed CLI fallback without mutating client settings. Project files
-reach collaborators through reviewed Git changes; each execution host still needs its own runtime
-and trust. Phone remote-control/SSH sessions use that host. Standalone cloud/mobile and Claude
-Desktop require their own supported client connection; local project configuration is not a remote
-MCP service. See [host boundaries](docs/runbooks/context-search.md#desktop-phone-and-cloud-boundaries).
+A compact startup receipt is scoped to its provider session and worktree. The first-prompt
+hook cues a search once the task is known, and MCP startup can also arm the existing check.
+With read evidence active, the freshness gate requires an observed excerpt from an indexed
+task record. An exact-path `context task-read` can supply that excerpt. This check is separate
+from read evidence for the startup core.
 
-For an MCP pilot, set `context.search.transport` to `mcp`. The same rollout assignment
-selects the search engine in either interface. The local `morpheus_context` server resolves the
-host session and worktree, then exposes search, exact reads, coverage, overview and relationship
-traversal. The host read hook validates visible search and read excerpts against their source.
+Explicit `context install` merges portable project MCP entries for Codex, Claude Code and
+Cursor and installs advisory hooks. `init` includes these for new projects. The startup
+brief and `SubagentStart` hook cue MCP lookup for project records; review packets and Factory
+handoffs carry the same instruction for fresh or isolated sessions. The CLI is the fallback
+when MCP cannot query the assigned checkout. Codebase-memory remains the tool for code
+structure. Managed updates provision the pinned Tantivy binding before replacing the CLI.
+Existing client entries launch the updated executable when their MCP server restarts.
+Each execution host still needs its own runtime and trust. See
+[host boundaries](docs/runbooks/context-search.md#desktop-phone-and-cloud-boundaries).
+
+The local `morpheus_context` server resolves the host worktree and uses the session identity
+for validated bindings and profiling when one is available. It exposes search, exact reads,
+coverage, overview and relationship traversal. The host read hook validates visible excerpts
+against their source.
 Explicit Markdown and project record links provide traversable relationships, with the declaring
 path and line retained as evidence.
 
 ```mermaid
 flowchart TB
     A["Agent in the task worktree"] --> B["Morpheus Context MCP"]
-    B --> C["Project records and shared search"]
+    B --> C["Tantivy searches project records"]
     C --> D["Cited results"]
     D --> E["Host observes the excerpt"]
     E --> F["Freshness gate credits task context"]
@@ -958,13 +959,13 @@ flowchart TB
 Search covers the manifest's project context plus default records, roadmaps, runbooks and
 meeting notes. Tantivy indexes overlapping 16-line Markdown windows beginning every two
 lines. Cache files and traces live under the worktree's ignored `local/context-search/`
-directory so sandboxed searches can acquire index locks and record timings. MCP launch warms the
+directory so sandboxed searches can acquire index locks and record timings. Without safe local
+cache storage, a query uses a private temporary index. MCP launch warms the
 full worktree index in the background before a query arrives. An overlapping search shares the
 same in-process build, and a content fingerprint prevents reuse after a source change. The local
 pipeline report joins available launch, first-prompt, first-search and first-result timestamps
 without writing any prompt text.
-A session can pin the search engine for its checkout without changing its
-required startup records. Overrides and fallbacks are visible in traces. See [the trial runbook](docs/runbooks/context-search.md).
+Historical engine comparisons remain in existing traces. See the [context search runbook](docs/runbooks/context-search.md).
 
 
 Everything above assumes an agent has read the records. Nothing made it prove that. A session can

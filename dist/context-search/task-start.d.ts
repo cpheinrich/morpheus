@@ -11,4 +11,8 @@ export declare function taskRecord(root: string, session: string | undefined, pa
 /** Credit an excerpt only when the hook actually saw matching, current source text. */
 export declare function observeTaskContext(root: string, session: string, text: string, operation?: Extract<ContextOperation, "search" | "read">): Promise<void>;
 export declare function taskPrompt(raw: string, locateRoot: (cwd: string) => Promise<string | null>): Promise<string | undefined>;
+/** Child sessions may not see the parent's startup or first-prompt hook. */
+export declare function subagentContext(input: {
+    cwd?: unknown;
+}, locateRoot: (cwd: string) => Promise<string | null>): Promise<string | undefined>;
 export declare function runTaskPromptHook(): Promise<number>;

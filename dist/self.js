@@ -250,6 +250,7 @@ export async function installCurrentMorpheus(sourceRoot, opts = {}) {
     await requireSuccess(runner, "pnpm", ["install", "--frozen-lockfile"], source);
     await requireSuccess(runner, "pnpm", ["compile"], source);
     await requireSuccess(runner, "git", ["diff", "--exit-code", "--", "dist"], source);
+    await opts.prepareRuntime?.();
     const packDir = await mkdtemp(join(opts.tempRoot ?? tmpdir(), "morpheus-pack-"));
     try {
         const packed = await requireSuccess(runner, "npm", ["pack", "--pack-destination", packDir, "--json", "--cache", join(packDir, "npm-cache")], source);

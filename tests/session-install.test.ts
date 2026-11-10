@@ -140,7 +140,7 @@ describe("morpheus context install", () => {
     expect(codex.hooks["PostToolUse"]).toEqual([{ hooks: [{ type: "command", command: READ_HOOK_COMMAND }] }]);
     // An event Codex does not define could invalidate the file and the session hook with it.
     // PreToolUse is one Codex documents (the poll guard, matching its shell tool as `Bash`).
-    expect(Object.keys(codex.hooks).sort()).toEqual(["PostToolUse", "PreToolUse", "SessionStart", "UserPromptSubmit"]);
+    expect(Object.keys(codex.hooks).sort()).toEqual(["PostToolUse", "PreToolUse", "SessionStart", "SubagentStart", "UserPromptSubmit"]);
   });
 
   it("adds only the missing hooks to a project wired before they existed", async () => {
@@ -156,7 +156,7 @@ describe("morpheus context install", () => {
     expect(repair.outcome).toBe("updated");
     expect(repair.detail).toBe(
       "Added the read hook (PostToolUse) beside any hooks already there. " +
-        "Added the task context hook (UserPromptSubmit) beside any hooks already there. " +
+        "Added the task context hook (UserPromptSubmit, SubagentStart) beside any hooks already there. " +
         "Added the CI poll guard (PreToolUse) beside any hooks already there.",
     );
     const doc = (await json(CODEX_HOOKS)) as { hooks: { SessionStart: unknown[] } };
@@ -255,7 +255,7 @@ describe("morpheus context install", () => {
       outcome: "updated",
       detail:
         "Added the read hook (PostToolUse, PostToolUseFailure) beside any hooks already there. " +
-        "Added the task context hook (UserPromptSubmit) beside any hooks already there. " +
+        "Added the task context hook (UserPromptSubmit, SubagentStart) beside any hooks already there. " +
         "Added the CI poll guard (PreToolUse) beside any hooks already there.",
     });
     const doc = (await json(CLAUDE_SETTINGS)) as { hooks: { SessionStart: unknown[]; PreToolUse: unknown[] } };
@@ -286,7 +286,7 @@ describe("morpheus context install", () => {
     expect(at(repairs, POLL_GUARD_SCRIPT).outcome).toBe("blocked");
     expect(at(repairs, CLAUDE_SETTINGS).outcome).toBe("created");
     const doc = (await json(CLAUDE_SETTINGS)) as { hooks: Record<string, unknown> };
-    expect(Object.keys(doc.hooks)).toEqual(["SessionStart", "PostToolUse", "PostToolUseFailure", "UserPromptSubmit"]);
+    expect(Object.keys(doc.hooks)).toEqual(["SessionStart", "PostToolUse", "PostToolUseFailure", "UserPromptSubmit", "SubagentStart"]);
     expect(await read(POLL_GUARD_SCRIPT)).toBe("#!/bin/sh\necho mine\n");
   });
 

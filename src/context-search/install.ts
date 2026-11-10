@@ -13,11 +13,10 @@ export const CONTEXT_MCP_COMMAND = {
 };
 export const CONTEXT_GUIDANCE = `## Morpheus context tools
 
-Discover live MCP tools at startup/resume/compaction. Use \`get_context_overview\`,
-\`search_project_context\`, cited reads and coverage; keep the graph for code structure.
-If absent, check/repair with \`morpheus context install\`, reload, and use
-\`morpheus context search\` meanwhile. Verify checkout/task freshness.
-Phone remote sessions use their host; standalone cloud/mobile needs an authorized connector.
+Discover live tools at startup/resume/compaction. Use \`search_project_context\` for project
+records, \`read_project_record\` for citations, and the graph for code structure.
+Pass the task checkout and this rule to fresh subagents. If MCP is unavailable, use
+\`morpheus context search\` in that checkout. See the [setup guide](https://github.com/cpheinrich/morpheus/blob/main/docs/runbooks/context-search.md).
 `;
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -139,4 +138,4 @@ export async function installUserContextClients(binary: string, env = process.en
   }));
 }
 
-export const CONTEXT_STARTUP_GUIDANCE = "Morpheus context tools: discover the live MCP catalog and inspect morpheus --help for current capabilities. Use get_context_overview and search_project_context once the task is known; read material citations and check_context_coverage. If absent, reload after device registration or check portable setup with morpheus context install --check; use morpheus context search in the actual checkout meanwhile. A configured server is not proof of a successful call. Remote-control/SSH sessions use their executing host; standalone cloud/mobile chats need a supported authorized repository connector or remote MCP.";
+export const CONTEXT_STARTUP_GUIDANCE = "Morpheus context tools: discover the live MCP catalog and inspect morpheus --help for current capabilities. Use get_context_overview and search_project_context once the task is known; read material citations and check_context_coverage. If absent, reload after device registration or check portable setup with morpheus context install --check; use morpheus context search in the actual checkout meanwhile. For each fresh reviewer or subagent, include the task checkout and this MCP lookup in the handoff. A configured server is not proof of a successful call. Remote-control/SSH sessions use their executing host; standalone cloud/mobile chats need a supported authorized repository connector or remote MCP.";

@@ -233,15 +233,16 @@ describe("codexTrustReport and its findings", () => {
       ["SessionStart", "modified"],
       ["PostToolUse", "untrusted"],
       ["UserPromptSubmit", "untrusted"],
+      ["SubagentStart", "untrusted"],
       ["PreToolUse", "untrusted"],
     ]);
     const [finding, ...rest] = codexTrustFindings(report);
     expect(rest).toEqual([]);
     expect(finding!.message).toBe(
-      `Codex will not run 4 of 4 hooks in ${hooksPath()}. Open Codex in ${main} and run /hooks; trust: ` +
+      `Codex will not run 5 of 5 hooks in ${hooksPath()}. Open Codex in ${main} and run /hooks; trust: ` +
         "SessionStart session shim (.morpheus/session-start.sh) (changed since it was trusted); " +
         "PostToolUse read hook (context record-read); UserPromptSubmit task context hook (context task-prompt); " +
-        "PreToolUse CI poll guard.",
+        "SubagentStart task context hook (context task-prompt); PreToolUse CI poll guard.",
     );
   });
 
@@ -303,6 +304,7 @@ describe("codexTrustReport and its findings", () => {
       ["SessionStart", "trusted"],
       ["PostToolUse", "trusted"],
       ["UserPromptSubmit", "trusted"],
+      ["SubagentStart", "trusted"],
       ["PreToolUse", "trusted"],
     ]);
     expect(codexTrustFindings(report)).toEqual([]);

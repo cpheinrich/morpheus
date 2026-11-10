@@ -2589,3 +2589,15 @@ all arms. The required core remains a declared set of source files. A search
 cache or query result cannot certify that a session read its core. Retain
 only bounded local timing and token traces, and review context reminders
 separately from changed requirements.
+
+
+## Tantivy is the only project-record search engine — 2026-11-09
+
+MO-26-11-09-22.31.46 supersedes the engine and startup assignment in
+[the context search trial](#compare-bounded-startup-and-tantivy-on-real-tasks--2026-11-07).
+The benchmark showed better recall and lower query time with Tantivy. Chris retired the
+comparison after reviewing live adoption. MCP and CLI use the same pinned Tantivy binding;
+a broken runtime reports an error instead of switching engines. Profiling and historical
+traces stay. Existing projects with valid compact startup records keep compact startup,
+and other projects keep full required reads. The installer uses the existing Tantivy
+Python binding with its published wheel hashes; no additional search package is needed.

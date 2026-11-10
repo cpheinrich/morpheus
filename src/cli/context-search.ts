@@ -4,8 +4,6 @@ import { CONTEXT_SEARCH_HEADER } from "../context-search/output.js";
 import { contextCoverage } from "../context-search/sources.js";
 import { checkoutIdentity } from "../session/start.js";
 
-import { setSessionEngine, validSearchSession } from "../context-search/local-state.js";
-
 export async function runTaskRead(cwd: string, args: string[], session = providerSessionId()): Promise<number> {
   const [path, start = "1"] = args;
   const from = Number(start);
@@ -40,7 +38,6 @@ export async function runContextSearch(cwd: string, query: string, options: Sear
   const { root } = await checkoutIdentity(cwd);
   const { retrieveContext } = await import("../context-search/retrieve.js");
   const result = await retrieveContext(root, query, budget, { session: options.sessionId ?? providerSessionId(), transport: "cli", started });
-  if (result.fallback) console.error("Tantivy was unavailable for this query. Using bounded ripgrep.");
   const { output, excerpts: _excerpts, ...data } = result.data;
   if (options.json) console.log(JSON.stringify({ kind: "morpheus-context-search", engine: result.engine, output, ...data, totalQueryMs: result.totalQueryMs }));
   else if (output) console.log(`${CONTEXT_SEARCH_HEADER}\n${output}`);
@@ -59,19 +56,5 @@ export async function runContextCoverage(cwd: string, json: boolean): Promise<nu
     for (const path of coverage.uncovered) console.log(`Uncovered: ${path}`);
     for (const pattern of coverage.emptyPatterns) console.log(`No indexed files match: ${pattern}`);
   }
-  return 0;
-}
-
-export async function runContextEngine(cwd: string, args: string[], session = providerSessionId()): Promise<number> {
-  const [engine] = args;
-  if (args.length !== 1 || (engine !== "tantivy" && engine !== "ripgrep" && engine !== "auto")) {
-    throw new Error("Use morpheus context engine tantivy|ripgrep|auto.");
-  }
-  if (!validSearchSession(session)) throw new Error("Pass the provider session ID printed by startup with --session-id.");
-  const { root } = await checkoutIdentity(cwd);
-  await setSessionEngine(root, session, engine);
-  console.log(engine === "auto"
-    ? "Restored automatic context engine selection for this session and checkout."
-    : `Pinned ${engine} for context searches in this session and checkout.`);
   return 0;
 }
