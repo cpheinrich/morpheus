@@ -6,7 +6,7 @@ Read first; `CLAUDE.md` symlinks here. Open runbooks only for their **Read when*
 
 Morpheus scaffolds repositories and maintains their shared packages. Read the specification,
 [`architecture.md`](./architecture.md), before structural changes. This `kind: internal` repo
-has only `hq/product/` under `hq/`.
+has only `product/`, `team/` and `onboarding.md` under `hq/`.
 
 ## Layout
 
@@ -24,7 +24,7 @@ has only `hq/product/` under `hq/`.
 | `.github/agent-review-prompt.md` | The rung-2 reviewer persona — versioned, so it is reviewable |
 | `.claude/skills/` | Canonical Claude procedures, classified in `src/project-skills.ts` |
 | `.agents/skills/` | Canonical Codex/Grok procedures, classified in `src/project-skills.ts` |
-| `local/handoffs/` | Handoff docs, both directions. Gitignored — never committed |
+| `local/handoffs/` | Handoff docs, both directions. Gitignored, never committed |
 | `qa/acceptance/` | Acceptance criteria per item, named by `RoadmapItem.acceptance` |
 | `tests/` | Vitest, mirroring `src/` |
 | `.agent/worklog/` | What was attempted and learned per task, including dead ends |
@@ -33,6 +33,7 @@ has only `hq/product/` under `hq/`.
 | `hq/team/<handle>.md` | Live inboxes — one per person by GitHub handle |
 | `hq/team/members.md` | The roster — handles, names, and how to work with each person |
 | `hq/team/meeting-notes/` | Distilled meeting summaries, never transcripts |
+| `plugins/factory/` | Optional Factory delegation plugin, never scaffolded |
 
 ### Runbooks — read when
 
@@ -298,5 +299,4 @@ Match the surrounding code. This codebase favours:
 ## Things that have bitten us
 
 - `isoDate` accepts date strings, legacy YAML Date objects and full ISO timestamps, keeping the day.
-- Quote frontmatter titles containing colons; `pm new` does this automatically.
 - Regenerate marked `hq/product/*/README.md` sections from item files; never edit them by hand.
