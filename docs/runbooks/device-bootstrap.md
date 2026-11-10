@@ -57,8 +57,9 @@ with venv support and access to PyPI are needed for the first install. If that f
 the old CLI remains in place. For a manual repair use `morpheus context runtime install`.
 
 With auto-update enabled, the managed hooks register Morpheus Context MCP in the
-local user's Codex, Claude Code and Cursor settings after updating or confirming
-the CLI is current. This applies to every Morpheus checkout the client launches,
+local user's Codex and Cursor settings after updating or confirming
+the CLI is current. Claude Code takes it from each project's `.mcp.json` instead,
+so the hooks remove the user-level Claude entry Morpheus registered earlier. This applies to every Morpheus checkout the client launches,
 including linked worktrees and clones missing portable project configuration.
 Existing conflicting, disabled, unreadable or symlinked entries are preserved
 and reported. The server requires a Morpheus manifest in the active checkout.

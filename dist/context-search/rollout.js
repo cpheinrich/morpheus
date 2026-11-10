@@ -110,7 +110,7 @@ async function expireTrace(directory, now) {
 }
 function traceUsage(event) {
     return {
-        transport: event.transport === "cli" || event.transport === "mcp" ? event.transport : undefined,
+        transport: event.transport === "cli" || event.transport === "mcp" || event.transport === "hook" ? event.transport : undefined,
         operation: ["search", "read", "coverage", "overview", "related"].includes(event.operation) ? event.operation : undefined,
         outcome: ["ok", "empty", "error"].includes(event.outcome) ? event.outcome : undefined,
     };

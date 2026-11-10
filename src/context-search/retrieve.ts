@@ -1,12 +1,12 @@
 import { searchContext } from "./engine.js";
 import { withContextSearchCache } from "./local-state.js";
-import { contextArm, getSearchConfig, traceContext, type ContextTransport } from "./rollout.js";
+import { contextArm, getSearchConfig, traceContext, type TraceTransport } from "./rollout.js";
 import { MCP_EXCERPT_BYTES, MCP_EXCERPT_LINES } from "./output.js";
 import { contextKind, discoverSources, readContextSources, type ContextKind } from "./sources.js";
 
 interface RetrievalOptions {
   session?: string;
-  transport: ContextTransport;
+  transport: TraceTransport;
   kinds?: readonly ContextKind[];
   started?: number;
   mcpStartedAt?: number;

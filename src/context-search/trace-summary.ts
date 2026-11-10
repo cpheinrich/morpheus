@@ -19,7 +19,7 @@ const WORKTREE_TRACES = "local/context-search/traces";
 type Arm = typeof ARMS[number];
 type Engine = typeof ENGINES[number];
 type Operation = typeof OPERATIONS[number];
-type Transport = "cli" | "mcp" | "unknown";
+type Transport = "cli" | "mcp" | "hook" | "unknown";
 export type Trace = {
   at: number;
   type: typeof TYPES[number];
@@ -79,7 +79,7 @@ function identifier(value: unknown, pattern: RegExp): string | null {
 }
 
 function traceTransport(value: unknown, type: Trace["type"]): Transport {
-  return member(["cli", "mcp"], value) ?? (type === "query" && value === undefined ? "cli" : "unknown");
+  return member(["cli", "mcp", "hook"], value) ?? (type === "query" && value === undefined ? "cli" : "unknown");
 }
 
 function traceRow(line: string): Trace | undefined {

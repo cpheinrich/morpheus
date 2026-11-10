@@ -2,7 +2,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { minimatch } from "minimatch";
 import { sessionGit } from "../session/start.js";
-const defaults = [
+export const CONTEXT_SOURCE_DEFAULTS = [
     "AGENTS.md", "architecture.md", ".agent/context-core.md", ".agent/decisions.md", ".agent/learned.md",
     ".agent/{decisions,learned,worklog}/**/*.md", "hq/product/**/*.md", "docs/**/*.md",
     "hq/team/meeting-notes/**/*.md",
@@ -28,7 +28,7 @@ export function contextKind(path) {
 }
 export function classifySources(paths, rules) {
     const coverage = { included: [], excluded: [], uncovered: [], emptyPatterns: [] };
-    const include = [...defaults, ...rules.include];
+    const include = [...CONTEXT_SOURCE_DEFAULTS, ...rules.include];
     const markdown = [...new Set(paths.filter(safePath))].sort();
     for (const path of markdown) {
         if (matches(path, ignored) || matches(path, rules.exclude))

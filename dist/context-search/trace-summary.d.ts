@@ -6,7 +6,7 @@ declare const OUTCOMES: readonly ["ok", "empty", "error"];
 type Arm = typeof ARMS[number];
 type Engine = typeof ENGINES[number];
 type Operation = typeof OPERATIONS[number];
-type Transport = "cli" | "mcp" | "unknown";
+type Transport = "cli" | "mcp" | "hook" | "unknown";
 export type Trace = {
     at: number;
     type: typeof TYPES[number];

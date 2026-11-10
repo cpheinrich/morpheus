@@ -252,11 +252,13 @@ require("node:fs").writeFileSync(${JSON.stringify(callsPath)}, process.argv.slic
       status: async () => status("current", true),
     });
     expect((await reconcileAutoUpdateContext(configPath, env, home, binaryPath)).map(repair => repair.outcome))
-      .toEqual(["updated", "created", "created"]);
+      .toEqual(["updated", "present", "created"]);
     const configured = await readFile(config, "utf8");
     expect(configured.startsWith(original)).toBe(true);
     expect(configured).toContain("[mcp_servers.morpheus_context]");
-    for (const target of [".claude.json", ".cursor/mcp.json"]) {
+    // Claude takes the server from each project's .mcp.json; a user copy would duplicate it.
+    await expect(access(join(home, ".claude.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    for (const target of [".cursor/mcp.json"]) {
       const config = JSON.parse(await readFile(join(home, target), "utf8"));
       expect(config.mcpServers.morpheus_context.args[1]).toContain(`exec '${binaryPath}' context mcp`);
       await run(config.mcpServers.morpheus_context.command, config.mcpServers.morpheus_context.args, {
@@ -299,10 +301,32 @@ require("node:fs").writeFileSync(${JSON.stringify(callsPath)}, process.argv.slic
     expect(repairs[0]).toMatchObject({ target: join(profile, "config.toml"), outcome: "created" });
     expect(await readFile(join(profile, "config.toml"), "utf8")).toContain("morpheus_context");
     await expect(access(join(home, "custom", "profile", "config.toml"))).rejects.toMatchObject({ code: "ENOENT" });
-    const config = JSON.parse(await readFile(join(home, ".claude.json"), "utf8"));
+    const config = JSON.parse(await readFile(join(home, ".cursor", "mcp.json"), "utf8"));
     const { command, args } = config.mcpServers.morpheus_context;
     await expect(run(command, args, { env: { PATH: "/usr/bin:/bin" } })).rejects.toMatchObject({ code: 9 });
     expect(await readFile(callsPath, "utf8")).toBe("context mcp\n");
+  });
+
+  it("removes only a Claude user entry Morpheus registered", async () => {
+    const home = join(base, "user");
+    await mkdir(home, { recursive: true });
+    await enableAutoUpdate(root, {
+      configPath, registryPath, binaryPath,
+      status: async () => status("current", true),
+    });
+    const claude = join(home, ".claude.json");
+    const earlier = { command: "sh", args: ["-c", `PATH="$PATH"; export PATH; exec '${binaryPath}' context mcp`] };
+    for (const entry of [earlier, { command: "/opt/homebrew/bin/morpheus", args: ["context", "mcp"] }]) {
+      await writeFile(claude, JSON.stringify({ theme: "dark", mcpServers: { other: { command: "x" }, morpheus_context: entry } }));
+      const repair = (await reconcileAutoUpdateContext(configPath, {}, home, binaryPath))[1];
+      expect(repair).toMatchObject({ target: claude, outcome: "updated" });
+      expect(JSON.parse(await readFile(claude, "utf8"))).toEqual({ theme: "dark", mcpServers: { other: { command: "x" } } });
+    }
+    const own = JSON.stringify({ mcpServers: { morpheus_context: { command: "my-wrapper", args: ["context", "mcp"] } } });
+    await writeFile(claude, own);
+    expect((await reconcileAutoUpdateContext(configPath, {}, home, binaryPath))[1])
+      .toMatchObject({ outcome: "present", detail: expect.stringContaining("Kept your own") });
+    expect(await readFile(claude, "utf8")).toBe(own);
   });
 
   it("serialises concurrent stale updates", async () => {

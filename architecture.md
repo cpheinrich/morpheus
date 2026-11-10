@@ -930,7 +930,10 @@ task record. An exact-path `context task-read` can supply that excerpt. This che
 from read evidence for the startup core.
 
 Explicit `context install` merges portable project MCP entries for Codex, Claude Code and
-Cursor and installs advisory hooks. `init` includes these for new projects. The startup
+Cursor, pre-approves the server in Claude's project settings, leaves record globs to the
+context MCP in `.cbmignore`, and installs advisory hooks, including a Claude search hint that
+adds cited excerpts when Grep or a shell search targets records. `init` includes these for
+new projects. The startup
 brief and `SubagentStart` hook cue MCP lookup for project records; review packets and Factory
 handoffs carry the same instruction for fresh or isolated sessions. The CLI is the fallback
 when MCP cannot query the assigned checkout. Codebase-memory remains the tool for code
@@ -1522,7 +1525,8 @@ verified, and uses the same disposable-clone installation as `self update` when 
 are reported but swallowed so an already-completed pull or rebase is not presented as failed.
 
 With the same saved opt-in, the managed hook reconciles user-scoped Context MCP settings
-for Codex, Claude Code and Cursor when the CLI is current or successfully updated.
+for Codex and Cursor when the CLI is current or successfully updated; Claude Code uses the
+project's pre-approved entry, and the hook removes the user-level Claude copy Morpheus wrote.
 The server resolves the client working directory and requires a project manifest.
 This keeps registration off the project's Git tree and covers new clones and worktrees.
 A legacy updater executes the new compile command in a private disposable clone.
