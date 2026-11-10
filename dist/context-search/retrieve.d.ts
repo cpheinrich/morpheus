@@ -1,8 +1,8 @@
-import { type ContextTransport } from "./rollout.js";
+import { type TraceTransport } from "./rollout.js";
 import { type ContextKind } from "./sources.js";
 interface RetrievalOptions {
     session?: string;
-    transport: ContextTransport;
+    transport: TraceTransport;
     kinds?: readonly ContextKind[];
     started?: number;
     mcpStartedAt?: number;

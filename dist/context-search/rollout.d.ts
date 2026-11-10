@@ -1,4 +1,6 @@
 export type ContextTransport = "cli" | "mcp";
+/** Traces also record searches a Claude search hook ran on the agent's behalf. */
+export type TraceTransport = ContextTransport | "hook";
 export type ContextOperation = "search" | "read" | "coverage" | "overview" | "related";
 export type ContextOutcome = "ok" | "empty" | "error";
 export type SearchEngine = "tantivy" | "ripgrep";
@@ -32,7 +34,7 @@ export declare function contextTraceSession(rollout: string, session: string): s
 export declare function contextArm(root: string, sessionId?: string | undefined, config?: SearchConfig): Promise<ContextArm>;
 export interface ContextTrace {
     type: "assignment" | "query" | "tool" | "visible" | "session-start" | "prompt" | "warm";
-    transport?: ContextTransport;
+    transport?: TraceTransport;
     operation?: ContextOperation;
     outcome?: ContextOutcome;
     arm: Arm;

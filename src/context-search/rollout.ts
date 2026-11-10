@@ -10,6 +10,8 @@ const DAILY_TRACE_LIMIT = 1_048_576;
 const MAX_CORE_BYTES = 8_192;
 
 export type ContextTransport = "cli" | "mcp";
+/** Traces also record searches a Claude search hook ran on the agent's behalf. */
+export type TraceTransport = ContextTransport | "hook";
 export type ContextOperation = "search" | "read" | "coverage" | "overview" | "related";
 export type ContextOutcome = "ok" | "empty" | "error";
 
@@ -135,7 +137,7 @@ export async function contextArm(root: string, sessionId = providerSessionId(), 
 
 export interface ContextTrace {
   type: "assignment" | "query" | "tool" | "visible" | "session-start" | "prompt" | "warm";
-  transport?: ContextTransport;
+  transport?: TraceTransport;
   operation?: ContextOperation;
   outcome?: ContextOutcome;
   arm: Arm;
@@ -171,7 +173,7 @@ async function expireTrace(directory: string, now: Date): Promise<void> {
 
 function traceUsage(event: ContextTrace) {
   return {
-    transport: event.transport === "cli" || event.transport === "mcp" ? event.transport : undefined,
+    transport: event.transport === "cli" || event.transport === "mcp" || event.transport === "hook" ? event.transport : undefined,
     operation: (["search", "read", "coverage", "overview", "related"] as const).includes(event.operation!) ? event.operation : undefined,
     outcome: (["ok", "empty", "error"] as const).includes(event.outcome!) ? event.outcome : undefined,
   };

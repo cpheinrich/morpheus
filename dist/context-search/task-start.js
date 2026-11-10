@@ -13,6 +13,7 @@ const SEARCH = 'morpheus context search "<task terms>"';
 const READ = "morpheus context task-read <indexed-path>";
 const PROMPT = "UserPromptSubmit";
 const SUBAGENT = "SubagentStart";
+const PRE_TOOL = "PreToolUse";
 const MCP_SEARCH = "search_project_context";
 const MCP_READ = "read_project_record";
 async function preferredLookup(root) {
@@ -210,6 +211,13 @@ export async function runTaskPromptHook() {
         const raw = readFileSync(0, "utf8");
         const input = JSON.parse(raw);
         const event = input?.hook_event_name;
+        if (event === PRE_TOOL) {
+            // One entry point keeps the wired command stable; an older CLI ignores this event silently.
+            const hint = await (await import("./search-hook.js")).searchHint(input, projectRoot);
+            if (hint)
+                console.log(JSON.stringify({ systemMessage: hint.systemMessage, hookSpecificOutput: { hookEventName: event, additionalContext: hint.additionalContext } }));
+            return 0;
+        }
         const additionalContext = event === SUBAGENT
             ? await subagentContext(input, projectRoot)
             : await taskPrompt(raw, projectRoot);

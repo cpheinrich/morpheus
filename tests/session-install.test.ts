@@ -23,6 +23,12 @@ const claudeMcpReadHook = {
   hooks: [{ type: "command", command: READ_HOOK_COMMAND.replace("record-read >", "record-read --mcp >") }],
 };
 
+const claudeSearchHint = {
+  matcher: "Grep|Bash",
+  hooks: [{ type: "command", command: READ_HOOK_COMMAND.replace("record-read >/dev/null 2>&1", "task-prompt"), timeout: 15 }],
+};
+const pollGuardHook = { matcher: "Bash", hooks: [{ type: "command", command: POLL_GUARD_COMMAND, timeout: 10 }] };
+
 const HANDLE = "cpheinrich";
 
 describe("morpheus context install", () => {
@@ -67,10 +73,12 @@ describe("morpheus context install", () => {
       expect(doc.hooks.SessionStart).toEqual([
         { hooks: [{ type: "command", command: "sh .morpheus/session-start.sh" }] },
       ]);
-      expect(doc.hooks.PreToolUse).toEqual([
-        { matcher: "Bash", hooks: [{ type: "command", command: POLL_GUARD_COMMAND, timeout: 10 }] },
-      ]);
+      // Only Claude gets the search hint; a new Codex hook would need every user's trust.
+      expect(doc.hooks.PreToolUse).toEqual(rel === CLAUDE_SETTINGS ? [pollGuardHook, claudeSearchHint] : [pollGuardHook]);
     }
+    // Collaborators get the project's context server without an approval prompt.
+    expect((await json(CLAUDE_SETTINGS))["enabledMcpjsonServers"]).toEqual(["morpheus_context"]);
+    expect((await json(CODEX_HOOKS))["enabledMcpjsonServers"]).toBeUndefined();
 
     // The declaration is only worth writing if the policy then reads it — the
     // whole point is that the inbox joins the required set.
@@ -256,15 +264,32 @@ describe("morpheus context install", () => {
       detail:
         "Added the read hook (PostToolUse, PostToolUseFailure) beside any hooks already there. " +
         "Added the task context hook (UserPromptSubmit, SubagentStart) beside any hooks already there. " +
-        "Added the CI poll guard (PreToolUse) beside any hooks already there.",
+        "Added the CI poll guard (PreToolUse) beside any hooks already there. " +
+        "Added the context search hint (PreToolUse) beside any hooks already there. " +
+        "Approved the project's Morpheus Context MCP server for every collaborator.",
     });
     const doc = (await json(CLAUDE_SETTINGS)) as { hooks: { SessionStart: unknown[]; PreToolUse: unknown[] } };
     expect(doc.hooks.SessionStart).toHaveLength(1);
-    expect(doc.hooks.PreToolUse).toEqual([
-      theirs,
-      { matcher: "Bash", hooks: [{ type: "command", command: POLL_GUARD_COMMAND, timeout: 10 }] },
-    ]);
+    expect(doc.hooks.PreToolUse).toEqual([theirs, pollGuardHook, claudeSearchHint]);
     expect(at(await run(), CLAUDE_SETTINGS).outcome).toBe("present");
+  });
+
+  it("approves the context server beside other servers, and respects an explicit disable", async () => {
+    await mkdir(join(dir, ".claude"), { recursive: true });
+    await writeFile(join(dir, CLAUDE_SETTINGS), JSON.stringify({ enabledMcpjsonServers: ["theirs"] }));
+    await run();
+    expect((await json(CLAUDE_SETTINGS))["enabledMcpjsonServers"]).toEqual(["theirs", "morpheus_context"]);
+
+    const declined = JSON.stringify({ disabledMcpjsonServers: ["morpheus_context"] });
+    await writeFile(join(dir, CLAUDE_SETTINGS), declined);
+    await run();
+    expect((await json(CLAUDE_SETTINGS))["enabledMcpjsonServers"]).toBeUndefined();
+
+    const malformed = JSON.stringify({ enabledMcpjsonServers: "morpheus_context" });
+    await writeFile(join(dir, CLAUDE_SETTINGS), malformed);
+    const repair = at(await run(), CLAUDE_SETTINGS);
+    expect(repair).toMatchObject({ outcome: "blocked", detail: expect.stringContaining('"enabledMcpjsonServers" is not an array') });
+    expect(await read(CLAUDE_SETTINGS)).toBe(malformed);
   });
 
   it("refuses when hooks.PreToolUse is not an array", async () => {
@@ -286,7 +311,8 @@ describe("morpheus context install", () => {
     expect(at(repairs, POLL_GUARD_SCRIPT).outcome).toBe("blocked");
     expect(at(repairs, CLAUDE_SETTINGS).outcome).toBe("created");
     const doc = (await json(CLAUDE_SETTINGS)) as { hooks: Record<string, unknown> };
-    expect(Object.keys(doc.hooks)).toEqual(["SessionStart", "PostToolUse", "PostToolUseFailure", "UserPromptSubmit", "SubagentStart"]);
+    expect(Object.keys(doc.hooks)).toEqual(["SessionStart", "PostToolUse", "PostToolUseFailure", "UserPromptSubmit", "SubagentStart", "PreToolUse"]);
+    expect(doc.hooks["PreToolUse"]).toEqual([claudeSearchHint]);
     expect(await read(POLL_GUARD_SCRIPT)).toBe("#!/bin/sh\necho mine\n");
   });
 

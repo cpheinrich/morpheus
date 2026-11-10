@@ -1,5 +1,19 @@
 # Decisions
 
+## Context MCP is project-scoped, pre-approved and hinted at search time in Claude — 2026-11-09
+
+MO-26-11-09-23.33.40. Chris: the context MCP is home-grown and trusted, must never need a
+person's approval, and is only for Morpheus projects. Each project's committed
+`.claude/settings.json` lists it in `enabledMcpjsonServers`; Claude honours that after its own
+folder-trust step, verified interactively. Auto-update no longer registers a user-level Claude
+entry and removes the one it wrote, because two scopes make Claude warn and a user entry
+reaches non-Morpheus sessions; Codex and Cursor user entries stay, since Codex project MCP
+needs project trust. A Claude `PreToolUse` search hint on Grep/Bash mirrors codebase-memory's
+augmenter for records only, never blocks, and is tagged and announced so people can see it ran;
+Codex gets no new hook, because it already uses the MCP and each new Codex hook needs every
+user's `/hooks` trust. A generated `.cbmignore` block hands record globs to the context MCP and
+code to codebase-memory. No dependency: the existing minimatch, Tantivy and installers.
+
 ## Paperclip execution is removed; offline history stays immutable — 2026-11-07
 
 MO-26-11-07-09.06.49. Chris authorized removal of active Paperclip integrations from Morpheus,

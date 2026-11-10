@@ -24,7 +24,7 @@ function identifier(value, pattern) {
     return typeof value === "string" && pattern.test(value) ? value : null;
 }
 function traceTransport(value, type) {
-    return member(["cli", "mcp"], value) ?? (type === "query" && value === undefined ? "cli" : "unknown");
+    return member(["cli", "mcp", "hook"], value) ?? (type === "query" && value === undefined ? "cli" : "unknown");
 }
 function traceRow(line) {
     let value;
