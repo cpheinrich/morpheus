@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "morpheus_context": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "PATH=\"${PATH:-/usr/bin:/bin}:${HOME:-/nonexistent}/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; export PATH; exec morpheus context mcp"
+      ]
+    }
+  }
+}

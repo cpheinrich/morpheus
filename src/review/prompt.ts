@@ -29,6 +29,8 @@ export interface ReviewContext {
   acceptance?: string;
   /** Path that `acceptance` pointed at but which does not exist. */
   missingAcceptance?: string;
+  /** Repository-relative records the reviewer should read first: the item, then its acceptance. */
+  records?: string[];
 }
 
 function section(heading: string, body: string): string {

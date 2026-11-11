@@ -12,6 +12,8 @@ export interface AutoUpdateConfigState {
 }
 export declare function autoUpdateConfigPath(): string;
 export declare function readAutoUpdateConfig(path?: string): Promise<AutoUpdateConfigState>;
+/** Device consent also authorizes local registration for the reviewed Context MCP. */
+export declare function reconcileAutoUpdateContext(configPath?: string, env?: NodeJS.ProcessEnv, home?: string, invoked?: string | undefined): Promise<import("./session/install.js").Repair[]>;
 export declare function findMorpheusBinary(pathValue?: string): Promise<string | null>;
 export declare function autoUpdateHookBlock(binaryPath: string): string;
 export type HookOutcome = "created" | "updated" | "present" | "removed" | "absent" | "blocked";

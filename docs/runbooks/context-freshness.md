@@ -211,6 +211,51 @@ whether it was never trusted or changed since, and the exact place to run `/hook
 `~/.codex/config.toml` (or `$CODEX_HOME`) and never writes it: trusting a hook is the user's
 security decision, and the desktop app rewrites that file itself.
 
+### Approve changes for one project
+
+When you want to approve all pending enabled hooks for the current Morpheus project, run
+`morpheus codex hooks approve` from that project's checkout. You can explicitly ask an agent
+in the project to run it for you. Codex can execute the approved commands on subsequent
+events. Approval applies to the exact definitions Codex reported, and a later change needs a
+new invocation. The command uses the Mac desktop backend when installed at the standard
+location, or `codex` on PATH otherwise. It requires a version that supports the hook listing
+API.
+
+The command approves hooks from the root `.codex/hooks.json` and `.codex/config.toml` that
+Codex loads for the project. The committed `morpheus.json` must identify the project by
+`name`, `kind` and `prefix`. A `morpheusVersion` field is optional. The hook config
+must match the committed file. The command cross-checks each reported hash
+against the committed command hook. Review unsupported or unverifiable hooks in Codex.
+A linked worktree uses the main checkout. Codex must already
+trust that project to load its hooks. User, plugin, managed, disabled, and other projects'
+hooks keep their existing state. Installing a dependency does not register its own hook
+config. A Codex plugin can supply hooks separately. The command scopes approval by where the
+hook is defined, and does not inspect the scripts or dependencies a committed project hook
+invokes. The command runs once and creates no schedule or enrollment.
+If the open composer still shows a badge, check Settings → Hooks or open a new chat in the
+same project.
+
+Run one approval at a time and avoid editing Codex settings during the command. Morpheus
+locks its own approvals per Codex config directory and checks for external changes just before
+replacing the config. Other Codex writers do not share that lock. If Codex produces invalid TOML
+or changes anything besides the intended approvals, the command discards the staged edit.
+
+### Opt in to future approvals on a Mac
+
+Run `morpheus codex hooks enable` inside a Morpheus checkout to approve its current
+eligible hooks and keep approving future committed changes. Enrollment is local to this
+Mac and Codex config directory. The login job checks enrolled projects about once a minute
+while you are logged in, so a badge may briefly appear before the next check. Changes to
+the project’s root hook file qualify under the same checks as the one-time command. A new
+clone at the same path needs its own opt-in.
+
+Run `morpheus codex hooks status` to list enrollments and `morpheus codex hooks disable`
+inside a project to stop future automatic approvals for it. If the checkout was moved or
+deleted, pass the old path shown by `status` to `disable`. Previously saved approvals stay
+in Codex. macOS releases the scanner's lock if its process exits. The job logs approvals and refusals to `morpheus-hook-approval.log` in the Codex
+config directory. To refresh the badge in an open chat, check Settings → Hooks or open a
+new chat.
+
 ### How Codex hook trust works
 
 Read from Codex's source at `rust-v0.163.0`, `0.164.0-alpha.11.1` and `0.165.0` (identical in these

@@ -7,7 +7,7 @@ declare const FollowUp: z.ZodObject<{
     scopeReason: z.ZodOptional<z.ZodString>;
     humanAuthorization: z.ZodOptional<z.ZodObject<{
         approvedBy: z.ZodString;
-        approvedAt: z.ZodISODateTime;
+        approvedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
         reason: z.ZodString;
     }, z.core.$strict>>;
     handoff: z.ZodOptional<z.ZodObject<{
@@ -102,6 +102,7 @@ export declare const ReviewRecord: z.ZodObject<{
     }>;
     initialOutcome: z.ZodOptional<z.ZodLiteral<"incomplete">>;
     summary: z.ZodString;
+    contextRead: z.ZodOptional<z.ZodArray<z.ZodString>>;
     trunkIntegrations: z.ZodOptional<z.ZodArray<z.ZodObject<{
         commit: z.ZodString;
         reason: z.ZodString;
@@ -146,7 +147,7 @@ export declare const ReviewRecord: z.ZodObject<{
         scopeReason: z.ZodOptional<z.ZodString>;
         humanAuthorization: z.ZodOptional<z.ZodObject<{
             approvedBy: z.ZodString;
-            approvedAt: z.ZodISODateTime;
+            approvedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
             reason: z.ZodString;
         }, z.core.$strict>>;
         handoff: z.ZodOptional<z.ZodObject<{
@@ -190,7 +191,7 @@ export declare const ReviewRecord: z.ZodObject<{
         scopeReason: z.ZodOptional<z.ZodString>;
         humanAuthorization: z.ZodOptional<z.ZodObject<{
             approvedBy: z.ZodString;
-            approvedAt: z.ZodISODateTime;
+            approvedAt: z.ZodUnion<readonly [z.ZodISODateTime, z.ZodISODateTime]>;
             reason: z.ZodString;
         }, z.core.$strict>>;
         handoff: z.ZodOptional<z.ZodObject<{
@@ -305,6 +306,7 @@ export declare function parseReviewRecord(markdown: string): LocalReviewRecord;
  */
 export declare function validateReviewRecord(record: LocalReviewRecord, opts?: {
     trivialChange?: () => TrivialDiff;
+    hasNewDeferral?: (from: string) => boolean;
 }): string[];
 export declare function changedPaths(root: string, older: string, newer: string): string[];
 /**
@@ -334,6 +336,8 @@ export declare function committedConfig(root: string, commit: string): unknown;
  * and an unreported required check blocks merge where a passing or skipped one would not.
  */
 export declare const MISSING_LABEL = "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is under way, keep the PR a draft (gh pr ready --undo): conventions then wait, unreported, until it is labelled or marked ready.";
+/** The warning when a record names no project records the reviewer read while orienting. */
+export declare const MISSING_CONTEXT_READ = "review record has no contextRead: the reviewer should orient with the Morpheus Context MCP and report the records it read";
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export declare function checkLocalReview(opts: {
     root: string;

@@ -22,9 +22,6 @@ export async function contextMcpScope(cwd, session) {
     }
     const root = binding?.root ?? checkout.root;
     const config = await getSearchConfig(root);
-    if (config.rollout && !validSearchSession(session)) {
-        throw new Error("Morpheus Context needs the host's session identity for this rollout. Reopen the project session or use the startup brief's CLI fallback.");
-    }
     const task = binding?.task ?? roadmapIdFromBranch(await sessionGit(root, ["rev-parse", "--abbrev-ref", "HEAD"]).catch(() => ""));
     return { root, session, task: task ?? undefined, config };
 }

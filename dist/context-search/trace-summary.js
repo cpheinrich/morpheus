@@ -5,10 +5,11 @@ import { join } from "node:path";
 import { percentile } from "../profile/derive.js";
 import { evidenceCheckouts } from "../session/certify.js";
 import { checkoutIdentity } from "../session/start.js";
-const ARMS = ["tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"];
+import { ContextPipeline } from "./trace-pipeline.js";
+const ARMS = ["tantivy-compact", "tantivy-full", "tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"];
 const ENGINES = ["tantivy", "ripgrep"];
 const OPERATIONS = ["search", "read", "coverage", "overview", "related"];
-const TYPES = ["assignment", "query", "tool", "visible"];
+const TYPES = ["assignment", "query", "tool", "visible", "session-start", "prompt", "warm"];
 const OUTCOMES = ["ok", "empty", "error"];
 const MAX_TRACE_BYTES = 1_048_576;
 const TRACE_FILENAME = /^\d{4}-\d{2}-\d{2}\.jsonl$/;
@@ -23,7 +24,7 @@ function identifier(value, pattern) {
     return typeof value === "string" && pattern.test(value) ? value : null;
 }
 function traceTransport(value, type) {
-    return member(["cli", "mcp"], value) ?? (type === "query" && value === undefined ? "cli" : "unknown");
+    return member(["cli", "mcp", "hook"], value) ?? (type === "query" && value === undefined ? "cli" : "unknown");
 }
 function traceRow(line) {
     let value;
@@ -53,6 +54,9 @@ function traceRow(line) {
         transport: traceTransport(value.transport, type),
         operation: operation ?? (type === "query" ? "search" : undefined),
         durationMs: nonnegative(value.queryMs),
+        queryStartedAt: nonnegative(value.queryStartedAt),
+        mcpStartedAt: nonnegative(value.mcpStartedAt),
+        waitMs: nonnegative(value.waitMs),
         engineQueryMs: nonnegative(value.engineQueryMs),
         buildMs: nonnegative(value.buildMs),
         cacheHit: typeof value.cacheHit === "boolean" ? value.cacheHit : undefined,
@@ -225,6 +229,7 @@ export async function summarizeContextTraces(root, options = {}) {
     const seen = new Set();
     const cohorts = new Map();
     const activity = new Map();
+    const pipeline = new ContextPipeline();
     let skippedFiles = 0;
     let invalidRows = 0;
     let duplicateRows = 0;
@@ -251,9 +256,10 @@ export async function summarizeContextTraces(root, options = {}) {
             }
             seen.add(digest);
             const key = `${trace.rollout ?? ""}/${trace.arm}`;
+            pipeline.observe(trace);
             if (trace.type === "assignment")
                 observeCohort(cohorts, key, trace);
-            else
+            if (trace.type === "query" || trace.type === "tool" || trace.type === "visible")
                 observeActivity(activity, key, trace);
         }
     }
@@ -265,6 +271,7 @@ export async function summarizeContextTraces(root, options = {}) {
         duplicateRows,
         assignments: [...cohorts.entries()].sort().map(([, { sessions, ...cohort }]) => ({ ...cohort, sessions: sessions.size })),
         byArmTransport: [...activity.entries()].sort().map(([, row]) => formatActivity(row)),
+        pipeline: await pipeline.report(),
     };
 }
 //# sourceMappingURL=trace-summary.js.map

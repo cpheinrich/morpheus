@@ -294,9 +294,10 @@ export async function verifyRepair(config, store, sourceDir, result) {
     const directory = await mkdtemp(join(tmpdir(), "morpheus-cd-review-"));
     try {
         git(sourceDir, ["worktree", "add", "--detach", directory, pull.head.sha]);
-        // A review-floor waiver reports a validated record; every other finding, an opt-out included, refuses.
+        // A review-floor waiver and a warning both report a validated record; every other finding, an
+        // opt-out included, refuses.
         const findings = checkLocalReview({ root: directory, body: pull.body, labels: pull.labels.map(label => label.name), head: pull.head.sha, base: pull.base.sha })
-            .filter(finding => !(finding.level === "waived" && finding.rule === REVIEW_FLOOR_RULE));
+            .filter(finding => finding.level !== "warning" && !(finding.level === "waived" && finding.rule === REVIEW_FLOOR_RULE));
         invariant(findings.length === 0, `Repair lacks valid independent review: ${findings.map(finding => finding.message).join("; ")}`);
     }
     finally {

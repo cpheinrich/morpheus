@@ -13,6 +13,8 @@ import { discoverSources, readContextSources } from "./sources.js";
 const SEARCH = 'morpheus context search "<task terms>"';
 const READ = "morpheus context task-read <indexed-path>";
 const PROMPT = "UserPromptSubmit";
+const SUBAGENT = "SubagentStart";
+const PRE_TOOL = "PreToolUse";
 const MCP_SEARCH = "search_project_context";
 const MCP_READ = "read_project_record";
 
@@ -39,7 +41,7 @@ async function isBounded(root: string, session: string): Promise<boolean> {
 
 /** Search evidence follows a session across the repository just like core reads. */
 async function progress(root: string, session: string): Promise<{ prompted: boolean; armed: boolean; seen: boolean }> {
-  if (await stateExists(root, session, "seen")) return { prompted: true, armed: true, seen: true };
+  if (await stateExists(root, session, "seen")) return { prompted: await stateExists(root, session, "prompt"), armed: true, seen: true };
   const checkouts = await evidenceCheckouts(root);
   const states = await Promise.all(checkouts.map(async checkout => ({
     prompted: await stateExists(checkout, session, "prompt"),
@@ -169,16 +171,21 @@ function promptPayload(raw: string): { cwd: string; session_id: string } | undef
 }
 
 export async function taskPrompt(raw: string, locateRoot: (cwd: string) => Promise<string | null>): Promise<string | undefined> {
+  const submitted = new Date();
   const input = promptPayload(raw);
   if (!input) return;
   const session = input.session_id;
   const cwdRoot = await locateRoot(input.cwd);
   if (!cwdRoot) return;
-  if (!await isBounded(cwdRoot, session)) return;
-  const root = await taskRoot(cwdRoot, session);
+  const arm = await contextArm(cwdRoot, session);
+  if (!arm.session) return;
+  const root = arm.startup === "bounded" ? await taskRoot(cwdRoot, session) : cwdRoot;
   if (await stateExists(root, session, "prompt")) return;
-  if ((await progress(root, session)).prompted) return;
+  const state = await progress(root, session);
+  if (state.prompted) return;
   if (!await markOnce(root, session, "prompt")) return;
+  await traceContext(root, { type: "prompt", arm: arm.arm, engine: arm.engine, session: arm.session, rollout: arm.id }, submitted);
+  if (arm.startup !== "bounded" || state.seen) return;
   if (!await hasTaskSource(root, session)) {
     return "Task context search found no readable project records beyond the startup core. Continue with the core. Use morpheus context coverage to check the worktree and project search manifest.";
   }
@@ -189,13 +196,30 @@ export async function taskPrompt(raw: string, locateRoot: (cwd: string) => Promi
   return `For the first project task, once its scope is clear and before implementation, load task context in ${root} with \`${prefix}${SEARCH}\` (1,000 tokens by default). For a known governing record use \`${prefix}${READ}\`. Read the returned excerpts and open any governing sources they cite. Refine an empty search. Conversational replies can proceed without a lookup.`;
 }
 
+/** Child sessions may not see the parent's startup or first-prompt hook. */
+export async function subagentContext(input: { cwd?: unknown }, locateRoot: (cwd: string) => Promise<string | null>): Promise<string | undefined> {
+  if (typeof input.cwd !== "string" || !isAbsolute(input.cwd) || !await locateRoot(input.cwd)) return;
+  return "For project records in your assigned worktree (decisions, lessons, roadmap, worklogs, runbooks, meeting notes), use the live Morpheus Context MCP search_project_context before shell search. Open relevant citations with read_project_record. If MCP is unavailable or cannot query the assigned checkout, use morpheus context search from that checkout and report the fallback. Use codebase-memory for code structure and exact reads for known source files.";
+}
+
 export async function runTaskPromptHook(): Promise<number> {
   const { projectRoot } = await import("../session/read-hook.js");
   try {
-    const additionalContext = await taskPrompt(readFileSync(0, "utf8"), projectRoot);
-    if (additionalContext) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: PROMPT, additionalContext } }));
+    const raw = readFileSync(0, "utf8");
+    const input = JSON.parse(raw);
+    const event = input?.hook_event_name;
+    if (event === PRE_TOOL) {
+      // One entry point keeps the wired command stable; an older CLI ignores this event silently.
+      const hint = await (await import("./search-hook.js")).searchHint(input, projectRoot);
+      if (hint) console.log(JSON.stringify({ systemMessage: hint.systemMessage, hookSpecificOutput: { hookEventName: event, additionalContext: hint.additionalContext } }));
+      return 0;
+    }
+    const additionalContext = event === SUBAGENT
+      ? await subagentContext(input, projectRoot)
+      : await taskPrompt(raw, projectRoot);
+    if (additionalContext) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext } }));
   } catch {
-    // An unsupported prompt payload must not interrupt the conversation.
+    // An unsupported hook payload must not interrupt the conversation.
   }
   return 0;
 }

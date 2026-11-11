@@ -4,9 +4,10 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checkLocalReview, committedConfig, git, MISSING_LABEL, parseReviewRecord, REVIEW_FLOOR_RULE, reviewRequired, trivialDiff, type LocalReviewRecord } from "../src/review/local.js";
+import { checkLocalReview, committedConfig, git, MISSING_CONTEXT_READ, MISSING_LABEL, parseReviewRecord, REVIEW_FLOOR_RULE, reviewRequired, trivialDiff, type LocalReviewRecord } from "../src/review/local.js";
 import { checkPr, formatFindings } from "../src/check/pr.js";
 import { prepareReview, validateReview } from "../src/cli/review.js";
+import { AUTHOR_CONTEXT_SLOT } from "../src/review/packet.js";
 import { authorRecordProblem } from "../src/gh-manager/verify.js";
 
 let root: string;
@@ -28,7 +29,7 @@ function commit() {
   return git(root, ["rev-parse", "HEAD"]);
 }
 function record(): LocalReviewRecord {
-  return { version: 1, base, reviewed, covered: reviewed, authorSession: "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d", reviewerSession: "a1b2c3d4e5f6a7b8c", risk: "normal", elapsedMinutes: 3, outcome: "complete", summary: "Independent review found no actionable defects.", findings: [] };
+  return { version: 1, base, reviewed, covered: reviewed, authorSession: "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d", reviewerSession: "a1b2c3d4e5f6a7b8c", risk: "normal", elapsedMinutes: 3, outcome: "complete", summary: "Independent review found no actionable defects.", contextRead: [".agent/decisions.md"], findings: [] };
 }
 function save(r: LocalReviewRecord) {
   writeFileSync(join(root, path), `${r.summary}\n\n\`\`\`morpheus-review\n${JSON.stringify(r)}\n\`\`\`\n`);
@@ -151,11 +152,27 @@ describe("measured review timing", () => {
       expect(output).toContain("Do not estimate\nelapsed time from workload");
       expect(output).toContain("Zero is a placeholder, not a measurement");
       expect(output).toContain("Find concrete defects and unneeded complexity");
+      expect(output).toContain("Orient before you read the diff, using the live Morpheus Context MCP");
+      expect(output).toContain("Context read, the\nrepository-relative record paths you read while orienting");
+      expect(template.contextRead).toEqual(["Replace with the record paths the reviewer reported reading"]);
+      expect(output).toContain("Suggested context (read with read_project_record before the diff):");
+      expect(output).toContain(AUTHOR_CONTEXT_SLOT);
+      expect(output).toContain("Read the PR description too, and its Test plan above all");
+      expect(output).toContain("never the limit of your review");
+      expect(output).toContain("PR description and test plan: run `gh pr view --json title,body` from the repository");
       expect(output).toContain("mechanism that the requirements do not need is substantive; a local simplification is minor");
       expect(output).not.toContain("risk class; elapsed minutes;");
     } finally { log.mockRestore(); }
   });
 
+  it("warns, without refusing, when a record names no records the reviewer read", () => {
+    const { contextRead: _read, ...bare } = record();
+    expect(check(save(bare))).toEqual([{ level: "warning", rule: "review-context", message: MISSING_CONTEXT_READ }]);
+    expect(check(save(record()))).toEqual([]);
+    // An empty list (no record governed the change) is the same report as an absent one.
+    expect(check(save({ ...record(), contextRead: [] }))).toEqual([{ level: "warning", rule: "review-context", message: MISSING_CONTEXT_READ }]);
+    expect(check(save({ ...record(), contextRead: ["/etc/passwd"] }))[0]?.level).toBe("error");
+  });
   it("accepts the measured duration from issue281 instead of the reviewer's 40-minute estimate", () => {
     expect(check(save(measured()))).toEqual([]);
     expect(check(save({ ...measured(), elapsedMinutes: 40 }))[0]?.message).toContain("elapsedMinutes must equal timing.durationMs / 60000");
@@ -536,6 +553,60 @@ describe("tracked deferrals", () => {
     expect(check(save({ ...record(), findings: [{ ...incidental, disposition: "open", roadmap: "MO-26-09-22-08.00.00" }] }))).toEqual([]);
     expect(check(save({ ...record(), findings: [{ ...incidental, roadmap: "not-an-id" }] }))).toHaveLength(1);
   });
+  it("allows a new deferred ticket after a cleared follow-up without admitting other edits", () => {
+    const ticket = "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md";
+    writeFileSync(join(root, "code.ts"), "reviewed late correction");
+    const followUp = commit();
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, ticket), ticketBody());
+    const r: LocalReviewRecord = {
+      ...record(),
+      covered: commit(),
+      findings: [{ ...incidental, roadmap: "MO-26-09-22-08.00.00" }],
+      followUps: [{
+        reviewerSession: "a1b2c3d4e5f6a7b8c", commit: followUp, outcome: "cleared",
+        elapsedMinutes: 2, summary: "Cleared the corrected source.", scopeReason: "Reviewed a late source correction.",
+      }],
+    };
+    expect(check(save(r))).toEqual([]);
+    writeFileSync(join(root, "code.ts"), "unreviewed source");
+    expect(check(save({ ...r, covered: commit() }))[0]?.message).toContain("exceed the reviewer's recorded conditions");
+  });
+
+  it("does not allow editing a deferred ticket already present at follow-up clearance", () => {
+    const ticket = "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md";
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, ticket), ticketBody());
+    const followUp = commit();
+    writeFileSync(join(root, ticket), `${ticketBody()}\nUnreviewed change to the existing item.`);
+    const r: LocalReviewRecord = {
+      ...record(),
+      covered: commit(),
+      findings: [{ ...incidental, roadmap: "MO-26-09-22-08.00.00" }],
+      followUps: [{
+        reviewerSession: "a1b2c3d4e5f6a7b8c", commit: followUp, outcome: "cleared",
+        elapsedMinutes: 2, summary: "Cleared the original ticket.", scopeReason: "Reviewed the initial ticket filing.",
+      }],
+    };
+    expect(check(save(r))[0]?.message).toContain("the final follow-up must clear the covered commit");
+  });
+  it("rejects a second path for a deferral ID already present at clearance", () => {
+    const dir = join(root, "hq/product/roadmap");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "MO-26-09-22-08.00.00-z-original.md"), ticketBody());
+    const followUp = commit();
+    writeFileSync(join(dir, "MO-26-09-22-08.00.00-a-duplicate.md"), ticketBody());
+    const r: LocalReviewRecord = {
+      ...record(),
+      covered: commit(),
+      findings: [{ ...incidental, roadmap: "MO-26-09-22-08.00.00" }],
+      followUps: [{
+        reviewerSession: "a1b2c3d4e5f6a7b8c", commit: followUp, outcome: "cleared",
+        elapsedMinutes: 2, summary: "Cleared the original ticket.", scopeReason: "Reviewed the initial ticket filing.",
+      }],
+    };
+    expect(check(save(r))[0]?.message).toContain("the final follow-up must clear the covered commit");
+  });
   it("does not ask a fixed finding for a roadmap item", () => {
     expect(check(save({ ...record(), findings: [{ ...incidental, disposition: "fixed", response: "Added the year field to the schedule." }] }))).toEqual([]);
   });
@@ -706,6 +777,14 @@ describe("human-authorized turns beyond the automatic five", () => {
     r.followUps[2]!.humanAuthorization = authorization;
     expect(check(save(r))).toEqual([]);
   });
+  it.each(["2026-09-25T18:00Z", "2026-09-25T18:00+00:00"])(
+    "preserves minute-precision authorization timestamp %s",
+    approvedAt => {
+      const r = extraTurns();
+      r.followUps![4]!.humanAuthorization = { ...authorization, approvedAt };
+      expect(check(save(r))).toEqual([]);
+    },
+  );
 });
 
 describe("one bounded automatic final verification", () => {

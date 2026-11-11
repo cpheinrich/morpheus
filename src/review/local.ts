@@ -3,6 +3,7 @@ import matter from "@11ty/gray-matter";
 import { z } from "zod";
 import type { Finding } from "../check/pr.js";
 import { visibleProse, visibleText } from "../check/pr.js";
+import { isoDatetimeWithOptionalSeconds } from "../iso-datetime.js";
 import { ROADMAP_ID } from "../pm/id.js";
 import { RoadmapItem } from "../pm/schema.js";
 
@@ -32,7 +33,7 @@ const FollowUp = z.object({
   // A separate, explicit human decision is required for each ordinary turn beyond the automatic five.
   humanAuthorization: z.object({
     approvedBy: z.string().trim().min(1),
-    approvedAt: z.iso.datetime({ offset: true }),
+    approvedAt: isoDatetimeWithOptionalSeconds({ offset: true }),
     reason: Text,
   }).strict().optional(),
   /**
@@ -125,6 +126,11 @@ export const ReviewRecord = z.object({
    */
   initialOutcome: z.literal("incomplete").optional(),
   summary: Text,
+  /**
+   * Project records the reviewer read while orienting, as it reported them. Optional so older
+   * records stay valid; a record without it, or with an empty list, is reported, never refused.
+   */
+  contextRead: z.array(Path).max(50).optional(),
   /**
    * Hand-resolved trunk merges after coverage. A merge Git reproduces exactly needs no entry;
    * one an author resolved by hand carries unreviewed edits, so it is accepted only when named.
@@ -337,7 +343,7 @@ export function parseReviewRecord(markdown: string): LocalReviewRecord {
  * the floor's — so a valid record that relied on one is never indistinguishable from one that did
  * not.
  */
-export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialChange?: () => TrivialDiff } = {}): string[] {
+export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialChange?: () => TrivialDiff; hasNewDeferral?: (from: string) => boolean } = {}): string[] {
   const waivers: string[] = [];
   const turns = followUpTurns(record);
   checkSessionAndOutcome(record, turns);
@@ -368,7 +374,7 @@ export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialC
   checkHandoffs(record, turns);
   const finalization = checkFinalization(turns, resumed, unconditional);
   checkFinalVerification(record, turns, finalization, budget);
-  checkTurnBudgets(record, turns, budget);
+  checkTurnBudgets(record, turns, budget, opts.hasNewDeferral);
   return waivers;
 }
 
@@ -501,7 +507,7 @@ function checkFinalVerification(record: LocalReviewRecord, turns: ReviewFollowUp
   }
 }
 
-function checkTurnBudgets(record: LocalReviewRecord, turns: ReviewFollowUp[], budget: number): void {
+function checkTurnBudgets(record: LocalReviewRecord, turns: ReviewFollowUp[], budget: number, hasNewDeferral?: (from: string) => boolean): void {
   turns.forEach((turn, index) => {
     // A follow-up is half the initial budget because its reviewer already holds the context. A fresh
     // reviewer taking over does not, so its ordinary turn gets the initial ceiling (no extension).
@@ -510,10 +516,10 @@ function checkTurnBudgets(record: LocalReviewRecord, turns: ReviewFollowUp[], bu
     if (overrun(turn, ceiling)) throw new Error(fresh ? "a fresh reviewer's turn exceeded the initial-review budget; record it incomplete and continue with another turn" : "follow-up exceeded its budget; record it incomplete and continue with another turn instead of claiming a verdict");
     const next = turns[index + 1];
     if (!next) {
-      // With a conditional clearance the author's fix may land after the final turn; the commit
-      // check then happens in checkLocalReview, which can see the paths.
-      const coversLast = turn.commit === record.covered || conditionallyCleared(record).length > 0;
-      if (turn.outcome !== "cleared" || !coversLast) throw new Error("the final follow-up must clear the covered commit");
+      if (turn.outcome !== "cleared") throw new Error("the final follow-up must clear the covered commit");
+      // Git checks every commit after clearance against the approved conditions and new ticket paths.
+      const coversLast = turn.commit === record.covered || conditionallyCleared(record).length > 0 || hasNewDeferral?.(turn.commit);
+      if (!coversLast) throw new Error("the final follow-up must clear the covered commit");
     } else if (turn.outcome === "cleared" && !next.scopeReason) {
       throw new Error("a turn after a cleared turn is a late correction and needs an explicit scope reason; otherwise a turn follows only a blocked or incomplete one");
     }
@@ -619,7 +625,8 @@ function newlyFiledDeferralPaths(root: string, record: LocalReviewRecord, from: 
   const ids = new Set(record.findings.filter(f => f.disposition === "deferred" || f.disposition === "open").map(f => f.roadmap).filter((id): id is string => Boolean(id)));
   return [...ids].flatMap(id => {
     const path = committedRoadmapPath(root, to, id);
-    return path && !git(root, ["ls-tree", from, "--", path]) && addedByAuthor(root, from, to, path) ? [path] : [];
+    if (!path || committedRoadmapPath(root, from, id)) return [];
+    return !git(root, ["ls-tree", from, "--", path]) && addedByAuthor(root, from, to, path) ? [path] : [];
   });
 }
 
@@ -742,14 +749,19 @@ export function committedConfig(root: string, commit: string): unknown {
  */
 export const MISSING_LABEL = "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is under way, keep the PR a draft (gh pr ready --undo): conventions then wait, unreported, until it is labelled or marked ready.";
 
+/** The warning when a record names no project records the reviewer read while orienting. */
+export const MISSING_CONTEXT_READ = "review record has no contextRead: the reviewer should orient with the Morpheus Context MCP and report the records it read";
+
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts: { root: string; body: string; labels: string[]; head: string; base: string }): Finding[] {
   try {
     const config = committedConfig(opts.root, opts.head);
     if (!reviewRequired(config)) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
     if (!opts.labels.includes("agent-reviewed")) throw new Error(MISSING_LABEL);
-    const { waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
-    return waivers.map(message => ({ level: "waived", rule: REVIEW_FLOOR_RULE, message }));
+    const { record, waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
+    const findings: Finding[] = waivers.map(message => ({ level: "waived", rule: REVIEW_FLOOR_RULE, message }));
+    if (!record.contextRead?.length) findings.push({ level: "warning", rule: "review-context", message: MISSING_CONTEXT_READ });
+    return findings;
   } catch (error) {
     return [{ level: "error", rule: "agent-review", message: error instanceof Error ? error.message : String(error) }];
   }
@@ -775,9 +787,12 @@ export function verifyReviewRecord(opts: { root: string; path: string; head: str
   const record = parseReviewRecord(git(opts.root, ["show", `${opts.head}:${path}`]));
   // The whole reviewed change, base to covered. A trunk merge inside it only adds lines, which errs
   // toward keeping the floor; a range that cannot be measured keeps it too.
-  const waivers = validateReviewRecord(record, { trivialChange: () => {
-    try { return trivialDiff(opts.root, record.base, record.covered); } catch { return { trivial: false, reason: "the reviewed range could not be measured", nonTestLines: 0, testLines: 0 }; }
-  } });
+  const waivers = validateReviewRecord(record, {
+    trivialChange: () => {
+      try { return trivialDiff(opts.root, record.base, record.covered); } catch { return { trivial: false, reason: "the reviewed range could not be measured", nonTestLines: 0, testLines: 0 }; }
+    },
+    hasNewDeferral: from => isAncestor(opts.root, from, record.covered) && newlyFiledDeferralPaths(opts.root, record, from, record.covered).length > 0,
+  });
   checkFreshReviewer(opts.root, record, path, opts.head);
   checkTrackedDeferrals(opts.root, record, opts.head);
   checkRecordChain(opts, record);
@@ -818,7 +833,7 @@ function coveredMerges(opts: { root: string; head: string; base: string }, recor
   }
   const last = turns[turns.length - 1];
   if (last && last.commit !== record.covered) {
-    // Only a conditional clearance lets `covered` run past the final turn, and only within its paths.
+    // After the final turn, only conditions, newly filed deferrals and the review record are allowed.
     if (!isAncestor(opts.root, last.commit, record.covered)) throw new Error("the final follow-up must clear the covered commit");
     add(verifyUncoveredCommits(opts.root, record, last.commit, record.covered, opts.base, new Set([path, ...conditional, ...newlyFiledDeferralPaths(opts.root, record, last.commit, record.covered)]), "author fixes after the final follow-up exceed the reviewer's recorded conditions"));
   }

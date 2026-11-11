@@ -1,9 +1,10 @@
+import { CONTEXT_STARTUP_GUIDANCE } from "../context-search/install.js";
 import { endTerm } from "../session/context.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
 import { boundTask, bindTask } from "../session/tasks.js";
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
-import { providerSessionId, traceContext } from "../context-search/rollout.js";
+import { contextArm, providerSessionId, traceContext } from "../context-search/rollout.js";
 import { prepareRepository, parseSessionInput, sessionGit } from "../session/start.js";
 import { projectPolicy } from "../session/policy.js";
 import { CANONICAL_INPUTS } from "../session/lease.js";
@@ -69,7 +70,7 @@ async function printRollout(root, paths, arm, id) {
         console.log(`! ${arm.unavailable}`);
     if (!arm.id)
         return;
-    console.log(`Context search rollout ${arm.id}: ${arm.arm}; engine ${arm.engine}.`);
+    console.log(`Context startup ${arm.id}: ${arm.startup}; search uses Tantivy.`);
     const { getSearchConfig } = await import("../context-search/rollout.js");
     const mcp = (await getSearchConfig(root)).transport === "mcp";
     const sessionId = id ?? providerSessionId();
@@ -83,7 +84,7 @@ async function printRollout(root, paths, arm, id) {
     console.log("Use 1,000 returned tokens for a focused lookup, or up to 2,500 when several sources are needed.");
     if (id && id !== providerSessionId()) {
         const quoted = "'" + id.replaceAll("'", "'\\''") + "'";
-        console.log(`Provider session ID is not available in this shell. Prefix Morpheus commands in this session with MORPHEUS_CONTEXT_SESSION_ID=${quoted} to retain its assignment and receipt.`);
+        console.log(`Provider session ID is not available in this shell. Prefix Morpheus commands in this session with MORPHEUS_CONTEXT_SESSION_ID=${quoted} to retain its startup evidence and receipt.`);
     }
     const contents = await Promise.all(paths.map(path => readFile(join(root, path), "utf8"))).catch(() => undefined);
     const startupBytes = contents?.reduce((total, content) => total + Buffer.byteLength(content), 0);
@@ -93,7 +94,7 @@ async function printRollout(root, paths, arm, id) {
         session: arm.session, rollout: arm.id, startup: arm.startup, startupBytes, startupTokens, transport: mcp ? "mcp" : "cli" });
 }
 /** Trunk lag, the records to read from this checkout, and how to keep the session's task association. */
-async function printReadInstructions(prepared, sessionId) {
+async function printReadInstructions(prepared, sessionId, started) {
     if (prepared.behind) {
         for (const line of formatLag(prepared.lag, prepared.trunk, new Date()))
             console.log(line);
@@ -105,6 +106,12 @@ async function printReadInstructions(prepared, sessionId) {
     const paths = policy.requiredInputs ?? CANONICAL_INPUTS;
     for (const path of paths)
         console.log(`  ${join(prepared.root, path)}`);
+    if (started) {
+        const arm = policy.rollout ?? await contextArm(prepared.root, sessionId).catch(() => undefined);
+        if (arm?.session)
+            await traceContext(prepared.root, { type: "session-start",
+                arm: arm.arm, engine: arm.engine, session: arm.session, rollout: arm.id }, started);
+    }
     if (policy.rollout)
         await printRollout(prepared.root, paths, policy.rollout, sessionId);
     if (sessionId)
@@ -113,6 +120,7 @@ async function printReadInstructions(prepared, sessionId) {
     return policy.rollout?.id !== undefined;
 }
 export async function startSession(root, input, opts = {}) {
+    const started = new Date();
     try {
         // Even a failed fetch must not leave another session's receipt usable.
         await endTerm(root, input.sessionId);
@@ -122,11 +130,12 @@ export async function startSession(root, input, opts = {}) {
             throw new Error(`This checkout is task ${here}, but the session is associated with ${binding.task}. Use pm resume <ID> to choose explicitly.`);
         if (binding && binding.root !== root)
             await endTerm(binding.root, input.sessionId);
+        console.log(CONTEXT_STARTUP_GUIDANCE);
         const prepared = await prepareRepository(binding?.root ?? root, opts.offline, opts.rescue ?? {});
         printPreparation(prepared);
         console.log(`WORK IN: ${prepared.root}`);
         await reportTask(prepared, binding, input.sessionId);
-        const rollout = await printReadInstructions(prepared, input.sessionId);
+        const rollout = await printReadInstructions(prepared, input.sessionId, input.source === "startup" ? started : undefined);
         console.log("");
         return await brief(prepared.root, { ...opts, startup: { sessionId: input.sessionId, rollout } });
     }

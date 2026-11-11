@@ -15,6 +15,7 @@ Usage
   morpheus pm tagged <tag> [<tag> ...] [--json]     Read roadmap/worklogs matching all subject tags
   morpheus pm claim <RM-014>
   morpheus pm resume <ID>   reuse an existing task worktree or its remote branch
+  morpheus pm unbind <ID>   clear this session’s association to a missing task worktree
   morpheus pm cleanup <ID> [--dry-run|--check] [--release-stale-sessions]
                                             prove a merge, then remove its idle task worktree
   morpheus pm worktrees [prune] [--dry-run]    inventory / prune only missing registrations
@@ -110,10 +111,14 @@ Usage
   morpheus context profile [YYYY-MM-DD]  # Local pilot traces grouped by transport and arm
   morpheus context task-read <indexed-path> [start-line] [--session-id <id>]
   morpheus context search <query> [--max-tokens <n>] [--session-id <id>] [--json]
-  morpheus context engine <tantivy|ripgrep|auto> [--session-id <id>]
+  morpheus context runtime install       # Install the pinned Tantivy runtime
   morpheus context coverage [--json]
   morpheus context record-read
                             the read hook: logs a tool result's record lines (stdin JSON)
+  morpheus codex hooks approve   approve pending committed hooks for this Morpheus project once
+  morpheus codex hooks enable    opt this project in to future auto-approval (macOS)
+  morpheus codex hooks disable [checkout]   stop future automatic approvals
+  morpheus codex hooks status    list projects with automatic approval enabled
   morpheus context install  [--check] [--handle <github-handle>]
                             wire .claude/settings.json, .codex/hooks.json and context.handle
                             — the repair path for a project scaffolded before they existed
@@ -155,6 +160,8 @@ Usage
                             what should happen next, and whether anything should
   morpheus gh-manager sweep <owner/repo> [--out file]
                             route every open pull request from facts; no model
+  morpheus gh-manager check-record <base-ref> --body-file <file>
+                            validate the committed Manager record against a proposed PR body
   morpheus gh-manager routes|prompt|apply|digest ...
                             the steps the GitHub Manager operations workflow runs;
                             see docs/runbooks/gh-manager.md

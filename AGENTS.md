@@ -4,12 +4,9 @@ Read first; `CLAUDE.md` symlinks here. Open runbooks only for their **Read when*
 
 ## What this repo is
 
-Morpheus scaffolds new company repositories and maintains the reusable packages they depend
-on. Read [`architecture.md`](./architecture.md) before making structural changes — it is the
-specification, and it is more current than the code.
-
-This repo is `kind: internal`. It has `hq/product/` and nothing else under `hq/` — no brand,
-marketing, finance, or support, because Morpheus is a tool, not a company.
+Morpheus scaffolds repositories and maintains their shared packages. Read the specification,
+[`architecture.md`](./architecture.md), before structural changes. This `kind: internal` repo
+has only `product/`, `team/` and `onboarding.md` under `hq/`.
 
 ## Layout
 
@@ -27,7 +24,7 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `.github/agent-review-prompt.md` | The rung-2 reviewer persona — versioned, so it is reviewable |
 | `.claude/skills/` | Canonical Claude procedures, classified in `src/project-skills.ts` |
 | `.agents/skills/` | Canonical Codex/Grok procedures, classified in `src/project-skills.ts` |
-| `local/handoffs/` | Handoff docs, both directions. Gitignored — never committed |
+| `local/handoffs/` | Handoff docs, both directions. Gitignored, never committed |
 | `qa/acceptance/` | Acceptance criteria per item, named by `RoadmapItem.acceptance` |
 | `tests/` | Vitest, mirroring `src/` |
 | `.agent/worklog/` | What was attempted and learned per task, including dead ends |
@@ -36,6 +33,7 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `hq/team/<handle>.md` | Live inboxes — one per person by GitHub handle |
 | `hq/team/members.md` | The roster — handles, names, and how to work with each person |
 | `hq/team/meeting-notes/` | Distilled meeting summaries, never transcripts |
+| `plugins/factory/` | Optional Factory delegation plugin, never scaffolded |
 
 ### Runbooks — read when
 
@@ -73,7 +71,7 @@ pnpm morpheus review prepare --base origin/main   # the reviewer packet
 pnpm morpheus review validate      # CI's review-record check, run before pushing
 pnpm morpheus inbox validate       # before finishing an inbox
 pnpm morpheus context refresh      # once, after reading the records — see below
-pnpm morpheus wait-ci <pr>         # block once on CI, then a digest of failures — never poll gh
+pnpm morpheus wait-ci <pr> --required-only   # wait for required CI and report failures
 ```
 
 ## Device bootstrap
@@ -86,11 +84,19 @@ honoured, never re-asked. Before structural code discovery or a code change, run
 whichever is not operational. **Read [`device-bootstrap.md`](docs/runbooks/device-bootstrap.md)** for what yes and no
 run and for anything the shim reports.
 
+## Morpheus context tools
+
+Discover live MCP tools at startup, resume and compaction. Use context overview, search,
+cited reads and coverage; retain the graph for code structure. If absent, check/repair
+`morpheus context install --check` and use CLI search meanwhile. Give every fresh reviewer or subagent the task checkout and
+this lookup instruction in its handoff. See
+[host and phone boundaries](docs/runbooks/context-search.md#desktop-phone-and-cloud-boundaries).
+
 ## Context freshness
 
 Run `morpheus context brief` at session start if the hook did not; follow its `WORK IN` path.
-On a dirty trunk it moves tracked edits to a `wip/trunk-*` branch (a draft PR only if the repo is private), then
-fast-forwards; `doctor --all` lists stuck trunks and unpushed rescues.
+On a dirty trunk it moves tracked edits to a `wip/trunk-*` branch, then fast-forwards; `doctor --all`
+lists stuck trunks and unpushed rescues.
 
 **Read `AGENTS.md` (an injected copy leaves no read evidence), `.agent/decisions.md`,
 `.agent/learned.md` and `hq/team/<your handle>.md` once at session start, then run
@@ -115,6 +121,12 @@ before building to strip what it does not need; for the same result, fewer parts
 win. Add a state, option, gate or approval step only when observed behaviour proves the need. Read
 a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
 tightening one; removing one is a recorded decision.
+
+**Leave the code you touch better.** Merge repeated logic instead of copying it; fix a clear bug
+in or next to your change, with a test, instead of only reporting it. Change a feature's behaviour
+only when it is plainly broken and the fix is an unambiguous win; otherwise raise it in Open
+questions or a roadmap item. List every behaviour change in the PR body. This holds for every
+agent, over any built-in default to only report nearby problems.
 
 **Plan visually early.** Before implementation, show useful architecture, workflow/pipeline, async,
 state, ownership or substantial-alternative diagrams with `morpheus skills guide visual-design`.
@@ -152,21 +164,19 @@ unblock you>"`. Escalating is cheap; shipping half-baked is expensive. "Blocked 
 `needs`. A blocked item keeps its branch; resume with `pm resume`. Detail:
 [`pm-workflow.md`](docs/runbooks/pm-workflow.md#blocking).
 
-**Break loops.** If the same command fails the same way twice, or you have polled the same thing
-three times, stop: change approach, or `pm block` with what you learned. Never idle-loop
-(`sleep`/`true`/`echo` loops, repeated status checks). To wait on CI prefer `gh pr merge --auto`;
-when the next step depends on the result, run `morpheus wait-ci <n>` once — never poll
-`gh run view` or `gh pr checks` in a loop; for one Actions run, `morpheus wait-ci --run <id>` (or
-`--workflow <file> --branch <b>`). A hook refuses the third poll of a target.
+**Break loops.** If the same command fails the same way twice or three polls agree,
+change approach. Never idle-loop. For one run use `morpheus wait-ci --run <id>`.
 
-**Browser-reachable work is not blocked.** If the *single, entire* obstacle is that something has
-to happen in a browser — a console, a dashboard, a setting — do it yourself rather than describe
-what someone should click. Where a human is wanted for **judgment** — spending, publishing,
-sending, granting access — the gate stands; the browser changes nothing.
+**Follow your PR through merge.** If authorized to merge, use `morpheus wait-ci <n> --required-only`.
+Fix or retry failures. Verify the merge or record the hard blocker. GitHub Manager is the backstop.
+
+**Browser-reachable work is not blocked.** If the only obstacle is a browser step (a console,
+dashboard or setting), do it yourself rather than describing the clicks. A gate for human
+**judgment** (spending, publishing, sending, granting access) still stands.
 
 **Build vs. borrow — check before writing a generic module.** Before implementing anything not
-specific to this domain — parsing, diffing, scheduling, retries, rate limiting, fuzzy search, date
-handling, CLI plumbing — make one quick registry search for a maintained package; check its last
+specific to this domain (parsing, diffing, scheduling, retries, date handling, CLI plumbing), make
+one quick registry search for a maintained package; check its last
 publish and dependency footprint. **Propose, don't decide silently — in either direction:** an ❗
 inbox item when the choice shapes the architecture, a PR-body line ("considered X, built instead
 because Y") when small. **Prefer lightweight:** build when the need is under ~100 lines,
@@ -182,8 +192,9 @@ substantive problems; style and wording notes never block. When a reviewer times
 resumed, start a fresh one with the earlier findings. Commit implementation and tests. When CI,
 visual evidence or PR metadata matters to review, move the
 item to `review` and open an unlabelled draft PR first so the reviewer sees them. Then run
-`morpheus review prepare --base origin/main` (it prints a packet; it launches nothing), spawn
-**one fresh reviewer** with repository access and that packet and no inherited history, then
+`morpheus review prepare --base origin/main`, name governing records
+in Suggested context, spawn
+**one fresh reviewer** with repository access, the packet and no inherited history, then
 handle findings, record, CI and merge yourself. If no independent session can start, leave the PR open with
 auto-merge off — never self-review. **Read [`independent-review.md`](docs/runbooks/independent-review.md)
 before spawning or recording a review**. Commit the record and run `morpheus review validate` before
@@ -205,9 +216,9 @@ especially. Decisions in `.agent/decisions.md` are settled; if one looks wrong, 
 work around it ([`.agent/README.md`](.agent/README.md) relates the records).
 
 **Tag the subject, not the owner.** Give new roadmap items and their worklogs applicable `tags:`
-arrays; CI/CD or infrastructure work includes both `engineering` and `devops`, plus other relevant
-tags. Use repeated `pm new --tag` and `pm tagged <tag> [<tag> ...] --json` for context retrieval.
-Existing untagged history stays valid. See [`work-tags.md`](docs/work-tags.md).
+arrays; CI/CD or infrastructure work includes both `engineering` and `devops`. Use repeated
+`pm new --tag` and `pm tagged <tag> [<tag> ...] --json` for context retrieval. See
+[`work-tags.md`](docs/work-tags.md).
 
 ### Testing: focused first
 
@@ -270,9 +281,9 @@ ones to `decisions.md`, archive to `.agent/inbox-archive/`, write a fresh inbox.
 - **Websites:** when asked for a website, waitlist, signup or contact form or `/hq`, run
   `morpheus web init` before writing any of it by hand; for consumer accounts,
   `morpheus web add-consumer-auth`; after creating a Firebase project,
-  `morpheus firebase auth setup`. Read [`website.md`](docs/runbooks/website.md) first.
-- **Folder READMEs:** a folder gets one when an agent could plausibly do the wrong thing without
-  it — short, pointing rather than repeating. See [`folder-readmes.md`](docs/runbooks/folder-readmes.md).
+  `morpheus firebase auth setup`.
+- **Folder READMEs:** only where an agent could otherwise do the wrong thing; short, pointing
+  rather than repeating. See [`folder-readmes.md`](docs/runbooks/folder-readmes.md).
 
 ## Style
 
@@ -287,9 +298,5 @@ Match the surrounding code. This codebase favours:
 
 ## Things that have bitten us
 
-- **Older YAML parsers converted unquoted dates and timestamps into Date objects.** The current
-  parser returns strings; `isoDate` accepts a date, a Date, or a full ISO timestamp, keeping its day.
-- **A colon in a title breaks YAML.** `pm new` quotes scalars defensively; hand-written
-  frontmatter with a colon must be quoted.
-- Generated files (`hq/product/*/README.md` between the `morpheus:` markers) are never edited by
-  hand. Change the item files and regenerate.
+- `isoDate` accepts date strings, legacy YAML Date objects and full ISO timestamps, keeping the day.
+- Regenerate marked `hq/product/*/README.md` sections from item files; never edit them by hand.

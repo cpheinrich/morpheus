@@ -1,3 +1,4 @@
+export declare const CONTEXT_SOURCE_DEFAULTS: string[];
 export declare const CONTEXT_KINDS: readonly ["decision", "lesson", "roadmap", "worklog", "runbook", "meeting_note", "other"];
 export type ContextKind = typeof CONTEXT_KINDS[number];
 export declare function contextKind(path: string): ContextKind;

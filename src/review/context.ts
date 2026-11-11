@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { roadmapIdFromBranch } from "../check/pr.js";
 import { parseArtifact } from "../pm/parse.js";
 import { acceptancePath, type ReviewContext } from "./prompt.js";
@@ -55,13 +55,17 @@ export async function loadReviewContext(opts: LoadOptions): Promise<ReviewContex
     id,
     title: item.data.title,
     intent: item.body,
+    records: [relative(root, item.path).split("\\").join("/")],
   };
 
   if (item.data.acceptance) {
     const rel = acceptancePath(item.data.acceptance);
     const text = await readIfExists(join(root, rel));
     if (text === null) ctx.missingAcceptance = rel;
-    else ctx.acceptance = text;
+    else {
+      ctx.acceptance = text;
+      ctx.records!.push(rel);
+    }
   }
 
   return ctx;

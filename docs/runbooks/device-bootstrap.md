@@ -49,3 +49,26 @@ surface the same drift. `morpheus self update` is the one-time/manual repair; co
 call `morpheus self ensure` after later pulls and rebases. Both build in a disposable clone, install
 the copy, and remove the clone without touching active work. The codebase-memory version stays
 pinned until a reviewed Morpheus change advances it.
+
+## Context search after an automatic update
+
+The update installs the pinned Tantivy binding before replacing the CLI. Python 3.11+
+with venv support and access to PyPI are needed for the first install. If that fails,
+the old CLI remains in place. For a manual repair use `morpheus context runtime install`.
+
+With auto-update enabled, the managed hooks register Morpheus Context MCP in the
+local user's Codex and Cursor settings after updating or confirming
+the CLI is current. Claude Code takes it from each project's `.mcp.json` instead,
+so the hooks remove the user-level Claude entry Morpheus registered earlier. This applies to every Morpheus checkout the client launches,
+including linked worktrees and clones missing portable project configuration.
+Existing conflicting, disabled, unreadable or symlinked entries are preserved
+and reported. The server requires a Morpheus manifest in the active checkout.
+
+A legacy hook runs the old CLI throughout the first pull. The new build recognizes
+the private, locked auto-update checkout at reviewed main and registers the stable
+global executable before npm replaces its package. Registration is best effort.
+If installation subsequently fails, the entry can remain pointed at the previous
+CLI. Legacy hooks may suppress setup warnings. The next Morpheus session startup
+retries registration and reports any conflict. Reload an already running client
+so it discovers the new entry.
+To reconcile immediately on an opted-in device, run `morpheus self ensure`.

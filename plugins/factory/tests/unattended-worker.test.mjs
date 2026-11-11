@@ -147,6 +147,44 @@ test('gateway-only launch pins args/env, stdin, exact permissions, and correlate
   assert.deepEqual((await json(join(f.cwd,'observed.json'))).argv.slice(0,2),['exec','resume']);
   assert.ok((await json(join(f.cwd,'observed.json'))).argv.includes('session-fixture'));
 });
+test('resume reports a typed pre-turn input rejection without copying stderr or the prompt', async t => {
+  const f = await setup(t);
+  const first = await gatewayWorker(f.configPath, 'first turn');
+  const fakeProvider = `import json, sys
+payload = sys.stdin.buffer.read()
+if len(payload) <= 1024 * 1024:
+    sys.exit(77)
+print(json.dumps({'type':'thread.started','thread_id':'session-fixture'}),flush=True)
+print('Error: turn/start: turn/start failed: The input exceeded the maximum length. (code -32602), data: ' + json.dumps({'input_error_code':'input_too_large','message':'private-stderr-fixture'}), file=sys.stderr)
+sys.exit(1)
+`;
+  await writeFile(join(f.root, 'bin', 'codex'), '#!/usr/bin/env python3\n' + fakeProvider, { mode: 0o700 });
+  const id = randomUUID();
+  const prefix = 'private-prompt-fixture:';
+  const input = prefix + 'x'.repeat(1024 * 1024 - 1 - prefix.length);
+  const rejected = await invoke(['--config', f.configPath, '--admission-id', id, '--resume', first.admissionId], input);
+  assert.equal(Buffer.byteLength(input), 1024 * 1024 - 1);
+  assert.equal(rejected.code, 1);
+  assert.equal(rejected.output.exitCode, 1);
+  assert.equal(rejected.output.terminationVerified, true);
+  assert.equal(rejected.output.sessionId, first.sessionId);
+  assert.equal(rejected.output.diagnosticCode, 'input_too_large');
+  assert.doesNotMatch(JSON.stringify(rejected.output), /private-(prompt|stderr)-fixture/);
+
+  const directory = join(f.state, id);
+  await rm(join(directory, 'result.json'));
+  assert.deepEqual(await invoke(['--status', id]), rejected);
+
+  const stderr = join(directory, 'stderr.log');
+  const providerError = await readFile(stderr, 'utf8');
+  await writeFile(stderr, providerError.replace('input_error_code', 'message'));
+  assert.equal((await invoke(['--status', id])).output.diagnosticCode, undefined);
+
+  await writeFile(stderr, providerError);
+  const events = join(directory, 'events.jsonl');
+  await writeFile(events, (await readFile(events, 'utf8')) + '{"type":"turn.started"}\n');
+  assert.equal((await invoke(['--status', id])).output.diagnosticCode, undefined);
+});
 test('missing key and invalid provider/permissions/config never run a native fallback', async t => {
   const f=await setup(t);
   delete process.env.TEST_GATEWAY_KEY;

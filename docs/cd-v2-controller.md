@@ -69,7 +69,9 @@ worker templates; see [the host integration runbook](cd-v2-host-macos.md).
 `cd status` reports outstanding deadlines, oldest debt, next action, receipts,
 repair work, pauses and actual budget records.
 
-Source selection uses first-parent main history. A PR merge timestamp is accepted
+Source selection uses complete first-parent main history. A shallow source checkout
+is refused before ordinals are calculated. Run `git fetch --unshallow origin` in
+the source checkout and retry. A PR merge timestamp is accepted
 only for its exact merged main commit; other sources age from persisted first
 observation. Author dates never qualify. Native Git object inventories define
 input digests. Execution verification checks exact checkout, main reachability,

@@ -176,8 +176,8 @@ export async function createItem(opts) {
     //
     // Allocation reads `parseArtifact(...).items`, which *excludes* anything that
     // failed to parse. So a goal file that exists but is malformed — the
-    // canonical case being an unquoted colon in a title, the first entry under
-    // *things that have bitten us* — is invisible here, its id is re-issued, and
+    // canonical case being an unquoted colon in a title (see `.agent/learned.md`)
+    // — is invisible here, its id is re-issued, and
     // an unconditional write replaces someone's work with the TBD template while
     // printing `Created` and exiting 0.
     //

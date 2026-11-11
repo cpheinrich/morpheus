@@ -9,6 +9,7 @@ import { CONTEXT_SEARCH_HEADER, MCP_EXCERPT_BYTES } from "./output.js";
 import { contextOverview } from "./overview.js";
 import { buildRelationships, relatedContext } from "./relationships.js";
 import { retrieveContext } from "./retrieve.js";
+import { warmContextMcp } from "./warm.js";
 import { contextArm, traceContext, type ContextOperation, type ContextOutcome } from "./rollout.js";
 import { CONTEXT_KINDS, contextCoverage, contextKind, discoverSources, readContextSources, type ContextKind } from "./sources.js";
 
@@ -49,13 +50,13 @@ async function call(
   }
 }
 
-async function search(scope: Scope, input: { query: string; max_tokens: number; kinds?: ContextKind[] }, started: number) {
-  const found = await retrieveContext(scope.root, input.query, input.max_tokens, { session: scope.session, transport: "mcp", kinds: input.kinds, started });
+async function search(scope: Scope, input: { query: string; max_tokens: number; kinds?: ContextKind[] }, started: number, mcpStartedAt?: number) {
+  const found = await retrieveContext(scope.root, input.query, input.max_tokens, { session: scope.session, transport: "mcp", kinds: input.kinds, started, mcpStartedAt });
   const { output, excerpts, returnedTokens } = found.data;
   const message = output ? `${CONTEXT_SEARCH_HEADER}\n${output}`
     : "No matching excerpts within the return budget. Refine the search or read a known source.";
   return result(message, {
-    excerpt: message, outcome: output ? "ok" : "empty", engine: found.engine, fallback: found.fallback, returnedTokens,
+    excerpt: message, outcome: output ? "ok" : "empty", engine: found.engine, fallback: false, returnedTokens,
     citations: excerpts.map(({ path, from, to }) => ({ path, from, to, kind: contextKind(path) })),
   });
 }
@@ -104,16 +105,16 @@ async function related(scope: Scope, input: { path: string; depth: number; limit
   return result(JSON.stringify(data), data);
 }
 
-export function createContextMcp(cwd: string): McpServer {
+export function createContextMcp(cwd: string, mcpStartedAt?: number): McpServer {
   const server = new McpServer({ name: "morpheus_context", version: "1.0.0" });
   server.registerTool("search_project_context", {
-    description: "Find decisions, prior attempts, roadmap items, runbooks and meeting notes in the active project. Returns ranked excerpts and citations. Use for project history and governing records.",
+    description: "Find decisions, prior attempts, roadmap items, runbooks and meeting notes in the active project. Returns ranked excerpts and citations. Use this first for governing records and project history, including in reviews and delegated tasks.",
     inputSchema: {
       query: z.string().trim().min(1).max(4000), max_tokens: tokenInput,
       kinds: z.array(z.enum(CONTEXT_KINDS)).min(1).max(CONTEXT_KINDS.length).optional()
         .describe("Optional restriction to particular record kinds. Search all eligible kinds by default."),
     }, annotations: READ_ONLY,
-  }, (input, extra) => call(cwd, extra._meta, "search", (scope, started) => search(scope, input, started)));
+  }, (input, extra) => call(cwd, extra._meta, "search", (scope, started) => search(scope, input, started, mcpStartedAt)));
   server.registerTool("read_project_record", {
     description: "Read an exact cited section of an indexed project record in source order. Use the citation path and line range.",
     inputSchema: { path: pathInput, from: z.number().int().min(1).max(10_000_000).default(1),
@@ -139,8 +140,10 @@ export function createContextMcp(cwd: string): McpServer {
 }
 
 export async function runContextMcp(): Promise<number> {
-  const server = createContextMcp(process.cwd());
-  const closed = new Promise<number>(resolve => { server.server.onclose = () => resolve(0); });
+  const cwd = process.cwd();
+  const server = createContextMcp(cwd, performance.timeOrigin);
+  const warming = warmContextMcp(cwd).catch(() => {});
+  const closed = new Promise<number>(resolve => { server.server.onclose = () => { void warming.then(() => resolve(0)); }; });
   await server.connect(new StdioServerTransport());
   return closed;
 }

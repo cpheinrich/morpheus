@@ -916,30 +916,43 @@ checked against reality and killed rather than built.
 
 ### 7.10 Context freshness
 
-A project can opt into the local context search pilot in `morpheus.json` with
-`context.search.rollout`. A stable hash of experiment and provider session IDs assigns
-60% to bounded startup with Tantivy, 20% to bounded startup with ripgrep, and 20% to
-full decisions and lessons with ripgrep. The trial omits human inboxes from all arms.
-Project instructions and configured mandatory records still govern. The required reads
-come from the selected checkout, and a bounded startup receipt is scoped to that provider
-session and worktree. The first-prompt hook cues a bounded search once the task
-is known. In the MCP pilot the startup hook also arms the check. With read
-evidence active, the existing gate requires
-the read hook to have observed a matching excerpt from an indexed task
-record. An exact-path `context task-read` can supply that excerpt. This check
-is separate from full read evidence for the startup core.
+Morpheus Context uses Tantivy for every MCP and CLI search. The engine experiment
+is retired; old engine settings and session pins no longer select an engine. Historical
+profiling remains readable. Projects with a valid `context.search.rollout.coreInputs`
+in `morpheus.json` use compact startup whenever the provider session is known. Other
+projects keep their full required reads. Project instructions and mandatory records still
+govern, and human inboxes stay outside the search index.
 
-For an MCP pilot, set `context.search.transport` to `mcp`. The same rollout assignment
-selects the search engine in either interface. The local `morpheus_context` server resolves the
-host session and worktree, then exposes search, exact reads, coverage, overview and relationship
-traversal. The host read hook validates visible search and read excerpts against their source.
+A compact startup receipt is scoped to its provider session and worktree. The first-prompt
+hook cues a search once the task is known, and MCP startup can also arm the existing check.
+With read evidence active, the freshness gate requires an observed excerpt from an indexed
+task record. An exact-path `context task-read` can supply that excerpt. This check is separate
+from read evidence for the startup core.
+
+Explicit `context install` merges portable project MCP entries for Codex, Claude Code and
+Cursor, pre-approves the server in Claude's project settings, leaves record globs to the
+context MCP in `.cbmignore`, and installs advisory hooks, including a Claude search hint that
+adds cited excerpts when Grep or a shell search targets records. `init` includes these for
+new projects. The startup
+brief and `SubagentStart` hook cue MCP lookup for project records; review packets and Factory
+handoffs carry the same instruction for fresh or isolated sessions. The CLI is the fallback
+when MCP cannot query the assigned checkout. Codebase-memory remains the tool for code
+structure. Managed updates provision the pinned Tantivy binding before replacing the CLI.
+Existing client entries launch the updated executable when their MCP server restarts.
+Each execution host still needs its own runtime and trust. See
+[host boundaries](docs/runbooks/context-search.md#desktop-phone-and-cloud-boundaries).
+
+The local `morpheus_context` server resolves the host worktree and uses the session identity
+for validated bindings and profiling when one is available. It exposes search, exact reads,
+coverage, overview and relationship traversal. The host read hook validates visible excerpts
+against their source.
 Explicit Markdown and project record links provide traversable relationships, with the declaring
 path and line retained as evidence.
 
 ```mermaid
 flowchart TB
     A["Agent in the task worktree"] --> B["Morpheus Context MCP"]
-    B --> C["Project records and shared search"]
+    B --> C["Tantivy searches project records"]
     C --> D["Cited results"]
     D --> E["Host observes the excerpt"]
     E --> F["Freshness gate credits task context"]
@@ -949,9 +962,13 @@ flowchart TB
 Search covers the manifest's project context plus default records, roadmaps, runbooks and
 meeting notes. Tantivy indexes overlapping 16-line Markdown windows beginning every two
 lines. Cache files and traces live under the worktree's ignored `local/context-search/`
-directory so sandboxed searches can acquire index locks and record timings.
-A session can pin the search engine for its checkout without changing its
-required startup records. Overrides and fallbacks are visible in traces. See [the trial runbook](docs/runbooks/context-search.md).
+directory so sandboxed searches can acquire index locks and record timings. Without safe local
+cache storage, a query uses a private temporary index. MCP launch warms the
+full worktree index in the background before a query arrives. An overlapping search shares the
+same in-process build, and a content fingerprint prevents reuse after a source change. The local
+pipeline report joins available launch, first-prompt, first-search and first-result timestamps
+without writing any prompt text.
+Historical engine comparisons remain in existing traces. See the [context search runbook](docs/runbooks/context-search.md).
 
 
 Everything above assumes an agent has read the records. Nothing made it prove that. A session can
@@ -1507,6 +1524,17 @@ silent when current, serialises updates with a device lock, defers when canonica
 verified, and uses the same disposable-clone installation as `self update` when stale. Hook failures
 are reported but swallowed so an already-completed pull or rebase is not presented as failed.
 
+With the same saved opt-in, the managed hook reconciles user-scoped Context MCP settings
+for Codex and Cursor when the CLI is current or successfully updated; Claude Code uses the
+project's pre-approved entry, and the hook removes the user-level Claude copy Morpheus wrote.
+The server resolves the client working directory and requires a project manifest.
+This keeps registration off the project's Git tree and covers new clones and worktrees.
+A legacy updater executes the new compile command in a private disposable clone.
+When the existing device lock and exact clean canonical main verify the update,
+this explicit build step registers the stable global executable before it is
+replaced. Regular builds and package installs remain inert. The first session
+startup can retry local registration, and the host may need to reload.
+
 Git intentionally cannot activate a hook delivered by that same pull; otherwise cloning or pulling
 an arbitrary repository could execute code on the device. The first-use bridge is therefore a
 checked-in `.morpheus/session-start.sh` plus `AGENTS.md`. The shim only inspects: a current CLI
@@ -1748,7 +1776,9 @@ shape, whether it lands in a markdown file or a database row.**
 
 > **Gotchas.** Older YAML parsers converted an unquoted `2026-07-01`, or a full timestamp, into a
 > Date object. The current parser returns strings, and `isoDate` accepts all three forms, keeping a
-> timestamp's day as written. A colon in a title breaks YAML — `pm
+> timestamp's day as written. Qualified timestamps may omit seconds, preserving the metadata
+> contract that predates Zod 4.5; `isoDatetimeWithOptionalSeconds` centralizes that compatibility
+> for PM, CD, review and meeting-intake schemas. A colon in a title breaks YAML — `pm
 > new` quotes scalars defensively, and hand-written frontmatter with a colon must be quoted.
 
 ## 9. Testing and QA
@@ -3911,7 +3941,18 @@ sources still build, failed runs retry, and manual forced builds always run. An 
 screenshots is distinguishable from one that failed to capture them. This is bounded recovery,
 not an independent scheduler.
 
-**Stateless iOS delivery (CD V3) — the target design, 2026-10-30.** CD V2 (`src/cd/`,
+**Stateless iOS delivery (CD V3) — historical proposal, 2026-10-30.**
+
+**Current consumer authority (checked 2026-11-09):** Evo's
+[pipeline map](https://github.com/darwin-health/evo/blob/main/docs/runbooks/ios-cicd-pipeline.md#release-owner)
+owns its current release model. The CD steward is one release owner on the CD host,
+observing at load and every 60 seconds and starting its repair worker when needed.
+The GitHub delivery watchdog (`ios-delivery-watchdog.yml`) has been deleted.
+The proposal, actor list, stages and rollback instructions below retain historical design
+context; they are not the current operating or installation instructions. Use the consumer
+pipeline map for its current cadence, admission, promotion and recovery rules.
+
+CD V2 (`src/cd/`,
 [its design](docs/cd-pipeline-v2.md)) put a deterministic controller, a Git ledger and a repair
 queue between `main` and TestFlight. In its first ten days it failed 17 deliveries and stalled
 staging for four days. Most of its machinery existed only to serve its own ledger: configuration
@@ -3920,7 +3961,7 @@ leases, per-file pins with import manifests, a validation campaign with fault dr
 gates on the repair worker. Chris's decisions of 2026-10-30 (`.agent/decisions.md`) remove the
 reasons for all of it. Delivery is therefore rebuilt as **one stateless run per slot** and V2 is
 deleted rather than slimmed. Until the stages below land, V2 keeps delivering and its code and
-documents remain. This paragraph is the specification; the V2 documents are history.
+documents remain. These were the original migration assumptions; the current consumer guide above supersedes them.
 
 **One run, one channel, fresh `main`.** Evo's `ios-delivery.yml` is the whole pipeline.
 Staging runs every six hours when watched inputs changed; production runs daily. Both are GitHub
@@ -4017,7 +4058,7 @@ the workflow. A change merges like any
 other file, and the next run uses it. Its digest goes into the receipt, so every attempt says what
 it used, and there are no migrations.
 
-**One repair owner, one independent alarm.**
+**One repair owner, one independent alarm (historical proposal, superseded).**
 
 - The **CD steward** is a cheap, credential-free health check on the always-on host, run every
   few hours. It reads only the delivery runs. When a channel is failing, stuck or stale, it starts
@@ -4027,7 +4068,7 @@ it used, and there are no migrations.
 - **`ios-delivery-watchdog.yml`** is an independent GitHub cron. When an eligible change misses its
   delivery SLO it opens one issue and texts Chris. It never repairs.
 
-Retired actors: the Pro controller tick, the Mini repair worker, the recovery watchdog, and
+Historical retirement plan: the Pro controller tick, the Mini repair worker, the recovery watchdog, and
 long-lived supervising sessions. The GitHub Manager stays a PR backstop and has no delivery role.
 
 **Stages.** Each stage keeps real delivery working.

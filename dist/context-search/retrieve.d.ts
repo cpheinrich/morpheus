@@ -1,15 +1,15 @@
-import { type ContextTransport, type SearchEngine } from "./rollout.js";
+import { type TraceTransport } from "./rollout.js";
 import { type ContextKind } from "./sources.js";
 interface RetrievalOptions {
     session?: string;
-    transport: ContextTransport;
+    transport: TraceTransport;
     kinds?: readonly ContextKind[];
     started?: number;
+    mcpStartedAt?: number;
 }
 export declare function retrieveContext(root: string, query: string, budget: number, options: RetrievalOptions): Promise<{
-    totalQueryMs: number;
-    engine: SearchEngine;
+    engine: "tantivy";
     data: import("./engine.js").SearchResult;
-    fallback: boolean;
+    totalQueryMs: number;
 }>;
 export {};

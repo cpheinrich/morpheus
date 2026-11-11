@@ -9,8 +9,13 @@ import { prepareRepository, parseSessionInput, assertCurrentSource } from "../sr
 import { prepareTask, resumeTask, bindTask, boundTask } from "../src/session/tasks.js";
 import { startSession } from "../src/cli/session-start.js";
 import { refresh, check } from "../src/session/context.js";
-import { claim } from "../src/cli/pm.js";
+import { claim, unbind } from "../src/cli/pm.js";
 import type { MorpheusInstallStatus } from "../src/self.js";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, writeFile: vi.fn(actual.writeFile) };
+});
 
 const exec = promisify(execFile);
 const git = async (cwd: string, ...args: string[]) => (await exec("git", args, { cwd })).stdout.trim();
@@ -203,6 +208,40 @@ describe("one worktree per implementation task", () => {
     await bindTask(local, id, "stale");
     await expect(boundTask(local, "stale")).rejects.toThrow("no longer matches");
   });
+  it("recovers startup from a missing worktree without clearing another session's binding", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const target = (await prepareTask(local, join(local, "hq/product"), id))!;
+    await bindTask(target, id, "recover", true);
+    await bindTask(target, id, "other", true);
+    expect(await unbind(id, local, "recover")).toBe(1);
+    expect((await boundTask(local, "recover"))?.root).toBe(target);
+    await git(local, "worktree", "remove", target);
+    expect(await startSession(local, { sessionId: "recover" }, { morpheus })).toBe(1);
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining(`morpheus pm unbind ${id}`));
+    expect(await unbind("MO-26-09-13-17.08.16", local, "recover")).toBe(1);
+    expect(await unbind(id, local, "recover")).toBe(0);
+    expect(await boundTask(local, "recover")).toBeNull();
+    await expect(boundTask(local, "other")).rejects.toThrow("worktree is missing");
+    expect(await startSession(local, { sessionId: "recover" }, { morpheus })).toBe(0);
+  });
+  it("preserves a live replacement binding installed during recovery", async () => {
+    const target = (await prepareTask(local, join(local, "hq/product"), id))!;
+    await bindTask(target, id, "recover-race", true);
+    await git(local, "worktree", "remove", target);
+    const replacementId = "MO-26-09-13-17.08.16";
+    const replacement = join(dir, "replacement");
+    await git(local, "worktree", "add", "-b", `${replacementId.toLowerCase()}-replacement`, replacement);
+    const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    const spy = vi.mocked(writeFile).mockImplementation(async (...args) => {
+      if (String(args[0]).endsWith(".unbound")) await bindTask(replacement, replacementId, "recover-race");
+      await actual.writeFile(...args);
+    });
+    try {
+      expect(await unbind(id, local, "recover-race")).toBe(0);
+      expect(await boundTask(local, "recover-race")).toMatchObject({ task: replacementId, root: await realpath(replacement) });
+    } finally { spy.mockReset(); }
+  });
   it("retains the association while a new worktree is prepared but not claimed", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     expect(await claim(join(local, "hq/product"), id, local, "pending")).toBe(0);
@@ -235,6 +274,9 @@ describe("one worktree per implementation task", () => {
     const output = log.mock.calls.flat().join("\n");
     expect(output).toContain(`WORK IN: ${await git(local, "rev-parse", "--show-toplevel")}`);
     expect(output).toContain("Investigation needs no new worktree");
+    expect(output).toContain("discover the live MCP catalog");
+    expect(output).toContain("search_project_context");
+    expect(output).toContain("morpheus context install --check");
     expect(output).toContain("This session has no context receipt");
     expect((await check(local)).lease).toBeNull();
   });

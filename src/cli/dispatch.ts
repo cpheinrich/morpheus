@@ -4,6 +4,7 @@ import {
   block,
   claim,
   resume,
+  unbind,
   cleanup,
   worktrees,
   claims,
@@ -41,7 +42,7 @@ import { init as initScaffold } from "./init.js";
 import { webAddConsumerAuth, webInit, webStatus } from "./web.js";
 import { build as tokensBuild } from "./tokens.js";
 import { heartbeat } from "./heartbeat.js";
-import { ghManagerApply, ghManagerDigest, ghManagerPreviewUrl, ghManagerPrompt, ghManagerRoutes, ghManagerSweep } from "./gh-manager.js";
+import { ghManagerApply, ghManagerCheckRecord, ghManagerDigest, ghManagerPreviewUrl, ghManagerPrompt, ghManagerRoutes, ghManagerSweep } from "./gh-manager.js";
 import { prompt as reviewPrompt, reviewDelivery, reviewNeeded, prepareReview, validateReview } from "./review.js";
 import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
 import { validate as teamValidate } from "./team.js";
@@ -161,6 +162,7 @@ async function dispatchGhManager({ flags, command, rest }: Invocation): Promise<
       if (command === "sweep") return ghManagerSweep(rest[0], flags.out);
       if (command === "routes") return ghManagerRoutes(rest[0], rest[1], flags.out, flags.dryRun);
       if (command === "prompt") return ghManagerPrompt(rest[0], rest[1], rest[2], flags.out);
+      if (command === "check-record") return ghManagerCheckRecord(rest[0], flags.bodyFile);
       if (command === "preview-url") return ghManagerPreviewUrl(rest[0], rest[1], rest[2]);
       if (command === "apply") return ghManagerApply(rest[0], rest[1], rest[2], rest[3], flags.out, flags.dryRun);
       if (command === "digest") return ghManagerDigest(rest[0], rest[1], rest[2], flags.dryRun);
@@ -452,10 +454,15 @@ async function dispatchContextLookup(command: string | undefined, rest: string[]
     return 0;
   }
   if (command === "task-prompt") return (await import("../context-search/task-start.js")).runTaskPromptHook();
-  if (command !== "search" && command !== "coverage" && command !== "engine" && command !== "task-read") return;
+  if (command === "engine") throw new Error("Context search now uses only Tantivy; engine overrides are retired.");
+  if (command === "runtime" && rest.length === 1 && rest[0] === "install") {
+    const { installTantivyRuntime } = await import("../context-search/runtime.js");
+    console.log("Tantivy ready: " + await installTantivyRuntime());
+    return 0;
+  }
+  if (command !== "search" && command !== "coverage" && command !== "task-read") return;
   const search = await import("./context-search.js");
   const cwd = process.cwd();
-  if (command === "engine") return search.runContextEngine(cwd, rest, flags.sessionId);
   if (command === "coverage") return search.runContextCoverage(cwd, flags.json);
   if (command === "task-read") return search.runTaskRead(cwd, rest, flags.sessionId);
   return search.runContextSearch(cwd, rest.join(" "), {
@@ -478,6 +485,9 @@ async function dispatchContext({ flags, command, rest }: Invocation): Promise<nu
     if (command === "check") return contextCheck(process.cwd(), off);
     if (command === "brief" || command === "start") {
       const input = await sessionHookInput();
+      // Legacy update hooks run the previous CLI until the pull finishes.
+      // Finish device setup when the newly installed CLI first starts a project session.
+      await (await import("./self.js")).reportContextMcpSetup();
       return startSession(process.cwd(), { ...input, ...(flags.sessionId ? { sessionId: flags.sessionId } : {}) }, { offline: off });
     }
     // Not gated, and deliberately: this is the command that makes a project
@@ -561,6 +571,7 @@ const PM_COMMANDS: Record<string, (invocation: Invocation) => Promise<number> | 
   index: ({ dir, flags }) => index(dir, flags.check),
   claim: ({ dir, rest, flags }) => claim(dir, rest[0] ?? "", process.cwd(), flags.sessionId, flags.offline),
   resume: ({ rest, flags }) => resume(rest[0] ?? "", process.cwd(), flags.sessionId),
+  unbind: ({ rest, flags }) => unbind(rest[0] ?? "", process.cwd(), flags.sessionId),
   cleanup: ({ dir, rest, flags }) => {
     if (flags.offline) { console.error("Cleanup requires fresh remote evidence; offline cleanup is refused."); return 1; }
     if (rest.slice(1).some(arg => arg !== "--release-stale-sessions")) { console.error("Usage: morpheus pm cleanup <ID> [--dry-run] [--release-stale-sessions]"); return 1; }

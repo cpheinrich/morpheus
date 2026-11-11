@@ -76,7 +76,7 @@ async function rolloutPolicy(root: string, config: ContextConfig, runnerId?: str
     const search = parseSearchConfig(config.search);
     if (search.rollout) return contextArm(root, runnerId, search);
   } catch {
-    return { arm: "legacy", engine: "ripgrep", startup: "full", unavailable: "Invalid context search settings; using the existing required reads." };
+    return { arm: "tantivy-full", engine: "tantivy", startup: "full", unavailable: "Invalid context search settings; using the existing required reads." };
   }
 }
 

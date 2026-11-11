@@ -5,8 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runContextSearch, runTaskRead } from "../src/cli/context-search.js";
 import { CONTEXT_SEARCH_HEADER } from "../src/context-search/output.js";
-import { contextArm } from "../src/context-search/rollout.js";
-import { taskPrompt } from "../src/context-search/task-start.js";
+import { subagentContext, taskPrompt } from "../src/context-search/task-start.js";
 import { refresh } from "../src/session/context.js";
 import { gate } from "../src/session/gate.js";
 import { bindTask } from "../src/session/tasks.js";
@@ -25,7 +24,7 @@ async function fixture() {
   await writeFile(join(root, ".agent/context-core.md"), core + "\n");
   await writeFile(join(root, ".agent/decisions.md"), decision + "\n");
   await writeFile(join(root, "morpheus.json"), JSON.stringify({
-    context: { search: { rollout: { id: "task-start-test", coreInputs: [".agent/context-core.md"] } } },
+    context: { search: { transport: "cli", rollout: { id: "task-start-test", coreInputs: [".agent/context-core.md"] } } },
   }));
   const git = (...args: string[]) => execFileSync("git", args, { cwd: root });
   git("init", "-q", "-b", "main");
@@ -33,13 +32,7 @@ async function fixture() {
   git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "Project");
   git("remote", "add", "origin", root);
   git("update-ref", "refs/remotes/origin/main", "HEAD");
-  const sessions = new Map<string, string>();
-  for (let index = 0; sessions.size < 3 && index < 200; index++) {
-    const id = "task-provider-" + index;
-    const { arm } = await contextArm(root, id);
-    sessions.set(arm, id);
-  }
-  return { root, bounded: sessions.get("ripgrep-bounded")!, full: sessions.get("ripgrep-full")! };
+  return { root, bounded: "task-provider", full: "full-provider" };
 }
 
 async function boundCheckout(root: string, session: string): Promise<string> {
@@ -147,10 +140,12 @@ describe("task context on bounded startup", () => {
 
   it("keeps full startup on the old gate and accepts an exact-path read in a bounded session", async () => {
     const { root, bounded, full } = await fixture();
+    const sibling = await boundCheckout(root, full);
+    await writeFile(join(sibling, "morpheus.json"), "{}");
     vi.stubEnv("MORPHEUS_CONTEXT_SESSION_ID", full);
-    expect(await prompt(root, full)).toBeUndefined();
+    expect(await prompt(sibling, full)).toBeUndefined();
     await shown(root, full, "tool hook is active");
-    expect((await gate(root, "pm new", "local")).message).toContain("No context receipt");
+    expect((await gate(sibling, "pm new", "local")).message).toContain("No context receipt");
 
     vi.stubEnv("MORPHEUS_CONTEXT_SESSION_ID", bounded);
     await prompt(root, bounded);
@@ -163,4 +158,10 @@ describe("task context on bounded startup", () => {
     await shown(root, bounded, output);
     expect((await gate(root, "pm new", "local")).message).toContain("No context receipt");
   });
+});
+
+it("cues a child for project records without requiring a parent session or arming a gate", async () => {
+  const { root } = await fixture();
+  expect(await subagentContext({ cwd: root }, projectRoot)).toContain("use the live Morpheus Context MCP search_project_context before shell search");
+  expect(await subagentContext({ cwd: join(root, "not-a-checkout") }, async () => null)).toBeUndefined();
 });

@@ -10,6 +10,7 @@ import { OVERLAY_PATH, sessionPrompt } from "../gh-manager/prompt.js";
 import { isWorkInProgress, SAFE_REF, sweep, TRIAGE_REASON } from "../gh-manager/sweep.js";
 import { authorRecordProblem, managerRecordProblem, sessionPushed } from "../gh-manager/verify.js";
 import { execFileSync } from "node:child_process";
+import { git } from "../review/local.js";
 function write(path, text) {
     if (!path) {
         console.log(text);
@@ -274,6 +275,21 @@ export function ghManagerDigest(repoArg, sweepPath, outcomesDir, dryRun) {
     const summary = process.env["GITHUB_STEP_SUMMARY"];
     if (summary)
         appendFileSync(summary, `## ${repo}\n\n${markdown}\n`);
+    return 0;
+}
+/** Preview the apply step's record check against the committed checkout and exact proposed body. */
+export function ghManagerCheckRecord(base, bodyFile, cwd = process.cwd()) {
+    if (!base || !bodyFile)
+        throw new Error("Usage: morpheus gh-manager check-record <base-ref> --body-file <file>");
+    const root = git(cwd, ["rev-parse", "--show-toplevel"]);
+    const head = git(root, ["rev-parse", "HEAD"]);
+    const trunk = git(root, ["rev-parse", "--verify", "--end-of-options", `${base}^{commit}`]);
+    const problem = managerRecordProblem(root, readFileSync(bodyFile, "utf8"), head, trunk);
+    if (problem) {
+        console.error(problem);
+        return 1;
+    }
+    console.log(`Manager review preflight passed at ${head} against ${trunk}.`);
     return 0;
 }
 /**

@@ -1,5 +1,46 @@
 # Decisions
 
+## Reviewers orient with the context MCP on records the author names — 2026-11-10
+
+MO-26-11-10-02.18.11. Chris, after the evo#863 reviewer read only code: reviewers orient with the
+context MCP before reviewing, and authors suggest the records to read. The contract makes
+orientation the first step and asks for a Context read list; `review prepare` prints a Suggested
+context section with the ticket, its acceptance file and an author line to replace, so every
+project gets it through the CLI. The record's optional `contextRead` warns when absent and is never
+refused, per the rule that only user-protecting checks block; CD repair verification ignores
+warnings. Considered requiring a citation in the record; rejected as a gate the requirement does
+not need. No dependency.
+
+## Agents leave the code they touch better — 2026-11-10
+
+MO-26-11-10-01.03.46. Anthropic's Fable 5.2 guide reports that, unless told the code is its own,
+the model adds parallel copies of existing code and reports nearby problems instead of fixing them.
+Codex's built-in prompt asks for the same restraint on purpose ("Do not attempt to fix unrelated
+bugs"). Chris wants repeated logic merged and clear nearby bugs fixed, but no unrequested feature
+changes. He judged Anthropic's suggested sentence ("what it's for and how it's built are your
+call") too permissive. Every agent in use is Opus 5.5, GPT 6.1 or newer. One model-neutral working
+convention follows **Simplicity first** in `AGENTS.md` and the scaffold: merge repeated logic, fix
+a clear bug in or next to the change with a test, change feature behaviour only when it is plainly
+broken and the fix is an unambiguous win, and list every behaviour change in the PR body. It
+overrides any built-in default to only report nearby problems. There is no `doctor` anchor yet.
+Chris is trying it in Evo before other projects are asked to adopt it. To fit the size budgets
+(20 KB here, 16 KB scaffolded), a few repeated or informational sentences were shortened and no
+rule was removed. No dependency.
+
+## Context MCP is project-scoped, pre-approved and hinted at search time in Claude — 2026-11-09
+
+MO-26-11-09-23.33.40. Chris: the context MCP is home-grown and trusted, must never need a
+person's approval, and is only for Morpheus projects. Each project's committed
+`.claude/settings.json` lists it in `enabledMcpjsonServers`; Claude honours that after its own
+folder-trust step, verified interactively. Auto-update no longer registers a user-level Claude
+entry and removes the one it wrote, because two scopes make Claude warn and a user entry
+reaches non-Morpheus sessions; Codex and Cursor user entries stay, since Codex project MCP
+needs project trust. A Claude `PreToolUse` search hint on Grep/Bash mirrors codebase-memory's
+augmenter for records only, never blocks, and is tagged and announced so people can see it ran;
+Codex gets no new hook, because it already uses the MCP and each new Codex hook needs every
+user's `/hooks` trust. A generated `.cbmignore` block hands record globs to the context MCP and
+code to codebase-memory. No dependency: the existing minimatch, Tantivy and installers.
+
 ## Paperclip execution is removed; offline history stays immutable — 2026-11-07
 
 MO-26-11-07-09.06.49. Chris authorized removal of active Paperclip integrations from Morpheus,
@@ -842,7 +883,8 @@ correctness. `morpheus.json` holds the prefix and travels with the repo.
 
 **`main` is protected everywhere; agents merge their own PRs** — 2026-07-29. Branch, PR, and
 merge once checks pass — Chris is not a merge bottleneck. Use `gh pr merge --auto` so GitHub
-merges when checks go green rather than holding a session open polling.
+can merge when checks go green. On 2026-11-09 Chris clarified that the author still
+[follows CI through a verified merge or a hard blocker](../docs/runbooks/pm-workflow.md#merging-the-board-and-the-worklog).
 
 **Set `--auto` only when the branch is finished** — 2026-07-29. Enabling auto-merge on a PR with
 failing checks lost a commit pushed afterwards. Watch, fix, *then* auto-merge.
@@ -2588,3 +2630,15 @@ all arms. The required core remains a declared set of source files. A search
 cache or query result cannot certify that a session read its core. Retain
 only bounded local timing and token traces, and review context reminders
 separately from changed requirements.
+
+
+## Tantivy is the only project-record search engine — 2026-11-09
+
+MO-26-11-09-22.31.46 supersedes the engine and startup assignment in
+[the context search trial](#compare-bounded-startup-and-tantivy-on-real-tasks--2026-11-07).
+The benchmark showed better recall and lower query time with Tantivy. Chris retired the
+comparison after reviewing live adoption. MCP and CLI use the same pinned Tantivy binding;
+a broken runtime reports an error instead of switching engines. Profiling and historical
+traces stay. Existing projects with valid compact startup records keep compact startup,
+and other projects keep full required reads. The installer uses the existing Tantivy
+Python binding with its published wheel hashes; no additional search package is needed.

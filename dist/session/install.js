@@ -1,3 +1,4 @@
+import { installContextClients } from "../context-search/install.js";
 import { accessible as exists } from "../file-io.js";
 import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -41,7 +42,10 @@ const HOOK_SHELL = "sh -c 'PATH=\"${PATH:-/usr/bin:/bin}:${HOME:-/nonexistent}/.
 export const READ_HOOK_COMMAND = HOOK_SHELL + "record-read >/dev/null 2>&1; exit 0'";
 const TASK_PROMPT_COMMAND = HOOK_SHELL + "task-prompt; exit 0'";
 const TASK_PROMPT = {
-    blocks: () => ({ UserPromptSubmit: [{ hooks: [{ type: "command", command: TASK_PROMPT_COMMAND }] }] }),
+    blocks: () => ({
+        UserPromptSubmit: [{ hooks: [{ type: "command", command: TASK_PROMPT_COMMAND }] }],
+        SubagentStart: [{ hooks: [{ type: "command", command: TASK_PROMPT_COMMAND }] }],
+    }),
     marker: "context task-prompt",
     label: "the task context hook",
 };
@@ -53,6 +57,24 @@ const CLAUDE_MCP_READ = {
     marker: "context record-read --mcp",
     label: "the Morpheus Context MCP read hook",
 };
+/**
+ * Claude only: before Grep or a shell search over project records, add cited context
+ * excerpts, as codebase-memory does for code. Codex already reaches for the MCP, and a
+ * new Codex hook would need every user's `/hooks` trust, so it is not wired there.
+ */
+const CLAUDE_SEARCH_HINT = {
+    blocks: () => ({ PreToolUse: [{
+                matcher: "Grep|Bash",
+                hooks: [{ type: "command", command: TASK_PROMPT_COMMAND, timeout: 15 }],
+            }] }),
+    marker: TASK_PROMPT.marker,
+    label: "the context search hint",
+};
+/**
+ * The server every Morpheus project ships in `.mcp.json`. Listing it here approves it for
+ * every collaborator once Claude trusts the folder, as it already does for these hooks.
+ */
+const CONTEXT_SERVER = "morpheus_context";
 const readHook = () => ({ type: "command", command: READ_HOOK_COMMAND });
 /**
  * Claude Code: after Read and Bash, and after a Bash that exited non-zero —
@@ -87,7 +109,13 @@ const POLL_GUARD = { blocks: pollGuardBlocks, marker: POLL_GUARD_SCRIPT, label: 
  * that also carries permissions, plugins and a theme, while
  * `.codex/hooks.json` holds hooks and nothing else.
  */
-export const claudeSettingsFile = (pollGuard = true) => JSON.stringify({ hooks: { ...sessionStartBlock(), ...claudeReadBlocks(), ...TASK_PROMPT.blocks(), ...(pollGuard ? pollGuardBlocks() : {}) } }, null, 2) + "\n";
+export const claudeSettingsFile = (pollGuard = true) => JSON.stringify({
+    enabledMcpjsonServers: [CONTEXT_SERVER],
+    hooks: {
+        ...sessionStartBlock(), ...claudeReadBlocks(), ...TASK_PROMPT.blocks(),
+        PreToolUse: [...(pollGuard ? pollGuardBlocks().PreToolUse : []), ...CLAUDE_SEARCH_HINT.blocks().PreToolUse],
+    },
+}, null, 2) + "\n";
 export const codexHooksFile = (pollGuard = true) => JSON.stringify({ hooks: { ...sessionStartBlock(), ...codexReadBlocks(), ...TASK_PROMPT.blocks(), ...(pollGuard ? pollGuardBlocks() : {}) } }, null, 2) + "\n";
 export const CLAUDE_SETTINGS = ".claude/settings.json";
 export const CODEX_HOOKS = ".codex/hooks.json";
@@ -197,6 +225,20 @@ function mergeSessionShim(block) {
                     : "Added the session-start hook, keeping the rest of the file.",
         ] };
 }
+/** Pre-approves the project's context server, leaving an explicit disable in place. */
+function approveContextServer(doc) {
+    const enabled = doc["enabledMcpjsonServers"];
+    if (enabled !== undefined && !Array.isArray(enabled)) {
+        return { blocked: 'Left untouched — its "enabledMcpjsonServers" is not an array.' };
+    }
+    const disabled = doc["disabledMcpjsonServers"];
+    if (Array.isArray(disabled) && disabled.includes(CONTEXT_SERVER))
+        return { done: [] };
+    if (enabled?.includes(CONTEXT_SERVER))
+        return { done: [] };
+    doc["enabledMcpjsonServers"] = [...(enabled ?? []), CONTEXT_SERVER];
+    return { done: ["Approved the project's Morpheus Context MCP server for every collaborator."] };
+}
 /** Appends one kind of hook to every event it needs and is not yet wired on. */
 function mergeWanted(block, wanted) {
     const missing = [];
@@ -212,6 +254,32 @@ function mergeWanted(block, wanted) {
         missing.push(event);
     }
     return { done: missing.length ? [`Added ${wanted.label} (${missing.join(", ")}) beside any hooks already there.`] : [] };
+}
+/**
+ * Every event checked before anything is written, so a malformed one leaves the file
+ * exactly as it was rather than half-repaired. Each kind of hook is found by its own
+ * marker, so one already wired is never added twice, and entries are appended — a
+ * project's own hooks on the same event keep running.
+ */
+function mergeAllWanted(doc, block, rel, readBlocks, pollGuard) {
+    const claude = rel === CLAUDE_SETTINGS;
+    const wantedAll = [
+        { blocks: readBlocks, ...READ_HOOK }, TASK_PROMPT,
+        ...(claude ? [CLAUDE_MCP_READ] : []),
+        ...(pollGuard ? [POLL_GUARD] : []),
+        ...(claude ? [CLAUDE_SEARCH_HINT] : []),
+    ];
+    const done = [];
+    for (const wanted of wantedAll) {
+        const added = mergeWanted(block, wanted);
+        if ("blocked" in added)
+            return added;
+        done.push(...added.done);
+    }
+    const approval = claude ? approveContextServer(doc) : { done: [] };
+    if ("blocked" in approval)
+        return approval;
+    return { done: [...done, ...approval.done] };
 }
 /**
  * Install the hook into one file, merging rather than replacing.
@@ -245,22 +313,10 @@ async function ensureHook(root, rel, template, readBlocks, write, pollGuard = tr
     const merged = mergeSessionShim(block);
     if ("blocked" in merged)
         return { target: rel, outcome: "blocked", detail: merged.blocked };
-    const done = merged.done;
-    // Every event checked before anything is written, so a malformed one leaves
-    // the file exactly as it was rather than half-repaired. Each kind of hook is
-    // found by its own marker, so one already wired is never added twice, and
-    // entries are appended — a project's own hooks on the same event keep running.
-    const wantedAll = [
-        { blocks: readBlocks, ...READ_HOOK }, TASK_PROMPT,
-        ...(rel === CLAUDE_SETTINGS ? [CLAUDE_MCP_READ] : []),
-        ...(pollGuard ? [POLL_GUARD] : []),
-    ];
-    for (const wanted of wantedAll) {
-        const added = mergeWanted(block, wanted);
-        if ("blocked" in added)
-            return { target: rel, outcome: "blocked", detail: added.blocked };
-        done.push(...added.done);
-    }
+    const added = mergeAllWanted(doc, block, rel, readBlocks, pollGuard);
+    if ("blocked" in added)
+        return { target: rel, outcome: "blocked", detail: added.blocked };
+    const done = [...merged.done, ...added.done];
     if (!done.length) {
         return {
             target: rel,
@@ -437,6 +493,7 @@ export async function installContext(root, opts) {
             : blockedHook(CODEX_HOOKS),
         await ensureHandle(root, opts),
         pollGuard,
+        ...await installContextClients(root, opts.write, opts.clientInstructions),
     ];
 }
 //# sourceMappingURL=install.js.map

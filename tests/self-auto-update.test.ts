@@ -3,7 +3,10 @@ import {
   access,
   chmod,
   mkdtemp,
+  mkdir,
   readFile,
+  realpath,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -21,6 +24,7 @@ import {
   ensureAutoUpdate,
   installProjectAutoUpdate,
   readAutoUpdateConfig,
+  reconcileAutoUpdateContext,
 } from "../src/self-auto-update.js";
 import type { MorpheusInstallStatus } from "../src/self.js";
 
@@ -228,6 +232,101 @@ require("node:fs").writeFileSync(${JSON.stringify(callsPath)}, process.argv.slic
       }),
     ).toMatchObject({ outcome: "updated", commit: SHA });
     expect(updates).toBe(1);
+  });
+
+  it("registers the device once for all project sessions only with auto-update consent", async () => {
+    const home = join(base, "user");
+    const codexHome = join(home, "codex-profile");
+    const env = { CODEX_HOME: codexHome };
+    const config = join(codexHome, "config.toml");
+    const original = '# Keep this comment\nmodel = "example"\n';
+    await mkdir(codexHome, { recursive: true });
+    await writeFile(config, original);
+
+    await disableAutoUpdate(root, { configPath, registryPath });
+    expect(await reconcileAutoUpdateContext(configPath, env, home, binaryPath)).toEqual([]);
+    expect(await readFile(config, "utf8")).toBe(original);
+
+    await enableAutoUpdate(root, {
+      configPath, registryPath, binaryPath,
+      status: async () => status("current", true),
+    });
+    expect((await reconcileAutoUpdateContext(configPath, env, home, binaryPath)).map(repair => repair.outcome))
+      .toEqual(["updated", "present", "created"]);
+    const configured = await readFile(config, "utf8");
+    expect(configured.startsWith(original)).toBe(true);
+    expect(configured).toContain("[mcp_servers.morpheus_context]");
+    // Claude takes the server from each project's .mcp.json; a user copy would duplicate it.
+    await expect(access(join(home, ".claude.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    for (const target of [".cursor/mcp.json"]) {
+      const config = JSON.parse(await readFile(join(home, target), "utf8"));
+      expect(config.mcpServers.morpheus_context.args[1]).toContain(`exec '${binaryPath}' context mcp`);
+      await run(config.mcpServers.morpheus_context.command, config.mcpServers.morpheus_context.args, {
+        env: { PATH: "/usr/bin:/bin" },
+      }).catch(error => expect(error.code).toBe(9));
+      expect(await readFile(callsPath, "utf8")).toContain("context mcp\n");
+    }
+    expect((await reconcileAutoUpdateContext(configPath, env, home, binaryPath)).map(repair => repair.outcome))
+      .toEqual(["present", "present", "present"]);
+    expect(await readFile(config, "utf8")).toBe(configured);
+    await expect(access(join(root, ".codex", "config.toml"))).rejects.toMatchObject({ code: "ENOENT" });
+
+    const disabled = configured.replace('command = "sh"', 'enabled = false\ncommand = "sh"');
+    await writeFile(config, disabled);
+    expect((await reconcileAutoUpdateContext(configPath, env, home, binaryPath))[0]).toMatchObject({ outcome: "blocked" });
+    expect(await readFile(config, "utf8")).toBe(disabled);
+
+    const outside = await realpath(base);
+    const linked = join(outside, "linked");
+    await symlink(home, linked, "dir");
+    const viaLink = { CODEX_HOME: join(linked, "codex-profile") };
+    expect((await reconcileAutoUpdateContext(configPath, viaLink, home, binaryPath))[0])
+      .toMatchObject({ outcome: "blocked", detail: expect.stringContaining("symbolic link preserved") });
+    expect(await readFile(config, "utf8")).toBe(disabled);
+  });
+
+  it("uses literal profile and executable paths on POSIX", async () => {
+    const home = join(base, "user");
+    const profile = join(home, "custom\\profile");
+    const prefix = join(base, "cash$&test", "bin");
+    const executable = join(prefix, "morpheus");
+    await mkdir(prefix, { recursive: true });
+    await symlink(binaryPath, executable);
+    await enableAutoUpdate(root, {
+      configPath, registryPath, binaryPath,
+      status: async () => status("current", true),
+    });
+
+    const repairs = await reconcileAutoUpdateContext(configPath, { CODEX_HOME: profile }, home, executable);
+    expect(repairs[0]).toMatchObject({ target: join(profile, "config.toml"), outcome: "created" });
+    expect(await readFile(join(profile, "config.toml"), "utf8")).toContain("morpheus_context");
+    await expect(access(join(home, "custom", "profile", "config.toml"))).rejects.toMatchObject({ code: "ENOENT" });
+    const config = JSON.parse(await readFile(join(home, ".cursor", "mcp.json"), "utf8"));
+    const { command, args } = config.mcpServers.morpheus_context;
+    await expect(run(command, args, { env: { PATH: "/usr/bin:/bin" } })).rejects.toMatchObject({ code: 9 });
+    expect(await readFile(callsPath, "utf8")).toBe("context mcp\n");
+  });
+
+  it("removes only a Claude user entry Morpheus registered", async () => {
+    const home = join(base, "user");
+    await mkdir(home, { recursive: true });
+    await enableAutoUpdate(root, {
+      configPath, registryPath, binaryPath,
+      status: async () => status("current", true),
+    });
+    const claude = join(home, ".claude.json");
+    const earlier = { command: "sh", args: ["-c", `PATH="$PATH"; export PATH; exec '${binaryPath}' context mcp`] };
+    for (const entry of [earlier, { command: "/opt/homebrew/bin/morpheus", args: ["context", "mcp"] }]) {
+      await writeFile(claude, JSON.stringify({ theme: "dark", mcpServers: { other: { command: "x" }, morpheus_context: entry } }));
+      const repair = (await reconcileAutoUpdateContext(configPath, {}, home, binaryPath))[1];
+      expect(repair).toMatchObject({ target: claude, outcome: "updated" });
+      expect(JSON.parse(await readFile(claude, "utf8"))).toEqual({ theme: "dark", mcpServers: { other: { command: "x" } } });
+    }
+    const own = JSON.stringify({ mcpServers: { morpheus_context: { command: "my-wrapper", args: ["context", "mcp"] } } });
+    await writeFile(claude, own);
+    expect((await reconcileAutoUpdateContext(configPath, {}, home, binaryPath))[1])
+      .toMatchObject({ outcome: "present", detail: expect.stringContaining("Kept your own") });
+    expect(await readFile(claude, "utf8")).toBe(own);
   });
 
   it("serialises concurrent stale updates", async () => {

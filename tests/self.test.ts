@@ -155,6 +155,21 @@ function installerRunner(
 }
 
 describe("Morpheus standalone installation", () => {
+  it("keeps the installed CLI when a required runtime cannot be prepared", async () => {
+    const source = await mkdtemp(join(tmpdir(), "morpheus-self-source-"));
+    const globalRoot = await mkdtemp(join(tmpdir(), "morpheus-self-global-"));
+    const calls: string[] = [];
+    const installed = join(globalRoot, MORPHEUS_PACKAGE);
+    await mkdir(installed);
+    await receipt(installed, AHEAD);
+    await expect(installCurrentMorpheus(source, {
+      runner: installerRunner(globalRoot, calls),
+      prepareRuntime: async () => { throw new Error("Tantivy runtime unavailable"); },
+    })).rejects.toThrow("Tantivy runtime unavailable");
+    expect(calls.filter(call => call.startsWith("npm "))).toEqual([]);
+    expect(JSON.parse(await readFile(join(installed, INSTALL_RECEIPT), "utf8")).commit).toBe(AHEAD);
+  });
+
   it("packs clean current main and records provenance in a real directory", async () => {
     const source = await mkdtemp(join(tmpdir(), "morpheus-self-source-"));
     const globalRoot = await mkdtemp(join(tmpdir(), "morpheus-self-global-"));
