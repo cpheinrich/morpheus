@@ -1,6 +1,6 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { minimatch } from "minimatch";
+import { Minimatch } from "minimatch";
 import { sessionGit } from "../session/start.js";
 export const CONTEXT_SOURCE_DEFAULTS = [
     "AGENTS.md", "architecture.md", ".agent/context-core.md", ".agent/decisions.md", ".agent/learned.md",
@@ -12,7 +12,10 @@ const ignored = [
     "hq/team/*.md", ".agent/{review,reviews}/**", ".agent/README.md", "hq/product/{roadmap,goals,requests}/README.md",
 ];
 const options = { dot: true, nonegate: true, nocomment: true };
-const matches = (path, patterns) => patterns.some(pattern => minimatch(path, pattern, options));
+const compile = (patterns) => patterns.map(pattern => new Minimatch(pattern, options));
+const matches = (path, patterns) => patterns.some(pattern => pattern.match(path));
+const defaultIncludes = compile(CONTEXT_SOURCE_DEFAULTS);
+const defaultExcludes = compile(ignored);
 const safePath = (path) => path.endsWith(".md") && !path.startsWith("/") && !path.split("/").some(part => part === ".." || part === ".");
 export const CONTEXT_KINDS = ["decision", "lesson", "roadmap", "worklog", "runbook", "meeting_note", "other"];
 const kindPaths = [
@@ -22,27 +25,29 @@ const kindPaths = [
     ["worklog", ".agent/worklog/**"],
     ["runbook", "docs/runbooks/**"],
     ["meeting_note", "hq/team/meeting-notes/**"],
-];
+].map(([kind, pattern]) => [kind, new Minimatch(pattern, options)]);
 export function contextKind(path) {
-    return kindPaths.find(([, pattern]) => minimatch(path, pattern, options))?.[0] ?? "other";
+    return kindPaths.find(([, pattern]) => pattern.match(path))?.[0] ?? "other";
 }
 export function classifySources(paths, rules) {
     const coverage = { included: [], excluded: [], uncovered: [], emptyPatterns: [] };
-    const include = [...CONTEXT_SOURCE_DEFAULTS, ...rules.include];
+    const customIncludes = compile(rules.include);
+    const include = [...defaultIncludes, ...customIncludes];
+    const exclude = [...defaultExcludes, ...compile(rules.exclude)];
     const markdown = [...new Set(paths.filter(safePath))].sort();
     for (const path of markdown) {
-        if (matches(path, ignored) || matches(path, rules.exclude))
+        if (matches(path, exclude))
             coverage.excluded.push(path);
         else if (matches(path, include))
             coverage.included.push(path);
         else
             coverage.uncovered.push(path);
     }
-    coverage.emptyPatterns = rules.include.filter(pattern => !matchesAny(coverage.included, pattern));
+    coverage.emptyPatterns = unmatchedPatterns(coverage.included, rules.include, customIncludes);
     return coverage;
 }
-function matchesAny(paths, pattern) {
-    return paths.some(path => minimatch(path, pattern, options));
+function unmatchedPatterns(paths, patterns, matchers = compile(patterns)) {
+    return patterns.filter((_, i) => !paths.some(path => matchers[i].match(path)));
 }
 export async function discoverSources(root, rules) {
     const names = await sessionGit(root, ["ls-files", "-z", "--cached", "--", "*.md"], false);
@@ -66,7 +71,7 @@ export async function contextCoverage(root, rules) {
         ...coverage,
         included,
         unavailable: coverage.included.filter((_, i) => !availability[i]),
-        emptyPatterns: rules.include.filter(pattern => !matchesAny(included, pattern)),
+        emptyPatterns: unmatchedPatterns(included, rules.include),
     };
 }
 export async function readContextSources(root, paths) {

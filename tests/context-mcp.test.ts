@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -12,6 +12,7 @@ import { createContextMcp } from "../src/context-search/mcp.js";
 import { contextArm, contextTraceSession, traceContext } from "../src/context-search/rollout.js";
 import { summarizeContextTraces } from "../src/context-search/trace-summary.js";
 import { armMcpTaskContext, taskContextRefusal, taskPrompt } from "../src/context-search/task-start.js";
+import { warmTrunkContext } from "../src/context-search/warm.js";
 import { bindTask } from "../src/session/tasks.js";
 import { recordRead } from "../src/session/read-hook.js";
 
@@ -26,12 +27,14 @@ async function fixture() {
   dirs.push(root);
   const files = {
     "morpheus.json": JSON.stringify({ name: "fixture", prefix: "MO", context: {
-      search: { transport: "mcp", rollout: { id: "fixture-pilot", coreInputs: [".agent/context-core.md"] } },
+      search: { transport: "mcp", include: ["research/{.draft,release}/**/*.md"], exclude: ["docs/private/**"], rollout: { id: "fixture-pilot", coreInputs: [".agent/context-core.md"] } },
     } }),
     ".gitignore": "local/\n",
     ".agent/context-core.md": "Use the core release rules.\n",
     ".agent/decisions.md": "# Release decision\nUse the signed release authority.\nCheck the rollout window.\n",
     [taskPath]: "---\nid: MO-001\nprs: [7]\nissues: [8]\n---\n# Verify release\n",
+    "research/.draft/safety.md": "# Zircon checklist\nConfirm the release checksum.\n",
+    "docs/private/safety.md": "# Zircon checklist\nPrivate material.\n",
     [worklogPath]: "---\nroadmap: MO-001\n---\n[Decision](../decisions.md#release-decision)\n",
   };
   for (const [path, text] of Object.entries(files)) {
@@ -292,4 +295,87 @@ it("searches an older checkout with no safe persistent cache without writing pro
     log.mockRestore();
   }
   await expect(access(join(root, "local"))).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+it("warms main and adopts only a fingerprint that matches the linked checkout's records", async () => {
+  const { root, call } = await fixture();
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root });
+  git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "fixture");
+
+  // Prime main without a search or a running MCP warmup.
+  await warmTrunkContext(root);
+  const cache = "local/context-search/cache";
+  const mainIndexes = await readdir(join(root, cache));
+  expect(mainIndexes).toHaveLength(1);
+
+  const linked = await realpath(await mkdtemp(join(tmpdir(), "morpheus-mcp-share-")));
+  dirs.push(linked);
+  git("worktree", "add", "-qb", "mo-001-cache", linked);
+  await writeFile(join(linked, "unindexed.txt"), "This should have no effect on the index.\n");
+  execFileSync("git", ["add", "unindexed.txt"], { cwd: linked });
+
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "linked-probe", version: "1" });
+  clients.push(client);
+  await createContextMcp(linked).connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const search = async (query: string) =>
+    await client.callTool({ name: "search_project_context", arguments: { query } }) as CallToolResult;
+  const mainResult = (await call("search_project_context", { query: "zircon" })).structuredContent;
+  expect(mainResult?.citations).toEqual([{ path: "research/.draft/safety.md", from: 1, to: 2, kind: "other" }]);
+  expect((await search("zircon")).structuredContent).toEqual(mainResult);
+  expect(await readdir(join(linked, cache))).toEqual(mainIndexes);
+
+  const tracePath = join(linked, "local/context-search/traces", new Date().toISOString().slice(0, 10) + ".jsonl");
+  const queries = async () => (await readFile(tracePath, "utf8")).trim().split("\n").map(line => JSON.parse(line))
+    .filter(row => row.type === "query");
+  expect(await queries()).toEqual([expect.objectContaining({ cacheHit: true, buildMs: 0 })]);
+
+  await writeFile(join(linked, "research/.draft/safety.md"), "# Quartz checklist\nCheck the task checksum.\n");
+  expect((await search("zircon")).structuredContent?.citations).toEqual([]);
+  expect((await search("quartz")).structuredContent?.citations).toEqual(mainResult?.citations);
+  expect(await queries()).toEqual([
+    expect.objectContaining({ cacheHit: true, outcome: "ok" }),
+    expect.objectContaining({ cacheHit: false, outcome: "empty" }),
+    expect.objectContaining({ cacheHit: true, outcome: "ok" }),
+  ]);
+  expect(await readdir(join(root, cache))).toEqual(mainIndexes);
+  expect((await call("search_project_context", { query: "zircon" })).structuredContent).toEqual(mainResult);
+});
+
+it("rebuilds locally when the matching primary index cannot be opened", async () => {
+  const { root } = await fixture();
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root });
+  git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "fixture");
+  await warmTrunkContext(root);
+  const cache = "local/context-search/cache";
+  const [key] = await readdir(join(root, cache));
+  const primary = join(root, cache, key!);
+  const store = (await readdir(primary)).find(name => name.endsWith(".store"));
+  await rm(join(primary, store!));
+
+  const linked = await realpath(await mkdtemp(join(tmpdir(), "morpheus-mcp-corrupt-")));
+  dirs.push(linked);
+  git("worktree", "add", "--detach", linked);
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "corrupt-index-probe", version: "1" });
+  clients.push(client);
+  await createContextMcp(linked).connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const request = { name: "search_project_context", arguments: { query: "zircon" } };
+  const expected = {
+    structuredContent: { citations: [{ path: "research/.draft/safety.md", from: 1, to: 2, kind: "other" }] },
+  };
+  expect(await client.callTool(request)).toMatchObject(expected);
+  expect(await client.callTool(request)).toMatchObject(expected);
+  expect(await readdir(join(linked, cache))).toEqual([key]);
+  const traceDir = join(linked, "local/context-search/traces");
+  const traces = await Promise.all((await readdir(traceDir)).map(name => readFile(join(traceDir, name), "utf8")));
+  expect(traces.join("").trim().split("\n").map(line => JSON.parse(line)).filter(row => row.type === "query")).toEqual([
+    expect.objectContaining({ cacheHit: false, outcome: "ok" }),
+    expect.objectContaining({ cacheHit: true, buildMs: 0, outcome: "ok" }),
+  ]);
+  await expect(access(join(primary, store!))).rejects.toMatchObject({ code: "ENOENT" });
 });

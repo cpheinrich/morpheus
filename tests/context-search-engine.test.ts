@@ -56,7 +56,7 @@ test("the exact cap fits and one token below omits an indivisible excerpt", asyn
 
   test("an overlapping search joins the warm build and gets the same immutable index", async () => {
     const options = { cacheDir };
-    const pending = warmTantivyIndex(sources, cacheDir);
+    const pending = warmTantivyIndex(sources, options);
     const overlapping = await searchContext(sources, "EV-26-11-01-01.02.03", 1000, options);
     expect(await pending).toMatchObject({ cacheHit: false, waitMs: 0 });
     expect(overlapping).toMatchObject({ cacheHit: false, buildMs: 0, resultCount: 1 });

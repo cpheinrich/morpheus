@@ -88,6 +88,10 @@ export async function ensure(): Promise<number> {
   const result = await ensureAutoUpdate();
   printEnsure(result, true);
   if (result.outcome === "current" || result.outcome === "updated") await reportContextMcpSetup();
+  if (result.outcome !== "disabled") {
+    const { warmTrunkContext } = await import("../context-search/warm.js");
+    await warmTrunkContext(process.cwd()).catch(() => {});
+  }
   return result.outcome === "failed" ? 1 : 0;
 }
 
