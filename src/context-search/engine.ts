@@ -344,9 +344,12 @@ function refreshIndex(
       : () => refreshIndex(active, snapshot, documents, options);
     return;
   }
+  const previous = active.ready;
   active.refreshTarget = snapshot.index;
   active.refreshing = ensureIndex(snapshot.index, documents, options).then(() => {
-    if (active.latest === snapshot.index) active.ready = snapshot;
+    // Advance to this published snapshot while a later build waits, unless an
+    // exact search already selected a different ready index.
+    if (active.latest === snapshot.index || (active.next && active.ready === previous)) active.ready = snapshot;
   }).catch(() => {
     // Keep the last ready index. The next search can retry a failed build.
   }).finally(() => {

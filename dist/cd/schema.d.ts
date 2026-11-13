@@ -24,8 +24,8 @@ export declare const configSchema: z.ZodObject<{
     mainBranch: z.ZodDefault<z.ZodString>;
     stateBranch: z.ZodDefault<z.ZodString>;
     mode: z.ZodDefault<z.ZodEnum<{
-        observe: "observe";
         active: "active";
+        observe: "observe";
     }>>;
     inputs: z.ZodArray<z.ZodString>;
     controlRef: z.ZodDefault<z.ZodString>;

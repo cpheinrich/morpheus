@@ -101,8 +101,9 @@ it("serves current citations from the last ready index until edited, added and d
   ]));
   await writeFile(wrapper, `#!/bin/sh
 if [ "$3" = build ]; then
+  attempt=$(wc -l < "$PROBE_BUILD_LOG")
   echo build >> "$PROBE_BUILD_LOG"
-  while [ ! -f "$PROBE_BUILD_GATE" ]; do sleep 0.02; done
+  while [ ! -f "$PROBE_BUILD_GATE.$((attempt + 0))" ]; do sleep 0.02; done
 fi
 exec "$PROBE_PYTHON" "$@"
 `, { mode: 0o700 });
@@ -111,6 +112,8 @@ exec "$PROBE_PYTHON" "$@"
   vi.stubEnv("PROBE_BUILD_LOG", log);
   vi.stubEnv("MORPHEUS_TANTIVY_PYTHON", wrapper);
   const cache = join(root, "local/context-search/cache");
+  await writeFile(log, "");
+  const release = (attempt: number) => writeFile(`${gate}.${attempt}`, "");
   const published = async () => (await readdir(cache)).filter(name => name.startsWith("index-")).length;
   try {
     await writeFile(join(root, taskPath), "Release newphrase.\nExtra lines change the chunk mapping.\n\nAnother line.\n");
@@ -133,7 +136,7 @@ exec "$PROBE_PYTHON" "$@"
     await vi.waitFor(async () => expect(await readFile(log, "utf8")).toBe("build\n"));
     expect(await published()).toBe(1);
 
-    await writeFile(gate, "");
+    await release(0);
     await vi.waitFor(async () => expect(await published()).toBe(2));
     const fresh = await search("newphrase addedphrase");
     expect(fresh.structuredContent?.partial).toBeUndefined();
@@ -144,14 +147,19 @@ exec "$PROBE_PYTHON" "$@"
     expect(fresh.structuredContent?.citations).toHaveLength(2);
     expect((await search("oldphrase gonephrase")).structuredContent).toMatchObject({ outcome: "empty", citations: [] });
 
-    await rm(gate);
     await writeFile(join(root, added), "Release secondphrase.\n");
     expect((await search("addedphrase")).structuredContent).toMatchObject({ partial: true, citations: [] });
     await vi.waitFor(async () => expect(await readFile(log, "utf8")).toBe("build\nbuild\n"));
     await writeFile(join(root, taskPath), "Release thirdphrase.\n");
     expect((await search("newphrase thirdphrase")).structuredContent).toMatchObject({ partial: true, citations: [] });
     expect(await readFile(log, "utf8")).toBe("build\nbuild\n");
-    await writeFile(gate, "");
+    await release(1);
+    await vi.waitFor(async () => expect(await readFile(log, "utf8")).toBe("build\nbuild\nbuild\n"));
+    expect(await published()).toBe(3);
+    expect((await search("secondphrase")).structuredContent).toMatchObject({
+      partial: true, citations: [{ path: added, from: 1, to: 1, kind: "other" }],
+    });
+    await release(2);
     await vi.waitFor(async () => expect(await published()).toBe(4));
     const second = await search("secondphrase");
     expect(second.structuredContent?.partial).toBeUndefined();
@@ -159,7 +167,7 @@ exec "$PROBE_PYTHON" "$@"
     expect((await search("thirdphrase")).structuredContent?.citations)
       .toEqual([{ path: taskPath, from: 1, to: 1, kind: "roadmap" }]);
   } finally {
-    await writeFile(gate, "");
+    await Promise.all([0, 1, 2].map(release));
   }
 });
 
