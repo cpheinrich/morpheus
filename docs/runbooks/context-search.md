@@ -100,8 +100,13 @@ The MCP starts warming the current worktree's full Tantivy index when the host l
 the server. Codex's app-server can do this as soon as it starts a project thread, before the
 first turn. The desktop controls when it creates that thread. Warming runs in the background
 while the server connects, and a search for the same index shares a build already in progress.
-The cache is content-addressed. A different checkout, changed sources or a kind-filtered corpus
-can still need a build.
+Managed Git update hooks also warm the primary checkout when it is on the project's trunk
+branch. A linked worktree can copy a ready index from the primary checkout of the same repository
+when its eligible paths and contents produce the same fingerprint. Tantivy opens that copy inside
+the worktree, and cited lines come from the worktree's files. Changes outside the indexed sources
+do not affect reuse. A changed, added or deleted indexed record, or a kind filter that changes
+the corpus, requires a matching index or a local build. If the primary cache cannot be read or
+copied, search still builds locally.
 
 The `pipeline` report gives sample counts and timing from the earliest observed session hook or
 MCP process launch to the first prompt, then to the first search and first nonempty search result.

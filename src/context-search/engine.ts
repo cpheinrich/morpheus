@@ -1,6 +1,7 @@
 import { execFile, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
+import { constants, lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
+import { copyFile, readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Tiktoken } from "js-tiktoken/lite";
@@ -14,6 +15,7 @@ export interface ContextSource {
 
 export interface SearchOptions {
   readonly cacheDir: string;
+  readonly sharedCache?: () => Promise<string | undefined>;
   readonly maxBytes?: number;
   readonly maxLines?: number;
 }
@@ -197,11 +199,22 @@ function fingerprint(sources: readonly ContextSource[]): string {
   return hash.digest("hex");
 }
 
-async function publishIndex(cacheDir: string, index: string, documents: readonly Document[]): Promise<void> {
+async function copyIndex(source: string, pending: string): Promise<void> {
+  const entries = await readdir(source, { withFileTypes: true });
+  // A published index is flat. Let Tantivy create its own lock files in the destination.
+  if (!entries.every(entry => entry.isFile()) || !entries.some(entry => entry.name === "meta.json")) {
+    throw new Error("Unexpected shared context index layout");
+  }
+  for (const { name } of entries.filter(entry => !entry.name.endsWith(".lock"))) {
+    await copyFile(join(source, name), join(pending, name), constants.COPYFILE_FICLONE);
+  }
+}
+
+async function publishIndex(cacheDir: string, index: string, populate: (pending: string) => Promise<void>): Promise<void> {
   mkdirSync(cacheDir, { recursive: true, mode: 0o700 });
   const pending = mkdtempSync(join(cacheDir, "pending-"));
   try {
-    await buildIndex(pending, buildPayload(documents));
+    await populate(pending);
     try {
       renameSync(pending, index);
     } catch (error) {
@@ -252,37 +265,52 @@ function tantivySpans(documents: readonly Document[], query: string, reply: stri
   });
 }
 
-const inFlightBuilds = new Map<string, Promise<void>>();
+async function adoptIndex(options: SearchOptions, index: string): Promise<boolean> {
+  const shared = await options.sharedCache?.();
+  if (!shared) return false;
+  const source = join(shared, basename(index));
+  if (!indexExists(source)) return false;
+  await publishIndex(options.cacheDir, index, pending => copyIndex(source, pending));
+  return true;
+}
 
-async function ensureIndex(sources: readonly ContextSource[], documents: readonly Document[], cacheDir: string) {
-  const index = join(cacheDir, `index-${fingerprint(sources)}`);
+async function prepareIndex(options: SearchOptions, index: string, documents: readonly Document[]) {
+  if (await adoptIndex(options, index).catch(() => false)) return { buildMs: 0, cacheHit: true };
+  const started = performance.now();
+  await publishIndex(options.cacheDir, index, pending => buildIndex(pending, buildPayload(documents)));
+  return { buildMs: performance.now() - started, cacheHit: false };
+}
+
+const inFlightBuilds = new Map<string, ReturnType<typeof prepareIndex>>();
+
+async function ensureIndex(sources: readonly ContextSource[], documents: readonly Document[], options: SearchOptions) {
+  const index = join(options.cacheDir, `index-${fingerprint(sources)}`);
   if (indexExists(index)) return { index, buildMs: 0, cacheHit: true, waitMs: 0 };
   const started = performance.now();
   const running = inFlightBuilds.get(index);
   if (running) {
-    await running;
-    return { index, buildMs: 0, cacheHit: false, waitMs: performance.now() - started };
+    const { cacheHit } = await running;
+    return { index, buildMs: 0, cacheHit, waitMs: performance.now() - started };
   }
-  const build = publishIndex(cacheDir, index, documents);
+  const build = prepareIndex(options, index, documents);
   inFlightBuilds.set(index, build);
   try {
-    await build;
-    return { index, buildMs: performance.now() - started, cacheHit: false, waitMs: 0 };
+    return { index, ...await build, waitMs: 0 };
   } finally {
     inFlightBuilds.delete(index);
   }
 }
 
-export async function warmTantivyIndex(sources: readonly ContextSource[], cacheDir: string) {
+export async function warmTantivyIndex(sources: readonly ContextSource[], options: SearchOptions) {
   const documents = documentsFor(sources);
   if (!documents.length) return;
-  return ensureIndex(sources, documents, cacheDir);
+  return ensureIndex(sources, documents, options);
 }
 
-async function tantivy(sources: readonly ContextSource[], documents: readonly Document[], query: string, cacheDir: string) {
+async function tantivy(sources: readonly ContextSource[], documents: readonly Document[], query: string, options: SearchOptions) {
   const terms = nativeTerms(query);
   if (!terms || !documents.length) return { spans: [], buildMs: 0, cacheHit: false, waitMs: 0 };
-  const { index, ...timing } = await ensureIndex(sources, documents, cacheDir);
+  const { index, ...timing } = await ensureIndex(sources, documents, options);
   const reply = searchIndex(index, terms);
   return { spans: tantivySpans(documents, query, reply), ...timing };
 }
@@ -293,7 +321,7 @@ export async function searchContext(
   if (!Number.isSafeInteger(budget) || budget < 1 || budget > 2500) throw new Error("Search budget must be 1–2500 tokens");
   const start = performance.now();
   const documents = documentsFor(sources);
-  const { spans, buildMs, cacheHit, waitMs } = await tantivy(sources, documents, query, options.cacheDir);
+  const { spans, buildMs, cacheHit, waitMs } = await tantivy(sources, documents, query, options);
   const result = format(spans, budget, options.maxBytes, options.maxLines);
   return { ...result, buildMs, cacheHit, waitMs, queryMs: performance.now() - start - buildMs - waitMs };
 }

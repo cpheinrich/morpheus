@@ -4,6 +4,7 @@ export interface ContextSource {
 }
 export interface SearchOptions {
     readonly cacheDir: string;
+    readonly sharedCache?: () => Promise<string | undefined>;
     readonly maxBytes?: number;
     readonly maxLines?: number;
 }
@@ -24,7 +25,7 @@ export interface SearchResult {
     readonly waitMs: number;
 }
 export declare function countContextTokens(text: string): number;
-export declare function warmTantivyIndex(sources: readonly ContextSource[], cacheDir: string): Promise<{
+export declare function warmTantivyIndex(sources: readonly ContextSource[], options: SearchOptions): Promise<{
     index: string;
     buildMs: number;
     cacheHit: boolean;

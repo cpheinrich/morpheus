@@ -965,7 +965,11 @@ lines. Cache files and traces live under the worktree's ignored `local/context-s
 directory so sandboxed searches can acquire index locks and record timings. Without safe local
 cache storage, a query uses a private temporary index. MCP launch warms the
 full worktree index in the background before a query arrives. An overlapping search shares the
-same in-process build, and a content fingerprint prevents reuse after a source change. The local
+same in-process build. Managed Git updates also warm the primary checkout when it is on trunk.
+A linked worktree can adopt a published index from the primary checkout of the same repository
+when the index format, eligible paths and file contents match. Adoption copies the immutable files
+into the task cache so Tantivy can create its locks inside the task workspace. Search and citations
+still use the task's source snapshot. A missing match builds the task's own index. The local
 pipeline report joins available launch, first-prompt, first-search and first-result timestamps
 without writing any prompt text.
 Historical engine comparisons remain in existing traces. See the [context search runbook](docs/runbooks/context-search.md).

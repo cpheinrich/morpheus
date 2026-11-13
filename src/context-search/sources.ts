@@ -1,6 +1,6 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { minimatch } from "minimatch";
+import { Minimatch } from "minimatch";
 import { sessionGit } from "../session/start.js";
 
 export const CONTEXT_SOURCE_DEFAULTS = [
@@ -15,24 +15,27 @@ const ignored = [
 ];
 
 const options = { dot: true, nonegate: true, nocomment: true } as const;
-const matches = (path: string, patterns: readonly string[]) => patterns.some(pattern => minimatch(path, pattern, options));
+const compile = (patterns: readonly string[]) => patterns.map(pattern => new Minimatch(pattern, options));
+const matches = (path: string, patterns: readonly Minimatch[]) => patterns.some(pattern => pattern.match(path));
+const defaultIncludes = compile(CONTEXT_SOURCE_DEFAULTS);
+const defaultExcludes = compile(ignored);
 const safePath = (path: string) =>
   path.endsWith(".md") && !path.startsWith("/") && !path.split("/").some(part => part === ".." || part === ".");
 
 export const CONTEXT_KINDS = ["decision", "lesson", "roadmap", "worklog", "runbook", "meeting_note", "other"] as const;
 export type ContextKind = typeof CONTEXT_KINDS[number];
 
-const kindPaths: ReadonlyArray<[ContextKind, string]> = [
+const kindPaths = ([
   ["decision", ".agent/decisions{.md,/**}"],
   ["lesson", ".agent/learned{.md,/**}"],
   ["roadmap", "hq/product/roadmap/**"],
   ["worklog", ".agent/worklog/**"],
   ["runbook", "docs/runbooks/**"],
   ["meeting_note", "hq/team/meeting-notes/**"],
-];
+] as const).map(([kind, pattern]) => [kind, new Minimatch(pattern, options)] as const);
 
 export function contextKind(path: string): ContextKind {
-  return kindPaths.find(([, pattern]) => minimatch(path, pattern, options))?.[0] ?? "other";
+  return kindPaths.find(([, pattern]) => pattern.match(path))?.[0] ?? "other";
 }
 
 export interface SourceRules {
@@ -49,19 +52,21 @@ export interface Coverage {
 
 export function classifySources(paths: readonly string[], rules: SourceRules): Coverage {
   const coverage: Coverage = { included: [], excluded: [], uncovered: [], emptyPatterns: [] };
-  const include = [...CONTEXT_SOURCE_DEFAULTS, ...rules.include];
+  const customIncludes = compile(rules.include);
+  const include = [...defaultIncludes, ...customIncludes];
+  const exclude = [...defaultExcludes, ...compile(rules.exclude)];
   const markdown = [...new Set(paths.filter(safePath))].sort();
   for (const path of markdown) {
-    if (matches(path, ignored) || matches(path, rules.exclude)) coverage.excluded.push(path);
+    if (matches(path, exclude)) coverage.excluded.push(path);
     else if (matches(path, include)) coverage.included.push(path);
     else coverage.uncovered.push(path);
   }
-  coverage.emptyPatterns = rules.include.filter(pattern => !matchesAny(coverage.included, pattern));
+  coverage.emptyPatterns = unmatchedPatterns(coverage.included, rules.include, customIncludes);
   return coverage;
 }
 
-function matchesAny(paths: readonly string[], pattern: string): boolean {
-  return paths.some(path => minimatch(path, pattern, options));
+function unmatchedPatterns(paths: readonly string[], patterns: readonly string[], matchers = compile(patterns)): string[] {
+  return patterns.filter((_, i) => !paths.some(path => matchers[i]!.match(path)));
 }
 
 export async function discoverSources(root: string, rules: SourceRules): Promise<Coverage> {
@@ -86,7 +91,7 @@ export async function contextCoverage(root: string, rules: SourceRules): Promise
     ...coverage,
     included,
     unavailable: coverage.included.filter((_, i) => !availability[i]),
-    emptyPatterns: rules.include.filter(pattern => !matchesAny(included, pattern)),
+    emptyPatterns: unmatchedPatterns(included, rules.include),
   };
 }
 

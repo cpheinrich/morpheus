@@ -16,7 +16,7 @@ export async function retrieveContext(root, query, budget, options) {
         const eligible = kinds?.length ? coverage.included.filter(path => kinds.includes(contextKind(path))) : coverage.included;
         const sources = await readContextSources(root, eligible);
         const caps = transport === "mcp" ? { maxBytes: MCP_EXCERPT_BYTES, maxLines: MCP_EXCERPT_LINES } : {};
-        const data = await withContextSearchCache(root, cacheDir => searchContext(sources, query, budget, { cacheDir, ...caps }));
+        const data = await withContextSearchCache(root, cache => searchContext(sources, query, budget, { ...cache, ...caps }));
         const totalQueryMs = performance.now() - started;
         const { queryMs, buildMs, waitMs, cacheHit, resultCount, returnedTokens } = data;
         await traceContext(root, {

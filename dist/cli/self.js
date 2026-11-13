@@ -67,8 +67,11 @@ export async function reportContextMcpSetup() {
 export async function ensure() {
     const result = await ensureAutoUpdate();
     printEnsure(result, true);
-    if (result.outcome === "current" || result.outcome === "updated")
+    if (result.outcome === "current" || result.outcome === "updated") {
         await reportContextMcpSetup();
+        const { warmTrunkContext } = await import("../context-search/warm.js");
+        await warmTrunkContext(process.cwd()).catch(() => { });
+    }
     return result.outcome === "failed" ? 1 : 0;
 }
 export async function autoUpdate(action, root) {
