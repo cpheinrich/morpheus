@@ -120,3 +120,58 @@ is a proposal for Chris to review, so the PR stays a draft.
 ## Agent smoke tests — 2026-11-13
 
 A fresh Haiku 5.5 Factory session exercised a scratch runbook typo and reproduced the built CLI's instruction warning in two disposable adopter projects. The oversized project had 34,013 bytes; it hit line 806 at the default limit and omitted 1,245 bytes, as an independent byte count confirmed. The short project had no size warning. No tracked edits or remote actions. The run was stopped after the two exercises when automatic review blocked an optional dynamic recursive scratch cleanup. Tightened the warning to say explicitly that it estimates the cutoff at the default, including mid-line truncation.
+
+## Independent review
+
+The independent reviewer cleared the Morpheus instruction trim, scaffold guidance and default Codex size warning. The four focused files passed all 133 tests, the compiled output matched, and synthetic byte-boundary cases confirmed the reported cutoff. Two wording notes were nonblocking.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "f7a88bec13c4cb946605c37554bd18d0b0c3ca34",
+  "reviewed": "25af232092b5d3cebc0ab9c06510dce8bf38ca05",
+  "covered": "25af232092b5d3cebc0ab9c06510dce8bf38ca05",
+  "authorSession": "01a1d3c2-3b19-7661-94d2-bc2046c8e8c5",
+  "reviewerSession": "d5ab8e65-607a-4a38-931c-e21191ff183c",
+  "risk": "normal",
+  "elapsedMinutes": 0.8812333333333333,
+  "timing": {
+    "source": "runner",
+    "durationMs": 52874,
+    "evidence": "Claude Code result for Factory run a58edcca-fea0-48eb-bdcf-340f03b7f19e, session d5ab8e65-607a-4a38-931c-e21191ff183c: duration_ms=52874. Same-head report clarification retained the verdict."
+  },
+  "outcome": "complete",
+  "summary": "The independent reviewer cleared the Morpheus instruction trim, scaffold guidance and default Codex size warning. The four focused files passed all 133 tests, the compiled output matched, and synthetic byte-boundary cases confirmed the reported cutoff. Two wording notes were nonblocking.",
+  "contextRead": [
+    "hq/product/roadmap/MO-26-11-12-23.23.28-audit-agent-instructions.md",
+    "hq/product/roadmap/MO-26-10-07-21.31.01-trim-agent-instructions.md",
+    ".agent/decisions.md",
+    "docs/runbooks/independent-review.md",
+    "architecture.md",
+    "AGENTS.md"
+  ],
+  "findings": [
+    {
+      "id": "MOR-M1",
+      "severity": "minor",
+      "description": "The warning could additionally name the project_doc_max_bytes setting for users who changed their default.",
+      "paths": [
+        "src/doctor/index.ts",
+        "src/doctor/instructions.ts"
+      ],
+      "disposition": "disputed",
+      "response": "The user-visible message already limits the claim to the default. Keep the warning concise and avoid suggesting that raising the limit is the preferred remedy."
+    },
+    {
+      "id": "MOR-M2",
+      "severity": "minor",
+      "description": "The internal line comment describes the last retained byte; a newline at the byte boundary means the implementation reports the next line instead.",
+      "paths": [
+        "src/doctor/instructions.ts"
+      ],
+      "disposition": "disputed",
+      "response": "The public warning says the file is cut at that line, and the reviewer verified both boundary cases. The imprecise internal phrasing is a nonblocking note."
+    }
+  ]
+}
+```
