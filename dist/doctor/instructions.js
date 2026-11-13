@@ -55,7 +55,7 @@ export function missingInstructions(text, anchors = INSTRUCTION_ANCHORS) {
  * down to the directory it was launched in and stops at this many bytes in total, cutting the
  * file that crosses it mid-text (`codex-rs/core/src/agents_md.rs`). It is the one hard limit either
  * loader applies at this size: Claude Code loads a whole file up to 4 MiB and only advises
- * staying under 200 lines. Nothing in a session says the tail is missing, so `doctor` does.
+ * staying under 200 lines. This check estimates the cutoff for the root file at the default, not a session's configured limit.
  */
 export const CODEX_PROJECT_DOC_MAX_BYTES = 32 * 1024;
 /** Null when the whole file fits, including at exactly the budget. */

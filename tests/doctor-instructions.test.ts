@@ -121,7 +121,7 @@ describe("doctor reports instruction and poll-guard drift", () => {
     await writeFile(join(root, "AGENTS.md"), template + padding + "z");
     const line = template.split("\n").length + 1;
     expect(await instructionFindings()).toEqual([
-      `AGENTS.md is 32769 bytes. Codex loads at most 32768 bytes of project instructions by default and drops the rest without saying so: everything after line ${line} (1 bytes) never reaches a Codex session. Keep the rules every task needs and move detail into runbooks read on demand.`,
+      `AGENTS.md is 32769 bytes. Codex loads at most 32768 bytes of project instructions by default. At that limit, the file is cut at line ${line} (1 bytes omitted). Keep the rules every task needs and move detail into runbooks read on demand.`,
     ]);
   });
 

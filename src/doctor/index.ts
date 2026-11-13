@@ -626,8 +626,8 @@ async function checkInstructions(root: string, add: Add): Promise<void> {
         "warning",
         "instructions",
         `AGENTS.md is ${cut.bytes} bytes. Codex loads at most ${CODEX_PROJECT_DOC_MAX_BYTES} bytes of project ` +
-          `instructions by default and drops the rest without saying so: everything after line ${cut.line} ` +
-          `(${cut.lost} bytes) never reaches a Codex session. Keep the rules every task needs and move ` +
+          `instructions by default. At that limit, the file is cut at line ${cut.line} ` +
+          `(${cut.lost} bytes omitted). Keep the rules every task needs and move ` +
           "detail into runbooks read on demand.",
       );
     }

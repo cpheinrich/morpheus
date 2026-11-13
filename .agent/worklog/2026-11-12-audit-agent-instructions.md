@@ -117,7 +117,6 @@ is a proposal for Chris to review, so the PR stays a draft.
 - Codex source, [`agents_md.rs`](https://github.com/openai/codex/blob/main/codex-rs/core/src/agents_md.rs)
   at `main` (commit `49f2fc2c`, 2026-11-04) and tag `rust-v0.168.0`: the truncation itself.
 
-## Independent review
+## Agent smoke tests — 2026-11-13
 
-Not run. The delegating session instructed this worker not to launch another agent, and no other
-fresh session was available to it. The PR is an unlabelled draft with auto-merge off.
+A fresh Haiku 5.5 Factory session exercised a scratch runbook typo and reproduced the built CLI's instruction warning in two disposable adopter projects. The oversized project had 34,013 bytes; it hit line 806 at the default limit and omitted 1,245 bytes, as an independent byte count confirmed. The short project had no size warning. No tracked edits or remote actions. The run was stopped after the two exercises when automatic review blocked an optional dynamic recursive scratch cleanup. Tightened the warning to say explicitly that it estimates the cutoff at the default, including mid-line truncation.
