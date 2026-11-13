@@ -109,6 +109,15 @@ the corpus, requires a matching index or a local build. Tantivy opens the privat
 publishing it. A primary index that cannot be read, copied or opened falls back to a local build.
 Warming runs after the pull even when the CLI update check must defer.
 
+After the MCP has a ready index for a worktree and kind filter, the first search after an edit
+starts a replacement build in the background. Until publication, searches can use the last ready
+index for that scope and cite only files that still match it. The response marks these results
+as partial, including an empty result. Use an exact record read for a changed or new file.
+When the replacement is ready, searches use it automatically. If there is no usable previous
+index, the search waits for the matching index. If another search sees more edits during a
+rebuild, the latest requested version is queued. CLI searches and the Claude search hook wait
+for a matching index as well.
+
 The `pipeline` report gives sample counts and timing from the earliest observed session hook or
 MCP process launch to the first prompt, then to the first search and first nonempty search result.
 The read hook supplies a separate time to the first result observed by the host. Warm-up

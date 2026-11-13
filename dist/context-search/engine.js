@@ -4,6 +4,7 @@ import { constants, lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync } from
 import { copyFile, readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { setImmediate } from "node:timers/promises";
 import { Tiktoken } from "js-tiktoken/lite";
 import ranks from "js-tiktoken/ranks/o200k_base";
 import { tantivyPython } from "./runtime.js";
@@ -89,8 +90,9 @@ function documentAt(documents, target) {
     }
     return documents[left - 1];
 }
-function buildPayload(documents) {
+async function buildPayload(documents) {
     const batches = [];
+    let windows = 0;
     for (const document of documents) {
         const { path, lines, firstChunk } = document;
         const title = lines.find((line) => /^# /.test(line)) ?? basename(path);
@@ -107,6 +109,9 @@ function buildPayload(documents) {
                 batches.push(JSON.stringify(batch));
                 batch = [];
             }
+            // Keep cached searches responsive while preparing the Python worker's input.
+            if (++windows % 256 === 0)
+                await setImmediate();
         }
         if (batch.length)
             batches.push(JSON.stringify(batch));
@@ -239,12 +244,15 @@ async function prepareIndex(options, index, documents) {
     if (await adoptIndex(options, index).catch(() => false))
         return { buildMs: 0, cacheHit: true };
     const started = performance.now();
-    await publishIndex(options.cacheDir, index, pending => runIndexWorker("build", pending, buildPayload(documents)));
+    const payload = await buildPayload(documents);
+    await publishIndex(options.cacheDir, index, pending => runIndexWorker("build", pending, payload));
     return { buildMs: performance.now() - started, cacheHit: false };
 }
 const inFlightBuilds = new Map();
-async function ensureIndex(sources, documents, options) {
-    const index = join(options.cacheDir, `index-${fingerprint(sources)}`);
+function indexPath(sources, options) {
+    return join(options.cacheDir, `index-${fingerprint(sources)}`);
+}
+async function ensureIndex(index, documents, options) {
     if (indexExists(index))
         return { index, buildMs: 0, cacheHit: true, waitMs: 0 };
     const started = performance.now();
@@ -266,23 +274,91 @@ export async function warmTantivyIndex(sources, options) {
     const documents = documentsFor(sources);
     if (!documents.length)
         return;
-    return ensureIndex(sources, documents, options);
+    const ready = await ensureIndex(indexPath(sources, options), documents, options);
+    if (options.active && !options.active.ready)
+        options.active.ready = { index: ready.index, sources };
+    return ready;
+}
+function refreshIndex(active, snapshot, documents, options) {
+    if (active.refreshing) {
+        // Coalesce requests during a rebuild. Only the most recently searched corpus is queued.
+        active.next = active.refreshTarget === snapshot.index ? undefined
+            : () => refreshIndex(active, snapshot, documents, options);
+        return;
+    }
+    active.refreshTarget = snapshot.index;
+    active.refreshing = ensureIndex(snapshot.index, documents, options).then(() => {
+        if (active.latest === snapshot.index)
+            active.ready = snapshot;
+    }).catch(() => {
+        // Keep the last ready index. The next search can retry a failed build.
+    }).finally(() => {
+        const next = active.next;
+        delete active.refreshing;
+        delete active.refreshTarget;
+        delete active.next;
+        next?.();
+    });
+}
+function searchPrevious(snapshot, sources, query, terms) {
+    const current = new Map(sources.map(({ path, text }) => [path, text]));
+    const unchanged = new Set(snapshot.sources.filter(({ path, text }) => current.get(path) === text).map(({ path }) => path));
+    const reply = searchIndex(snapshot.index, terms);
+    // Chunk IDs are offsets into the original source order, including changed files.
+    return tantivySpans(documentsFor(snapshot.sources), query, reply).filter(span => unchanged.has(span.document.path));
+}
+function searchWhileRefreshing(snapshot, documents, query, terms, options) {
+    const active = options.active;
+    const previous = active?.ready;
+    if (active)
+        delete active.next;
+    if (!active || !previous || indexExists(snapshot.index))
+        return;
+    try {
+        if (!indexExists(previous.index))
+            return;
+        const spans = searchPrevious(previous, snapshot.sources, query, terms);
+        refreshIndex(active, snapshot, documents, options);
+        return { spans, buildMs: 0, waitMs: 0, cacheHit: true, partial: true };
+    }
+    catch {
+        // A removed or unreadable previous index leaves the exact build path available.
+        if (active.ready === previous)
+            delete active.ready;
+    }
 }
 async function tantivy(sources, documents, query, options) {
     const terms = nativeTerms(query);
     if (!terms || !documents.length)
         return { spans: [], buildMs: 0, cacheHit: false, waitMs: 0 };
-    const { index, ...timing } = await ensureIndex(sources, documents, options);
-    const reply = searchIndex(index, terms);
-    return { spans: tantivySpans(documents, query, reply), ...timing };
+    const snapshot = { index: indexPath(sources, options), sources };
+    if (options.active)
+        options.active.latest = snapshot.index;
+    const partial = searchWhileRefreshing(snapshot, documents, query, terms, options);
+    if (partial)
+        return partial;
+    const active = options.active;
+    const { index, ...timing } = await ensureIndex(snapshot.index, documents, options);
+    const spans = tantivySpans(documents, query, searchIndex(index, terms));
+    if (active?.latest === index && active.ready?.index !== index)
+        active.ready = snapshot;
+    return { spans, ...timing };
+}
+/** Drain active builds on stdio EOF so workers can clean up their pending directories. */
+export async function drainContextIndexBuilds() {
+    while (inFlightBuilds.size) {
+        await Promise.allSettled(inFlightBuilds.values());
+        // Allow completion handlers to start the most recent queued rebuild.
+        await setImmediate();
+    }
 }
 export async function searchContext(sources, query, budget, options) {
     if (!Number.isSafeInteger(budget) || budget < 1 || budget > 2500)
         throw new Error("Search budget must be 1–2500 tokens");
     const start = performance.now();
     const documents = documentsFor(sources);
-    const { spans, buildMs, cacheHit, waitMs } = await tantivy(sources, documents, query, options);
+    const { spans, buildMs, cacheHit, waitMs, partial } = await tantivy(sources, documents, query, options);
     const result = format(spans, budget, options.maxBytes, options.maxLines);
-    return { ...result, buildMs, cacheHit, waitMs, queryMs: performance.now() - start - buildMs - waitMs };
+    return { ...result, buildMs, cacheHit, waitMs, partial, queryMs: performance.now() - start - buildMs - waitMs };
 }
 //# sourceMappingURL=engine.js.map

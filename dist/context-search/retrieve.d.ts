@@ -1,3 +1,4 @@
+import { type ActiveContextIndex } from "./engine.js";
 import { type TraceTransport } from "./rollout.js";
 import { type ContextKind } from "./sources.js";
 interface RetrievalOptions {
@@ -6,6 +7,7 @@ interface RetrievalOptions {
     kinds?: readonly ContextKind[];
     started?: number;
     mcpStartedAt?: number;
+    active?: ActiveContextIndex;
 }
 export declare function retrieveContext(root: string, query: string, budget: number, options: RetrievalOptions): Promise<{
     engine: "tantivy";

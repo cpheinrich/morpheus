@@ -157,6 +157,7 @@ export interface ContextTrace {
   engineQueryMs?: number;
   buildMs?: number;
   cacheHit?: boolean;
+  partial?: true;
   resultCount?: number;
   returnedTokens?: number;
   budget?: number;
@@ -198,6 +199,7 @@ function traceLine(event: ContextTrace, now: Date): string {
     startup: event.startup === "bounded" || event.startup === "full" ? event.startup : undefined,
     ...traceUsage(event),
     cacheHit: typeof event.cacheHit === "boolean" ? event.cacheHit : undefined,
+    partial: event.partial === true ? true : undefined,
     ...safeNumbers,
   }) + "\n";
 }

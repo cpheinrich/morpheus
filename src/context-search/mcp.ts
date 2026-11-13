@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { sessionGit } from "../session/start.js";
-import { countContextTokens } from "./engine.js";
+import { countContextTokens, drainContextIndexBuilds, type ActiveContextIndex } from "./engine.js";
 import { contextMcpScope, contextMcpSession } from "./mcp-scope.js";
 import { CONTEXT_SEARCH_HEADER, MCP_EXCERPT_BYTES } from "./output.js";
 import { contextOverview } from "./overview.js";
@@ -17,6 +17,16 @@ const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: 
 const pathInput = z.string().min(1).max(512).describe("Repository-relative Markdown path from a citation.");
 const tokenInput = z.number().int().min(1).max(2500).default(1000);
 type Scope = Awaited<ReturnType<typeof contextMcpScope>>;
+
+function activeIndexFor(indexes: Map<string, ActiveContextIndex>, root: string, kinds?: readonly ContextKind[]) {
+  const key = JSON.stringify([root, [...new Set(kinds)].sort()]);
+  const active = indexes.get(key) ?? {};
+  indexes.delete(key);
+  indexes.set(key, active);
+  // Keep at most a few source snapshots when a host switches worktrees or filters.
+  if (indexes.size > 4) indexes.delete(indexes.keys().next().value!);
+  return active;
+}
 
 function result(text: string, fields: Record<string, unknown>): CallToolResult {
   return { content: [{ type: "text", text }], structuredContent: fields };
@@ -50,13 +60,17 @@ async function call(
   }
 }
 
-async function search(scope: Scope, input: { query: string; max_tokens: number; kinds?: ContextKind[] }, started: number, mcpStartedAt?: number) {
-  const found = await retrieveContext(scope.root, input.query, input.max_tokens, { session: scope.session, transport: "mcp", kinds: input.kinds, started, mcpStartedAt });
-  const { output, excerpts, returnedTokens } = found.data;
-  const message = output ? `${CONTEXT_SEARCH_HEADER}\n${output}`
-    : "No matching excerpts within the return budget. Refine the search or read a known source.";
+async function search(scope: Scope, input: { query: string; max_tokens: number; kinds?: ContextKind[] }, started: number, active: ActiveContextIndex, mcpStartedAt?: number) {
+  const found = await retrieveContext(scope.root, input.query, input.max_tokens, {
+    session: scope.session, transport: "mcp", kinds: input.kinds, started, mcpStartedAt, active,
+  });
+  const { output, excerpts, returnedTokens, partial } = found.data;
+  const note = partial ? "Index updating. These results cover unchanged records only. Retry search shortly or read a known record directly.\n" : "";
+  const message = note + (output ? `${CONTEXT_SEARCH_HEADER}\n${output}`
+    : "No matching excerpts within the return budget. Refine the search or read a known source.");
   return result(message, {
     excerpt: message, outcome: output ? "ok" : "empty", engine: found.engine, fallback: false, returnedTokens,
+    ...(partial ? { partial } : {}),
     citations: excerpts.map(({ path, from, to }) => ({ path, from, to, kind: contextKind(path) })),
   });
 }
@@ -105,7 +119,7 @@ async function related(scope: Scope, input: { path: string; depth: number; limit
   return result(JSON.stringify(data), data);
 }
 
-export function createContextMcp(cwd: string, mcpStartedAt?: number): McpServer {
+export function createContextMcp(cwd: string, mcpStartedAt?: number, indexes = new Map<string, ActiveContextIndex>()): McpServer {
   const server = new McpServer({ name: "morpheus_context", version: "1.0.0" });
   server.registerTool("search_project_context", {
     description: "Find decisions, prior attempts, roadmap items, runbooks and meeting notes in the active project. Returns ranked excerpts and citations. Use this first for governing records and project history, including in reviews and delegated tasks.",
@@ -114,7 +128,8 @@ export function createContextMcp(cwd: string, mcpStartedAt?: number): McpServer 
       kinds: z.array(z.enum(CONTEXT_KINDS)).min(1).max(CONTEXT_KINDS.length).optional()
         .describe("Optional restriction to particular record kinds. Search all eligible kinds by default."),
     }, annotations: READ_ONLY,
-  }, (input, extra) => call(cwd, extra._meta, "search", (scope, started) => search(scope, input, started, mcpStartedAt)));
+  }, (input, extra) => call(cwd, extra._meta, "search", (scope, started) =>
+    search(scope, input, started, activeIndexFor(indexes, scope.root, input.kinds), mcpStartedAt)));
   server.registerTool("read_project_record", {
     description: "Read an exact cited section of an indexed project record in source order. Use the citation path and line range.",
     inputSchema: { path: pathInput, from: z.number().int().min(1).max(10_000_000).default(1),
@@ -141,9 +156,12 @@ export function createContextMcp(cwd: string, mcpStartedAt?: number): McpServer 
 
 export async function runContextMcp(): Promise<number> {
   const cwd = process.cwd();
-  const server = createContextMcp(cwd, performance.timeOrigin);
-  const warming = warmContextMcp(cwd).catch(() => {});
-  const closed = new Promise<number>(resolve => { server.server.onclose = () => { void warming.then(() => resolve(0)); }; });
+  const indexes = new Map<string, ActiveContextIndex>();
+  const server = createContextMcp(cwd, performance.timeOrigin, indexes);
+  const warming = warmContextMcp(cwd, root => activeIndexFor(indexes, root)).catch(() => {});
+  const closed = new Promise<number>(resolve => {
+    server.server.onclose = () => { void warming.then(drainContextIndexBuilds).then(() => resolve(0)); };
+  });
   await server.connect(new StdioServerTransport());
   return closed;
 }

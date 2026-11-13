@@ -10,6 +10,7 @@ import { runContextSearch } from "../src/cli/context-search.js";
 import { contextMcpSession } from "../src/context-search/mcp-scope.js";
 import { createContextMcp } from "../src/context-search/mcp.js";
 import { contextArm, contextTraceSession, traceContext } from "../src/context-search/rollout.js";
+import { tantivyPython } from "../src/context-search/runtime.js";
 import { summarizeContextTraces } from "../src/context-search/trace-summary.js";
 import { armMcpTaskContext, taskContextRefusal, taskPrompt } from "../src/context-search/task-start.js";
 import { warmTrunkContext } from "../src/context-search/warm.js";
@@ -82,6 +83,84 @@ it("exposes five tools, follows roadmap backlinks and GitHub IDs, and reports re
   expect(await call("read_project_record", { path: "../private.md" })).toMatchObject({ isError: true });
   expect((await call("search_project_context", { query: "release", kinds: ["decision"] })).structuredContent?.citations)
     .toEqual([{ path: ".agent/decisions.md", from: 1, to: 3, kind: "decision" }]);
+});
+
+it("serves current citations from the last ready index until edited, added and deleted records are rebuilt", async () => {
+  const { root, call } = await fixture();
+  const stable = ".agent/decisions.md";
+  const added = "research/.draft/new.md";
+  const gate = join(root, "release-build");
+  const log = join(root, "build-attempts");
+  const wrapper = join(root, "paused-python");
+  const search = (query: string) => call("search_project_context", { query });
+  await writeFile(join(root, taskPath), "Release oldphrase.\n");
+  await writeFile(join(root, worklogPath), "Release gonephrase.\n");
+  const initial = await search("release");
+  expect(initial.structuredContent?.citations).toEqual(expect.arrayContaining([
+    expect.objectContaining({ path: taskPath }), expect.objectContaining({ path: worklogPath }),
+  ]));
+  await writeFile(wrapper, `#!/bin/sh
+if [ "$3" = build ]; then
+  echo build >> "$PROBE_BUILD_LOG"
+  while [ ! -f "$PROBE_BUILD_GATE" ]; do sleep 0.02; done
+fi
+exec "$PROBE_PYTHON" "$@"
+`, { mode: 0o700 });
+  vi.stubEnv("PROBE_PYTHON", tantivyPython());
+  vi.stubEnv("PROBE_BUILD_GATE", gate);
+  vi.stubEnv("PROBE_BUILD_LOG", log);
+  vi.stubEnv("MORPHEUS_TANTIVY_PYTHON", wrapper);
+  const cache = join(root, "local/context-search/cache");
+  const published = async () => (await readdir(cache)).filter(name => name.startsWith("index-")).length;
+  try {
+    await writeFile(join(root, taskPath), "Release newphrase.\nExtra lines change the chunk mapping.\n\nAnother line.\n");
+    await rm(join(root, worklogPath));
+    await writeFile(join(root, added), "Release addedphrase.\n");
+    execFileSync("git", ["add", "--", added], { cwd: root });
+
+    const partial = await search("release");
+    expect(partial.structuredContent).toMatchObject({
+      partial: true, excerpt: expect.stringContaining("Index updating"),
+      citations: [
+        { path: stable, from: 1, to: 3, kind: "decision" },
+        { path: ".agent/context-core.md", from: 1, to: 1, kind: "other" },
+        { path: "research/.draft/safety.md", from: 1, to: 2, kind: "other" },
+      ],
+    });
+    expect((await search("oldphrase gonephrase newphrase addedphrase")).structuredContent)
+      .toMatchObject({ partial: true, outcome: "empty", citations: [] });
+    expect((await call("read_project_record", { path: taskPath })).structuredContent?.excerpt).toContain("Release newphrase.");
+    await vi.waitFor(async () => expect(await readFile(log, "utf8")).toBe("build\n"));
+    expect(await published()).toBe(1);
+
+    await writeFile(gate, "");
+    await vi.waitFor(async () => expect(await published()).toBe(2));
+    const fresh = await search("newphrase addedphrase");
+    expect(fresh.structuredContent?.partial).toBeUndefined();
+    expect(fresh.structuredContent?.citations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: taskPath, from: 1, to: 4 }),
+      expect.objectContaining({ path: added, from: 1, to: 1 }),
+    ]));
+    expect(fresh.structuredContent?.citations).toHaveLength(2);
+    expect((await search("oldphrase gonephrase")).structuredContent).toMatchObject({ outcome: "empty", citations: [] });
+
+    await rm(gate);
+    await writeFile(join(root, added), "Release secondphrase.\n");
+    expect((await search("addedphrase")).structuredContent).toMatchObject({ partial: true, citations: [] });
+    await vi.waitFor(async () => expect(await readFile(log, "utf8")).toBe("build\nbuild\n"));
+    await writeFile(join(root, taskPath), "Release thirdphrase.\n");
+    expect((await search("newphrase thirdphrase")).structuredContent).toMatchObject({ partial: true, citations: [] });
+    expect(await readFile(log, "utf8")).toBe("build\nbuild\n");
+    await writeFile(gate, "");
+    await vi.waitFor(async () => expect(await published()).toBe(4));
+    const second = await search("secondphrase");
+    expect(second.structuredContent?.partial).toBeUndefined();
+    expect(second.structuredContent?.citations).toEqual([{ path: added, from: 1, to: 1, kind: "other" }]);
+    expect((await search("thirdphrase")).structuredContent?.citations)
+      .toEqual([{ path: taskPath, from: 1, to: 1, kind: "roadmap" }]);
+  } finally {
+    await writeFile(gate, "");
+  }
 });
 
 it("preserves arm, records MCP timing, and only credits the excerpt shown by the host", async () => {
@@ -333,11 +412,14 @@ it("warms main and adopts only a fingerprint that matches the linked checkout's 
   expect(await queries()).toEqual([expect.objectContaining({ cacheHit: true, buildMs: 0 })]);
 
   await writeFile(join(linked, "research/.draft/safety.md"), "# Quartz checklist\nCheck the task checksum.\n");
-  expect((await search("zircon")).structuredContent?.citations).toEqual([]);
+  expect((await search("zircon")).structuredContent).toMatchObject({ partial: true, citations: [] });
+  await vi.waitFor(async () => {
+    expect((await readdir(join(linked, cache))).filter(name => name.startsWith("index-"))).toHaveLength(2);
+  });
   expect((await search("quartz")).structuredContent?.citations).toEqual(mainResult?.citations);
   expect(await queries()).toEqual([
     expect.objectContaining({ cacheHit: true, outcome: "ok" }),
-    expect.objectContaining({ cacheHit: false, outcome: "empty" }),
+    expect.objectContaining({ cacheHit: true, partial: true, buildMs: 0, outcome: "empty" }),
     expect.objectContaining({ cacheHit: true, outcome: "ok" }),
   ]);
   expect(await readdir(join(root, cache))).toEqual(mainIndexes);

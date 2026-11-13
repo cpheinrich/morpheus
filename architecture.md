@@ -970,7 +970,10 @@ A linked worktree can adopt a published index from the primary checkout of the s
 when the index format, eligible paths and file contents match. Adoption copies the immutable files
 into the task cache and checks that Tantivy can open them before publishing. Tantivy creates its
 locks inside the task workspace. Search and citations
-still use the task's source snapshot. A missing match builds the task's own index. The local
+still use the task's source snapshot. A missing match builds the task's own index. When a search
+detects a change and the MCP already has a ready index for the worktree and kind filter, it
+builds the replacement in the background. Partial results cite only unchanged files until the
+new index is published atomically. Exact reads use the live worktree files. The local
 pipeline report joins available launch, first-prompt, first-search and first-result timestamps
 without writing any prompt text.
 Historical engine comparisons remain in existing traces. See the [context search runbook](docs/runbooks/context-search.md).

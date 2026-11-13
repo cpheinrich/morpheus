@@ -133,6 +133,7 @@ function traceLine(event, now) {
         startup: event.startup === "bounded" || event.startup === "full" ? event.startup : undefined,
         ...traceUsage(event),
         cacheHit: typeof event.cacheHit === "boolean" ? event.cacheHit : undefined,
+        partial: event.partial === true ? true : undefined,
         ...safeNumbers,
     }) + "\n";
 }
