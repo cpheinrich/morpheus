@@ -54,6 +54,7 @@ export interface ContextTrace {
     engineQueryMs?: number;
     buildMs?: number;
     cacheHit?: boolean;
+    partial?: true;
     resultCount?: number;
     returnedTokens?: number;
     budget?: number;

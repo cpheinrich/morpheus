@@ -1,5 +1,5 @@
 import { checkoutIdentity, sessionGit } from "../session/start.js";
-import { warmTantivyIndex } from "./engine.js";
+import { warmTantivyIndex, type ActiveContextIndex } from "./engine.js";
 import { persistentContextCache } from "./local-state.js";
 import { resolveTrunk } from "../session/git.js";
 import { projectPolicy } from "../session/policy.js";
@@ -15,21 +15,22 @@ export async function warmTrunkContext(cwd: string): Promise<void> {
 }
 
 /** Build in the background when the MCP host starts, before the first search. */
-export async function warmContextMcp(cwd: string): Promise<void> {
-  await warmContext(cwd, "mcp");
+export async function warmContextMcp(cwd: string, activeFor: (root: string) => ActiveContextIndex): Promise<void> {
+  await warmContext(cwd, "mcp", activeFor);
 }
 
-async function warmContext(cwd: string, transport: "mcp" | "cli"): Promise<void> {
+async function warmContext(cwd: string, transport: "mcp" | "cli", activeFor?: (root: string) => ActiveContextIndex): Promise<void> {
   const started = performance.now();
   const { root } = await checkoutIdentity(cwd);
   const config = await getSearchConfig(root);
   const cache = await persistentContextCache(root).catch(() => undefined);
   if (!cache) return;
+  const active = activeFor?.(root);
   const base = { type: "warm", transport, arm: "tantivy-full", engine: "tantivy", rollout: config.rollout?.id, mcpStartedAt: transport === "mcp" ? performance.timeOrigin : undefined } as const;
   try {
     const { included } = await discoverSources(root, config);
     const sources = await readContextSources(root, included);
-    const timing = await warmTantivyIndex(sources, cache);
+    const timing = await warmTantivyIndex(sources, { ...cache, active });
     const { buildMs, waitMs, cacheHit } = timing ?? {};
     await traceContext(root, { ...base, outcome: timing ? "ok" : "empty", queryMs: performance.now() - started, buildMs, waitMs, cacheHit });
   } catch {

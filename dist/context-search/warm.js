@@ -15,21 +15,22 @@ export async function warmTrunkContext(cwd) {
         await warmContext(root, "cli");
 }
 /** Build in the background when the MCP host starts, before the first search. */
-export async function warmContextMcp(cwd) {
-    await warmContext(cwd, "mcp");
+export async function warmContextMcp(cwd, activeFor) {
+    await warmContext(cwd, "mcp", activeFor);
 }
-async function warmContext(cwd, transport) {
+async function warmContext(cwd, transport, activeFor) {
     const started = performance.now();
     const { root } = await checkoutIdentity(cwd);
     const config = await getSearchConfig(root);
     const cache = await persistentContextCache(root).catch(() => undefined);
     if (!cache)
         return;
+    const active = activeFor?.(root);
     const base = { type: "warm", transport, arm: "tantivy-full", engine: "tantivy", rollout: config.rollout?.id, mcpStartedAt: transport === "mcp" ? performance.timeOrigin : undefined };
     try {
         const { included } = await discoverSources(root, config);
         const sources = await readContextSources(root, included);
-        const timing = await warmTantivyIndex(sources, cache);
+        const timing = await warmTantivyIndex(sources, { ...cache, active });
         const { buildMs, waitMs, cacheHit } = timing ?? {};
         await traceContext(root, { ...base, outcome: timing ? "ok" : "empty", queryMs: performance.now() - started, buildMs, waitMs, cacheHit });
     }

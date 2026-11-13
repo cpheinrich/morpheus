@@ -16,12 +16,15 @@ export async function retrieveContext(root, query, budget, options) {
         const eligible = kinds?.length ? coverage.included.filter(path => kinds.includes(contextKind(path))) : coverage.included;
         const sources = await readContextSources(root, eligible);
         const caps = transport === "mcp" ? { maxBytes: MCP_EXCERPT_BYTES, maxLines: MCP_EXCERPT_LINES } : {};
-        const data = await withContextSearchCache(root, cache => searchContext(sources, query, budget, { ...cache, ...caps }));
+        const data = await withContextSearchCache(root, cache => searchContext(sources, query, budget, {
+            // Temporary indexes are deleted when the query finishes.
+            ...cache, ...caps, active: cache.sharedCache ? options.active : undefined,
+        }));
         const totalQueryMs = performance.now() - started;
-        const { queryMs, buildMs, waitMs, cacheHit, resultCount, returnedTokens } = data;
+        const { queryMs, buildMs, waitMs, cacheHit, resultCount, returnedTokens, partial } = data;
         await traceContext(root, {
             type: "query", ...trace, actualEngine: arm.engine, budget, engineQueryMs: queryMs,
-            queryMs: totalQueryMs, buildMs, waitMs, cacheHit, resultCount, returnedTokens,
+            queryMs: totalQueryMs, buildMs, waitMs, cacheHit, resultCount, returnedTokens, partial,
             outcome: resultCount ? "ok" : "empty",
         });
         return { engine: arm.engine, data, totalQueryMs };

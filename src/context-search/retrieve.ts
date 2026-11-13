@@ -1,4 +1,4 @@
-import { searchContext } from "./engine.js";
+import { searchContext, type ActiveContextIndex } from "./engine.js";
 import { withContextSearchCache } from "./local-state.js";
 import { contextArm, getSearchConfig, traceContext, type TraceTransport } from "./rollout.js";
 import { MCP_EXCERPT_BYTES, MCP_EXCERPT_LINES } from "./output.js";
@@ -10,6 +10,7 @@ interface RetrievalOptions {
   kinds?: readonly ContextKind[];
   started?: number;
   mcpStartedAt?: number;
+  active?: ActiveContextIndex;
 }
 
 export async function retrieveContext(root: string, query: string, budget: number, options: RetrievalOptions) {
@@ -25,12 +26,15 @@ export async function retrieveContext(root: string, query: string, budget: numbe
     const eligible = kinds?.length ? coverage.included.filter(path => kinds.includes(contextKind(path))) : coverage.included;
     const sources = await readContextSources(root, eligible);
     const caps = transport === "mcp" ? { maxBytes: MCP_EXCERPT_BYTES, maxLines: MCP_EXCERPT_LINES } : {};
-    const data = await withContextSearchCache(root, cache => searchContext(sources, query, budget, { ...cache, ...caps }));
+    const data = await withContextSearchCache(root, cache => searchContext(sources, query, budget, {
+      // Temporary indexes are deleted when the query finishes.
+      ...cache, ...caps, active: cache.sharedCache ? options.active : undefined,
+    }));
     const totalQueryMs = performance.now() - started;
-    const { queryMs, buildMs, waitMs, cacheHit, resultCount, returnedTokens } = data;
+    const { queryMs, buildMs, waitMs, cacheHit, resultCount, returnedTokens, partial } = data;
     await traceContext(root, {
       type: "query", ...trace, actualEngine: arm.engine, budget, engineQueryMs: queryMs,
-      queryMs: totalQueryMs, buildMs, waitMs, cacheHit, resultCount, returnedTokens,
+      queryMs: totalQueryMs, buildMs, waitMs, cacheHit, resultCount, returnedTokens, partial,
       outcome: resultCount ? "ok" : "empty",
     });
     return { engine: arm.engine, data, totalQueryMs };
