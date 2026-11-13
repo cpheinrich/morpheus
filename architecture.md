@@ -508,10 +508,32 @@ needed.
 
 ### 7.1 Instruction layering
 
-- **`AGENTS.md` (root)** — canonical, project-wide. `CLAUDE.md` symlinks to it so Claude and Codex
-  read exactly one file. Generated at init from `morpheus-kit/agent` fragments plus project
-  specifics, with a marked region the CLI can update on `morpheus upgrade`.
-- **`apps/web/AGENTS.md`** — surface-specific.
+- **`AGENTS.md` (root)** — canonical, project-wide. `CLAUDE.md` is a committed symlink to it, so
+  Claude and Codex read exactly one file. `morpheus init` writes it once, from `agents()` in
+  `src/init/templates.ts`; later template guidance reaches a project by hand, and `morpheus doctor`
+  names the rules that have not arrived. The marked region an upgrade command could rewrite
+  (§18.3) is not built.
+- **It holds what every task needs, sized against what each loader does** (vendor documentation
+  and Codex source read 2026-11-12; links in `.agent/learned.md`):
+  - *Codex* concatenates `AGENTS.md` (or a directory's `AGENTS.override.md`) from the Git root
+    down to the directory it was launched in, and stops at `project_doc_max_bytes`: 32 KiB by
+    default, for the whole chain, cutting the file that crosses it. Content past the budget never
+    reaches a Codex session and nothing in the session says so. This is the hard limit, so
+    `doctor` warns when a root file exceeds it; the 16 KB scaffold and 20 KB Morpheus budgets held
+    by tests leave room for a nested file.
+  - *Claude Code* loads each `CLAUDE.md` from the launch directory upward whole (it skips only a
+    file over 4 MiB) and recommends under 200 lines per file because longer files are followed
+    less reliably. That is advice about adherence, not a cap.
+  - *The symlink stays.* Since v2.1.277 Claude Code can read `AGENTS.md` directly, but only when
+    no `CLAUDE.md` or `CLAUDE.local.md` exists in the launch directory or any directory above it.
+    Removing the symlink would drop the project's instructions for older clients and for any
+    checkout under a directory that has its own `CLAUDE.md`. Windows collaborators would need an
+    `@AGENTS.md` import instead, because Git checks a symlink out as a one-line text file there.
+- **`apps/web/AGENTS.md`** — surface-specific detail, never a rule every session must follow.
+  Codex adds a nested file only when launched in or below that directory, not when a session
+  started at the root edits files there. Claude loads a nested file when it first reads a file in
+  that directory, and because the root `CLAUDE.md` turns direct `AGENTS.md` reading off, only
+  through a sibling `CLAUDE.md` (a symlink or a one-line `@AGENTS.md` import).
 - **`.agents/skills/`** — repository-owned Codex skills: named, repeatable procedures shared by
   everyone who clones the project.
 - **`.claude/skills/`** — repository-owned Claude skills where that provider needs the same kind

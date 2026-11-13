@@ -1,5 +1,20 @@
 # Decisions
 
+## Instruction files are sized against what each loader does — 2026-11-12
+
+MO-26-11-12-23.23.28, proposed for Chris's review. Chris asked for an audit of the instruction
+stack against current Claude Code and Codex guidance. Extends
+"AGENTS.md holds per-task invariants" (2026-10-07,
+[MO-26-10-07-21.31.01](../hq/product/roadmap/MO-26-10-07-21.31.01-trim-agent-instructions.md)), which stands. Codex's 32 KiB
+budget is the one hard limit and it covers the whole root-to-launch chain, so `doctor` warns when a
+project's `AGENTS.md` exceeds it; a warning, because only checks that protect users block. Claude's
+200 lines stays advice and gets no check. The `CLAUDE.md` symlink stays, since Claude reads
+`AGENTS.md` directly only with no `CLAUDE.md` anywhere above the launch directory. The scaffold
+callout says when to open upstream `architecture.md` instead of "before changing anything",
+following what Evo and Lakina had already done by hand. Considered a path-scoped `.claude/rules/`
+split and nested `AGENTS.md` files for conditional detail; kept runbooks, because rules are
+Claude-only and Codex loads a nested file only when launched inside its directory. No dependency.
+
 ## Reviewers orient with the context MCP on records the author names — 2026-11-10
 
 MO-26-11-10-02.18.11. Chris, after the evo#863 reviewer read only code: reviewers orient with the

@@ -736,3 +736,37 @@ printing delivers at most the pipe buffer (64 KiB) to a reader that is not keepi
 same command redirected to a file looks fine. Exit from the callback of an empty write to each
 stream instead. Testing it needs a reader that is slow on purpose, and Node's `child_process`
 resumes and discards an unlistened child stream at exit, so attach data listeners before pausing.
+
+## Codex cuts project instructions at 32 KiB; Claude Code loads the whole file
+
+2026-11-12 (MO-26-11-12-23.23.28). Read from the vendors' documentation and Codex's source that
+day, then measured against three projects:
+
+- **Codex has a hard budget and it is the whole chain's.** It concatenates `AGENTS.md` files from
+  the Git root to the launch directory and stops at `project_doc_max_bytes`, 32,768 bytes by
+  default; the file that crosses it is cut mid-text (`data.truncate(remaining)` in
+  [`agents_md.rs`](https://github.com/openai/codex/blob/main/codex-rs/core/src/agents_md.rs), same
+  at `rust-v0.168.0`). The only signal is a startup warning. Evo's 46,512-byte file lost everything
+  after line 500 (30% of it, including its testing requirements) and Lakina's 33,468-byte
+  file its last 700 bytes, and a file nested below either was skipped entirely. The
+  [AGENTS.md guide](https://learn.chatgpt.com/docs/agent-configuration/agents-md) describes the
+  budget; [Advanced Config](https://learn.chatgpt.com/docs/config-file/config-advanced) calls it
+  "how much to read from each `AGENTS.md` file", which the source contradicts.
+- **Claude Code has advice, not a cap.** A `CLAUDE.md` loaded at launch arrives whole up to 4 MiB;
+  "under 200 lines" is a recommendation because long files are followed less reliably
+  ([memory guide](https://code.claude.com/docs/en/memory)). Only on-demand files (a subdirectory's
+  `CLAUDE.md`, path-scoped rules) are cut, at 40,000 characters on a 200K window.
+- **Claude Code reads `AGENTS.md` directly since v2.1.277, but only with no `CLAUDE.md` or
+  `CLAUDE.local.md` in the launch directory or above it.** A `CLAUDE.md` symlink is read once and
+  needs no change. A checkout under any directory that has its own `CLAUDE.md` would lose the
+  project file if the symlink were removed, and so would an older client.
+- **A nested `AGENTS.md` is not a place for a rule everyone must follow.** Codex adds it only when
+  launched in or below its directory. Claude loads it on first read of a file there, and with a
+  root `CLAUDE.md` present, only through a sibling `CLAUDE.md` (symlink or `@AGENTS.md`).
+- **Both vendors now warn against "read these documents before every change"** and against
+  restating what the model derives from the tree
+  ([OpenAI](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra),
+  [Anthropic](https://code.claude.com/docs/en/best-practices)): say when a document applies.
+
+A size limit nobody measures is crossed silently: Morpheus's own file and the scaffold had tests,
+and consumers had nothing. `doctor` now warns past 32,768 bytes.

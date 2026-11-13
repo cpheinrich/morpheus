@@ -172,6 +172,31 @@ describe("the scaffolded AGENTS.md", () => {
     expect(Buffer.byteLength(text)).toBeLessThan(16_000);
   });
 
+  it("says when to open the upstream documents instead of requiring them before every change", () => {
+    const text = agents(SEED);
+    // architecture.md is ~290 KB; an unconditional "read it first" is paid by every task.
+    expect(text).not.toMatch(/before reviewing or changing anything/i);
+    expect(text).not.toContain("read that first");
+    expect(text).toContain("Before changing project structure,\ngenerated records or claims, open the governing section");
+    expect(text).toContain("/blob/main/architecture.md");
+    expect(text).toContain("/blob/main/AGENTS.md)");
+  });
+
+  it("keeps the upstream-gap subsection under the Morpheus callout, not under the context tools", () => {
+    const text = agents(SEED);
+    const callout = text.indexOf("## This project is managed by Morpheus");
+    const gap = text.indexOf("### Found a gap in Morpheus itself?");
+    const tools = text.indexOf("## Morpheus context tools");
+    expect(callout).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeGreaterThan(callout);
+    // An H3 belongs to the H2 above it: after the context-tools H2 it read as that section's child.
+    expect(tools).toBeGreaterThan(gap);
+    expect(text.slice(gap, tools)).toContain("/issues");
+    expect(text.slice(gap, tools)).toContain("morpheus pm new roadmap");
+    // The embedded block ends the callout, so it must not leave a second blank line before Layout.
+    expect(text.slice(tools, text.indexOf("## Layout"))).not.toMatch(/\n\n\n/);
+  });
+
   it("links only to Morpheus runbooks that exist", async () => {
     const text = agents(SEED);
     const links = [...text.matchAll(/cpheinrich\/morpheus\/blob\/main\/(docs\/runbooks\/[^)#\s]+)/g)];

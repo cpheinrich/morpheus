@@ -50,41 +50,38 @@ export const MORPHEUS_REPO = "https://github.com/cpheinrich/morpheus";
  * Kept as constants rather than inlined so the wording is one fact. Five repos
  * carry this text; five copies that drift are five different answers to "what
  * is this repo".
+ *
+ * The agent register says when to open the upstream documents rather than to
+ * read them first: this text is loaded into every session, and `architecture.md`
+ * is ~290 KB, so "read it before changing anything" charged a typo fix the whole
+ * specification. Evo and Lakina had each already softened it by hand.
  */
-export const morpheusCalloutForAgents = () => `## This project is managed by Morpheus — read that first
+export const morpheusCalloutForAgents = () => `## This project is managed by Morpheus
 
 This project follows public [Morpheus](${MORPHEUS_REPO}) conventions for its layout,
-records, CLI and agent workflow; the reasoning lives upstream.
+records, CLI and agent workflow; the reasoning lives upstream. They apply to fresh agents and
+reviewers too.
 
-**Before reviewing or changing anything here, read:**
+**Read the upstream reasoning a task needs, not all of it.** Before changing project structure,
+generated records or claims, open the governing section of
+[\`architecture.md\`](${MORPHEUS_REPO}/blob/main/architecture.md), the specification; the Context
+MCP's \`get_context_overview\` lists its sections. Morpheus's
+[\`AGENTS.md\`](${MORPHEUS_REPO}/blob/main/AGENTS.md) holds the operating principles: claiming
+work, what a pull request must carry, the inbox cycle.
 
-- [\`architecture.md\`](${MORPHEUS_REPO}/blob/main/architecture.md)
-  — the specification: what the structure is, and why it is that way
-- [\`AGENTS.md\`](${MORPHEUS_REPO}/blob/main/AGENTS.md)
-  — the operating principles: claiming work, what a pull request must carry, the inbox cycle
-
-These conventions apply to fresh agents too. Read the linked reasoning before changing
-project structure, generated records or claims.
-
-${CONTEXT_GUIDANCE}
 ### Found a gap in Morpheus itself?
 
-If something in Morpheus is wrong, missing, or gets in your way while working here, **send it
-upstream**. Do not quietly work around it in this repo — a local workaround fixes one project,
-hides the defect from every other one, and leaves the next agent to rediscover it.
+**Send it upstream** instead of working around it here: a local workaround fixes one project and
+hides the defect from every other.
 
-1. **Open an issue.** ${MORPHEUS_REPO}/issues
-   It is the durable record, it needs no fork, and it is where triage happens.
-2. **A pull request is welcome too**, especially carrying a fix you have verified — you hit the
-   problem, so you can prove the fix works, and that reproduction is the expensive part to
-   rebuild from a description.
-3. **Create the roadmap item in your pull request**, with \`morpheus pm new roadmap "..."\`.
-   Do not leave it for a maintainer: a roadmap id is a timestamp and \`baseSha\` is the commit
-   **you** were on, so both only mean anything when recorded at the moment you hit the problem.
-   Written afterwards by someone else, they record the wrong repository and a date days late.
+1. **Open an issue:** ${MORPHEUS_REPO}/issues. It needs no fork and is where triage happens.
+2. **A pull request with a verified fix is welcome too.** It needs a fork, and a fork's CI runs
+   without secrets; a first-time contributor's workflows wait for approval.
+3. **Create the roadmap item in your pull request** (\`morpheus pm new roadmap "..."\`): its id is a
+   timestamp and \`baseSha\` the commit you were on, so both mean something only when recorded as
+   you hit the problem.
 
-A pull request from outside the project needs a fork; an issue does not. A fork's CI runs
-without secrets and a first-time contributor's workflows need approval: GitHub's behaviour.`;
+${CONTEXT_GUIDANCE.trimEnd()}`;
 export const morpheusCalloutForReadme = () => `## Built and managed with Morpheus
 
 This project is architected and operated with

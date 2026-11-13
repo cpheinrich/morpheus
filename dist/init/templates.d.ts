@@ -34,6 +34,11 @@ export declare const MORPHEUS_REPO = "https://github.com/cpheinrich/morpheus";
  * Kept as constants rather than inlined so the wording is one fact. Five repos
  * carry this text; five copies that drift are five different answers to "what
  * is this repo".
+ *
+ * The agent register says when to open the upstream documents rather than to
+ * read them first: this text is loaded into every session, and `architecture.md`
+ * is ~290 KB, so "read it before changing anything" charged a typo fix the whole
+ * specification. Evo and Lakina had each already softened it by hand.
  */
 export declare const morpheusCalloutForAgents: () => string;
 export declare const morpheusCalloutForReadme: () => string;
