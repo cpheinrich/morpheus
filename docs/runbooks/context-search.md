@@ -105,8 +105,9 @@ branch. A linked worktree can copy a ready index from the primary checkout of th
 when its eligible paths and contents produce the same fingerprint. Tantivy opens that copy inside
 the worktree, and cited lines come from the worktree's files. Changes outside the indexed sources
 do not affect reuse. A changed, added or deleted indexed record, or a kind filter that changes
-the corpus, requires a matching index or a local build. If the primary cache cannot be read or
-copied, search still builds locally.
+the corpus, requires a matching index or a local build. Tantivy opens the private copy before
+publishing it. A primary index that cannot be read, copied or opened falls back to a local build.
+Warming runs after the pull even when the CLI update check must defer.
 
 The `pipeline` report gives sample counts and timing from the earliest observed session hook or
 MCP process launch to the first prompt, then to the first search and first nonempty search result.

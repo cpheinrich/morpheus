@@ -87,8 +87,8 @@ export async function reportContextMcpSetup(): Promise<void> {
 export async function ensure(): Promise<number> {
   const result = await ensureAutoUpdate();
   printEnsure(result, true);
-  if (result.outcome === "current" || result.outcome === "updated") {
-    await reportContextMcpSetup();
+  if (result.outcome === "current" || result.outcome === "updated") await reportContextMcpSetup();
+  if (result.outcome !== "disabled") {
     const { warmTrunkContext } = await import("../context-search/warm.js");
     await warmTrunkContext(process.cwd()).catch(() => {});
   }

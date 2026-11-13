@@ -129,15 +129,15 @@ function searchIndex(directory, input) {
     }
     return result.stdout;
 }
-function buildIndex(directory, input) {
+function runIndexWorker(action, directory, input = "") {
     return new Promise((resolve, reject) => {
-        const child = execFile(tantivyPython(), ["-I", WORKER, "build", directory], {
+        const child = execFile(tantivyPython(), ["-I", WORKER, action, directory], {
             timeout: 60_000, maxBuffer: 4 * 1024 * 1024,
         }, error => {
             if (!error)
                 resolve();
             else
-                reject(error.code === 2 || error.code === "ENOENT" ? unavailableTantivy() : new Error("Tantivy build failed", { cause: error }));
+                reject(error.code === 2 || error.code === "ENOENT" ? unavailableTantivy() : new Error(`Tantivy ${action} failed`, { cause: error }));
         });
         // The worker can exit before consuming stdin (for example, a missing module).
         child.stdin?.on("error", () => { });
@@ -161,6 +161,8 @@ async function copyIndex(source, pending) {
     for (const { name } of entries.filter(entry => !entry.name.endsWith(".lock"))) {
         await copyFile(join(source, name), join(pending, name), constants.COPYFILE_FICLONE);
     }
+    // A complete copy must open before it can become a reusable local cache.
+    await runIndexWorker("validate", pending);
 }
 async function publishIndex(cacheDir, index, populate) {
     mkdirSync(cacheDir, { recursive: true, mode: 0o700 });
@@ -237,7 +239,7 @@ async function prepareIndex(options, index, documents) {
     if (await adoptIndex(options, index).catch(() => false))
         return { buildMs: 0, cacheHit: true };
     const started = performance.now();
-    await publishIndex(options.cacheDir, index, pending => buildIndex(pending, buildPayload(documents)));
+    await publishIndex(options.cacheDir, index, pending => runIndexWorker("build", pending, buildPayload(documents)));
     return { buildMs: performance.now() - started, cacheHit: false };
 }
 const inFlightBuilds = new Map();

@@ -24,12 +24,14 @@ def build(path):
     writer.wait_merging_threads()
 
 
-def search(path):
+def search(path, validate_only=False):
     try:
         index = tantivy.Index.open(path)
         searcher = index.searcher()
     except (OSError, ValueError, RuntimeError):
         return 3
+    if validate_only:
+        return 0
     terms = sys.stdin.read()
     query = index.parse_query(terms, list(FIELDS), field_boosts=BOOSTS)
     results = searcher.search(query, 120, count=False)
@@ -48,7 +50,7 @@ if __name__ == "__main__":
     action, directory = sys.argv[1:]
     if action == "build":
         build(directory)
-    elif action == "search":
-        sys.exit(search(directory))
+    elif action in ("search", "validate"):
+        sys.exit(search(directory, validate_only=action == "validate"))
     else:
         sys.exit(1)

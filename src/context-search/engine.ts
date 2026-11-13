@@ -176,13 +176,13 @@ function searchIndex(directory: string, input: string): string {
   return result.stdout;
 }
 
-function buildIndex(directory: string, input: string): Promise<void> {
+function runIndexWorker(action: "build" | "validate", directory: string, input = ""): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = execFile(tantivyPython(), ["-I", WORKER, "build", directory], {
+    const child = execFile(tantivyPython(), ["-I", WORKER, action, directory], {
       timeout: 60_000, maxBuffer: 4 * 1024 * 1024,
     }, error => {
       if (!error) resolve();
-      else reject(error.code === 2 || error.code === "ENOENT" ? unavailableTantivy() : new Error("Tantivy build failed", { cause: error }));
+      else reject(error.code === 2 || error.code === "ENOENT" ? unavailableTantivy() : new Error(`Tantivy ${action} failed`, { cause: error }));
     });
     // The worker can exit before consuming stdin (for example, a missing module).
     child.stdin?.on("error", () => {});
@@ -208,6 +208,8 @@ async function copyIndex(source: string, pending: string): Promise<void> {
   for (const { name } of entries.filter(entry => !entry.name.endsWith(".lock"))) {
     await copyFile(join(source, name), join(pending, name), constants.COPYFILE_FICLONE);
   }
+  // A complete copy must open before it can become a reusable local cache.
+  await runIndexWorker("validate", pending);
 }
 
 async function publishIndex(cacheDir: string, index: string, populate: (pending: string) => Promise<void>): Promise<void> {
@@ -277,7 +279,7 @@ async function adoptIndex(options: SearchOptions, index: string): Promise<boolea
 async function prepareIndex(options: SearchOptions, index: string, documents: readonly Document[]) {
   if (await adoptIndex(options, index).catch(() => false)) return { buildMs: 0, cacheHit: true };
   const started = performance.now();
-  await publishIndex(options.cacheDir, index, pending => buildIndex(pending, buildPayload(documents)));
+  await publishIndex(options.cacheDir, index, pending => runIndexWorker("build", pending, buildPayload(documents)));
   return { buildMs: performance.now() - started, cacheHit: false };
 }
 
