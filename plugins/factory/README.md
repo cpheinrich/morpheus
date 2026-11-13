@@ -719,7 +719,7 @@ Protocol references: [Codex hooks](https://learn.chatgpt.com/docs/hooks),
 [Claude headless mode](https://code.claude.com/docs/en/headless), and
 [Claude memory](https://code.claude.com/docs/en/memory).
 
-### Operational dashboards for enrolled workers
+## Operational dashboards for enrolled workers
 
 For cross-system diagnostics, use the project’s Operations Desk runbook to find its approved
 read-only snapshot and enrollment instructions. The project operator enrolls each trusted
