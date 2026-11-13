@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { doctor, EXPECTED } from "../src/doctor/index.js";
-import { INSTRUCTION_ANCHORS, missingInstructions } from "../src/doctor/instructions.js";
+import { CODEX_PROJECT_DOC_MAX_BYTES, codexTruncation, INSTRUCTION_ANCHORS, missingInstructions } from "../src/doctor/instructions.js";
 import { agents, type Seed } from "../src/init/templates.js";
 import { installContext } from "../src/session/install.js";
 import { POLL_GUARD_SCRIPT } from "../src/wait-ci/hook.js";
@@ -52,6 +52,32 @@ describe("instruction anchors", () => {
   });
 });
 
+describe("the Codex project-instruction budget", () => {
+  const filler = (bytes: number) => "x".repeat(bytes);
+
+  it("is Codex's 32 KiB default, and a file of exactly that size is whole", () => {
+    expect(CODEX_PROJECT_DOC_MAX_BYTES).toBe(32_768);
+    expect(codexTruncation(filler(32_768))).toBeNull();
+  });
+
+  it("reports one byte over as one byte lost, on the line that holds the cut", () => {
+    // Three 10-byte lines, then the cut lands inside the fourth.
+    const head = "aaaaaaaaa\nbbbbbbbbb\nccccccccc\n";
+    expect(codexTruncation(head + filler(32_768 - head.length + 1))).toEqual({ bytes: 32_769, lost: 1, line: 4 });
+  });
+
+  it("counts bytes, not characters", () => {
+    // 16,385 two-byte characters are 32,770 bytes but only 16,385 UTF-16 units.
+    expect(codexTruncation("é".repeat(16_385))).toEqual({ bytes: 32_770, lost: 2, line: 1 });
+    expect(codexTruncation("é".repeat(16_384))).toBeNull();
+  });
+
+  it("holds Morpheus's own AGENTS.md and the scaffold inside it", async () => {
+    expect(codexTruncation(await readFile(join(ROOT, "AGENTS.md"), "utf8"))).toBeNull();
+    expect(codexTruncation(agents(SEED))).toBeNull();
+  });
+});
+
 describe("doctor reports instruction and poll-guard drift", () => {
   let root: string;
   beforeEach(async () => {
@@ -83,6 +109,20 @@ describe("doctor reports instruction and poll-guard drift", () => {
     await installContext(root, { write: true, handle: "nobody" });
     await writeFile(join(root, "AGENTS.md"), agents(SEED));
     expect(await instructionFindings()).toEqual([]);
+  });
+
+  it("warns that Codex drops the tail of an oversized AGENTS.md, and says where the cut falls", async () => {
+    await installContext(root, { write: true, handle: "nobody" });
+    const template = agents(SEED);
+    const padding = "\n" + "y".repeat(CODEX_PROJECT_DOC_MAX_BYTES - Buffer.byteLength(template) - 1);
+    await writeFile(join(root, "AGENTS.md"), template + padding);
+    expect(await instructionFindings()).toEqual([]);
+
+    await writeFile(join(root, "AGENTS.md"), template + padding + "z");
+    const line = template.split("\n").length + 1;
+    expect(await instructionFindings()).toEqual([
+      `AGENTS.md is 32769 bytes. Codex loads at most 32768 bytes of project instructions by default. At that limit, the file is cut at line ${line} (1 bytes omitted). Keep the rules every task needs and move detail into runbooks read on demand.`,
+    ]);
   });
 
   it("reports a settings file wired for session start but not the poll guard", async () => {

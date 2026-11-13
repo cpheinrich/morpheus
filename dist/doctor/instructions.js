@@ -50,4 +50,23 @@ export function missingInstructions(text, anchors = INSTRUCTION_ANCHORS) {
     const flat = normalizeInstructions(text);
     return anchors.filter((a) => !a.pattern.test(flat));
 }
+/**
+ * Codex's default `project_doc_max_bytes`. Codex concatenates `AGENTS.md` files from the Git root
+ * down to the directory it was launched in and stops at this many bytes in total, cutting the
+ * file that crosses it mid-text (`codex-rs/core/src/agents_md.rs`). It is the one hard limit either
+ * loader applies at this size: Claude Code loads a whole file up to 4 MiB and only advises
+ * staying under 200 lines. This check estimates the cutoff for the root file at the default, not a session's configured limit.
+ */
+export const CODEX_PROJECT_DOC_MAX_BYTES = 32 * 1024;
+/** Null when the whole file fits, including at exactly the budget. */
+export function codexTruncation(text, budget = CODEX_PROJECT_DOC_MAX_BYTES) {
+    const buffer = Buffer.from(text);
+    if (buffer.byteLength <= budget)
+        return null;
+    let line = 1;
+    for (let i = 0; i < budget; i++)
+        if (buffer[i] === 0x0a)
+            line++;
+    return { bytes: buffer.byteLength, lost: buffer.byteLength - budget, line };
+}
 //# sourceMappingURL=instructions.js.map

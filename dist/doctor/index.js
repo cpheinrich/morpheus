@@ -12,7 +12,7 @@ import { ABSENT, CANONICAL_INPUTS, UNREADABLE } from "../session/lease.js";
 import { READ_HOOK_MARKER } from "../session/install.js";
 import { BOOTSTRAP_MARKER, MORPHEUS_BOOTSTRAP, MORPHEUS_SESSION_START, SESSION_START_MARKER, } from "../session/bootstrap.js";
 import { POLL_GUARD_MARKER, POLL_GUARD_SCRIPT } from "../wait-ci/hook.js";
-import { missingInstructions } from "./instructions.js";
+import { CODEX_PROJECT_DOC_MAX_BYTES, codexTruncation, missingInstructions } from "./instructions.js";
 import { codexTrustFindings, codexTrustReport } from "./codex-trust.js";
 import { ANALYTICS_SCHEMA_DIRECTORY, EMPTY_ANALYTICS_EVENT_MAP, findAnalyticsContracts, } from "../analytics/contract.js";
 /**
@@ -456,6 +456,13 @@ async function checkInstructions(root, add) {
         for (const anchor of missingInstructions(instructions)) {
             add("warning", "instructions", `AGENTS.md lacks the template's "${anchor.name}" guidance — add ${anchor.add}. ` +
                 "Source: `agents()` in Morpheus's src/init/templates.ts.");
+        }
+        const cut = codexTruncation(instructions);
+        if (cut) {
+            add("warning", "instructions", `AGENTS.md is ${cut.bytes} bytes. Codex loads at most ${CODEX_PROJECT_DOC_MAX_BYTES} bytes of project ` +
+                `instructions by default. At that limit, the file is cut at line ${cut.line} ` +
+                `(${cut.lost} bytes omitted). Keep the rules every task needs and move ` +
+                "detail into runbooks read on demand.");
         }
     }
 }

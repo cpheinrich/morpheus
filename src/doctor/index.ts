@@ -17,7 +17,7 @@ import {
   SESSION_START_MARKER,
 } from "../session/bootstrap.js";
 import { POLL_GUARD_MARKER, POLL_GUARD_SCRIPT } from "../wait-ci/hook.js";
-import { missingInstructions } from "./instructions.js";
+import { CODEX_PROJECT_DOC_MAX_BYTES, codexTruncation, missingInstructions } from "./instructions.js";
 import { codexTrustFindings, codexTrustReport } from "./codex-trust.js";
 import {
   ANALYTICS_SCHEMA_DIRECTORY,
@@ -618,6 +618,17 @@ async function checkInstructions(root: string, add: Add): Promise<void> {
         "instructions",
         `AGENTS.md lacks the template's "${anchor.name}" guidance — add ${anchor.add}. ` +
           "Source: `agents()` in Morpheus's src/init/templates.ts.",
+      );
+    }
+    const cut = codexTruncation(instructions);
+    if (cut) {
+      add(
+        "warning",
+        "instructions",
+        `AGENTS.md is ${cut.bytes} bytes. Codex loads at most ${CODEX_PROJECT_DOC_MAX_BYTES} bytes of project ` +
+          `instructions by default. At that limit, the file is cut at line ${cut.line} ` +
+          `(${cut.lost} bytes omitted). Keep the rules every task needs and move ` +
+          "detail into runbooks read on demand.",
       );
     }
   }

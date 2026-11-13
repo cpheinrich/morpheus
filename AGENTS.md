@@ -10,27 +10,19 @@ has only `product/`, `team/` and `onboarding.md` under `hq/`.
 
 ## Layout
 
+Only what the tree does not show; `src/` and `tests/` (Vitest, mirroring `src/`) read as named.
+
 | Path | What |
 |---|---|
 | `architecture.md` | The specification. Update it when a decision changes. |
-| `src/pm/` | Project management: schemas, parser, index generator |
-| `src/cli/` | The `morpheus` command |
 | `src/project-skills.ts` | Reusable project-skill registry consumed by scaffold, discovery and sync |
-| `src/gh-manager/` | The GitHub Manager: sweep, session brief, decision checks — see its runbook |
 | `src/init/templates.ts` | What every scaffolded project's `AGENTS.md` and files say — keep aligned with this file |
-| `hq/product/` | Morpheus's own roadmap and goals — it eats its own dog food |
-| `.github/workflows/` | Reusable workflows called by every project |
-| `docs/runbooks/` | Procedures, for humans and agents — read on demand (index below) |
+| `.github/workflows/` | Reusable workflows every project calls at `@main` — a merge here ships to all of them |
 | `.github/agent-review-prompt.md` | The rung-2 reviewer persona — versioned, so it is reviewable |
 | `.claude/skills/` | Canonical Claude procedures, classified in `src/project-skills.ts` |
 | `.agents/skills/` | Canonical Codex/Grok procedures, classified in `src/project-skills.ts` |
 | `local/handoffs/` | Handoff docs, both directions. Gitignored, never committed |
 | `qa/acceptance/` | Acceptance criteria per item, named by `RoadmapItem.acceptance` |
-| `tests/` | Vitest, mirroring `src/` |
-| `.agent/worklog/` | What was attempted and learned per task, including dead ends |
-| `.agent/decisions.md` | Settled choices and why — **read this first** |
-| `.agent/inbox-archive/` | Past inbox cycles with replies, date-first |
-| `hq/team/<handle>.md` | Live inboxes — one per person by GitHub handle |
 | `hq/team/members.md` | The roster — handles, names, and how to work with each person |
 | `hq/team/meeting-notes/` | Distilled meeting summaries, never transcripts |
 | `plugins/factory/` | Optional Factory delegation plugin, never scaffolded |
@@ -45,11 +37,12 @@ has only `product/`, `team/` and `onboarding.md` under `hq/`.
 | [`device-bootstrap.md`](docs/runbooks/device-bootstrap.md) | Startup reports Morpheus stale or bootstrap required; installing codebase-memory |
 | [`test-quality.md`](docs/runbooks/test-quality.md) | Writing or reviewing tests; before calling anything "tested" |
 | [`inbox-cycle.md`](docs/runbooks/inbox-cycle.md) | Writing, answering or archiving an inbox |
-| [`website.md`](docs/runbooks/website.md) | Any website, waitlist, signup/contact form, `/hq`, consumer auth, or a new Firebase project |
+| [`website.md`](docs/runbooks/website.md) | Any website, waitlist, signup/contact form, `/hq`, consumer auth or new Firebase project — run `morpheus web init` before writing any of it by hand |
 | [`hq-product-design.md`](docs/runbooks/hq-product-design.md) | Changing an HQ page, its information hierarchy, or a component that renders HQ content |
 | [`gh-manager.md`](docs/runbooks/gh-manager.md) | A PR may sit unattended, or the manager has touched yours |
-| [`folder-readmes.md`](docs/runbooks/folder-readmes.md) | Creating a directory, or deciding whether it needs a README |
+| [`folder-readmes.md`](docs/runbooks/folder-readmes.md) | Creating a directory — a README only where an agent could otherwise do the wrong thing |
 | [`scheduler.md`](docs/runbooks/scheduler.md) | Adding, enrolling or debugging a recurring scheduled run |
+| [`gstack-lifecycle.md`](docs/runbooks/gstack-lifecycle.md) | Asked to use gstack in this session |
 | [`cli-commands.md`](docs/runbooks/cli-commands.md) | You need a command not listed below |
 
 ## Commands
@@ -145,8 +138,6 @@ there. Do not run concurrent authors on one task worktree. **Name slugs like bra
 create or link the roadmap item, claim it, work on its branch, test, review and merge a PR.
 Never edit or release directly from a transcript.
 
-When asked to use gstack in this session, follow the [gstack lifecycle guide](docs/runbooks/gstack-lifecycle.md).
-
 **Register every reusable skill once.** Classify canonical `.agents/skills/` and `.claude/skills/`
 directories in `src/project-skills.ts` as project-facing or Morpheus-only. It drives scaffold,
 discovery and sync; descriptions come from rendered frontmatter. No second catalog. Tests check
@@ -168,7 +159,7 @@ unblock you>"`. Escalating is cheap; shipping half-baked is expensive. "Blocked 
 change approach. Never idle-loop. For one run use `morpheus wait-ci --run <id>`.
 
 **Follow your PR through merge.** If authorized to merge, use `morpheus wait-ci <n> --required-only`.
-Fix or retry failures. Verify the merge or record the hard blocker. GitHub Manager is the backstop.
+Fix or retry failures. Verify the merge or record the hard blocker.
 
 **Browser-reachable work is not blocked.** If the only obstacle is a browser step (a console,
 dashboard or setting), do it yourself rather than describing the clicks. A gate for human
@@ -182,25 +173,28 @@ inbox item when the choice shapes the architecture, a PR-body line ("considered 
 because Y") when small. **Prefer lightweight:** build when the need is under ~100 lines,
 domain-specific, or every candidate is unmaintained. Record the outcome in `.agent/decisions.md`.
 
-**The authoring agent owns the entire review loop.** Finish the relevant focused tests, inspect
-results, and give the reviewer the complete packet before its first turn. For UI work, provide
-final-build simulator captures of changed screens and states. Inspect them; so must the reviewer.
-Replace them after visual fixes. If a test cannot run, state why and keep the PR draft until validation
-finishes; a later code fix spends a review turn. Aim for an initial review and one focused response.
-Five turns run without anyone's approval; they are a ceiling, not a plan. A reviewer blocks only on
-substantive problems; style and wording notes never block. When a reviewer times out or cannot be
-resumed, start a fresh one with the earlier findings. Commit implementation and tests. When CI,
-visual evidence or PR metadata matters to review, move the
-item to `review` and open an unlabelled draft PR first so the reviewer sees them. Then run
-`morpheus review prepare --base origin/main`, name governing records
-in Suggested context, spawn
-**one fresh reviewer** with repository access, the packet and no inherited history, then
-handle findings, record, CI and merge yourself. If no independent session can start, leave the PR open with
-auto-merge off — never self-review. **Read [`independent-review.md`](docs/runbooks/independent-review.md)
-before spawning or recording a review**. Commit the record and run `morpheus review validate` before
-pushing; open the PR with the label already applied (`gh pr create --label agent-reviewed`), or as a
-draft if it must exist earlier — an unlabelled draft waits instead of failing. Merge trunk rather
-than rebase after review.
+**The authoring agent owns the entire review loop.** **Read
+[`independent-review.md`](docs/runbooks/independent-review.md) before spawning or recording a review.**
+
+- *Before the first turn:* Finish the relevant focused tests, inspect results, and give the
+  reviewer the complete packet before its first turn. For UI work, provide final-build simulator
+  captures of changed screens and states. Inspect them; so must the reviewer. Replace them after
+  visual fixes. If a test cannot run, state why and keep the PR draft until validation finishes; a
+  later code fix spends a review turn. Commit implementation and tests. When CI, visual evidence or
+  PR metadata matters to review, move the item to `review` and open an unlabelled draft PR first so
+  the reviewer sees them.
+- *Spawning:* run `morpheus review prepare --base origin/main`, name governing records in
+  Suggested context, spawn **one fresh reviewer** with repository access, the packet and no
+  inherited history, then handle findings, record, CI and merge yourself. If no independent session
+  can start, leave the PR open with auto-merge off — never self-review.
+- *Turns:* Aim for an initial review and one focused response. Five turns run without anyone's
+  approval; they are a ceiling, not a plan. A reviewer blocks only on substantive problems; style
+  and wording notes never block. When a reviewer times out or cannot be resumed, start a fresh one
+  with the earlier findings.
+- *Recording:* Commit the record and run `morpheus review validate` before pushing; open the PR
+  with the label already applied (`gh pr create --label agent-reviewed`), or as a draft if it must
+  exist earlier — an unlabelled draft waits instead of failing. Merge trunk rather than rebase
+  after review.
 
 **Every PR carries** tests for anything testable (or an explicit reason), a documentation update
 when behaviour changes, a test plan with the commands actually run, open questions stated plainly,
@@ -235,10 +229,6 @@ by hand; refactor findings with `morpheus complexity prompt`; report the summary
 
 **Before opening a PR**, run `pnpm typecheck`, the focused tests, `pnpm compile` and
 `pnpm morpheus pm index`, and commit any generated changes. CI runs the same checks.
-
-iOS projects: focused tests only, with the repository's build/test wrapper and explicit test
-filters; never the full iOS suite locally unless Chris asks. New projects inherit this from
-`src/init/templates.ts`; keep it aligned.
 
 ### What makes a test count
 
@@ -278,12 +268,6 @@ ones to `decisions.md`, archive to `.agent/inbox-archive/`, write a fresh inbox.
 ## Other rules
 
 - **Google links:** always append `?authuser=<email>` (or `&authuser=`) — the address, not an index.
-- **Websites:** when asked for a website, waitlist, signup or contact form or `/hq`, run
-  `morpheus web init` before writing any of it by hand; for consumer accounts,
-  `morpheus web add-consumer-auth`; after creating a Firebase project,
-  `morpheus firebase auth setup`.
-- **Folder READMEs:** only where an agent could otherwise do the wrong thing; short, pointing
-  rather than repeating. See [`folder-readmes.md`](docs/runbooks/folder-readmes.md).
 
 ## Style
 
