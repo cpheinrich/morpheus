@@ -1,3 +1,5 @@
+import { receiptPath } from "./fleet-receipt.mjs";
+
 // These transactions run behind Factory's trusted operations. Callers derive
 // host identity, workspace keys and eligibility from enrollment, never from a
 // worker-supplied task message.
@@ -9,11 +11,13 @@ async function read(transaction, ref) {
   return (await transaction.get(ref)).data();
 }
 
-function available(slot, now, maxAgeMs) {
-  return slot?.available === true && !slot.attemptId &&
-    Number.isSafeInteger(slot.capacity) && slot.capacity > 0 &&
-    Number.isFinite(slot.observedAt) && slot.observedAt <= now &&
-    now - slot.observedAt <= maxAgeMs;
+export function freshHeartbeat(slot, now, maxAgeMs) {
+  return Number.isFinite(slot?.observedAt) && slot.observedAt <= now && now - slot.observedAt <= maxAgeMs;
+}
+
+export function available(slot, now, maxAgeMs) {
+  return freshHeartbeat(slot, now, maxAgeMs) && slot.available === true && !slot.attemptId &&
+    Number.isSafeInteger(slot.capacity) && slot.capacity > 0;
 }
 
 async function preferredSlot(db, transaction, eligibleSlots, now, maxAgeMs) {
@@ -72,7 +76,7 @@ function ownsAttempt(task, attemptId, hostId) {
 
 // An expired lease indicates lost contact. It cannot free a slot or worktree.
 // A trusted runner supplies terminal cleanup evidence before releasing either.
-export function settleAttempt(db, { taskId, attemptId, hostId, outcome, result, cleanupVerified }) {
+export function settleAttempt(db, { taskId, attemptId, hostId, outcome, result, cleanupVerified, invocation }) {
   if (!["TASK_STATE_COMPLETED", "TASK_STATE_FAILED", "TASK_STATE_CANCELED"].includes(outcome))
     throw new Error("Invalid terminal task outcome");
   return db.runTransaction(async (transaction) => {
@@ -93,6 +97,12 @@ export function settleAttempt(db, { taskId, attemptId, hostId, outcome, result, 
     if (workspace?.attemptId !== attemptId || workspace.taskId !== taskId) return false;
     const state = task.cancelRequestedAt != null ? "TASK_STATE_CANCELED" : outcome;
     transaction.update(taskRef, { state, result, attempt: null, lastAttempt: task.attempt });
+    if (invocation) {
+      transaction.set(db.doc(receiptPath(taskId)), {
+        ...invocation, taskId, attemptId, hostId, slotId: task.attempt.slotId,
+        state, terminationVerified: true,
+      });
+    }
     transaction.update(slotRef, { attemptId: null });
     transaction.delete(workspaceRef);
     return true;

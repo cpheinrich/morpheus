@@ -3461,6 +3461,12 @@ Artifacts are private Cloud Storage generations referenced by Firestore.
 Sub2API selects the upstream account behind the enrolled Codex gateway.
 The pilot keeps the A2A task semantics and uses the Factory transport described
 in the [operator instructions](plugins/factory/README.md#authenticated-studio-pilot).
+The supervisor journals attested invocation evidence before settlement. The service
+commits it beside the task and returns it to the owning controller. The evidence
+binds the Fleet attempt to the latest gateway admission and records the CLI session
+and guardian timing when available. The controller can separately read each
+eligible slot's heartbeat and compatible quota observation for its enrolled project.
+The existing claim and pre-invocation checks determine whether work actually runs.
 
 The nested `plugins/factory/src/host/` package holds the host and fleet tooling imported from
 the public `morpheus-factory` repository (source and commit only, no history): the TypeScript
