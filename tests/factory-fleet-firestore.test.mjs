@@ -154,8 +154,9 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
       selection: { provider: "codex", gateway: "fixture-gateway", model: "gpt-fixture" },
     }])),
   };
+  let now = 1_000_000;
   const server = createServer(createFleetApi({
-    db, config,
+    db, config, clock: () => now,
     async verifyToken(token) {
       if (token === "invalid") throw new Error("Invalid token");
       return { uid: token };
@@ -190,6 +191,10 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
   await call("studio", "submit", input, 403);
   await call("pro", "submit", { ...input, model: "not-enrolled" }, 403);
   await call("pro", "submit", { ...input, revision: "2".repeat(40) }, 403);
+  const readiness = { rootId: input.rootId, project: input.project };
+  await call("studio", "readiness", readiness, 403);
+  await call("stranger", "readiness", { ...readiness, project: "git-source" }, 403);
+  assert.equal((await call("pro", "readiness", readiness)).slots[0].placementCandidate, false);
   const studio = environment.authenticatedContext("studio").firestore();
   const signal = doc(studio, "factorySignals/studio");
   let off;
@@ -206,10 +211,22 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
   await call("stranger", "get", scope, 404);
   await call("pro", "get", { ...scope, rootId: "other-root" }, 404);
   assert.deepEqual(await call("studio", "heartbeat", { available: true, capacity: 6000, hostId: "forged" }), { tasks: [task.id] });
+  const getSlot = async () => (await call("pro", "readiness", readiness)).slots[0];
+  assert.deepEqual((await getSlot()).quota, { status: "unknown" });
+  const quota = { ...config.projects.pilot.selection, checkedAt: now, status: "available", secret: "redact" };
+  await call("studio", "heartbeat", { available: true, capacity: 6000, quota: { ...quota, gateway: "foreign" } });
+  assert.equal((await getSlot()).quota.status, "incompatible");
+  await call("studio", "heartbeat", { available: true, capacity: 6000, quota });
+  assert.deepEqual(await getSlot(), { slotId: "studio", hostId: "mac-studio",
+    heartbeat: { observedAt: now, fresh: true, capacityMiB: 6000 }, busy: false,
+    quota: { status: "available", checkedAt: now }, placementCandidate: true });
   const identity = { taskId: task.id, attemptId: "90000000-0000-4000-8000-000000000001" };
   const claim = await call("studio", "claim", identity);
   assert.equal(claim.attempt.hostId, "mac-studio");
+  assert.equal((await getSlot()).placementCandidate, false);
+  assert.equal((await getSlot()).busy, true);
   assert.deepEqual(await call("studio", "heartbeat", { available: true, capacity: 6000 }), { tasks: [] });
+  assert.deepEqual((await getSlot()).quota, { status: "unknown" });
   await call("other", "inspect", identity, 404);
   const question = { ...identity, questionId: "question", text: "Which color?" };
   const pro = environment.authenticatedContext("pro").firestore();
@@ -228,9 +245,30 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
   const file = { ...identity, name: "result.txt", type: "text/plain", bytes: Buffer.from("blue").toString("base64") };
   await call("other", "upload", file, 404);
   const artifact = await call("studio", "upload", file);
-  const finish = { ...identity, outcome: "TASK_STATE_COMPLETED", result: { summary: "Created", artifacts: [file.name] }, cleanupVerified: true };
+  const admissionId = "90000000-0000-4000-8000-000000000002";
+  const sessionId = "90000000-0000-4000-8000-000000000003";
+  const timing = { source: "runner", startedAt: "2026-01-05T01:02:03.000Z", endedAt: "2026-01-05T01:02:04.000Z", durationMs: 1000, evidence: "synthetic guardian evidence" };
+  const invocation = { launch: "session", admissionId, sessionId, timing };
+  const finish = { ...identity, outcome: "TASK_STATE_COMPLETED", result: { summary: "Created", artifacts: [file.name] },
+    cleanupVerified: true, admissionId, invocation };
+  await call("studio", "finish", { ...finish, cleanupVerified: false }, 400);
+  await call("studio", "finish", { ...finish, admissionId: sessionId }, 400);
+  await call("other", "finish", finish, 404);
   assert.deepEqual(await call("studio", "finish", finish), { settled: true });
-  assert.deepEqual(await call("studio", "finish", finish), { settled: true });
+  assert.deepEqual(await call("studio", "finish", { ...finish, invocation: { ...invocation, sessionId: admissionId } }), { settled: true });
+  const read = await call("pro", "get", scope);
+  assert.deepEqual(read.receipt, { ...identity, ...invocation, state: "TASK_STATE_COMPLETED",
+    hostId: "mac-studio", slotId: "studio", terminationVerified: true });
+  await call("pro", "get", { ...scope, rootId: "other-root" }, 404);
+  await call("stranger", "get", scope, 404);
+  assert.equal((await call("studio", "inspect", identity)).receipt, undefined);
+  assert.equal((await call("studio", "inspect", identity)).task.receipt, undefined);
+  await assert.rejects(getDoc(doc(studio, `factoryReceipts/${task.id}`)), /permission/i);
+  await assert.rejects(getDoc(doc(pro, `factoryReceipts/${task.id}`)), /permission/i);
+  now += 45_001;
+  assert.equal((await getSlot()).heartbeat.fresh, false);
+  await call("studio", "heartbeat", { available: true, capacity: 6000, quota: { ...quota, checkedAt: now + 1 } });
+  assert.equal((await getSlot()).quota.status, "unknown");
   await call("stranger", "download", { ...scope, name: file.name }, 404);
   assert.deepEqual(await call("pro", "download", { ...scope, name: file.name }), { artifact, bytes: file.bytes });
   const gitBrief = { ...input, project: "git-source", revision: "2".repeat(40), messageId: "git-brief" };
@@ -239,4 +277,8 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
   const enrolled = await call("pro", "submit", gitBrief);
   assert.deepEqual(enrolled.task.source, { project: "git-source", revision: gitBrief.revision, checkout: "git" });
   assert.equal((await call("pro", "submit", gitBrief)).task.id, enrolled.task.id);
+  const old = { ...identity, taskId: enrolled.task.id, attemptId: admissionId };
+  assert.equal((await call("studio", "claim", old)).attempt.id, admissionId);
+  await call("studio", "finish", { ...old, outcome: "TASK_STATE_COMPLETED", result: null, cleanupVerified: true });
+  assert.equal((await call("pro", "get", { ...scope, taskId: enrolled.task.id })).receipt, undefined);
 });

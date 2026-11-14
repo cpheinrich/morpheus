@@ -86,7 +86,7 @@ class Guardian:
                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                           start_new_session=True)
         except Exception as error:
-            state.update(state='exited', exitCode=127, reason='Worker launch failed' if job.get('admission') else str(error), interrupted=False, cleanupVerified=True); self.persist()
+            state.update(state='exited', exitCode=127, launchFailed=True, reason='Worker launch failed' if job.get('admission') else str(error), interrupted=False, cleanupVerified=True); self.persist()
             sys.exit(1)
         if self.owned: state['timing'] = {'startedAt': started_at}
         state.update(claudePid=self.child.pid, claudeIdentity=identity(self.child.pid), guardianIdentity=identity(os.getpid()), state='running'); self.persist()

@@ -28,6 +28,7 @@ async function fixture(t) {
   const starts = Array.from({ length: 2 }, () => Promise.withResolvers());
   let answer;
   let allowRenew = true;
+  let dropFinish;
   const handlers = {
     heartbeat: ({ available }) => ({ tasks: available ? [taskId] : [] }),
     claim: ({ attemptId: id }) => {
@@ -45,12 +46,14 @@ async function fixture(t) {
       return { replay: false };
     },
     finish: ({ cleanupVerified, outcome, result }) => {
+      if (dropFinish === "before") throw new Error("lost reply");
       task.state = cleanupVerified ? outcome : uncertain;
       if (cleanupVerified) {
         task.result = result;
         task.lastAttempt = task.attempt;
         task.attempt = null;
       }
+      if (dropFinish === "after") throw new Error("lost reply");
       return { settled: cleanupVerified };
     },
   };
@@ -80,6 +83,7 @@ async function fixture(t) {
       task.state = working;
     },
     loseLease() { allowRenew = false; },
+    dropFinish(phase) { dropFinish = phase; },
   };
 }
 
@@ -183,6 +187,7 @@ test("restart before the durable launch boundary releases a replayed claim witho
   }), { mode: 0o600 });
   assert.equal(await createFleetRunner(options).tick(), "settled");
   assert.equal(calls.at(-1)[1].cleanupVerified, true);
+  assert.deepEqual(calls.at(-1)[1].invocation, { launch: "never-launched", admissionId: null, sessionId: null });
   assert.deepEqual(executions, []);
 });
 
@@ -242,4 +247,40 @@ test("restart during source preparation settles as never launched", async (t) =>
   assert.equal(calls.at(-1)[1].cleanupVerified, true);
   assert.equal(executions.length, 0);
   release.resolve(true);
+});
+
+test("a restarted supervisor replays the same attested settlement before or after a lost finish reply", async (t) => {
+  for (const lost of ["before", "after"]) {
+    const { runner, options, calls, executions, started, journal, dropFinish } = await fixture(t);
+    assert.equal(await runner.tick(), "running");
+    const run = await started();
+    const invocation = { launch: "session", admissionId: run.admissionId, sessionId: attemptId };
+    run.resolve({ ...output("completed"), invocation });
+    await setImmediate();
+    dropFinish(lost);
+    await assert.rejects(runner.tick(), /lost reply/);
+    assert.equal((await journal()).phase, "finishing");
+    const firstFinish = calls.at(-1);
+    dropFinish();
+    assert.equal(await createFleetRunner(options).tick(), "settled");
+    assert.deepEqual(calls.at(-1), firstFinish);
+    assert.deepEqual(firstFinish[1].invocation, invocation);
+    assert.equal(executions.length, 1);
+  }
+});
+
+test("supervisor recovery carries the exact admission receipt, never proof from another admission", async (t) => {
+  const { options, task, calls, executions } = await fixture(t);
+  task.attempt = { id: attemptId };
+  task.state = working;
+  await writeFile(options.journalPath, JSON.stringify({ version: 1, taskId, attemptId, phase: "running", admissionId }), { mode: 0o600 });
+  const invocation = { launch: "session", admissionId, sessionId: taskId };
+  let recovered = { terminationVerified: false, invocation: { ...invocation, admissionId: attemptId } };
+  const runner = createFleetRunner({ ...options, recover: async () => recovered });
+  assert.equal(await runner.tick(), "held");
+  assert.equal(calls.at(-1)[1].invocation, undefined);
+  recovered = { terminationVerified: true, invocation };
+  assert.equal(await runner.tick(), "settled");
+  assert.deepEqual(calls.at(-1)[1].invocation, invocation);
+  assert.deepEqual(executions, []);
 });

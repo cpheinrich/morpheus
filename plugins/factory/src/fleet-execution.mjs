@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { notLaunched } from "./fleet-receipt.mjs";
 import { fetchStudioRevision } from "./fleet-source.mjs";
 import { realpathSync, statSync } from "node:fs";
 import { once } from "node:events";
@@ -6,7 +7,7 @@ import { isAbsolute } from "node:path";
 import { createInterface } from "node:readline";
 
 const maxLine = 12 * 1024 * 1024;
-const noLaunch = () => ({ terminationVerified: true, result: { outcome: "failed", summary: "Studio did not start the worker." } });
+const noLaunch = (admissionId) => ({ terminationVerified: true, invocation: notLaunched(admissionId), result: { outcome: "failed", summary: "Studio did not start the worker." } });
 
 function validExecution(config) {
   return /^[a-z_][a-z0-9_-]*$/.test(config.account) && config.account !== "root" &&
@@ -45,7 +46,7 @@ async function publish(call, { artifacts, outcome }, task, signal) {
       names.push(result.name);
     }
   } catch {
-    return { terminationVerified: true, result: { outcome: "failed", summary: "Studio could not publish the declared artifacts." } };
+    return { ...outcome, result: { outcome: "failed", summary: "Studio could not publish the declared artifacts." } };
   }
   return { ...outcome, result: { ...outcome.result, artifacts: names } };
 }
@@ -82,6 +83,10 @@ function sourceBinding(config, task) {
   return { mirror: config.sourceMirror, attemptId: task.attempt.id };
 }
 
+function attemptBinding(task) {
+  return { taskId: task.id, attemptId: task.attempt.id };
+}
+
 export function createStudioExecutor(config, call, checkQuota) {
   if (!validExecution(config)) throw new Error("Invalid Studio execution configuration");
   return {
@@ -94,25 +99,26 @@ export function createStudioExecutor(config, call, checkQuota) {
       return output?.outcome?.prepared === true;
     },
     async execute({ task, admissionId, resume, prompt, signal }) {
-      if (signal.aborted) return noLaunch();
+      if (signal.aborted) return noLaunch(admissionId);
       try {
         await checkQuota(task.selection);
       } catch {
-        return { terminationVerified: true, result: { outcome: "failed", summary: "Studio gateway quota is unavailable or above the Factory limit." } };
+        return { terminationVerified: true, invocation: notLaunched(admissionId), result: { outcome: "failed", summary: "Studio gateway quota is unavailable or above the Factory limit." } };
       }
-      if (signal.aborted) return noLaunch();
+      if (signal.aborted) return noLaunch(admissionId);
       // Do not serialize the retained brief or mailbox with the current prompt.
       const output = await invoke(config, {
         task: { source: task.source, selection: task.selection }, admissionId, resume, prompt,
+        binding: attemptBinding(task),
         gatewayBaseUrl: config.gatewayBaseUrl,
         checkout: task.source.checkout === "git" ? sourceBinding(config, task) : undefined,
       }, signal);
       if (output?.outcome?.terminationVerified !== true) return { terminationVerified: false };
       return publish(call, output, task, signal);
     },
-    async recover(admissionId) {
-      const output = await invoke(config, { op: "recover", admissionId });
-      return output?.outcome?.admissionId === admissionId && output.outcome.terminationVerified === true;
+    async recover(admissionId, task) {
+      const { outcome } = await invoke(config, { op: "recover", admissionId, binding: attemptBinding(task) }) ?? {};
+      return outcome?.admissionId === admissionId && outcome.terminationVerified === true ? outcome : false;
     },
   };
 }
@@ -157,10 +163,10 @@ export function createStudioExecutors(config, call, checkQuota, create = createS
       return select(task)?.prepare(task, signal) ?? false;
     },
     async execute(input) {
-      return select(input.task)?.execute(input) ?? noLaunch();
+      return select(input.task)?.execute(input) ?? noLaunch(input.admissionId);
     },
     async recover(admissionId, task) {
-      return select(task)?.recover(admissionId) ?? false;
+      return select(task)?.recover(admissionId, task) ?? false;
     },
   };
 }

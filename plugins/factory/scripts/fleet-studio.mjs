@@ -16,6 +16,7 @@ try {
     ...createStudioExecutors(execution, client.call, checkQuota),
     journalPath: config.journalPath,
     capacity: studioCapacity,
+    quotaObservation: checkQuota.observation,
   });
   const tick = () => runner.tick().catch(() => console.error("Factory Studio tick failed; reconciling on next wake"));
   const unsubscribe = client.listen(tick, () => console.error("Factory Studio listener disconnected; using timed reconciliation"));

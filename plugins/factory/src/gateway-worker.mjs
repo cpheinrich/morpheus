@@ -78,10 +78,18 @@ async function existingAdmission(directory, admissionId, binding) {
     return existing;
   }
 }
+function sameContinuation(prior, binding) {
+  if (!prior?.fleet && binding.fleet) {
+    // A supervisor upgrade can resume its journaled pre-receipt admission.
+    const { fleet: _fleet, ...legacy } = binding;
+    return JSON.stringify(prior) === JSON.stringify(legacy);
+  }
+  return JSON.stringify(prior) === JSON.stringify(binding);
+}
 async function continuationSession(resume, binding) {
   if (!/^[0-9a-f-]{36}$/.test(resume)) throw new Error('Invalid continuation admission ID');
   const previous = await workerResult(resume);
-  if (!previous || JSON.stringify(previous.binding) !== JSON.stringify(binding) || !previous.terminationVerified || !previous.sessionId)
+  if (!sameContinuation(previous?.binding, binding) || !previous.terminationVerified || !previous.sessionId)
     throw new Error('Continuation requires a terminated session with the same job, checkout and gateway binding');
   return previous.sessionId;
 }
@@ -147,7 +155,7 @@ async function runGuardian(directory, isolated, signal) {
   finally { signal?.removeEventListener('abort', cancel); clearInterval(heartbeat); child.stdin.destroy(); process.off('SIGTERM', cancel); process.off('SIGINT', cancel); }
   return false;
 }
-export async function gatewayWorker(configPath, prompt, resume = null, admissionId = randomUUID(), signal, checkout) {
+export async function gatewayWorker(configPath, prompt, resume = null, admissionId = randomUUID(), signal, checkout, fleet) {
   assertWorkerInputs(prompt, admissionId);
   const config = await readWorkerConfig(configPath);
   if (checkout !== undefined) {
@@ -156,7 +164,7 @@ export async function gatewayWorker(configPath, prompt, resume = null, admission
     config.cwd = cwd;
   }
   const root = await workerStateRoot(config);
-  const binding = { jobId: config.jobId, cwd: config.cwd, gateway: config.gateway, model: config.model, effort: config.effort, sandbox: config.sandbox, approvalPolicy: config.approvalPolicy };
+  const binding = { jobId: config.jobId, cwd: config.cwd, gateway: config.gateway, model: config.model, effort: config.effort, sandbox: config.sandbox, approvalPolicy: config.approvalPolicy, ...(fleet ? { fleet } : {}) };
   const directory = join(root, admissionId);
   const existing = await existingAdmission(directory, admissionId, binding);
   if (existing) return existing;
@@ -212,6 +220,7 @@ async function foldWorkerEvents(directory, record) {
     try {
       const event = JSON.parse(line);
       if (event.type === 'turn.started') run.startedTurn = true;
+      if (event.type === 'thread.started' && event.thread_id) run.observedSession = event.thread_id;
       applyCodexEvent(run, event);
     } catch { /* Incomplete bounded event is checkpoint evidence. */ }
   }
@@ -269,6 +278,11 @@ function runnerTiming(timing, admissionId, reconciled) {
     evidence: `Guardian process.json for admission ${admissionId}; monotonic duration includes owned cleanup.`
       + (reconciled ? ' Cleanup was proven later by a fresh owned-process census (reconciliation.json).' : '') };
 }
+function workerLaunch(state, verified, run) {
+  if (!verified) return 'unknown';
+  if (state.admissionRejected || state.launchFailed) return 'never-launched';
+  return run.observedSession ? 'session' : 'unknown';
+}
 export async function workerResult(admissionId) {
   if (!/^[0-9a-f-]{36}$/.test(admissionId)) throw new Error('Invalid admission ID');
   const directory = join(home(), 'unattended', admissionId);
@@ -277,17 +291,18 @@ export async function workerResult(admissionId) {
   const state = await readJSON(join(directory, 'process.json'), null);
   if (prelaunchFailed(record, state)) {
     const result = { outcome: 'failed', summary: record.prelaunchFailure.summary, evidence: [], question: '' };
-    const output = { ...record, state: 'failed', terminationVerified: true, exitCode: null, result };
+    const output = { ...record, state: 'failed', launch: 'never-launched', terminationVerified: true, exitCode: null, result };
     await atomic(join(directory, 'result.json'), output);
     return output;
   }
   const run = await foldWorkerEvents(directory, record);
   const { reconciled, terminationVerified } = workerTermination(state, directory, admissionId);
   const result = workerOutcome(state, terminationVerified, run);
-  const output = { ...record, sessionId: run.newSession || null, state: result.outcome, terminationVerified, exitCode: state?.exitCode ?? null, result };
+  const launch = workerLaunch(state, terminationVerified, run);
+  const output = { ...record, sessionId: run.newSession || null, launch, state: result.outcome, terminationVerified, exitCode: state?.exitCode ?? null, result };
   const diagnosticCode = await workerDiagnostic(directory, state, terminationVerified, run);
   if (diagnosticCode) output.diagnosticCode = diagnosticCode;
-  const timing = terminationVerified && output.sessionId ? runnerTiming(state?.timing, admissionId, reconciled) : null;
+  const timing = launch === 'session' ? runnerTiming(state?.timing, admissionId, reconciled) : null;
   if (timing) output.timing = timing;
   if (terminationVerified || state?.admissionRejected) await atomic(join(directory, 'result.json'), output);
   return output;

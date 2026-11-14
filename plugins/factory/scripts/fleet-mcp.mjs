@@ -13,6 +13,7 @@ const text = z.string().min(1).max(65536);
 const operation = z.discriminatedUnion("op", [
   z.object({ op: z.literal("submit"), project: id, revision: z.string().regex(/^[0-9a-f]{40}$/), text, model: id.optional(), messageId: id }),
   z.object({ op: z.literal("get"), ...task }),
+  z.object({ op: z.literal("readiness"), project: id }),
   z.object({ op: z.literal("wait"), ...task }),
   z.object({ op: z.literal("answer"), ...task, attemptId: z.string().uuid(), questionId: id, text, messageId: id }),
   z.object({ op: z.literal("cancel"), ...task }),
@@ -48,7 +49,7 @@ export async function fleetOperation(rootId, operation, { seconds, checkoutPath 
 
 export function registerFleetTool(server) {
   server.registerTool("factory_remote", {
-    description: "Use the opt-in remote Studio pilot for an enrolled project and exact commit. Submit a bounded brief, wait for a question or completion, answer routine clarifications within user authorization, cancel, or download a result artifact. Supply stable message IDs on submit and answer so retries do not duplicate work. The plugin binds operations to the current Codex root.",
+    description: "Use the opt-in remote Studio pilot for an enrolled project and exact commit. Inspect project readiness, submit a bounded brief, wait for a question or completion, answer routine clarifications within user authorization, cancel, or download a result artifact. Supply stable message IDs on submit and answer so retries do not duplicate work. The plugin binds operations to the current Codex root.",
     inputSchema: { operation },
   }, async ({ operation }, extra) => {
     try {

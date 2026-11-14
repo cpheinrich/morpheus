@@ -7,6 +7,7 @@ import { createInterface } from "node:readline";
 import { gatewayWorker, readWorkerConfig, workerResult } from "../src/gateway-worker.mjs";
 import { readArtifactFiles } from "../src/fleet-artifacts.mjs";
 import { studioCheckout } from "../src/fleet-source.mjs";
+import { invocationFromWorker, notLaunched } from "../src/fleet-receipt.mjs";
 
 const [configPath, project] = process.argv.slice(2);
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -37,21 +38,23 @@ async function execute(job) {
   let prepared;
   try { prepared = await prepare(job); }
   catch {
-    return { terminationVerified: true, result: { outcome: "failed", summary: "Studio checkout or model failed the pilot admission check." } };
+    const invocation = uuid.test(job.admissionId) ? notLaunched(job.admissionId) : undefined;
+    return { terminationVerified: true, invocation, result: { outcome: "failed", summary: "Studio checkout or model failed the pilot admission check." } };
   }
   const { outputDir, handoff } = prepared;
   const { resume, admissionId } = job;
-  const outcome = await gatewayWorker(configPath, handoff, resume, admissionId, controller.signal, prepared.checkout);
+  const outcome = await gatewayWorker(configPath, handoff, resume, admissionId, controller.signal, prepared.checkout, job.binding);
+  const invocation = invocationFromWorker(outcome);
   if (outcome.terminationVerified && outcome.result.outcome === "completed" && !controller.signal.aborted) {
     const files = outcome.result.evidence.filter((item) => item.startsWith("artifact:")).map((item) => item.slice(9));
     try {
       for await (const file of readArtifactFiles(outputDir, files))
         console.log(JSON.stringify({ artifact: { ...file, bytes: file.bytes.toString("base64") } }));
     } catch {
-      return { terminationVerified: true, result: { outcome: "failed", summary: "Studio could not read the declared artifacts." } };
+      return { terminationVerified: true, invocation, result: { outcome: "failed", summary: "Studio could not read the declared artifacts." } };
     }
   }
-  return { terminationVerified: outcome.terminationVerified, sessionId: outcome.sessionId, result: outcome.result };
+  return { terminationVerified: outcome.terminationVerified, sessionId: outcome.sessionId, invocation, result: outcome.result };
 }
 
 function admissionEnvelope(value) {
@@ -71,7 +74,11 @@ async function dispatch(value) {
   }
   if (job.op === "recover") {
     const prior = await workerResult(job.admissionId);
-    return { terminationVerified: prior.terminationVerified, admissionId: prior.admissionId };
+    const binding = prior.binding?.fleet;
+    const sameAttempt = binding?.taskId === job.binding?.taskId && binding?.attemptId === job.binding?.attemptId;
+    if (binding && !sameAttempt) return { terminationVerified: false };
+    return { terminationVerified: prior.terminationVerified, admissionId: prior.admissionId,
+      invocation: binding && sameAttempt ? invocationFromWorker(prior) : undefined };
   }
   return execute(job);
 }

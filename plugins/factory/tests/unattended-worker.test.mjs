@@ -205,6 +205,19 @@ test('private configuration must be outside a workspace and owner-only',async t=
   const publicFile=join(f.root,'public.json'); await writeFile(publicFile,JSON.stringify(f.config),{mode:0o644}); await chmod(publicFile,0o644);
   await assert.rejects(readWorkerConfig(publicFile),/owner-only/);
 });
+test('a new Fleet supervisor can continue the exact legacy admission', async t => {
+  const f = await setup(t);
+  const legacy = await gatewayWorker(f.configPath, 'Ask first');
+  assert.equal(legacy.binding.fleet, undefined);
+  const fleet = { taskId: randomUUID(), attemptId: randomUUID() };
+  const next = await gatewayWorker(f.configPath, 'Continue', legacy.admissionId, randomUUID(), undefined, undefined, fleet);
+  assert.deepEqual(next.binding.fleet, fleet);
+  assert.equal(next.sessionId, legacy.sessionId);
+  const wrong = await gatewayWorker(f.configPath, 'Wrong attempt', next.admissionId, randomUUID(), undefined, undefined,
+    { ...fleet, attemptId: randomUUID() });
+  assert.equal(wrong.launch, 'never-launched');
+});
+
 test('continuation refuses changed job, workspace, gateway, model or permission binding',async t=>{
   const f=await setup(t); const first=await gatewayWorker(f.configPath,'start');
   const other=join(f.root,'other'); await mkdir(other);
@@ -660,13 +673,13 @@ test('--reconcile fails closed on incomplete, unproven or ambiguous evidence, an
   assert.equal(alive(reusedOwned), true); assert.equal(alive(reusedGuardian), true);
 });
 
-test('Studio executor admits the enrolled commit and returns only declared artifact bytes', async t => {
-  const f = await setup(t, `import json,pathlib,sys
+test('Studio executor attests distinct fresh sessions and only recovers the exact admission and attempt', async t => {
+  const f = await setup(t, `import json,pathlib,sys,uuid
 sys.stdin.read()
 output=next(pathlib.Path('.').glob('.factory-artifacts-*'))
 (output/'result.txt').write_text('blue')
 (output/'unlisted.txt').write_text('private')
-print(json.dumps({'type':'thread.started','thread_id':'studio-session'}),flush=True)
+print(json.dumps({'type':'thread.started','thread_id':str(uuid.uuid4())}),flush=True)
 print(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':json.dumps({'outcome':'completed','summary':'done','evidence':['artifact:result.txt'],'question':''})}}),flush=True)
 print(json.dumps({'type':'turn.completed'}),flush=True)
 `);
@@ -683,19 +696,35 @@ print(json.dumps({'type':'turn.completed'}),flush=True)
     assert.equal(code, 0);
     return { admissionId: job.admissionId, lines: stdout.trim().split('\n').map(line => JSON.parse(line)) };
   }
-  function run(sha, prompt = "Write a result artifact") {
+  const binding = { taskId: randomUUID(), attemptId: randomUUID() };
+  function run(sha, prompt = "Write a result artifact", owner = binding) {
     return exchange({ task: { source: { project: 'fixture', revision: sha },
       selection: { provider: 'codex', gateway: f.config.gateway.name, model: f.config.model } },
-      admissionId: randomUUID(), resume: null, prompt, gatewayBaseUrl: f.config.gateway.baseUrl });
+      admissionId: randomUUID(), resume: null, prompt, binding: owner, gatewayBaseUrl: f.config.gateway.baseUrl });
   }
   const wrong = await run('0'.repeat(40));
   assert.equal(wrong.lines[0].outcome.result.outcome, 'failed');
+  assert.deepEqual(wrong.lines[0].outcome.invocation, { launch: 'never-launched', admissionId: wrong.admissionId, sessionId: null });
   await assert.rejects(readFile(join(f.state, wrong.admissionId, 'admission.json')), { code: 'ENOENT' });
   const good = await run(revision, "x" + "\0".repeat(65535));
   assert.deepEqual(good.lines.map(line => Object.keys(line)), [['artifact'], ['outcome']]);
   assert.deepEqual(good.lines[0].artifact, { name: 'result.txt', type: 'text/plain', bytes: 'Ymx1ZQ==' });
   assert.equal(good.lines[1].outcome.terminationVerified, true);
-  assert.equal(good.lines[1].outcome.sessionId, 'studio-session');
-  const recovered = await exchange({ op: 'recover', admissionId: good.admissionId });
-  assert.deepEqual(recovered.lines, [{ outcome: { terminationVerified: true, admissionId: good.admissionId } }]);
+  const invocation = good.lines[1].outcome.invocation;
+  assert.equal(invocation.sessionId, good.lines[1].outcome.sessionId);
+  assert.equal(invocation.admissionId, good.admissionId);
+  assert.equal(invocation.launch, 'session');
+  const guardian = await json(join(f.state, good.admissionId, 'process.json'));
+  assert.equal(invocation.timing.durationMs, guardian.timing.durationMs);
+  assert.equal(invocation.timing.startedAt, guardian.timing.startedAt);
+  assert.equal(invocation.timing.endedAt, guardian.timing.endedAt);
+  await rm(join(f.cwd, `.factory-artifacts-${good.admissionId}`), { recursive: true });
+  const nextBinding = { taskId: randomUUID(), attemptId: randomUUID() };
+  const second = await run(revision, "Second session on the same slot", nextBinding);
+  assert.notEqual(second.lines[1].outcome.invocation.sessionId, invocation.sessionId);
+  assert.notEqual(second.lines[1].outcome.invocation.admissionId, invocation.admissionId);
+  const recovered = await exchange({ op: 'recover', admissionId: good.admissionId, binding });
+  assert.deepEqual(recovered.lines, [{ outcome: { terminationVerified: true, admissionId: good.admissionId, invocation } }]);
+  const foreign = await exchange({ op: 'recover', admissionId: good.admissionId, binding: nextBinding });
+  assert.deepEqual(foreign.lines, [{ outcome: { terminationVerified: false } }]);
 });
