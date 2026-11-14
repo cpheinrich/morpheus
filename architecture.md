@@ -3592,6 +3592,17 @@ heading instead of being injected into it, because React owns heading children a
 is erased on re-render. A missing `id` is the only write. Adding one before a Suspense boundary
 hydrates logs a development-only attribute mismatch. See `src/section-links/README.md`.
 
+#### Infrastructure desk display
+
+Darwin's Operations Desk and Lakina's Infra tab read different sources under different
+authorization, but must show delivery evidence the same way. `morpheus-kit/ops-desk` holds only
+that shared display contract: compact browser-local times (`Nov 12, 9:19pm PST`), GitHub run,
+attempt, job, commit and pull-request links built solely from validated identifiers, dated
+terminal outcomes kept when a source goes stale while live states become unknown, latest-attempt
+ordering by start time, and URL-fragment views. `morpheus-kit/ops-desk/react` adds the
+fragment-view hook behind shareable tabs, drilldowns, Back and Forward. Sources, readers,
+authorization, copy and pipeline topology stay in each project. See `src/ops-desk/README.md`.
+
 `morpheus web init` includes this path whenever it scaffolds `/hq`: the visible search control,
 private static index route, deployment-versioned URL, neutral styling, and a working overview
 document. The starter catalogue is intentionally explicit rather than a repository-wide scan.
