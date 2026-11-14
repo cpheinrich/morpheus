@@ -58,7 +58,6 @@ export const configSchema = z
   .object({
     version: z.literal(1).default(1),
     mode: modeSchema.default(release.defaultMode),
-    defaultPlacement: z.enum(["local", "fleet"]).default("local"),
     // A pooled gateway is used while its account is below this share of usage; at or
     // above it the coordinator falls back to native. 90 leaves a little headroom.
     threshold: z.number().min(1).max(100).default(90),

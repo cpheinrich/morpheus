@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { call } from "../src/client.mjs";
+import { readPlacement, writePlacement } from "../src/fleet-placement.mjs";
 import { configRead, configWrite, initStore } from "../src/store.mjs";
 import { Codex } from "../src/codex.mjs";
 import { checkClaude } from "../src/claude.mjs";
@@ -36,8 +37,7 @@ async function toggle() {
   console.log(JSON.stringify({ mode: config.mode }));
 }
 async function placement() {
-  const config = await configRead();
-  if (rest.length === 0) return console.log(JSON.stringify({ defaultPlacement: config.defaultPlacement }));
+  if (rest.length === 0) return console.log(JSON.stringify({ defaultPlacement: await readPlacement() }));
   if (rest.length !== 1 || !["local", "fleet"].includes(rest[0]))
     throw new Error("Use placement local or placement fleet");
   if (rest[0] === "fleet") {
@@ -45,8 +45,7 @@ async function placement() {
     const enrollment = await readFleetConfig(join(home(), "fleet-controller.json"));
     if (!Object.keys(enrollment.projects ?? {}).length) throw new Error("Enroll a Fleet project first");
   }
-  const updated = await call("config", { value: { ...config, defaultPlacement: rest[0] } });
-  console.log(JSON.stringify({ defaultPlacement: updated.defaultPlacement }));
+  console.log(JSON.stringify({ defaultPlacement: await writePlacement(rest[0]) }));
 }
 async function statusline() {
   // Claude exposes subscription usage only to its status line, so routing from a

@@ -4,7 +4,8 @@ import { mkdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { call } from "../src/client.mjs";
 import { home } from "../src/config.mjs";
-import { atomic, configRead, key, readJSON } from "../src/store.mjs";
+import { atomic, key, readJSON } from "../src/store.mjs";
+import { readPlacement } from "../src/fleet-placement.mjs";
 import { checkoutInfo } from "../src/workspace.mjs";
 import { fleetControllerPath, fleetOperation } from "./fleet-mcp.mjs";
 
@@ -56,7 +57,10 @@ function checkOptions(args) {
 async function submit(method, args, authorize) {
   checkOptions(args);
   const { readFleetConfig } = await import("../src/fleet-client.mjs");
-  const config = await readFleetConfig(fleetControllerPath());
+  const config = await readFleetConfig(fleetControllerPath()).catch(error => {
+    if (error.code === "ENOENT") throw new Error("No Fleet enrollment exists on this controller. Use explicit local placement only if requested.");
+    throw error;
+  });
   const target = await fleetTarget(config, args.cwd);
   if (method === "inspect") {
     await authorize("factory.remoteAuthorize", {
@@ -93,7 +97,7 @@ async function reply(method, args, checkoutPath) {
 
 export async function dispatchFleet(method, args, { authorize = call } = {}) {
   if (!args.runId) {
-    const placement = args.placement ?? (await configRead()).defaultPlacement;
+    const placement = args.placement ?? await readPlacement();
     return placement === "fleet" ? submit(method, args, authorize) : undefined;
   }
   const record = await readJSON(runPath(args.runId), null);

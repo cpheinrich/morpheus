@@ -142,8 +142,10 @@ Ask Codex naturally:
 - “Stop Claude.”
 - “Show Claude's live output.”
 
-**Routing chooses once per root session.** The first `factory_delegate` of a root session
-routes like this:
+**On the local route, routing chooses once per root session.** The first
+local `factory_delegate` of a root session routes like this. The
+[Fleet route](#opt-in-from-the-normal-codex-factory-tools) instead uses the
+enrolled Codex worker and supervises by run ID.
 
 1. With no explicit provider, the gateway with the most headroom below the threshold
    (**90% used** by default). With no gateway configured, or none below it, the **other
@@ -1046,6 +1048,8 @@ node ~/plugins/factory/scripts/bridge.mjs placement fleet
 
 Pass `placement: "local"` to override for a new request. A missing, dirty or
 unenrolled Fleet checkout is refused; it does not fall back to a local worker.
+Fleet does not accept local-only options such as another provider, multiple
+repositories, `fresh: true`, background operation, effort overrides or Fast.
 Already-started runs keep their original route. To reset the controller default,
 run the same command with `local`. This preference affects the normal Codex
 Factory tools; Claude tools and the explicit unattended runner are unchanged.

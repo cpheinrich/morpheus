@@ -18,7 +18,7 @@ never submit a local task to a different machine by guessing its project path.
    Full access, for one repository or many; approval `never` or `on-request` sets the worker's
    permissions and anything else is refused. An unloaded task needs an active latest turn recorded
    with full access: if refused, ask the user to choose Full access and send a message.
-   Routing: an eligible gateway, else the other provider's native login; never this task's own
+   Local routing: an eligible gateway, else the other provider's native login; never this task's own
    native login. The first successful primary delegation pins that route for this root session.
    Later quota or ordering changes may refuse work but never silently move it. A conflicting
    provider preference requires a new root session.
@@ -26,7 +26,7 @@ never submit a local task to a different machine by guessing its project path.
    acceptance checks, and relevant approvals/constraints. Do not send credentials, hidden
    system/developer instructions, unrelated chats, or an entire memory store. Refer Claude
    to repository instructions.
-   Name every repository the worker may write: `cwd` (its working directory on the first
+   For local routing, name every repository the worker may write: `cwd` (its working directory on the first
    delegation) and `repos`. One primary conversation spans them all and keeps them on later
    delegations; adding a repository resumes it rather than starting another worker. Each
    target resolves to a task-owned checkout: an unowned linked worktree (such as one you
@@ -37,7 +37,7 @@ never submit a local task to a different machine by guessing its project path.
    `workspace`; tell the worker which checkout holds which part of the task.
    Do not ask it to redo mutations already completed. Default background=false; true is
    only for explicit user authorization to continue after disconnection.
-4. Factory workers default to GPT-6.1 Sol (`gpt-6.1-sol`) for Codex and Claude Opus 5.5
+4. Local Factory workers default to GPT-6.1 Sol (`gpt-6.1-sol`) for Codex and Claude Opus 5.5
    (`claude-opus-5-5`) for Claude, both at Standard speed. Effort follows the controller
    where supported. Pass model, effort, or speed overrides only when the user requests them,
    including on later runs covered by the same request. Check `selection` before reporting
@@ -89,7 +89,10 @@ Morpheus contributor must never acquire it merely by cloning a repo.
 
 For an enrolled Codex Fleet run, let a saved Fleet default apply or explicitly pass `placement: "fleet"`
 and pass the absolute path of the clean, published linked checkout to both inspect
-and delegate. Pass `placement: "local"` when the operator explicitly chooses local Factory placement. Supervise the returned run ID with the normal Factory tools and
+and delegate. Fleet uses the enrolled Codex worker settings; it does not
+support local-only provider, multi-repository, fresh, background, or effort/speed
+overrides. Pass `placement: "local"` when the operator explicitly chooses local
+Factory placement. Supervise the Fleet run by its returned run ID and
 download its declared artifacts via `factory_remote`. The controller owns
 implementation delivery through PR, review, CI, and merge. See the README's
 authenticated Studio pilot section for the one-repository enrollment.

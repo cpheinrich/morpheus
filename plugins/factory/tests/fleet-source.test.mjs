@@ -7,6 +7,7 @@ import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { fetchStudioRevision, studioCheckout } from "../src/fleet-source.mjs";
 import { dispatchFleet, fleetTarget } from "../scripts/fleet-delegate.mjs";
+import { writePlacement } from "../src/fleet-placement.mjs";
 
 const git = (cwd, ...args) => execFileSync("/usr/bin/git", ["-C", cwd, ...args], {
   encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
@@ -72,7 +73,11 @@ test("a Studio attempt fetches its exact commit, isolates edits, and resumes the
   assert.equal(inspect.availability, "unknown");
   assert.equal(inspect.quota, null);
   assert.equal(await dispatchFleet("inspect", { rootId, cwd: cwdForInspect }), undefined);
-  await writeFile(join(root, "config.json"), JSON.stringify({ defaultPlacement: "fleet" }), { mode: 0o600 });
+  const shared = '{ "mode": "manual" }';
+  await writeFile(join(root, "config.json"), shared, { mode: 0o600 });
+  await writePlacement("fleet");
+  assert.equal(await readFile(join(root, "config.json"), "utf8"), shared);
+  assert.deepEqual(JSON.parse(await readFile(join(root, "fleet-placement.json"), "utf8")), { placement: "fleet" });
   const auto = await dispatchFleet("inspect", { rootId, cwd: cwdForInspect }, {
     authorize(method, input) {
       assert.equal(method, "factory.remoteAuthorize");
