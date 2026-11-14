@@ -3,3 +3,5 @@
 # unanswered, because an unanswered entry fails `pnpm install` outright.
 allowBuilds:
   esbuild: true
+overrides:
+  "@vitest/mocker@2.1.9": 4.1.11
