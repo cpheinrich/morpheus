@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { claimTask, renewAttempt, settleAttempt } from "./fleet-claims.mjs";
 import { answerQuestion, askQuestion, cancelTask, submitTask } from "./fleet-mailbox.mjs";
+import { invocationReceipt, receiptPath } from "./fleet-receipt.mjs";
+import { fleetReadiness, quotaObservation } from "./fleet-readiness.mjs";
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const digest = /^[0-9a-f]{64}$/;
@@ -15,7 +17,7 @@ const taskFields = { taskId: id };
 const attemptFields = { ...taskFields, attemptId: id };
 const scope = { rootId: id, ...taskFields };
 const worker = {
-  heartbeat: z.object({ available: z.boolean(), capacity: z.number().int().min(0).max(1048576) }),
+  heartbeat: z.object({ available: z.boolean(), capacity: z.number().int().min(0).max(1048576), quota: quotaObservation.optional() }),
   claim: z.object(attemptFields),
   inspect: z.object(attemptFields),
   renew: z.object(attemptFields),
@@ -25,7 +27,9 @@ const worker = {
     outcome: z.enum(["TASK_STATE_COMPLETED", "TASK_STATE_FAILED", "TASK_STATE_CANCELED"]),
     result: z.object({ summary: shortText, artifacts: z.array(name).max(8).optional() }).nullable(),
     cleanupVerified: z.boolean(),
-  }),
+    admissionId: z.uuid().optional(),
+    invocation: invocationReceipt.optional(),
+  }).refine(validFinishReceipt),
   upload: z.object({
     ...attemptFields, name, type: z.string().regex(/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/).max(100),
     bytes: z.base64().max(bodyLimit - 4096),
@@ -34,10 +38,17 @@ const worker = {
 const controller = {
   submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, model: id.optional() }),
   get: z.object(scope),
+  readiness: z.object({ rootId: id, project: id }),
   answer: z.object({ ...scope, attemptId: id, questionId: id, messageId: id, text: message }),
   cancel: z.object(scope),
   download: z.object({ ...scope, name }),
 };
+
+function validFinishReceipt(input) {
+  if (!input.invocation) return input.admissionId === undefined;
+  if (!input.cleanupVerified || input.invocation.admissionId !== (input.admissionId ?? null)) return false;
+  return input.invocation.launch !== "never-launched" || input.outcome !== "TASK_STATE_COMPLETED";
+}
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const objectName = ({ taskId, attemptId, name }) => `factory/${taskId}/${attemptId}/${name}`;
@@ -56,8 +67,12 @@ async function loadTask(db, taskId, authorized) {
   return task;
 }
 
+function enrolledProject(config, principal, name) {
+  return principal.projects.includes(name) && Object.hasOwn(config.projects, name) && config.projects[name];
+}
+
 function launchFor(config, principal, input) {
-  const project = principal.projects.includes(input.project) && Object.hasOwn(config.projects, input.project) && config.projects[input.project];
+  const project = enrolledProject(config, principal, input.project);
   const selection = project?.selection;
   const fetchSource = project?.revision === "git";
   if (!project || (!fetchSource && project.revision !== input.revision) || (input.model && input.model !== selection.model))
@@ -76,7 +91,14 @@ async function signal(db, uids, log) {
   }));
 }
 
+function inspectReadiness(db, config, principal, projectName, now) {
+  const project = enrolledProject(config, principal, projectName);
+  if (!project) throw failure(403, "Project is outside the pilot enrollment");
+  return fleetReadiness(db, config.users, projectName, project, now, maxAgeMs);
+}
+
 async function handleController(op, input, { db, config, principal, uid, objects, log, now }) {
+  if (op === "readiness") return inspectReadiness(db, config, principal, input.project, now);
   const contextId = hash(`${uid}\0${input.rootId}`);
   const notify = (slots) => signal(db, Object.keys(config.users).filter((key) =>
     slots.includes(config.users[key].slotId)), log);
@@ -86,10 +108,7 @@ async function handleController(op, input, { db, config, principal, uid, objects
     return result;
   }
   const task = await loadTask(db, input.taskId, (row) => row.contextId === contextId);
-  if (op === "get") {
-    const question = task.questionId ? (await messageRef(db, task.id, task.questionId).get()).data() : null;
-    return { task, question };
-  }
+  if (op === "get") return controllerSnapshot(db, task);
   if (op === "download") {
     const artifact = task.result?.artifacts?.find(({ name }) => name === input.name);
     if (!artifact) throw failure(404, "Unknown Factory artifact");
@@ -103,12 +122,21 @@ async function handleController(op, input, { db, config, principal, uid, objects
   return result;
 }
 
+async function controllerSnapshot(db, task) {
+  const [question, receipt] = await Promise.all([
+    task.questionId ? messageRef(db, task.id, task.questionId).get().then((doc) => doc.data()) : null,
+    task.lastAttempt && !task.attempt ? db.doc(receiptPath(task.id)).get().then((doc) => doc.data()) : null,
+  ]);
+  return { task, question, ...(receipt ? { receipt } : {}) };
+}
+
 async function heartbeat(db, { hostId, slotId }, input, now) {
   const slot = db.doc(`factorySlots/${slotId}`);
   await db.runTransaction(async (tx) => {
     const prior = (await tx.get(slot)).data();
     if (prior && prior.hostId !== hostId) throw failure(409, "Factory slot belongs to another host");
-    tx.set(slot, { hostId, available: input.available, capacity: input.capacity, observedAt: now }, { merge: true });
+    tx.set(slot, { hostId, available: input.available, capacity: input.capacity, observedAt: now,
+      quota: input.quota ?? null }, { merge: true });
   });
   if (!input.available) return { tasks: [] };
   const queued = await db.collection("factoryTasks").where("queuedSlots", "array-contains", slotId).limit(16).get();

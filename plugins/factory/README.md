@@ -904,8 +904,8 @@ requirements; fake-provider lifecycle tests establish none of them.
 ## Authenticated Studio pilot
 
 The Codex-only `factory_remote` tool uses the current desktop root for ownership.
-Its explicit operations are `submit`, `get`, `wait`, `answer`, `cancel`, and
-`download`. Keep a stable message ID for each brief and each answer. `wait`
+Its explicit operations are `readiness`, `submit`, `get`, `wait`, `answer`,
+`cancel`, and `download`. Keep a stable message ID for each brief and each answer. `wait`
 returns the latest snapshot within 25 seconds. Download writes a new private
 file under the controller's Factory home and returns its path. The existing
 local Factory tools remain available for local delegation.
@@ -1070,3 +1070,41 @@ terminal. An explicit SHA enrollment continues to use the fixed pilot checkout.
 
 The controller applies the verified patch to its claimed worktree and owns the
 implementation ticket through independent review, CI, and merge.
+
+
+### Read slot readiness and a terminal receipt
+
+Call `factory_remote` with `{ operation: { op: "readiness", project: "<enrolled project>" } }`
+from the controller. The service returns the project's selected provider, gateway and
+model, plus each eligible slot's heartbeat, capacity, busy state and quota status.
+`placementCandidate` means the slot was free in a heartbeat at most 45 seconds old
+and its last scoped quota check reported headroom within two minutes. It does not
+test the source checkout, inference credential, model or later claim. Every eligible
+slot for a project must share that project's enrolled gateway name and model. The
+quota read checks the gateway name and provider. Execution also checks the exact
+configured model and gateway endpoint before launching. A mismatched gateway is
+`incompatible`, stale or unavailable quota is `unknown`, and a fresh exhausted
+gateway is `limited`. Old supervisors still heartbeat and run tasks, with quota
+shown as unknown. A new supervisor refreshes the quota observation no more than
+once per minute while idle and checks again before each model invocation.
+
+On verified settlement, the owning controller's `get` and `wait` responses may include
+a separate `receipt` with the exact task, attempt, slot, host, and latest gateway
+admission. In a `session` receipt the session ID comes from the Codex CLI's
+`thread.started` event and the optional timing comes from the guardian's monotonic
+measurement through cleanup. A continuation's receipt covers its last invocation,
+rather than summing elapsed time over prior turns. A `never-launched` receipt records
+a proven refusal before launch. An `unknown` receipt records verified termination
+without evidence of a session. Neither exposes a session ID. An older worker, a
+cancellation before claim, or an attempt held for uncertain cleanup has no terminal
+receipt. A recovered attempt can have a real session receipt and a failed task
+outcome. Review consumers must also inspect the task outcome and the review itself.
+Only the owning controller can read the receipt through the task API. Repeated
+settlement returns the original receipt. A supervisor journals a prepared settlement
+before submitting it so a lost reply or restart does not replay the worker.
+
+Deploy a reviewed service revision first and leave existing supervisors running
+until they are idle. Then upgrade supervisor, fixed executor and worker together
+on each slot. Keep the old plugin build for rollback and wait for `readiness` to
+show a fresh observation before testing the new receipt with a synthetic task.
+Older services ignore the additive heartbeat and completion fields.

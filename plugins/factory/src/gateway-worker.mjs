@@ -78,12 +78,20 @@ async function existingAdmission(directory, admissionId, binding) {
     return existing;
   }
 }
+function legacyBinding(binding) {
+  const legacy = { ...binding };
+  delete legacy.fleet;
+  return legacy;
+}
 async function continuationSession(resume, binding) {
   if (!/^[0-9a-f-]{36}$/.test(resume)) throw new Error('Invalid continuation admission ID');
   const previous = await workerResult(resume);
-  if (!previous || JSON.stringify(previous.binding) !== JSON.stringify(binding) || !previous.terminationVerified || !previous.sessionId)
+  // An upgrade may resume a pre-receipt admission with the checkout's old binding.
+  const upgrading = binding.fleet && !previous.binding?.fleet;
+  const expected = upgrading ? legacyBinding(binding) : binding;
+  if (JSON.stringify(previous.binding) !== JSON.stringify(expected) || !previous.terminationVerified || !previous.sessionId)
     throw new Error('Continuation requires a terminated session with the same job, checkout and gateway binding');
-  return previous.sessionId;
+  return { sessionId: previous.sessionId, legacySessionHome: !!(upgrading || previous.legacySessionHome === true) };
 }
 // This branch always resolves the named gateway key. No native authentication path.
 async function gatewayEnv(config, root, binding, step) {
@@ -109,11 +117,18 @@ function workerArgv(config, sessionId) {
 // Every step before the guardian spawn; `step.summary` names the phase a failure is reported as.
 async function prepareJob({ config, prompt, resume, admissionId, root, directory, binding, record }, step) {
   let sessionId = null;
+  let sessionBinding = binding;
   if (resume) {
     step.summary = 'Continuation requires a terminated session with the same job, checkout and gateway binding';
-    sessionId = await continuationSession(resume, binding);
+    const continuation = await continuationSession(resume, binding);
+    sessionId = continuation.sessionId;
+    if (continuation.legacySessionHome) {
+      // Codex reads the retained thread from the same home on every later resume.
+      sessionBinding = legacyBinding(binding);
+      record.legacySessionHome = true;
+    }
   }
-  const isolated = await gatewayEnv(config, root, binding, step);
+  const isolated = await gatewayEnv(config, root, sessionBinding, step);
   const argv = workerArgv(config, sessionId);
   record.sessionId = sessionId;
   await atomic(join(directory, 'admission.json'), record);
@@ -147,7 +162,7 @@ async function runGuardian(directory, isolated, signal) {
   finally { signal?.removeEventListener('abort', cancel); clearInterval(heartbeat); child.stdin.destroy(); process.off('SIGTERM', cancel); process.off('SIGINT', cancel); }
   return false;
 }
-export async function gatewayWorker(configPath, prompt, resume = null, admissionId = randomUUID(), signal, checkout) {
+export async function gatewayWorker(configPath, prompt, resume = null, admissionId = randomUUID(), signal, checkout, fleet) {
   assertWorkerInputs(prompt, admissionId);
   const config = await readWorkerConfig(configPath);
   if (checkout !== undefined) {
@@ -156,7 +171,7 @@ export async function gatewayWorker(configPath, prompt, resume = null, admission
     config.cwd = cwd;
   }
   const root = await workerStateRoot(config);
-  const binding = { jobId: config.jobId, cwd: config.cwd, gateway: config.gateway, model: config.model, effort: config.effort, sandbox: config.sandbox, approvalPolicy: config.approvalPolicy };
+  const binding = { jobId: config.jobId, cwd: config.cwd, gateway: config.gateway, model: config.model, effort: config.effort, sandbox: config.sandbox, approvalPolicy: config.approvalPolicy, ...(fleet ? { fleet } : {}) };
   const directory = join(root, admissionId);
   const existing = await existingAdmission(directory, admissionId, binding);
   if (existing) return existing;
@@ -212,6 +227,7 @@ async function foldWorkerEvents(directory, record) {
     try {
       const event = JSON.parse(line);
       if (event.type === 'turn.started') run.startedTurn = true;
+      if (event.type === 'thread.started' && event.thread_id) run.observedSession = event.thread_id;
       applyCodexEvent(run, event);
     } catch { /* Incomplete bounded event is checkpoint evidence. */ }
   }
@@ -269,6 +285,11 @@ function runnerTiming(timing, admissionId, reconciled) {
     evidence: `Guardian process.json for admission ${admissionId}; monotonic duration includes owned cleanup.`
       + (reconciled ? ' Cleanup was proven later by a fresh owned-process census (reconciliation.json).' : '') };
 }
+function workerLaunch(state, verified, run) {
+  if (!verified) return 'unknown';
+  if (state.admissionRejected || state.launchFailed) return 'never-launched';
+  return run.observedSession ? 'session' : 'unknown';
+}
 export async function workerResult(admissionId) {
   if (!/^[0-9a-f-]{36}$/.test(admissionId)) throw new Error('Invalid admission ID');
   const directory = join(home(), 'unattended', admissionId);
@@ -277,17 +298,18 @@ export async function workerResult(admissionId) {
   const state = await readJSON(join(directory, 'process.json'), null);
   if (prelaunchFailed(record, state)) {
     const result = { outcome: 'failed', summary: record.prelaunchFailure.summary, evidence: [], question: '' };
-    const output = { ...record, state: 'failed', terminationVerified: true, exitCode: null, result };
+    const output = { ...record, state: 'failed', launch: 'never-launched', terminationVerified: true, exitCode: null, result };
     await atomic(join(directory, 'result.json'), output);
     return output;
   }
   const run = await foldWorkerEvents(directory, record);
   const { reconciled, terminationVerified } = workerTermination(state, directory, admissionId);
   const result = workerOutcome(state, terminationVerified, run);
-  const output = { ...record, sessionId: run.newSession || null, state: result.outcome, terminationVerified, exitCode: state?.exitCode ?? null, result };
+  const launch = workerLaunch(state, terminationVerified, run);
+  const output = { ...record, sessionId: run.newSession || null, launch, state: result.outcome, terminationVerified, exitCode: state?.exitCode ?? null, result };
   const diagnosticCode = await workerDiagnostic(directory, state, terminationVerified, run);
   if (diagnosticCode) output.diagnosticCode = diagnosticCode;
-  const timing = terminationVerified && output.sessionId ? runnerTiming(state?.timing, admissionId, reconciled) : null;
+  const timing = launch === 'session' ? runnerTiming(state?.timing, admissionId, reconciled) : null;
   if (timing) output.timing = timing;
   if (terminationVerified || state?.admissionRejected) await atomic(join(directory, 'result.json'), output);
   return output;
