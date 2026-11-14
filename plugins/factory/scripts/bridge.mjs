@@ -22,7 +22,7 @@ import { rm } from "node:fs/promises";
 const [command = "help", ...rest] = process.argv.slice(2);
 function help() {
   console.log(
-    "factory: doctor | config | enable manual|automatic | disable | statusline install|uninstall | factory.inspect | factory.delegate | factory.status | factory.wait | factory.answer | factory.stop | inspect | start | wait | status | answer | stop | override | memories | codex.inspect | codex.start | codex.wait | codex.status | codex.stop | codex.view | codex.override | codex.memories\nRPC commands take a JSON object as their argument, or read JSON from stdin with -. Factory is experimental: delegation is off until this machine runs enable.",
+    "factory: doctor | config | enable manual|automatic | disable | placement [local|fleet] | statusline install|uninstall | factory.inspect | factory.delegate | factory.status | factory.wait | factory.answer | factory.stop | inspect | start | wait | status | answer | stop | override | memories | codex.inspect | codex.start | codex.wait | codex.status | codex.stop | codex.view | codex.override | codex.memories\nRPC commands take a JSON object as their argument, or read JSON from stdin with -. Factory is experimental: delegation is off until this machine runs enable.",
   );
 }
 async function toggle() {
@@ -34,6 +34,19 @@ async function toggle() {
   config.mode = command === "disable" ? "off" : rest[0];
   await call("config", { value: config });
   console.log(JSON.stringify({ mode: config.mode }));
+}
+async function placement() {
+  const config = await configRead();
+  if (rest.length === 0) return console.log(JSON.stringify({ defaultPlacement: config.defaultPlacement }));
+  if (rest.length !== 1 || !["local", "fleet"].includes(rest[0]))
+    throw new Error("Use placement local or placement fleet");
+  if (rest[0] === "fleet") {
+    const { readFleetConfig } = await import("../src/fleet-client.mjs");
+    const enrollment = await readFleetConfig(join(home(), "fleet-controller.json"));
+    if (!Object.keys(enrollment.projects ?? {}).length) throw new Error("Enroll a Fleet project first");
+  }
+  const updated = await call("config", { value: { ...config, defaultPlacement: rest[0] } });
+  console.log(JSON.stringify({ defaultPlacement: updated.defaultPlacement }));
 }
 async function statusline() {
   // Claude exposes subscription usage only to its status line, so routing from a
@@ -192,6 +205,7 @@ async function rpc() {
 try {
   if (command === "help") help();
   else if (command === "enable" || command === "disable") await toggle();
+  else if (command === "placement") await placement();
   else if (command === "statusline") await statusline();
   else if (command === "doctor") await doctor();
   else await rpc();

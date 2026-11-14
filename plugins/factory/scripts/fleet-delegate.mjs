@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { call } from "../src/client.mjs";
 import { home } from "../src/config.mjs";
-import { atomic, key, readJSON } from "../src/store.mjs";
+import { atomic, configRead, key, readJSON } from "../src/store.mjs";
 import { checkoutInfo } from "../src/workspace.mjs";
 import { fleetControllerPath, fleetOperation } from "./fleet-mcp.mjs";
 
@@ -92,7 +92,10 @@ async function reply(method, args, checkoutPath) {
 }
 
 export async function dispatchFleet(method, args, { authorize = call } = {}) {
-  if (!args.runId) return args.placement === "fleet" ? submit(method, args, authorize) : undefined;
+  if (!args.runId) {
+    const placement = args.placement ?? (await configRead()).defaultPlacement;
+    return placement === "fleet" ? submit(method, args, authorize) : undefined;
+  }
   const record = await readJSON(runPath(args.runId), null);
   if (!record) {
     if (args.placement === "fleet") throw new Error("No fleet run matches this ID.");

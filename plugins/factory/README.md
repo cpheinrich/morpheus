@@ -1036,9 +1036,21 @@ clean, claimed linked checkout. Publish its commit first. Supply the same
 `messageId` to retry a submission with an uncertain response. The returned
 `runId` works with `factory_status`, `factory_wait`, `factory_answer`, and
 `factory_stop` from the same Codex root. Download declared artifacts with
-`factory_remote` using the returned task ID. Omit placement to use the
-existing local route. The initial fleet route supports one checkout and the
-enrolled Codex worker configuration.
+`factory_remote` using the returned task ID. Omitted placement follows the Codex controller's
+saved default, initially local. Once this controller's Fleet enrollment is
+ready, opt in to Fleet by default:
+
+```sh
+node ~/plugins/factory/scripts/bridge.mjs placement fleet
+```
+
+Pass `placement: "local"` to override for a new request. A missing, dirty or
+unenrolled Fleet checkout is refused; it does not fall back to a local worker.
+Already-started runs keep their original route. To reset the controller default,
+run the same command with `local`. This preference affects the normal Codex
+Factory tools; Claude tools and the explicit unattended runner are unchanged.
+The Fleet route supports one checkout and the enrolled Codex worker
+configuration.
 
 To admit new commits without changing the service for each ticket, enroll the
 project with `revision: "git"` and configure its supervisor `execution.sourceMirror`

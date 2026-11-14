@@ -72,4 +72,17 @@ test("a Studio attempt fetches its exact commit, isolates edits, and resumes the
   assert.equal(inspect.availability, "unknown");
   assert.equal(inspect.quota, null);
   assert.equal(await dispatchFleet("inspect", { rootId, cwd: cwdForInspect }), undefined);
+  await writeFile(join(root, "config.json"), JSON.stringify({ defaultPlacement: "fleet" }), { mode: 0o600 });
+  const auto = await dispatchFleet("inspect", { rootId, cwd: cwdForInspect }, {
+    authorize(method, input) {
+      assert.equal(method, "factory.remoteAuthorize");
+      assert.equal(input.checkoutPath, cwdForInspect);
+    },
+  });
+  assert.deepEqual(auto, inspect);
+  const runId = randomUUID();
+  assert.equal(await dispatchFleet("status", { rootId, runId }), undefined, "existing local runs keep their route");
+  assert.equal(await dispatchFleet("inspect", { rootId, placement: "local" }), undefined);
+  await assert.rejects(dispatchFleet("inspect", { rootId, cwd: upstream }), /clean linked checkout/);
+  await assert.rejects(dispatchFleet("delegate", { rootId, cwd: upstream, prompt: "test" }), /clean linked checkout/);
 });
