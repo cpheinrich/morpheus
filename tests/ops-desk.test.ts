@@ -70,9 +70,11 @@ describe("GitHub links", () => {
       expect(githubJobUrl(repo, 12, bad)).toBeNull();
       expect(githubRunUrl(repo, 12, bad)).toBeNull();
     }
-    for (const badRepo of ["owner", "owner/repo/extra", "../x/y", "owner/re po", 7]) {
+    for (const badRepo of ["owner", "owner/repo/extra", "../x/y", "owner/re po", "owner/..", "../x", "./x", "owner/.", 7]) {
       expect(githubRunUrl(badRepo, 12)).toBeNull();
+      expect(githubCommitUrl(badRepo, "a".repeat(40))).toBeNull();
     }
+    expect(githubRunUrl("owner/.github", 12)).toBe("https://github.com/owner/.github/actions/runs/12");
   });
 
   it("accepts a reported job URL only when it equals the URL its identifiers produce", () => {
@@ -116,6 +118,11 @@ describe("fragments", () => {
     expect(section).toBe("work");
     expect(params.get("view")).toBe("recent");
     expect(params.get("detail")).toBe("job:o/r:1:1:2");
+  });
+
+  it("keeps a hand-typed `?` inside the query", () => {
+    expect(parseFragment("#work?detail=a?b").params.get("detail")).toBe("a?b");
+    expect(parseFragment("#work").section).toBe("work");
   });
 
   it("treats the default view as no fragment", () => {

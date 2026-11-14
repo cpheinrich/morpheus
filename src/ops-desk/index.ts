@@ -52,7 +52,8 @@ export function newestAttemptFirst(
   return (Date.parse(b.startedAt) || 0) - (Date.parse(a.startedAt) || 0) || b.runId - a.runId;
 }
 
-const REPOSITORY = /^[-\w.]+\/[-\w.]+$/;
+// `owner/name`, where neither segment may be `.` or `..` (a browser would resolve them away).
+const REPOSITORY = /^(?!\.{1,2}\/)[-\w.]+\/(?!\.{1,2}$)[-\w.]+$/;
 const SHA = /^[0-9a-f]{40}$/;
 const positive = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value > 0;
@@ -109,8 +110,12 @@ export function fragmentSlug(label: string): string {
  * server, so a shareable view adds no identifier to any request.
  */
 export function parseFragment(hash: string): { section: string; params: URLSearchParams } {
-  const [section = "", query] = hash.replace(/^#/, "").split("?", 2);
-  return { section, params: new URLSearchParams(query) };
+  const body = hash.replace(/^#/, "");
+  const mark = body.indexOf("?");
+  // Everything after the first `?` is the query, including any later `?` typed by hand.
+  return mark < 0
+    ? { section: body, params: new URLSearchParams() }
+    : { section: body.slice(0, mark), params: new URLSearchParams(body.slice(mark + 1)) };
 }
 
 /** The inverse of `parseFragment`. An empty section is the default view: no fragment at all. */
