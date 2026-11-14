@@ -1,5 +1,17 @@
 # Decisions
 
+## Infrastructure desks share display rules, not sources — 2026-11-13
+
+MO-26-11-13-23.38.17. Chris asked for Lakina's HQ Infra tab on Darwin's Operations Desk
+behaviour with common code lifted into Morpheus. Lakina is the second consumer, so the shared
+display contract moves to `morpheus-kit/ops-desk`: browser-local compact times, GitHub links from
+validated identifiers only, terminal outcomes kept while stale live states become unknown,
+newest-attempt ordering and URL-fragment views with a history hook. Readers, wire protocols,
+authorization, copy and pipeline topology stay project-owned, because the two desks have
+different sources and boundaries; a shared adapter would be a framework with one shape each.
+Considered date-fns-tz and dayjs for the time format; `Intl.DateTimeFormat` already gives the
+DST-aware short zone name. No dependency.
+
 ## Instruction files are sized against what each loader does — 2026-11-12
 
 MO-26-11-12-23.23.28. Chris asked for an audit of the instruction
