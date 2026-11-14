@@ -78,20 +78,20 @@ async function existingAdmission(directory, admissionId, binding) {
     return existing;
   }
 }
-function sameContinuation(prior, binding) {
-  if (!prior?.fleet && binding.fleet) {
-    // A supervisor upgrade can resume its journaled pre-receipt admission.
-    const { fleet: _fleet, ...legacy } = binding;
-    return JSON.stringify(prior) === JSON.stringify(legacy);
-  }
-  return JSON.stringify(prior) === JSON.stringify(binding);
+function legacyBinding(binding) {
+  const legacy = { ...binding };
+  delete legacy.fleet;
+  return legacy;
 }
 async function continuationSession(resume, binding) {
   if (!/^[0-9a-f-]{36}$/.test(resume)) throw new Error('Invalid continuation admission ID');
   const previous = await workerResult(resume);
-  if (!sameContinuation(previous?.binding, binding) || !previous.terminationVerified || !previous.sessionId)
+  // An upgrade may resume a pre-receipt admission with the checkout's old binding.
+  const upgrading = binding.fleet && !previous.binding?.fleet;
+  const expected = upgrading ? legacyBinding(binding) : binding;
+  if (JSON.stringify(previous.binding) !== JSON.stringify(expected) || !previous.terminationVerified || !previous.sessionId)
     throw new Error('Continuation requires a terminated session with the same job, checkout and gateway binding');
-  return previous.sessionId;
+  return { sessionId: previous.sessionId, legacySessionHome: !!(upgrading || previous.legacySessionHome === true) };
 }
 // This branch always resolves the named gateway key. No native authentication path.
 async function gatewayEnv(config, root, binding, step) {
@@ -117,11 +117,18 @@ function workerArgv(config, sessionId) {
 // Every step before the guardian spawn; `step.summary` names the phase a failure is reported as.
 async function prepareJob({ config, prompt, resume, admissionId, root, directory, binding, record }, step) {
   let sessionId = null;
+  let sessionBinding = binding;
   if (resume) {
     step.summary = 'Continuation requires a terminated session with the same job, checkout and gateway binding';
-    sessionId = await continuationSession(resume, binding);
+    const continuation = await continuationSession(resume, binding);
+    sessionId = continuation.sessionId;
+    if (continuation.legacySessionHome) {
+      // Codex reads the retained thread from the same home on every later resume.
+      sessionBinding = legacyBinding(binding);
+      record.legacySessionHome = true;
+    }
   }
-  const isolated = await gatewayEnv(config, root, binding, step);
+  const isolated = await gatewayEnv(config, root, sessionBinding, step);
   const argv = workerArgv(config, sessionId);
   record.sessionId = sessionId;
   await atomic(join(directory, 'admission.json'), record);

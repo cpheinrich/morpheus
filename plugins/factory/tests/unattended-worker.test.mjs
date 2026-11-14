@@ -206,14 +206,26 @@ test('private configuration must be outside a workspace and owner-only',async t=
   await assert.rejects(readWorkerConfig(publicFile),/owner-only/);
 });
 test('a new Fleet supervisor can continue the exact legacy admission', async t => {
-  const f = await setup(t);
+  const f = await setup(t, `import sys,os,pathlib
+marker = pathlib.Path(os.environ['CODEX_HOME']) / 'session-fixture'
+if sys.argv[1:3] == ['exec','resume']:
+    if not marker.is_file() or 'session-fixture' not in sys.argv:
+        sys.exit(42)
+else:
+    marker.touch()
+` + doneScript);
   const legacy = await gatewayWorker(f.configPath, 'Ask first');
   assert.equal(legacy.binding.fleet, undefined);
+  const sessionHome = (await json(join(f.cwd, 'observed.json'))).env.CODEX_HOME;
   const fleet = { taskId: randomUUID(), attemptId: randomUUID() };
   const next = await gatewayWorker(f.configPath, 'Continue', legacy.admissionId, randomUUID(), undefined, undefined, fleet);
   assert.deepEqual(next.binding.fleet, fleet);
   assert.equal(next.sessionId, legacy.sessionId);
-  const wrong = await gatewayWorker(f.configPath, 'Wrong attempt', next.admissionId, randomUUID(), undefined, undefined,
+  assert.equal(next.result.outcome, 'completed');
+  const later = await gatewayWorker(f.configPath, 'Continue again', next.admissionId, randomUUID(), undefined, undefined, fleet);
+  assert.equal(later.result.outcome, 'completed');
+  assert.equal((await json(join(f.cwd, 'observed.json'))).env.CODEX_HOME, sessionHome);
+  const wrong = await gatewayWorker(f.configPath, 'Wrong attempt', later.admissionId, randomUUID(), undefined, undefined,
     { ...fleet, attemptId: randomUUID() });
   assert.equal(wrong.launch, 'never-launched');
 });
