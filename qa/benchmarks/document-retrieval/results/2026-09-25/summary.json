@@ -1,0 +1,922 @@
+{
+  "summaries": [
+    {
+      "key": "pilot/baseline",
+      "n": 4,
+      "recall": 0.75,
+      "completeEvidence": 3,
+      "timedEvidence": 3,
+      "auditedRecall": 1,
+      "auditedCompleteEvidence": 4,
+      "auditedTimedEvidence": 4,
+      "errors": 0,
+      "qmdDatabaseErrors": 0,
+      "medianMs": 19017.895791499992,
+      "p95Ms": 22650.836837549996,
+      "medianEvidenceCappedMs": 9284.126728999996,
+      "medianObservedEvidenceMs": 8952.472374999983,
+      "medianAuditedEvidenceCappedMs": 9284.126728999996,
+      "medianFirstToolNotificationMs": 5459.123561999993,
+      "meanToolCalls": 2.25,
+      "medianOutputChars": 17948.5,
+      "medianInputTokens": 78443.5,
+      "medianUncachedTokens": 29096.5,
+      "evidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0
+        },
+        {
+          "ms": 10000,
+          "recall": 0.75
+        },
+        {
+          "ms": 15000,
+          "recall": 0.75
+        },
+        {
+          "ms": 20000,
+          "recall": 0.75
+        },
+        {
+          "ms": 30000,
+          "recall": 0.75
+        },
+        {
+          "ms": 60000,
+          "recall": 0.75
+        },
+        {
+          "ms": 120000,
+          "recall": 0.75
+        }
+      ],
+      "auditedEvidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0
+        },
+        {
+          "ms": 10000,
+          "recall": 0.75
+        },
+        {
+          "ms": 15000,
+          "recall": 1
+        },
+        {
+          "ms": 20000,
+          "recall": 1
+        },
+        {
+          "ms": 30000,
+          "recall": 1
+        },
+        {
+          "ms": 60000,
+          "recall": 1
+        },
+        {
+          "ms": 120000,
+          "recall": 1
+        }
+      ]
+    },
+    {
+      "key": "pilot/hybrid",
+      "n": 4,
+      "recall": 0.5,
+      "completeEvidence": 2,
+      "timedEvidence": 2,
+      "auditedRecall": 1,
+      "auditedCompleteEvidence": 4,
+      "auditedTimedEvidence": 4,
+      "errors": 0,
+      "qmdDatabaseErrors": 0,
+      "medianMs": 26849.898271000013,
+      "p95Ms": 27939.51833124999,
+      "medianEvidenceCappedMs": 68366.96152099999,
+      "medianObservedEvidenceMs": 15228.651978999995,
+      "medianAuditedEvidenceCappedMs": 15492.300792000002,
+      "medianFirstToolNotificationMs": 9775.987875000003,
+      "meanToolCalls": 3.5,
+      "medianOutputChars": 12094.5,
+      "medianInputTokens": 119748.5,
+      "medianUncachedTokens": 30660.5,
+      "evidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0
+        },
+        {
+          "ms": 10000,
+          "recall": 0
+        },
+        {
+          "ms": 15000,
+          "recall": 0.25
+        },
+        {
+          "ms": 20000,
+          "recall": 0.5
+        },
+        {
+          "ms": 30000,
+          "recall": 0.5
+        },
+        {
+          "ms": 60000,
+          "recall": 0.5
+        },
+        {
+          "ms": 120000,
+          "recall": 0.5
+        }
+      ],
+      "auditedEvidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0
+        },
+        {
+          "ms": 10000,
+          "recall": 0
+        },
+        {
+          "ms": 15000,
+          "recall": 0.5
+        },
+        {
+          "ms": 20000,
+          "recall": 1
+        },
+        {
+          "ms": 30000,
+          "recall": 1
+        },
+        {
+          "ms": 60000,
+          "recall": 1
+        },
+        {
+          "ms": 120000,
+          "recall": 1
+        }
+      ]
+    },
+    {
+      "key": "pilot/lexical",
+      "n": 4,
+      "recall": 0.75,
+      "completeEvidence": 3,
+      "timedEvidence": 3,
+      "auditedRecall": 1,
+      "auditedCompleteEvidence": 4,
+      "auditedTimedEvidence": 4,
+      "errors": 0,
+      "qmdDatabaseErrors": 0,
+      "medianMs": 32224.33795799999,
+      "p95Ms": 41106.63077755,
+      "medianEvidenceCappedMs": 19441.484104000003,
+      "medianObservedEvidenceMs": 15841.445333,
+      "medianAuditedEvidenceCappedMs": 15215.740874500008,
+      "medianFirstToolNotificationMs": 10551.210187499999,
+      "meanToolCalls": 4.75,
+      "medianOutputChars": 15731.5,
+      "medianInputTokens": 135150,
+      "medianUncachedTokens": 30264.5,
+      "evidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0
+        },
+        {
+          "ms": 10000,
+          "recall": 0
+        },
+        {
+          "ms": 15000,
+          "recall": 0.25
+        },
+        {
+          "ms": 20000,
+          "recall": 0.5
+        },
+        {
+          "ms": 30000,
+          "recall": 0.75
+        },
+        {
+          "ms": 60000,
+          "recall": 0.75
+        },
+        {
+          "ms": 120000,
+          "recall": 0.75
+        }
+      ],
+      "auditedEvidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0
+        },
+        {
+          "ms": 10000,
+          "recall": 0
+        },
+        {
+          "ms": 15000,
+          "recall": 0.5
+        },
+        {
+          "ms": 20000,
+          "recall": 0.75
+        },
+        {
+          "ms": 30000,
+          "recall": 1
+        },
+        {
+          "ms": 60000,
+          "recall": 1
+        },
+        {
+          "ms": 120000,
+          "recall": 1
+        }
+      ]
+    },
+    {
+      "key": "pilot-cli/cli",
+      "n": 4,
+      "recall": 0.5,
+      "completeEvidence": 2,
+      "timedEvidence": 2,
+      "auditedRecall": 1,
+      "auditedCompleteEvidence": 4,
+      "auditedTimedEvidence": 4,
+      "errors": 0,
+      "qmdDatabaseErrors": 0,
+      "medianMs": 19689.2767915,
+      "p95Ms": 23364.606856199996,
+      "medianEvidenceCappedMs": 64037.876874999994,
+      "medianObservedEvidenceMs": 7169.726333499996,
+      "medianAuditedEvidenceCappedMs": 6103.051666999998,
+      "medianFirstToolNotificationMs": 5520.169791500002,
+      "meanToolCalls": 1.25,
+      "medianOutputChars": 25656.5,
+      "medianInputTokens": 55208.5,
+      "medianUncachedTokens": 30436,
+      "evidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0
+        },
+        {
+          "ms": 10000,
+          "recall": 0.5
+        },
+        {
+          "ms": 15000,
+          "recall": 0.5
+        },
+        {
+          "ms": 20000,
+          "recall": 0.5
+        },
+        {
+          "ms": 30000,
+          "recall": 0.5
+        },
+        {
+          "ms": 60000,
+          "recall": 0.5
+        },
+        {
+          "ms": 120000,
+          "recall": 0.5
+        }
+      ],
+      "auditedEvidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0
+        },
+        {
+          "ms": 10000,
+          "recall": 1
+        },
+        {
+          "ms": 15000,
+          "recall": 1
+        },
+        {
+          "ms": 20000,
+          "recall": 1
+        },
+        {
+          "ms": 30000,
+          "recall": 1
+        },
+        {
+          "ms": 60000,
+          "recall": 1
+        },
+        {
+          "ms": 120000,
+          "recall": 1
+        }
+      ]
+    },
+    {
+      "key": "validation/baseline",
+      "n": 40,
+      "recall": 0.95,
+      "completeEvidence": 37,
+      "timedEvidence": 37,
+      "auditedRecall": 1,
+      "auditedCompleteEvidence": 40,
+      "auditedTimedEvidence": 40,
+      "errors": 0,
+      "qmdDatabaseErrors": 0,
+      "medianMs": 19392.917437499993,
+      "p95Ms": 24816.262187500033,
+      "medianEvidenceCappedMs": 10608.874958000022,
+      "medianObservedEvidenceMs": 9879.337,
+      "medianAuditedEvidenceCappedMs": 10608.874958000022,
+      "medianFirstToolNotificationMs": 5853.590562499914,
+      "meanToolCalls": 2.025,
+      "medianOutputChars": 6420.5,
+      "medianInputTokens": 71351.5,
+      "medianUncachedTokens": 4984,
+      "evidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0.025
+        },
+        {
+          "ms": 10000,
+          "recall": 0.5
+        },
+        {
+          "ms": 15000,
+          "recall": 0.925
+        },
+        {
+          "ms": 20000,
+          "recall": 0.95
+        },
+        {
+          "ms": 30000,
+          "recall": 0.95
+        },
+        {
+          "ms": 60000,
+          "recall": 0.95
+        },
+        {
+          "ms": 120000,
+          "recall": 0.95
+        }
+      ],
+      "auditedEvidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0.025
+        },
+        {
+          "ms": 10000,
+          "recall": 0.5
+        },
+        {
+          "ms": 15000,
+          "recall": 0.975
+        },
+        {
+          "ms": 20000,
+          "recall": 1
+        },
+        {
+          "ms": 30000,
+          "recall": 1
+        },
+        {
+          "ms": 60000,
+          "recall": 1
+        },
+        {
+          "ms": 120000,
+          "recall": 1
+        }
+      ]
+    },
+    {
+      "key": "validation/cli",
+      "n": 40,
+      "recall": 0.975,
+      "completeEvidence": 38,
+      "timedEvidence": 36,
+      "auditedRecall": 1,
+      "auditedCompleteEvidence": 40,
+      "auditedTimedEvidence": 38,
+      "errors": 0,
+      "qmdDatabaseErrors": 0,
+      "medianMs": 16886.22797899999,
+      "p95Ms": 28086.18172709992,
+      "medianEvidenceCappedMs": 7535.412062500021,
+      "medianObservedEvidenceMs": 6904.0643120000095,
+      "medianAuditedEvidenceCappedMs": 6904.0643120000095,
+      "medianFirstToolNotificationMs": 6046.93518749997,
+      "meanToolCalls": 1.525,
+      "medianOutputChars": 7250,
+      "medianInputTokens": 48714.5,
+      "medianUncachedTokens": 3588.5,
+      "evidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0.075
+        },
+        {
+          "ms": 10000,
+          "recall": 0.725
+        },
+        {
+          "ms": 15000,
+          "recall": 0.85
+        },
+        {
+          "ms": 20000,
+          "recall": 0.875
+        },
+        {
+          "ms": 30000,
+          "recall": 0.925
+        },
+        {
+          "ms": 60000,
+          "recall": 0.925
+        },
+        {
+          "ms": 120000,
+          "recall": 0.925
+        }
+      ],
+      "auditedEvidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0.075
+        },
+        {
+          "ms": 10000,
+          "recall": 0.75
+        },
+        {
+          "ms": 15000,
+          "recall": 0.875
+        },
+        {
+          "ms": 20000,
+          "recall": 0.9
+        },
+        {
+          "ms": 30000,
+          "recall": 0.95
+        },
+        {
+          "ms": 60000,
+          "recall": 0.95
+        },
+        {
+          "ms": 120000,
+          "recall": 0.95
+        }
+      ]
+    },
+    {
+      "key": "validation-interrupted/baseline",
+      "n": 18,
+      "recall": 0.8611111111111112,
+      "completeEvidence": 15,
+      "timedEvidence": 15,
+      "auditedRecall": 0.8611111111111112,
+      "auditedCompleteEvidence": 15,
+      "auditedTimedEvidence": 15,
+      "errors": 0,
+      "qmdDatabaseErrors": 0,
+      "medianMs": 22311.48883300001,
+      "p95Ms": 26964.894673250026,
+      "medianEvidenceCappedMs": 10146.889937999997,
+      "medianObservedEvidenceMs": 9369.89279199997,
+      "medianAuditedEvidenceCappedMs": 10146.889937999997,
+      "medianFirstToolNotificationMs": 5888.363395499997,
+      "meanToolCalls": 2.2222222222222223,
+      "medianOutputChars": 7266.5,
+      "medianInputTokens": 72928,
+      "medianUncachedTokens": 8216.5,
+      "evidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0.05555555555555555
+        },
+        {
+          "ms": 10000,
+          "recall": 0.5
+        },
+        {
+          "ms": 15000,
+          "recall": 0.8333333333333334
+        },
+        {
+          "ms": 20000,
+          "recall": 0.8611111111111112
+        },
+        {
+          "ms": 30000,
+          "recall": 0.8611111111111112
+        },
+        {
+          "ms": 60000,
+          "recall": 0.8611111111111112
+        },
+        {
+          "ms": 120000,
+          "recall": 0.8611111111111112
+        }
+      ],
+      "auditedEvidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0.05555555555555555
+        },
+        {
+          "ms": 10000,
+          "recall": 0.5
+        },
+        {
+          "ms": 15000,
+          "recall": 0.8333333333333334
+        },
+        {
+          "ms": 20000,
+          "recall": 0.8611111111111112
+        },
+        {
+          "ms": 30000,
+          "recall": 0.8611111111111112
+        },
+        {
+          "ms": 60000,
+          "recall": 0.8611111111111112
+        },
+        {
+          "ms": 120000,
+          "recall": 0.8611111111111112
+        }
+      ]
+    },
+    {
+      "key": "validation-interrupted/cli",
+      "n": 18,
+      "recall": 0.9166666666666666,
+      "completeEvidence": 16,
+      "timedEvidence": 16,
+      "auditedRecall": 0.9166666666666666,
+      "auditedCompleteEvidence": 16,
+      "auditedTimedEvidence": 16,
+      "errors": 0,
+      "qmdDatabaseErrors": 10,
+      "medianMs": 24743.888271000003,
+      "p95Ms": 38406.54538739999,
+      "medianEvidenceCappedMs": 15237.608979500044,
+      "medianObservedEvidenceMs": 12328.592646500008,
+      "medianAuditedEvidenceCappedMs": 15237.608979500044,
+      "medianFirstToolNotificationMs": 6251.398187499988,
+      "meanToolCalls": 3,
+      "medianOutputChars": 8482,
+      "medianInputTokens": 95181,
+      "medianUncachedTokens": 25633,
+      "evidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0
+        },
+        {
+          "ms": 10000,
+          "recall": 0.3611111111111111
+        },
+        {
+          "ms": 15000,
+          "recall": 0.5277777777777778
+        },
+        {
+          "ms": 20000,
+          "recall": 0.8055555555555556
+        },
+        {
+          "ms": 30000,
+          "recall": 0.9166666666666666
+        },
+        {
+          "ms": 60000,
+          "recall": 0.9166666666666666
+        },
+        {
+          "ms": 120000,
+          "recall": 0.9166666666666666
+        }
+      ],
+      "auditedEvidenceByDeadline": [
+        {
+          "ms": 5000,
+          "recall": 0
+        },
+        {
+          "ms": 10000,
+          "recall": 0.3611111111111111
+        },
+        {
+          "ms": 15000,
+          "recall": 0.5277777777777778
+        },
+        {
+          "ms": 20000,
+          "recall": 0.8055555555555556
+        },
+        {
+          "ms": 30000,
+          "recall": 0.9166666666666666
+        },
+        {
+          "ms": 60000,
+          "recall": 0.9166666666666666
+        },
+        {
+          "ms": 120000,
+          "recall": 0.9166666666666666
+        }
+      ]
+    }
+  ],
+  "engineSummary": [
+    {
+      "key": "sdk-shared-cache/lex",
+      "n": 30,
+      "medianMs": 0.6984585000018342,
+      "p95Ms": 1.4625602999997895,
+      "recall3": null,
+      "recall5": 0.8666666666666667,
+      "recall10": 0.9666666666666667,
+      "failures": 0
+    },
+    {
+      "key": "sdk-shared-cache/lex-short",
+      "n": 30,
+      "medianMs": 0.5852704999997513,
+      "p95Ms": 0.7285373499980777,
+      "recall3": null,
+      "recall5": 0.6666666666666666,
+      "recall10": 0.7666666666666667,
+      "failures": 0
+    },
+    {
+      "key": "sdk-shared-cache/lex-multi",
+      "n": 30,
+      "medianMs": 4.448458500002744,
+      "p95Ms": 6.594637799999873,
+      "recall3": null,
+      "recall5": 0.7666666666666667,
+      "recall10": 0.8333333333333334,
+      "failures": 0
+    },
+    {
+      "key": "sdk-shared-cache/vector",
+      "n": 30,
+      "medianMs": 11.354458499998145,
+      "p95Ms": 13.908981249997487,
+      "recall3": null,
+      "recall5": 0.4666666666666667,
+      "recall10": 0.6,
+      "failures": 0
+    },
+    {
+      "key": "sdk-shared-cache/hybrid-8",
+      "n": 30,
+      "medianMs": 13.331124999999929,
+      "p95Ms": 15.02153734999865,
+      "recall3": null,
+      "recall5": 0.8333333333333334,
+      "recall10": 0.9,
+      "failures": 0
+    },
+    {
+      "key": "sdk-shared-cache/hybrid-40",
+      "n": 30,
+      "medianMs": 15.467083999999886,
+      "p95Ms": 17.21610434999802,
+      "recall3": null,
+      "recall5": 0.8333333333333334,
+      "recall10": 0.9333333333333333,
+      "failures": 0
+    },
+    {
+      "key": "sdk-shared-cache/hybrid-multi",
+      "n": 30,
+      "medianMs": 17.157791999999972,
+      "p95Ms": 19.540669049998176,
+      "recall3": null,
+      "recall5": 0.7666666666666667,
+      "recall10": 0.8333333333333334,
+      "failures": 0
+    },
+    {
+      "key": "sdk-shared-cache/rerank-8",
+      "n": 30,
+      "medianMs": 983.4763959999982,
+      "p95Ms": 1593.6018710499989,
+      "recall3": null,
+      "recall5": 0.8333333333333334,
+      "recall10": 0.9,
+      "failures": 0
+    },
+    {
+      "key": "sdk-shared-cache/rerank-16",
+      "n": 30,
+      "medianMs": 989.8227085000017,
+      "p95Ms": 1204.7677500000002,
+      "recall3": null,
+      "recall5": 0.8,
+      "recall10": 0.9333333333333333,
+      "failures": 0
+    },
+    {
+      "key": "sdk-shared-cache/rg-or",
+      "n": 30,
+      "medianMs": 12.32518749999872,
+      "p95Ms": 16.302812800000172,
+      "recall3": null,
+      "recall5": 0.9,
+      "recall10": 1,
+      "failures": 0
+    },
+    {
+      "key": "sdk-fresh-cache/lex",
+      "n": 30,
+      "medianMs": 0.6875830000008136,
+      "p95Ms": 1.3335775999982382,
+      "recall3": null,
+      "recall5": 0.8666666666666667,
+      "recall10": 0.9666666666666667,
+      "failures": 0
+    },
+    {
+      "key": "sdk-fresh-cache/lex-short",
+      "n": 30,
+      "medianMs": 0.5781665000031353,
+      "p95Ms": 0.7811002999987976,
+      "recall3": null,
+      "recall5": 0.6666666666666666,
+      "recall10": 0.7666666666666667,
+      "failures": 0
+    },
+    {
+      "key": "sdk-fresh-cache/lex-multi",
+      "n": 30,
+      "medianMs": 4.453792000002068,
+      "p95Ms": 6.705558850002308,
+      "recall3": null,
+      "recall5": 0.7666666666666667,
+      "recall10": 0.8333333333333334,
+      "failures": 0
+    },
+    {
+      "key": "sdk-fresh-cache/vector",
+      "n": 30,
+      "medianMs": 13.981083499998931,
+      "p95Ms": 16.247383449995322,
+      "recall3": null,
+      "recall5": 0.4666666666666667,
+      "recall10": 0.6,
+      "failures": 0
+    },
+    {
+      "key": "sdk-fresh-cache/hybrid-8",
+      "n": 30,
+      "medianMs": 13.187312500005646,
+      "p95Ms": 15.640660199999546,
+      "recall3": null,
+      "recall5": 0.8333333333333334,
+      "recall10": 0.9,
+      "failures": 0
+    },
+    {
+      "key": "sdk-fresh-cache/hybrid-40",
+      "n": 30,
+      "medianMs": 15.706750499997725,
+      "p95Ms": 18.413642000003165,
+      "recall3": null,
+      "recall5": 0.8333333333333334,
+      "recall10": 0.9333333333333333,
+      "failures": 0
+    },
+    {
+      "key": "sdk-fresh-cache/hybrid-multi",
+      "n": 30,
+      "medianMs": 17.367583499995817,
+      "p95Ms": 20.64203125000222,
+      "recall3": null,
+      "recall5": 0.7666666666666667,
+      "recall10": 0.8333333333333334,
+      "failures": 0
+    },
+    {
+      "key": "sdk-fresh-cache/rerank-8",
+      "n": 30,
+      "medianMs": 1012.2814585000051,
+      "p95Ms": 1485.1006729500064,
+      "recall3": null,
+      "recall5": 0.8333333333333334,
+      "recall10": 0.9,
+      "failures": 0
+    },
+    {
+      "key": "sdk-fresh-cache/rerank-16",
+      "n": 30,
+      "medianMs": 1901.3576455000002,
+      "p95Ms": 2473.138518449996,
+      "recall3": null,
+      "recall5": 0.8,
+      "recall10": 0.9333333333333333,
+      "failures": 0
+    },
+    {
+      "key": "sdk-fresh-cache/rg-or",
+      "n": 30,
+      "medianMs": 12.918000499999835,
+      "p95Ms": 18.957229350000237,
+      "recall3": null,
+      "recall5": 0.9,
+      "recall10": 1,
+      "failures": 0
+    },
+    {
+      "key": "native-http/lex-default",
+      "n": 90,
+      "medianMs": 3.256999500000063,
+      "p95Ms": 6.479054650000046,
+      "recall3": null,
+      "recall5": 0.8666666666666667,
+      "recall10": 0.9333333333333333,
+      "failures": 0
+    },
+    {
+      "key": "native-http/lex-global",
+      "n": 90,
+      "medianMs": 2.5262915000000135,
+      "p95Ms": 5.409081249999848,
+      "recall3": null,
+      "recall5": 0.8666666666666667,
+      "recall10": 0.9666666666666667,
+      "failures": 0
+    },
+    {
+      "key": "native-http/hybrid-default",
+      "n": 90,
+      "medianMs": 28.754021000000193,
+      "p95Ms": 32.28194999999994,
+      "recall3": null,
+      "recall5": 0.8666666666666667,
+      "recall10": 0.9666666666666667,
+      "failures": 0
+    },
+    {
+      "key": "native-http/hybrid-global",
+      "n": 90,
+      "medianMs": 15.592208000000255,
+      "p95Ms": 18.99235624999992,
+      "recall3": null,
+      "recall5": 0.8333333333333334,
+      "recall10": 0.9333333333333333,
+      "failures": 0
+    },
+    {
+      "key": "native-cli/native-cli-full3",
+      "n": 30,
+      "medianMs": 109.48179149999999,
+      "p95Ms": 113.60378140000005,
+      "recall3": 0.8,
+      "recall5": null,
+      "recall10": null,
+      "failures": 0
+    }
+  ],
+  "paired": {
+    "n": 40,
+    "medianCompletionDifferenceMs": -2836.5537495001918,
+    "medianCompletionSpeedup": 1.1707544577776847,
+    "medianEvidenceDifferenceMs": -1919.9690419999824,
+    "medianEvidenceSpeedup": 1.2734483533667607,
+    "medianAuditedEvidenceDifferenceMs": -2199.2509584999934,
+    "medianAuditedEvidenceSpeedup": 1.288206306071415,
+    "substantialEvidenceWins": 6
+  }
+}
