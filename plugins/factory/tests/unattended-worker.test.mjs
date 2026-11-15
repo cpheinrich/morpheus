@@ -741,6 +741,46 @@ print(json.dumps({'type':'turn.completed'}),flush=True)
   assert.deepEqual(foreign.lines, [{ outcome: { terminationVerified: false } }]);
 });
 
+test('the Fleet executor returns checkpoint files after a real guardian deadline', async t => {
+  const session = randomUUID();
+  const f = await setup(t, `import json,pathlib,sys,time
+sys.stdin.read()
+print(json.dumps({'type':'thread.started','thread_id':${JSON.stringify(session)}}),flush=True)
+output=next(pathlib.Path('.').glob('.factory-artifacts-*'))
+(output/'validation.txt').write_text('fixture stopped before final review')
+(output/'private-scratch.txt').write_text('unselected')
+(output/'checkpoint.json').write_text(json.dumps(['validation.txt']))
+time.sleep(60)
+`, { maxRunSeconds: 2 });
+  execFileSync('git', ['-C', f.cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+    'commit', '-qm', 'Fixture', '--allow-empty']);
+  const revision = execFileSync('git', ['-C', f.cwd, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const executor = fileURLToPath(new URL('../scripts/fleet-executor.mjs', import.meta.url));
+  const admissionId = randomUUID();
+  const job = {
+    task: { source: { project: 'fixture', revision },
+      selection: { provider: 'codex', gateway: f.config.gateway.name, model: f.config.model } },
+    admissionId, prompt: 'Checkpoint a fixture and wait', binding: { taskId: randomUUID(), attemptId: randomUUID() },
+    gatewayBaseUrl: f.config.gateway.baseUrl,
+  };
+  const child = spawn(process.execPath, [executor, f.configPath, 'fixture'], { stdio: ['pipe', 'pipe', 'inherit'] });
+  child.stdin.write(JSON.stringify(job) + '\n');
+  let stdout = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', chunk => { stdout += chunk; });
+  assert.equal((await once(child, 'close'))[0], 0);
+  const lines = stdout.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(lines.length, 2);
+  assert.deepEqual(lines[0].artifact, { name: 'validation.txt', type: 'text/plain',
+    bytes: Buffer.from('fixture stopped before final review').toString('base64') });
+  const { outcome } = lines[1];
+  assert.equal(outcome.diagnosticCode, 'deadline_reached');
+  assert.equal(outcome.terminationVerified, true);
+  assert.equal(outcome.result.outcome, 'failed');
+  assert.equal(outcome.invocation.admissionId, admissionId);
+  assert.equal(outcome.invocation.sessionId, session);
+});
+
 test('Fleet launches full access only for a protected Git enrollment and private non-root home', async t => {
   const f = await setup(t, doneScript.replace('session-fixture', randomUUID()));
   execFileSync('git', ['-C', f.cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',

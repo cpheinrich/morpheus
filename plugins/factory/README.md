@@ -1027,6 +1027,13 @@ flowchart LR
   checkouts within that worker's home and keep build products per task checkout.
   Qualify the profile with an owned cache write and disposable simulator boot before
   replaying work. Keep the previous config and runtime for rollback.
+- A long invocation can checkpoint completed files in its own artifact directory.
+  Write them first, then atomically replace `checkpoint.json` with a JSON array of
+  their flat filenames, for example `["validation.txt", "waveform.mp4"]`. The same
+  maximum of eight files and 8 MiB per file applies. On a guardian deadline with
+  verified cleanup, the invocation fails and eligible checkpoint files become
+  available privately through the existing download operation. The manifest itself
+  is not returned. Use ordinary final evidence references on successful runs.
 - Before starting launchd, check the gateway's `/health` from the Studio
   itself. For a smoke test, ask the worker to request a color, then generate
   a small text or PDF artifact from the answer. Confirm the controller

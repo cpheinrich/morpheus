@@ -3476,6 +3476,10 @@ binds the Fleet attempt to the latest gateway admission and records the CLI sess
 and guardian timing when available. The controller can separately read each
 eligible slot's heartbeat and compatible quota observation for its enrolled project.
 The existing claim and pre-invocation checks determine whether work actually runs.
+For a verified invocation deadline, the worker can return partial evidence from its
+own artifact directory. An explicit checkpoint manifest selects finished files under
+the ordinary artifact limits. The task settles as failed with the deadline diagnostic,
+and the controller reads the partial artifacts through the same private download API.
 
 The nested `plugins/factory/src/host/` package holds the host and fleet tooling imported from
 the public `morpheus-factory` repository (source and commit only, no history): the TypeScript

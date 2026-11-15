@@ -3,7 +3,7 @@ import { link, mkdir, mkdtemp, rename, rm, symlink, truncate, writeFile } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { publishArtifacts } from "../src/fleet-artifacts.mjs";
+import { publishArtifacts, readCheckpointFiles } from "../src/fleet-artifacts.mjs";
 
 const taskId = "01890000-0000-7000-8000-000000000001";
 const attemptId = "01890000-0000-7000-8000-000000000002";
@@ -43,6 +43,21 @@ test("publishes only selected artifacts using create-only storage and preserves 
   ]);
   assert.deepEqual(await publish([]), []);
   assert.equal(uploads.length, 1);
+});
+
+test("a checkpoint returns only explicitly named completed files, with native MP4 type", async (t) => {
+  const { outputDir } = await fixture(t);
+  const manifest = join(outputDir, "checkpoint.json");
+  await writeFile(join(outputDir, "waveform.mp4"), "movie");
+  await writeFile(join(outputDir, "unselected.txt"), "private");
+  await writeFile(manifest, JSON.stringify(["waveform.mp4"]));
+  const files = [];
+  for await (const file of readCheckpointFiles(outputDir)) files.push(file);
+  assert.deepEqual(files, [{ name: "waveform.mp4", bytes: Buffer.from("movie"), type: "video/mp4" }]);
+  for (const names of [["waveform.mp4", "../outside.txt"], ["checkpoint.json"]]) {
+    await writeFile(manifest, JSON.stringify(names));
+    await assert.rejects(readCheckpointFiles(outputDir).next(), /flat ASCII names|export its manifest/);
+  }
 });
 
 test("refuses invalid identities, nonflat names, duplicate names, and more than eight files", async (t) => {
