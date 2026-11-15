@@ -1,6 +1,7 @@
 // Explicit unattended admission is separate from desktop task/permission discovery.
 import { z } from 'zod';
-import { mkdir, open, readFile, realpath, stat } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, mkdir, open, readFile, realpath, stat } from 'node:fs/promises';
 import { join, dirname, isAbsolute, relative } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn, execFileSync, spawnSync } from 'node:child_process';
@@ -28,14 +29,30 @@ const schema = z.strictObject({
   maxLogBytes: z.number().int().min(256).max(16 * 1024 * 1024),
 });
 const inside = (root, path) => { const rel = relative(root, path); return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel)); };
-async function privateFile(path) {
+async function operatorControls(path) {
+  // A root-owned file in an agent-writable directory can still be replaced.
+  for (let target = path; ; target = dirname(target)) {
+    const info = await stat(target);
+    if (info.uid !== 0 || (info.mode & 0o022)) return false;
+    try {
+      await access(target, constants.W_OK);
+      return false;
+    } catch (error) {
+      if (!['EACCES', 'EPERM', 'EROFS'].includes(error.code)) throw error;
+    }
+    if (target === dirname(target)) return true;
+  }
+}
+async function configAuthority(path) {
   const info = await stat(path);
-  if (!info.isFile() || (info.mode & 0o077) || info.uid !== process.getuid())
-    throw new Error('Configuration must be an owner-only regular file');
+  if (info.isFile() && info.uid === process.getuid() && !(info.mode & 0o077)) return 'worker';
+  if (info.isFile() && info.uid === 0 && !(info.mode & 0o037) && await operatorControls(path))
+    return 'operator';
+  throw new Error('Configuration must be an owner-only regular file or a protected operator file');
 }
 export async function readWorkerConfig(path) {
   const configPath = await realpath(path);
-  await privateFile(configPath);
+  const authority = await configAuthority(configPath);
   let config;
   try { config = schema.parse(JSON.parse(await readFile(configPath, 'utf8'))); }
   catch { throw new Error('Invalid unattended worker configuration'); }
@@ -48,7 +65,7 @@ export async function readWorkerConfig(path) {
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || /["\\\s]/.test(config.gateway.baseUrl))
     throw new Error('Gateway URL must be an explicit credential-free HTTP(S) endpoint');
   config.gateway.baseUrl = config.gateway.baseUrl.replace(/\/+$/, '');
-  return config;
+  return Object.assign(config, { authority });
 }
 function assertWorkerInputs(prompt, admissionId) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(admissionId)) throw new Error('Invalid admission UUID');

@@ -1,7 +1,8 @@
 // Runs as the unprivileged execution account. The fixed argv paths are
 // installed by the host operator; the supervisor supplies one JSON line.
 import { execFileSync } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { gatewayWorker, readWorkerConfig, workerResult } from "../src/gateway-worker.mjs";
@@ -15,12 +16,21 @@ const controller = new AbortController();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const lines = input[Symbol.asyncIterator]();
 
+async function enrolledSandbox(config, source) {
+  const { sandbox, authority } = config;
+  if (sandbox === "workspace-write") return true;
+  if (sandbox !== "danger-full-access" || authority !== "operator" || source.checkout !== "git" || process.getuid() === 0)
+    return false;
+  const info = await stat(homedir());
+  return info.isDirectory() && info.uid === process.getuid() && !(info.mode & 0o077);
+}
+
 async function prepare({ task, admissionId, resume, prompt, gatewayBaseUrl, checkout }) {
   const config = await readWorkerConfig(configPath);
   if (task.source.project !== project || task.selection.provider !== "codex" ||
       task.selection.model !== config.model || task.selection.gateway !== config.gateway.name ||
       gatewayBaseUrl?.replace(/\/+$/, "") !== config.gateway.baseUrl ||
-      config.sandbox !== "workspace-write" || !uuid.test(admissionId))
+      !uuid.test(admissionId) || !await enrolledSandbox(config, task.source))
     throw new Error("Studio project or gateway model does not match this enrollment");
   const cwd = task.source.checkout === "git"
     ? await studioCheckout(config.cwd, checkout, task.source.revision, true)

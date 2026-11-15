@@ -985,7 +985,7 @@ flowchart LR
   neither account can modify. Enroll a detached pilot checkout on the execution
   account at the exact approved SHA. Add `.factory-artifacts-*/` to that
   checkout's local Git exclude list. The executor refuses a dirty initial
-  checkout and requires `workspace-write`. Configure Codex and Python 3 on
+  checkout and uses `workspace-write` by default. Configure Codex and Python 3 on
   its system path. Use the existing gateway worker config format and a
   Studio-only Codex gateway credential reference in the execution account.
 - The Studio supervisor config uses the same connection fields as the Pro,
@@ -1016,6 +1016,17 @@ flowchart LR
   Run one launchd job under the supervisor account with
   `NODE scripts/fleet-studio.mjs STUDIO_CONFIG`. Give neither worker account
   the Pro credentials or Cloud Storage IAM.
+- Xcode jobs that need CoreSimulator can opt into `danger-full-access` on a Git-backed
+  enrollment. The dedicated non-root execution account must have a private home.
+  Put its worker JSON in a root-controlled directory outside the home and checkout.
+  The file can be group-readable by that account (root owner, dedicated worker group,
+  mode `0640`); the file and its ancestors must be root-owned and unwritable by the worker.
+  The supervisor must pass this protected path in its fixed executor command and matching
+  sudo rule. Drain the slot before changing that binding, and use a fresh admission.
+  Keep build tools and credentials separated by OS account. Share resolved dependency
+  checkouts within that worker's home and keep build products per task checkout.
+  Qualify the profile with an owned cache write and disposable simulator boot before
+  replaying work. Keep the previous config and runtime for rollback.
 - Before starting launchd, check the gateway's `/health` from the Studio
   itself. For a smoke test, ask the worker to request a color, then generate
   a small text or PDF artifact from the answer. Confirm the controller
