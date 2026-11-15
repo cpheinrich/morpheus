@@ -25,3 +25,13 @@ in a workspace-write sandbox with network available and Git metadata protected.
 - `pnpm exec vitest run tests/session.test.ts tests/session-evidence.test.ts tests/session-git.test.ts` ran 79 tests.
 - `pnpm typecheck`, `pnpm compile`, `pnpm lint`, `morpheus complexity check`, and `git diff --check` passed.
 - `pnpm morpheus pm index` and `pnpm morpheus pm validate` passed.
+
+Independent review reproduced Git matching a longer ref's tail even on a
+fully qualified query. Refresh now requires the exact ref name. Real Git
+fixtures cover the decoy with the real branch both present and absent. The
+CLI also reads the verified commit range locally. A network-enabled Codex
+sandbox printed the correct delta after the fixture trunk advanced, with
+`FETCH_HEAD` absent before and after refresh.
+
+The final six-file focused run passed 172 tests. Typecheck, compilation,
+lint, complexity and whitespace checks passed again.

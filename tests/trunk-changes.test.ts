@@ -156,6 +156,13 @@ describe("observing the trunk", () => {
       sha: null,
       reason: "unreachable",
     });
+
+    const main = git(root, "rev-parse", "HEAD");
+    await commit(root, "decoy.md", "decoy", "decoy");
+    git(root, "push", "-q", "origin", "HEAD:refs/heads/alternate/refs/heads/main");
+    expect(await trunkSha(root, { remote: "origin", branch: "main" })).toEqual({ sha: main });
+    git(upstream, "update-ref", "-d", "refs/heads/main");
+    expect(await trunkSha(root, { remote: "origin", branch: "main" })).toEqual({ sha: null, reason: "missing" });
   });
 });
 
@@ -166,25 +173,13 @@ describe("reading the trunk", () => {
     // the trunk you do not have", which is the most reassuring sentence
     // available for a question that was never answered, in the branch added to
     // stop a fail-open.
-    const upstream = await mkdtemp(join(tmpdir(), "morpheus-bare-"));
-    git(upstream, "init", "-q", "--bare", "-b", "main");
-
     const root = await mkdtemp(join(tmpdir(), "morpheus-trunklog-"));
     git(root, "init", "-q", "-b", "main");
     await commit(root, "a.md", "a", "root");
-    git(root, "remote", "add", "origin", upstream);
-    git(root, "push", "-q", "origin", "main");
     const sha = git(root, "rev-parse", "HEAD");
 
-    const trunk = { remote: "origin", branch: "main" };
-    // Genuinely nothing in the range — an empty array, not null.
-    expect(await trunkLog(root, trunk, sha, sha)).toEqual([]);
-
-    // A remote that cannot be fetched: null, not "nothing landed".
-    expect(await trunkLog(root, { remote: "nope", branch: "main" }, sha, sha)).toBeNull();
-
-    // A range git cannot resolve: also null.
-    expect(await trunkLog(root, trunk, sha, "0".repeat(40))).toBeNull();
+    expect(await trunkLog(root, sha, sha)).toEqual([]);
+    expect(await trunkLog(root, sha, "0".repeat(40))).toBeNull();
   });
 
   it("lists what is on the trunk and not in this branch", async () => {
@@ -204,8 +199,9 @@ describe("reading the trunk", () => {
     git(other, "push", "-q", "origin", "main");
     const head = git(other, "rev-parse", "HEAD");
 
-    const log = await trunkLog(root, { remote: "origin", branch: "main" }, "HEAD", head);
-    expect(log).not.toBeNull();
-    expect(log?.join("\n")).toContain("landed while you were away");
+    expect(await trunkLog(root, "HEAD", head)).toBeNull();
+    git(root, "fetch", "--no-write-fetch-head", "origin", "main");
+    const log = await trunkLog(root, "HEAD", head);
+    expect(log).toEqual([`${git(other, "rev-parse", "--short", "HEAD")} landed while you were away`]);
   });
 });

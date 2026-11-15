@@ -187,20 +187,11 @@ async function printTrunkDelta(wt, trunk, previous, remoteSha) {
     // just said "the remote advanced; determine the canonical delta". Saying
     // there is no baseline is the answer; showing nothing is not.
     if (previous && !previous.remoteSha && remoteSha) {
-        // Answered, not delegated. Printing `git log HEAD..origin/main` here would
-        // name a **local remote-tracking ref** that nothing on this path has
-        // fetched — the exact stale-local-ref failure `trunkSha` cites as the
-        // reason this module uses `ls-remote` at all. The command would answer
-        // from whenever the user last fetched, the SHA asserted one line above
-        // would not appear in its output, and on a fork with a declared but
-        // never-fetched upstream it fails outright. `trunkLog` fetches.
-        const behind = await trunkLog(wt, trunk, "HEAD", remoteSha);
+        // Use the already verified SHA. A remote-tracking ref might still be stale.
+        const behind = await trunkLog(wt, "HEAD", remoteSha);
         console.log(`Your previous receipt was taken without a verified trunk (${trunkRef}).`);
         if (behind === null) {
-            // Not "nothing there". The fetch after a spell offline is the call that
-            // times out, and saying nothing landed would be the most reassuring
-            // sentence available for a question that was never answered.
-            console.log(`  Could not read ${trunkRef} locally — the fetch did not complete.`);
+            console.log(`  Could not read ${trunkRef} from local Git history.`);
             console.log(`    git fetch ${trunk.remote} ${trunk.branch} && git log --oneline HEAD..FETCH_HEAD`);
         }
         else if (behind.length) {
@@ -221,16 +212,9 @@ async function printTrunkDelta(wt, trunk, previous, remoteSha) {
     if (previous?.remoteSha &&
         remoteSha &&
         remoteSha !== previous.remoteSha) {
-        const log = await trunkLog(wt, trunk, previous.remoteSha, remoteSha);
+        const log = await trunkLog(wt, previous.remoteSha, remoteSha);
         if (log === null) {
-            // The sibling symptom: this branch used to print nothing at all while
-            // the two SHAs genuinely differed.
-            // The query that actually failed, not the neighbouring block's. This
-            // one asks what landed *since your last receipt*; `HEAD..FETCH_HEAD`
-            // asks what is on the trunk and not in this branch, and on a claimed
-            // branch those differ. Handing it over is also genuinely better than
-            // retrying internally: a shell has no 15s timeout, which is what made
-            // the internal call fail after a day away.
+            // Use the prior receipt as the start of the suggested range.
             console.log(`The trunk moved, and ${trunkRef} could not be read locally to say how:`);
             console.log(`    git fetch ${trunk.remote} ${trunk.branch} && ` +
                 `git log --oneline ${previous.remoteSha.slice(0, 7)}..FETCH_HEAD`);

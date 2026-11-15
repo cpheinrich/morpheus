@@ -172,6 +172,15 @@ describe("startup source freshness", () => {
     expect(result.issue).toBe("Trunk moved during refresh. Re-read current source and retry.");
     expect((await check(local)).lease).toBeNull();
   });
+  it("does not certify a similarly named branch when the configured trunk is missing", async () => {
+    await git(source, "push", "origin", "HEAD:refs/heads/alternate/refs/heads/main");
+    await git(remote, "update-ref", "-d", "refs/heads/main");
+
+    const result = await refresh(local);
+
+    expect(result.lease?.status).toBe("unknown");
+    expect(result.trunkMissing).toEqual({ remote: "origin", branch: "main" });
+  });
   it("refuses to certify stale source even after a previous receipt, then succeeds after startup updates it", async () => {
     expect((await refresh(local)).lease?.status).toBe("fresh");
     await advance();
