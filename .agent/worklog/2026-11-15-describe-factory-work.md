@@ -35,6 +35,8 @@ snapshot. The second turn cleared the implementation. Both requested fixture cor
 passed: the cancellation fixture now has a fresh attempt and the evidence fixture places
 the exact PR URL at the cutoff before a forbidden suffix.
 
+The second review cleared the work after it retained unresolved task evidence, validated optional PR evidence before settlement and deduplicated finished work. Both exact test-only conditions passed.
+
 ```morpheus-review
 {
   "version": 2,
