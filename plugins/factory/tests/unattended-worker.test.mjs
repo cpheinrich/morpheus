@@ -741,7 +741,8 @@ print(json.dumps({'type':'turn.completed'}),flush=True)
   assert.deepEqual(foreign.lines, [{ outcome: { terminationVerified: false } }]);
 });
 
-test('the Fleet executor returns checkpoint files after a real guardian deadline', async t => {
+for (const [label, manifest] of [['valid', '["validation.txt"]'], ['missing', null], ['malformed', '{']]) {
+test(`the Fleet executor handles a ${label} checkpoint after a real guardian deadline`, async t => {
   const session = randomUUID();
   const f = await setup(t, `import json,pathlib,sys,time
 sys.stdin.read()
@@ -749,7 +750,9 @@ print(json.dumps({'type':'thread.started','thread_id':${JSON.stringify(session)}
 output=next(pathlib.Path('.').glob('.factory-artifacts-*'))
 (output/'validation.txt').write_text('fixture stopped before final review')
 (output/'private-scratch.txt').write_text('unselected')
-(output/'checkpoint.json').write_text(json.dumps(['validation.txt']))
+manifest=${manifest === null ? 'None' : JSON.stringify(manifest)}
+if manifest is not None:
+    (output/'checkpoint.json').write_text(manifest)
 time.sleep(60)
 `, { maxRunSeconds: 2 });
   execFileSync('git', ['-C', f.cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
@@ -770,16 +773,19 @@ time.sleep(60)
   child.stdout.on('data', chunk => { stdout += chunk; });
   assert.equal((await once(child, 'close'))[0], 0);
   const lines = stdout.trim().split('\n').map(line => JSON.parse(line));
-  assert.equal(lines.length, 2);
-  assert.deepEqual(lines[0].artifact, { name: 'validation.txt', type: 'text/plain',
-    bytes: Buffer.from('fixture stopped before final review').toString('base64') });
-  const { outcome } = lines[1];
+  assert.equal(lines.length, label === 'valid' ? 2 : 1);
+  if (label === 'valid') {
+    assert.deepEqual(lines[0].artifact, { name: 'validation.txt', type: 'text/plain',
+      bytes: Buffer.from('fixture stopped before final review').toString('base64') });
+  }
+  const { outcome } = lines.at(-1);
   assert.equal(outcome.diagnosticCode, 'deadline_reached');
   assert.equal(outcome.terminationVerified, true);
   assert.equal(outcome.result.outcome, 'failed');
   assert.equal(outcome.invocation.admissionId, admissionId);
   assert.equal(outcome.invocation.sessionId, session);
 });
+}
 
 test('Fleet launches full access only for a protected Git enrollment and private non-root home', async t => {
   const f = await setup(t, doneScript.replace('session-fixture', randomUUID()));
