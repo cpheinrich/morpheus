@@ -3627,7 +3627,10 @@ that shared display contract: compact browser-local times (`Nov 12, 9:19pm PST`)
 attempt, job, commit and pull-request links built solely from validated identifiers, dated
 terminal outcomes kept when a source goes stale while live states become unknown, latest-attempt
 ordering by start time, and URL-fragment views. `morpheus-kit/ops-desk/react` adds the
-fragment-view hook behind shareable tabs, drilldowns, Back and Forward. Sources, readers,
+fragment-view hook behind shareable tabs, drilldowns, Back and Forward. Factory Work uses a
+short, deliberately supplied title and summary, with the ID only in details and exact links from
+the authorized repository. The optional Factory plugin stores that display metadata apart from
+the brief and exposes a bounded, project-scoped read-only projection. Sources, readers,
 authorization, copy and pipeline topology stay in each project. See `src/ops-desk/README.md`.
 Layout and interaction (Overview → Devices → Work → Deployments, full-row hit areas, linked rows,
 operator-gated cross-owner health, and the browser checks every desk passes) are in the

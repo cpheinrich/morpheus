@@ -98,6 +98,13 @@ something else.
 **External links** open in a new tab and are built only from validated identifiers: exact job,
 run attempt and commit.
 
+**Factory Work.** Where a verified, authorized source exists, list the human task title with its
+repository and state. Show the full task ID only inside the selected detail. Use the task's
+explicit dashboard summary and link its exact source commit and known same-repository PRs; use
+the readable fallback and say when a summary is absent. Keep the brief and the worker's private
+output behind the original Factory controller. A desk on a separate project uses a separately
+enrolled read-only projection, never a controller login or direct database access.
+
 ## States and wording
 
 - One status column per list, left-aligned at a fixed width (about 12–13rem on desktop and 8.5rem

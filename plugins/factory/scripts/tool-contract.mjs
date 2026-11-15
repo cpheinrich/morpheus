@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { dashboardMetadata } from "../src/fleet-display.mjs";
 
 const names = (prefix, methods) =>
   Object.freeze(methods.map((method) => `${prefix}_${method}`));
@@ -47,6 +48,7 @@ export const factorySpecs = Object.freeze({
     "Delegate one bounded, self-contained brief through the Factory. The root remains manager and verifier. You MUST call this when the user explicitly requests Factory delegation, MUST NOT call it when the user requests local work, and otherwise use your normal sub-agent judgment. Fleet supports one published linked checkout, enrolled Codex worker settings, and run-ID supervision; it refuses local-only options. On the local route, the first successful primary delegation pins provider and gateway for this root session. One primary worker conversation serves the whole task across repositories: name every repository it may write with cwd (its working directory on the first delegation) and repos; later delegations may add repositories and keep the same conversation. Each target resolves to a checkout this task owns: a repository it already maps, an unowned linked worktree (adopted), or, for an original checkout, an isolated worktree created at its committed HEAD (uncommitted edits are not copied; the original is reference only). Another task's checkout is refused. fresh=true creates an isolated non-primary conversation with its own checkouts on that same binding.",
     {
       prompt: z.string().min(1).max(200000),
+      display: dashboardMetadata.optional(),
       placement: z.enum(["local", "fleet"]).optional().describe("Choose local or Fleet explicitly. When omitted, Codex uses the controller’s configured default. Fleet needs one clean, published linked checkout; it does not fall back to local."),
       messageId: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/).optional().describe("Stable submission ID for retrying the same fleet brief."),
       runId: z.string().uuid().optional(),

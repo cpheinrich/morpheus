@@ -145,6 +145,7 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
   const config = {
     users: {
       pro: { role: "controller", projects: ["pilot", "git-source"] },
+      viewer: { role: "viewer", project: "pilot", repository: "fixture/pilot" },
       stranger: { role: "controller", projects: ["pilot"] },
       studio: { role: "worker", hostId: "mac-studio", slotId: "studio" },
       other: { role: "worker", hostId: "other-mac", slotId: "other" },
@@ -185,7 +186,13 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
     assert.equal(response.status, status, JSON.stringify(result));
     return result;
   }
-  const input = { rootId: "desktop-root", project: "pilot", revision, messageId: "brief", text: "Make an artifact" };
+  const display = { title: "Verify release", summary: "Verify the published artifact.", pullRequests: [42] };
+  const input = { rootId: "desktop-root", project: "pilot", revision, messageId: "brief", text: "Make an artifact", display };
+  await call("pro", "work", {}, 403);
+  await call("studio", "work", {}, 403);
+  await call("viewer", "submit", input, 403);
+  await call("viewer", "work", { project: "git-source" }, 400);
+  await call("pro", "submit", { ...input, display: { ...display, logUrl: "https://example.test" } }, 400);
   await call("invalid", "submit", input, 401);
   await call("unenrolled", "submit", input, 403);
   await call("studio", "submit", input, 403);
@@ -204,6 +211,56 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
   t.after(() => off());
   const { task } = await call("pro", "submit", input);
   assert.deepEqual(Object.keys(await notified), ["version"]);
+  assert.equal((await call("pro", "submit", input)).task.id, task.id);
+  const foreignId = "90000000-0000-4000-8000-000000000010";
+  const finishedId = "90000000-0000-4000-8000-000000000011";
+  await db.doc(`factoryTasks/${foreignId}`).set({ ...task, source: { ...task.source, project: "git-source" }, queuedSlots: [] });
+  await db.doc(`factoryTasks/${finishedId}`).set({
+    ...task, state: "TASK_STATE_COMPLETED", createdAt: now - 1, queuedSlots: [],
+    result: { summary: "private worker output", artifacts: [{ objectName: "private/path" }],
+      pullRequests: [{ repository: "fixture/pilot", number: 43 }, { repository: "foreign/private", number: 59 }] },
+  });
+  const queued = { id: task.id, repository: "fixture/pilot", state: "queued", createdAt: now,
+    display, worker: null, revision, reportedPullRequests: [] };
+  assert.deepEqual(await call("viewer", "work", {}), {
+    status: "available", observedAt: new Date(now).toISOString(),
+    tasks: [queued, { ...queued, id: finishedId, state: "succeeded", createdAt: now - 1, reportedPullRequests: [43] }],
+  });
+  // Unverified work remains visible, including at the exact lease boundary.
+  const previous = [
+    ["TASK_STATE_WORKING", { hostId: "studio", leaseUntil: now }],
+    ["TASK_STATE_INPUT_REQUIRED", { hostId: "studio", leaseUntil: now - 1 }],
+    ["TASK_STATE_UNSPECIFIED", { hostId: "studio", leaseUntil: now + 1 }],
+    ["TASK_STATE_WORKING", { hostId: "studio", leaseUntil: now + 1 }, now],
+  ];
+  const ids = previous.map((_, n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`);
+  await Promise.all(previous.map(([state, attempt, cancelRequestedAt = null], n) => db.doc(`factoryTasks/${ids[n]}`).set({
+    ...task, state, attempt, cancelRequestedAt, queuedSlots: [],
+  })));
+  const held = await call("viewer", "work", {});
+  assert.deepEqual(ids.map(id => {
+    const row = held.tasks.find(task => task.id === id);
+    return [row?.state, row?.contactExpiredAt];
+  }), [
+    ["unknown", new Date(now).toISOString()], ["unknown", new Date(now - 1).toISOString()],
+    ["unknown", undefined], ["unknown", undefined],
+  ]);
+  // The newest live task has the highest document ID: it must survive the limit.
+  const overflowing = db.batch();
+  for (let n = 0; n < 16; n++) {
+    const id = `00000000-0000-4000-8000-1${String(n).padStart(11, "0")}`;
+    overflowing.set(db.doc(`factoryTasks/${id}`), { ...task, queuedSlots: [], createdAt: now - 100 });
+  }
+  const newestId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+  now += 5;
+  overflowing.set(db.doc(`factoryTasks/${newestId}`), { ...task, queuedSlots: [], createdAt: now });
+  await overflowing.commit();
+  const bounded = await call("viewer", "work", {});
+  assert.equal(bounded.status, "partial");
+  assert.equal(bounded.tasks[0].id, newestId);
+  assert.equal(bounded.tasks.length, 17); // 16 live plus the settled fixture.
+  const viewerDb = environment.authenticatedContext("viewer").firestore();
+  await assert.rejects(getDoc(doc(viewerDb, `factoryTasks/${task.id}`)), /permission/i);
   await assert.rejects(getDoc(doc(studio, "factorySignals/pro")), /permission/i);
   await assert.rejects(getDoc(doc(studio, `factoryTasks/${task.id}`)), /permission/i);
   await assert.rejects(setDoc(signal, { version: "forged" }), /permission/i);

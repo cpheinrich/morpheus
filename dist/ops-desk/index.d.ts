@@ -67,3 +67,29 @@ export declare function parseFragment(hash: string): {
 };
 /** The inverse of `parseFragment`. An empty section is the default view: no fragment at all. */
 export declare function buildFragment(section: string, params?: Record<string, string | null | undefined>): string;
+/**
+ * Only these deliberately supplied display fields may cross from a Factory task
+ * into an HQ desk. Never fill them from the private brief, messages or output.
+ */
+export type FactoryWorkMetadata = {
+    title: string;
+    summary: string;
+    pullRequests?: number[];
+};
+export declare function factoryWorkMetadata(value: unknown): FactoryWorkMetadata | null;
+/** Display rules only. The desk supplies the canonical, authorized repository. */
+export declare function factoryWorkPresentation(task: {
+    id: string;
+    repository: string;
+    revision?: unknown;
+    display?: unknown;
+    reportedPullRequests?: unknown;
+}): {
+    title: string;
+    summary: string | null;
+    sourceUrl: string | null;
+    pullRequests: {
+        number: number;
+        url: string;
+    }[];
+};

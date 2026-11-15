@@ -70,7 +70,7 @@ async function submit(method, args, authorize) {
       reason: "Local source preflight passed. The service validates enrollment at submission and Studio checks quota before launch." };
   }
   const result = await fleetOperation(args.rootId, {
-    op: "submit", ...target, text: args.prompt, model: args.model, messageId: args.messageId ?? randomUUID(),
+    op: "submit", ...target, text: args.prompt, display: args.display, model: args.model, messageId: args.messageId ?? randomUUID(),
   }, { checkoutPath: args.cwd });
   await mkdir(join(home(), "fleet-runs"), { recursive: true, mode: 0o700 });
   await atomic(runPath(result.task.id), { rootId: args.rootId, checkoutPath: args.cwd });

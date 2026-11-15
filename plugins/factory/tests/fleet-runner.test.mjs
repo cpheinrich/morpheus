@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { test } from "node:test";
+import { reportedPullRequests } from "../src/fleet-display.mjs";
 import { createFleetRunner } from "../src/fleet-runner.mjs";
 
 const taskId = "01890000-0000-7000-8000-000000000001";
@@ -47,6 +48,7 @@ async function fixture(t) {
     },
     finish: ({ cleanupVerified, outcome, result }) => {
       if (dropFinish === "before") throw new Error("lost reply");
+      if (result?.pullRequests) reportedPullRequests.parse(result.pullRequests);
       task.state = cleanupVerified ? outcome : uncertain;
       if (cleanupVerified) {
         task.result = result;
@@ -101,12 +103,17 @@ test("persists the exact attempt and admission before one execution and publishe
   assert.equal(run.resume, null);
   assert.equal(run.prompt, "private brief");
   const artifacts = [{ name: "report.pdf", generation: "42" }];
-  run.resolve(output("completed", { artifacts }));
+  const pullUrl = "https://github.com/owner/repo/pull/71";
+  run.resolve(output("completed", { artifacts, evidence: [
+    `https://github.com/owner/${"z".repeat(151)}/pull/70`,
+    `${" ".repeat(2000 - pullUrl.length)}${pullUrl}/files`,
+    "https://github.com/owner/repo/pull/42",
+  ] }));
   await setImmediate();
   assert.equal(await runner.tick(), "settled");
   assert.deepEqual(calls.at(-1), ["finish", {
     taskId, attemptId: run.journal.attemptId, outcome: "TASK_STATE_COMPLETED",
-    result: { summary: "Worker response", artifacts }, cleanupVerified: true,
+    result: { summary: "Worker response", artifacts, pullRequests: [{ repository: "owner/repo", number: 42 }] }, cleanupVerified: true,
   }]);
   await assert.rejects(readFile(options.journalPath), { code: "ENOENT" });
 });

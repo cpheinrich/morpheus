@@ -95,9 +95,14 @@ export function githubCommitUrl(repository: unknown, sha: unknown): string | nul
  * many, duplicates, a non-number — yields no links at all rather than a partial list.
  */
 export function githubPullLinks(repository: unknown, numbers: unknown, max = 3): { number: number; url: string }[] {
-  if (!validRepository(repository) || !Array.isArray(numbers) || numbers.length > max) return [];
-  if (new Set(numbers).size !== numbers.length || !numbers.every(positive)) return [];
-  return numbers.map(number => ({ number, url: `https://github.com/${repository}/pull/${number}` }));
+  return validRepository(repository)
+    ? pullRequestNumbers(numbers, max).map(number => ({ number, url: `https://github.com/${repository}/pull/${number}` }))
+    : [];
+}
+
+function pullRequestNumbers(numbers: unknown, max = 3): number[] {
+  if (!Array.isArray(numbers) || numbers.length > max) return [];
+  return new Set(numbers).size === numbers.length && numbers.every(positive) ? numbers : [];
 }
 
 /** `Scheduled Tasks` → `scheduled-tasks`: the form a view label takes in a URL fragment. */
@@ -124,4 +129,54 @@ export function buildFragment(section: string, params: Record<string, string | n
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) if (value) query.set(key, value);
   return `#${section}${query.size ? `?${query}` : ""}`;
+}
+
+/**
+ * Only these deliberately supplied display fields may cross from a Factory task
+ * into an HQ desk. Never fill them from the private brief, messages or output.
+ */
+export type FactoryWorkMetadata = { title: string; summary: string; pullRequests?: number[] };
+
+function displayText(value: unknown, limit: number): string | null {
+  if (typeof value !== "string" || /[\p{Cc}\p{Cf}]/u.test(value)) return null;
+  const clean = value.trim();
+  return clean && clean.length <= limit ? clean : null;
+}
+
+export function factoryWorkMetadata(value: unknown): FactoryWorkMetadata | null {
+  if (!value || typeof value !== "object") return null;
+  const { title, summary, pullRequests } = value as Partial<FactoryWorkMetadata>;
+  const name = displayText(title, 80);
+  const description = displayText(summary, 320);
+  if (!name || !description) return null;
+  const prs = pullRequestNumbers(pullRequests);
+  return { title: name, summary: description, ...(prs.length > 0 && { pullRequests: prs }) };
+}
+
+/** Display rules only. The desk supplies the canonical, authorized repository. */
+export function factoryWorkPresentation(task: {
+  id: string;
+  repository: string;
+  revision?: unknown;
+  display?: unknown;
+  reportedPullRequests?: unknown;
+}) {
+  const { id, repository, revision, display, reportedPullRequests } = task;
+  const metadata = factoryWorkMetadata(display);
+  // Never promote a task identifier (including the old eight-character prefix) into the title.
+  const title = metadata?.title;
+  const includesId = id.length >= 8 && title?.toLowerCase().includes(id.slice(0, 8).toLowerCase());
+  const repositoryName = validRepository(repository) ? repository.split("/")[1] : null;
+  const pullRequests = [
+    ...new Set([
+      ...pullRequestNumbers(metadata?.pullRequests),
+      ...pullRequestNumbers(reportedPullRequests),
+    ]),
+  ].slice(0, 3);
+  return {
+    title: title && !includesId ? title : repositoryName ? `Factory work in ${repositoryName}` : "Factory task",
+    summary: metadata?.summary ?? null,
+    sourceUrl: githubCommitUrl(repository, revision),
+    pullRequests: githubPullLinks(repository, pullRequests),
+  };
 }

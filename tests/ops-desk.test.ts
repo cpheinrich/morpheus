@@ -1,3 +1,4 @@
+import { factoryWorkMetadata, factoryWorkPresentation } from "../src/ops-desk/index.js";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -129,5 +130,33 @@ describe("fragments", () => {
     expect(buildFragment("", { view: "x" })).toBe("");
     expect(buildFragment("devices")).toBe("#devices");
     expect(parseFragment("")).toEqual({ section: "", params: new URLSearchParams() });
+  });
+});
+
+describe("Factory work presentation", () => {
+  const id = "d00d0000-0000-4000-8000-000000000000";
+  const repository = "fixture/release";
+  const display = { title: "Verify release candidate", summary: "Check the build on a test device.", pullRequests: [18, 42] };
+
+  it("shows explicit copy, a commit, and only distinct bounded PR links", () => {
+    const revision = "a".repeat(40);
+    expect(factoryWorkPresentation({ id, repository, revision, display, reportedPullRequests: [42, 54] })).toEqual({
+      title: display.title, summary: display.summary,
+      sourceUrl: `https://github.com/fixture/release/commit/${revision}`,
+      pullRequests: [18, 42, 54].map(number => ({ number, url: `https://github.com/fixture/release/pull/${number}` })),
+    });
+  });
+
+  it("honestly falls back for older tasks and never promotes an ID or unsafe link", () => {
+    expect(factoryWorkPresentation({ id, repository, revision: "some/branch", reportedPullRequests: [0, 1] })).toEqual({
+      title: "Factory work in release", summary: null, sourceUrl: null, pullRequests: [],
+    });
+    expect(factoryWorkPresentation({ id, repository, display: { ...display, title: "Factory task D00D0000" } }).title)
+      .toBe("Factory work in release");
+    expect(factoryWorkMetadata({ ...display, title: "x".repeat(81) })).toBeNull();
+    expect(factoryWorkMetadata({ ...display, title: "x".repeat(80), summary: "x".repeat(320),
+      brief: { text: "private" }, pullRequests: ["https://other.test"] })).toEqual({
+      title: "x".repeat(80), summary: "x".repeat(320),
+    });
   });
 });
