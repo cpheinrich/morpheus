@@ -26,3 +26,6 @@ import { useFragmentView } from "morpheus-kit/ops-desk/react";
   `write` are the project's own mapping.
 
 No dependency: `Intl.DateTimeFormat` and `URLSearchParams` are built in.
+
+Layout, rows, wording and the browser checks a desk must pass are in the
+[Infra dashboard design runbook](../../docs/runbooks/infra-dashboard-design.md).

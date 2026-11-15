@@ -39,6 +39,7 @@ Only what the tree does not show; `src/` and `tests/` (Vitest, mirroring `src/`)
 | [`inbox-cycle.md`](docs/runbooks/inbox-cycle.md) | Writing, answering or archiving an inbox |
 | [`website.md`](docs/runbooks/website.md) | Any website, waitlist, signup/contact form, `/hq`, consumer auth or new Firebase project — run `morpheus web init` before writing any of it by hand |
 | [`hq-product-design.md`](docs/runbooks/hq-product-design.md) | Changing an HQ page, its information hierarchy, or a component that renders HQ content |
+| [`infra-dashboard-design.md`](docs/runbooks/infra-dashboard-design.md) | Building or changing an HQ infrastructure desk |
 | [`gh-manager.md`](docs/runbooks/gh-manager.md) | A PR may sit unattended, or the manager has touched yours |
 | [`folder-readmes.md`](docs/runbooks/folder-readmes.md) | Creating a directory — a README only where an agent could otherwise do the wrong thing |
 | [`scheduler.md`](docs/runbooks/scheduler.md) | Adding, enrolling or debugging a recurring scheduled run |

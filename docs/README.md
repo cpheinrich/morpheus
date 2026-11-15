@@ -26,6 +26,8 @@ Keep runbooks about *doing*: decisions and their reasons belong in `architecture
 - [Independent review](runbooks/independent-review.md) — reviewer dispatch and durable evidence.
 - [Consumer authentication](runbooks/consumer-auth.md) — Firebase-backed consumer accounts.
 - [Research library](runbooks/research-library.md) — deterministic private publication.
+- [Infra dashboard design](runbooks/infra-dashboard-design.md) — HQ infrastructure desk layout,
+  rows, drilldowns, cross-owner health and browser checks.
 - [iOS simulator cleanup](runbooks/ios-simulator-cleanup.md) — bounded host recovery.
 - [QA comment batches](runbooks/qa-comments.md) — local tap→comment→send batches agents can poll.
 
