@@ -199,7 +199,7 @@ Independent Factory review verified workspace authorization, initial cleanliness
   "version": 2,
   "base": "78eacb1848bb549349c5c1c0e29eb05edd31f511",
   "reviewed": "890578b8e9e63022d0643e223e40c9c89cc2f20f",
-  "covered": "6476760b1dd25dfe3227aeca4bd280b8bd32dbc8",
+  "covered": "a9d0ce39909c3066f75a8f4106b5642248132eb7",
   "authorSession": "01a1de81-51c4-7202-b080-efa00f648ef0",
   "reviewerSession": "01a1dea2-b6e8-7471-a421-ad2bcef9021a",
   "risk": "high",
@@ -222,7 +222,8 @@ Independent Factory review verified workspace authorization, initial cleanliness
     ".agent/worklog/2026-11-15-enroll-fleet-workspaces.md",
     "hq/product/roadmap/MO-26-11-15-01.02.23-enroll-fleet-workspaces.md",
     "docs/runbooks/independent-review.md",
-    "docs/runbooks/test-quality.md"
+    "docs/runbooks/test-quality.md",
+    "docs/runbooks/pm-workflow.md"
   ],
   "findings": [
     {
@@ -319,7 +320,32 @@ Independent Factory review verified workspace authorization, initial cleanliness
         "evidence": "Factory run 7b9703b4-53c6-4925-88cf-64669caa9e00: invocation measured from 2026-11-15 10:25:39 UTC to 2026-11-15 10:28:50 UTC."
       },
       "summary": "The test-only change passed both Firestore integration tests. Eleven workspace tests also passed. All findings remain resolved."
+    },
+    {
+      "reviewerSession": "01a1dec4-5d55-77b2-8060-cb86f24c0ddd",
+      "commit": "a9d0ce39909c3066f75a8f4106b5642248132eb7",
+      "base": "091d4febd633bfc2d1d2319640149dd3453a1629",
+      "scopeReason": "Record the supported roadmap metadata for the source PR to leave #707 open for live qualification.",
+      "handoff": {
+        "reason": "The preceding Factory review completed, so a fresh reviewer verified this metadata-only late correction.",
+        "findings": [
+          "FWS-001",
+          "FWS-002",
+          "FWS-003",
+          "FWS-004"
+        ]
+      },
+      "outcome": "cleared",
+      "elapsedMinutes": 1.5166666666666666,
+      "timing": {
+        "source": "clock",
+        "durationMs": 91000,
+        "evidence": "Factory run d481ea4c-ede8-4ead-85e4-c638a75ef6f5: invocation measured from 2026-11-15 10:32:51 UTC to 2026-11-15 10:34:22 UTC."
+      },
+      "summary": "Verified the supported issuesToKeepOpen field, Refs #707 in the PR description and absence of any closing keywords. The source review findings remain resolved."
     }
   ]
 }
 ```
+
+A metadata-only follow-up confirmed the supported keep-open field. The source PR can merge while #707 tracks live acceptance.
