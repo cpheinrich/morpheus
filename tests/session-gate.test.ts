@@ -185,12 +185,6 @@ describe("scaffolding", () => {
     await Promise.all(roots.splice(0).map((r) => rm(r, { recursive: true, force: true })));
   });
 
-  // Every kind, not one. `manifest()` declares `context.handle` for all of
-  // them, and a kind whose directory list omits `hq/team` would scaffold a
-  // project declaring a record it never creates — ABSENT, therefore
-  // unresolvable, therefore never fresh, with no offline escape and no
-  // `requiredInputs` override that reaches it. Testing one kind is how that
-  // ships.
   for (const kind of ["company", "personal", "internal"] as const) {
     it(`scaffolds a ${kind} project whose canonical records all exist`, async () => {
       const { scaffold } = await import("../src/init/index.js");
@@ -200,11 +194,11 @@ describe("scaffolding", () => {
 
       await scaffold(root, { name: "Acme", prefix: "AC", kind, owner: "cpheinrich" });
 
-      // The default required set is only correct because `init` creates
-      // exactly these — load-bearing, not a coincidence to rediscover.
-      const required = (await projectPolicy(root)).requiredInputs ?? [];
-      expect(required).toContain("hq/team/cpheinrich.md");
-      for (const id of required) {
+      const compact = (await projectPolicy(root, "fresh-scaffold-session")).requiredInputs;
+      const fallback = (await projectPolicy(root, "")).requiredInputs;
+      expect(compact).toEqual(["CLAUDE.md", ".agent/context-core.md"]);
+      expect(fallback).toEqual(["CLAUDE.md", ".agent/decisions.md", ".agent/learned.md"]);
+      for (const id of new Set([...(compact ?? []), ...(fallback ?? []), "hq/team/cpheinrich.md"])) {
         await expect(access(join(root, id))).resolves.toBeUndefined();
       }
     });

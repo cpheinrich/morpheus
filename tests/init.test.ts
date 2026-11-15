@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { load } from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffold } from "../src/init/index.js";
-import { projectPolicy } from "../src/session/policy.js";
 import {
   IOS_NIGHTLY_SECRETS,
   analyticsSchema,
@@ -139,12 +138,7 @@ describe("morpheus init", () => {
 
     const manifest = JSON.parse(await read("morpheus.json")) as { context: { handle: string } };
     expect(manifest.context.handle).toBe(SEED.owner);
-    expect((await projectPolicy(dir, "fresh-scaffold-session")).requiredInputs).toEqual([
-      "CLAUDE.md", ".agent/context-core.md",
-    ]);
-    expect((await projectPolicy(dir, "")).requiredInputs).toEqual([
-      "CLAUDE.md", ".agent/decisions.md", ".agent/learned.md",
-    ]);
+
   });
 
   it("scaffolds the default-on visual-evidence policy and PR guidance", async () => {
