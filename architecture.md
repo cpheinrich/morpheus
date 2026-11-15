@@ -3523,6 +3523,11 @@ retain phase-specific `never-launched` proof and a terminal failure with no nati
 Corrected setup requires a fresh UUID without resume; the failed UUID never launches.
 Possible launches, dead guardians and missing proof remain unverified and held. Native
 continuation requires verified termination, a real session and the identical binding.
+Fleet Git enrollments can opt into the existing full-access mode for toolchains
+that depend on host services unavailable inside the Codex sandbox. The worker still
+runs as its dedicated non-root OS account with a private home. Fleet accepts this
+mode only from a root-managed config that the worker cannot replace or edit.
+Its working checkout, resource admission and downstream review stay separate.
 Source/fake-provider qualification is distinct from runtime adoption and live gateway proof.
 The guardian retains UTC invocation bounds and monotonic duration through owned cleanup.
 Verified terminal results with a native session expose that optional runner timing through

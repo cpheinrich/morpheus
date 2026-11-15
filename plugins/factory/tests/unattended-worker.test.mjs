@@ -740,3 +740,33 @@ print(json.dumps({'type':'turn.completed'}),flush=True)
   const foreign = await exchange({ op: 'recover', admissionId: good.admissionId, binding: nextBinding });
   assert.deepEqual(foreign.lines, [{ outcome: { terminationVerified: false } }]);
 });
+
+test('Fleet refuses full access with a worker-owned config even for a prepared Git checkout', async t => {
+  const f = await setup(t);
+  execFileSync('git', ['-C', f.cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+    'commit', '-qm', 'Fixture', '--allow-empty']);
+  const revision = execFileSync('git', ['-C', f.cwd, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const attemptId = randomUUID();
+  const workspaces = join(f.root, 'workspaces');
+  await mkdir(workspaces);
+  execFileSync('git', ['clone', '-q', '-l', f.cwd, join(workspaces, attemptId)]);
+  await writeFile(f.configPath, JSON.stringify({ ...f.config, cwd: workspaces, sandbox: 'danger-full-access' }));
+  const executor = fileURLToPath(new URL('../scripts/fleet-executor.mjs', import.meta.url));
+  const admissionId = randomUUID();
+  const job = {
+    task: { source: { project: 'fixture', revision, checkout: 'git' },
+      selection: { provider: 'codex', gateway: f.config.gateway.name, model: f.config.model } },
+    admissionId, prompt: 'Do not run', binding: { taskId: randomUUID(), attemptId },
+    gatewayBaseUrl: f.config.gateway.baseUrl, checkout: { attemptId, mirror: f.cwd },
+  };
+  const child = spawn(process.execPath, [executor, f.configPath, 'fixture'], { stdio: ['pipe', 'pipe', 'inherit'] });
+  child.stdin.write(JSON.stringify(job) + '\n');
+  let stdout = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', chunk => { stdout += chunk; });
+  assert.equal((await once(child, 'close'))[0], 0);
+  const { outcome } = JSON.parse(stdout);
+  assert.deepEqual(outcome.invocation, { launch: 'never-launched', admissionId, sessionId: null });
+  assert.equal(outcome.result.outcome, 'failed');
+  await assert.rejects(readFile(join(f.state, admissionId, 'admission.json')), { code: 'ENOENT' });
+});
