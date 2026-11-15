@@ -80,11 +80,14 @@ export function githubCommitUrl(repository, sha) {
  * many, duplicates, a non-number — yields no links at all rather than a partial list.
  */
 export function githubPullLinks(repository, numbers, max = 3) {
-    if (!validRepository(repository) || !Array.isArray(numbers) || numbers.length > max)
+    return validRepository(repository)
+        ? pullRequestNumbers(numbers, max).map(number => ({ number, url: `https://github.com/${repository}/pull/${number}` }))
+        : [];
+}
+function pullRequestNumbers(numbers, max = 3) {
+    if (!Array.isArray(numbers) || numbers.length > max)
         return [];
-    if (new Set(numbers).size !== numbers.length || !numbers.every(positive))
-        return [];
-    return numbers.map(number => ({ number, url: `https://github.com/${repository}/pull/${number}` }));
+    return new Set(numbers).size === numbers.length && numbers.every(positive) ? numbers : [];
 }
 /** `Scheduled Tasks` → `scheduled-tasks`: the form a view label takes in a URL fragment. */
 export function fragmentSlug(label) {
@@ -111,5 +114,43 @@ export function buildFragment(section, params = {}) {
         if (value)
             query.set(key, value);
     return `#${section}${query.size ? `?${query}` : ""}`;
+}
+function displayText(value, limit) {
+    if (typeof value !== "string" || /[\p{Cc}\p{Cf}]/u.test(value))
+        return null;
+    const clean = value.trim();
+    return clean && clean.length <= limit ? clean : null;
+}
+export function factoryWorkMetadata(value) {
+    if (!value || typeof value !== "object")
+        return null;
+    const { title, summary, pullRequests } = value;
+    const name = displayText(title, 80);
+    const description = displayText(summary, 320);
+    if (!name || !description)
+        return null;
+    const prs = pullRequestNumbers(pullRequests);
+    return { title: name, summary: description, ...(prs.length > 0 && { pullRequests: prs }) };
+}
+/** Display rules only. The desk supplies the canonical, authorized repository. */
+export function factoryWorkPresentation(task) {
+    const { id, repository, revision, display, reportedPullRequests } = task;
+    const metadata = factoryWorkMetadata(display);
+    // Never promote a task identifier (including the old eight-character prefix) into the title.
+    const title = metadata?.title;
+    const includesId = id.length >= 8 && title?.toLowerCase().includes(id.slice(0, 8).toLowerCase());
+    const repositoryName = validRepository(repository) ? repository.split("/")[1] : null;
+    const pullRequests = [
+        ...new Set([
+            ...pullRequestNumbers(metadata?.pullRequests),
+            ...pullRequestNumbers(reportedPullRequests),
+        ]),
+    ].slice(0, 3);
+    return {
+        title: title && !includesId ? title : repositoryName ? `Factory work in ${repositoryName}` : "Factory task",
+        summary: metadata?.summary ?? null,
+        sourceUrl: githubCommitUrl(repository, revision),
+        pullRequests: githubPullLinks(repository, pullRequests),
+    };
 }
 //# sourceMappingURL=index.js.map

@@ -24,7 +24,7 @@ function matchContext(task, contextId) {
 
 // This boundary takes the authenticated controller's context and a launch
 // spec resolved by the service from a registered project and exact revision.
-export function submitTask(db, { contextId, messageId, text, launch, now }) {
+export function submitTask(db, { contextId, messageId, text, launch, display, now }) {
   assertId(contextId);
   assertId(messageId);
   assertText(text);
@@ -41,12 +41,13 @@ export function submitTask(db, { contextId, messageId, text, launch, now }) {
     if (prior) {
       const task = await data(transaction, db.doc(taskPath(prior.taskId)));
       matchContext(task, contextId);
-      if (task.brief.text !== text || !isDeepStrictEqual(prior.launch, spec))
+      if (task.brief.text !== text || !isDeepStrictEqual(prior.launch, spec) ||
+          !isDeepStrictEqual(task.display, display))
         throw new Error("Message ID already used for a different brief");
       return { task, replay: true };
     }
     const brief = { messageId, role: "ROLE_USER", text, createdAt: now };
-    const task = { ...spec, queuedSlots: eligibleSlots, id, contextId, brief, state: "TASK_STATE_SUBMITTED", createdAt: now };
+    const task = { ...spec, queuedSlots: eligibleSlots, id, contextId, brief, ...(display && { display }), state: "TASK_STATE_SUBMITTED", createdAt: now };
     transaction.set(db.doc(taskPath(id)), task);
     transaction.set(submission, { taskId: id, launch: spec });
     return { task, replay: false };

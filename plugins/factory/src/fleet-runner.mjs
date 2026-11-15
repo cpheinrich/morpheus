@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { open, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute } from "node:path";
+import { pullRequestsInEvidence } from "./fleet-display.mjs";
 import { invocationReceipt, notLaunched } from "./fleet-receipt.mjs";
 
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -90,7 +91,9 @@ function resultFor(output) {
     return { summary: "Worker reached its invocation deadline. Any returned artifacts are partial.", artifacts: result?.artifacts ?? [] };
   if (result?.outcome !== "completed") return { summary: "Worker did not complete the task." };
   const summary = typeof result.summary === "string" ? result.summary.slice(0, 8192) : "";
-  return { summary, ...(Array.isArray(result.artifacts) ? { artifacts: result.artifacts } : {}) };
+  const pullRequests = pullRequestsInEvidence(result.evidence);
+  return { summary, ...(Array.isArray(result.artifacts) && { artifacts: result.artifacts }),
+    ...(pullRequests.length && { pullRequests }) };
 }
 
 function verifiedInvocation(record, output) {

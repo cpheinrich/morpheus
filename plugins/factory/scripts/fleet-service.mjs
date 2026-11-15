@@ -5,6 +5,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { z } from "zod";
 import { createFleetApi } from "../src/fleet-api.mjs";
+import { githubRepository } from "../src/fleet-display.mjs";
 import { fleetObjects } from "../src/fleet-objects.mjs";
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -14,6 +15,7 @@ const schema = z.strictObject({
   bucket: z.string().regex(/^[a-z0-9._-]{3,63}$/),
   users: z.record(id, z.discriminatedUnion("role", [
     z.strictObject({ role: z.literal("controller"), projects: z.array(id).min(1) }),
+    z.strictObject({ role: z.literal("viewer"), project: id, repository: z.string().max(150).regex(githubRepository) }),
     z.strictObject({ role: z.literal("worker"), hostId: id, slotId: id }),
   ])),
   projects: z.record(id, z.strictObject({
