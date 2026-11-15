@@ -189,3 +189,137 @@ Evo/Darwin repository edit, secret operation, model call or host deployment was
 performed. Independent re-review and required CI are still the controller's next
 steps; actual host/account/Xcode/cache/credential isolation qualification remains
 operator follow-up. No unresolved reversible implementation choice needs input.
+
+## Independent review
+
+Independent Factory review verified workspace authorization, initial cleanliness, exact per-repository Git selection, receipt provenance, legacy submission compatibility, and the trust boundaries for the hand-resolved trunk merge. All four findings were fixed and independently cleared. The final test-only correction passed both real emulator tests with CLI 15.28.1 and JDK 21. Private Evo consumer migration, real host qualification and enrollment remain tracked by #707.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "78eacb1848bb549349c5c1c0e29eb05edd31f511",
+  "reviewed": "890578b8e9e63022d0643e223e40c9c89cc2f20f",
+  "covered": "6476760b1dd25dfe3227aeca4bd280b8bd32dbc8",
+  "authorSession": "01a1de81-51c4-7202-b080-efa00f648ef0",
+  "reviewerSession": "01a1dea2-b6e8-7471-a421-ad2bcef9021a",
+  "risk": "high",
+  "elapsedMinutes": 12.05,
+  "timing": {
+    "source": "clock",
+    "durationMs": 723000,
+    "evidence": "Factory run 882036db-1c65-4787-9fd5-cbd40229fe98: invocation measured from 2026-11-15 09:55:41 UTC to 2026-11-15 10:07:44 UTC."
+  },
+  "outcome": "complete",
+  "summary": "Independent Factory review verified workspace authorization, initial cleanliness, exact per-repository Git selection, receipt provenance, legacy submission compatibility, and the trust boundaries for the hand-resolved trunk merge. All four findings were fixed and independently cleared. The final test-only correction passed both real emulator tests with CLI 15.28.1 and JDK 21. Private Evo consumer migration, real host qualification and enrollment remain tracked by #707.",
+  "contextRead": [
+    "AGENTS.md",
+    ".agent/context-core.md",
+    ".agent/decisions.md",
+    "architecture.md",
+    "plugins/factory/README.md",
+    "plugins/factory/skills/delegate/SKILL.md",
+    "plugins/factory/src/host/docs/fleet-task-contract.md",
+    ".agent/worklog/2026-11-15-enroll-fleet-workspaces.md",
+    "hq/product/roadmap/MO-26-11-15-01.02.23-enroll-fleet-workspaces.md",
+    "docs/runbooks/independent-review.md",
+    "docs/runbooks/test-quality.md"
+  ],
+  "findings": [
+    {
+      "id": "FWS-001",
+      "severity": "substantive",
+      "description": "The first execution reopened the prepared workspace as a continuation, skipping the cleanliness check in related repositories.",
+      "paths": [
+        "plugins/factory/scripts/fleet-executor.mjs",
+        "plugins/factory/src/fleet-workspace-checkout.mjs",
+        "plugins/factory/tests/fleet-workspace.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Reject tracked and untracked changes in every prepared repository before first execution and retain edits on continuation. Focused regressions verify both behaviors."
+    },
+    {
+      "id": "FWS-002",
+      "severity": "substantive",
+      "description": "Inherited Git repository variables let inspection select the primary revision for a distinct related checkout.",
+      "paths": [
+        "plugins/factory/scripts/fleet-delegate.mjs",
+        "plugins/factory/tests/fleet-workspace.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Use the shared gitEnv() for revision and cleanliness probes. The regression covers distinct SHAs and dirty related source with contaminated Git state."
+    },
+    {
+      "id": "FWS-003",
+      "severity": "substantive",
+      "description": "The shipped delegation skill still prohibited multi-repository Fleet runs.",
+      "paths": [
+        "plugins/factory/skills/delegate/SKILL.md"
+      ],
+      "disposition": "fixed",
+      "response": "Document the exact enrolled cwd and repos selection and the remaining local-only options."
+    },
+    {
+      "id": "FWS-004",
+      "turn": 2,
+      "severity": "substantive",
+      "description": "The Firestore emulator integration expected the old receipt shape, failing required Factory CI after receipt source and selection were added.",
+      "paths": [
+        "tests/factory-fleet-firestore.test.mjs",
+        "plugins/factory/src/fleet-claims.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Assert the exact admitted source and configured selection alongside the previous receipt assertions. The emulator tests passed on the controller and again on independent review."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "01a1deb8-2d4e-79d0-8740-a55287e2e8e4",
+      "commit": "4994f89b5867befec57921d0cc39194900d579cb",
+      "base": "091d4febd633bfc2d1d2319640149dd3453a1629",
+      "scopeReason": "Recheck original findings and six hand-resolved trunk integrations preserving #711 cleanup and #712 dashboard metadata. Verify CI fixture portability.",
+      "handoff": {
+        "reason": "Factory runs that have completed cannot accept another turn.",
+        "findings": [
+          "FWS-001",
+          "FWS-002",
+          "FWS-003"
+        ]
+      },
+      "blockedOn": [
+        "FWS-004"
+      ],
+      "outcome": "blocked",
+      "elapsedMinutes": 4.55,
+      "timing": {
+        "source": "clock",
+        "durationMs": 273000,
+        "evidence": "Factory run ee88b9ca-7108-48e9-a899-c30453607ba4: invocation measured from 2026-11-15 10:19:34 UTC to 2026-11-15 10:24:07 UTC."
+      },
+      "summary": "Cleared all three original findings and the integration diff. Found an outdated Firestore fixture caught by hosted CI."
+    },
+    {
+      "reviewerSession": "01a1debd-c328-7df1-8ad3-e2459f72620b",
+      "commit": "6476760b1dd25dfe3227aeca4bd280b8bd32dbc8",
+      "base": "091d4febd633bfc2d1d2319640149dd3453a1629",
+      "scopeReason": "Verify the corrected exact Firestore receipt expectation and previously resolved findings.",
+      "handoff": {
+        "reason": "The completed predecessor Factory session cannot be continued.",
+        "findings": [
+          "FWS-001",
+          "FWS-002",
+          "FWS-003",
+          "FWS-004"
+        ]
+      },
+      "outcome": "cleared",
+      "elapsedMinutes": 3.183333333333333,
+      "timing": {
+        "source": "clock",
+        "durationMs": 191000,
+        "evidence": "Factory run 7b9703b4-53c6-4925-88cf-64669caa9e00: invocation measured from 2026-11-15 10:25:39 UTC to 2026-11-15 10:28:50 UTC."
+      },
+      "summary": "The test-only change passed both Firestore integration tests. Eleven workspace tests also passed. All findings remain resolved."
+    }
+  ]
+}
+```
