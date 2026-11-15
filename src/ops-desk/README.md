@@ -29,3 +29,9 @@ No dependency: `Intl.DateTimeFormat` and `URLSearchParams` are built in.
 
 Layout, rows, wording and the browser checks a desk must pass are in the
 [Infra dashboard design runbook](../../docs/runbooks/infra-dashboard-design.md).
+
+**Factory Work.** `factoryWorkMetadata` projects an explicitly supplied title (80 characters)
+and summary (320), with optional same-repository PR numbers. `factoryWorkPresentation` adds a
+readable fallback for older rows and builds exact PR and source-commit links. The caller supplies
+the authorized repository, and displays the opaque task ID only in selected details. These
+helpers never derive display text from prompts or worker logs.

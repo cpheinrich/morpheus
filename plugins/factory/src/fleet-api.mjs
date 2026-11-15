@@ -4,6 +4,8 @@ import { claimTask, renewAttempt, settleAttempt } from "./fleet-claims.mjs";
 import { answerQuestion, askQuestion, cancelTask, submitTask } from "./fleet-mailbox.mjs";
 import { fleetDiagnostic, invocationReceipt, receiptPath } from "./fleet-receipt.mjs";
 import { workspaceIntent, workspaceLaunch } from "./fleet-workspace.mjs";
+import { dashboardMetadata, reportedPullRequests } from "./fleet-display.mjs";
+import { readFleetWork } from "./fleet-work.mjs";
 import { fleetReadiness, quotaObservation } from "./fleet-readiness.mjs";
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -26,7 +28,7 @@ const worker = {
   finish: z.object({
     ...attemptFields,
     outcome: z.enum(["TASK_STATE_COMPLETED", "TASK_STATE_FAILED", "TASK_STATE_CANCELED"]),
-    result: z.object({ summary: shortText, diagnosticCode: fleetDiagnostic.optional(), artifacts: z.array(name).max(8).optional() }).nullable(),
+    result: z.object({ summary: shortText, diagnosticCode: fleetDiagnostic.optional(), artifacts: z.array(name).max(8).optional(), pullRequests: reportedPullRequests.optional() }).nullable(),
     cleanupVerified: z.boolean(),
     admissionId: z.uuid().optional(),
     invocation: invocationReceipt.optional(),
@@ -37,7 +39,7 @@ const worker = {
   }),
 };
 const controller = {
-  submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, workspace: workspaceIntent.optional(), model: id.optional() }),
+  submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, workspace: workspaceIntent.optional(), model: id.optional(), display: dashboardMetadata.optional() }),
   get: z.object(scope),
   readiness: z.object({ rootId: id, project: id }),
   answer: z.object({ ...scope, attemptId: id, questionId: id, messageId: id, text: message }),
@@ -163,7 +165,7 @@ async function storedResult(objects, input) {
   if (new Set(names).size !== names.length) throw failure(400, "Duplicate Factory artifact name");
   const artifacts = await Promise.all(names.map((name) => objects.metadata(objectName({ ...input, name }))));
   if (artifacts.some((file) => !file || !digest.test(file.sha256))) throw failure(400, "Missing Factory artifact");
-  return { summary: input.result.summary, artifacts, ...(input.result.diagnosticCode ? { diagnosticCode: input.result.diagnosticCode } : {}) };
+  return { summary: input.result.summary, artifacts, ...(input.result.diagnosticCode ? { diagnosticCode: input.result.diagnosticCode } : {}), ...(input.result.pullRequests?.length && { pullRequests: input.result.pullRequests }) };
 }
 
 function attemptOwner(attempt, { attemptId, hostId, slotId }) {
@@ -227,8 +229,10 @@ async function authenticate(request, verifyToken, config) {
   return { uid, principal };
 }
 
+const roles = { controller, worker, viewer: { work: z.strictObject({ op: z.literal("work") }) } };
+
 function parseOperation(body, role) {
-  const schemas = role === "controller" ? controller : worker;
+  const schemas = Object.hasOwn(roles, role) ? roles[role] : {};
   const op = body?.op;
   if (typeof op !== "string" || !Object.hasOwn(schemas, op)) throw failure(403, "Factory operation is outside this role");
   const input = schemas[op].safeParse(body);
@@ -244,6 +248,12 @@ export function createFleetApi({ db, verifyToken, config, objects, clock = Date.
       if (request.method !== "POST" || request.url !== "/v1") throw failure(404, "Unknown Factory endpoint");
       const { uid, principal } = await authenticate(request, verifyToken, config);
       const { op, input } = parseOperation(await parseBody(request), principal.role);
+      if (principal.role === "viewer") {
+        if (!Object.hasOwn(config.projects, principal.project))
+          throw failure(403, "Factory viewer project is not enrolled");
+        response.end(JSON.stringify(await readFleetWork(db, principal, clock())));
+        return;
+      }
       const handle = principal.role === "controller" ? handleController : handleWorker;
       response.end(JSON.stringify(await handle(op, input, { db, config, principal, uid, objects, log, now: clock() })));
     } catch (error) {

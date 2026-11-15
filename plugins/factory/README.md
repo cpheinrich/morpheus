@@ -1041,10 +1041,11 @@ flowchart LR
   the slot is released after verified cleanup.
 
 If a supervisor restarts after recording a launch and before seeing cleanup,
-the attempt remains held. Reconcile the exact admission with the gateway
-worker's `--status` or `--reconcile`. The runner will observe the verified
-proof for that same admission, fail the interrupted task, and release its slot
-without replaying the model.
+it uses the existing non-signaling process census only for the exact retained
+task, attempt and admission. The interrupted task settles and releases its slot
+when the census proves cleanup. An unverified or still-live worker holds its
+slot. Operators can still use the gateway worker's `--status` and
+`--reconcile` to inspect or reconcile an exact admission.
 The pilot uses an enrolled Codex model and a single Studio slot. Firestore
 coordinates placement, and Sub2API retains account routing behind its gateway.
 
@@ -1288,3 +1289,33 @@ until they are idle. Then upgrade supervisor, fixed executor and worker together
 on each slot. Keep the old plugin build for rollback and wait for `readiness` to
 show a fresh observation before testing the new receipt with a synthetic task.
 Older services ignore the additive heartbeat and completion fields.
+
+### Read Factory work in an Infra desk
+
+A controller can supply a separate `display: {title, summary, pullRequests?}` on a new Fleet
+delegation. Use a short action title and one sentence about the work, suitable for the project's
+authorized HQ operators. Optional PR numbers must belong to the task's own GitHub repository.
+Never paste the worker brief, conversation, secrets or logs there. Use the same metadata on
+submission retries. Older tasks retain their source revision but may have no display text.
+When a worker reports an exact GitHub pull-request URL in its structured evidence, the result can
+carry that reference. The projection only links references to the task's authorized repository.
+
+A dashboard on a separate project can use an independently enrolled Firebase identity
+`{role: "viewer", project: "fixture", repository: "example/fixture"}`. It can only POST
+`{"op":"work"}` to `/v1`; the server binds the project and repository from enrollment, accepts
+no caller-selected scope and returns bounded live and recent rows. Keep the reader's credential
+server-side behind the desk's operator check. The Firebase client rules still deny task documents.
+Never give a dashboard a controller login or direct access to the Factory database.
+
+Both ordered lists use a collection-scope composite index on `factoryTasks`: `source.project`
+ascending, `state` ascending and `createdAt` descending. Create it in the exact Fleet database
+before enabling the viewer; check that it is READY and that an enrolled viewer can see a
+finished fixture task. A failed history read yields a partial snapshot while current work
+remains visible. An expired worker lease, pending cancellation or unverified cleanup shows
+Unknown while the task is still held; a settled result takes precedence if the two reads overlap.
+An unconfigured or denied reader must not be shown as an empty work list.
+
+For a Fleet task, the originating controller uses Factory status/wait to read its current state,
+clarification or result and can download declared result artifacts. Those operations are scoped
+to that controller's chat. The dashboard receives neither private worker output nor a transcript
+URL. The local Factory live view is separate and does not provide a remote Fleet log link.

@@ -5,7 +5,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { gatewayWorker, readWorkerConfig, workerResult } from "../src/gateway-worker.mjs";
+import { gatewayWorker, readWorkerConfig, reconcileWorker, workerResult } from "../src/gateway-worker.mjs";
 import { readArtifactFiles, readCheckpointFiles } from "../src/fleet-artifacts.mjs";
 import { checkoutWorkspace } from "../src/fleet-workspace-checkout.mjs";
 import { studioCheckout } from "../src/fleet-source.mjs";
@@ -93,6 +93,20 @@ function admissionEnvelope(value) {
   catch { return null; }
 }
 
+async function recover(job) {
+  const prior = await workerResult(job.admissionId);
+  const binding = prior.binding?.fleet;
+  const sameAttempt = uuid.test(binding?.taskId) && uuid.test(binding?.attemptId)
+    && binding.taskId === job.binding?.taskId && binding.attemptId === job.binding?.attemptId
+    && JSON.stringify(binding.workspace) === JSON.stringify(job.binding?.workspace);
+  if (binding && !sameAttempt) return { terminationVerified: false };
+  // The same retained Fleet attempt can request the operator's fresh census.
+  // It cannot signal a process or prove a different or still-live admission.
+  const observed = sameAttempt && !prior.terminationVerified ? await reconcileWorker(job.admissionId) : prior;
+  return { terminationVerified: observed.terminationVerified, admissionId: observed.admissionId,
+    invocation: sameAttempt ? invocationFromWorker(observed) : undefined };
+}
+
 async function dispatch(value) {
   const job = admissionEnvelope(value);
   if (!job) return { terminationVerified: true, result: { outcome: "failed", summary: "Invalid Studio admission envelope." } };
@@ -107,14 +121,7 @@ async function dispatch(value) {
     }
     return { prepared: true };
   }
-  if (job.op === "recover") {
-    const prior = await workerResult(job.admissionId);
-    const binding = prior.binding?.fleet;
-    const sameAttempt = binding?.taskId === job.binding?.taskId && binding?.attemptId === job.binding?.attemptId && JSON.stringify(binding?.workspace) === JSON.stringify(job.binding?.workspace);
-    if (binding && !sameAttempt) return { terminationVerified: false };
-    return { terminationVerified: prior.terminationVerified, admissionId: prior.admissionId,
-      invocation: binding && sameAttempt ? invocationFromWorker(prior) : undefined };
-  }
+  if (job.op === "recover") return recover(job);
   return execute(job);
 }
 
