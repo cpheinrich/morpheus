@@ -315,7 +315,8 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
   assert.deepEqual(await call("studio", "finish", { ...finish, invocation: { ...invocation, sessionId: admissionId } }), { settled: true });
   const read = await call("pro", "get", scope);
   assert.deepEqual(read.receipt, { ...identity, ...invocation, state: "TASK_STATE_COMPLETED",
-    hostId: "mac-studio", slotId: "studio", terminationVerified: true });
+    hostId: "mac-studio", slotId: "studio", terminationVerified: true,
+    source: { project: input.project, revision: input.revision }, selection: config.projects.pilot.selection });
   await call("pro", "get", { ...scope, rootId: "other-root" }, 404);
   await call("stranger", "get", scope, 404);
   assert.equal((await call("studio", "inspect", identity)).receipt, undefined);
