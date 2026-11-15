@@ -3608,6 +3608,9 @@ terminal outcomes kept when a source goes stale while live states become unknown
 ordering by start time, and URL-fragment views. `morpheus-kit/ops-desk/react` adds the
 fragment-view hook behind shareable tabs, drilldowns, Back and Forward. Sources, readers,
 authorization, copy and pipeline topology stay in each project. See `src/ops-desk/README.md`.
+Layout and interaction (Overview → Devices → Work → Deployments, full-row hit areas, linked rows,
+operator-gated cross-owner health, and the browser checks every desk passes) are in the
+[Infra dashboard design runbook](docs/runbooks/infra-dashboard-design.md).
 
 `morpheus web init` includes this path whenever it scaffolds `/hq`: the visible search control,
 private static index route, deployment-versioned URL, neutral styling, and a working overview

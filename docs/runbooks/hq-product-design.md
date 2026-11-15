@@ -62,6 +62,8 @@ archive at once should become a hub with linked documents.
 4. Recent changes or active work
 5. Search and the complete folder/index view
 
+An infrastructure desk follows the [Infra dashboard design runbook](infra-dashboard-design.md).
+
 The directory mirror is useful, but it is not the executive layer. Archived and shipped work lives
 behind filters or a secondary view rather than dominating current work.
 
