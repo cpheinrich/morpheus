@@ -1041,10 +1041,11 @@ flowchart LR
   the slot is released after verified cleanup.
 
 If a supervisor restarts after recording a launch and before seeing cleanup,
-the attempt remains held. Reconcile the exact admission with the gateway
-worker's `--status` or `--reconcile`. The runner will observe the verified
-proof for that same admission, fail the interrupted task, and release its slot
-without replaying the model.
+it uses the existing non-signaling process census only for the exact retained
+task, attempt and admission. The interrupted task settles and releases its slot
+when the census proves cleanup. An unverified or still-live worker holds its
+slot. Operators can still use the gateway worker's `--status` and
+`--reconcile` to inspect or reconcile an exact admission.
 The pilot uses an enrolled Codex model and a single Studio slot. Firestore
 coordinates placement, and Sub2API retains account routing behind its gateway.
 

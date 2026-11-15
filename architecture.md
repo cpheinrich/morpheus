@@ -3529,6 +3529,9 @@ retain phase-specific `never-launched` proof and a terminal failure with no nati
 Corrected setup requires a fresh UUID without resume; the failed UUID never launches.
 Possible launches, dead guardians and missing proof remain unverified and held. Native
 continuation requires verified termination, a real session and the identical binding.
+The authenticated Fleet supervisor may run the existing non-signaling late process
+census during recovery of its exact retained task, attempt and admission. It can
+release the slot only on verified proof, with the original guardian evidence preserved.
 Fleet Git enrollments can opt into the existing full-access mode for toolchains
 that depend on host services unavailable inside the Codex sandbox. The worker still
 runs as its dedicated non-root OS account with a private home. Fleet accepts this
