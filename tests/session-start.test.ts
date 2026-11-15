@@ -1,4 +1,5 @@
 import * as leaseStore from "../src/session/store.js";
+import * as sessionTrunk from "../src/session/git.js";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, realpath, rm, rmdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -147,6 +148,29 @@ describe("startup source freshness", () => {
     expect(result.lease?.status).toBe("refresh_required");
     expect(result.lease?.changedInputs).toEqual([]);
     expect(result.lease?.receipt.branch).toBe("main");
+  });
+  it("certifies an up-to-date checkout when a temporary fetch ref cannot be written", async () => {
+    const head = await git(local, "rev-parse", "HEAD");
+    // An existing parent ref prevents Git from creating any temporary ref below it.
+    const ref = "refs/morpheus/session-start";
+    await git(local, "update-ref", ref, head);
+
+    const result = await refresh(local);
+
+    expect(result.lease).toMatchObject({ status: "fresh", receipt: { remoteSha: head } });
+    expect(await git(local, "show-ref", "--verify", ref)).toBe(`${head} ${ref}`);
+  });
+  it("invalidates the previous receipt if trunk moves during refresh", async () => {
+    const original = await git(local, "rev-parse", "HEAD");
+    expect((await refresh(local)).lease?.status).toBe("fresh");
+    await advance();
+    vi.spyOn(sessionTrunk, "trunkSha").mockResolvedValueOnce({ sha: original });
+
+    const result = await refresh(local);
+
+    expect(result.lease).toBeNull();
+    expect(result.issue).toBe("Trunk moved during refresh. Re-read current source and retry.");
+    expect((await check(local)).lease).toBeNull();
   });
   it("refuses to certify stale source even after a previous receipt, then succeeds after startup updates it", async () => {
     expect((await refresh(local)).lease?.status).toBe("fresh");

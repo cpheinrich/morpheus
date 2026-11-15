@@ -1255,6 +1255,8 @@ asserting it has loaded current state — checked against its read log where a h
 records were read by the act of not reading them, so the Claude hook prints `context brief` and
 takes nothing. The reporting helper takes no receipt; the startup command exits nonzero when source preparation
 fails and names the failure explicitly.
+Refresh certifies source from two agreeing live trunk observations and a local ancestor check.
+Only checkout preparation needs to fetch the trunk into a temporary ref.
 
 **The term is how often the network is consulted.** Inside five minutes the last observation
 stands and the check costs one file read. Past it, the stored *receipt* — not the stored verdict —
