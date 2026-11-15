@@ -231,7 +231,7 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
     ["TASK_STATE_WORKING", { hostId: "studio", leaseUntil: now }],
     ["TASK_STATE_INPUT_REQUIRED", { hostId: "studio", leaseUntil: now - 1 }],
     ["TASK_STATE_UNSPECIFIED", { hostId: "studio", leaseUntil: now + 1 }],
-    ["TASK_STATE_SUBMITTED", null, now],
+    ["TASK_STATE_WORKING", { hostId: "studio", leaseUntil: now + 1 }, now],
   ];
   const ids = previous.map((_, n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`);
   await Promise.all(previous.map(([state, attempt, cancelRequestedAt = null], n) => db.doc(`factoryTasks/${ids[n]}`).set({

@@ -103,9 +103,10 @@ test("persists the exact attempt and admission before one execution and publishe
   assert.equal(run.resume, null);
   assert.equal(run.prompt, "private brief");
   const artifacts = [{ name: "report.pdf", generation: "42" }];
+  const pullUrl = "https://github.com/owner/repo/pull/71";
   run.resolve(output("completed", { artifacts, evidence: [
     `https://github.com/owner/${"z".repeat(151)}/pull/70`,
-    `${" ".repeat(1965)}https://github.com/owner/repo/pull/71/files`,
+    `${" ".repeat(2000 - pullUrl.length)}${pullUrl}/files`,
     "https://github.com/owner/repo/pull/42",
   ] }));
   await setImmediate();
