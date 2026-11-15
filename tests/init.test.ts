@@ -136,11 +136,9 @@ describe("morpheus init", () => {
     expect(await read(".morpheus/session-start.sh")).toContain("predates version-independent");
     expect(await read(".morpheus/README.md")).toContain("explicit yes");
 
-    // The handle is what puts the inbox in the required set. Scaffolding the
-    // file without declaring it certifies a session that never opened the one
-    // record a human replies in.
     const manifest = JSON.parse(await read("morpheus.json")) as { context: { handle: string } };
     expect(manifest.context.handle).toBe(SEED.owner);
+
   });
 
   it("scaffolds the default-on visual-evidence policy and PR guidance", async () => {

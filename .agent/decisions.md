@@ -2669,3 +2669,17 @@ a broken runtime reports an error instead of switching engines. Profiling and hi
 traces stay. Existing projects with valid compact startup records keep compact startup,
 and other projects keep full required reads. The installer uses the existing Tantivy
 Python binding with its published wheel hashes; no additional search package is needed.
+
+## Compact context is the default for managed projects
+
+The owner adopted Evo's startup policy for the fleet. New scaffolds declare the
+small project core. Existing projects adopt it in their manifests through
+reviewed changes. Full canonical reads remain the fallback. Search for the
+task's governing records once the task is known, and open the human inbox when
+handling replies. Write brief decisions and lessons inline under descriptive
+headings. A longer record may have its own file. Maintain one authoritative
+body per record. Lakina consolidates its existing records into the two root
+files and moves its mandatory startup rules into its declared core.
+
+Supersedes the fleet rollout policy in [Tantivy is the only project-record
+search engine](#tantivy-is-the-only-project-record-search-engine--2026-11-09).

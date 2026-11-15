@@ -86,6 +86,7 @@ export async function scaffold(root, seed) {
     await scaffoldInstructions(ctx);
     // --- agent memory ---------------------------------------------------------
     await put(".agent/README.md", t.agentReadme());
+    await put(".agent/context-core.md", t.contextCore());
     await put(".agent/decisions.md", t.decisions(seed));
     await put(".agent/learned.md", t.learned());
     // --- shared product contracts --------------------------------------------
@@ -278,14 +279,7 @@ async function scaffoldHq({ root, seed, written, skipped, put }, dirs) {
             continue;
         await put(`hq/product/${kind}/README.md`, t.productReadme(kind, seed));
     }
-    // The inbox is written for **every** kind, not only those whose directory
-    // list includes `hq/team`. `manifest()` declares `context.handle`, which
-    // puts `hq/team/<owner>.md` into the session-freshness required set — so a
-    // kind that skipped the file would scaffold a project whose gate can never
-    // open: the record reads ABSENT, therefore unresolvable, therefore
-    // `refresh_required` forever, with no offline escape and no `requiredInputs`
-    // override that reaches it. A declared record that is never created is the
-    // worst shape this protocol has.
+    // Every project kind supports the inbox cycle, including internal projects.
     await put(`${INBOX_DIR}/${seed.owner}.md`, t.inbox(seed));
     if (dirs.includes(INBOX_DIR)) {
         // Meeting notes get their directory up front rather than on first use.

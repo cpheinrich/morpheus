@@ -732,11 +732,16 @@ Deliberately minimal: markdown in git, no vector database, no external store.
 
 ```
 .agent/
-├── decisions.md          settled choices and their reasoning   ← read first
-├── learned.md            technical facts and gotchas           ← read first
+├── context-core.md       rules required at compact startup
+├── decisions.md          settled choices and their reasoning
+├── learned.md            technical facts and gotchas
 ├── inbox-archive/        past cycles of hq/team/, with replies
 └── worklog/              what was attempted and learned per task
 ```
+
+Write short decisions and lessons under descriptive headings in the root records. A longer record
+may have a standalone file with a link where it helps readers navigate. Keep one authoritative
+copy. Search these records when the task is known.
 
 Two raw logs, each feeding exactly one distillation:
 
@@ -941,9 +946,11 @@ checked against reality and killed rather than built.
 Morpheus Context uses Tantivy for every MCP and CLI search. The engine experiment
 is retired; old engine settings and session pins no longer select an engine. Historical
 profiling remains readable. Projects with a valid `context.search.rollout.coreInputs`
-in `morpheus.json` use compact startup whenever the provider session is known. Other
-projects keep their full required reads. Project instructions and mandatory records still
-govern, and human inboxes stay outside the search index.
+in `morpheus.json` use compact startup whenever the provider session is known. New projects
+declare `.agent/context-core.md` and existing projects adopt it through their manifest.
+A missing session identity or an invalid core falls back to full canonical reads. Project
+instructions and additional mandatory records still govern. Human inboxes stay outside the
+search index and are opened when handling replies or an inbox cycle in compact projects.
 
 A compact startup receipt is scoped to its provider session and worktree. The first-prompt
 hook cues a search once the task is known, and MCP startup can also arm the existing check.

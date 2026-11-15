@@ -110,7 +110,7 @@ export async function gate(
       : "No context receipt for this worktree.";
     return {
       ok: false,
-      message: `${why}\n\n  Read ${"`"}.agent/decisions.md${"`"} and ${"`"}.agent/learned.md${"`"}, then run:\n    morpheus context refresh`,
+      message: `${why}\n\n  Read the required files from your startup brief (${"`"}morpheus context brief${"`"}), then run:\n    morpheus context refresh`,
     };
   }
 

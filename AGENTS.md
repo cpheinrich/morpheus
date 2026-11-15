@@ -92,9 +92,10 @@ Run `morpheus context brief` at session start if the hook did not; follow its `W
 On a dirty trunk it moves tracked edits to a `wip/trunk-*` branch, then fast-forwards; `doctor --all`
 lists stuck trunks and unpushed rescues.
 
-**Read `AGENTS.md` (an injected copy leaves no read evidence), `.agent/decisions.md`,
-`.agent/learned.md` and `hq/team/<your handle>.md` once at session start, then run
-`morpheus context refresh` once.**
+**Read the brief's required records once at session start, including `AGENTS.md`
+from disk (an injected copy leaves no read evidence). Then run
+`morpheus context refresh` once.** Use context search for task records and open the
+human inbox when handling replies.
 After that, just run the gated command
 (`pm claim`, `pm new`, `pm link-issue`, `pm block`, `access sync`, `firebase auth setup`,
 `web init` provisioning); past the five-minute term the gate re-certifies when nothing moved.

@@ -147,9 +147,13 @@ no readable task records falls back to the core and reports how to check
 coverage. The task hook stores no prompt or excerpt text.
 
 Tantivy is the only search engine. Old `context.search.mode` values and per-session engine pins
-no longer select an engine. Projects already declaring `context.search.rollout.coreInputs`
-keep their compact startup records; other projects keep full startup. The session ID still
-links startup, search and freshness evidence when the host supplies it. Set
+no longer select an engine. New projects declare `.agent/context-core.md` in `context.search.rollout.coreInputs`.
+For an existing project, adopt that policy by committing a short core and its manifest
+entry. Preserve additional required project records. Verify the startup brief and
+receipt in a fresh provider session, then search and open a citation from that
+checkout. A missing session ID or a missing, empty, unsafe or oversized core
+selects the full canonical reads. The declared core is limited to 8 KiB total.
+The session ID links startup, search and freshness evidence when the host supplies it. Set
 `context.search.transport: "cli"` only for a project whose startup cue must use the CLI.
 
 A managed update installs the pinned `tantivy==0.27.0` wheel in a user-local Python

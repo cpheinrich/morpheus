@@ -283,6 +283,6 @@ claims and would make `pm claim` refuse the item forever.
 **Append a worklog entry** to `.agent/worklog/YYYY-MM-DD-slug.md` before opening a PR. Record
 what you learned, especially dead ends that produced no code — git history cannot capture those.
 
-**At the start of a session** read `.agent/decisions.md` and `.agent/learned.md` — see
-[`.agent/README.md`](../../.agent/README.md) for how the four records relate. Decisions are
-settled choices — if one looks wrong, say so and ask rather than quietly working around it.
+At the start of a session, read the required files listed by the startup brief. Use Morpheus
+Context to find decisions and lessons for the task. See [the agent records guide](../../.agent/README.md).
+If a settled decision looks wrong, raise it before changing the rule.

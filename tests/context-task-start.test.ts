@@ -69,7 +69,11 @@ describe("task context on bounded startup", () => {
     expect(await prompt(root, bounded)).toContain('morpheus context search "<task terms>"');
     expect(await prompt(root, bounded)).toBeUndefined();
     const check = () => gate(root, "pm new", "local");
-    expect((await check()).message).toContain("No context receipt");
+    expect((await check()).message).toBe(
+      "No context receipt for this worktree.\n\n" +
+        "  Read the required files from your startup brief (`morpheus context brief`), then run:\n" +
+        "    morpheus context refresh",
+    );
 
     await shown(root, bounded, "Do project work in an isolated checkout.\n" + core + "\n");
     expect((await refresh(root)).lease?.status).toBe("fresh");
