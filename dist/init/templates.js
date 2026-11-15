@@ -1669,7 +1669,8 @@ reuses a task's existing worktree. Pass \`--session-id\` to claim/resume when st
 (Codex defaults to \`CODEX_THREAD_ID\`). Never infer that an unrelated request belongs to the
 checked-out task, and do not run concurrent authors in one worktree.
 
-**Read the brief's required records from disk, including \`AGENTS.md\`, then run
+**Read the brief's required records once at session start, including \`AGENTS.md\`
+from disk (an injected copy leaves no read evidence). Then run
 \`morpheus context refresh\` once.** Search task records on demand and read the inbox
 when handling replies.
 Then just run the gated command — \`pm claim\`, \`pm new\`, \`pm link-issue\`, \`pm block\`,

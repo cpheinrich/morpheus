@@ -92,8 +92,9 @@ Run `morpheus context brief` at session start if the hook did not; follow its `W
 On a dirty trunk it moves tracked edits to a `wip/trunk-*` branch, then fast-forwards; `doctor --all`
 lists stuck trunks and unpushed rescues.
 
-**Read the brief's required records from disk, including `AGENTS.md`, then run
-`morpheus context refresh` once.** Use context search for task records and read the
+**Read the brief's required records once at session start, including `AGENTS.md`
+from disk (an injected copy leaves no read evidence). Then run
+`morpheus context refresh` once.** Use context search for task records and open the
 human inbox when handling replies.
 After that, just run the gated command
 (`pm claim`, `pm new`, `pm link-issue`, `pm block`, `access sync`, `firebase auth setup`,
