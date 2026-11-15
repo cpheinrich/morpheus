@@ -26,12 +26,16 @@ focused task-context suite exercised recorded reading and the separate task gate
 Independent review cleared compact project startup after fixing receipt recovery, the scaffold policy tests and the PM runbook. The three follow-up suites passed 141 tests. Typecheck, lint,
 and compiled output verification passed again after the correction.
 
+Required Node CI found two existing startup guidance assertions. The correction restores
+their read-once and disk evidence wording. The reviewer independently cleared the 20 tests and
+generated mirror.
+
 ```morpheus-review
 {
   "version": 2,
   "base": "5b29ff982b704a720ddec2f27f934a53ba073e7d",
   "reviewed": "f802391741e2c85340ef0a9b0ea2e6175cea268a",
-  "covered": "5fddcebdc0ba2905283b4048df31820a0bd4a437",
+  "covered": "8741d1ade379589b93feca9797aa72f6434a5467",
   "authorSession": "01a1dc33-4d68-7693-bdbf-f4420f795216",
   "reviewerSession": "/root/morpheus_startup_review",
   "risk": "normal",
@@ -102,6 +106,19 @@ and compiled output verification passed again after the correction.
         "evidence": "Controller clock from reviewer invocation 2026-11-15 04:46:15 UTC to received verdict 2026-11-15 04:47:08 UTC."
       },
       "summary": "All three findings cleared on the corrected commit. The reviewer reran 141 focused tests successfully."
+    },
+    {
+      "reviewerSession": "/root/morpheus_startup_review",
+      "commit": "8741d1ade379589b93feca9797aa72f6434a5467",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.25,
+      "timing": {
+        "source": "clock",
+        "durationMs": 75000,
+        "evidence": "Controller clock from invocation 2026-11-15 04:54:40 UTC to received verdict 2026-11-15 04:55:55 UTC."
+      },
+      "scopeReason": "Required Node CI on the already reviewed branch caught two existing instruction guard assertions. Review this correction and generated mirror only.",
+      "summary": "The required read-once and disk read evidence cues are explicit again. The 20 instruction tests pass and the generated mirror matches."
     }
   ]
 }
