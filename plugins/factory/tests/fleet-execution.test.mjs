@@ -1,11 +1,66 @@
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, realpath, rm, stat, symlink } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
 import { test } from "node:test";
-import { createStudioExecutors } from "../src/fleet-execution.mjs";
+import { createStudioExecutor, createStudioExecutors } from "../src/fleet-execution.mjs";
 
 const task = (project, checkout = "git") => ({ source: { project, checkout } });
+
+test("the Studio supervisor retains acknowledged deadline artifacts only with live authority and verified cleanup", async (t) => {
+  const config = { account: "fixture", node: "/node", script: "/executor", workerConfig: "/worker", project: "fixture" };
+  const request = { id: "task", attempt: { id: "attempt" }, source: { project: "fixture" }, selection: {} };
+  const files = [{ name: "notes.txt", type: "text/plain", bytes: "YQ==" },
+    { name: "waveform.mp4", type: "video/mp4", bytes: "Yg==" }];
+  let reply;
+  let launches = 0;
+  t.mock.method(childProcess, "spawn", () => {
+    launches++;
+    const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough() });
+    child.stdin.once("data", () => {
+      for (const artifact of files) child.stdout.write(JSON.stringify({ artifact }) + "\n");
+      child.stdout.end(JSON.stringify({ outcome: reply }) + "\n");
+      setImmediate(() => child.emit("close", 0));
+    });
+    return child;
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+
+  for (const scenario of ["deadline", "partially uploaded", "unverified", "aborted", "ordinary failure"]) {
+    const controller = new AbortController();
+    const calls = [];
+    const previousLaunches = launches;
+    reply = { terminationVerified: scenario !== "unverified", result: { outcome: "failed" },
+      diagnosticCode: scenario === "ordinary failure" ? undefined : "deadline_reached" };
+    const executor = createStudioExecutor(config, async (operation, args) => {
+      assert.equal(operation, "upload");
+      calls.push(args);
+      if (scenario === "partially uploaded" && calls.length === 2) throw new Error("fixture offline");
+      return { name: args.name };
+    }, async () => {
+      if (scenario === "aborted") controller.abort();
+    });
+    const output = await executor.execute({ task: request, admissionId: "admission", prompt: "fixture", signal: controller.signal });
+    if (scenario === "deadline" || scenario === "partially uploaded") {
+      assert.deepEqual(calls, files.map(file => ({ ...file, taskId: "task", attemptId: "attempt" })));
+      assert.equal(output.diagnosticCode, "deadline_reached");
+      assert.equal(output.result.outcome, "failed");
+      assert.deepEqual(output.result.artifacts, scenario === "deadline" ? ["notes.txt", "waveform.mp4"] : ["notes.txt"]);
+    } else {
+      assert.deepEqual(calls, []);
+    }
+    if (scenario === "aborted") assert.equal(launches, previousLaunches);
+    if (scenario === "unverified") assert.deepEqual(output, { terminationVerified: false });
+  }
+});
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "factory-executors-"));

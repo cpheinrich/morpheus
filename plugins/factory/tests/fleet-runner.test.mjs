@@ -136,6 +136,20 @@ test("a verified clarification resumes on its exact previous admission with a fr
   assert.equal(executions.length, 2);
 });
 
+test("a verified invocation deadline settles as failed with its partial artifacts", async (t) => {
+  const { runner, task, started } = await fixture(t);
+  assert.equal(await runner.tick(), "running");
+  const run = await started();
+  const artifacts = ["waveform.mp4", "validation.txt"];
+  run.resolve({ ...output("failed", { artifacts }), diagnosticCode: "deadline_reached" });
+  await setImmediate();
+  assert.equal(await runner.tick(), "settled");
+  assert.equal(task.state, "TASK_STATE_FAILED");
+  assert.deepEqual(task.result, {
+    summary: "Worker reached its invocation deadline. Any returned artifacts are partial.", artifacts,
+  });
+});
+
 test("a cancellation signals the worker and only verified cleanup releases the attempt", async (t) => {
   const { runner, task, calls, started, journal } = await fixture(t);
   await runner.tick();
