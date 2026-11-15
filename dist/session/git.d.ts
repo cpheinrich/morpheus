@@ -69,17 +69,5 @@ export declare function currentBranch(root: string): Promise<string | null>;
  * `--show-toplevel` is the right question.
  */
 export declare function worktreeRoot(root: string): Promise<string>;
-/**
- * What landed on the trunk between two SHAs, for a refresh to show rather
- * than merely assert. An agent told "the remote advanced" and nothing else
- * has to go looking; one `git log` is the difference between a prompt and an
- * answer.
- *
- * **`null` when the trunk could not be read, `[]` when the range is empty.**
- * The same split `doctor`'s `gitLines` was given, and for the same reason: the
- * fetch here transfers objects rather than doing one round trip, so it is what
- * hits the timeout after a day offline — and a caller that renders a failed
- * query as *"nothing on the trunk you do not have"* fails **open**, with the
- * most reassuring sentence available, in the branch added to stop a fail-open.
- */
-export declare function trunkLog(root: string, trunk: TrunkRef, from: string, to: string): Promise<string[] | null>;
+/** Read the verified trunk delta from local objects. A missing range is distinct from an empty one. */
+export declare function trunkLog(root: string, from: string, to: string): Promise<string[] | null>;

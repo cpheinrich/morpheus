@@ -1,4 +1,4 @@
-import { assertCurrentSource, containsSource } from "./start.js";
+import { containsSource } from "./start.js";
 import { ABSENT, CANONICAL_INPUTS, UNREADABLE, leaseAt, observeLease, } from "./lease.js";
 import { fingerprint, readInputs, readRecords } from "./inputs.js";
 import { evidenceMode, readSnapshot, requirements, writeSnapshot, } from "./certify.js";
@@ -66,7 +66,7 @@ export async function refresh(root, now = new Date(), opts = {}) {
     // An asserted receipt — or one taken before evidence existed — is never the
     // baseline a recorded one extends: that would launder the assertion.
     const previous = baselineReceipt(stored, mode);
-    const stale = sha ? await sourceProblem(worktree, id, sha) : undefined;
+    const stale = sha ? await sourceProblem(worktree, id, trunk, sha) : undefined;
     if (stale) {
         return { lease: null, observed: true, written: false, previous, extended: false,
             evidence: { mode, requirements: [] }, issue: stale };
@@ -102,11 +102,19 @@ export async function refresh(root, now = new Date(), opts = {}) {
     };
 }
 /** Why the checked-out source is not the trunk just observed, after invalidating the old certification; undefined when it is. */
-async function sourceProblem(worktree, id, sha) {
+async function sourceProblem(worktree, id, trunk, sha) {
     try {
-        const verified = await assertCurrentSource(worktree);
-        if (verified !== sha)
+        // Prove the advertised tip is already present without writing Git refs.
+        // Keep the second live observation so a moving trunk cannot certify older reads.
+        const verified = await trunkSha(worktree, trunk);
+        const name = `${trunk.remote}/${trunk.branch}`;
+        if (verified.reason === "unreachable")
+            throw new Error(`Could not verify ${name} again during refresh. Check network access and retry.`);
+        if (verified.sha !== sha)
             throw new Error("Trunk moved during refresh. Re-read current source and retry.");
+        if (!await containsSource(worktree, sha)) {
+            throw new Error(`Checkout does not contain current ${name} (${sha}). Run morpheus context brief; integrate trunk into existing work explicitly, then re-read the records and refresh.`);
+        }
         return undefined;
     }
     catch (error) {

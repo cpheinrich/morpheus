@@ -113,6 +113,11 @@ fingerprinted against the tip of `origin/main`. It is good for **five minutes**,
 next governed command re-checks the trunk and those records rather than trusting the old verdict —
 and re-certifies the receipt by itself when nothing moved.
 
+An online refresh needs network access to the configured trunk. It checks the advertised tip
+twice, matches the exact branch ref, and verifies the tip in local history without writing Git
+refs. The receipt's change summary uses local commits. If the checkout still needs the trunk
+commit, use `context brief` or integrate it in the task checkout first.
+
 **Until you have one, these are refused:** `pm claim`, `pm new`, `pm link-issue`, `pm block`,
 `access sync`, `firebase auth setup`, and the provisioning half of `web init` (the list is `GATED`
 in `src/session/gate.ts`). Nothing else is gated — a check that fires on `pm index` trains you to

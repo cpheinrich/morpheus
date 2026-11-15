@@ -87,15 +87,16 @@ export async function resolveTrunk(root: string, declared?: string): Promise<Tru
  * indistinguishable from a dead network.
  */
 export async function trunkSha(root: string, trunk: TrunkRef): Promise<TrunkObservation> {
-  // Fully qualified, because a bare name is a **glob against ref tails**:
-  // `main` matches `refs/tags/main` and `refs/heads/feature/main` as well, and
-  // the output is refname-sorted, so `feature/main` is emitted first and
-  // `split()[0]` takes its SHA. The whole `fresh` verdict turns on this field.
+  // Even a fully qualified ls-remote pattern can match a longer ref's tail.
+  // The receipt needs the exact configured ref, regardless of output order.
   const ref = `refs/heads/${trunk.branch}`;
   const result = await git(root, ["ls-remote", "--exit-code", trunk.remote, ref]);
   if (result.ok) {
-    const sha = result.stdout.split(/\s+/)[0];
-    return sha ? { sha } : { sha: null, reason: "missing" };
+    for (const line of result.stdout.split("\n")) {
+      const [sha, name] = line.split("\t");
+      if (name === ref && sha && /^[a-f0-9]{40}([a-f0-9]{24})?$/.test(sha)) return { sha };
+    }
+    return { sha: null, reason: "missing" };
   }
   return { sha: null, reason: result.code === 2 ? "missing" : "unreachable" };
 }
@@ -133,44 +134,11 @@ export async function worktreeRoot(root: string): Promise<string> {
   return (await out(root, ["rev-parse", "--show-toplevel"])) ?? root;
 }
 
-/**
- * What landed on the trunk between two SHAs, for a refresh to show rather
- * than merely assert. An agent told "the remote advanced" and nothing else
- * has to go looking; one `git log` is the difference between a prompt and an
- * answer.
- *
- * **`null` when the trunk could not be read, `[]` when the range is empty.**
- * The same split `doctor`'s `gitLines` was given, and for the same reason: the
- * fetch here transfers objects rather than doing one round trip, so it is what
- * hits the timeout after a day offline — and a caller that renders a failed
- * query as *"nothing on the trunk you do not have"* fails **open**, with the
- * most reassuring sentence available, in the branch added to stop a fail-open.
- */
-export async function trunkLog(
-  root: string,
-  trunk: TrunkRef,
-  from: string,
-  to: string,
-): Promise<string[] | null> {
-  // An empty endpoint is not a range: git's revision syntax defaults an
-  // omitted side of `..` to `HEAD`, so `abc1234..` silently becomes
-  // `abc1234..HEAD` and answers with the local branch's own commits. Handing
-  // that to a caller that labels the result "landed on main" invents a
-  // specific, plausible answer out of a failed lookup — and the commit
-  // subjects are real, which is what makes it hard to disbelieve.
-  // `null`, not `[]`. The empty array now carries the positive meaning
-  // "nothing on the trunk this branch does not have", and a range that was
-  // never given is not that. Both callers guard both endpoints today, so this
-  // is unreachable — but a guard in the caller and a sentinel in the function
-  // is the arrangement this module has spent several rounds dismantling.
+/** Read the verified trunk delta from local objects. A missing range is distinct from an empty one. */
+export async function trunkLog(root: string, from: string, to: string): Promise<string[] | null> {
+  // An empty endpoint would default to HEAD and answer a different question.
   if (!from || !to) return null;
-  // `from..to` needs both objects locally, so a fetch is part of asking. It is
-  // the only network call a refresh makes beyond `ls-remote`, and the only one
-  // whose cost scales with how long you were away.
-  const fetched = await git(root, ["fetch", "--quiet", trunk.remote, trunk.branch]);
-  if (!fetched.ok) return null;
-
   const log = await git(root, ["log", "--oneline", "--no-decorate", `${from}..${to}`]);
   if (!log.ok) return null;
-  return log.stdout ? log.stdout.split("\n").filter(Boolean) : [];
+  return log.stdout ? log.stdout.split("\n") : [];
 }
