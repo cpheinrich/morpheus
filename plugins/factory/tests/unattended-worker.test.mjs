@@ -609,9 +609,9 @@ test('--reconcile fails closed on incomplete, unproven or ambiguous evidence, an
     guardianIdentity: 'Mon Jan  5 01:02:03 2026 1 ' + uid, ownedProcesses: [{ pid: gone, identity: oldStamp }],
     timing: { startedAt: '2026-01-05T01:02:03.000Z', endedAt: '2026-01-05T01:02:04.000Z', durationMs: 1000 } });
   await mkdir(f.state, { recursive: true, mode: 0o700 });
-  const make = async (edit, { admission = true, proof } = {}) => {
+  const make = async (edit, { admission = true, binding = {}, proof } = {}) => {
     const id = randomUUID(); const dir = join(f.state, id); await mkdir(dir);
-    if (admission) await writeFile(join(dir, 'admission.json'), JSON.stringify({ admissionId: id, binding: {}, sessionId: 'session-old', state: 'admitted' }));
+    if (admission) await writeFile(join(dir, 'admission.json'), JSON.stringify({ admissionId: id, binding, sessionId: 'session-old', state: 'admitted' }));
     const record = edit(base(id), id);
     if (record) await writeFile(join(dir, 'process.json'), JSON.stringify(record));
     if (proof) await writeFile(join(dir, 'reconciliation.json'), proof);
@@ -658,6 +658,33 @@ test('--reconcile fails closed on incomplete, unproven or ambiguous evidence, an
   const helper = fileURLToPath(new URL('../src/termination_proof.py', import.meta.url));
   const shown = (pid, env) => execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', env: { ...process.env, ...env } }).trim();
   const ownedAlive = start(), guardianAlive = start();
+  const fleet = { taskId: randomUUID(), attemptId: randomUUID() };
+  const executor = fileURLToPath(new URL('../scripts/fleet-executor.mjs', import.meta.url));
+  async function fleetRecovery(job, binding) {
+    const child = spawn(process.execPath, [executor, f.configPath, 'fixture'], { stdio: ['pipe', 'pipe', 'inherit'] });
+    child.stdin.write(JSON.stringify({ op: 'recover', admissionId: job.id, binding }) + '\n');
+    let output = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', chunk => { output += chunk; });
+    assert.equal((await once(child, 'close'))[0], 0);
+    return JSON.parse(output).outcome;
+  }
+  const stoppedFleet = await make(r => r, { binding: { fleet } });
+  assert.equal((await fleetRecovery(stoppedFleet, { ...fleet, attemptId: randomUUID() })).terminationVerified, false);
+  await assert.rejects(readFile(join(stoppedFleet.dir, 'reconciliation.json')), { code: 'ENOENT' });
+  const incompleteFleet = await make(r => r, { binding: { fleet: {} } });
+  assert.equal((await fleetRecovery(incompleteFleet, {})).terminationVerified, false);
+  await assert.rejects(readFile(join(incompleteFleet.dir, 'reconciliation.json')), { code: 'ENOENT' });
+  const liveFleet = await make(r => ({ ...r, ownedProcesses: [{ pid: ownedAlive, identity: [uid, ...lstart(ownedAlive)] }] }),
+    { binding: { fleet } });
+  assert.equal((await fleetRecovery(liveFleet, fleet)).terminationVerified, false);
+  await assert.rejects(readFile(join(liveFleet.dir, 'reconciliation.json')), { code: 'ENOENT' });
+  assert.equal(alive(ownedAlive), true, 'recovery did not signal the owned process');
+  const recoveredFleet = await fleetRecovery(stoppedFleet, fleet);
+  assert.equal(recoveredFleet.admissionId, stoppedFleet.id);
+  assert.equal(recoveredFleet.terminationVerified, true);
+  assert.equal((await json(join(stoppedFleet.dir, 'reconciliation.json'))).method, 'fresh owned-process census');
+  assert.deepEqual(await readFile(join(stoppedFleet.dir, 'process.json')), stoppedFleet.bytes);
   const zone = ['Pacific/Kiritimati', 'Etc/GMT+12'].find(tz => shown(ownedAlive, { TZ: tz }) !== shown(ownedAlive, {}));
   for (const [label, env] of [[`TZ=${zone}`, { TZ: zone }], ['LC_ALL=en_GB.UTF-8', { LC_ALL: 'en_GB.UTF-8' }]]) {
     assert.notEqual(shown(ownedAlive, env), shown(ownedAlive, {}), `${label} prints a different start time`);
