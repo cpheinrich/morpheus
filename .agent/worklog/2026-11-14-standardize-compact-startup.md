@@ -18,3 +18,91 @@ Address those in Lakina's rollout while preserving pinned evidence.
 
 Verification: typecheck, compilation, PM index, complexity enforcement, and
 120 tests across init, rollout policy, task lookup, MCP and session start.
+
+A fresh Codex app-server session discovered the checkout's actual Context MCP,
+found the rollout item, and opened exact source lines. It verified lookup. The
+focused task-context suite exercised recorded reading and the separate task gate.
+
+Independent review cleared compact project startup after fixing receipt recovery, the scaffold policy tests and the PM runbook. The three follow-up suites passed 141 tests. Typecheck, lint,
+and compiled output verification passed again after the correction.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "5b29ff982b704a720ddec2f27f934a53ba073e7d",
+  "reviewed": "f802391741e2c85340ef0a9b0ea2e6175cea268a",
+  "covered": "5fddcebdc0ba2905283b4048df31820a0bd4a437",
+  "authorSession": "01a1dc33-4d68-7693-bdbf-f4420f795216",
+  "reviewerSession": "/root/morpheus_startup_review",
+  "risk": "normal",
+  "elapsedMinutes": 2.9166666666666665,
+  "timing": {
+    "source": "clock",
+    "durationMs": 175000,
+    "evidence": "Controller clock from reviewer invocation 2026-11-15 04:42:00 UTC to received verdict 2026-11-15 04:44:55 UTC."
+  },
+  "outcome": "complete",
+  "summary": "Independent review cleared compact project startup after fixing receipt recovery, the scaffold policy tests and the PM runbook.",
+  "contextRead": [
+    "AGENTS.md",
+    "architecture.md",
+    ".agent/README.md",
+    ".agent/context-core.md",
+    ".agent/decisions.md",
+    "docs/runbooks/context-search.md",
+    "docs/runbooks/context-freshness.md",
+    "docs/runbooks/independent-review.md",
+    "docs/runbooks/pm-workflow.md",
+    "docs/runbooks/test-quality.md",
+    ".agent/worklog/2026-11-07-context-search-rollout.md",
+    ".agent/worklog/2026-11-14-standardize-compact-startup.md",
+    "hq/product/roadmap/MO-26-11-14-20.37.36-standardize-compact-startup.md"
+  ],
+  "findings": [
+    {
+      "id": "STARTUP-01",
+      "severity": "substantive",
+      "description": "A no-receipt refusal still told compact sessions to reread both full logs.",
+      "paths": [
+        "src/session/gate.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Point to the active startup brief and assert the recovery cue for a compact session."
+    },
+    {
+      "id": "STARTUP-02",
+      "severity": "substantive",
+      "description": "The all-kind scaffold test expected the inbox in the required records even under the new policy.",
+      "paths": [
+        "tests/session-gate.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Pin each kind's compact and full canonical inputs, and independently check that the inbox is created."
+    },
+    {
+      "id": "STARTUP-03",
+      "severity": "substantive",
+      "description": "The PM runbook still told fresh sessions to read both canonical logs.",
+      "paths": [
+        "docs/runbooks/pm-workflow.md"
+      ],
+      "disposition": "fixed",
+      "response": "Direct startup to the brief and task records to Context search."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/morpheus_startup_review",
+      "commit": "5fddcebdc0ba2905283b4048df31820a0bd4a437",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.8833333333333333,
+      "timing": {
+        "source": "clock",
+        "durationMs": 53000,
+        "evidence": "Controller clock from reviewer invocation 2026-11-15 04:46:15 UTC to received verdict 2026-11-15 04:47:08 UTC."
+      },
+      "summary": "All three findings cleared on the corrected commit. The reviewer reran 141 focused tests successfully."
+    }
+  ]
+}
+```
