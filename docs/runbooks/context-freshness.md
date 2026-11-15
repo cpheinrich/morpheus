@@ -99,7 +99,10 @@ remote-tracking ref, and says when that cache may be stale.
 (safe to delete) and other untracked files separately. `self update` and `self ensure` build from a
 disposable clone and never read a working checkout, so they have nothing to rescue.
 
-**Read `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md`, then:**
+Read the startup brief's required files from disk, including `AGENTS.md` (also
+listed as `CLAUDE.md` where it is a symlink). Compact startup lists the declared
+core. Full startup lists the canonical decisions and lessons and any other
+required records. Then run:
 
 ```sh
 morpheus context refresh

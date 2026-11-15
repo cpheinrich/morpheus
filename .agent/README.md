@@ -2,9 +2,10 @@
 
 What agents know, and what they and the humans have already worked out.
 
-**Read `decisions.md` and `learned.md` at the start of a session.** The other two directories
-are raw record — go there when you need the context behind a distilled line, or to check
-whether something was already asked.
+Read `context-core.md` when listed by the startup brief. Use Morpheus Context to find decisions,
+lessons and prior attempts once the task is known. Write short entries under descriptive headings
+in the root records. Longer records may have their own files, with links where readers need them.
+Keep each decision or lesson in one authoritative place.
 
 ## Structure
 
@@ -22,8 +23,9 @@ Two raw logs, each feeding exactly one distillation:
 
 ```
 .agent/
-├── decisions.md          settled choices and their reasoning  ← read first
-├── learned.md            technical facts and gotchas          ← read first
+├── context-core.md       rules required at compact startup
+├── decisions.md          settled choices and their reasoning
+├── learned.md            technical facts and gotchas
 ├── inbox-archive/        2026-07-29-0407-cpheinrich.md
 └── worklog/              2026-07-29-evo-retrofit.md
 ```

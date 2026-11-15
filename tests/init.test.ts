@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { load } from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffold } from "../src/init/index.js";
+import { projectPolicy } from "../src/session/policy.js";
 import {
   IOS_NIGHTLY_SECRETS,
   analyticsSchema,
@@ -136,11 +137,14 @@ describe("morpheus init", () => {
     expect(await read(".morpheus/session-start.sh")).toContain("predates version-independent");
     expect(await read(".morpheus/README.md")).toContain("explicit yes");
 
-    // The handle is what puts the inbox in the required set. Scaffolding the
-    // file without declaring it certifies a session that never opened the one
-    // record a human replies in.
     const manifest = JSON.parse(await read("morpheus.json")) as { context: { handle: string } };
     expect(manifest.context.handle).toBe(SEED.owner);
+    expect((await projectPolicy(dir, "fresh-scaffold-session")).requiredInputs).toEqual([
+      "CLAUDE.md", ".agent/context-core.md",
+    ]);
+    expect((await projectPolicy(dir, "")).requiredInputs).toEqual([
+      "CLAUDE.md", ".agent/decisions.md", ".agent/learned.md",
+    ]);
   });
 
   it("scaffolds the default-on visual-evidence policy and PR guidance", async () => {

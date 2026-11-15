@@ -74,6 +74,7 @@ export declare const learned: () => string;
 export declare const analyticsSchema: () => string;
 export declare const sharedReadme: () => string;
 export declare const sharedSchemaReadme: () => string;
+export declare const contextCore: () => string;
 export declare const agentReadme: () => string;
 export declare const worklogReadme: () => string;
 export declare const inboxArchiveReadme: () => string;

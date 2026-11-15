@@ -24,11 +24,10 @@ export const manifest = (s) => JSON.stringify({
     name: s.name,
     prefix: s.prefix,
     kind: s.kind,
-    // The handle puts `hq/team/<handle>.md` into the session-freshness
-    // required set. It is the record a human actually replies in, so an
-    // agent resuming without re-reading it is the failure the protocol
-    // exists for — and the policy cannot derive a handle on its own.
-    context: { handle: s.owner },
+    context: {
+        handle: s.owner,
+        search: { rollout: { id: "context-search-pilot-v1", coreInputs: [".agent/context-core.md"] } },
+    },
     review: { required: true, visualEvidence: DEFAULT_VISUAL_EVIDENCE },
     // Advisory: the check reports from day one and never blocks; a project
     // enforces once its own baseline is within the limit.
@@ -774,7 +773,7 @@ ${morpheusCalloutForAgents()}
 | \`hq/team/<handle>.md\` | How a person and their agents exchange state |
 | \`hq/brand/\` | Strategy, voice, visual system and tokens |
 | \`hq/onboarding.md\` | Setup checklist — \`morpheus init status\` |
-| \`.agent/decisions.md\` | Settled choices and why — **read this first** |
+| \`.agent/decisions.md\` | Settled choices and why |
 | \`.agent/learned.md\` | Things that have bitten us |
 | \`.agent/worklog/\` | What was attempted per task, including dead ends |
 
@@ -916,7 +915,7 @@ After merge: \`morpheus pm cleanup <ID>\` from the primary checkout removes its 
 `;
 export const decisions = (s) => `# Decisions
 
-Settled choices and the reasoning behind them. **Read this at the start of every session.**
+Settled choices and the reasoning behind them. Search this record when it bears on the task.
 
 If a decision here looks wrong, say so and ask — do not quietly work around it. A decision worked
 around rather than revisited is one that gets made again, differently, next month.
@@ -1024,12 +1023,23 @@ export const sharedSchemaReadme = () => `# Shared schemas
 Product-owned source contracts live here. This includes analytics event vocabularies as well as
 database document shapes; generated client types and provider-specific adapters live elsewhere.
 `;
+export const contextCore = () => `# Session core
+
+Read the project instructions and applicable runbooks. Search for governing decisions, lessons and
+prior attempts once the task is known. Read the relevant inbox when handling replies.
+
+Add project rules here only when every session needs them.
+`;
 export const agentReadme = () => `# .agent
 
-Four records, each answering a different question.
+Read the declared core when the startup brief lists it. Use Morpheus Context to find
+task records. Write short decisions and lessons under descriptive headings in the root
+files. A longer record may have its own file and a link where readers need it. Keep
+each record in one authoritative place.
 
 | File | Question it answers |
 |---|---|
+| \`context-core.md\` | What does every session need before starting? |
 | \`decisions.md\` | What did we settle, and why? |
 | \`learned.md\` | What has bitten us before? |
 | \`worklog/\` | What happened during this task, including what failed? |
@@ -1659,8 +1669,9 @@ reuses a task's existing worktree. Pass \`--session-id\` to claim/resume when st
 (Codex defaults to \`CODEX_THREAD_ID\`). Never infer that an unrelated request belongs to the
 checked-out task, and do not run concurrent authors in one worktree.
 
-**Read \`AGENTS.md\` (an injected copy leaves no read evidence), \`.agent/decisions.md\`,
-\`.agent/learned.md\` and your inbox once at session start, then run \`morpheus context refresh\` once.**
+**Read the brief's required records from disk, including \`AGENTS.md\`, then run
+\`morpheus context refresh\` once.** Search task records on demand and read the inbox
+when handling replies.
 Then just run the gated command — \`pm claim\`, \`pm new\`, \`pm link-issue\`, \`pm block\`,
 \`access sync\`, \`firebase auth setup\`, \`web init\` (provisioning); past five minutes the gate
 re-checks by itself. **Refresh again only when a gated command refuses.**

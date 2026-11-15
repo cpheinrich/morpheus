@@ -16,7 +16,14 @@
     "dispatch": false
   },
   "context": {
-    "handle": "cpheinrich"
+    "handle": "cpheinrich",
+    "search": {
+      "transport": "mcp",
+      "rollout": {
+        "id": "context-search-pilot-v1",
+        "coreInputs": [".agent/context-core.md"]
+      }
+    }
   },
   "review": {
     "visualEvidence": {
