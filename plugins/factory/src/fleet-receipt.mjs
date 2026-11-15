@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const fleetDiagnostic = z.enum(["source_fetch_failed", "checkout_failed", "executor_invocation_failed", "workspace_policy_mismatch", "deadline_reached"]);
+
 const time = z.iso.datetime({ precision: 3 });
 const timing = z.object({
   source: z.literal("runner"),

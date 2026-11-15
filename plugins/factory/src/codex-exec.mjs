@@ -69,6 +69,8 @@ export function codexArgs(session, selection, permission, gateway = null, cwd) {
   if (selection.model) args.push("-m", selection.model);
   if (selection.effort)
     args.push("-c", `model_reasoning_effort="${selection.effort}"`);
+  if (selection.writableRoots?.length)
+    args.push("-c", `sandbox_workspace_write.writable_roots=${JSON.stringify(selection.writableRoots)}`);
   args.push(...contextMcpArgs(cwd, "codex"), "--output-schema", resultSchemaPath);
   if (session) args.push(session);
   args.push("-"); // The prompt arrives on stdin, never in argv.

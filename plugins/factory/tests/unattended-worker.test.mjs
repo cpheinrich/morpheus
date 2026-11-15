@@ -9,6 +9,7 @@ import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { gatewayWorker, readWorkerConfig, workerResult } from '../src/gateway-worker.mjs';
 import { key } from '../src/store.mjs';
+import { bindWorkspace } from '../src/fleet-workspace.mjs';
 const cli = fileURLToPath(new URL('../scripts/gateway-worker.mjs', import.meta.url));
 const secret = 'secret-gateway-only-123456';
 const doneScript = `import sys,json,os,pathlib
@@ -685,6 +686,23 @@ test('--reconcile fails closed on incomplete, unproven or ambiguous evidence, an
   assert.equal(recoveredFleet.terminationVerified, true);
   assert.equal((await json(join(stoppedFleet.dir, 'reconciliation.json'))).method, 'fresh owned-process census');
   assert.deepEqual(await readFile(join(stoppedFleet.dir, 'process.json')), stoppedFleet.bytes);
+  const workspace = bindWorkspace({ id: 'related', primary: 'fixture', profile: 'build', sandbox: 'workspace-write',
+    repositories: [{ project: 'fixture', comparisonRef: 'refs/remotes/origin/main', comparisonRevision: '1'.repeat(40) }] },
+  { id: 'related', revisions: { fixture: '2'.repeat(40) } });
+  const workspaceFleet = { ...fleet, workspace };
+  const stoppedWorkspace = await make(r => r, { binding: { fleet: workspaceFleet } });
+  const changedRevision = structuredClone(workspace);
+  changedRevision.repositories[0].revision = '3'.repeat(40);
+  for (const changed of [undefined, { ...workspace, profile: 'other' },
+    { ...workspace, policyDigest: '0'.repeat(64) }, changedRevision]) {
+    assert.equal((await fleetRecovery(stoppedWorkspace, { ...fleet, workspace: changed })).terminationVerified, false);
+    await assert.rejects(readFile(join(stoppedWorkspace.dir, 'reconciliation.json')), { code: 'ENOENT' });
+  }
+  const recoveredWorkspace = await fleetRecovery(stoppedWorkspace, workspaceFleet);
+  assert.equal(recoveredWorkspace.admissionId, stoppedWorkspace.id);
+  assert.equal(recoveredWorkspace.terminationVerified, true);
+  assert.equal((await json(join(stoppedWorkspace.dir, 'reconciliation.json'))).method, 'fresh owned-process census');
+  assert.deepEqual(await readFile(join(stoppedWorkspace.dir, 'process.json')), stoppedWorkspace.bytes);
   const zone = ['Pacific/Kiritimati', 'Etc/GMT+12'].find(tz => shown(ownedAlive, { TZ: tz }) !== shown(ownedAlive, {}));
   for (const [label, env] of [[`TZ=${zone}`, { TZ: zone }], ['LC_ALL=en_GB.UTF-8', { LC_ALL: 'en_GB.UTF-8' }]]) {
     assert.notEqual(shown(ownedAlive, env), shown(ownedAlive, {}), `${label} prints a different start time`);

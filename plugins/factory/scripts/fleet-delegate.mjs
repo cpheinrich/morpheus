@@ -6,8 +6,8 @@ import { call } from "../src/client.mjs";
 import { home } from "../src/config.mjs";
 import { atomic, key, readJSON } from "../src/store.mjs";
 import { readPlacement } from "../src/fleet-placement.mjs";
-import { checkoutInfo } from "../src/workspace.mjs";
-import { fleetControllerPath, fleetOperation } from "./fleet-mcp.mjs";
+import { checkoutInfo, gitEnv } from "../src/workspace.mjs";
+import { authorizeFleetProjects, fleetControllerPath, fleetOperation } from "./fleet-mcp.mjs";
 
 const states = {
   TASK_STATE_SUBMITTED: "starting",
@@ -19,7 +19,7 @@ const states = {
 };
 const runPath = (id) => join(home(), "fleet-runs", `${id}.json`);
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], {
-  encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"],
+  env: gitEnv(), encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"],
 }).trim();
 
 export async function fleetTarget(config, cwd) {
@@ -36,22 +36,22 @@ export async function fleetTarget(config, cwd) {
   return { project: candidates[0], revision: git(target.cwd, "rev-parse", "HEAD") };
 }
 
-function projectRun({ task, question, pending }, runId) {
+export function projectRun({ task, question, pending, receipt }, runId) {
   if (pending) return { runId, placement: "fleet", pending };
   const state = states[task.state] ?? "interrupted";
   return {
     id: task.id, runId: task.id, placement: "fleet", state, selection: task.selection,
     terminal: ["completed", "failed", "canceled"].includes(state),
     hostId: (task.attempt ?? task.lastAttempt)?.hostId, result: task.result,
-    source: task.source, question,
+    source: task.source, receipt, question,
     task: { id: task.id, contextId: task.contextId, status: { state: task.state } },
   };
 }
 
 function checkOptions(args) {
-  if (args.provider === "claude" || args.repos?.length || args.effort || args.speed === "fast" ||
+  if (args.provider === "claude" || args.effort || args.speed === "fast" ||
       args.fresh || args.background)
-    throw new Error("This fleet route supports one checkout and the enrolled Codex worker settings.");
+    throw new Error("This Fleet route requires enrolled Codex settings and an explicitly enrolled repository set.");
 }
 
 async function submit(method, args, authorize) {
@@ -62,22 +62,30 @@ async function submit(method, args, authorize) {
     throw error;
   });
   const target = await fleetTarget(config, args.cwd);
+  const targets = await Promise.all((args.repos ?? []).map(path => fleetTarget(config, path)));
+  if (targets.length || Object.values(config.workspaces ?? {}).some(w => w.primary === target.project)) {
+    const projects = [target, ...targets].map(t => t.project).sort();
+    const matches = Object.entries(config.workspaces ?? {}).filter(([, w]) =>
+      w.primary === target.project && JSON.stringify([...w.projects].sort()) === JSON.stringify(projects));
+    if (matches.length !== 1 || new Set(projects).size !== projects.length) throw new Error("No unique enrolled Fleet workspace matches the repository set");
+    target.workspace = { id: matches[0][0], revisions: Object.fromEntries([target, ...targets].map(t => [t.project, t.revision])) };
+  }
+  if (args.workspace) throw new Error("Use cwd and repos to select the enrolled workspace");
+  const checkoutPaths = Object.fromEntries([[target.project, args.cwd], ...targets.map((t, i) => [t.project, args.repos[i]])]);
   if (method === "inspect") {
-    await authorize("factory.remoteAuthorize", {
-      rootId: args.rootId, projectPath: config.projects[target.project], checkoutPath: args.cwd,
-    });
+    await authorizeFleetProjects(config, args.rootId, target.project, target.workspace, { checkoutPath: args.cwd, checkoutPaths }, authorize);
     return { placement: "fleet", target, admission: "pending", availability: "unknown", quota: null,
       reason: "Local source preflight passed. The service validates enrollment at submission and Studio checks quota before launch." };
   }
   const result = await fleetOperation(args.rootId, {
     op: "submit", ...target, text: args.prompt, display: args.display, model: args.model, messageId: args.messageId ?? randomUUID(),
-  }, { checkoutPath: args.cwd });
+  }, { checkoutPath: args.cwd, checkoutPaths });
   await mkdir(join(home(), "fleet-runs"), { recursive: true, mode: 0o700 });
-  await atomic(runPath(result.task.id), { rootId: args.rootId, checkoutPath: args.cwd });
+  await atomic(runPath(result.task.id), { rootId: args.rootId, checkoutPath: args.cwd, checkoutPaths });
   return projectRun(result, result.task.id);
 }
 
-async function reply(method, args, checkoutPath) {
+async function reply(method, args, checkoutPath, checkoutPaths) {
   const body = { taskId: args.runId };
   const { task } = await fleetOperation(args.rootId, { ...body, op: "get" });
   const source = method === "delegate" ? args.replySource : args.source;
@@ -90,7 +98,7 @@ async function reply(method, args, checkoutPath) {
   const response = await fleetOperation(args.rootId, {
     ...body, op: "answer", attemptId: task.attempt.id, questionId: task.questionId, text,
     messageId: key(`${task.questionId}\0${source}\0${text}`),
-  }, { checkoutPath });
+  }, { checkoutPath, checkoutPaths });
   if (response.reason) throw new Error(`Fleet reply refused: ${response.reason}`);
   return projectRun(await fleetOperation(args.rootId, { ...body, op: "get" }), args.runId);
 }
@@ -106,7 +114,7 @@ export async function dispatchFleet(method, args, { authorize = call } = {}) {
     return undefined;
   }
   if (record.rootId !== args.rootId || args.placement === "local") throw new Error("Fleet run is outside this route or root.");
-  if (method === "answer" || method === "delegate") return reply(method, args, record.checkoutPath);
+  if (method === "answer" || method === "delegate") return reply(method, args, record.checkoutPath, record.checkoutPaths);
   const body = { taskId: args.runId };
   if (method === "stop") {
     const response = await fleetOperation(args.rootId, { ...body, op: "cancel" });

@@ -3,7 +3,7 @@ import { constants } from "node:fs";
 import { open, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute } from "node:path";
 import { pullRequestsInEvidence } from "./fleet-display.mjs";
-import { invocationReceipt, notLaunched } from "./fleet-receipt.mjs";
+import { fleetDiagnostic, invocationReceipt, notLaunched } from "./fleet-receipt.mjs";
 
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const states = ["claiming", "preparing", "running", "waiting", "finishing"];
@@ -88,8 +88,9 @@ function questionText(output) {
 function resultFor(output) {
   const result = output?.result;
   if (output?.diagnosticCode === "deadline_reached")
-    return { summary: "Worker reached its invocation deadline. Any returned artifacts are partial.", artifacts: result?.artifacts ?? [] };
-  if (result?.outcome !== "completed") return { summary: "Worker did not complete the task." };
+    return { summary: "Worker reached its invocation deadline. Any returned artifacts are partial.", diagnosticCode: "deadline_reached", artifacts: result?.artifacts ?? [] };
+  if (result?.outcome !== "completed") return { summary: "Worker did not complete the task.",
+    ...(fleetDiagnostic.safeParse(output?.diagnosticCode).success ? { diagnosticCode: output.diagnosticCode } : {}) };
   const summary = typeof result.summary === "string" ? result.summary.slice(0, 8192) : "";
   const pullRequests = pullRequestsInEvidence(result.evidence);
   return { summary, ...(Array.isArray(result.artifacts) && { artifacts: result.artifacts }),
@@ -141,8 +142,8 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     return "held";
   }
 
-  function finishBeforeLaunch(record, outcome, summary) {
-    return finish(record, outcome, { summary }, true, notLaunched(record.admissionId));
+  function finishBeforeLaunch(record, outcome, summary, diagnosticCode) {
+    return finish(record, outcome, { summary, ...(diagnosticCode ? { diagnosticCode } : {}) }, true, notLaunched(record.admissionId));
   }
 
   async function start(record, task, prompt, answerId = null) {
@@ -170,7 +171,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     active = run;
     Promise.resolve()
       .then(() => prepare(task, run.controller.signal))
-      .then((ready) => { run.output = ready === true; }, () => {})
+      .then((ready) => { run.output = ready === true; run.diagnosticCode = fleetDiagnostic.safeParse(ready?.diagnosticCode).data; }, () => {})
       .finally(() => { run.done = true; });
     return "preparing";
   }
@@ -180,7 +181,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     if (task.cancelRequestedAt != null)
       return finishBeforeLaunch(record, canceled, "Canceled before launching the worker.");
     if (!active?.output || active.stopReason || stopping)
-      return finishBeforeLaunch(record, failed, "Studio source preparation failed or was interrupted before launch.");
+      return finishBeforeLaunch(record, failed, "Studio source preparation failed or was interrupted before launch.", active?.diagnosticCode);
     return start(record, task, task.brief.text);
   }
 

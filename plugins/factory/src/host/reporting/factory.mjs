@@ -34,7 +34,7 @@ function terminalRecord(r,p,channel) {
 }
 function bindingFor(r,channel) {
   if(channel === 'desktop') return {executor:r.executor,invocationId:r.id,cwd:r.cwd,gateway:r.gateway,task:r.threadId,workspace:r.workspace,selection:r.selection};
-  return {executor:r.binding?.gateway?.provider,invocationId:r.admissionId,cwd:r.binding?.cwd,gateway:r.binding?.gateway?.name,task:r.binding?.jobId,workspace:{},selection:r.binding};
+  return {executor:r.binding?.gateway?.provider,invocationId:r.admissionId,cwd:r.binding?.cwd,gateway:r.binding?.gateway?.name,task:r.binding?.jobId,workspace:Object.fromEntries((r.binding?.writableRoots??[]).map(path=>[path,{path}])),selection:r.binding};
 }
 function observedStart(r,p) {
   const value=p?.timing?.startedAt??r.createdAt;

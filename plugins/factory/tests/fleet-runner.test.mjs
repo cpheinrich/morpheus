@@ -153,7 +153,7 @@ test("a verified invocation deadline settles as failed with its partial artifact
   assert.equal(await runner.tick(), "settled");
   assert.equal(task.state, "TASK_STATE_FAILED");
   assert.deepEqual(task.result, {
-    summary: "Worker reached its invocation deadline. Any returned artifacts are partial.", artifacts,
+    summary: "Worker reached its invocation deadline. Any returned artifacts are partial.", diagnosticCode: "deadline_reached", artifacts,
   });
 });
 
@@ -305,3 +305,17 @@ test("supervisor recovery carries the exact admission receipt, never proof from 
   assert.deepEqual(calls.at(-1)[1].invocation, invocation);
   assert.deepEqual(executions, []);
 });
+
+for (const diagnosticCode of ["source_fetch_failed", "checkout_failed", "executor_invocation_failed"]) {
+  test(`prelaunch ${diagnosticCode} survives the durable settlement without launching`, async t => {
+    const f = await fixture(t);
+    f.task.source = { checkout: "git" };
+    const runner = createFleetRunner({ ...f.options, prepare: async () => ({ prepared: false, diagnosticCode }) });
+    assert.equal(await runner.tick(), "preparing");
+    await setImmediate();
+    assert.equal(await runner.tick(), "settled");
+    assert.equal(f.task.result.diagnosticCode, diagnosticCode);
+    assert.deepEqual(f.calls.at(-1)[1].invocation, { launch: "never-launched", admissionId: null, sessionId: null });
+    assert.deepEqual(f.executions, []);
+  });
+}

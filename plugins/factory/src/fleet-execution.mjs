@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { notLaunched } from "./fleet-receipt.mjs";
-import { fetchStudioRevision } from "./fleet-source.mjs";
+import { enrolledWorkspace } from "./fleet-workspace-checkout.mjs";
+import { fetchWorkspaceRevision, fetchStudioRevision } from "./fleet-source.mjs";
 import { realpathSync, statSync } from "node:fs";
 import { once } from "node:events";
 import { isAbsolute } from "node:path";
@@ -63,7 +64,9 @@ function startExecutor(config) {
 }
 
 async function invoke(config, input, signal) {
-  const child = startExecutor(config);
+  let child;
+  try { child = startExecutor(config); }
+  catch { return null; }
   child.stdin.on("error", () => {});
   const exited = once(child, "close").catch(() => [-1]);
   const stop = () => { if (!child.stdin.writableEnded) child.stdin.end("stop\n"); };
@@ -86,7 +89,7 @@ function sourceBinding(config, task) {
 }
 
 function attemptBinding(task) {
-  return { taskId: task.id, attemptId: task.attempt.id };
+  return { taskId: task.id, attemptId: task.attempt.id, ...(task.source.workspace ? { workspace: task.source.workspace } : {}) };
 }
 
 export function createStudioExecutor(config, call, checkQuota) {
@@ -94,11 +97,24 @@ export function createStudioExecutor(config, call, checkQuota) {
   return {
     async prepare(task, signal) {
       if (signal.aborted) return false;
-      const checkout = sourceBinding(config, task);
-      await fetchStudioRevision(checkout.mirror, task.source.revision);
+      let checkout;
+      try {
+        if (task.source.workspace) {
+          const { workspace, config: host } = enrolledWorkspace(config.fleetWorkspace, task.source.workspace, config.fleetWorkspace?.policy.sandbox);
+          checkout = { attemptId: task.attempt.id };
+          for (const repo of workspace.repositories) {
+            if (signal.aborted) return false;
+            await fetchWorkspaceRevision(host.mirrors[repo.project], repo);
+          }
+        } else {
+          if (config.fleetWorkspace) throw new Error("Workspace binding required");
+          checkout = sourceBinding(config, task);
+          await fetchStudioRevision(checkout.mirror, task.source.revision);
+        }
+      } catch { return { prepared: false, diagnosticCode: "source_fetch_failed" }; }
       if (signal.aborted) return false;
       const output = await invoke(config, { op: "prepare", source: task.source, checkout }, signal);
-      return output?.outcome?.prepared === true;
+      return output?.outcome?.prepared === true ? true : { prepared: false, diagnosticCode: output ? "checkout_failed" : "executor_invocation_failed" };
     },
     async execute({ task, admissionId, resume, prompt, signal }) {
       if (signal.aborted) return noLaunch(admissionId);
@@ -108,14 +124,19 @@ export function createStudioExecutor(config, call, checkQuota) {
         return { terminationVerified: true, invocation: notLaunched(admissionId), result: { outcome: "failed", summary: "Studio gateway quota is unavailable or above the Factory limit." } };
       }
       if (signal.aborted) return noLaunch(admissionId);
+      if (task.source.workspace) {
+        try { enrolledWorkspace(config.fleetWorkspace, task.source.workspace, config.fleetWorkspace?.policy.sandbox); }
+        catch { return { ...noLaunch(admissionId), diagnosticCode: "workspace_policy_mismatch" }; }
+      } else if (config.fleetWorkspace) return { ...noLaunch(admissionId), diagnosticCode: "workspace_policy_mismatch" };
       // Do not serialize the retained brief or mailbox with the current prompt.
       const output = await invoke(config, {
         task: { source: task.source, selection: task.selection }, admissionId, resume, prompt,
         binding: attemptBinding(task),
         gatewayBaseUrl: config.gatewayBaseUrl,
-        checkout: task.source.checkout === "git" ? sourceBinding(config, task) : undefined,
+        checkout: task.source.workspace ? { attemptId: task.attempt.id } : task.source.checkout === "git" ? sourceBinding(config, task) : undefined,
       }, signal);
-      if (output?.outcome?.terminationVerified !== true) return { terminationVerified: false };
+      if (!output) return { terminationVerified: false, diagnosticCode: "executor_invocation_failed" };
+      if (output.outcome?.terminationVerified !== true) return { terminationVerified: false };
       return publish(call, output, task, signal);
     },
     async recover(admissionId, task) {
@@ -131,6 +152,14 @@ function mirrorIdentity(path) {
   return `${dev}:${ino}`;
 }
 
+function additionalRoute(primary, fields, project) {
+  const { account, sourceMirror, workerConfig, fleetWorkspace } = fields ?? {};
+  const route = { ...primary, account, sourceMirror, workerConfig, project };
+  delete route.fleetWorkspace;
+  if (fleetWorkspace) route.fleetWorkspace = fleetWorkspace;
+  return route;
+}
+
 export function createStudioExecutors(config, call, checkQuota, create = createStudioExecutor) {
   const { additionalGitProjects = {}, ...primary } = config;
   if (!additionalGitProjects || Object.getPrototypeOf(additionalGitProjects) !== Object.prototype)
@@ -143,8 +172,8 @@ export function createStudioExecutors(config, call, checkQuota, create = createS
   if (primary.sourceMirror && Object.keys(additionalGitProjects).length)
     mirrors.add(mirrorIdentity(primary.sourceMirror));
   for (const [project, fields] of Object.entries(additionalGitProjects)) {
-    const { account, sourceMirror, workerConfig } = fields ?? {};
-    const route = { ...primary, account, sourceMirror, workerConfig, project };
+    const route = additionalRoute(primary, fields, project);
+    const { account, sourceMirror } = route;
     if (project === primary.project || typeof account !== "string" || accounts.has(account) ||
         typeof sourceMirror !== "string" || !validExecution(route))
       throw new Error("Invalid or duplicate additional Studio Git route");
