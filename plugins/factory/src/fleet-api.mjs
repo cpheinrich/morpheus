@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
+import { fleetCodexModel } from "./config.mjs";
 import { claimTask, renewAttempt, settleAttempt } from "./fleet-claims.mjs";
 import { answerQuestion, askQuestion, cancelTask, submitTask } from "./fleet-mailbox.mjs";
 import { fleetDiagnostic, invocationReceipt, receiptPath } from "./fleet-receipt.mjs";
@@ -39,7 +40,7 @@ const worker = {
   }),
 };
 const controller = {
-  submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, workspace: workspaceIntent.optional(), model: id.optional(), display: dashboardMetadata.optional() }),
+  submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, workspace: workspaceIntent.optional(), model: fleetCodexModel.optional(), display: dashboardMetadata.optional() }),
   get: z.object(scope),
   readiness: z.object({ rootId: id, project: id }),
   answer: z.object({ ...scope, attemptId: id, questionId: id, messageId: id, text: message }),
