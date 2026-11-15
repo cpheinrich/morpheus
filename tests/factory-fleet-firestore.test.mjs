@@ -226,6 +226,39 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
     status: "available", observedAt: new Date(now).toISOString(),
     tasks: [queued, { ...queued, id: finishedId, state: "succeeded", createdAt: now - 1, reportedPullRequests: [43] }],
   });
+  // Unverified work remains visible, including at the exact lease boundary.
+  const previous = [
+    ["TASK_STATE_WORKING", { hostId: "studio", leaseUntil: now }],
+    ["TASK_STATE_INPUT_REQUIRED", { hostId: "studio", leaseUntil: now - 1 }],
+    ["TASK_STATE_UNSPECIFIED", { hostId: "studio", leaseUntil: now + 1 }],
+    ["TASK_STATE_SUBMITTED", null, now],
+  ];
+  const ids = previous.map((_, n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`);
+  await Promise.all(previous.map(([state, attempt, cancelRequestedAt = null], n) => db.doc(`factoryTasks/${ids[n]}`).set({
+    ...task, state, attempt, cancelRequestedAt, queuedSlots: [],
+  })));
+  const held = await call("viewer", "work", {});
+  assert.deepEqual(ids.map(id => {
+    const row = held.tasks.find(task => task.id === id);
+    return [row?.state, row?.contactExpiredAt];
+  }), [
+    ["unknown", new Date(now).toISOString()], ["unknown", new Date(now - 1).toISOString()],
+    ["unknown", undefined], ["unknown", undefined],
+  ]);
+  // The newest live task has the highest document ID: it must survive the limit.
+  const overflowing = db.batch();
+  for (let n = 0; n < 16; n++) {
+    const id = `00000000-0000-4000-8000-1${String(n).padStart(11, "0")}`;
+    overflowing.set(db.doc(`factoryTasks/${id}`), { ...task, queuedSlots: [], createdAt: now - 100 });
+  }
+  const newestId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+  now += 5;
+  overflowing.set(db.doc(`factoryTasks/${newestId}`), { ...task, queuedSlots: [], createdAt: now });
+  await overflowing.commit();
+  const bounded = await call("viewer", "work", {});
+  assert.equal(bounded.status, "partial");
+  assert.equal(bounded.tasks[0].id, newestId);
+  assert.equal(bounded.tasks.length, 17); // 16 live plus the settled fixture.
   const viewerDb = environment.authenticatedContext("viewer").firestore();
   await assert.rejects(getDoc(doc(viewerDb, `factoryTasks/${task.id}`)), /permission/i);
   await assert.rejects(getDoc(doc(studio, "factorySignals/pro")), /permission/i);

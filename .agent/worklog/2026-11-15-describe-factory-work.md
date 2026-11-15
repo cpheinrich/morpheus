@@ -22,3 +22,9 @@ Focused checks: Ops Desk Vitest (18), Factory Node tests (24), the real Fleet AP
 Firestore emulator (2), TypeScript, compile, complexity and PM indexing. The emulator test
 exercises unauthorized roles, cross-project data, the private document rules and completed
 work with PR evidence. All data and examples are synthetic.
+
+The initial independent review reproduced three problems. The follow-up keeps held tasks as
+Unknown (and dates expired contact), sorts before the limit, and lets a terminal result win
+across concurrent live/history reads. PR evidence must match the finish schema before it
+enters the journal; overlong evidence is declined without truncating a URL into another
+destination. The runner, direct overlap fixture and Firebase emulator exercise these cases.

@@ -1144,11 +1144,13 @@ no caller-selected scope and returns bounded live and recent rows. Keep the read
 server-side behind the desk's operator check. The Firebase client rules still deny task documents.
 Never give a dashboard a controller login or direct access to the Factory database.
 
-The recent list needs a collection-scope composite index on `factoryTasks`: `source.project`
+Both ordered lists use a collection-scope composite index on `factoryTasks`: `source.project`
 ascending, `state` ascending and `createdAt` descending. Create it in the exact Fleet database
-before enabling recent history; check that it is READY and that an enrolled viewer can see a
+before enabling the viewer; check that it is READY and that an enrolled viewer can see a
 finished fixture task. A failed history read yields a partial snapshot while current work
-remains visible. An unconfigured or denied reader must not be shown as an empty work list.
+remains visible. An expired worker lease, pending cancellation or unverified cleanup shows
+Unknown while the task is still held; a settled result takes precedence if the two reads overlap.
+An unconfigured or denied reader must not be shown as an empty work list.
 
 For a Fleet task, the originating controller uses Factory status/wait to read its current state,
 clarification or result and can download declared result artifacts. Those operations are scoped
