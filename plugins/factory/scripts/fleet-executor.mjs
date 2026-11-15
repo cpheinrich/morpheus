@@ -10,6 +10,7 @@ import { readArtifactFiles, readCheckpointFiles } from "../src/fleet-artifacts.m
 import { checkoutWorkspace } from "../src/fleet-workspace-checkout.mjs";
 import { studioCheckout } from "../src/fleet-source.mjs";
 import { invocationFromWorker, notLaunched } from "../src/fleet-receipt.mjs";
+import { gitEnv } from "../src/workspace.mjs";
 
 const [configPath, project] = process.argv.slice(2);
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -42,8 +43,11 @@ async function prepare({ task, admissionId, resume, prompt, gatewayBaseUrl, chec
       !uuid.test(admissionId) || !await enrolledSandbox(config, task.source))
     throw new Error("Studio project or gateway model does not match this enrollment");
   const { cwd, paths } = await executionCheckout(config, task.source, checkout);
-  const git = (...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 5000 }).trim();
-  if (task.source.revision !== git("rev-parse", "HEAD") || (!resume && git("status", "--porcelain")))
+  const git = (path, ...args) => execFileSync("git", ["-C", path, ...args], { env: gitEnv(), encoding: "utf8", timeout: 5000 }).trim();
+  // Preparation creates the checkouts; reopening them does not imply continuation.
+  // Every repository must still be clean immediately before its first invocation.
+  if (task.source.revision !== git(cwd, "rev-parse", "HEAD") ||
+      (!resume && Object.values(paths ?? { primary: cwd }).some(path => git(path, "status", "--porcelain"))))
     throw new Error("Studio checkout does not match this admission");
   const outputDir = join(cwd, `.factory-artifacts-${admissionId}`);
   await mkdir(outputDir, { mode: 0o700 });

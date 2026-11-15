@@ -17,6 +17,7 @@ import { createStudioExecutor } from "../src/fleet-execution.mjs";
 import { authorizeFleetProjects } from "../scripts/fleet-mcp.mjs";
 import { projectRun, dispatchFleet } from "../scripts/fleet-delegate.mjs";
 import { checkoutWorkspace } from "../src/fleet-workspace-checkout.mjs";
+import { fetchWorkspaceRevision } from "../src/fleet-source.mjs";
 import { observeFactory } from "../src/host/reporting/factory.mjs";
 
 const git = (cwd, ...args) => execFileSync("/usr/bin/git", ["-C", cwd, ...args], {
@@ -82,6 +83,8 @@ fs.stat=async(path,...args)=>{const info=await stat(path,...args);if(typeof path
 fs.access=async(path,mode)=>{if(mode===2&&path===wrapper&&process.env.WRAPPER_WRITABLE==='1')return;if(mode===2&&typeof path==='string'&&protectedPath(path))throw Object.assign(new Error('fixture denied'),{code:'EACCES'});return access(path,mode);};
 syncBuiltinESMExports();
 `);
+  // Factory CI installs only this plugin, not the global Morpheus CLI.
+  await writeFile(join(bin, "morpheus"), "#!/bin/sh\nexit 127\n", { mode: 0o700 });
   const state = join(root, "state");
   const session = randomUUID();
   await writeFile(join(bin, "codex"), `#!/usr/bin/env node
@@ -93,7 +96,7 @@ const cwd=process.cwd(), library=join(dirname(cwd),'library');
 if(!existsSync(join(library,'source.txt')))process.exit(5);
 for(const path of [cwd,library]){execFileSync('/usr/bin/git',['-C',path,'merge-base','HEAD','origin/main']);writeFileSync(join(path,'source.txt'),'worker edit');}
 const cache=join(${JSON.stringify(root)},'owned-cache');mkdirSync(cache,{recursive:true});writeFileSync(join(cache,'build.txt'),'cache works');
-execFileSync('morpheus',['credentials','run','--',process.execPath,'-e','if(process.env.SYNTHETIC_ACCESS!=="approved")process.exit(7)'],{cwd,stdio:'pipe'});
+execFileSync(join(cwd,'local','.credentials-fixture','bin','credentials'),['run','--',process.execPath,'-e','if(process.env.SYNTHETIC_ACCESS!=="approved")process.exit(7)'],{cwd,stdio:'pipe'});
 writeFileSync(join(cwd,'observed.json'),JSON.stringify({argv:process.argv.slice(2),prompt}));
 console.log(JSON.stringify({type:'thread.started',thread_id:${JSON.stringify(session)}}));
 console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:JSON.stringify({outcome:'completed',summary:'synthetic source write cache wrapper passed',evidence:[],question:''})}}));
@@ -200,7 +203,7 @@ test("real service, supervisor, executor, guardian and wrapper return an exact w
   const admissionId = randomUUID();
   const output = await executor.execute({ task, admissionId, prompt: "Qualify synthetic source, build cache and wrapper", signal: new AbortController().signal });
   assert.equal(output.terminationVerified, true);
-  assert.equal(output.result.outcome, "completed");
+  assert.equal(output.result.outcome, "completed", JSON.stringify(output));
   assert.equal(output.invocation.sessionId, f.session);
   const primary = join(f.cwd, attemptId, "app"), library = join(f.cwd, attemptId, "library");
   for (const path of [primary, library]) {
@@ -231,9 +234,11 @@ test("real service, supervisor, executor, guardian and wrapper return an exact w
   assert.equal(recovered.terminationVerified, true);
   const wrong = structuredClone(task); wrong.source.workspace.profile = "other";
   assert.equal(await executor.recover(admissionId, wrong), false);
+  await writeFile(join(library, "continuation.txt"), "retained untracked edit");
   const continued = await executor.execute({ task, admissionId: randomUUID(), resume: admissionId, prompt: "Resume exact workspace", signal: new AbortController().signal });
   assert.equal(continued.result.outcome, "completed");
   assert.equal(continued.invocation.sessionId, f.session);
+  assert.equal(await readFile(join(library, "continuation.txt"), "utf8"), "retained untracked edit");
   const denied = await executor.execute({ task: wrong, admissionId: randomUUID(), prompt: "No profile widening", signal: new AbortController().signal });
   assert.equal(denied.diagnosticCode, "workspace_policy_mismatch");
   assert.equal(denied.invocation.launch, "never-launched");
@@ -248,6 +253,46 @@ test("real service, supervisor, executor, guardian and wrapper return an exact w
   const refChanged = await executor.execute({ task, admissionId: randomUUID(), resume: admissionId, prompt: "No changed base", signal: new AbortController().signal });
   assert.equal(refChanged.diagnosticCode, "checkout_failed");
   assert.equal(refChanged.invocation.launch, "never-launched");
+});
+
+test("every prepared repository refuses tracked and untracked edits before first invocation", async t => {
+  const f = await fixture(t);
+  const source = { project: "app", checkout: "git", revision: f.revisions.app, workspace: bindWorkspace(f.policy, f.intent) };
+  for (const repo of source.workspace.repositories) await fetchWorkspaceRevision(f.mirrors[repo.project], repo);
+  for (const project of ["app", "library"]) {
+    for (const filename of ["source.txt", "untracked.txt"]) {
+      const job = invocation(f, source, randomUUID());
+      assert.deepEqual(await exchange(f, { op: "prepare", source, checkout: job.checkout }), { prepared: true });
+      await writeFile(join(f.cwd, job.checkout.attemptId, project, filename), "prelaunch edit");
+      const output = await exchange(f, job);
+      assert.equal(output.diagnosticCode, "checkout_failed", `${project}/${filename}`);
+      assert.equal(output.invocation.launch, "never-launched", `${project}/${filename}`);
+      await assert.rejects(readFile(join(f.state, "unattended", job.admissionId, "admission.json")), { code: "ENOENT" });
+    }
+  }
+});
+
+test("legacy submissions stay valid until the registered project explicitly opts into a workspace", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  const input = { project: "app", revision: f.revisions.app, text: "legacy unattended brief", messageId: "legacy" };
+  const project = api.config.projects.app;
+  delete project.workspace;
+  delete api.config.workspaces;
+  for (const revision of ["git", f.revisions.app]) {
+    project.revision = revision;
+    const result = await api.call("submit", { ...input, messageId: randomUUID() });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.value.task.source, { project: "app", revision: f.revisions.app,
+      ...(revision === "git" ? { checkout: "git" } : {}) });
+  }
+  project.revision = "git";
+  // Even with policies present, an unrelated legacy enrollment stays legacy.
+  api.config.workspaces = { related: f.policy };
+  assert.equal((await api.call("submit", input)).status, 200);
+  assert.equal((await api.call("submit", { ...input, messageId: "unapproved", workspace: f.intent })).status, 403);
+  project.workspace = "related";
+  assert.equal((await api.call("submit", { ...input, messageId: "missing-workspace" })).status, 403);
+  assert.equal((await api.call("submit", { ...input, messageId: "opted-in", workspace: f.intent })).status, 200);
 });
 
 test("executor refuses mutable policy, changed credential manifest, checkout traversal and altered comparison pins", async t => {
@@ -293,6 +338,15 @@ test("interactive and explicit controller authorization retain every claimed che
   const inspection = await dispatchFleet("inspect", args, { authorize });
   assert.deepEqual(inspection.target.workspace, f.intent);
   assert.deepEqual(calls, ["app", "library"].map(project => ({ rootId: "root", projectPath: config.projects[project], checkoutPath: paths[project] })));
+  const savedGit = Object.fromEntries(["GIT_DIR", "GIT_WORK_TREE"].map(name => [name, process.env[name]]));
+  process.env.GIT_DIR = join(f.root, "app", ".git");
+  process.env.GIT_WORK_TREE = join(f.root, "app");
+  t.after(() => { for (const [name, value] of Object.entries(savedGit)) {
+    if (value === undefined) delete process.env[name]; else process.env[name] = value;
+  } });
+  assert.notEqual(f.revisions.app, f.revisions.library);
+  const contaminated = await dispatchFleet("inspect", args, { authorize });
+  assert.deepEqual(contaminated.target.workspace, f.intent, "each SHA must belong to its requested checkout");
   calls.length = 0;
   await authorizeFleetProjects(config, "root", "app", f.intent, { checkoutPaths: paths }, authorize);
   assert.equal(calls.length, 2);

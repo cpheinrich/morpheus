@@ -87,12 +87,13 @@ the multi-repository worked example, installation and updates, gateways, cleanup
 selection and failure recovery. Keep this integration outside project scaffolding: another
 Morpheus contributor must never acquire it merely by cloning a repo.
 
-For an enrolled Codex Fleet run, let a saved Fleet default apply or explicitly pass `placement: "fleet"`
-and pass the absolute path of the clean, published linked checkout to both inspect
-and delegate. Fleet uses the enrolled Codex worker settings; it does not
-support local-only provider, multi-repository, fresh, background, or effort/speed
-overrides. Pass `placement: "local"` when the operator explicitly chooses local
-Factory placement. Supervise the Fleet run by its returned run ID and
-download its declared artifacts via `factory_remote`. The controller owns
-implementation delivery through PR, review, CI, and merge. See the README's
-authenticated Studio pilot section for the one-repository enrollment.
+For an enrolled Codex Fleet run, let a saved Fleet default apply or explicitly pass `placement: "fleet"`.
+Pass `cwd` for the primary clean, published claimed linked checkout and `repos` for every
+related checkout to both inspect and delegate. The set must exactly match one operator-enrolled
+workspace; the controller resolves each checkout's exact revision. Existing single-repository
+enrollments use only `cwd`. Fleet uses the enrolled Codex worker settings; it does not support
+local-only provider, fresh, background, or effort/speed overrides. Pass `placement: "local"`
+when the operator explicitly chooses local Factory placement. Supervise the Fleet run by its
+returned run ID and download its declared artifacts via `factory_remote`. The controller owns
+implementation delivery through PR, review, CI, and merge. See the README's authenticated Studio
+pilot and related-workspace enrollment sections for the exact policy and rollout requirements.

@@ -22,7 +22,9 @@ optional project readiness probe from claim and launch authorization. A workspac
 also retains the exact source set and normalized operator policy digest, including pinned
 comparison and companion revisions. Interactive status retains this same receipt. Fixed
 prelaunch diagnostic codes distinguish source fetch, checkout and executor invocation;
-uncertain invocation evidence never becomes never-launched proof.
+uncertain invocation evidence never becomes never-launched proof. Projects without a workspace
+policy retain the original `project`/`revision` submission. An opted-in project requires exact
+workspace intent from every consumer; there is no downgrade to the single-repository contract.
 
 Claims, capacity, attempt identity, checkout ownership, approval policy, and the provider
 session live in Factory. Firestore listeners wake runners and clients, and a transaction owns

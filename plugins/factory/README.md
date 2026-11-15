@@ -1093,6 +1093,19 @@ working. Drain the slot and retain the previous configurations before an operato
 policy. Private configuration contains real repository/account references; the examples
 below are synthetic. This source change does not install or enroll anything.
 
+Install compatible service, supervisor, executor and controller source before changing enrollment.
+Keep existing registered projects on their fixed-SHA or single-repository Git configuration
+until every consumer is ready. Adding an unrelated policy does not change those submissions.
+Once a project has `workspace: "related"`, submissions without the exact workspace intent refuse;
+there is no legacy fallback around that policy. In particular, existing unattended dispatch/review
+consumers that send only `project` and `revision` must first send every exact related revision,
+retrieve and verify patches/artifacts for every related repository, and apply them to their owned
+checkouts through the normal review/CI path. Then drain the slot and opt the project into the
+policy. Alternatively, retain the old enrollment and create separate explicit project/slot/account
+enrollments for workspace-capable consumers. Do not reuse a writable checkout across them.
+Changing a live allowlist or private consumer is a separate operator action; this source PR does
+neither. Product integration and live host/controller capability proof remain follow-up work.
+
 The service's optional `workspaces` map holds the operator policy. Its key must equal the
 policy `id`. Each source project is already enrolled with `revision: "git"`, the same
 `workspace` ID and `workspaceKey`, compatible eligible slots, and the same Codex selection.
@@ -1221,7 +1234,9 @@ is a pinned comparison snapshot. Its `origin` is the checkout's own Git director
 explicit pinned fetch refspec and symbolic remote HEAD, so normal fetch/default-branch probes
 remain local and never inherit upstream credentials or silently advance the approved base.
 This is an execution snapshot; controller-owned checkouts remain the GitHub delivery surface.
-Resume verifies all comparison refs and this local remote as well as policy and source identity.
+Every repository must be clean, including untracked files, immediately before its first invocation.
+Continuation preserves edits while verifying all comparison refs, the local remote, policy and
+source identity.
 Codex workspace-write receives the full authorized writable-root set. Full Access remains an
 OS-account boundary, not a per-repository sandbox.
 
@@ -1239,8 +1254,10 @@ node --test plugins/factory/tests/fleet-workspace.test.mjs
 ```
 
 It exercises the real loopback API, source fetch, executor, guardian, continuation, scoped
-wrapper, writable-root argv, cache write, reporting and receipt. Only sudo/OS authority and
-the model are fixtures. Before enrolling each actual host, the operator must repeat a bounded
+wrapper, writable-root argv, cache write, reporting and receipt. The companion wrapper is invoked
+directly so this plugin-only fixture needs no global Morpheus CLI; the normal
+`morpheus credentials run` command has its own core tests. Sudo/OS authority and the model are
+fixtures. Before enrolling each actual host, the operator must repeat a bounded
 canary through the intended controller entry point: fetch the declared published revisions,
 write in every checkout, run the actual project's build/cache probe (and disposable simulator
 probe for Xcode), invoke a trusted command through each approved wrapper without printing

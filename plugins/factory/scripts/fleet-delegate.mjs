@@ -6,7 +6,7 @@ import { call } from "../src/client.mjs";
 import { home } from "../src/config.mjs";
 import { atomic, key, readJSON } from "../src/store.mjs";
 import { readPlacement } from "../src/fleet-placement.mjs";
-import { checkoutInfo } from "../src/workspace.mjs";
+import { checkoutInfo, gitEnv } from "../src/workspace.mjs";
 import { authorizeFleetProjects, fleetControllerPath, fleetOperation } from "./fleet-mcp.mjs";
 
 const states = {
@@ -19,7 +19,7 @@ const states = {
 };
 const runPath = (id) => join(home(), "fleet-runs", `${id}.json`);
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], {
-  encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"],
+  env: gitEnv(), encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"],
 }).trim();
 
 export async function fleetTarget(config, cwd) {

@@ -3469,7 +3469,10 @@ separate OS user. The slot and checkout remain held until cleanup is verified.
 Operator-enrolled related workspaces extend the same launch binding. Both interactive
 and service controllers supply an exact source revision for every declared repository;
 the service fixes the complete set, profile, comparison refs and credential-companion
-references before placement. A normalized policy digest and all revisions survive resume,
+references before placement. Projects without a workspace policy keep their existing submission
+contract; opting a registered project into a policy requires migrating every consumer to the
+exact source set and related patch handling first, or using separate explicit enrollments. No legacy fallback bypasses policy.
+A normalized policy digest and all revisions survive resume,
 recovery and receipts. The supervisor fetches full ancestry without forwarding its Git
 credentials. The dedicated account creates writable attempt-owned repository checkouts,
 with a local pinned comparison remote for ordinary Git and complexity tools. Workspace-write
