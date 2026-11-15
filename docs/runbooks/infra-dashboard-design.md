@@ -3,8 +3,10 @@
 *Read when building or changing an HQ infrastructure dashboard ("desk"): its layout, rows,
 drilldowns, status wording or browser checks.*
 
-Darwin's Operations Desk is the reference behaviour, and Lakina's Infra tab is the second desk to
-follow it. They read different sources under different authorization; what they share is how a
+Darwin's Operations Desk set this behaviour and Lakina's Infra tab is the second desk to follow
+it. The checklist below is the target: Lakina meets all of it, while Darwin's Overview deployment
+and Factory rows and its fragment reader predate the exact-channel, full-row and old-fragment
+rules, so copy those parts from the checklist rather than from Darwin's source. They read different sources under different authorization; what they share is how a
 person scans, opens and trusts what the desk says. The display primitives (times, states, links,
 fragment views) are in `morpheus-kit/ops-desk` ([`src/ops-desk/README.md`](../../src/ops-desk/README.md)).
 This runbook covers the rest of the contract, which is layout and interaction. Every example here
@@ -144,9 +146,9 @@ fixture data, and capture it in Chromium. It must fail on:
 - an inexact or same-tab job link;
 - stale or stopped evidence that is not shown as Unknown for what it cannot know.
 
-Capture at 1440, 1024 and 390px in light and dark, and inspect the images. Then verify the
-deployed desk: an authorized operator, an ordinary viewer and a direct client read of the private
-store each see exactly what they should.
+Capture at 1440, 1024 and 390px in light and dark, and inspect the images. When the desk shows a
+private or cross-owner source, also verify the deployed desk: an authorized operator, an ordinary
+viewer and a direct client read of the private store each see exactly what they should.
 
 ## Adopting this in a project
 
