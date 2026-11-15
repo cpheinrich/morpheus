@@ -35,3 +35,72 @@ sandbox printed the correct delta after the fixture trunk advanced, with
 
 The final six-file focused run passed 172 tests. Typecheck, compilation,
 lint, complexity and whitespace checks passed again.
+
+## Independent review
+
+Independent review reproduced the wrong-ref risk and cleared exact ref matching. A protected sandbox independently printed a local trunk delta without writing FETCH_HEAD.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "95f97f030f1707629d2a3f4f5f1539e9b9673cf8",
+  "reviewed": "37588a34d53e6756900c8ae9e4fc03631ebf7e0e",
+  "covered": "e0ea8a44a8b8fc30c071c37b1ca2daaceaeeace2",
+  "authorSession": "01a1dc33-4d68-7693-bdbf-f4420f795216",
+  "reviewerSession": "/root/context_git_readonly_review",
+  "risk": "high",
+  "elapsedMinutes": 2.966666666666667,
+  "timing": {
+    "source": "clock",
+    "durationMs": 178000,
+    "evidence": "Controller clock at launch 2026-11-15 08:27:12 UTC and reviewer completion at 08:30:10 UTC."
+  },
+  "outcome": "complete",
+  "summary": "Independent review reproduced the wrong-ref risk and cleared exact ref matching. A protected sandbox independently printed a local trunk delta without writing FETCH_HEAD.",
+  "contextRead": [
+    "AGENTS.md",
+    "architecture.md",
+    ".agent/context-core.md",
+    ".agent/decisions.md",
+    ".agent/learned.md",
+    "docs/runbooks/context-freshness.md",
+    "docs/runbooks/independent-review.md",
+    "docs/runbooks/test-quality.md",
+    "docs/runbooks/pm-workflow.md",
+    ".agent/worklog/2026-11-15-avoid-refresh-ref-writes.md",
+    ".agent/worklog/2026-08-05-context-freshness.md",
+    ".agent/worklog/2026-10-12-explain-git-timeouts.md",
+    "hq/product/roadmap/MO-26-11-15-00.23.56-avoid-refresh-ref-writes.md",
+    "hq/product/roadmap/MO-26-08-05-12.24.47-enforce-context-freshness.md",
+    "hq/product/roadmap/MO-26-11-14-23.37.24-fleet-worker-build-caches.md",
+    "hq/product/roadmap/MO-26-07-29-029-reconcile-claim-time-so.md"
+  ],
+  "findings": [
+    {
+      "id": "F-1",
+      "severity": "substantive",
+      "description": "A fully qualified ls-remote pattern can also match a longer ref tail. Taking the first match could certify an alternate branch.",
+      "paths": [
+        "src/session/git.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Require the exact advertised ref and a full object ID. Verify exact main wins when both exist and refresh refuses after main is deleted."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/context_git_readonly_review",
+      "commit": "e0ea8a44a8b8fc30c071c37b1ca2daaceaeeace2",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.0166666666666666,
+      "timing": {
+        "source": "clock",
+        "durationMs": 61000,
+        "evidence": "Controller clock at follow-up launch 2026-11-15 08:31:43 UTC and reviewer completion at 08:32:44 UTC."
+      },
+      "scopeReason": "Verify the wrong-ref fix and the local delta reporting change.",
+      "summary": "Compiled CLI selected exact main in both real Git regressions. The local delta probe and 172 focused tests passed."
+    }
+  ]
+}
+```
