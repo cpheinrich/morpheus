@@ -741,32 +741,89 @@ print(json.dumps({'type':'turn.completed'}),flush=True)
   assert.deepEqual(foreign.lines, [{ outcome: { terminationVerified: false } }]);
 });
 
-test('Fleet refuses full access with a worker-owned config even for a prepared Git checkout', async t => {
-  const f = await setup(t);
+test('Fleet launches full access only for a protected Git enrollment and private non-root home', async t => {
+  const f = await setup(t, doneScript.replace('session-fixture', randomUUID()));
   execFileSync('git', ['-C', f.cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
     'commit', '-qm', 'Fixture', '--allow-empty']);
   const revision = execFileSync('git', ['-C', f.cwd, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   const attemptId = randomUUID();
   const workspaces = join(f.root, 'workspaces');
-  await mkdir(workspaces);
+  // Make both Git and pilot checkouts valid so only the Full Access source
+  // policy can reject the otherwise eligible pilot.
+  execFileSync('git', ['clone', '-q', '-l', f.cwd, workspaces]);
   execFileSync('git', ['clone', '-q', '-l', f.cwd, join(workspaces, attemptId)]);
+  await writeFile(join(workspaces, '.git', 'info', 'exclude'), attemptId + '/\n');
   await writeFile(f.configPath, JSON.stringify({ ...f.config, cwd: workspaces, sandbox: 'danger-full-access' }));
   const executor = fileURLToPath(new URL('../scripts/fleet-executor.mjs', import.meta.url));
-  const admissionId = randomUUID();
-  const job = {
-    task: { source: { project: 'fixture', revision, checkout: 'git' },
-      selection: { provider: 'codex', gateway: f.config.gateway.name, model: f.config.model } },
-    admissionId, prompt: 'Do not run', binding: { taskId: randomUUID(), attemptId },
-    gatewayBaseUrl: f.config.gateway.baseUrl, checkout: { attemptId, mirror: f.cwd },
-  };
-  const child = spawn(process.execPath, [executor, f.configPath, 'fixture'], { stdio: ['pipe', 'pipe', 'inherit'] });
-  child.stdin.write(JSON.stringify(job) + '\n');
-  let stdout = '';
-  child.stdout.setEncoding('utf8');
-  child.stdout.on('data', chunk => { stdout += chunk; });
-  assert.equal((await once(child, 'close'))[0], 0);
-  const { outcome } = JSON.parse(stdout);
-  assert.deepEqual(outcome.invocation, { launch: 'never-launched', admissionId, sessionId: null });
-  assert.equal(outcome.result.outcome, 'failed');
-  await assert.rejects(readFile(join(f.state, admissionId, 'admission.json')), { code: 'ENOENT' });
+  const privateHome = join(f.root, 'home'), sharedHome = join(f.root, 'shared-home');
+  await mkdir(privateHome, { mode: 0o700 });
+  await mkdir(sharedHome);
+  await chmod(sharedHome, 0o755);
+  const preload = join(f.root, 'operator-profile.mjs');
+  // Simulate OS ownership and ACL results in the child only. The executor, checkout,
+  // guard, and fake Codex launch are real; CI needs neither root nor a provider.
+  await writeFile(preload, `
+import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
+import { dirname, relative } from 'node:path';
+const profile = process.argv[2];
+const parent = dirname(profile);
+const fixture = process.env.OPERATOR_FIXTURE;
+const uid = process.getuid() || 501;
+process.getuid = () => fixture === 'root' ? 0 : uid;
+const { stat, access } = fs;
+const isAncestor = path => relative(path, profile).split('/').every(part => part !== '..');
+fs.stat = async (path, ...args) => {
+  const info = await stat(path, ...args);
+  if (path === process.env.HOME) info.uid = fixture === 'foreign-home' ? uid + 1 : uid;
+  if (typeof path === 'string' && isAncestor(path)) {
+    info.uid = path === parent && fixture === 'replaceable' ? uid : 0;
+    info.mode = (info.mode & ~0o777) | (path === profile ? 0o640 : 0o755);
+  }
+  return info;
+};
+fs.access = async (path, mode) => {
+  if (typeof path !== 'string' || !isAncestor(path)) return access(path, mode);
+  if (path === parent && fixture === 'writable-acl') return;
+  throw Object.assign(new Error('fixture permission denied'), { code: path === '/' ? 'EROFS' : 'EACCES' });
+};
+syncBuiltinESMExports();
+`);
+  async function exchange(fixture, { home = privateHome, checkout = 'git' } = {}) {
+    const admissionId = randomUUID();
+    const job = {
+      task: { source: { project: 'fixture', revision, checkout },
+        selection: { provider: 'codex', gateway: f.config.gateway.name, model: f.config.model } },
+      admissionId, prompt: 'Report fixture success', binding: { taskId: randomUUID(), attemptId },
+      gatewayBaseUrl: f.config.gateway.baseUrl, checkout: { attemptId, mirror: f.cwd },
+    };
+    const args = [...(fixture ? ['--import', preload] : []), executor, f.configPath, 'fixture'];
+    const child = spawn(process.execPath, args, { env: { ...process.env, HOME: home, OPERATOR_FIXTURE: fixture },
+      stdio: ['pipe', 'pipe', 'inherit'] });
+    child.stdin.write(JSON.stringify(job) + '\n');
+    let stdout = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    assert.equal((await once(child, 'close'))[0], 0);
+    return { admissionId, outcome: JSON.parse(stdout).outcome };
+  }
+  for (const [label, fixture, options] of [
+    ['worker-owned config', ''], ['replaceable parent', 'replaceable'], ['worker-writable ACL', 'writable-acl'],
+    ['root account', 'root'], ['foreign home', 'foreign-home'],
+    ['shared home', 'protected', { home: sharedHome }], ['non-Git source', 'protected', { checkout: 'pilot' }],
+  ]) {
+    const { admissionId, outcome } = await exchange(fixture, options);
+    assert.deepEqual(outcome.invocation, { launch: 'never-launched', admissionId, sessionId: null }, label);
+    assert.equal(outcome.result.outcome, 'failed', label);
+    await assert.rejects(readFile(join(f.state, admissionId, 'admission.json')), { code: 'ENOENT' }, label);
+  }
+  const { admissionId, outcome } = await exchange('protected');
+  assert.equal(outcome.result.outcome, 'completed', JSON.stringify(outcome));
+  assert.equal(outcome.terminationVerified, true);
+  assert.equal(outcome.invocation.launch, 'session');
+  const observed = await json(join(workspaces, attemptId, 'observed.json'));
+  assert.ok(observed.argv.includes('--dangerously-bypass-approvals-and-sandbox'));
+  const { binding } = await json(join(f.state, admissionId, 'admission.json'));
+  assert.equal(binding.sandbox, 'danger-full-access');
+  assert.equal(binding.approvalPolicy, 'never');
 });
