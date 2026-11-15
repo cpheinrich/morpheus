@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { gatewayWorker, readWorkerConfig, workerResult } from "../src/gateway-worker.mjs";
-import { readArtifactFiles } from "../src/fleet-artifacts.mjs";
+import { readArtifactFiles, readCheckpointFiles } from "../src/fleet-artifacts.mjs";
 import { studioCheckout } from "../src/fleet-source.mjs";
 import { invocationFromWorker, notLaunched } from "../src/fleet-receipt.mjs";
 
@@ -40,8 +40,22 @@ async function prepare({ task, admissionId, resume, prompt, gatewayBaseUrl, chec
     throw new Error("Studio checkout does not match this admission");
   const outputDir = join(cwd, `.factory-artifacts-${admissionId}`);
   await mkdir(outputDir, { mode: 0o700 });
-  const handoff = `${prompt}\n\nFor output artifacts, write files directly in ${outputDir}. Include each file in the final evidence array as artifact:<filename>. Use flat filenames.`;
+  const handoff = `${prompt}\n\nFor output artifacts, write files directly in ${outputDir}. Include each file in the final evidence array as artifact:<filename>. Use flat filenames. Before a long operation, atomically write checkpoint.json there as a JSON array of completed artifact filenames to return if the invocation reaches its deadline. Each file must be at most 8 MiB.`;
   return { outputDir, handoff, checkout: checkout ? cwd : undefined };
+}
+
+async function emitArtifacts(outputDir, result, deadline) {
+  if (controller.signal.aborted || (!deadline && result.outcome !== "completed")) return true;
+  try {
+    const files = deadline
+      ? readCheckpointFiles(outputDir)
+      : readArtifactFiles(outputDir, result.evidence.filter((item) => item.startsWith("artifact:")).map((item) => item.slice(9)));
+    for await (const file of files)
+      console.log(JSON.stringify({ artifact: { ...file, bytes: file.bytes.toString("base64") } }));
+    return true;
+  } catch {
+    return deadline;
+  }
 }
 
 async function execute(job) {
@@ -55,16 +69,12 @@ async function execute(job) {
   const { resume, admissionId } = job;
   const outcome = await gatewayWorker(configPath, handoff, resume, admissionId, controller.signal, prepared.checkout, job.binding);
   const invocation = invocationFromWorker(outcome);
-  if (outcome.terminationVerified && outcome.result.outcome === "completed" && !controller.signal.aborted) {
-    const files = outcome.result.evidence.filter((item) => item.startsWith("artifact:")).map((item) => item.slice(9));
-    try {
-      for await (const file of readArtifactFiles(outputDir, files))
-        console.log(JSON.stringify({ artifact: { ...file, bytes: file.bytes.toString("base64") } }));
-    } catch {
-      return { terminationVerified: true, invocation, result: { outcome: "failed", summary: "Studio could not read the declared artifacts." } };
-    }
-  }
-  return { terminationVerified: outcome.terminationVerified, sessionId: outcome.sessionId, invocation, result: outcome.result };
+  const deadline = outcome.diagnosticCode === "deadline_reached";
+  const result = deadline ? { outcome: "failed" } : outcome.result;
+  if (outcome.terminationVerified && !await emitArtifacts(outputDir, result, deadline))
+    return { terminationVerified: true, invocation, result: { outcome: "failed", summary: "Studio could not read the declared artifacts." } };
+  return { terminationVerified: outcome.terminationVerified, sessionId: outcome.sessionId, invocation, result,
+    ...(deadline ? { diagnosticCode: outcome.diagnosticCode } : {}) };
 }
 
 function admissionEnvelope(value) {

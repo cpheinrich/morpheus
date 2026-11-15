@@ -290,6 +290,7 @@ async function inputDiagnostic(directory) {
   return null;
 }
 async function workerDiagnostic(directory, state, verified, run) {
+  if (verified && state.interrupted && state.reason === 'Run deadline reached') return 'deadline_reached';
   if (!verified || state.admissionRejected || state.interrupted || !Number.isInteger(state.exitCode)
       || state.exitCode === 0 || run.startedTurn || run.result) return null;
   return inputDiagnostic(directory);

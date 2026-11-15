@@ -7,6 +7,7 @@ const taskIdentity = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3
 const fileName = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 const maxFiles = 8;
 const maxBytes = 8 * 1024 * 1024;
+const checkpointName = "checkpoint.json";
 const statOptions = { bigint: true };
 const contentTypes = new Map([
   [".pdf", "application/pdf"],
@@ -14,6 +15,7 @@ const contentTypes = new Map([
   [".jpeg", "image/jpeg"],
   [".jpg", "image/jpeg"],
   [".webp", "image/webp"],
+  [".mp4", "video/mp4"],
   [".txt", "text/plain"],
   [".json", "application/json"],
 ]);
@@ -101,15 +103,13 @@ async function putArtifact(putObject, readObject, prefix, name, bytes, type) {
   return { name, objectName, generation, type, size: bytes.length, sha256 };
 }
 
-export async function* readArtifactFiles(outputDir, files) {
-  const names = artifactNames(files);
-  if (!names.length) return;
+async function* readArtifacts(outputDir, selectFiles) {
   if (!isAbsolute(outputDir)) throw new Error("Artifact output directory must be absolute.");
   const directory = resolve(outputDir);
   const root = await open(directory, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_DIRECTORY);
   try {
     const directoryStat = await root.stat(statOptions);
-    for (const name of names) {
+    for (const name of await selectFiles(directory, directoryStat)) {
       const bytes = await readArtifact(directory, directoryStat, name);
       const type = contentTypes.get(extname(name).toLowerCase()) ?? "application/octet-stream";
       yield { name, bytes, type };
@@ -117,6 +117,23 @@ export async function* readArtifactFiles(outputDir, files) {
   } finally {
     await root.close();
   }
+}
+
+export async function* readArtifactFiles(outputDir, files) {
+  const names = artifactNames(files);
+  if (names.length) yield* readArtifacts(outputDir, () => names);
+}
+
+async function checkpointFiles(directory, directoryStat) {
+  const bytes = await readArtifact(directory, directoryStat, checkpointName);
+  if (bytes.length > 4096) throw new Error("Factory checkpoint manifest is too large.");
+  const names = artifactNames(JSON.parse(bytes.toString("utf8")));
+  if (names.includes(checkpointName)) throw new Error("Factory checkpoint cannot export its manifest.");
+  return names;
+}
+
+export function readCheckpointFiles(outputDir) {
+  return readArtifacts(outputDir, checkpointFiles);
 }
 
 export async function publishArtifacts({ outputDir, files, taskId, attemptId, putObject, readObject }) {

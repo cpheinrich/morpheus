@@ -37,7 +37,8 @@ async function readExecution(stdout, stop) {
 }
 
 async function publish(call, { artifacts, outcome }, task, signal) {
-  if (signal.aborted || outcome.result?.outcome !== "completed" || !artifacts.length) return outcome;
+  const deadline = outcome.diagnosticCode === "deadline_reached";
+  if (signal.aborted || !artifacts.length || (outcome.result?.outcome !== "completed" && !deadline)) return outcome;
   const names = [];
   try {
     for (const file of artifacts) {
@@ -46,6 +47,7 @@ async function publish(call, { artifacts, outcome }, task, signal) {
       names.push(result.name);
     }
   } catch {
+    if (deadline) return { ...outcome, result: { ...outcome.result, artifacts: names } };
     return { ...outcome, result: { outcome: "failed", summary: "Studio could not publish the declared artifacts." } };
   }
   return { ...outcome, result: { ...outcome.result, artifacts: names } };

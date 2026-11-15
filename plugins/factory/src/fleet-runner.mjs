@@ -86,6 +86,8 @@ function questionText(output) {
 
 function resultFor(output) {
   const result = output?.result;
+  if (output?.diagnosticCode === "deadline_reached")
+    return { summary: "Worker reached its invocation deadline. Any returned artifacts are partial.", artifacts: result?.artifacts ?? [] };
   if (result?.outcome !== "completed") return { summary: "Worker did not complete the task." };
   const summary = typeof result.summary === "string" ? result.summary.slice(0, 8192) : "";
   return { summary, ...(Array.isArray(result.artifacts) ? { artifacts: result.artifacts } : {}) };
