@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { claimTask, renewAttempt, settleAttempt } from "./fleet-claims.mjs";
 import { answerQuestion, askQuestion, cancelTask, submitTask } from "./fleet-mailbox.mjs";
-import { invocationReceipt, receiptPath } from "./fleet-receipt.mjs";
+import { fleetDiagnostic, invocationReceipt, receiptPath } from "./fleet-receipt.mjs";
+import { workspaceIntent, workspaceLaunch } from "./fleet-workspace.mjs";
 import { fleetReadiness, quotaObservation } from "./fleet-readiness.mjs";
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -25,7 +26,7 @@ const worker = {
   finish: z.object({
     ...attemptFields,
     outcome: z.enum(["TASK_STATE_COMPLETED", "TASK_STATE_FAILED", "TASK_STATE_CANCELED"]),
-    result: z.object({ summary: shortText, artifacts: z.array(name).max(8).optional() }).nullable(),
+    result: z.object({ summary: shortText, diagnosticCode: fleetDiagnostic.optional(), artifacts: z.array(name).max(8).optional() }).nullable(),
     cleanupVerified: z.boolean(),
     admissionId: z.uuid().optional(),
     invocation: invocationReceipt.optional(),
@@ -36,7 +37,7 @@ const worker = {
   }),
 };
 const controller = {
-  submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, model: id.optional() }),
+  submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, workspace: workspaceIntent.optional(), model: id.optional() }),
   get: z.object(scope),
   readiness: z.object({ rootId: id, project: id }),
   answer: z.object({ ...scope, attemptId: id, questionId: id, messageId: id, text: message }),
@@ -77,9 +78,15 @@ function launchFor(config, principal, input) {
   const fetchSource = project?.revision === "git";
   if (!project || (!fetchSource && project.revision !== input.revision) || (input.model && input.model !== selection.model))
     throw failure(403, "Project revision or model is outside the pilot enrollment");
+  let workspace;
+  if (input.workspace || project.workspace) {
+    try { workspace = workspaceLaunch(config, principal, input, project); }
+    catch { throw failure(403, "Workspace intent is outside enrollment"); }
+    if (!fetchSource) throw failure(403, "Workspace requires Git enrollment");
+  }
   return {
     workspaceKey: project.workspaceKey, eligibleSlots: project.eligibleSlots,
-    source: { project: input.project, revision: input.revision, ...(fetchSource ? { checkout: "git" } : {}) },
+    source: { project: input.project, revision: input.revision, ...(fetchSource ? { checkout: "git" } : {}), ...(workspace ? { workspace } : {}) },
     selection,
   };
 }
@@ -156,7 +163,7 @@ async function storedResult(objects, input) {
   if (new Set(names).size !== names.length) throw failure(400, "Duplicate Factory artifact name");
   const artifacts = await Promise.all(names.map((name) => objects.metadata(objectName({ ...input, name }))));
   if (artifacts.some((file) => !file || !digest.test(file.sha256))) throw failure(400, "Missing Factory artifact");
-  return { summary: input.result.summary, artifacts };
+  return { summary: input.result.summary, artifacts, ...(input.result.diagnosticCode ? { diagnosticCode: input.result.diagnosticCode } : {}) };
 }
 
 function attemptOwner(attempt, { attemptId, hostId, slotId }) {

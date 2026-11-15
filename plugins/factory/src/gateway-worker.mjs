@@ -11,6 +11,8 @@ import { home, modelIdPattern, MOVING_MODEL_ALIASES, secretRef, codexPermission,
 import { checkCodex, codexArgs, codexHandoff, applyCodexEvent } from './codex-exec.mjs';
 import { atomic, readJSON, key } from './store.mjs';
 
+import { workspaceHost, enrolledWorkspace } from './fleet-workspace-checkout.mjs';
+
 const schema = z.strictObject({
   version: z.literal(1),
   jobId: z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/),
@@ -25,6 +27,7 @@ const schema = z.strictObject({
   effort: z.enum(['none', 'low', 'medium', 'high', 'xhigh', 'max']),
   sandbox: z.enum(['read-only', 'workspace-write', 'danger-full-access']),
   approvalPolicy: z.literal('never'),
+  fleetWorkspace: workspaceHost.optional(),
   maxRunSeconds: z.number().int().min(1).max(28800),
   maxLogBytes: z.number().int().min(256).max(16 * 1024 * 1024),
 });
@@ -57,6 +60,7 @@ export async function readWorkerConfig(path) {
   try { config = schema.parse(JSON.parse(await readFile(configPath, 'utf8'))); }
   catch { throw new Error('Invalid unattended worker configuration'); }
   config.cwd = await realpath(config.cwd);
+  if (config.fleetWorkspace && authority !== 'operator') throw new Error('Workspace policy requires protected operator configuration');
   // A service authority file cannot be part of an agent-editable checkout.
   let workspaceRoot;
   try { workspaceRoot = await realpath(execFileSync('git', ['-C', dirname(configPath), 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()); } catch {}
@@ -179,16 +183,31 @@ async function runGuardian(directory, isolated, signal) {
   finally { signal?.removeEventListener('abort', cancel); clearInterval(heartbeat); child.stdin.destroy(); process.off('SIGTERM', cancel); process.off('SIGINT', cancel); }
   return false;
 }
+async function bindCheckout(config, checkout, fleet) {
+  if (config.fleetWorkspace && (!checkout || !fleet?.workspace)) throw new Error('Workspace binding required');
+  if (checkout !== undefined) {
+    const cwd = await realpath(checkout);
+    if (fleet?.workspace) {
+      const { workspace } = enrolledWorkspace(config.fleetWorkspace, fleet.workspace, config.sandbox);
+      z.uuid().parse(fleet.attemptId);
+      const base = join(config.cwd, fleet.attemptId);
+      if (cwd !== join(base, workspace.primary)) throw new Error('Checkout differs from enrolled workspace');
+      config.writableRoots = [];
+      for (const repo of workspace.repositories) {
+        const path = join(base, repo.project);
+        if (await realpath(path) !== path) throw new Error('Workspace checkout was redirected');
+        config.writableRoots.push(path);
+      }
+    } else if (config.fleetWorkspace || dirname(cwd) !== config.cwd) throw new Error('Checkout must be a direct child of the enrolled workspace root');
+    config.cwd = cwd;
+  }
+}
 export async function gatewayWorker(configPath, prompt, resume = null, admissionId = randomUUID(), signal, checkout, fleet) {
   assertWorkerInputs(prompt, admissionId);
   const config = await readWorkerConfig(configPath);
-  if (checkout !== undefined) {
-    const cwd = await realpath(checkout);
-    if (dirname(cwd) !== config.cwd) throw new Error('Checkout must be a direct child of the enrolled workspace root');
-    config.cwd = cwd;
-  }
+  await bindCheckout(config, checkout, fleet);
   const root = await workerStateRoot(config);
-  const binding = { jobId: config.jobId, cwd: config.cwd, gateway: config.gateway, model: config.model, effort: config.effort, sandbox: config.sandbox, approvalPolicy: config.approvalPolicy, ...(fleet ? { fleet } : {}) };
+  const binding = { jobId: config.jobId, cwd: config.cwd, gateway: config.gateway, model: config.model, effort: config.effort, sandbox: config.sandbox, approvalPolicy: config.approvalPolicy, ...(fleet ? { fleet } : {}), ...(config.writableRoots ? { writableRoots: config.writableRoots } : {}) };
   const directory = join(root, admissionId);
   const existing = await existingAdmission(directory, admissionId, binding);
   if (existing) return existing;

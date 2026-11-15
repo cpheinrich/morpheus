@@ -1066,13 +1066,12 @@ node ~/plugins/factory/scripts/bridge.mjs placement fleet
 
 Pass `placement: "local"` to override for a new request. A missing, dirty or
 unenrolled Fleet checkout is refused; it does not fall back to a local worker.
-Fleet does not accept local-only options such as another provider, multiple
-repositories, `fresh: true`, background operation, effort overrides or Fast.
+Fleet does not accept local-only options such as another provider, `fresh: true`, background operation, effort overrides or Fast.
 Already-started runs keep their original route. To reset the controller default,
 run the same command with `local`. This preference affects the normal Codex
 Factory tools; Claude tools and the explicit unattended runner are unchanged.
-The Fleet route supports one checkout and the enrolled Codex worker
-configuration.
+The Fleet route supports the enrolled Codex worker configuration and either one checkout
+or the exact operator-declared workspace described below.
 
 To admit new commits without changing the service for each ticket, enroll the
 project with `revision: "git"` and configure its supervisor `execution.sourceMirror`
@@ -1085,6 +1084,169 @@ commit and creates its own child checkout there. A clarification keeps that same
 checkout. The runner records preparation before it can start a model, so a
 restart during checkout can settle the attempt without a guardian receipt. Operators can retire old checkouts after verifying their attempts are
 terminal. An explicit SHA enrollment continues to use the fixed pilot checkout.
+
+### Enroll a related repository workspace
+
+This is opt-in enrollment. Existing fixed-SHA and single-repository Git enrollments keep
+working. Drain the slot and retain the previous configurations before an operator changes
+policy. Private configuration contains real repository/account references; the examples
+below are synthetic. This source change does not install or enroll anything.
+
+The service's optional `workspaces` map holds the operator policy. Its key must equal the
+policy `id`. Each source project is already enrolled with `revision: "git"`, the same
+`workspace` ID and `workspaceKey`, compatible eligible slots, and the same Codex selection.
+The controller identity must be enrolled for **every** project. Only `primary` may submit
+this workspace. A submission cannot choose another profile, add a repository or credential,
+or change a comparison ref. Example policy (all hashes are illustrative):
+
+```json
+{
+  "id": "related",
+  "primary": "app",
+  "profile": "build",
+  "sandbox": "workspace-write",
+  "repositories": [
+    {
+      "project": "app",
+      "comparisonRef": "refs/remotes/origin/main",
+      "comparisonRevision": "1111111111111111111111111111111111111111",
+      "credential": {
+        "reference": "build-tools",
+        "revision": "3333333333333333333333333333333333333333",
+        "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "project": "library",
+      "comparisonRef": "refs/remotes/origin/main",
+      "comparisonRevision": "2222222222222222222222222222222222222222"
+    }
+  ]
+}
+```
+
+`manifestSha256` is SHA-256 of the exact bytes of `.morpheus/credentials.json`, not
+of a secret file. Omit `credential` when that project has no companion. A present manifest
+without authorization is refused. The manifest must declare a credential-free GitHub
+repository, a flat ignored path under `local/`, and a single executable under `bin/`.
+Legacy environment overrides are refused. The companion revision is an exact operator-approved
+commit, separate from source revisions; changing it changes the policy digest.
+
+Put the same `fleetWorkspace` object in the supervisor's selected `execution` route and
+in its protected worker JSON:
+
+```json
+{
+  "policy": "REPLACE_WITH_THE_POLICY_OBJECT_ABOVE",
+  "mirrors": {
+    "app": "/opt/factory/mirrors/app.git",
+    "library": "/opt/factory/mirrors/library.git"
+  },
+  "credentials": {
+    "build-tools": {
+      "path": "/opt/factory/companions/build-tools",
+      "repository": "https://github.com/example/fixture-credentials.git",
+      "revision": "3333333333333333333333333333333333333333"
+    }
+  }
+}
+```
+
+Replace the `policy` string with the full JSON object. Mirror and credential maps must
+contain exactly the policy's references. Use canonical absolute paths. Each mirror's
+`origin` is the enrolled upstream; only the supervisor has its read credential. Give this
+workspace one dedicated non-root account, private home and private workspace root. The
+worker JSON and every ancestor must be root-owned and unwritable by the execution account,
+including ACLs, for both workspace-write and Full Access workspaces. The wrapper, companion
+root and wrapper's ancestors have the same protection; provision group read/execute access
+only for this workspace's account. Configure Git's `safe.directory` for that exact protected
+companion under the authorized account, as required by Git for a root-owned checkout.
+Operator provisioning authorizes access separately from project enrollment. Do not grant
+this account supervisor, other-tenant or release credentials. The source checkouts stay
+writable; root-owned source checkouts are not the solution to an authority-file problem.
+
+The executor validates the manifest digest, companion origin, pinned commit, wrapper path
+and protection, then links the declared ignored local path to that pre-provisioned companion.
+It uses `morpheus credentials run -- <trusted-command>` normally, including iOS QA's existing
+credential-aware prepare command. It never clones a companion with supervisor credentials,
+exports secrets into the worker environment, or asks the operator to paste values. Full
+Access and Xcode/cache qualification still follow the dedicated-account rules above.
+
+On an interactive controller, keep `projects` as the existing map of project IDs to local
+repository anchors. Add `workspaces.related` as
+`{ "primary": "app", "projects": ["app", "library"] }`. Call `factory_inspect` or
+`factory_delegate` with `cwd` for the clean claimed app checkout and `repos` for the clean
+claimed library checkout. All source commits must already be published. The plugin resolves
+every SHA and verifies each checkout's root ownership; extra, duplicate or missing projects
+refuse. A unique one-project workspace can also be selected with only `cwd`.
+
+Service controllers and `factory_remote` use the same submit operation with `project`,
+`revision`, `messageId`, `text` and:
+
+```json
+{
+  "workspace": {
+    "id": "related",
+    "revisions": {
+      "app": "4444444444444444444444444444444444444444",
+      "library": "5555555555555555555555555555555555555555"
+    }
+  }
+}
+```
+
+The primary revision must match `revisions.app`. A stable message ID replays the identical
+intent only. A corrected intent needs a new ID. The service binds the normalized policy
+digest, source revisions, comparison revisions and credential references before placement.
+Both routes retain that binding through clarification, recovery and terminal receipts.
+
+```mermaid
+flowchart TB
+  P["Operator policy: repositories, profile, credential references"]
+  I["Attempt intent: exact published source revisions"]
+  P --> A[Service authorizes the complete set]
+  I --> A
+  A --> B[Immutable workspace binding]
+  B --> F[Supervisor fetches exact commits and ancestry]
+  F --> C[Dedicated account verifies writable isolated checkouts]
+  C --> W[Worker uses scoped trusted wrapper]
+  W --> R[Receipt binds policy, revisions and termination evidence]
+```
+
+Each attempt has `WORKSPACE_ROOT/ATTEMPT_UUID/PROJECT` checkouts. Full history for the
+source and approved comparison commit supports `merge-base` and ordinary complexity checks;
+old shallow mirrors are unshallowed. `origin/main` (or the declared simple branch name)
+is a pinned comparison snapshot. Its `origin` is the checkout's own Git directory with an
+explicit pinned fetch refspec and symbolic remote HEAD, so normal fetch/default-branch probes
+remain local and never inherit upstream credentials or silently advance the approved base.
+This is an execution snapshot; controller-owned checkouts remain the GitHub delivery surface.
+Resume verifies all comparison refs and this local remote as well as policy and source identity.
+Codex workspace-write receives the full authorized writable-root set. Full Access remains an
+OS-account boundary, not a per-repository sandbox.
+
+Preparation returns fixed diagnostics `source_fetch_failed`, `checkout_failed`, or
+`executor_invocation_failed`; policy changes before invocation return
+`workspace_policy_mismatch`. Raw Git, sudo and credential diagnostics never enter receipts.
+The runner journals these codes in its existing settlement; task results and receipts expose
+them. An uncertain invocation still holds the attempt and workspace. Expiry and process death
+alone do not unlock them; the existing fresh-census reconciliation remains required.
+
+Run the synthetic qualification from the source checkout:
+
+```sh
+node --test plugins/factory/tests/fleet-workspace.test.mjs
+```
+
+It exercises the real loopback API, source fetch, executor, guardian, continuation, scoped
+wrapper, writable-root argv, cache write, reporting and receipt. Only sudo/OS authority and
+the model are fixtures. Before enrolling each actual host, the operator must repeat a bounded
+canary through the intended controller entry point: fetch the declared published revisions,
+write in every checkout, run the actual project's build/cache probe (and disposable simulator
+probe for Xcode), invoke a trusted command through each approved wrapper without printing
+values, verify another tenant's store is inaccessible, and open the returned private artifact
+and receipt. Record host/profile/policy digest, all revisions and the result privately. A
+heartbeat, quota observation or synthetic pass does not certify that host. No qualification
+waives independent review, required CI, branch protection or the release identity boundary.
 
 The controller applies the verified patch to its claimed worktree and owns the
 implementation ticket through independent review, CI, and merge.

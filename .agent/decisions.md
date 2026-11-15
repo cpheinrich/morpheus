@@ -2683,3 +2683,19 @@ files and moves its mandatory startup rules into its declared core.
 
 Supersedes the fleet rollout policy in [Tantivy is the only project-record
 search engine](#tantivy-is-the-only-project-record-search-engine--2026-11-09).
+
+**Fleet workspace authority is an operator policy, separate from attempt intent** — 2026-11-15.
+MO-26-11-15-01.02.23, #707. A workspace policy fixes the complete source repository set,
+primary project, execution profile/sandbox, comparison commits and credential-companion
+manifest/revision references. A controller supplies only the exact published source commits.
+Normalize and hash the policy before placement, then retain the complete binding through
+execution, continuation, recovery and receipts. Protected operator configuration grants one
+dedicated non-root execution identity access to that workspace; writable source checkouts do
+not make configuration or other tenants' stores writable. Reuse the project's normal trusted
+credential wrapper under separate account authorization, without forwarding supervisor or
+release credentials. Each checkout has a local pinned comparison snapshot and full ancestry,
+so default-branch fetch/merge-base checks need no upstream credential. The controller owns
+GitHub delivery. Keep existing admission, leases, reconciliation, capacity, quota, Xcode and
+review/release boundaries. Synthetic source qualification is distinct from host adoption.
+These are Factory-specific policy and Git adapters using existing Zod and Node/Git APIs;
+no generic module or new dependency is introduced.

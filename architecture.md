@@ -3466,6 +3466,22 @@ per-client wake documents. Workstations fetch the authoritative snapshot from
 the service after a wake or a timed reconciliation. The Studio supervisor
 journals admissions before launching the existing Codex gateway worker as a
 separate OS user. The slot and checkout remain held until cleanup is verified.
+Operator-enrolled related workspaces extend the same launch binding. Both interactive
+and service controllers supply an exact source revision for every declared repository;
+the service fixes the complete set, profile, comparison refs and credential-companion
+references before placement. A normalized policy digest and all revisions survive resume,
+recovery and receipts. The supervisor fetches full ancestry without forwarding its Git
+credentials. The dedicated account creates writable attempt-owned repository checkouts,
+with a local pinned comparison remote for ordinary Git and complexity tools. Workspace-write
+receives every authorized writable root. Workspace policies require protected root-managed
+worker configuration. Declared manifests bind to pinned, pre-provisioned companions and their
+protected trusted wrappers under that account's authorization; secret values never travel
+in task bindings. Full Access remains an OS-account boundary. Undeclared repositories,
+credential references, altered manifests and comparison refs refuse before invocation.
+Fixed sanitized diagnostics distinguish source fetch, executor invocation and checkout
+failures in the existing settlement journal and receipt; uncertain cleanup still holds the
+shared workspace. Synthetic source qualification and actual host/profile canaries are
+separate evidence. See the [workspace enrollment contract](plugins/factory/README.md#enroll-a-related-repository-workspace).
 Artifacts are private Cloud Storage generations referenced by Firestore.
 Sub2API selects the upstream account behind the enrolled Codex gateway.
 The pilot keeps the A2A task semantics and uses the Factory transport described

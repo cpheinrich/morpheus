@@ -122,3 +122,21 @@ test("Studio rejects a case alias of the primary mirror on case-insensitive file
   const additionalGitProjects = { two: { ...extra, sourceMirror } };
   assert.throws(() => createStudioExecutors({ ...primary, additionalGitProjects }), /Duplicate Studio Git mirror/);
 });
+
+test("preparation distinguishes source fetch, executor invocation and checkout failures without raw diagnostics", async t => {
+  const config = { account: "fixture", node: "/node", script: "/executor", workerConfig: "/worker", project: "fixture", sourceMirror: "/unavailable-fixture" };
+  const task = { source: { project: "fixture", checkout: "git", revision: "1".repeat(40) }, attempt: { id: "attempt" } };
+  const source = createStudioExecutor(config, null, null);
+  assert.deepEqual(await source.prepare(task, new AbortController().signal), { prepared: false, diagnosticCode: "source_fetch_failed" });
+  t.mock.method(childProcess, "spawn", () => { throw new Error("private raw invocation diagnostic"); });
+  syncBuiltinESMExports();
+  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  // A non-Git legacy execution exercises invocation failure without source IO.
+  const failed = await source.execute({ task: { id: "task", attempt: task.attempt, source: { project: "fixture" }, selection: {} },
+    admissionId: "admission", signal: new AbortController().signal });
+  // Quota must be available before the invocation boundary.
+  assert.equal(failed.invocation.launch, "never-launched");
+  const execute = createStudioExecutor(config, null, async () => {});
+  assert.deepEqual(await execute.execute({ task: { id: "task", attempt: task.attempt, source: { project: "fixture" }, selection: {} },
+    admissionId: "admission", signal: new AbortController().signal }), { terminationVerified: false, diagnosticCode: "executor_invocation_failed" });
+});

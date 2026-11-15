@@ -7,6 +7,8 @@ import { z } from "zod";
 import { createFleetApi } from "../src/fleet-api.mjs";
 import { fleetObjects } from "../src/fleet-objects.mjs";
 
+import { workspacePolicy } from "../src/fleet-workspace.mjs";
+
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const schema = z.strictObject({
   projectId: id,
@@ -16,9 +18,11 @@ const schema = z.strictObject({
     z.strictObject({ role: z.literal("controller"), projects: z.array(id).min(1) }),
     z.strictObject({ role: z.literal("worker"), hostId: id, slotId: id }),
   ])),
+  workspaces: z.record(id, workspacePolicy).optional(),
   projects: z.record(id, z.strictObject({
     revision: z.union([z.string().regex(/^[a-f0-9]{40}$/), z.literal("git")]),
     workspaceKey: id,
+    workspace: id.optional(),
     eligibleSlots: z.array(id).min(1).max(16),
     selection: z.strictObject({ provider: z.literal("codex"), gateway: id, model: id }),
   })),

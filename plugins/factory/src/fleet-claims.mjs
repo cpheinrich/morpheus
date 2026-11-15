@@ -100,7 +100,7 @@ export function settleAttempt(db, { taskId, attemptId, hostId, outcome, result, 
     if (invocation) {
       transaction.set(db.doc(receiptPath(taskId)), {
         ...invocation, taskId, attemptId, hostId, slotId: task.attempt.slotId,
-        state, terminationVerified: true,
+        state, terminationVerified: true, ...(result?.diagnosticCode ? { diagnosticCode: result.diagnosticCode } : {}), source: task.source ?? null, selection: task.selection ?? null,
       });
     }
     transaction.update(slotRef, { attemptId: null });

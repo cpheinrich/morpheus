@@ -18,7 +18,11 @@ Factory adds a controller-only terminal receipt alongside the task state. It
 binds the settled task and claimed slot to supervisor and guardian evidence for
 the last invocation. The [operator instructions](../../../README.md#read-slot-readiness-and-a-terminal-receipt)
 define its session, never-launched and unknown classifications, and separate the
-optional project readiness probe from claim and launch authorization.
+optional project readiness probe from claim and launch authorization. A workspace receipt
+also retains the exact source set and normalized operator policy digest, including pinned
+comparison and companion revisions. Interactive status retains this same receipt. Fixed
+prelaunch diagnostic codes distinguish source fetch, checkout and executor invocation;
+uncertain invocation evidence never becomes never-launched proof.
 
 Claims, capacity, attempt identity, checkout ownership, approval policy, and the provider
 session live in Factory. Firestore listeners wake runners and clients, and a transaction owns
