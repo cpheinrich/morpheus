@@ -255,6 +255,22 @@ test("real service, supervisor, executor, guardian and wrapper return an exact w
   assert.equal(refChanged.invocation.launch, "never-launched");
 });
 
+test("Fleet preserves a dotted enrolled model and accepts only an exact explicit match", async t => {
+  const f = await fixture(t);
+  f.config.model = "gpt-6.1-sol";
+  const api = await service(t, f);
+  const input = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "fixture" };
+  const byDefault = await api.call("submit", { ...input, messageId: "default-model" });
+  const exactMatch = await api.call("submit", { ...input, model: f.config.model, messageId: "explicit-model" });
+  assert.equal(byDefault.status, 200);
+  assert.equal(byDefault.value.task.selection.model, "gpt-6.1-sol");
+  assert.equal(exactMatch.status, 200);
+  assert.deepEqual(exactMatch.value.task.selection, byDefault.value.task.selection);
+  assert.equal((await api.call("submit", { ...input, model: "gpt-6.2-sol", messageId: "different-model" })).status, 403);
+  assert.equal((await api.call("submit", { ...input, model: "gpt-6/1-sol", messageId: "malformed-model" })).status, 400);
+  assert.equal((await api.call("submit", { ...input, project: "app.v1", messageId: "invalid-project" })).status, 400);
+});
+
 test("every prepared repository refuses tracked and untracked edits before first invocation", async t => {
   const f = await fixture(t);
   const source = { project: "app", checkout: "git", revision: f.revisions.app, workspace: bindWorkspace(f.policy, f.intent) };

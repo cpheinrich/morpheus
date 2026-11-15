@@ -1279,6 +1279,8 @@ model, plus each eligible slot's heartbeat, capacity, busy state and quota statu
 and its last scoped quota check reported headroom within two minutes. It does not
 test the source checkout, inference credential, model or later claim. Every eligible
 slot for a project must share that project's enrolled gateway name and model. The
+model can be a versioned identifier such as `gpt-6.1-sol`. An explicit request must
+match the enrolled identifier exactly. The
 quota read checks the gateway name and provider. Execution also checks the exact
 configured model and gateway endpoint before launching. A mismatched gateway is
 `incompatible`, stale or unavailable quota is `unknown`, and a fresh exhausted
