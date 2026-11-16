@@ -60,4 +60,64 @@ pre-fix schema and a minute-only schema. `origin/main` (e128490b) was merged cle
   tests passed.
 - `pnpm --dir plugins/factory/src/host audit --prod --json` — zero advisories, two dependencies.
 
-Fresh independent review remains pending while the pull request is deliberately a draft.
+## Independent review
+
+An independent Factory reviewer found that the upgrade narrowed wire v1 timestamp precision and prescribed a bounded compatibility fix. A separate implementation worker satisfied the condition and verified the previous minute-only formats and the zone requirement. The controller independently reran all seven scheduled-task tests and the clean production audit, and verified that Git reproduces the trunk merge exactly. The weekly audit backlink remains with that separately authored audit.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "8609a6d639e160648e1e039cd60e387f86e24443",
+  "reviewed": "1053464d8defb6af692aebc8a374e8a6182cee71",
+  "covered": "23aea09af2c29e92f30ec96d27ec732621dfb90e",
+  "authorSession": "01a1e65c-0355-76c1-8402-a96d3e0a8c43",
+  "reviewerSession": "92d30e72-2b50-4cee-a175-f5ca0d114273",
+  "risk": "normal",
+  "elapsedMinutes": 2.13495,
+  "timing": {
+    "source": "runner",
+    "durationMs": 128097,
+    "evidence": "Claude result duration_ms=128097 in Factory run 7e65c307-371a-4afe-a4f3-9b6282998ca6 events.jsonl."
+  },
+  "outcome": "complete",
+  "summary": "An independent Factory reviewer found that the upgrade narrowed wire v1 timestamp precision and prescribed a bounded compatibility fix. A separate implementation worker satisfied the condition and verified the previous minute-only formats and the zone requirement. The controller independently reran all seven scheduled-task tests and the clean production audit, and verified that Git reproduces the trunk merge exactly. The weekly audit backlink remains with that separately authored audit.",
+  "contextRead": [
+    "hq/product/roadmap/MO-26-11-16-13.48.32-upgrade-factory-host-zod.md",
+    ".agent/worklog/2026-11-16-upgrade-factory-host-zod.md",
+    "hq/product/roadmap/MO-26-11-02-10.58.33-preserve-zod-datetime.md",
+    ".agent/decisions.md",
+    "plugins/factory/src/host/reporting/README.md",
+    "src/iso-datetime.ts"
+  ],
+  "findings": [
+    {
+      "id": "F01",
+      "severity": "substantive",
+      "description": "Zod 4.6.6 default ISO datetime requires seconds, rejecting wire v1 producer timestamps previously accepted at minute precision.",
+      "paths": [
+        "plugins/factory/src/host/reporting/protocol.mjs",
+        "plugins/factory/src/host/reporting/tests/scheduled-tasks.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Match the earlier root Zod compatibility contract with a union of default and minute-only offset schemas. Pin both accepted offsets and zoneless rejection.",
+      "condition": {
+        "paths": [
+          "plugins/factory/src/host/reporting/protocol.mjs",
+          "plugins/factory/src/host/reporting/tests/scheduled-tasks.test.mjs",
+          ".agent/worklog/2026-11-16-upgrade-factory-host-zod.md"
+        ],
+        "evidence": "Use the union with precision -1 for the second schema; test minute-only Z and explicit offset timestamps and zoneless rejection; run the host frozen lock install, full host test and the host production audit; record the change in the worklog and PR body."
+      },
+      "conditionMet": "Commit 23aea09a is confined to the condition paths. Frozen lock install passed, 68 Vitest, 278 Python and 98 Node tests passed, and the production audit returned zero advisories. Controller independently passed all seven scheduled-task tests and the production audit."
+    },
+    {
+      "id": "N01",
+      "severity": "minor",
+      "description": "The weekly audit branch had no link back to PR #726 at review time.",
+      "paths": ["hq/product/roadmap/MO-26-11-16-13.48.32-upgrade-factory-host-zod.md"],
+      "disposition": "disputed",
+      "response": "The audit is a separate branch with its own author. This records the connection and keeps the audit publication independent of delivery of this remediation."
+    }
+  ]
+}
+```
