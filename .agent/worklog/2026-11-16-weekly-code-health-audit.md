@@ -22,30 +22,27 @@ tags: [engineering, devops, security]
 
 ## Evidence and decisions
 
-Audited exact `origin/main` `0bcbc251cbfd12cc8215c922b51dda180447ebab` after integrating the
-Factory host Zod remediation that landed during this run.
+Audited exact `origin/main` `898406bd6873041b4edd785b7b3e8533627fee19` after integrating the
+focused dependency remediations that landed during this run.
 
-- Root, Factory, and Factory-host production audits are clean. Root's full graph has 1 high / 3
-  moderate development advisories. Factory host's full graph has 3 critical / 1 high / 10 moderate
-  / 1 low development advisories.
-- Draft #728 removes the root `re2js` high and two `@vitest/mocker` moderate findings; open #704
-  owns the remaining root `minimatch` finding.
+- Root, Factory, and Factory-host audits are clean both with and without `--prod`.
 - #726 changed externally from draft/open to merged at 2026-11-16T22:17:07Z as main `0bcbc251`.
   This automation did not merge, close, or enable auto-merge on it and did not create a replacement.
-- #698 closed externally without merge. Its one-package mocker override was stale and incomplete;
-  replacing it safely requires a direct Vitest major upgrade across the complete 443-test host
-  boundary.
-- `jscpd@5.4.3`: 424 production files / 87,903 lines, 33 clones, 354 duplicated lines (0.40%).
-- Complexity: 677 files / 16,393 functions, zero CCN violation, 109 cognitive warnings. No broad
+- #730 then merged externally at 2026-11-16T22:36:20Z as main `08e0ba63`, and #728 merged externally
+  at 2026-11-16T22:41:42Z as main `898406bd`. This automation did not merge, close, or enable
+  auto-merge on them. #698 and #704 closed externally without merge after the graphs became clean.
+- `jscpd@5.4.3`: 426 production files / 87,750 lines, 40 clones, 394 duplicated lines (0.45%).
+- Complexity: 677 files / 16,419 functions, zero CCN violation, 109 cognitive warnings. No broad
   state-machine refactor was justified on an audit branch.
-- The 100%-confidence dead-code scan covered 436 files / 19,153 declarations / 80 entry points and
-  found one candidate: a production `sys` import used only as a test patch seam. The audit removes
-  it and patches built-in `sys.argv`; the repeated scan reports no candidate.
+- The initial 100%-confidence dead-code scan found one candidate: a production `sys` import used
+  only as a test patch seam. The audit removes it and patches built-in `sys.argv`; the exact-final
+  scan covers 416 files / 18,614 symbols / 76 entry points and reports no candidate.
 - Root production Knip is clean. Direct imports disprove Factory/host whole-manifest false positives.
-- Exact baseline: 2,948 tracked files, no tracked junk/recovery pattern. The two closeout blobs and
+- Exact baseline: 2,956 tracked files, no tracked junk/recovery pattern. The two closeout blobs and
   security badge are small, documented or record-referenced assets.
-- Exact-main run `43966157068` passed all named jobs. Branch protection requires four checks,
-  rejects force pushes/deletion, and `deleteBranchOnMerge` remains enabled.
+- #728 head run `43971799807` passed all named jobs immediately before exact main. Branch
+  protection requires four checks, rejects force pushes/deletion, and `deleteBranchOnMerge`
+  remains enabled.
 - Exact codebase-memory indexing was unavailable because active sessions could not be stopped
   safely. Direct analyzers/source/package/Git/GitHub evidence was used; negative claims are bounded.
 
@@ -63,10 +60,10 @@ Factory host Zod remediation that landed during this run.
 
 ## Remediation links
 
-- #728: https://github.com/cpheinrich/morpheus/pull/728
-- #704: https://github.com/cpheinrich/morpheus/pull/704
 - #726: https://github.com/cpheinrich/morpheus/pull/726 (merged externally during the audit)
-- #698: https://github.com/cpheinrich/morpheus/pull/698 (closed externally without merge)
+- #730: https://github.com/cpheinrich/morpheus/pull/730 (created and merged externally during the audit)
+- #728: https://github.com/cpheinrich/morpheus/pull/728 (merged externally during the audit)
+- #698 and #704: closed externally without merge after their findings were superseded.
 
 ## Independent review
 
