@@ -130,3 +130,8 @@ describe("the public production package", () => {
     }
   });
 });
+
+it("refuses percent-escaped dot segments before a browser can resolve another route", () => {
+  expect(webQaPathIssue("/account/%2e%2e/billing")).toMatch(/dot segments/);
+  expect(webQaPathIssue("/account/.%2e/billing")).toMatch(/dot segments/);
+});

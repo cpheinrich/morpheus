@@ -46,7 +46,7 @@ button.x{border:0;padding:0 4px;line-height:20px;color:var(--qa-muted)}
 font:700 11px/20px system-ui,-apple-system,sans-serif;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.4);pointer-events:none}
 .pin.live{pointer-events:auto}.pin.pending{opacity:.6}.pin.focused{outline:2px solid ${QA_PIN_COLOR};outline-offset:2px}
 [hidden]{display:none!important}
-@media (max-width:999px){.panel{top:auto;left:0;width:auto;max-height:55vh;border-left:0;border-top:1px solid var(--qa-rule);box-shadow:0 -2px 12px rgba(0,0,0,.12)}ol{max-height:18vh}}`;
+@media (max-width:999px){.panel{top:auto;left:0;width:auto;max-height:55vh;overflow-y:auto;overscroll-behavior:contain;border-left:0;border-top:1px solid var(--qa-rule);box-shadow:0 -2px 12px rgba(0,0,0,.12)}ol{max-height:18vh}}`;
 const SCOPES = [["element", "Element"], ["view", "Current view"], ["page", "Whole page"]];
 // Events Pin mode keeps from the site: the press, its click, and the context menu.
 const PIN_EVENTS = ["pointerdown", "mousedown", "mouseup", "click", "auxclick", "contextmenu"];
@@ -94,7 +94,8 @@ export function mountWebQa(options) {
     const storage = safeStorage();
     const key = sessionKey(project, accountKey, location.origin);
     let session = loadSession(storage, key);
-    let pinMode = true, busy = false, mounted = true, focusedId = null, escArmedAt = 0;
+    let pinMode = true, busy = false, mounted = true, focusedId = null;
+    let deleteArm = null;
     let lastPath = location.pathname, frame = 0;
     const pageStyle = document.documentElement.style;
     const priorCursor = pageStyle.cursor;
@@ -126,6 +127,18 @@ export function mountWebQa(options) {
     root.append(pinsEl, panel);
     // ---- state helpers ----------------------------------------------------------------------------
     const focused = () => session.drafts.find(d => d.id === focusedId);
+    function storeAttempt(next) {
+        if (!storage || saveSession(storage, key, next))
+            return true;
+        // If there was a stored draft, starting now could restore its editable text
+        // after reload and send it again under a second batch ID.
+        try {
+            return storage.getItem(key) === null;
+        }
+        catch {
+            return false;
+        }
+    }
     function persist() {
         if (!saveSession(storage, key, session))
             setStatus("This browser would not keep the draft; it is lost on reload.", "err");
@@ -232,6 +245,7 @@ export function mountWebQa(options) {
             return;
         }
         result.draft.scope = scope;
+        deleteArm = null;
         focusedId = result.draft.id;
         textEl.value = "";
         update({ ...session, drafts: [...session.drafts, result.draft] });
@@ -239,12 +253,14 @@ export function mountWebQa(options) {
         textEl.focus();
     }
     function select(id) {
+        deleteArm = null;
         focusedId = id;
         textEl.value = focused()?.text ?? "";
         render();
         textEl.focus();
     }
     function remove(id) {
+        deleteArm = null;
         if (focusedId === id)
             focusedId = null;
         update({ ...session, drafts: session.drafts.filter(d => d.id !== id) });
@@ -261,6 +277,7 @@ export function mountWebQa(options) {
         sendBtn.disabled = busy || (!session.pending && !session.drafts.some(x => x.text.trim()));
     }
     function saveAndClear() {
+        deleteArm = null;
         focusedId = null;
         textEl.value = "";
         render();
@@ -268,24 +285,30 @@ export function mountWebQa(options) {
     async function send() {
         if (busy)
             return;
-        const wasPending = !!session.pending;
+        const canCorrect = !session.pending || session.pending.state === "rejected";
         const frozen = freeze(session, session.pending?.batch.batchId ?? uuid(), canBuild);
         if ("error" in frozen) {
             setStatus(frozen.error, "err");
             return;
         }
+        // The frozen batch is stored before the request so a lost response or reload retries this UUID.
+        const next = { ...frozen.session, pending: { ...frozen.session.pending, state: "unconfirmed" } };
+        if (!storeAttempt(next)) {
+            setStatus("Browser storage could not keep this batch safe to retry. Try Send again before reloading.", "err");
+            return;
+        }
         if (frozen.session.pending?.drafts.some(d => d.id === focusedId))
             focusedId = null;
-        // The frozen batch is stored before the request so a lost response or reload retries this UUID.
         busy = true;
-        update(frozen.session);
+        session = next;
+        render();
         setStatus("Sending…");
         let receipt;
         try {
             receipt = await submit(structuredClone(frozen.batch));
         }
         catch (error) {
-            if (mounted && !wasPending && error instanceof WebQaRejectedError && session.pending) {
+            if (mounted && canCorrect && error instanceof WebQaRejectedError && session.pending) {
                 busy = false;
                 update({ ...session, pending: { ...session.pending, state: "rejected" } });
                 setStatus(error.message, "err");
@@ -303,6 +326,9 @@ export function mountWebQa(options) {
     }
     // ---- page events: only in Pin mode ------------------------------------------------------------
     const ours = (e) => e.composedPath().some(node => node === host || (node instanceof Element && node.hasAttribute("data-qa-chrome")));
+    function eventElement(e) {
+        return e.composedPath().find((node) => node instanceof Element);
+    }
     function onPagePointer(e) {
         if (ours(e))
             return;
@@ -312,8 +338,9 @@ export function mountWebQa(options) {
         e.preventDefault();
         e.stopImmediatePropagation();
         const placing = e.type === "contextmenu" || (e.type === "click" && mouse.button === 0);
-        if (placing && e.target instanceof Element)
-            addPin(e.target, mouse.clientX, mouse.clientY);
+        const target = eventElement(e);
+        if (placing && target)
+            addPin(target, mouse.clientX, mouse.clientY);
     }
     function onPageKey(e) {
         if (ours(e))
@@ -324,7 +351,7 @@ export function mountWebQa(options) {
             return;
         }
         // Keyboard pinning: Enter on a focused page element pins its centre.
-        const target = document.activeElement;
+        const target = eventElement(e);
         if (e.key === "Enter" && target instanceof Element && target !== document.body) {
             e.preventDefault();
             e.stopImmediatePropagation();
@@ -379,7 +406,8 @@ export function mountWebQa(options) {
         }
         if (e.key === "Escape") {
             e.preventDefault();
-            escape();
+            if (!e.repeat)
+                escape();
         }
     });
     panel.addEventListener("keydown", e => {
@@ -387,29 +415,33 @@ export function mountWebQa(options) {
             return;
         if (e.key === "Escape") {
             e.preventDefault();
-            if (escArmedAt && Date.now() - escArmedAt < 1000)
-                escape();
-            else
-                setMode(false);
+            if (!e.repeat) {
+                if (deleteArmed())
+                    escape();
+                else
+                    setMode(false);
+            }
         }
         else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
             void send();
         }
     });
+    function deleteArmed() {
+        return !!deleteArm && deleteArm.id === focusedId && Date.now() - deleteArm.at < 1000;
+    }
     function escape() {
         const d = focused();
-        if (escArmedAt && Date.now() - escArmedAt < 1000 && d) {
-            escArmedAt = 0;
+        if (!d)
+            return;
+        if (deleteArmed()) {
             remove(d.id);
             return;
         }
-        escArmedAt = Date.now();
-        if (d) {
-            textEl.blur();
-            sendBtn.focus();
-            setStatus(`Press Esc again to delete pin ${session.drafts.indexOf(d) + 1}.`);
-        }
+        deleteArm = { id: d.id, at: Date.now() };
+        textEl.blur();
+        sendBtn.focus();
+        setStatus(`Press Esc again to delete pin ${session.drafts.indexOf(d) + 1}.`);
     }
     // Single-page navigation changes the path without an event this panel can rely on.
     const timer = window.setInterval(() => {

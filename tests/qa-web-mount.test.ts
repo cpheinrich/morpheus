@@ -129,6 +129,87 @@ describe("mountWebQa", () => {
     expect(stored().drafts[0].text).toBe("Please move the navigation");
   });
 
+  it("marks a rejected retry unconfirmed before sending, including across remount", async () => {
+    const submit = vi.fn<(batch: WebQaBatch) => Promise<WebQaReceipt>>()
+      .mockRejectedValueOnce(new WebQaRejectedError("Too long"))
+      .mockImplementationOnce(() => new Promise(() => {}));
+    mount({ submit });
+    click(document.getElementById("card")!);
+    type("Fix the tab order");
+    click(button("Send"));
+    await flush();
+    expect(button("Edit again")).toBeDefined();
+    click(button("Retry"));
+    expect(stored().pending.state).toBe("unconfirmed");
+    unmount!(); unmount = null;
+    mount();
+    expect(button("Edit again")).toBeUndefined();
+    expect(submit.mock.calls[1]![0].batchId).toEqual(submit.mock.calls[0]![0].batchId);
+  });
+
+  it("keeps the current draft editable when storage cannot freeze its retry identity", () => {
+    const real = window.sessionStorage;
+    const own = Object.getOwnPropertyDescriptor(window, "sessionStorage")!;
+    let quota = false;
+    Object.defineProperty(window, "sessionStorage", { configurable: true, value: {
+      getItem: (key: string) => real.getItem(key),
+      setItem: (key: string, value: string) => {
+        if (quota) throw new DOMException("Storage full", "QuotaExceededError");
+        real.setItem(key, value);
+      },
+    } });
+    try {
+      const { submit } = mount();
+      click(document.getElementById("card")!);
+      type("Spacing issue");
+      quota = true;
+      click(button("Send"));
+      expect(submit).not.toHaveBeenCalled();
+      expect(status()).toMatch(/Browser storage could not keep this batch safe to retry/);
+      const snapshot = JSON.parse(real.getItem(Object.keys(real)[0]!)!);
+      expect(snapshot.drafts[0].text).toBe("Spacing issue");
+      expect(snapshot.pending).toBeNull();
+      quota = false;
+      type("Still editable");
+      expect(q<HTMLTextAreaElement>("textarea").value).toBe("Still editable");
+    } finally { Object.defineProperty(window, "sessionStorage", own); }
+  });
+
+  it("checks the composed target and private ancestors of an open shadow root", () => {
+    mount();
+    const parent = document.createElement("div");
+    parent.setAttribute("data-qa-private", "");
+    document.body.append(parent);
+    const host = parent.appendChild(document.createElement("div"));
+    host.setAttribute("data-qa-anchor", "public-component");
+    const shadow = host.attachShadow({ mode: "open" });
+    const input = shadow.appendChild(document.createElement("input"));
+    input.type = "password";
+    click(input);
+    expect(status()).toContain("This area is private");
+    parent.removeAttribute("data-qa-private");
+    input.focus();
+    key(input, "Enter");
+    expect(status()).toContain("Pins cannot be placed on this field");
+    expect(q("ol li").textContent).toBe("No comments yet.");
+  });
+
+  it("does not delete a draft on Escape repeat or carry deletion to another pin", () => {
+    mount();
+    click(document.getElementById("card")!);
+    type("First");
+    key(q("textarea"), "Escape");
+    key(button("Send"), "Escape", { repeat: true });
+    expect(stored().drafts).toHaveLength(1);
+
+    click(document.getElementById("link")!);
+    type("Second");
+    key(q("textarea"), "Escape");
+    expect(stored().drafts.map((item: WebQaBatch["comments"][number]) => item.text)).toEqual(["First", "Second"]);
+    key(button("Send"), "Escape");
+    expect(stored().drafts.map((item: WebQaBatch["comments"][number]) => item.text)).toEqual(["First"]);
+  });
+
   it("refuses pins on private areas and blocked fields", () => {
     mount();
     click(document.getElementById("private")!);

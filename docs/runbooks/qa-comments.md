@@ -433,7 +433,7 @@ loopback overlay.
 Production uses a narrower capture contract. A pin records the pathname,
 viewport, scroll offset and normalized point, with an optional short
 `data-qa-anchor` that the site explicitly assigned. Private areas use
-`data-qa-private`. The server normalizes sensitive route suffixes and validates
+`data-qa-private`. Mark the shadow host for a closed component containing private fields. The server normalizes sensitive route suffixes and validates
 the shared schema before storing anything. Browser drafts are scoped to the
 site, tab and enrolled identity.
 

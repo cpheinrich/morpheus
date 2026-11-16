@@ -86,10 +86,21 @@ export function saveSession(storage: Pick<Storage, "setItem"> | null, key: strin
 const SECRET_AUTOCOMPLETE = /^(cc-.*|one-time-code|current-password|new-password)$/;
 const SECRET_INPUT_TYPES = new Set(["password", "file", "hidden"]);
 
+function closestAcrossShadows(element: Element, selector: string): Element | null {
+  let current: Element | null = element;
+  while (current) {
+    const match = current.closest(selector);
+    if (match) return match;
+    const root: Node = current.getRootNode();
+    current = root instanceof ShadowRoot ? root.host : null;
+  }
+  return null;
+}
+
 /** Why a pin may not be placed on this element, or null when it may. */
 export function blockedReason(el: Element): string | null {
-  if (el.closest("[data-qa-private]")) return "This area is private; pin something nearby instead.";
-  const field = el.closest("input, textarea, select");
+  if (closestAcrossShadows(el, "[data-qa-private]")) return "This area is private; pin something nearby instead.";
+  const field = closestAcrossShadows(el, "input, textarea, select");
   if (!field) return null;
   const type = (field.getAttribute("type") || "").toLowerCase();
   if (field.tagName === "INPUT" && SECRET_INPUT_TYPES.has(type)) return "Pins cannot be placed on this field.";
@@ -100,7 +111,7 @@ export function blockedReason(el: Element): string | null {
 
 /** The nearest explicit `data-qa-anchor` token, when it is a valid one. */
 export function anchorFor(el: Element): { token: string; el: Element } | null {
-  const host = el.closest("[data-qa-anchor]");
+  const host = closestAcrossShadows(el, "[data-qa-anchor]");
   const token = host?.getAttribute("data-qa-anchor") ?? "";
   if (!host || token.length > WEB_QA_LIMITS.anchorChars || !WEB_QA_ANCHOR.test(token)) return null;
   return { token, el: host };

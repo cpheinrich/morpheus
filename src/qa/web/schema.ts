@@ -23,7 +23,6 @@ export const WEB_QA_ANCHOR = /^[A-Za-z0-9][A-Za-z0-9_.:-]*$/;
 
 // C0 controls (which include ESC), DEL and C1 controls. Raw or percent-escaped, these can rewrite a
 // terminal or log line the agent later reads, so a path containing one is refused rather than cleaned.
-// eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 
 /**
@@ -42,7 +41,7 @@ export function webQaPathIssue(path: string): string | null {
   let decoded: string;
   try { decoded = decodeURIComponent(path); } catch { return "has a malformed percent escape"; }
   if (CONTROL.test(decoded) || decoded.includes("\\")) return "must not escape control characters or backslashes";
-  if (path.split("/").some(segment => segment === "." || segment === "..")) return "must not include dot segments";
+  if (decoded.split("/").some(segment => segment === "." || segment === "..")) return "must not include dot segments";
   return null;
 }
 

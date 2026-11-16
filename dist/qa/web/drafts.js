@@ -77,11 +77,22 @@ export function saveSession(storage, key, session) {
 // such a field tells the reader where a secret was typed, so these fields refuse pins outright.
 const SECRET_AUTOCOMPLETE = /^(cc-.*|one-time-code|current-password|new-password)$/;
 const SECRET_INPUT_TYPES = new Set(["password", "file", "hidden"]);
+function closestAcrossShadows(element, selector) {
+    let current = element;
+    while (current) {
+        const match = current.closest(selector);
+        if (match)
+            return match;
+        const root = current.getRootNode();
+        current = root instanceof ShadowRoot ? root.host : null;
+    }
+    return null;
+}
 /** Why a pin may not be placed on this element, or null when it may. */
 export function blockedReason(el) {
-    if (el.closest("[data-qa-private]"))
+    if (closestAcrossShadows(el, "[data-qa-private]"))
         return "This area is private; pin something nearby instead.";
-    const field = el.closest("input, textarea, select");
+    const field = closestAcrossShadows(el, "input, textarea, select");
     if (!field)
         return null;
     const type = (field.getAttribute("type") || "").toLowerCase();
@@ -94,7 +105,7 @@ export function blockedReason(el) {
 }
 /** The nearest explicit `data-qa-anchor` token, when it is a valid one. */
 export function anchorFor(el) {
-    const host = el.closest("[data-qa-anchor]");
+    const host = closestAcrossShadows(el, "[data-qa-anchor]");
     const token = host?.getAttribute("data-qa-anchor") ?? "";
     if (!host || token.length > WEB_QA_LIMITS.anchorChars || !WEB_QA_ANCHOR.test(token))
         return null;
