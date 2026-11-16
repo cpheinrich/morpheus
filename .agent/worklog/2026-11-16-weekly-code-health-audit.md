@@ -67,7 +67,7 @@ focused dependency remediations that landed during this run.
 
 ## Independent review
 
-Fresh normal-risk independent review cleared exact head `a158f5c2` with no findings. The reviewer
+Fresh normal-risk independent review cleared exact head a158f5c2 with no findings. The reviewer
 reproduced the focused Python tests, bytecode compilation, all six dependency audits, complexity
 inventory, tracked-artifact checks, and direct declared-dependency use. It verified the external
 remediation transitions, auto-merge state, deleted merged branches, repository settings, branch
