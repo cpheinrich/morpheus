@@ -226,6 +226,88 @@ test("lease loss aborts execution and prevents publishing even a later verified 
   assert.equal(calls.at(-1)[1].outcome, "TASK_STATE_FAILED");
 });
 
+test("transient inspect and renew failures preserve one execution within its confirmed lease", async (t) => {
+  const { options, started, executions, calls } = await fixture(t);
+  let failOperation;
+  const runner = createFleetRunner({ ...options, call: async (operation, body) => {
+    if (operation === failOperation) throw Object.assign(new Error("connection reset"), { retryable: true });
+    return options.call(operation, body);
+  } });
+  assert.equal(await runner.tick(), "running");
+  const run = await started();
+  for (const operation of ["inspect", "renew"]) {
+    failOperation = operation;
+    assert.equal(await runner.tick(), "reconciling");
+    assert.equal(run.signal.aborted, false);
+  }
+  failOperation = undefined;
+  run.resolve(output("completed"));
+  await setImmediate();
+  assert.equal(await runner.tick(), "settled");
+  assert.equal(executions.length, 1);
+  assert.equal(calls.at(-1)[1].outcome, "TASK_STATE_COMPLETED");
+});
+
+test("the last confirmed lease still aborts a worker while inspect is stalled", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { options, started, calls } = await fixture(t);
+  const stalledInspect = Promise.withResolvers();
+  const inspecting = Promise.withResolvers();
+  let stall = false;
+  const runner = createFleetRunner({ ...options, call: async (operation, body) => {
+    if (stall && operation === "inspect") {
+      inspecting.resolve();
+      return stalledInspect.promise;
+    }
+    return options.call(operation, body);
+  } });
+  assert.equal(await runner.tick(), "running");
+  const run = await started();
+  stall = true;
+  const tick = runner.tick();
+  await inspecting.promise;
+  t.mock.timers.tick(60_000);
+  assert.equal(run.signal.aborted, true);
+  stalledInspect.reject(Object.assign(new Error("connection reset"), { retryable: true }));
+  await assert.rejects(tick, /connection reset/);
+  stall = false;
+  run.resolve(output("completed", { artifacts: [{ name: "stale.pdf" }] }));
+  await setImmediate();
+  assert.equal(await runner.tick(), "settled");
+  assert.equal(calls.at(-1)[1].outcome, "TASK_STATE_FAILED");
+  assert.equal(calls.at(-1)[1].result.artifacts, undefined);
+});
+
+test("a renewal response at the previous deadline cannot rescue late output before the timer fires", async (t) => {
+  let time = 0;
+  t.mock.method(performance, "now", () => time);
+  const { options, started, calls } = await fixture(t);
+  let late = false;
+  const renewing = Promise.withResolvers();
+  const renewalReply = Promise.withResolvers();
+  const runner = createFleetRunner({ ...options, call: async (operation, body) => {
+    if (late && operation === "renew") {
+      renewing.resolve();
+      return renewalReply.promise;
+    }
+    return options.call(operation, body);
+  } });
+  assert.equal(await runner.tick(), "running");
+  const run = await started();
+  late = true;
+  time = 58_000;
+  const tick = runner.tick();
+  await renewing.promise;
+  time = 59_000;
+  run.resolve(output("completed", { artifacts: [{ name: "stale.pdf" }] }));
+  await setImmediate();
+  renewalReply.resolve({ renewed: true });
+  assert.equal(await tick, "settled");
+  assert.equal(run.signal.aborted, true);
+  assert.equal(calls.at(-1)[1].outcome, "TASK_STATE_FAILED");
+  assert.equal(calls.at(-1)[1].result.artifacts, undefined);
+});
+
 test("restart settles the exact admission once its cleanup is proven without executing again", async (t) => {
   const { options, task, executions, calls } = await fixture(t);
   task.attempt = { id: attemptId };

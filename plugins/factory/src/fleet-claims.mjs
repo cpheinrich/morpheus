@@ -1,5 +1,7 @@
 import { receiptPath } from "./fleet-receipt.mjs";
 
+export const leaseMs = 60_000;
+
 // These transactions run behind Factory's trusted operations. Callers derive
 // host identity, workspace keys and eligibility from enrollment, never from a
 // worker-supplied task message.
