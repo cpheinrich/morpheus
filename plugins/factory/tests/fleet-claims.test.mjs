@@ -100,6 +100,16 @@ test("lease expiry and uncertain cleanup preserve ownership until verified settl
   assert.equal(db.docs.has("factoryWorkspaces/shared-worktree"), false);
 });
 
+test("cancellation prevents the exact owner from extending its lease", async () => {
+  const db = fixture();
+  await claimTask(db, request);
+  const path = "factoryTasks/task-1";
+  db.docs.set(path, { ...db.docs.get(path), cancelRequestedAt: 105 });
+  assert.equal(await renewAttempt(db, { ...request, now: 110 }), false);
+  assert.equal(db.docs.get(path).attempt.leaseUntil, 130);
+  assert.equal(db.docs.get("factorySlots/studio").attemptId, request.attemptId);
+});
+
 test("a stale or busy preferred host leaves the fresh runner eligible", async () => {
   const db = fixture();
   db.docs.set("factorySlots/studio", { ...slot, hostId: "studio", observedAt: 79, capacity: 2 });

@@ -1,6 +1,7 @@
 import { receiptPath } from "./fleet-receipt.mjs";
 
-export const leaseMs = 60_000;
+export const legacyLeaseMs = 60_000;
+export const leaseMs = 120_000;
 
 // These transactions run behind Factory's trusted operations. Callers derive
 // host identity, workspace keys and eligibility from enrollment, never from a
@@ -66,7 +67,7 @@ export function renewAttempt(db, { taskId, attemptId, hostId, now, leaseMs }) {
     const ref = db.doc(taskPath(taskId));
     const task = await read(transaction, ref);
     if (!ownsAttempt(task, attemptId, hostId)) return false;
-    if (task.attempt.leaseUntil <= now) return false;
+    if (task.attempt.leaseUntil <= now || task.cancelRequestedAt != null) return false;
     transaction.update(ref, { "attempt.leaseUntil": now + leaseMs });
     return true;
   });

@@ -131,6 +131,19 @@ async function service(t, f, objects = {}) {
   return { db, call, config };
 }
 
+test("the service advertises the same authenticated lease duration it grants", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  const { value: { task } } = await api.call("submit", {
+    project: "app", revision: f.revisions.app, workspace: f.intent, text: "fixture", messageId: "renewal",
+  });
+  const attemptId = randomUUID();
+  const binding = { taskId: task.id, attemptId };
+  const claim = await api.call("claim", binding, "worker");
+  assert.equal(claim.value.attempt.leaseUntil, 120_100);
+  const renewal = await api.call("renew", binding, "worker");
+  assert.deepEqual(renewal, { status: 200, value: { renewed: true, leaseMs: 120_000 } });
+});
+
 async function exchange(f, job, protectedConfig = true, environment = {}) {
   const child = spawn(process.execPath, [...(protectedConfig ? ["--import", f.preload] : []), executorScript, f.configPath, "app"], {
     env: { ...process.env, PATH: `${f.bin}:${process.env.PATH}`, FACTORY_HOME: f.state, FIXTURE_GATEWAY_KEY: "synthetic-key", ...environment }, stdio: ["pipe", "pipe", "inherit"],
