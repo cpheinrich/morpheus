@@ -8,7 +8,9 @@ tags: [engineering, security]
 
 # Remediate root dev dependency advisories
 
-## Mandate
+## Initial draft mandate and verification
+
+The sections before the backlog triage follow-up describe the original draft.
 
 - Outcome: clear the root development advisories that have no existing remediation vehicle,
   without combining them with the weekly audit or the existing minimatch pull request.
@@ -64,3 +66,57 @@ On the combined tree, frozen install and all four package manifest and lint cont
 Lint, typecheck, compile, PM index and validation, complexity, and diff checks passed. The root
 full audit and production audit both returned zero advisories. No source or production manifest
 changes were required.
+
+## Independent review
+
+Independent Factory review cleared the root dependency update and verified npm integrity, matching Vitest packages, the compatible Firebase re2js resolution and the unchanged minimatch patch from #704. It independently confirmed clean full and production root audits, a frozen install, lint and four package contract tests. The initial draft mandate is historical. After protected delivery of this combined PR, the controller will close #704 as superseded.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "0bcbc251cbfd12cc8215c922b51dda180447ebab",
+  "reviewed": "31421af2bcb0e89d00a83d75d62dbcfbff03ae2a",
+  "covered": "31421af2bcb0e89d00a83d75d62dbcfbff03ae2a",
+  "authorSession": "01a1e65c-0355-76c1-8402-a96d3e0a8c43",
+  "reviewerSession": "8ad62665-b94f-4e38-8a00-f2189df283a0",
+  "risk": "normal",
+  "elapsedMinutes": 1.8328,
+  "timing": {
+    "source": "runner",
+    "durationMs": 109968,
+    "evidence": "Claude result duration_ms=109968 in Factory run e77c0c1e-50b3-4965-8d0d-9454e90b8a5f events.jsonl."
+  },
+  "outcome": "complete",
+  "summary": "Independent Factory review cleared the root dependency update and verified npm integrity, matching Vitest packages, the compatible Firebase re2js resolution and the unchanged minimatch patch from #704. It independently confirmed clean full and production root audits, a frozen install, lint and four package contract tests. The initial draft mandate is historical. After protected delivery of this combined PR, the controller will close #704 as superseded.",
+  "contextRead": [
+    "CLAUDE.md",
+    "hq/product/roadmap/MO-26-11-16-14.00.31-remediate-root-dev-deps.md",
+    "docs/runbooks/osv-maintenance.md",
+    ".agent/worklog/2026-09-10-weekly-osv-remediation.md",
+    ".agent/worklog/2026-09-25-extract-security-remediation.md",
+    ".agent/worklog/2026-11-16-remediate-root-dev-deps.md"
+  ],
+  "findings": [
+    {
+      "id": "N01",
+      "severity": "minor",
+      "description": "The earlier worklog described the pre-triage draft scope and audit numbers.",
+      "paths": [
+        ".agent/worklog/2026-11-16-remediate-root-dev-deps.md"
+      ],
+      "disposition": "fixed",
+      "response": "Label the initial material as historical and keep the integrated evidence in the backlog triage section."
+    },
+    {
+      "id": "N02",
+      "severity": "minor",
+      "description": "The reference to #704 did not explicitly state its closure sequence.",
+      "paths": [
+        "hq/product/roadmap/MO-26-11-16-14.00.31-remediate-root-dev-deps.md"
+      ],
+      "disposition": "fixed",
+      "response": "State the closure sequence in the PR body. After protected delivery, close #704 as superseded and verify the GitHub state."
+    }
+  ]
+}
+```
