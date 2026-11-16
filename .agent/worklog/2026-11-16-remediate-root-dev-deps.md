@@ -32,7 +32,8 @@ the current 2.10.0 release without an override or parent upgrade.
 The implementation advances direct Vitest within its existing v4 line to 4.1.12 and regenerates
 the lockfile, which also selects re2js 2.10.0 through Firebase's existing compatible range. It
 does not add an override, alter production dependencies, or absorb #704's independent minimatch
-change.
+change. Draft pull request [#728](https://github.com/cpheinrich/morpheus/pull/728) is the focused
+review vehicle.
 
 ## Validation
 
