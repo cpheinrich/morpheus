@@ -8,6 +8,13 @@ import { type WaitDeps, type WaitResult } from "./wait.js";
 export interface RunWaitOptions {
     /** A run's database id: wait for exactly this run. */
     run?: string;
+    /**
+     * With `run`: the attempt to wait for. `gh run rerun` returns before GitHub
+     * reports the new attempt, so an immediate wait would otherwise answer with
+     * the previous attempt's conclusion. An older attempt keeps the wait going
+     * until the timeout; a later one is reported as found.
+     */
+    attempt?: number;
     /** A workflow name or file: wait for its latest matching run. */
     workflow?: string;
     branch?: string;

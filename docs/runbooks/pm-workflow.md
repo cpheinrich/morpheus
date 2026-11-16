@@ -232,10 +232,17 @@ keeps the wait open; a successful replacement can supersede the older cancellati
 newest cancellation, a real failure, or a still-cancelled job in the check rollup remains blocking.
 Different workflows never replace one another, even when they have the same display name.
 
+`--required-only` green is about checks, not about GitHub accepting the merge. When GitHub still
+reports the merge state `BLOCKED`, the digest says so under the green line and the exit code stays
+0. It lists any required job whose older cancelled run was replaced on the same head with its
+`gh run rerun` command as a possible cause, since rerunning such runs has cleared the block; it
+does not prove the cause. Otherwise check reviews, rulesets and required checks that never reported.
+
 For a run no pull request owns — TestFlight, a release, a nightly — wait on the run itself:
 
 ```sh
 morpheus wait-ci --run <id> [--repo owner/name] [--timeout 90m]
+morpheus wait-ci --run <id> --attempt 2                      # after gh run rerun: not the previous attempt
 morpheus wait-ci --workflow testflight.yml --branch main     # its latest run, following a newer one
 morpheus wait-ci --workflow ci.yml --sha <full-sha>          # exactly that push's run
 ```
@@ -243,6 +250,11 @@ morpheus wait-ci --workflow ci.yml --sha <full-sha>          # exactly that push
 After `gh workflow run`, prefer `--run <id>` once the run is listed. `--workflow` holds a latest run
 that had already finished for 20 seconds in case a newer one is about to appear, then reports it
 with a warning that it may be the previous run.
+
+`gh run rerun <id>` returns before GitHub reports the new attempt, so an immediate `--run <id>` can
+read the previous attempt's conclusion. Pass `--attempt <n>` (the previous attempt plus one) to keep
+waiting while an older attempt is reported; at the timeout it exits 2 naming the attempt it saw. A
+later attempt than `<n>` is reported as found.
 
 The poll guard that `morpheus context install` wires refuses the third `gh run view`,
 `gh run watch` or `gh pr checks` of one target in a session and prints the matching command.
