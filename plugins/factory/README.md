@@ -1212,10 +1212,15 @@ every SHA and verifies each checkout's root ownership; extra, duplicate or missi
 refuse. A unique one-project workspace can also be selected with only `cwd`.
 
 Service controllers and `factory_remote` use the same submit operation with `project`,
-`revision`, `messageId`, `text` and:
+`revision`, `messageId`, `text`, and the fields below. Legacy direct HTTP callers may still
+omit `display`.
 
 ```json
 {
+  "display": {
+    "title": "Verify cross-repository integration",
+    "summary": "Run the app checks against the pinned library revision."
+  },
   "workspace": {
     "id": "related",
     "revisions": {

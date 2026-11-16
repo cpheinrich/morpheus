@@ -102,7 +102,8 @@ test("a Studio attempt fetches its exact commit, isolates edits, and resumes the
   assert.equal(await dispatchFleet("status", { rootId, runId }), undefined, "existing local runs keep their route");
   assert.equal(await dispatchFleet("inspect", { rootId, placement: "local" }), undefined);
   await assert.rejects(dispatchFleet("inspect", { rootId, cwd: upstream }), /clean linked checkout/);
-  await assert.rejects(dispatchFleet("delegate", { rootId, cwd: upstream, prompt: "test" }), /clean linked checkout/);
+  const display = { title: "Verify the fixture", summary: "Check the expected source checkout." };
+  await assert.rejects(dispatchFleet("delegate", { rootId, cwd: upstream, prompt: "test", display }), /clean linked checkout/);
 });
 
 test("single-repository Fleet can still check out an unrelated published commit", async (t) => {
