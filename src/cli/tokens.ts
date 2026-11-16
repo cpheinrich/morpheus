@@ -1,9 +1,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
-import { readTokens, renderCss, renderTs } from "../design/tokens.js";
+import { readTokens, renderCss, renderTs, type Token } from "../design/tokens.js";
+import { renderSwift } from "../design/swift.js";
 
 /**
- * `morpheus tokens build` — brand tokens to CSS and TypeScript.
+ * `morpheus tokens build` — brand tokens to CSS, TypeScript and opt-in Swift.
  *
  * Replaces the script three projects each wrote by hand. Writes nothing when
  * the source has problems: a stylesheet generated from a half-parsed token
@@ -14,6 +15,7 @@ export interface TokensOptions {
   source?: string;
   css?: string;
   ts?: string;
+  swift?: string;
   prefix?: string;
   /** Report what would change without writing. */
   check?: boolean;
@@ -27,9 +29,26 @@ async function unchanged(path: string, next: string): Promise<boolean> {
   }
 }
 
+function outputs(opts: TokensOptions, tokens: Token[], label: string, swift?: string): Array<[string, string]> {
+  const prefix = opts.prefix ?? "brand";
+  const rendered: Array<[string, string]> = [];
+  if (opts.css !== "") {
+    const out = resolve(opts.root, opts.css ?? "app/tokens.generated.css");
+    rendered.push([out, renderCss(tokens, { prefix, source: label })]);
+  }
+  if (opts.ts) {
+    rendered.push([resolve(opts.root, opts.ts), renderTs(tokens, { prefix, source: label })]);
+  }
+  if (opts.swift && swift) rendered.push([resolve(opts.root, opts.swift), swift]);
+  return rendered;
+}
+
 export async function build(opts: TokensOptions): Promise<number> {
   const source = resolve(opts.root, opts.source ?? "hq/brand/tokens.json");
   const { tokens, issues } = await readTokens(source);
+  const label = relative(opts.root, source);
+  const swift = opts.swift ? renderSwift(tokens, label) : undefined;
+  issues.push(...(swift?.issues ?? []));
 
   if (issues.length) {
     console.error(`\n\x1b[31m${relative(opts.root, source)} has problems:\x1b[0m`);
@@ -42,20 +61,8 @@ export async function build(opts: TokensOptions): Promise<number> {
     return 1;
   }
 
-  const prefix = opts.prefix ?? "brand";
-  const rendered: Array<[string, string]> = [];
-  const label = relative(opts.root, source);
-
-  if (opts.css !== "") {
-    const out = resolve(opts.root, opts.css ?? "app/tokens.generated.css");
-    rendered.push([out, renderCss(tokens, { prefix, source: label })]);
-  }
-  if (opts.ts) {
-    rendered.push([resolve(opts.root, opts.ts), renderTs(tokens, { prefix, source: label })]);
-  }
-
   let stale = 0;
-  for (const [path, content] of rendered) {
+  for (const [path, content] of outputs(opts, tokens, label, swift?.content)) {
     const current = await unchanged(path, content);
     if (current) {
       console.log(`\x1b[2munchanged  ${relative(opts.root, path)}\x1b[0m`);
