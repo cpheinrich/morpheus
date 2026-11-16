@@ -64,7 +64,7 @@ export async function waitRun(deps, opts) {
     const deadline = start + opts.timeoutMs;
     const byId = opts.run !== undefined;
     const wanted = describeWanted(opts);
-    const watch = new RunWatch(byId, opts.sha);
+    const watch = new RunWatch(byId, opts.sha, opts.attempt);
     for (;;) {
         const result = byId
             ? await viewRun(deps, opts.run, opts.repo).then((r) => ("error" in r ? r : { run: r }))
@@ -81,10 +81,7 @@ export async function waitRun(deps, opts) {
         else
             watch.observe(result.run);
         const now = deps.now();
-        const selected = watch.selected;
-        if (selected?.status === "completed" && !(watch.alreadyComplete && now - start < ALREADY_COMPLETE_SETTLE_MS))
-            break;
-        if (!selected && now - start >= NO_CHECKS_GRACE_MS)
+        if (watch.answered(now - start))
             break;
         if (now >= deadline) {
             watch.timedOut = true;
@@ -99,6 +96,7 @@ export async function waitRun(deps, opts) {
 class RunWatch {
     byId;
     sha;
+    attempt;
     selected;
     polled = false;
     alreadyComplete = false;
@@ -106,9 +104,25 @@ class RunWatch {
     errors = 0;
     delay = null;
     timedOut = false;
-    constructor(byId, sha) {
+    constructor(byId, sha, attempt) {
         this.byId = byId;
         this.sha = sha;
+        this.attempt = attempt;
+    }
+    /**
+     * Whether the wait has its answer: the run completed (unless it may be the
+     * previous run or an older attempt), or no run appeared within the grace.
+     */
+    answered(elapsedMs) {
+        if (!this.selected)
+            return elapsedMs >= NO_CHECKS_GRACE_MS;
+        if (this.selected.status !== "completed" || this.olderAttempt)
+            return false;
+        return !(this.alreadyComplete && elapsedMs < ALREADY_COMPLETE_SETTLE_MS);
+    }
+    /** The run read is an attempt before the one asked for: the rerun has not registered yet. */
+    get olderAttempt() {
+        return this.attempt !== undefined && this.selected !== undefined && this.selected.attempt < this.attempt;
     }
     observe(run) {
         this.polled = true;
@@ -135,7 +149,8 @@ async function runDigest(deps, opts, watch, wanted, start) {
         return { exitCode: EXIT.timeout, output };
     }
     const { final, jobsError } = await withJobs(deps, selected, opts.repo);
-    const verdict = runVerdict(final);
+    // An older attempt's conclusion is not the answer to the attempt asked for.
+    const verdict = watch.olderAttempt ? "pending" : runVerdict(final);
     const repo = opts.repo ?? repoFromRunUrl(final.url);
     const jobs = final.jobs ?? [];
     const details = verdict === "failed" ? await failureDetails(deps, repo, jobs.filter(failed)) : new Map();
@@ -146,6 +161,7 @@ async function runDigest(deps, opts, watch, wanted, start) {
         jobs,
         elapsedMs: deps.now() - start,
         timedOut: timedOut && verdict === "pending",
+        expectedAttempt: watch.olderAttempt ? opts.attempt : undefined,
         details,
         movedFrom,
         alreadyComplete,

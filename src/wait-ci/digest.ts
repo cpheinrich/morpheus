@@ -28,6 +28,10 @@ export interface DigestInput {
   truncated: boolean;
   /** Checks dropped by `--required-only`, so an empty required set is not mistaken for no CI. */
   ignored: number;
+  /** GitHub's `mergeStateStatus` from the final poll. */
+  mergeState?: string;
+  /** Required check runs cancelled and then replaced by a newer attempt of the same job. */
+  supersededCancelled?: Check[];
 }
 
 const short = (sha: string) => sha.slice(0, 7);
@@ -89,11 +93,25 @@ export function renderDigest(input: DigestInput): string {
 
   out.push(...failureLines(failures, input.details));
   if (input.timedOut) out.push(...pendingLines(input.checks));
+  out.push(...blockedLines(input));
 
   if (input.verdict === "failed" && races.length > 0 && races.length === failures.length) {
     out.push("  Nothing to fix in code: apply agent-reviewed once the independent review is recorded, then re-check.");
   }
   return out.join("\n");
+}
+
+/** GitHub's merge state can lag the current-head check verdict. The diagnostic leaves that verdict alone. */
+function blockedLines(input: DigestInput): string[] {
+  if (!input.requiredOnly || input.verdict !== "green" || input.mergeState !== "BLOCKED") return [];
+  const out = [`! GitHub reports merge state BLOCKED even though required checks passed on ${short(input.headSha)}.`,
+    `  If the block persists, check required reviews, rulesets and required checks that have not reported: gh pr view ${input.pr} --repo ${input.repo} --json mergeStateStatus,reviewDecision`];
+  const cancelled = input.supersededCancelled ?? [];
+  if (cancelled.length > 0) {
+    out.push("  Possible cause: an older cancelled run of a required check remains on this head:");
+    for (const check of cancelled) out.push(`  ⊘ ${label(check)}${check.url ? ` — ${check.url}` : ""}`);
+  }
+  return out;
 }
 
 /**
@@ -138,6 +156,8 @@ export interface RunDigestInput {
   elapsedMs: number;
   /** Deadline reached before the run completed. */
   timedOut: boolean;
+  /** `--attempt` asked for this attempt, and the deadline came while GitHub still reported an older one. */
+  expectedAttempt?: number;
   /** Keyed by {@link checkKey}. */
   details: Map<string, FailureDetail>;
   /** Earlier matching runs replaced by a newer one during the wait, oldest first. */
@@ -169,6 +189,10 @@ function runHeadline(input: RunDigestInput, run: NonNullable<RunDigestInput["run
   const where = `${input.repo ? `${input.repo} ` : ""}${run.workflow} run ${run.id}${attempt} @ ${short(run.headSha)}${branch}`;
   const jobs = input.jobs.length > 0 ? ` (${tally(input.jobs, "job")})` : "";
   if (input.verdict === "green") return `✓ Run green — ${where}${jobs} ${after}`;
+  if (input.expectedAttempt !== undefined) {
+    const state = run.status === "completed" ? `ended ${run.conclusion || "without a conclusion"}` : `still ${run.status.replace(/_/g, " ")}`;
+    return `… Attempt ${input.expectedAttempt} not seen at the deadline — ${where}${jobs}: latest attempt ${run.attempt} ${state} ${after}`;
+  }
   if (input.verdict === "failed") {
     const word = CONCLUSION_WORDS[run.conclusion] ?? `ended ${run.conclusion || "unsuccessfully"}`;
     return `✗ Run ${word} — ${where}${jobs} ${after}`;
