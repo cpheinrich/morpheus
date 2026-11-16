@@ -30,6 +30,10 @@ export interface Snapshot {
     /** GitHub had more than one page of contexts; the rest were not read. */
     truncated: boolean;
     conflicting?: true;
+    /** GitHub's `mergeStateStatus` (`CLEAN`, `BLOCKED`, `UNKNOWN`, …), read in the same response. */
+    mergeState?: string;
+    /** Required check runs a newer attempt of the same job replaced after they were cancelled. */
+    supersededCancelled?: Check[];
 }
 export type Verdict = "green" | "failed" | "pending" | "no-checks";
 export declare const EXIT: {
@@ -43,7 +47,7 @@ export declare const EXIT: {
  * `commits(last: 1)` node, so a push between two requests can never pair one
  * commit's id with another commit's checks.
  */
-export declare const ROLLUP_QUERY = "query($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    pullRequest(number: $number) {\n      number\n      url\n      mergeable\n      commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) {\n        pageInfo { hasNextPage }\n        nodes {\n          __typename\n          ... on CheckRun { name status conclusion detailsUrl startedAt isRequired(pullRequestNumber: $number)\n            checkSuite { id workflowRun { workflow { id name } } } }\n          ... on StatusContext { context state targetUrl createdAt isRequired(pullRequestNumber: $number) }\n        }\n      } } } } }\n    }\n  }\n}";
+export declare const ROLLUP_QUERY = "query($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    pullRequest(number: $number) {\n      number\n      url\n      mergeable\n      mergeStateStatus\n      commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) {\n        pageInfo { hasNextPage }\n        nodes {\n          __typename\n          ... on CheckRun { name status conclusion detailsUrl startedAt isRequired(pullRequestNumber: $number)\n            checkSuite { id workflowRun { workflow { id name } } } }\n          ... on StatusContext { context state targetUrl createdAt isRequired(pullRequestNumber: $number) }\n        }\n      } } } } }\n    }\n  }\n}";
 /** A check run's lifecycle and conclusion, as GitHub's GraphQL enum values. */
 export declare function checkRunOutcome(status: string | null | undefined, conclusion: string | null | undefined): Outcome;
 /** A commit status (the older API that Vercel and similar integrations use). */

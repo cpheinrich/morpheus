@@ -55,10 +55,25 @@ export function renderDigest(input) {
     out.push(...failureLines(failures, input.details));
     if (input.timedOut)
         out.push(...pendingLines(input.checks));
+    out.push(...blockedLines(input));
     if (input.verdict === "failed" && races.length > 0 && races.length === failures.length) {
         out.push("  Nothing to fix in code: apply agent-reviewed once the independent review is recorded, then re-check.");
     }
     return out.join("\n");
+}
+/** GitHub's merge state can lag the current-head check verdict. The diagnostic leaves that verdict alone. */
+function blockedLines(input) {
+    if (!input.requiredOnly || input.verdict !== "green" || input.mergeState !== "BLOCKED")
+        return [];
+    const out = [`! GitHub reports merge state BLOCKED even though required checks passed on ${short(input.headSha)}.`,
+        `  If the block persists, check required reviews, rulesets and required checks that have not reported: gh pr view ${input.pr} --repo ${input.repo} --json mergeStateStatus,reviewDecision`];
+    const cancelled = input.supersededCancelled ?? [];
+    if (cancelled.length > 0) {
+        out.push("  Possible cause: an older cancelled run of a required check remains on this head:");
+        for (const check of cancelled)
+            out.push(`  ⊘ ${label(check)}${check.url ? ` — ${check.url}` : ""}`);
+    }
+    return out;
 }
 /**
  * One line per failed or cancelled check, then its failing step's own words.
@@ -113,6 +128,10 @@ function runHeadline(input, run, after) {
     const jobs = input.jobs.length > 0 ? ` (${tally(input.jobs, "job")})` : "";
     if (input.verdict === "green")
         return `✓ Run green — ${where}${jobs} ${after}`;
+    if (input.expectedAttempt !== undefined) {
+        const state = run.status === "completed" ? `ended ${run.conclusion || "without a conclusion"}` : `still ${run.status.replace(/_/g, " ")}`;
+        return `… Attempt ${input.expectedAttempt} not seen at the deadline — ${where}${jobs}: latest attempt ${run.attempt} ${state} ${after}`;
+    }
     if (input.verdict === "failed") {
         const word = CONCLUSION_WORDS[run.conclusion] ?? `ended ${run.conclusion || "unsuccessfully"}`;
         return `✗ Run ${word} — ${where}${jobs} ${after}`;

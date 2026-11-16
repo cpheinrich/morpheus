@@ -3728,6 +3728,11 @@ appears; visible passing checks alone do not prove completion. `--required-only`
 required-check scope. Check-run identity includes the stable Actions workflow ID and job name, so a
 metadata workflow cannot replace another workflow's failed required job. Only rerun attempts
 inside the same workflow supersede each other; missing suite identity refuses the receipt.
+A required-check pass and GitHub accepting the protection state are separate facts: when
+`--required-only` is green but the same response's `mergeStateStatus` is `BLOCKED`, the digest adds
+an advisory and the exit stays 0. It names, as a possible cause only, required jobs whose cancelled
+run a newer attempt replaced on the same head — rerunning such runs cleared a block in #723 —
+because GitHub does not say which rule blocks. The advisory adds no merge gate.
 Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
 
 `morpheus wait-ci --run <id>` and `--workflow <name|file> [--branch <b>] [--sha <s>]` wait the
@@ -3740,6 +3745,11 @@ no-checks grace applies. A latest run that had already finished when the wait be
 20 seconds unless `--sha` pinned it, because a run just dispatched or pushed lists within
 seconds and the previous run's exit code would otherwise answer for it; if none appears, the
 digest flags it. `--sha` must be a full SHA, the only form `gh run list --commit` matches.
+`--run <id> --attempt <n>` exists because `gh run rerun` returns before GitHub reports the new
+attempt, and an immediate wait answered with the previous attempt's conclusion: while the run's
+`attempt` is below `n` the wait continues whatever its status, and at the timeout it exits 2 naming
+the attempt it saw. A later attempt is accepted, since `gh run view` reports only the latest.
+Without `--attempt` the behaviour is unchanged.
 
 Instructions alone did not stop the polling — sessions polled more after `wait-ci` existed — so
 `morpheus context install` (and `init`) also wires a **poll guard**: a PreToolUse hook on `Bash`

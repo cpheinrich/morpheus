@@ -33,6 +33,10 @@ export interface Snapshot {
   /** GitHub had more than one page of contexts; the rest were not read. */
   truncated: boolean;
   conflicting?: true;
+  /** GitHub's `mergeStateStatus` (`CLEAN`, `BLOCKED`, `UNKNOWN`, …), read in the same response. */
+  mergeState?: string;
+  /** Required check runs a newer attempt of the same job replaced after they were cancelled. */
+  supersededCancelled?: Check[];
 }
 
 export type Verdict = "green" | "failed" | "pending" | "no-checks";
@@ -50,6 +54,7 @@ export const ROLLUP_QUERY = `query($owner: String!, $name: String!, $number: Int
       number
       url
       mergeable
+      mergeStateStatus
       commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) {
         pageInfo { hasNextPage }
         nodes {
@@ -154,7 +159,7 @@ export function parseRollup(json: unknown): Snapshot | { error: string } {
   const data = json as { data?: { repository?: { pullRequest?: unknown } }; errors?: { message?: string }[] } | null;
   if (data?.errors?.length) return { error: data.errors.map((e) => e.message ?? "unknown GraphQL error").join("; ") };
   const pr = data?.data?.repository?.pullRequest as
-    | { number?: number; url?: string; mergeable?: string; commits?: { nodes?: { commit?: { oid?: string; statusCheckRollup?: { contexts?: { pageInfo?: { hasNextPage?: boolean }; nodes?: RawNode[] } } | null } }[] } }
+    | { number?: number; url?: string; mergeable?: string; mergeStateStatus?: string; commits?: { nodes?: { commit?: { oid?: string; statusCheckRollup?: { contexts?: { pageInfo?: { hasNextPage?: boolean }; nodes?: RawNode[] } } | null } }[] } }
     | null
     | undefined;
   if (!pr || typeof pr.number !== "number") return { error: "pull request not found in the response" };
@@ -167,13 +172,16 @@ export function parseRollup(json: unknown): Snapshot | { error: string } {
     if (check && "error" in check) return check;
     if (check) checks.push(check);
   }
+  const latest = dedupe(checks);
   return {
     pr: pr.number,
     url: pr.url ?? "",
     headSha: commit.oid,
-    checks: dedupe(checks),
+    checks: latest,
     truncated: contexts?.pageInfo?.hasNextPage === true,
     ...(pr.mergeable === "CONFLICTING" ? { conflicting: true } : {}),
+    mergeState: pr.mergeStateStatus,
+    supersededCancelled: replacedCancellations(checks, latest),
   };
 }
 
@@ -211,6 +219,13 @@ export function dedupe(checks: Check[]): Check[] {
     if (!prior || (check.startedAt ?? NOT_STARTED) >= (prior.startedAt ?? NOT_STARTED)) latest.set(key, check);
   }
   return [...latest.values()];
+}
+
+/** Required rows {@link dedupe} dropped that had been cancelled: still on the head, only replaced in the verdict. */
+function replacedCancellations(all: Check[], latest: Check[]): Check[] | undefined {
+  const kept = new Set(latest);
+  const replaced = all.filter((c) => !kept.has(c) && c.required && c.outcome === "cancelled");
+  return replaced.length > 0 ? replaced : undefined;
 }
 
 export function failed(check: Check): boolean {

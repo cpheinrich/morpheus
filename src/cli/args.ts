@@ -80,6 +80,8 @@ export interface Flags {
   requiredOnly: boolean;
   /** `wait-ci --run`: one Actions run's database id. */
   run?: string;
+  /** `wait-ci --run --attempt`: the run attempt to wait for, e.g. after `gh run rerun`. */
+  attempt?: string;
   /** `wait-ci --workflow`: a workflow name or file whose latest matching run is awaited. */
   workflow?: string;
   /** `wait-ci --workflow`: only runs on this branch. */
@@ -143,6 +145,7 @@ const stringOptions: Record<string, (flags: Flags, value: string | undefined) =>
   "--repo": (flags, value) => { flags.repo = value; },
   "--timeout": (flags, value) => { flags.timeout = value; },
   "--run": (flags, value) => { flags.run = value; },
+  "--attempt": (flags, value) => { flags.attempt = value ?? ""; },
   "--workflow": (flags, value) => { flags.workflow = value; },
   "--branch": (flags, value) => { flags.branch = value; },
   "--sha": (flags, value) => { flags.sha = value; },
