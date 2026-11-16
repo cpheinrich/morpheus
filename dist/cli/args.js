@@ -18,6 +18,7 @@ const stringOptions = {
     "--source": (flags, value) => { flags.source = value; },
     "--css": (flags, value) => { flags.css = value; },
     "--ts": (flags, value) => { flags.ts = value; },
+    "--swift": (flags, value) => { flags.swift = value; },
     "--owner": (flags, value) => { flags.owner = value; },
     "--handle": (flags, value) => { flags.handle = value; },
     "--priority": (flags, value) => { flags.priority = value; },

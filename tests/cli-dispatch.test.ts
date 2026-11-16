@@ -7,6 +7,7 @@ import { create, ship, tagged } from "../src/cli/pm.js";
 import { HELP } from "../src/cli/help.js";
 import { guard } from "../src/cli/context.js";
 import { webInit } from "../src/cli/web.js";
+import { build as tokensBuild } from "../src/cli/tokens.js";
 vi.mock("../src/cli/pm.js", () => ({ block: vi.fn(async () => ({ code: 73, written: [] })), claim: vi.fn(async () => 73), unbind: vi.fn(async () => 73), resume: vi.fn(async () => 73), cleanup: vi.fn(async () => 73), worktrees: vi.fn(async () => 73), claims: vi.fn(async () => 73), tagged: vi.fn(async () => 73), create: vi.fn(async () => 73), index: vi.fn(async () => 73), linkIssue: vi.fn(async () => 73), migrateIds: vi.fn(async () => 73), ship: vi.fn(async () => 73), unblock: vi.fn(async () => 73), validate: vi.fn(async () => 73) }));
 vi.mock("../src/cli/check.js", () => ({ pr: vi.fn(async () => 73) }));
 vi.mock("../src/ios/changed-swift.js", () => ({ run: vi.fn(() => 73) }));
@@ -35,6 +36,10 @@ vi.mock("../src/cli/profile.js", () => ({ profileExtract: vi.fn(async () => 73),
 
 afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks(); });
 describe("CLI invocation contract", () => {
+  it("forwards the opt-in Swift target and read-only check mode", async () => {
+    expect(await run(["tokens", "build", "--swift", "Shared/Palette.swift", "--css", "", "--check"])).toBe(73);
+    expect(tokensBuild).toHaveBeenCalledWith(expect.objectContaining({ swift: "Shared/Palette.swift", css: "", check: true }));
+  });
   it.each([[], ["--help"], ["pm", "new", "--help"], ["bad", "-h"]])("help wins before dispatch: %j", async (...argv) => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     expect(await run(argv)).toBe(0);
