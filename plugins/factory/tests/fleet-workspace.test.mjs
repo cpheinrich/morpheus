@@ -105,30 +105,38 @@ console.log(JSON.stringify({type:'turn.completed'}));
   return { root, policy, intent, host, config, configPath, cwd, bin, preload, state, session, mirrors, revisions };
 }
 
+function updateTask(previous, value) {
+  const { ["attempt.leaseUntil"]: leaseUntil, ...fields } = structuredClone(value);
+  const updated = { ...previous, ...fields };
+  if (leaseUntil !== undefined) updated.attempt = { ...previous.attempt, leaseUntil };
+  return updated;
+}
+
 function memoryDb() {
   const docs = new Map();
   const doc = path => ({ path, get: async () => ({ data: () => structuredClone(docs.get(path)) }), set: async value => docs.set(path, value) });
   return { docs, doc, async runTransaction(fn) {
     return fn({ get: ref => ref.get(), set: (ref, value) => docs.set(ref.path, structuredClone(value)),
-      update: (ref, value) => docs.set(ref.path, { ...docs.get(ref.path), ...structuredClone(value) }), delete: ref => docs.delete(ref.path) });
+      update: (ref, value) => docs.set(ref.path, updateTask(docs.get(ref.path), value)), delete: ref => docs.delete(ref.path) });
   } };
 }
 
 async function service(t, f, objects = {}) {
   const db = memoryDb();
+  let now = 100;
   const project = { revision: "git", workspace: "related", workspaceKey: "related-lock", eligibleSlots: ["slot"],
     selection: { provider: "codex", gateway: "fixture", model: f.config.model } };
   const config = { projects: { app: project, library: project }, workspaces: { related: f.policy },
     users: { controller: { role: "controller", projects: ["app", "library"] }, worker: { role: "worker", hostId: "host", slotId: "slot" } } };
   db.docs.set("factorySlots/slot", { hostId: "host", capacity: 1, available: true, observedAt: 100 });
-  const server = createServer(createFleetApi({ db, config, objects, verifyToken: async uid => ({ uid }), clock: () => 100, log: () => {} }));
+  const server = createServer(createFleetApi({ db, config, objects, verifyToken: async uid => ({ uid }), clock: () => now, log: () => {} }));
   server.listen(0, "127.0.0.1"); await once(server, "listening");
   t.after(() => new Promise(resolve => server.close(resolve)));
   async function call(op, input, role = "controller") {
     const response = await fetch(`http://127.0.0.1:${server.address().port}/v1`, { method: "POST", headers: { Authorization: `Bearer ${role}` }, body: JSON.stringify({ op, rootId: "root", ...input }) });
     return { status: response.status, value: await response.json() };
   }
-  return { db, call, config };
+  return { db, call, config, setTime(value) { now = value; } };
 }
 
 test("the service advertises the same authenticated lease duration it grants", async t => {
@@ -140,8 +148,11 @@ test("the service advertises the same authenticated lease duration it grants", a
   const binding = { taskId: task.id, attemptId };
   const claim = await api.call("claim", binding, "worker");
   assert.equal(claim.value.attempt.leaseUntil, 120_100);
+  api.setTime(180);
   const renewal = await api.call("renew", binding, "worker");
   assert.deepEqual(renewal, { status: 200, value: { renewed: true, leaseMs: 120_000 } });
+  const confirmed = await api.call("inspect", binding, "worker");
+  assert.equal(confirmed.value.task.attempt.leaseUntil, 120_180);
 });
 
 async function exchange(f, job, protectedConfig = true, environment = {}) {

@@ -144,7 +144,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     checkLeaseBoundary();
     if (reply?.renewed !== true) return false;
     // Older services omit the duration and can only grant the original lease.
-    const duration = reply.leaseMs ?? legacyLeaseMs;
+    const duration = reply.leaseMs === undefined ? legacyLeaseMs : reply.leaseMs;
     if (!Number.isSafeInteger(duration) || duration < legacyLeaseMs || duration > leaseMs) return false;
     leaseDeadline = startedAt + duration - 1_000;
     clearTimeout(leaseTimer);
