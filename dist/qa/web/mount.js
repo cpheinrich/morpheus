@@ -326,8 +326,14 @@ export function mountWebQa(options) {
     }
     // ---- page events: only in Pin mode ------------------------------------------------------------
     const ours = (e) => e.composedPath().some(node => node === host || (node instanceof Element && node.hasAttribute("data-qa-chrome")));
-    function eventElement(e) {
-        return e.composedPath().find((node) => node instanceof Element);
+    function pinTarget(e) {
+        const path = e.composedPath().filter((node) => node instanceof Element);
+        // Slotted content has both DOM ancestors and ancestors in the composed event path.
+        if (path.some(el => el.hasAttribute("data-qa-private"))) {
+            setStatus("This area is private; pin something nearby instead.", "err");
+            return;
+        }
+        return path[0];
     }
     function onPagePointer(e) {
         if (ours(e))
@@ -338,8 +344,10 @@ export function mountWebQa(options) {
         e.preventDefault();
         e.stopImmediatePropagation();
         const placing = e.type === "contextmenu" || (e.type === "click" && mouse.button === 0);
-        const target = eventElement(e);
-        if (placing && target)
+        if (!placing)
+            return;
+        const target = pinTarget(e);
+        if (target)
             addPin(target, mouse.clientX, mouse.clientY);
     }
     function onPageKey(e) {
@@ -351,8 +359,10 @@ export function mountWebQa(options) {
             return;
         }
         // Keyboard pinning: Enter on a focused page element pins its centre.
-        const target = eventElement(e);
-        if (e.key === "Enter" && target instanceof Element && target !== document.body) {
+        if (e.key === "Enter") {
+            const target = pinTarget(e);
+            if (!target || target === document.body)
+                return;
             e.preventDefault();
             e.stopImmediatePropagation();
             const r = target.getBoundingClientRect();

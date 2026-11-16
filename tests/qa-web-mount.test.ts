@@ -194,6 +194,20 @@ describe("mountWebQa", () => {
     expect(q("ol li").textContent).toBe("No comments yet.");
   });
 
+  it("refuses pointer and keyboard pins inside a private shadow slot", () => {
+    mount();
+    const host = document.body.appendChild(document.createElement("div"));
+    const trigger = host.appendChild(document.createElement("button"));
+    const shadow = host.attachShadow({ mode: "open" });
+    shadow.innerHTML = "<div data-qa-private><slot></slot></div>";
+    click(trigger);
+    expect(status()).toContain("This area is private");
+    trigger.focus();
+    key(trigger, "Enter");
+    expect(status()).toContain("This area is private");
+    expect(q("ol li").textContent).toBe("No comments yet.");
+  });
+
   it("does not delete a draft on Escape repeat or carry deletion to another pin", () => {
     mount();
     click(document.getElementById("card")!);
