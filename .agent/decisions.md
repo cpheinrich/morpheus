@@ -1,5 +1,17 @@
 # Decisions
 
+## Swift palettes are an opt-in primitive binding — 2026-11-16
+
+[MO-26-11-16-13.37.39](../hq/product/roadmap/MO-26-11-16-13.37.39-generate-swift-palettes.md),
+[issue #491](https://github.com/cpheinrich/morpheus/issues/491). Extend the existing generator
+with `--swift <path>`, following the consumer's `color` / `theme.dark.color` source shape.
+Generate adaptive iOS/macOS SwiftUI colors with deterministic names and light fallback; no shared
+semantic vocabulary. Unsupported native values fail before writing any requested output, while
+web-only invocations preserve existing behavior. `--check` uses the existing read-only comparison.
+Considered style-dictionary 5.8.0 (registry modified 2026-11-03, 13 direct dependencies); retained
+the existing parser and a narrow literal-color renderer instead of adopting a second token engine.
+See [the output contract](../architecture.md#121-token-ownership--one-canonical-owner-per-layer).
+
 ## Infrastructure desks share display rules, not sources — 2026-11-13
 
 MO-26-11-13-23.38.17. Chris asked for Lakina's HQ Infra tab on Darwin's Operations Desk

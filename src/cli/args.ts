@@ -43,6 +43,7 @@ export interface Flags {
   source?: string;
   css?: string;
   ts?: string;
+  swift?: string;
   priority?: string;
   tags: string[];
   goal?: string;
@@ -114,6 +115,7 @@ const stringOptions: Record<string, (flags: Flags, value: string | undefined) =>
   "--source": (flags, value) => { flags.source = value; },
   "--css": (flags, value) => { flags.css = value; },
   "--ts": (flags, value) => { flags.ts = value; },
+  "--swift": (flags, value) => { flags.swift = value; },
   "--owner": (flags, value) => { flags.owner = value; },
   "--handle": (flags, value) => { flags.handle = value; },
   "--priority": (flags, value) => { flags.priority = value; },

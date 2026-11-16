@@ -236,8 +236,8 @@ export declare const QaWebContext: z.ZodObject<{
         devicePixelRatio: z.ZodNullable<z.ZodNumber>;
         theme: z.ZodEnum<{
             unknown: "unknown";
-            light: "light";
             dark: "dark";
+            light: "light";
         }>;
         snapshot: z.ZodOptional<z.ZodObject<{
             version: z.ZodLiteral<1>;
@@ -458,8 +458,8 @@ export declare const QaComment: z.ZodObject<{
             devicePixelRatio: z.ZodNullable<z.ZodNumber>;
             theme: z.ZodEnum<{
                 unknown: "unknown";
-                light: "light";
                 dark: "dark";
+                light: "light";
             }>;
             snapshot: z.ZodOptional<z.ZodObject<{
                 version: z.ZodLiteral<1>;
@@ -723,8 +723,8 @@ export declare const QaCommentBatch: z.ZodObject<{
                 devicePixelRatio: z.ZodNullable<z.ZodNumber>;
                 theme: z.ZodEnum<{
                     unknown: "unknown";
-                    light: "light";
                     dark: "dark";
+                    light: "light";
                 }>;
                 snapshot: z.ZodOptional<z.ZodObject<{
                     version: z.ZodLiteral<1>;

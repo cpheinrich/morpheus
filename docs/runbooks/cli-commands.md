@@ -30,6 +30,8 @@ pnpm morpheus wait-ci <pr>         # block once on CI; digest of failures with l
 pnpm morpheus wait-ci --run <id>   # the same for one Actions run (TestFlight, release, nightly)
 pnpm morpheus wait-ci --workflow <file> --branch <b>  # the latest run of a workflow, following a newer one
 pnpm morpheus brand status         # what the brand package still needs
+pnpm morpheus tokens build --swift packages/shared/generated/ios/BrandPalette.swift --css ''
+pnpm morpheus tokens build --swift packages/shared/generated/ios/BrandPalette.swift --css '' --check
 pnpm morpheus brand init           # scaffold brand-vibes.md, local moodboard, and concept-media folders
 pnpm morpheus brand explore        # refresh the five-direction brand review handoff
 pnpm morpheus brand finalize --selection "Name" # promote a reviewed direction into canonical records
