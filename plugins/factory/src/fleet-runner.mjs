@@ -4,6 +4,7 @@ import { open, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute } from "node:path";
 import { pullRequestsInEvidence } from "./fleet-display.mjs";
 import { fleetDiagnostic, invocationReceipt, notLaunched } from "./fleet-receipt.mjs";
+import { leaseMs } from "./fleet-claims.mjs";
 
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const states = ["claiming", "preparing", "running", "waiting", "finishing"];
@@ -115,12 +116,31 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
   let stopping = false;
   let active;
   let pendingQuestion;
+  let leaseDeadline = -Infinity;
+  let leaseTimer;
+
+  const leaseIsCurrent = () => performance.now() < leaseDeadline;
+
+  async function renew(record) {
+    // Measure from before the RPC, so latency and wall-clock skew cannot add
+    // time to what the service actually granted.
+    const startedAt = performance.now();
+    const reply = await call("renew", identity(record));
+    if (reply?.renewed !== true) return false;
+    leaseDeadline = startedAt + leaseMs - 1_000;
+    clearTimeout(leaseTimer);
+    leaseTimer = setTimeout(() => abort("lease-expired"), Math.max(0, leaseDeadline - performance.now()));
+    leaseTimer.unref?.();
+    return leaseIsCurrent();
+  }
 
   async function forget() {
     await rm(journalPath, { force: true });
     await syncDirectory(journalPath);
     active = undefined;
     pendingQuestion = undefined;
+    clearTimeout(leaseTimer);
+    leaseDeadline = -Infinity;
   }
 
   async function finish(record, outcome, result, cleanupVerified, invocation) {
@@ -154,6 +174,8 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     await writeJournal(journalPath, next);
     if (stopping)
       return finishBeforeLaunch(next, failed, "Runner stopped before launching the worker.");
+    if (!leaseIsCurrent())
+      return finishBeforeLaunch(next, failed, "Runner lease expired before launching the worker.");
     const controller = new AbortController();
     const run = { controller, done: false, output: null, stopReason: null };
     active = run;
@@ -167,6 +189,8 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
   async function prepareSource(record, task) {
     const next = { ...record, phase: "preparing" };
     await writeJournal(journalPath, next);
+    if (!leaseIsCurrent())
+      return finishBeforeLaunch(next, failed, "Runner lease expired before preparing source.");
     const run = { controller: new AbortController(), done: false, output: false, stopReason: null };
     active = run;
     Promise.resolve()
@@ -264,9 +288,23 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     return finish(record, failed, { summary }, proven, verifiedInvocation(record, output));
   }
 
+  async function observeLease(record) {
+    const snapshot = await call("inspect", identity(record));
+    if (snapshot?.task?.attempt?.id !== record.attemptId) return snapshot;
+    if (snapshot.task.cancelRequestedAt != null) abort("canceled");
+    return { ...snapshot, renewed: await renew(record) };
+  }
+
   async function drive(record) {
+    let snapshot;
     try {
-      const snapshot = await call("inspect", identity(record));
+      snapshot = await observeLease(record);
+    } catch (error) {
+      if (error?.retryable === true && active && !active.stopReason && leaseIsCurrent()) return "reconciling";
+      abort("lost-contact");
+      throw error;
+    }
+    try {
       if (!snapshot?.task?.attempt && snapshot?.task?.lastAttempt?.id === record.attemptId) {
         await forget();
         return "settled";
@@ -275,9 +313,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
         abort("lost-attempt");
         return "held";
       }
-      if (snapshot.task.cancelRequestedAt != null) abort("canceled");
-      const renewed = await call("renew", identity(record));
-      if (renewed?.renewed !== true) {
+      if (!snapshot.renewed) {
         abort("lost-lease");
         if (active && !active.done) return "held";
         return finishExpired(record, snapshot.task);
@@ -308,8 +344,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     if (task.cancelRequestedAt != null)
       return finishBeforeLaunch(record, canceled, "Canceled before launching the worker.");
     if (task.state !== "TASK_STATE_WORKING") return "held";
-    const renewed = await call("renew", identity(record));
-    if (renewed?.renewed !== true)
+    if (!await renew(record))
       return finishBeforeLaunch(record, failed, "Runner lease expired before launch.");
     if (prepare && task.source?.checkout === "git") return prepareSource(record, task);
     return start(record, task, task.brief.text);

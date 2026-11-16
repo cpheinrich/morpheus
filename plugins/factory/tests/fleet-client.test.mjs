@@ -31,3 +31,17 @@ test("failed sign-in removes the partially initialized app", async () => {
   await assert.rejects(connectFleet(config, async () => { throw new Error("sign-in denied"); }), /sign-in denied/);
   assert.equal(getApps().length, count);
 });
+
+test("Fleet marks network and service interruptions separately from an authority denial", async (t) => {
+  const client = await connectFleet(config, async () => ({ user: { getIdToken: async () => "fixture-id-token" } }));
+  t.after(() => client.close());
+  const responses = [
+    () => new Response("upstream temporarily unavailable", { status: 503 }),
+    () => { throw new TypeError("fetch failed", { cause: { code: "ECONNRESET" } }); },
+    () => Response.json({ error: "Factory identity is not enrolled" }, { status: 403 }),
+  ];
+  t.mock.method(globalThis, "fetch", async () => responses.shift()());
+  await assert.rejects(client.call("inspect", {}), error => error.retryable === true);
+  await assert.rejects(client.call("renew", {}), { message: "Temporary Factory transport failure.", retryable: true });
+  await assert.rejects(client.call("renew", {}), { message: "Factory identity is not enrolled", retryable: false });
+});

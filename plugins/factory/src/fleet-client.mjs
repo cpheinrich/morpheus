@@ -5,6 +5,40 @@ import { deleteApp, initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { doc, getFirestore, onSnapshot, terminate } from "firebase/firestore";
 
+const transientNetworkCodes = new Set([
+  "EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "ENETUNREACH", "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET",
+]);
+
+async function boundedRequest(ms, request) {
+  const signal = AbortSignal.timeout(ms);
+  let onTimeout;
+  const timeout = new Promise((_, reject) => {
+    onTimeout = () => reject(signal.reason);
+    signal.addEventListener("abort", onTimeout, { once: true });
+  });
+  try { return await Promise.race([request(signal), timeout]); }
+  catch (error) {
+    if (signal.aborted || transientNetworkCodes.has(error?.cause?.code) || error?.code === "auth/network-request-failed")
+      throw Object.assign(new Error("Temporary Factory transport failure.", { cause: error }), { retryable: true });
+    throw error;
+  } finally { signal.removeEventListener("abort", onTimeout); }
+}
+
+async function requestFleet(endpoint, user, op, body, signal) {
+  const token = await user.getIdToken();
+  signal.throwIfAborted();
+  const response = await fetch(endpoint, {
+    method: "POST", redirect: "error", signal,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ ...body, op }),
+  });
+  if (response.ok) return response.json();
+  const value = await response.json().catch(() => null);
+  const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+  throw Object.assign(new Error(value?.error ?? "Factory service rejected the operation"), { retryable });
+}
+
 export async function readFleetConfig(path) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
@@ -32,17 +66,8 @@ export async function connectFleet(config, signIn = signInWithEmailAndPassword) 
     throw error;
   }
   return {
-    async call(op, body) {
-      const token = await user.getIdToken();
-      const response = await fetch(endpoint, {
-        method: "POST", redirect: "error", signal: AbortSignal.timeout(op === "upload" || op === "download" ? 45_000 : 8_000),
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ ...body, op }),
-      });
-      const value = await response.json();
-      if (!response.ok) throw new Error(value.error ?? "Factory service rejected the operation");
-      return value;
-    },
+    call: (op, body) => boundedRequest(op === "upload" || op === "download" ? 45_000 : 8_000,
+      signal => requestFleet(endpoint, user, op, body, signal)),
     listen(wake, error) { return onSnapshot(doc(db, "factorySignals", user.uid), wake, error); },
     async close() {
       try {

@@ -1040,6 +1040,12 @@ flowchart LR
   downloads and opens the file, the exact Studio attempt is recorded, and
   the slot is released after verified cleanup.
 
+During a transient inspect or renewal failure, a live attempt stays in place until
+the supervisor's last confirmed service lease expires. A monotonic timer stops the
+worker before that known lease boundary even if a control request is stalled.
+Denied ownership and explicit cancellation still stop immediately. The existing
+termination census and settlement proof govern release of the slot.
+
 If a supervisor restarts after recording a launch and before seeing cleanup,
 it uses the existing non-signaling process census only for the exact retained
 task, attempt and admission. The interrupted task settles and releases its slot

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { fleetCodexModel } from "./config.mjs";
-import { claimTask, renewAttempt, settleAttempt } from "./fleet-claims.mjs";
+import { claimTask, leaseMs, renewAttempt, settleAttempt } from "./fleet-claims.mjs";
 import { answerQuestion, askQuestion, cancelTask, submitTask } from "./fleet-mailbox.mjs";
 import { fleetDiagnostic, invocationReceipt, receiptPath } from "./fleet-receipt.mjs";
 import { workspaceIntent, workspaceLaunch } from "./fleet-workspace.mjs";
@@ -58,7 +58,6 @@ const hash = (value) => createHash("sha256").update(value).digest("hex");
 const objectName = ({ taskId, attemptId, name }) => `factory/${taskId}/${attemptId}/${name}`;
 const taskRef = (db, id) => db.doc(`factoryTasks/${id}`);
 const messageRef = (db, task, id) => db.doc(`factoryTasks/${task}/messages/${id}`);
-const leaseMs = 60_000;
 const maxAgeMs = 45_000;
 
 function failure(status, message) {
