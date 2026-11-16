@@ -7,3 +7,4 @@ export {
   type RenderOptions,
   type Token,
 } from "./tokens.js";
+export { renderSwift } from "./swift.js";

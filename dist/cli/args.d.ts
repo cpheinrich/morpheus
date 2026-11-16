@@ -43,6 +43,7 @@ export interface Flags {
     source?: string;
     css?: string;
     ts?: string;
+    swift?: string;
     priority?: string;
     tags: string[];
     goal?: string;

@@ -164,6 +164,7 @@ async function dispatchTokens({ flags, command }) {
             source: flags.source,
             css: flags.css,
             ts: flags.ts,
+            swift: flags.swift,
             prefix: flags.prefix,
             check: flags.check,
         });

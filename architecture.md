@@ -2559,8 +2559,8 @@ Assets live in git: small, versioned, diffable, needed at build time. Large medi
 Primitives live with the brand because they *are* the brand. Semantic mapping lives with the design
 system because it is a design decision, not a brand one. Generated output is derived.
 
-**The kit generates primitives only.** `morpheus tokens build` emits CSS custom properties and a
-typed module from `hq/brand/tokens.json` and stops there; the semantic layer stays per project.
+**The kit generates primitives only.** `morpheus tokens build` emits CSS custom properties, a
+typed module, and opt-in Swift colors from `hq/brand/tokens.json`; the semantic layer stays per project.
 Only one project has a semantic layer today, and inventing a shared vocabulary from a sample of one
 would be guessing — principle 10 applies with particular force to a vocabulary, since a wrong one
 propagates into every project that adopts it.
@@ -2609,9 +2609,9 @@ route is worth having: it is the only place you can *see* it.
 
 ```mermaid
 flowchart LR
-    A["hq/brand/tokens.json<br/>primitives"] --> B["packages/shared/<br/>Style Dictionary"]
+    A["hq/brand/tokens.json<br/>primitives"] --> B["morpheus tokens build"]
     B --> C["generated/web/tokens.css"]
-    B --> D["generated/ios/Tokens.swift"]
+    B -->|"--swift"| D["generated/ios/BrandPalette.swift"]
     E["morpheus-kit/design<br/>components + showcase"] --> F["apps/web"]
     C --> F
     D --> G["apps/ios"]
@@ -2626,6 +2626,22 @@ keeping: it **writes nothing when the source has problems** and reports every pr
 because a stylesheet built from a half-read token file still renders, which is how the mistake
 survives to production; and it **emits a TS module as well as CSS**, because a deleted custom
 property renders as nothing while a deleted key does not compile.
+
+**Swift is opt-in:** `morpheus tokens build --swift packages/shared/generated/ios/BrandPalette.swift`.
+Add `--css ''` for Swift-only generation; otherwise existing CSS defaults and explicit `--ts`
+outputs remain unchanged. Repeat the same options with `--check` in CI: missing or stale output
+fails without writing. The generated `BrandPalette` exposes adaptive SwiftUI colors on iOS and
+macOS (including high-contrast dark appearances). Add the generated file to the app's target.
+
+The palette reads `color.*` and optional matching `theme.dark.color.*` overrides; a missing dark
+override inherits the light color. Other groups remain web-only. Names are lower camel case from
+the existing flattened kebab names (`inkMuted` and `ink-muted` both produce `inkMuted`); numeric
+names gain `color` (`500` becomes `color500`). Keywords are escaped. Output is sorted by Swift
+name. Collisions, empty names, orphan dark overrides and unsupported colors are reported together
+before **any** output is written. Supported literals are `#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA`,
+and comma-separated numeric `rgb()`/`rgba()` (channels 0–255, alpha 0–1). CSS references,
+percentages, named colors and other expressions are not evaluated. Swift channels use sRGB,
+rounded to six decimal places; CSS and TS retain their original literal values and order.
 
 ### 12.3 Import, don't sync
 
