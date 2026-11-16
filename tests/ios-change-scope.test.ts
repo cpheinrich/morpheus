@@ -9,7 +9,7 @@ const exec = promisify(execFile);
 type Step = { name?: string; id?: string; if?: string; run?: string; with?: Record<string, unknown>; 'working-directory'?: string };
 async function workflow() {
   return load(await readFile(new URL('../.github/workflows/ios-ci.yml', import.meta.url), 'utf8')) as {
-    jobs: { test: { steps: Step[] } };
+    jobs: { test: { steps: Step[] }; 'native-scope': { steps: Step[]; if: string; 'runs-on': string; outputs: Record<string, string> } };
     on: { workflow_call: { inputs: Record<string, { default?: unknown }> } };
   };
 }
@@ -129,15 +129,27 @@ describe('single native check change scope', () => {
       expect(await f.run({}, shallow)).toBe('run=false\n');
     } finally { await rm(f.dir, { recursive: true, force: true }); }
   });
-  it('keeps one native job and gates every native step, including always/failure evidence', async () => {
+  it('proves scope on hosted Git before queuing, using the same command as the native fallback', async () => {
     const wf = await workflow();
-    expect(Object.keys(wf.jobs)).toEqual(['validate-runner', 'test']);
+    expect(Object.keys(wf.jobs)).toEqual(['native-scope', 'validate-runner', 'test']);
     expect(wf.on.workflow_call.inputs['watch-paths']!.default).toBe('');
+    const preflight = wf.jobs['native-scope'];
+    expect(preflight['runs-on']).toBe('ubuntu-latest');
+    expect(preflight.if).toContain("github.event_name == 'pull_request' && inputs.watch-paths != ''");
+    for (const input of ['source-sha', 'execution-id', 'runner-labels-json']) {
+      expect(preflight.if).toContain(`inputs.${input} == ''`);
+    }
+    expect(preflight.steps[0]!.with).toEqual({
+      ref: '${{ github.sha }}', 'fetch-depth': 0, 'persist-credentials': false,
+    });
+    expect(preflight.steps[1]!.if).toBe("${{ steps.source.outcome == 'success' }}");
+    expect(preflight.outputs.run).toBe("${{ steps.scope.outcome == 'success' && steps.scope.outputs.run || '' }}");
     const steps = wf.jobs.test.steps;
     const scope = steps.findIndex(s => s.id === 'scope');
     expect(scope).toBe(3);
     expect(steps[1]!.with!['fetch-depth']).toBe("${{ github.event_name == 'pull_request' && inputs.watch-paths != '' && '0' || '2' }}");
     expect(steps[scope]!['working-directory']).toBe('.');
+    expect(steps[scope]!.run).toBe(preflight.steps[1]!.run);
     for (const step of steps.slice(scope + 1)) expect(step.if, step.name).toContain("steps.scope.outputs.run == 'true'");
   });
 });
