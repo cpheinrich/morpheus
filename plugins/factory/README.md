@@ -1086,6 +1086,13 @@ checkout. The runner records preparation before it can start a model, so a
 restart during checkout can settle the attempt without a guardian receipt. Operators can retire old checkouts after verifying their attempts are
 terminal. An explicit SHA enrollment continues to use the fixed pilot checkout.
 
+For single-repository Git enrollments, the supervisor fetches the exact source
+and the observed upstream default branch with their history. The worker starts
+detached at the admitted revision and sees a local `origin` pinned to the
+observed branch tip. Git and Morpheus startup can verify that snapshot without
+access to the supervisor’s upstream key. A new admission is required to get a
+newer comparison tip.
+
 ### Enroll a related repository workspace
 
 This is opt-in enrollment. Existing fixed-SHA and single-repository Git enrollments keep
