@@ -657,6 +657,7 @@ async function dispatchWaitCi({ flags, command, rest }: Invocation): Promise<num
     timeout: flags.timeout,
     requiredOnly: flags.requiredOnly,
     run: flags.run,
+    attempt: flags.attempt,
     workflow: flags.workflow,
     branch: flags.branch,
     sha: flags.sha,

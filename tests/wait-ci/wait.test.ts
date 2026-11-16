@@ -469,6 +469,68 @@ describe("waitCi", () => {
     expect(result.output).toMatch(/^\? No required checks on cpheinrich\/morpheus#354 @ 59cb7d5 after 3m\d\ds \(1 non-required ignored by --required-only\)$/);
   });
 
+  describe("green required checks while GitHub reports the merge BLOCKED", () => {
+    // The #723 shape: a push and a ready-for-review event each ran the same
+    // required job on one head; the older run was cancelled, the newer passed.
+    const cancelledThenPassed = (mergeState: string | undefined, conclusion = "SUCCESS") =>
+      ok(rollup(SHA_A, [
+        run("pr / conventions", "COMPLETED", "CANCELLED", { required: true, suite: "suite-push", runId: "111", job: "11", startedAt: "2026-11-16T10:00:00Z" }),
+        run("pr / conventions", "COMPLETED", conclusion, { required: true, suite: "suite-ready", runId: "222", job: "22", startedAt: "2026-11-16T10:01:00Z" }),
+        run("factory", "COMPLETED", "CANCELLED", { suite: "suite-push", runId: "111", job: "13", startedAt: "2026-11-16T10:00:00Z" }),
+        run("factory", "COMPLETED", "SUCCESS", { suite: "suite-ready", runId: "222", job: "23", startedAt: "2026-11-16T10:01:00Z" }),
+      ], false, "MERGEABLE", mergeState));
+
+    it("stays green with exit 0 and names the superseded cancelled required run as a possible cause", async () => {
+      const { deps, calls } = fakeGh([cancelledThenPassed("BLOCKED")]);
+      expect(await waitCi(deps, { ...opts, requiredOnly: true })).toEqual({
+        exitCode: 0,
+        output: [
+          "✓ CI green — cpheinrich/morpheus#354 @ 59cb7d5 (required 1 check: 1 passed) after 0s",
+          "! GitHub reports merge state BLOCKED even though required checks passed on 59cb7d5.",
+          "  If the block persists, check required reviews, rulesets and required checks that have not reported: gh pr view 354 --repo cpheinrich/morpheus --json mergeStateStatus,reviewDecision",
+          "  Possible cause: an older cancelled run of a required check remains on this head:",
+          // The optional factory job's cancelled attempt is not a protection cause and is not listed.
+          "  ⊘ pr / conventions (CI) — https://github.com/cpheinrich/morpheus/actions/runs/111/job/11",
+        ].join("\n"),
+      });
+      expect(calls.find((c) => c[0] === "api")!.at(-1)).toContain("mergeStateStatus");
+    });
+
+    it("without a superseded cancelled run, points at the other protection rules instead", async () => {
+      const blocked = ok(rollup(SHA_A, [run("node / check", "COMPLETED", "SUCCESS", { required: true })], false, "MERGEABLE", "BLOCKED"));
+      expect((await waitCi(fakeGh([blocked]).deps, { ...opts, requiredOnly: true })).output.split("\n").slice(1)).toEqual([
+        "! GitHub reports merge state BLOCKED even though required checks passed on 59cb7d5.",
+        "  If the block persists, check required reviews, rulesets and required checks that have not reported: gh pr view 354 --repo cpheinrich/morpheus --json mergeStateStatus,reviewDecision",
+      ]);
+    });
+
+    it("does not offer a superseded failed run as the cancelled-run cause", async () => {
+      const failedThenPassed = ok(rollup(SHA_A, [
+        run("pr / conventions", "COMPLETED", "FAILURE", { required: true, suite: "suite-push", runId: "111", job: "11", startedAt: "2026-11-16T10:00:00Z" }),
+        run("pr / conventions", "COMPLETED", "SUCCESS", { required: true, suite: "suite-ready", runId: "222", job: "22", startedAt: "2026-11-16T10:01:00Z" }),
+      ], false, "MERGEABLE", "BLOCKED"));
+      const output = (await waitCi(fakeGh([failedThenPassed]).deps, { ...opts, requiredOnly: true })).output;
+      expect(output).not.toContain("Possible cause: an older cancelled run");
+      expect(output).toContain("If the block persists, check required reviews");
+    });
+
+    it.each([
+      ["a merge state other than BLOCKED", "CLEAN", true, "SUCCESS"],
+      ["an unknown merge state", undefined, true, "SUCCESS"],
+      ["the default all-checks scope", "BLOCKED", false, "SUCCESS"],
+    ])("says nothing extra for %s", async (_, mergeState, requiredOnly, conclusion) => {
+      const result = await waitCi(fakeGh([cancelledThenPassed(mergeState, conclusion)]).deps, { ...opts, requiredOnly });
+      expect(result.exitCode).toBe(0);
+      expect(result.output.split("\n")).toHaveLength(1);
+    });
+
+    it("leaves a failed verdict as the failure, with no blocked advisory", async () => {
+      const result = await waitCi(fakeGh([cancelledThenPassed("BLOCKED", "FAILURE")]).deps, { ...opts, requiredOnly: true });
+      expect(result.exitCode).toBe(1);
+      expect(result.output).not.toContain("BLOCKED");
+    });
+  });
+
   it("an unresolvable PR is exit 3 with gh's own first line", async () => {
     const { deps } = fakeGh([green()], {}, fail("no pull requests found for branch \"topic\"\nhint"));
     expect(await waitCi(deps, { ...opts, target: "topic" })).toEqual({

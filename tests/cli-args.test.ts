@@ -11,6 +11,10 @@ describe("CLI argument compatibility", () => {
   it.each([["--check", "check", true], ["--all", "all", true], ["--offline", "offline", true], ["--print", "print", true], ["--dry-run", "dryRun", true], ["--no-browser", "openBrowser", false], ["--no-provision", "provision", false], ["--no-waitlist", "waitlist", false], ["--no-hq", "hq", false], ["--json", "json", true], ["--full", "full", true], ["--dispatch", "dispatch", true], ["--required-only", "requiredOnly", true]])("preserves %s", (option, key, value) => {
     expect(parseArgs([String(option), "tail"])).toMatchObject({ [String(key)]: value, positional: ["tail"] });
   });
+  it("preserves a missing attempt value so wait-ci can reject it", () => {
+    expect(parseArgs(["wait-ci", "--run", "111", "--attempt"])).toMatchObject({ run: "111", attempt: "" });
+    expect(parseArgs(["wait-ci", "--run", "111", "--attempt", "2"])).toMatchObject({ run: "111", attempt: "2" });
+  });
   it("preserves defaults and special-value consumption", () => {
     expect(parseArgs([])).toEqual({ dir: "hq/product", base: "origin/main", check: false, dryRun: false,
       all: false, offline: false, full: false, ci: false, requiredOnly: false, json: false, dispatch: false, print: false,

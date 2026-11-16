@@ -294,6 +294,8 @@ async function finalDigest(deps: WaitDeps, repo: string, pr: number, opts: WaitO
     requiredOnly: opts.requiredOnly,
     truncated: snapshot.truncated,
     ignored: snapshot.checks.length - checks.length,
+    mergeState: snapshot.mergeState,
+    supersededCancelled: snapshot.supersededCancelled,
   });
   return { exitCode: exitCode(v), output };
 }
