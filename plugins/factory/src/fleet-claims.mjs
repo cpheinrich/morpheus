@@ -98,15 +98,20 @@ export function settleAttempt(db, { taskId, attemptId, hostId, outcome, result, 
     if (slot?.attemptId !== attemptId || slot.hostId !== hostId) return false;
     if (workspace?.attemptId !== attemptId || workspace.taskId !== taskId) return false;
     const state = task.cancelRequestedAt != null ? "TASK_STATE_CANCELED" : outcome;
-    transaction.update(taskRef, { state, result, attempt: null, lastAttempt: task.attempt });
+    const delivered = state === "TASK_STATE_CANCELED" ? canceledResult(outcome, result) : result;
+    transaction.update(taskRef, { state, result: delivered, attempt: null, lastAttempt: task.attempt });
     if (invocation) {
       transaction.set(db.doc(receiptPath(taskId)), {
         ...invocation, taskId, attemptId, hostId, slotId: task.attempt.slotId,
-        state, terminationVerified: true, ...(result?.diagnosticCode ? { diagnosticCode: result.diagnosticCode } : {}), source: task.source ?? null, selection: task.selection ?? null,
+        state, terminationVerified: true, ...(delivered?.diagnosticCode ? { diagnosticCode: delivered.diagnosticCode } : {}), source: task.source ?? null, selection: task.selection ?? null,
       });
     }
     transaction.update(slotRef, { attemptId: null });
     transaction.delete(workspaceRef);
     return true;
   });
+}
+
+function canceledResult(outcome, result) {
+  return outcome === "TASK_STATE_CANCELED" && result ? { summary: result.summary } : null;
 }
