@@ -4,7 +4,7 @@ import { open, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute } from "node:path";
 import { pullRequestsInEvidence } from "./fleet-display.mjs";
 import { fleetDiagnostic, invocationReceipt, notLaunched } from "./fleet-receipt.mjs";
-import { leaseMs } from "./fleet-claims.mjs";
+import { leaseMs, legacyLeaseMs } from "./fleet-claims.mjs";
 
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const states = ["claiming", "preparing", "running", "waiting", "finishing"];
@@ -143,7 +143,10 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     const reply = await call("renew", identity(record));
     checkLeaseBoundary();
     if (reply?.renewed !== true) return false;
-    leaseDeadline = startedAt + leaseMs - 1_000;
+    // Older services omit the duration and can only grant the original lease.
+    const duration = reply.leaseMs === undefined ? legacyLeaseMs : reply.leaseMs;
+    if (!Number.isSafeInteger(duration) || duration < legacyLeaseMs || duration > leaseMs) return false;
+    leaseDeadline = startedAt + duration - 1_000;
     clearTimeout(leaseTimer);
     leaseTimer = setTimeout(expireLease, Math.max(0, leaseDeadline - performance.now()));
     leaseTimer.unref?.();

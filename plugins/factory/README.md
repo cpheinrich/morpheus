@@ -1305,6 +1305,14 @@ gateway is `limited`. Old supervisors still heartbeat and run tasks, with quota
 shown as unknown. A new supervisor refreshes the quota observation no more than
 once per minute while idle and checks again before each model invocation.
 
+The service grants a two-minute attempt lease and tells the supervisor its duration
+on a successful renewal. A supervisor talking to an older service uses the
+original one-minute grant. The supervisor measures from before the renewal request
+with its monotonic clock, preserves the last confirmed cutoff during temporary contact
+loss, and stops at that cutoff unless the service has acknowledged another grant.
+A delayed renewal cannot shorten an existing grant. Cancellation prevents further renewals and the attempt retains its slot and checkout
+until owned-process cleanup is verified.
+
 On verified settlement, the owning controller's `get` and `wait` responses may include
 a separate `receipt` with the exact task, attempt, slot, host, and latest gateway
 admission. In a `session` receipt the session ID comes from the Codex CLI's
@@ -1325,6 +1333,8 @@ until they are idle. Then upgrade supervisor, fixed executor and worker together
 on each slot. Keep the old plugin build for rollback and wait for `readiness` to
 show a fresh observation before testing the new receipt with a synthetic task.
 Older services ignore the additive heartbeat and completion fields.
+To roll back the lease change, drain and roll back the supervisors before moving
+service traffic to an older revision.
 
 ### Read Factory work in an Infra desk
 

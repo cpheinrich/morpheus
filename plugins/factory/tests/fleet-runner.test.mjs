@@ -248,6 +248,57 @@ test("transient inspect and renew failures preserve one execution within its con
   assert.equal(calls.at(-1)[1].outcome, "TASK_STATE_COMPLETED");
 });
 
+test("an acknowledged longer grant survives a 74-second outage without starting over", async (t) => {
+  let time = 0;
+  t.mock.method(performance, "now", () => time);
+  const { options, started, executions, calls } = await fixture(t);
+  let disconnected = false;
+  const runner = createFleetRunner({ ...options, call: async (op, data) => {
+    if (disconnected && op === "inspect") throw Object.assign(new Error("connection reset"), { retryable: true });
+    if (op === "renew") return { renewed: true, leaseMs: 120_000 };
+    return options.call(op, data);
+  } });
+  assert.equal(await runner.tick(), "running");
+  const run = await started();
+  disconnected = true;
+  time = 74_000;
+  assert.equal(await runner.tick(), "reconciling");
+  assert.equal(run.signal.aborted, false);
+  disconnected = false;
+  run.resolve(output("completed"));
+  await setImmediate();
+  assert.equal(await runner.tick(), "settled");
+  assert.equal(executions.length, 1);
+  assert.equal(calls.at(-1)[1].outcome, "TASK_STATE_COMPLETED");
+});
+
+test("an invalid advertised grant cannot launch a worker", async (t) => {
+  for (const leaseMs of [120_001, null]) {
+    const { options, executions, calls } = await fixture(t);
+    const runner = createFleetRunner({ ...options, call: async (op, data) => op === "renew"
+      ? { renewed: true, leaseMs } : options.call(op, data) });
+    assert.equal(await runner.tick(), "settled");
+    assert.equal(executions.length, 0);
+    assert.equal(calls.at(-1)[1].outcome, "TASK_STATE_FAILED");
+  }
+});
+
+test("a malformed live renewal stops the worker without publishing its output", async (t) => {
+  const { options, started, calls } = await fixture(t);
+  let malformed = false;
+  const runner = createFleetRunner({ ...options, call: async (op, data) => malformed && op === "renew"
+    ? { renewed: true, leaseMs: null } : options.call(op, data) });
+  assert.equal(await runner.tick(), "running");
+  const run = await started();
+  malformed = true;
+  assert.equal(await runner.tick(), "held");
+  assert.equal(run.signal.aborted, true);
+  run.resolve(output("completed", { artifacts: [{ name: "stale.pdf" }] }));
+  await setImmediate();
+  assert.equal(await runner.tick(), "settled");
+  assert.equal(calls.at(-1)[1].result.artifacts, undefined);
+});
+
 test("the last confirmed lease still aborts a worker while inspect is stalled", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { options, started, calls } = await fixture(t);

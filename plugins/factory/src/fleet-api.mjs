@@ -196,7 +196,7 @@ async function handleWorker(op, input, { db, principal, objects, now, config, lo
   const task = await loadTask(db, input.taskId, (task) => owns(task) ||
     ((op === "finish" || op === "inspect") && attemptOwner(task.lastAttempt, binding)));
   if (op === "inspect") return withAnswer(db, task);
-  if (op === "renew") return { renewed: await renewAttempt(db, binding) };
+  if (op === "renew") return { renewed: await renewAttempt(db, binding), leaseMs };
   if (op === "upload") {
     if (task.cancelRequestedAt != null || task.attempt.leaseUntil <= now) throw failure(409, "Factory attempt cannot publish artifacts");
     return upload(objects, input);
