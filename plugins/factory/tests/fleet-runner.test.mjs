@@ -329,6 +329,29 @@ test("restart settles the exact admission once its cleanup is proven without exe
   await assert.rejects(readFile(options.journalPath), { code: "ENOENT" });
 });
 
+test("late cleanup restores a completed result during the same supervised lease", async (t) => {
+  const { options, task, started, calls } = await fixture(t);
+  let recoveredID;
+  const runner = createFleetRunner({ ...options, recover: async (id, observed, restore) => {
+    recoveredID = id;
+    assert.equal(observed.id, taskId);
+    assert.equal(restore.aborted, false);
+    return {
+      terminationVerified: true,
+      invocation: { launch: "session", admissionId: id, sessionId: "01890000-0000-7000-8000-000000000005" },
+      result: { outcome: "completed", summary: "Retained handoff", artifacts: ["handoff.json"] },
+    };
+  } });
+  assert.equal(await runner.tick(), "running");
+  const run = await started();
+  run.resolve({ terminationVerified: false });
+  await setImmediate();
+  assert.equal(await runner.tick(), "settled");
+  assert.equal(recoveredID, run.admissionId);
+  assert.equal(task.state, "TASK_STATE_COMPLETED");
+  assert.deepEqual(calls.at(-1)[1].result, { summary: "Retained handoff", artifacts: ["handoff.json"] });
+});
+
 test("restart during source preparation settles as never launched", async (t) => {
   const { options, task, executions, journal, calls } = await fixture(t);
   task.source = { checkout: "git" };

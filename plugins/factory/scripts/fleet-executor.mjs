@@ -107,8 +107,20 @@ async function recover(job) {
   // The same retained Fleet attempt can request the operator's fresh census.
   // It cannot signal a process or prove a different or still-live admission.
   const observed = sameAttempt && !prior.terminationVerified ? await reconcileWorker(job.admissionId) : prior;
-  return { terminationVerified: observed.terminationVerified, admissionId: observed.admissionId,
+  const proof = { terminationVerified: observed.terminationVerified, admissionId: observed.admissionId,
     invocation: sameAttempt ? invocationFromWorker(observed) : undefined };
+  if (proof.invocation?.launch !== "session" || observed.result?.outcome !== "completed" || job.recovery?.source?.project !== project)
+    return proof;
+  return recoverCompleted(job, observed, proof).catch(() => proof);
+}
+
+async function recoverCompleted(job, observed, proof) {
+  const { source, checkout } = job.recovery;
+  const config = await readWorkerConfig(configPath);
+  const { cwd } = await executionCheckout(config, source, checkout);
+  if (observed.binding.cwd !== cwd) return proof;
+  const emitted = await emitArtifacts(join(cwd, `.factory-artifacts-${job.admissionId}`), observed.result, false);
+  return emitted ? { ...proof, result: observed.result } : proof;
 }
 
 async function dispatch(value) {

@@ -1049,8 +1049,11 @@ termination census and settlement proof govern release of the slot.
 If a supervisor restarts after recording a launch and before seeing cleanup,
 it uses the existing non-signaling process census only for the exact retained
 task, attempt and admission. The interrupted task settles and releases its slot
-when the census proves cleanup. An unverified or still-live worker holds its
-slot. Operators can still use the gateway worker's `--status` and
+when the census proves cleanup. While the original attempt remains supervised
+and authorized by its current lease, late cleanup can also return its completed
+structured result and the declared bounded artifacts from the exact retained
+checkout. Canceled, expired or restarted attempts use cleanup-only recovery.
+An unverified or still-live worker holds its slot. Operators can still use the gateway worker's `--status` and
 `--reconcile` to inspect or reconcile an exact admission.
 The pilot uses an enrolled Codex model and a single Studio slot. Firestore
 coordinates placement, and Sub2API retains account routing behind its gateway.

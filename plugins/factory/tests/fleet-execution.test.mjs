@@ -62,6 +62,49 @@ test("the Studio supervisor retains acknowledged deadline artifacts only with li
   }
 });
 
+test("late cleanup uploads only a result returned for the exact live admission", async (t) => {
+  const config = { account: "fixture", node: "/node", script: "/executor", workerConfig: "/worker", project: "fixture" };
+  const task = { id: "task", attempt: { id: "attempt" }, source: { project: "fixture" } };
+  const calls = [];
+  const requests = [];
+  const artifact = { name: "handoff.json", type: "application/json", bytes: "e30=" };
+  let proof = {
+    admissionId: "owned",
+    terminationVerified: true,
+    invocation: { launch: "session" },
+    result: { outcome: "completed" },
+  };
+  t.mock.method(childProcess, "spawn", () => {
+    const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough() });
+    child.stdin.once("data", (data) => {
+      requests.push(JSON.parse(data.toString().split("\n")[0]));
+      child.stdout.write(JSON.stringify({ artifact }) + "\n");
+      child.stdout.end(JSON.stringify({ outcome: proof }) + "\n");
+      setImmediate(() => child.emit("close", 0));
+    });
+    return child;
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  const executor = createStudioExecutor(config, async (operation, args) => {
+    calls.push([operation, args]);
+    return { name: args.name };
+  });
+  await executor.recover("owned", task);
+  assert.equal(requests[0].recovery, undefined);
+  assert.deepEqual(calls, []);
+  const signal = new AbortController().signal;
+  const restored = await executor.recover("owned", task, signal);
+  assert.deepEqual(requests[1].recovery.source, task.source);
+  assert.deepEqual(restored.result.artifacts, ["handoff.json"]);
+  proof = { ...proof, admissionId: "foreign" };
+  assert.equal(await executor.recover("owned", task, signal), false);
+  assert.deepEqual(calls, [["upload", { ...artifact, taskId: "task", attemptId: "attempt" }]]);
+});
+
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "factory-executors-"));
   t.after(() => rm(root, { recursive: true, force: true }));

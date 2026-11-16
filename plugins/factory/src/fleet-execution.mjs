@@ -92,6 +92,11 @@ function attemptBinding(task) {
   return { taskId: task.id, attemptId: task.attempt.id, ...(task.source.workspace ? { workspace: task.source.workspace } : {}) };
 }
 
+function checkoutFor(config, task) {
+  if (task.source.workspace) return { attemptId: task.attempt.id };
+  if (task.source.checkout === "git") return sourceBinding(config, task);
+}
+
 export function createStudioExecutor(config, call, checkQuota) {
   if (!validExecution(config)) throw new Error("Invalid Studio execution configuration");
   return {
@@ -133,15 +138,19 @@ export function createStudioExecutor(config, call, checkQuota) {
         task: { source: task.source, selection: task.selection }, admissionId, resume, prompt,
         binding: attemptBinding(task),
         gatewayBaseUrl: config.gatewayBaseUrl,
-        checkout: task.source.workspace ? { attemptId: task.attempt.id } : task.source.checkout === "git" ? sourceBinding(config, task) : undefined,
+        checkout: checkoutFor(config, task),
       }, signal);
       if (!output) return { terminationVerified: false, diagnosticCode: "executor_invocation_failed" };
       if (output.outcome?.terminationVerified !== true) return { terminationVerified: false };
       return publish(call, output, task, signal);
     },
-    async recover(admissionId, task) {
-      const { outcome } = await invoke(config, { op: "recover", admissionId, binding: attemptBinding(task) }) ?? {};
-      return outcome?.admissionId === admissionId && outcome.terminationVerified === true ? outcome : false;
+    async recover(admissionId, task, restore) {
+      const recovery = restore && !restore.aborted ? { source: task.source, checkout: checkoutFor(config, task) } : undefined;
+      const output = await invoke(config, { op: "recover", admissionId, binding: attemptBinding(task), recovery }, restore);
+      const outcome = output?.outcome;
+      if (outcome?.admissionId !== admissionId || outcome.terminationVerified !== true) return false;
+      return recovery && !restore.aborted && outcome.invocation?.launch === "session"
+        ? publish(call, output, task, restore) : outcome;
     },
   };
 }
@@ -196,8 +205,8 @@ export function createStudioExecutors(config, call, checkQuota, create = createS
     async execute(input) {
       return select(input.task)?.execute(input) ?? noLaunch(input.admissionId);
     },
-    async recover(admissionId, task) {
-      return select(task)?.recover(admissionId, task) ?? false;
+    async recover(admissionId, task, restore) {
+      return select(task)?.recover(admissionId, task, restore) ?? false;
     },
   };
 }

@@ -232,8 +232,12 @@ test("real service, supervisor, executor, guardian and wrapper return an exact w
   assert.equal(api.db.docs.has("factoryWorkspaces/related-lock"), false);
   const recovered = await executor.recover(admissionId, task);
   assert.equal(recovered.terminationVerified, true);
+  assert.equal(recovered.result, undefined);
+  const restored = await executor.recover(admissionId, task, new AbortController().signal);
+  assert.equal(restored.result.outcome, "completed");
+  assert.deepEqual(restored.invocation, output.invocation);
   const wrong = structuredClone(task); wrong.source.workspace.profile = "other";
-  assert.equal(await executor.recover(admissionId, wrong), false);
+  assert.equal(await executor.recover(admissionId, wrong, new AbortController().signal), false);
   await writeFile(join(library, "continuation.txt"), "retained untracked edit");
   const continued = await executor.execute({ task, admissionId: randomUUID(), resume: admissionId, prompt: "Resume exact workspace", signal: new AbortController().signal });
   assert.equal(continued.result.outcome, "completed");

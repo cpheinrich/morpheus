@@ -243,7 +243,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
   async function completeTurn(record, task) {
     const { output, stopReason } = active;
     if (output?.terminationVerified !== true)
-      return recoverTurn(record, task);
+      return recoverTurn(record, task, !stopReason && !stopping && task.cancelRequestedAt == null);
     const invocation = verifiedInvocation(record, output);
     if (task.cancelRequestedAt != null)
       return finish(record, canceled, { summary: "Worker stopped after cancellation." }, true, invocation);
@@ -261,12 +261,18 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     return finish(record, outcome, resultFor(output), true, invocation);
   }
 
-  async function recoverTurn(record, task) {
-    const recovered = await recover(record.admissionId, task);
+  async function recoverTurn(record, task, restoreOutput = false) {
+    const remaining = Math.floor(leaseDeadline - performance.now());
+    const restore = restoreOutput && remaining > 0 ? AbortSignal.timeout(remaining) : undefined;
+    const recovered = await recover(record.admissionId, task, restore);
     const proven = recovered === true || recovered?.terminationVerified === true;
+    const invocation = verifiedInvocation(record, recovered);
+    if (restore && !restore.aborted && leaseIsCurrent() && !stopping &&
+        invocation?.launch === "session" && recovered.result?.outcome === "completed")
+      return finish(record, "TASK_STATE_COMPLETED", resultFor(recovered), true, invocation);
     return finish(record, failed, {
       summary: proven ? "Recovered verified worker cleanup after supervision was interrupted." : "Worker termination could not be verified.",
-    }, proven, verifiedInvocation(record, recovered));
+    }, proven, invocation);
   }
 
   async function driveRunning(record, task) {
