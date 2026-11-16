@@ -109,7 +109,7 @@ export function createStudioExecutor(config, call, checkQuota) {
         } else {
           if (config.fleetWorkspace) throw new Error("Workspace binding required");
           checkout = sourceBinding(config, task);
-          await fetchStudioRevision(checkout.mirror, task.source.revision);
+          Object.assign(checkout, await fetchStudioRevision(checkout.mirror, task.source.revision));
         }
       } catch { return { prepared: false, diagnosticCode: "source_fetch_failed" }; }
       if (signal.aborted) return false;

@@ -1089,7 +1089,12 @@ terminal. An explicit SHA enrollment continues to use the fixed pilot checkout.
 ### Enroll a related repository workspace
 
 This is opt-in enrollment. Existing fixed-SHA and single-repository Git enrollments keep
-working. Drain the slot and retain the previous configurations before an operator changes
+working. For Git enrollments, the supervisor fetches the exact source
+and the observed upstream default branch with their history. The worker starts
+detached at the admitted revision and sees a local `origin` pinned to the
+observed branch tip. Git and Morpheus startup can verify that snapshot without
+access to the supervisor’s upstream key. A new admission is required to get a
+newer comparison tip. Drain the slot and retain the previous configurations before an operator changes
 policy. Private configuration contains real repository/account references; the examples
 below are synthetic. This source change does not install or enroll anything.
 
