@@ -33,6 +33,15 @@ test('scheduled task wire rejects unsafe additions, duplicate identities and imp
   assert.throws(() => parseReport(report([{...task,lastRunAt:sampledAt}]),now().valueOf()), /source-clock/);
 });
 
+test('scheduled task wire keeps minute-precision timestamps and still requires a zone', () => {
+  const minute = {version:1,observedAt:'2026-11-06T12:00Z',tasks:[{...task,nextAt:'2026-11-15T13:00+02:00'}]};
+  assert.deepEqual(scheduledTaskDocument.parse(minute), minute);
+  for (const stamp of ['2026-11-06T12:00','2026-11-06T12:00:00']) {
+    assert.equal(scheduledTaskDocument.safeParse({...minute,observedAt:stamp}).success,false,stamp);
+    assert.equal(scheduledTaskDocument.safeParse({...minute,tasks:[{...task,nextAt:stamp}]}).success,false,stamp);
+  }
+});
+
 test('reporter preserves the producer timestamp and refuses missing or nonprivate state', async t => {
   const dir = await mkdtemp(join(tmpdir(),'infra-schedule-'));
   t.after(() => rm(dir,{recursive:true,force:true}));
