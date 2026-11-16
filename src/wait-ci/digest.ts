@@ -101,28 +101,15 @@ export function renderDigest(input: DigestInput): string {
   return out.join("\n");
 }
 
-const RUN_ID = /\/actions\/runs\/(\d+)/;
-
-/**
- * Required checks passing and GitHub accepting the protection state are two
- * facts, and only the first is a CI verdict, so the exit code stays green.
- * Said only for `--required-only`, the scope that stands for protection. A
- * cancelled required run replaced by a newer attempt on the same head was
- * seen to hold protection until it was rerun; it is offered as a possible
- * cause, because GitHub does not say which rule blocks.
- */
+/** GitHub's merge state can lag the current-head check verdict. The diagnostic leaves that verdict alone. */
 function blockedLines(input: DigestInput): string[] {
   if (!input.requiredOnly || input.verdict !== "green" || input.mergeState !== "BLOCKED") return [];
-  const out = [`! GitHub still reports merge state BLOCKED: required checks passed, but protection has not accepted ${short(input.headSha)}. This is not a CI failure.`];
+  const out = [`! GitHub reports merge state BLOCKED even though required checks passed on ${short(input.headSha)}.`,
+    `  If the block persists, check required reviews, rulesets and required checks that have not reported: gh pr view ${input.pr} --repo ${input.repo} --json mergeStateStatus,reviewDecision`];
   const cancelled = input.supersededCancelled ?? [];
   if (cancelled.length > 0) {
-    out.push("  possible cause: an older cancelled run of a required check remains on this head; rerunning it may clear the block:");
-    for (const check of cancelled) {
-      const run = check.url ? RUN_ID.exec(check.url)?.[1] : undefined;
-      out.push(`  ⊘ ${label(check)}${check.url ? ` — ${check.url}` : ""}${run ? ` (gh run rerun ${run} --repo ${input.repo})` : ""}`);
-    }
-  } else {
-    out.push(`  possible causes: a required review, a ruleset, or a required check that has not reported; see \`gh pr view ${input.pr} --repo ${input.repo} --json mergeStateStatus,reviewDecision\`.`);
+    out.push("  Possible cause: an older cancelled run of a required check remains on this head:");
+    for (const check of cancelled) out.push(`  ⊘ ${label(check)}${check.url ? ` — ${check.url}` : ""}`);
   }
   return out;
 }

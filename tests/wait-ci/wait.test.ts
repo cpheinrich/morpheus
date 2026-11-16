@@ -486,10 +486,11 @@ describe("waitCi", () => {
         exitCode: 0,
         output: [
           "✓ CI green — cpheinrich/morpheus#354 @ 59cb7d5 (required 1 check: 1 passed) after 0s",
-          "! GitHub still reports merge state BLOCKED: required checks passed, but protection has not accepted 59cb7d5. This is not a CI failure.",
-          "  possible cause: an older cancelled run of a required check remains on this head; rerunning it may clear the block:",
+          "! GitHub reports merge state BLOCKED even though required checks passed on 59cb7d5.",
+          "  If the block persists, check required reviews, rulesets and required checks that have not reported: gh pr view 354 --repo cpheinrich/morpheus --json mergeStateStatus,reviewDecision",
+          "  Possible cause: an older cancelled run of a required check remains on this head:",
           // The optional factory job's cancelled attempt is not a protection cause and is not listed.
-          "  ⊘ pr / conventions (CI) — https://github.com/cpheinrich/morpheus/actions/runs/111/job/11 (gh run rerun 111 --repo cpheinrich/morpheus)",
+          "  ⊘ pr / conventions (CI) — https://github.com/cpheinrich/morpheus/actions/runs/111/job/11",
         ].join("\n"),
       });
       expect(calls.find((c) => c[0] === "api")!.at(-1)).toContain("mergeStateStatus");
@@ -498,8 +499,8 @@ describe("waitCi", () => {
     it("without a superseded cancelled run, points at the other protection rules instead", async () => {
       const blocked = ok(rollup(SHA_A, [run("node / check", "COMPLETED", "SUCCESS", { required: true })], false, "MERGEABLE", "BLOCKED"));
       expect((await waitCi(fakeGh([blocked]).deps, { ...opts, requiredOnly: true })).output.split("\n").slice(1)).toEqual([
-        "! GitHub still reports merge state BLOCKED: required checks passed, but protection has not accepted 59cb7d5. This is not a CI failure.",
-        "  possible causes: a required review, a ruleset, or a required check that has not reported; see `gh pr view 354 --repo cpheinrich/morpheus --json mergeStateStatus,reviewDecision`.",
+        "! GitHub reports merge state BLOCKED even though required checks passed on 59cb7d5.",
+        "  If the block persists, check required reviews, rulesets and required checks that have not reported: gh pr view 354 --repo cpheinrich/morpheus --json mergeStateStatus,reviewDecision",
       ]);
     });
 
@@ -509,8 +510,8 @@ describe("waitCi", () => {
         run("pr / conventions", "COMPLETED", "SUCCESS", { required: true, suite: "suite-ready", runId: "222", job: "22", startedAt: "2026-11-16T10:01:00Z" }),
       ], false, "MERGEABLE", "BLOCKED"));
       const output = (await waitCi(fakeGh([failedThenPassed]).deps, { ...opts, requiredOnly: true })).output;
-      expect(output).not.toContain("gh run rerun");
-      expect(output).toContain("  possible causes: a required review");
+      expect(output).not.toContain("Possible cause: an older cancelled run");
+      expect(output).toContain("If the block persists, check required reviews");
     });
 
     it.each([

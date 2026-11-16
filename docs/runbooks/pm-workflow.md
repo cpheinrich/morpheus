@@ -234,9 +234,8 @@ Different workflows never replace one another, even when they have the same disp
 
 `--required-only` green is about checks, not about GitHub accepting the merge. When GitHub still
 reports the merge state `BLOCKED`, the digest says so under the green line and the exit code stays
-0. It lists any required job whose older cancelled run was replaced on the same head with its
-`gh run rerun` command as a possible cause, since rerunning such runs has cleared the block; it
-does not prove the cause. Otherwise check reviews, rulesets and required checks that never reported.
+0. If the block persists, inspect reviews, rulesets and required checks that never reported. The
+digest also links to any superseded cancelled runs of required jobs on that head for investigation.
 
 For a run no pull request owns — TestFlight, a release, a nightly — wait on the run itself:
 

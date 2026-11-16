@@ -46,7 +46,7 @@ const stringOptions = {
     "--repo": (flags, value) => { flags.repo = value; },
     "--timeout": (flags, value) => { flags.timeout = value; },
     "--run": (flags, value) => { flags.run = value; },
-    "--attempt": (flags, value) => { flags.attempt = value; },
+    "--attempt": (flags, value) => { flags.attempt = value ?? ""; },
     "--workflow": (flags, value) => { flags.workflow = value; },
     "--branch": (flags, value) => { flags.branch = value; },
     "--sha": (flags, value) => { flags.sha = value; },
