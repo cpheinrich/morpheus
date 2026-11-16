@@ -2,7 +2,8 @@
 import { z } from 'zod';
 export const MAX_BYTES = 65536;
 export const id = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/);
-const stamp = z.iso.datetime({ offset: true });
+// Zod 4.5+ requires seconds by default; wire v1 has always accepted minute precision from producers.
+const stamp = z.union([z.iso.datetime({ offset: true }), z.iso.datetime({ offset: true, precision: -1 })]);
 const number = z.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const percent = number.max(100);
 const project = z.string().regex(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/).max(150);

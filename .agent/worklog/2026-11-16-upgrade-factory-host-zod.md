@@ -44,4 +44,20 @@ schema, policy, workflow, or other dependency changed. Draft pull request
 - `morpheus complexity check` passed with no measured function because the branch changes only
   Markdown, JSON, and YAML.
 
+## Review correction: minute-precision wire timestamps
+
+Independent review found that Zod 4.6.6's `z.iso.datetime({ offset: true })` requires seconds,
+while host wire v1 under Zod 4.1.12 accepted minute precision from external producers. The
+host `stamp` in `plugins/factory/src/host/reporting/protocol.mjs` is now the union of the default
+offset schema and `precision: -1`, the same compatibility boundary as `src/iso-datetime.ts`
+(MO-26-11-02-10.58.33). A regression in `tests/scheduled-tasks.test.mjs` accepts a minute-only
+`Z` `observedAt` and offset `nextAt`, and rejects zoneless values. It fails against both the
+pre-fix schema and a minute-only schema. `origin/main` (e128490b) was merged cleanly first.
+
+- `pnpm --dir plugins/factory/src/host install --frozen-lockfile` — up to date.
+- `pnpm --dir plugins/factory/src/host typecheck` and `check` — passed.
+- `pnpm --dir plugins/factory/src/host test` — 68 Vitest, 278 Python unittest, 98 Node reporting
+  tests passed.
+- `pnpm --dir plugins/factory/src/host audit --prod --json` — zero advisories, two dependencies.
+
 Fresh independent review remains pending while the pull request is deliberately a draft.
