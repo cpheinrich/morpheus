@@ -1310,7 +1310,7 @@ on a successful renewal. A supervisor talking to an older service uses the
 original one-minute grant. The supervisor measures from before the renewal request
 with its monotonic clock, preserves the last confirmed cutoff during temporary contact
 loss, and stops at that cutoff unless the service has acknowledged another grant.
-Cancellation prevents further renewals and the attempt retains its slot and checkout
+A delayed renewal cannot shorten an existing grant. Cancellation prevents further renewals and the attempt retains its slot and checkout
 until owned-process cleanup is verified.
 
 On verified settlement, the owning controller's `get` and `wait` responses may include
@@ -1333,6 +1333,8 @@ until they are idle. Then upgrade supervisor, fixed executor and worker together
 on each slot. Keep the old plugin build for rollback and wait for `readiness` to
 show a fresh observation before testing the new receipt with a synthetic task.
 Older services ignore the additive heartbeat and completion fields.
+To roll back the lease change, drain and roll back the supervisors before moving
+service traffic to an older revision.
 
 ### Read Factory work in an Infra desk
 

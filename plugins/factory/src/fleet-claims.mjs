@@ -68,7 +68,7 @@ export function renewAttempt(db, { taskId, attemptId, hostId, now, leaseMs }) {
     const task = await read(transaction, ref);
     if (!ownsAttempt(task, attemptId, hostId)) return false;
     if (task.attempt.leaseUntil <= now || task.cancelRequestedAt != null) return false;
-    transaction.update(ref, { "attempt.leaseUntil": now + leaseMs });
+    transaction.update(ref, { "attempt.leaseUntil": Math.max(task.attempt.leaseUntil, now + leaseMs) });
     return true;
   });
 }

@@ -100,6 +100,14 @@ test("lease expiry and uncertain cleanup preserve ownership until verified settl
   assert.equal(db.docs.has("factoryWorkspaces/shared-worktree"), false);
 });
 
+test("a delayed renewal cannot shorten a later acknowledged grant", async () => {
+  const db = fixture();
+  await claimTask(db, request);
+  assert.equal(await renewAttempt(db, { ...request, now: 120 }), true);
+  assert.equal(await renewAttempt(db, { ...request, now: 110 }), true);
+  assert.equal(db.docs.get("factoryTasks/task-1").attempt.leaseUntil, 150);
+});
+
 test("cancellation prevents the exact owner from extending its lease", async () => {
   const db = fixture();
   await claimTask(db, request);
