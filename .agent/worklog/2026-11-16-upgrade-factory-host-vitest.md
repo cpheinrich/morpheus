@@ -59,3 +59,9 @@ Root checks are listed in the PR test plan.
 ## Open questions
 
 - #698 should be closed as superseded once this lands; that is the controller's call.
+
+## Integrated verification
+
+The controller merged main including #726 without conflicts. A frozen host install resolved
+Vitest and mocker 4.1.12, Vite 7.3.8 and Zod 4.6.6. All 68 Vitest, 278 Python and 98 Node
+reporting tests passed. The full and production host audits both reported zero advisories.
