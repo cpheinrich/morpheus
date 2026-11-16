@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { usageError, waitCiCommand, type WaitCiFlags } from "../../src/cli/wait-ci.js";
 import { jobCheck, latestRun, parseRun, parseRunList, repoFromRunUrl, RUN_FIELDS, RUN_VIEW_FIELDS, type RunSnapshot, runVerdict } from "../../src/wait-ci/runs.js";
 import { FIRST_DELAY_MS, type GhResult, NO_CHECKS_GRACE_MS, type WaitDeps } from "../../src/wait-ci/wait.js";
@@ -217,6 +217,55 @@ describe("waitRun --run", () => {
   });
 });
 
+describe("waitRun --run --attempt", () => {
+  // #723: `wait-ci --run` straight after `gh run rerun` read the previous,
+  // cancelled attempt; GitHub reported attempt 2 only on a later read.
+  const cancelledAttempt1 = ok(runJson({ conclusion: "cancelled", attempt: 1, jobs: [{ name: "upload", status: "completed", conclusion: "cancelled", databaseId: 9 }] }));
+  const where = `cpheinrich/morpheus CI run 40756483538`;
+
+  it("waits past the previous attempt's terminal state and reports the expected attempt", async () => {
+    const { deps, sleeps } = fakeGh([cancelledAttempt1, ok(inProgress({ attempt: 2 })), ok(succeeded({ attempt: 2 }))]);
+    const result = await waitRun(deps, { ...opts, run: "40756483538", attempt: 2 });
+    expect(result).toEqual({
+      exitCode: 0,
+      output: `✓ Run green — ${where} (attempt 2) @ d9ca0a1 on ${FAILED["headBranch"]} (3 jobs: 2 passed, 1 skipped) after 25s`,
+    });
+    expect(sleeps).toEqual([FIRST_DELAY_MS, 15_000]);
+  });
+
+  it("without --attempt keeps answering with the run as first read", async () => {
+    const { deps, sleeps } = fakeGh([cancelledAttempt1, ok(succeeded({ attempt: 2 }))]);
+    const result = await waitRun(deps, { ...opts, run: "40756483538" });
+    expect(result.exitCode).toBe(1);
+    expect(result.output.split("\n")[0]).toBe(`✗ Run cancelled — ${where} @ d9ca0a1 on ${FAILED["headBranch"]} (1 job: 1 cancelled) after 0s`);
+    expect(sleeps).toEqual([]);
+  });
+
+  it("times out with exit 2 when the expected attempt never appears, naming the attempt that did", async () => {
+    const { deps, sleeps } = fakeGh([cancelledAttempt1]);
+    const result = await waitRun(deps, { timeoutMs: 30_000, run: "40756483538", attempt: 2 });
+    expect(sleeps).toEqual([10_000, 15_000, 5_000]);
+    expect(result).toEqual({
+      exitCode: 2,
+      output: [
+        `… Attempt 2 not seen at the deadline — ${where} @ d9ca0a1 on ${FAILED["headBranch"]} (1 job: 1 cancelled): latest attempt 1 ended cancelled after 30s`,
+        "  run: https://github.com/cpheinrich/morpheus/actions/runs/40756483538",
+      ].join("\n"),
+    });
+  });
+
+  it.each([
+    ["the expected attempt", 2],
+    ["a later attempt", 3],
+  ])("reports %s at once when it has already finished", async (_, attempt) => {
+    const { deps, sleeps } = fakeGh([ok(succeeded({ attempt }))]);
+    const result = await waitRun(deps, { ...opts, run: "40756483538", attempt: 2 });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain(`(attempt ${attempt})`);
+    expect(sleeps).toEqual([]);
+  });
+});
+
 describe("waitRun --workflow", () => {
   const listArgs = (extra: string[] = []) => ["run", "list", "--repo", "acme/app", "--workflow", "testflight.yml", ...extra, "--limit", "20", "--json", RUN_FIELDS];
 
@@ -341,12 +390,20 @@ describe("wait-ci usage", () => {
     [{ run: "3", requiredOnly: true }, "--required-only applies to a pull request's checks; a run's own conclusion decides --run and --workflow."],
     // gh's --commit matches only a full SHA: a short one would wait out the grace and say CI never started.
     [{ workflow: "ci.yml", sha: "322d674" }, '--sha takes a full 40-character commit SHA (gh matches no other form), got "322d674"; try `git rev-parse 322d674`.'],
+    [{ attempt: "2" }, "--attempt names an attempt of one run; use it with --run <id>."],
+    [{ workflow: "ci.yml", attempt: "2" }, "--attempt names an attempt of one run; use it with --run <id>."],
+    [{ run: "3", attempt: "0" }, '--attempt takes a positive attempt number such as 2, got "0".'],
+    [{ run: "3", attempt: "-1" }, '--attempt takes a positive attempt number such as 2, got "-1".'],
+    [{ run: "3", attempt: "2.0" }, '--attempt takes a positive attempt number such as 2, got "2.0".'],
+    [{ run: "3", attempt: "02" }, '--attempt takes a positive attempt number such as 2, got "02".'],
+    [{ run: "3", attempt: "" }, '--attempt takes a positive attempt number such as 2, got "".'],
+    [{ run: "3", attempt: "1000000" }, '--attempt takes a positive attempt number such as 2, got "1000000".'],
     [{ workflow: "ci.yml", sha: `${SHA}0` }, `--sha takes a full 40-character commit SHA (gh matches no other form), got "${SHA}0"; try \`git rev-parse ${SHA}0\`.`],
   ])("refuses %j", (flags, message) => {
     expect(usageError({ ...base, ...flags })).toBe(message);
   });
 
-  it.each<Partial<WaitCiFlags>>([{}, { target: "12" }, { run: "3" }, { workflow: "ci.yml", branch: "main", sha: SHA }, { workflow: "ci.yml", sha: SHA.toUpperCase() }])("accepts %j", (flags) => {
+  it.each<Partial<WaitCiFlags>>([{}, { target: "12" }, { run: "3" }, { run: "3", attempt: "1" }, { run: "3", attempt: "999999" }, { workflow: "ci.yml", branch: "main", sha: SHA }, { workflow: "ci.yml", sha: SHA.toUpperCase() }])("accepts %j", (flags) => {
     expect(usageError({ ...base, ...flags })).toBeNull();
   });
 
@@ -355,5 +412,17 @@ describe("wait-ci usage", () => {
       throw new Error("gh must not be called on a usage error");
     };
     expect(await waitCiCommand({ ...base, run: "3", workflow: "ci.yml" }, never)).toBe(3);
+  });
+
+  it("passes --attempt to the run wait as a number", async () => {
+    const out = vi.spyOn(console, "log").mockImplementation(() => {});
+    const attempt1 = async (): Promise<GhResult> => ok(runJson({ conclusion: "cancelled", attempt: 1, jobs: [] }));
+    try {
+      // One real one-second sleep: attempt 1 is not attempt 2, so the wait reaches its deadline.
+      expect(await waitCiCommand({ ...base, run: "40756483538", attempt: "2", timeout: "1s" }, attempt1)).toBe(2);
+      expect(await waitCiCommand({ ...base, run: "40756483538", timeout: "1s" }, attempt1)).toBe(1);
+    } finally {
+      out.mockRestore();
+    }
   });
 });

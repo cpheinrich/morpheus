@@ -7,6 +7,7 @@ export interface WaitCiFlags {
     timeout?: string;
     requiredOnly: boolean;
     run?: string;
+    attempt?: string;
     workflow?: string;
     branch?: string;
     sha?: string;
