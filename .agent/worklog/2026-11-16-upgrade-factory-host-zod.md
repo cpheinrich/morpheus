@@ -29,7 +29,8 @@ advisory, host package, or Zod upgrade, so this branch is the focused remediatio
 
 The implementation changes only the host manifest and its isolated lockfile from Zod 4.1.12 to
 4.6.6. The root Morpheus and main Factory runtime already use this exact release. No source,
-schema, policy, workflow, or other dependency changed.
+schema, policy, workflow, or other dependency changed. Draft pull request
+[#726](https://github.com/cpheinrich/morpheus/pull/726) is the focused review vehicle.
 
 ## Validation
 
