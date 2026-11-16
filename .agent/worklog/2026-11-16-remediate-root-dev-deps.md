@@ -51,3 +51,16 @@ review vehicle.
 Fresh independent review remains pending while the pull request is deliberately a draft. The
 full suite was not run locally because no shared core source changed; exact-head CI owns that
 backstop.
+
+## Backlog triage follow-up
+
+Chris authorized continued delivery and closure of Morpheus PRs. The root lockfile still resolved
+minimatch 10.2.6 from three lint dependencies. The Security App's #704 candidate was behind
+protected main. The controller applied its exact narrow `minimatch@10.2.6: 11.0.1` workspace
+override and lockfile hunk to this already open root dependency draft and retested the combined
+change. This stays in the ordinary independently reviewed lane.
+
+On the combined tree, frozen install and all four package manifest and lint contract tests passed.
+Lint, typecheck, compile, PM index and validation, complexity, and diff checks passed. The root
+full audit and production audit both returned zero advisories. No source or production manifest
+changes were required.
