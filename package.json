@@ -40,7 +40,9 @@
     "./meeting-intake": "./dist/meeting-intake/index.js",
     "./research-library": "./dist/research-library/index.js",
     "./research-library/client": "./dist/research-library/client.js",
-    "./research-library/server": "./dist/research-library/server.js"
+    "./research-library/server": "./dist/research-library/server.js",
+    "./qa/web": "./dist/qa/web/mount.js",
+    "./qa/web/schema": "./dist/qa/web/schema.js"
   },
   "files": [
     "dist",

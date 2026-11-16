@@ -420,3 +420,36 @@ local dev server. The project declares it in `morpheus.json`:
 - Committing frames or batches.
 - Cross-machine sync of `local/qa-comments/` (use chat / PR for remote agents).
 - DOM-level element selectors for native sim streams (web pins carry them; a simulator stream has no DOM).
+
+## Production web QA
+
+A managed site can mount the comment panel from `morpheus-kit/qa/web` after its own
+server grants access. The site owns its header launcher, session and Firestore
+adapters. Mark a launcher with `data-qa-chrome` so it can close the panel in Pin
+mode. The mount returns a cleanup callback for route or identity changes. The
+ordinary desktop preview and its local batch transport continue to use the
+loopback overlay.
+
+Production uses a narrower capture contract. A pin records the pathname,
+viewport, scroll offset and normalized point, with an optional short
+`data-qa-anchor` that the site explicitly assigned. Private areas use
+`data-qa-private`. The server normalizes sensitive route suffixes and validates
+the shared schema before storing anything. Browser drafts are scoped to the
+site, tab and enrolled identity.
+
+The server may grant the owner two default-off controls. **Build and deploy**
+opts a batch into Factory. **Feature flag** applies to that build request.
+Persist the feedback and the optional Factory queue row together, then return
+the committed batch ID. The controller owns admission, review and release.
+A lost response retries the same batch and options. A first request rejected
+before any write can be edited. Distinguish those cases at the transport
+boundary by throwing `WebQaRejectedError` only for a definite rejection.
+
+```mermaid
+flowchart TB
+  A[Same-origin request with existing site session] --> B[Site verifies the QA grant]
+  B --> C[Validate and save the batch]
+  C --> D[Return its Firestore receipt]
+  C -->|Owner selected Build and deploy| E[Enqueue one Factory task]
+  E --> F[Trusted controller dispatches and checks the result]
+```
