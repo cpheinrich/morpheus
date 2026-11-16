@@ -91,7 +91,10 @@ For an enrolled Codex Fleet run, let a saved Fleet default apply or explicitly p
 Pass `cwd` for the primary clean, published claimed linked checkout and `repos` for every
 related checkout to both inspect and delegate. The set must exactly match one operator-enrolled
 workspace; the controller resolves each checkout's exact revision. Existing single-repository
-enrollments use only `cwd`. Fleet uses the enrolled Codex worker settings; it does not support
+enrollments use only `cwd`. For each new Fleet task, write a short action title and
+one-sentence explanation for the authorized Infra dashboard in `display`. Base it on
+the request's purpose. Keep private prompts, logs, and sensitive details out of it.
+Fleet uses the enrolled Codex worker settings; it does not support
 local-only provider, fresh, background, or effort/speed overrides. Pass `placement: "local"`
 when the operator explicitly chooses local Factory placement. Supervise the Fleet run by its
 returned run ID and download its declared artifacts via `factory_remote`. The controller owns

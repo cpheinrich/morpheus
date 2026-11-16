@@ -212,6 +212,13 @@ test("authenticated fleet API isolates roles, wakes both clients and returns a p
   const { task } = await call("pro", "submit", input);
   assert.deepEqual(Object.keys(await notified), ["version"]);
   assert.equal((await call("pro", "submit", input)).task.id, task.id);
+  const { display: _display, ...legacyRetry } = input;
+  assert.deepEqual(await call("pro", "submit", legacyRetry), { task, replay: true });
+  const backfilled = { title: "Check release evidence", summary: "Check the release artifact before publication." };
+  await db.doc(`factoryTasks/${task.id}`).update({ display: backfilled });
+  assert.deepEqual(await call("pro", "submit", input), { task: { ...task, display: backfilled }, replay: true });
+  await call("pro", "submit", { ...input, text: "A different task" }, 500);
+  await db.doc(`factoryTasks/${task.id}`).update({ display });
   const foreignId = "90000000-0000-4000-8000-000000000010";
   const finishedId = "90000000-0000-4000-8000-000000000011";
   await db.doc(`factoryTasks/${foreignId}`).set({ ...task, source: { ...task.source, project: "git-source" }, queuedSlots: [] });

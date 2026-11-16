@@ -1338,11 +1338,13 @@ service traffic to an older revision.
 
 ### Read Factory work in an Infra desk
 
-A controller can supply a separate `display: {title, summary, pullRequests?}` on a new Fleet
-delegation. Use a short action title and one sentence about the work, suitable for the project's
-authorized HQ operators. Optional PR numbers must belong to the task's own GitHub repository.
-Never paste the worker brief, conversation, secrets or logs there. Use the same metadata on
-submission retries. Older tasks retain their source revision but may have no display text.
+New Fleet submissions through `factory_delegate` and `factory_remote` supply a separate
+`display: {title, summary, pullRequests?}`. Write a short action title and one sentence about
+the task's purpose for the project's authorized HQ operators. Optional PR numbers must belong to
+the task's own GitHub repository. Keep the worker brief, conversation, secrets and logs private.
+Service controllers should supply the same fields. The HTTP API still accepts legacy submissions.
+A retry with the same brief and launch binding returns the stored task. Later display copy,
+including a backfill, leaves submission identity and the original execution brief intact.
 When a worker reports an exact GitHub pull-request URL in its structured evidence, the result can
 carry that reference. The projection only links references to the task's authorized repository.
 
