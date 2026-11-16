@@ -263,16 +263,21 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
 
   async function recoverTurn(record, task, restoreOutput = false) {
     const remaining = Math.floor(leaseDeadline - performance.now());
-    const restore = restoreOutput && remaining > 0 ? AbortSignal.timeout(remaining) : undefined;
+    const restore = restoreOutput && remaining > 0 ? recoveryAuthority(remaining) : undefined;
     const recovered = await recover(record.admissionId, task, restore);
     const proven = recovered === true || recovered?.terminationVerified === true;
     const invocation = verifiedInvocation(record, recovered);
-    if (restore && !restore.aborted && leaseIsCurrent() && !stopping &&
+    if (restore?.canPublish() &&
         invocation?.launch === "session" && recovered.result?.outcome === "completed")
       return finish(record, "TASK_STATE_COMPLETED", resultFor(recovered), true, invocation);
     return finish(record, failed, {
       summary: proven ? "Recovered verified worker cleanup after supervision was interrupted." : "Worker termination could not be verified.",
     }, proven, invocation);
+  }
+
+  function recoveryAuthority(remaining) {
+    const signal = AbortSignal.timeout(remaining);
+    return { signal, canPublish: () => !signal.aborted && leaseIsCurrent() && !stopping };
   }
 
   async function driveRunning(record, task) {

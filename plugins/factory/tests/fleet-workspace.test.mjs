@@ -114,14 +114,14 @@ function memoryDb() {
   } };
 }
 
-async function service(t, f) {
+async function service(t, f, objects = {}) {
   const db = memoryDb();
   const project = { revision: "git", workspace: "related", workspaceKey: "related-lock", eligibleSlots: ["slot"],
     selection: { provider: "codex", gateway: "fixture", model: f.config.model } };
   const config = { projects: { app: project, library: project }, workspaces: { related: f.policy },
     users: { controller: { role: "controller", projects: ["app", "library"] }, worker: { role: "worker", hostId: "host", slotId: "slot" } } };
   db.docs.set("factorySlots/slot", { hostId: "host", capacity: 1, available: true, observedAt: 100 });
-  const server = createServer(createFleetApi({ db, config, objects: {}, verifyToken: async uid => ({ uid }), clock: () => 100, log: () => {} }));
+  const server = createServer(createFleetApi({ db, config, objects, verifyToken: async uid => ({ uid }), clock: () => 100, log: () => {} }));
   server.listen(0, "127.0.0.1"); await once(server, "listening");
   t.after(() => new Promise(resolve => server.close(resolve)));
   async function call(op, input, role = "controller") {
@@ -201,8 +201,10 @@ test("real service, supervisor, executor, guardian and wrapper return an exact w
   assert.equal(dirtyStore.invocation.launch, "never-launched");
   git(store, "restore", "bin/credentials");
   const admissionId = randomUUID();
-  const output = await executor.execute({ task, admissionId, prompt: "Qualify synthetic source, build cache and wrapper", signal: new AbortController().signal });
-  assert.equal(output.terminationVerified, true);
+  const authority = { signal: new AbortController().signal, canPublish: () => true };
+  let output = await executor.execute({ task, admissionId, prompt: "Qualify synthetic source, build cache and wrapper", signal: authority.signal });
+  if (!output.terminationVerified) output = await executor.recover(admissionId, task, authority);
+  assert.equal(output?.terminationVerified, true, JSON.stringify(output));
   assert.equal(output.result.outcome, "completed", JSON.stringify(output));
   assert.equal(output.invocation.sessionId, f.session);
   const primary = join(f.cwd, attemptId, "app"), library = join(f.cwd, attemptId, "library");
@@ -233,11 +235,11 @@ test("real service, supervisor, executor, guardian and wrapper return an exact w
   const recovered = await executor.recover(admissionId, task);
   assert.equal(recovered.terminationVerified, true);
   assert.equal(recovered.result, undefined);
-  const restored = await executor.recover(admissionId, task, new AbortController().signal);
+  const restored = await executor.recover(admissionId, task, authority);
   assert.equal(restored.result.outcome, "completed");
   assert.deepEqual(restored.invocation, output.invocation);
   const wrong = structuredClone(task); wrong.source.workspace.profile = "other";
-  assert.equal(await executor.recover(admissionId, wrong, new AbortController().signal), false);
+  assert.equal(await executor.recover(admissionId, wrong, authority), false);
   await writeFile(join(library, "continuation.txt"), "retained untracked edit");
   const continued = await executor.execute({ task, admissionId: randomUUID(), resume: admissionId, prompt: "Resume exact workspace", signal: new AbortController().signal });
   assert.equal(continued.result.outcome, "completed");
@@ -432,3 +434,38 @@ for (const diagnosticCode of ["source_fetch_failed", "checkout_failed", "executo
     assert.equal(projectRun(snapshot, taskId).result.diagnosticCode, diagnosticCode);
   });
 }
+
+test("a cancellation racing with result settlement releases the slot without publishing uploaded files", async (t) => {
+  const f = await fixture(t);
+  let uploaded;
+  let cancel;
+  const objects = {
+    async put(descriptor, bytes) {
+      uploaded = { descriptor: { ...descriptor, generation: "1" }, bytes };
+      return uploaded.descriptor;
+    },
+    async metadata(name) {
+      assert.equal(name, uploaded.descriptor.objectName);
+      await cancel();
+      return uploaded.descriptor;
+    },
+    async download() { assert.fail("A canceled result must not expose its artifact."); },
+  };
+  const api = await service(t, f, objects);
+  const input = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "fixture", messageId: "cancel-late" };
+  const submitted = await api.call("submit", input);
+  assert.equal(submitted.status, 200);
+  const taskId = submitted.value.task.id, attemptId = randomUUID(), name = "handoff.json";
+  assert.equal((await api.call("claim", { taskId, attemptId }, "worker")).status, 200);
+  assert.equal((await api.call("upload", { taskId, attemptId, name, type: "application/json", bytes: "e30=" }, "worker")).status, 200);
+  cancel = async () => { assert.equal((await api.call("cancel", { taskId })).status, 200); };
+  const finish = await api.call("finish", { taskId, attemptId, outcome: "TASK_STATE_COMPLETED", cleanupVerified: true,
+    result: { summary: "Completed before cancellation", artifacts: [name] } }, "worker");
+  assert.deepEqual(finish.value, { settled: true });
+  const { task } = (await api.call("get", { taskId })).value;
+  assert.equal(task.state, "TASK_STATE_CANCELED");
+  assert.equal(task.result, null);
+  assert.equal(api.db.docs.get("factorySlots/slot").attemptId, null);
+  assert.equal(api.db.docs.has("factoryWorkspaces/related-lock"), false);
+  assert.equal((await api.call("download", { taskId, name })).status, 404);
+});

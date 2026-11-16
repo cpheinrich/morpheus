@@ -1052,7 +1052,8 @@ task, attempt and admission. The interrupted task settles and releases its slot
 when the census proves cleanup. While the original attempt remains supervised
 and authorized by its current lease, late cleanup can also return its completed
 structured result and the declared bounded artifacts from the exact retained
-checkout. Canceled, expired or restarted attempts use cleanup-only recovery.
+checkout. Canceled, expired or restarted attempts use cleanup-only recovery. A
+cancellation that wins final settlement leaves previously uploaded files unlinked.
 An unverified or still-live worker holds its slot. Operators can still use the gateway worker's `--status` and
 `--reconcile` to inspect or reconcile an exact admission.
 The pilot uses an enrolled Codex model and a single Studio slot. Firestore

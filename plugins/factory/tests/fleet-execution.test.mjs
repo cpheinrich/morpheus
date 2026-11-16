@@ -68,6 +68,8 @@ test("late cleanup uploads only a result returned for the exact live admission",
   const calls = [];
   const requests = [];
   const artifact = { name: "handoff.json", type: "application/json", bytes: "e30=" };
+  let grant = true;
+  let revokeBeforeResult = false;
   let proof = {
     admissionId: "owned",
     terminationVerified: true,
@@ -78,6 +80,7 @@ test("late cleanup uploads only a result returned for the exact live admission",
     const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough() });
     child.stdin.once("data", (data) => {
       requests.push(JSON.parse(data.toString().split("\n")[0]));
+      if (revokeBeforeResult) grant = false;
       child.stdout.write(JSON.stringify({ artifact }) + "\n");
       child.stdout.end(JSON.stringify({ outcome: proof }) + "\n");
       setImmediate(() => child.emit("close", 0));
@@ -96,12 +99,16 @@ test("late cleanup uploads only a result returned for the exact live admission",
   await executor.recover("owned", task);
   assert.equal(requests[0].recovery, undefined);
   assert.deepEqual(calls, []);
-  const signal = new AbortController().signal;
-  const restored = await executor.recover("owned", task, signal);
+  const authority = { signal: new AbortController().signal, canPublish: () => grant };
+  const restored = await executor.recover("owned", task, authority);
   assert.deepEqual(requests[1].recovery.source, task.source);
   assert.deepEqual(restored.result.artifacts, ["handoff.json"]);
+  revokeBeforeResult = true;
+  await executor.recover("owned", task, authority);
+  revokeBeforeResult = false;
+  grant = true;
   proof = { ...proof, admissionId: "foreign" };
-  assert.equal(await executor.recover("owned", task, signal), false);
+  assert.equal(await executor.recover("owned", task, authority), false);
   assert.deepEqual(calls, [["upload", { ...artifact, taskId: "task", attemptId: "attempt" }]]);
 });
 

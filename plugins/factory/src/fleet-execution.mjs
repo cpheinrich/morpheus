@@ -37,13 +37,13 @@ async function readExecution(stdout, stop) {
   return { outcome, artifacts, invalid };
 }
 
-async function publish(call, { artifacts, outcome }, task, signal) {
+async function publish(call, { artifacts, outcome }, task, signal, canPublish = () => true) {
   const deadline = outcome.diagnosticCode === "deadline_reached";
-  if (signal.aborted || !artifacts.length || (outcome.result?.outcome !== "completed" && !deadline)) return outcome;
+  if (signal.aborted || !canPublish() || !artifacts.length || (outcome.result?.outcome !== "completed" && !deadline)) return outcome;
   const names = [];
   try {
     for (const file of artifacts) {
-      if (signal.aborted) return outcome;
+      if (signal.aborted || !canPublish()) return outcome;
       const result = await call("upload", { ...file, taskId: task.id, attemptId: task.attempt.id });
       names.push(result.name);
     }
@@ -145,12 +145,12 @@ export function createStudioExecutor(config, call, checkQuota) {
       return publish(call, output, task, signal);
     },
     async recover(admissionId, task, restore) {
-      const recovery = restore && !restore.aborted ? { source: task.source, checkout: checkoutFor(config, task) } : undefined;
-      const output = await invoke(config, { op: "recover", admissionId, binding: attemptBinding(task), recovery }, restore);
+      const recovery = restore?.canPublish() ? { source: task.source, checkout: checkoutFor(config, task) } : undefined;
+      const output = await invoke(config, { op: "recover", admissionId, binding: attemptBinding(task), recovery }, recovery ? restore.signal : undefined);
       const outcome = output?.outcome;
       if (outcome?.admissionId !== admissionId || outcome.terminationVerified !== true) return false;
-      return recovery && !restore.aborted && outcome.invocation?.launch === "session"
-        ? publish(call, output, task, restore) : outcome;
+      return recovery && restore.canPublish() && outcome.invocation?.launch === "session"
+        ? publish(call, output, task, restore.signal, restore.canPublish) : outcome;
     },
   };
 }
