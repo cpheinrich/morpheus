@@ -15,12 +15,17 @@ const git = async (args) => (await exec("/usr/bin/git", args, {
 // can read Git objects via the shared directory, with no access to that credential.
 export async function fetchStudioRevision(mirror, revision) {
   if (!isAbsolute(mirror) || !sha.test(revision)) throw new Error("Invalid Studio source");
-  await git(["-C", mirror, "fetch", "--depth=1", "--no-tags", "origin", revision]);
-  if (await git(["-C", mirror, "rev-parse", "FETCH_HEAD"]) !== revision)
-    throw new Error("Studio fetched an unexpected commit");
+  const head = await git(["-C", mirror, "ls-remote", "--symref", "--exit-code", "origin", "HEAD"]);
+  const symbolic = /^ref: refs\/heads\/(.+)\tHEAD$/m.exec(head);
+  const comparison = /^([0-9a-f]{40})\tHEAD$/m.exec(head);
+  if (!symbolic || !comparison) throw new Error("Studio origin has no Git default branch");
+  await git(["check-ref-format", `refs/heads/${symbolic[1]}`]);
+  const snapshot = { comparisonRef: `refs/remotes/origin/${symbolic[1]}`, comparisonRevision: comparison[1] };
+  await fetchRevisions(mirror, revision, snapshot.comparisonRevision);
+  return snapshot;
 }
 
-export async function studioCheckout(root, { mirror, attemptId } = {}, revision, resume) {
+export async function studioCheckout(root, { mirror, attemptId, comparisonRef, comparisonRevision } = {}, revision, resume) {
   if (!uuid.test(attemptId) || !isAbsolute(mirror ?? "") || !sha.test(revision))
     throw new Error("Invalid Studio checkout binding");
   const path = join(await realpath(root), attemptId);
@@ -28,23 +33,24 @@ export async function studioCheckout(root, { mirror, attemptId } = {}, revision,
     if (await realpath(path) !== path) throw new Error("Studio checkout was redirected");
     return path;
   }
-  await mkdir(path, { mode: 0o700 });
-  await git(["-C", path, "init", "--template="]);
-  await git(["-c", `safe.directory=${mirror}`, "-C", path, "fetch", "--depth=1", "--no-tags", mirror, revision]);
-  await git(["-C", path, "checkout", "--detach", revision]);
-  await mkdir(join(path, ".git", "info"), { recursive: true });
-  await writeFile(join(path, ".git", "info", "exclude"), ".factory-artifacts-*/\n", { flag: "wx" });
-  return path;
+  if (!comparisonRef?.startsWith("refs/remotes/origin/") || !sha.test(comparisonRevision))
+    throw new Error("Invalid Studio comparison source");
+  await git(["check-ref-format", comparisonRef]);
+  return createPinnedCheckout(path, mirror, { revision, comparisonRef, comparisonRevision });
 }
 
 // Fetch both exact commits with full ancestry. No moving remote branch decides
 // the comparison base, including when an old mirror was shallow.
 export async function fetchWorkspaceRevision(mirror, repo) {
-  if (!isAbsolute(mirror) || !sha.test(repo.revision) || !sha.test(repo.comparisonRevision))
+  await fetchRevisions(mirror, repo.revision, repo.comparisonRevision);
+  await git(["-C", mirror, "merge-base", repo.revision, repo.comparisonRevision]);
+}
+
+async function fetchRevisions(mirror, revision, comparisonRevision) {
+  if (!isAbsolute(mirror) || !sha.test(revision) || !sha.test(comparisonRevision))
     throw new Error("Invalid workspace source");
   const shallow = await git(["-C", mirror, "rev-parse", "--is-shallow-repository"]);
-  await git(["-C", mirror, "fetch", ...(shallow === "true" ? ["--unshallow"] : []), "--no-tags", "origin", repo.revision, repo.comparisonRevision]);
-  await git(["-C", mirror, "merge-base", repo.revision, repo.comparisonRevision]);
+  await git(["-C", mirror, "fetch", ...(shallow === "true" ? ["--unshallow"] : []), "--no-tags", "origin", revision, comparisonRevision]);
 }
 
 export async function workspaceRepoCheckout(path, mirror, repo, resume) {
@@ -54,6 +60,12 @@ export async function workspaceRepoCheckout(path, mirror, repo, resume) {
     await verifyComparison(path, repo);
     return path;
   }
+  await createPinnedCheckout(path, mirror, repo);
+  await git(["-C", path, "merge-base", "HEAD", repo.comparisonRef]);
+  return path;
+}
+
+async function createPinnedCheckout(path, mirror, repo) {
   await mkdir(path, { mode: 0o700 });
   await git(["-C", path, "init", "--template="]);
   await git(["-c", `safe.directory=${mirror}`, "-C", path, "fetch", "--no-tags", mirror, repo.revision, repo.comparisonRevision]);
@@ -64,7 +76,6 @@ export async function workspaceRepoCheckout(path, mirror, repo, resume) {
   await git(["-C", path, "update-ref", repo.comparisonRef, repo.comparisonRevision]);
   await git(["-C", path, "symbolic-ref", "refs/remotes/origin/HEAD", repo.comparisonRef]);
   await git(["-C", path, "checkout", "--detach", repo.revision]);
-  await git(["-C", path, "merge-base", "HEAD", repo.comparisonRef]);
   await mkdir(join(path, ".git", "info"), { recursive: true });
   await writeFile(join(path, ".git", "info", "exclude"), ".factory-artifacts-*/\n", { flag: "wx" });
   return path;
