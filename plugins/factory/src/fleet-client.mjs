@@ -19,7 +19,8 @@ async function boundedRequest(ms, request) {
   });
   try { return await Promise.race([request(signal), timeout]); }
   catch (error) {
-    if (signal.aborted || transientNetworkCodes.has(error?.cause?.code) || error?.code === "auth/network-request-failed")
+    if (error?.retryable !== false &&
+        (signal.aborted || transientNetworkCodes.has(error?.cause?.code) || error?.code === "auth/network-request-failed"))
       throw Object.assign(new Error("Temporary Factory transport failure.", { cause: error }), { retryable: true });
     throw error;
   } finally { signal.removeEventListener("abort", onTimeout); }
@@ -34,8 +35,12 @@ async function requestFleet(endpoint, user, op, body, signal) {
     body: JSON.stringify({ ...body, op }),
   });
   if (response.ok) return response.json();
-  const value = await response.json().catch(() => null);
   const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+  if (!retryable && (op === "inspect" || op === "renew")) {
+    void response.body?.cancel().catch(() => {});
+    throw Object.assign(new Error(`Factory authority request rejected (${response.status}).`), { retryable: false });
+  }
+  const value = await response.json().catch(() => null);
   throw Object.assign(new Error(value?.error ?? "Factory service rejected the operation"), { retryable });
 }
 

@@ -121,15 +121,31 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
 
   const leaseIsCurrent = () => performance.now() < leaseDeadline;
 
+  function expireLease() {
+    if (!active || (active.done && active.completedAt < leaseDeadline)) return;
+    active.stopReason ??= "lease-expired";
+    active.controller.abort();
+  }
+
+  function checkLeaseBoundary() {
+    if (!leaseIsCurrent()) expireLease();
+  }
+
+  function markDone(run) {
+    run.completedAt = performance.now();
+    run.done = true;
+  }
+
   async function renew(record) {
     // Measure from before the RPC, so latency and wall-clock skew cannot add
     // time to what the service actually granted.
     const startedAt = performance.now();
     const reply = await call("renew", identity(record));
+    checkLeaseBoundary();
     if (reply?.renewed !== true) return false;
     leaseDeadline = startedAt + leaseMs - 1_000;
     clearTimeout(leaseTimer);
-    leaseTimer = setTimeout(() => abort("lease-expired"), Math.max(0, leaseDeadline - performance.now()));
+    leaseTimer = setTimeout(expireLease, Math.max(0, leaseDeadline - performance.now()));
     leaseTimer.unref?.();
     return leaseIsCurrent();
   }
@@ -182,7 +198,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     Promise.resolve()
       .then(() => execute({ task, admissionId, resume, prompt, signal: controller.signal }))
       .then((output) => { run.output = output; }, () => {})
-      .finally(() => { run.done = true; });
+      .finally(() => markDone(run));
     return "running";
   }
 
@@ -196,7 +212,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     Promise.resolve()
       .then(() => prepare(task, run.controller.signal))
       .then((ready) => { run.output = ready === true; run.diagnosticCode = fleetDiagnostic.safeParse(ready?.diagnosticCode).data; }, () => {})
-      .finally(() => { run.done = true; });
+      .finally(() => markDone(run));
     return "preparing";
   }
 
@@ -290,6 +306,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
 
   async function observeLease(record) {
     const snapshot = await call("inspect", identity(record));
+    checkLeaseBoundary();
     if (snapshot?.task?.attempt?.id !== record.attemptId) return snapshot;
     if (snapshot.task.cancelRequestedAt != null) abort("canceled");
     return { ...snapshot, renewed: await renew(record) };
