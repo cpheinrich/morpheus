@@ -104,3 +104,27 @@ test("a Studio attempt fetches its exact commit, isolates edits, and resumes the
   await assert.rejects(dispatchFleet("inspect", { rootId, cwd: upstream }), /clean linked checkout/);
   await assert.rejects(dispatchFleet("delegate", { rootId, cwd: upstream, prompt: "test" }), /clean linked checkout/);
 });
+
+test("single-repository Fleet can still check out an unrelated published commit", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "factory-orphan-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  git(root, "init", "-b", "main", "upstream");
+  const upstream = join(root, "upstream");
+  git(upstream, "config", "user.email", "fixture@example.test");
+  git(upstream, "config", "user.name", "Fixture");
+  git(upstream, "commit", "--allow-empty", "-m", "Main");
+  const trunk = git(upstream, "rev-parse", "HEAD");
+  git(upstream, "switch", "--orphan", "archive");
+  git(upstream, "commit", "--allow-empty", "-m", "Archive");
+  const revision = git(upstream, "rev-parse", "HEAD");
+  git(upstream, "switch", "main");
+  git(root, "init", "--bare", "mirror");
+  const mirror = join(root, "mirror");
+  git(mirror, "remote", "add", "origin", upstream);
+  const comparison = await fetchStudioRevision(mirror, revision);
+  const cwd = await studioCheckout(root, { ...comparison, mirror, attemptId: randomUUID() }, revision);
+  assert.equal(git(cwd, "rev-parse", "HEAD"), revision);
+  assert.equal(git(cwd, "ls-remote", "origin", "refs/heads/main"), [trunk, "refs/heads/main"].join("\t"));
+  assert.throws(() => git(cwd, "merge-base", "HEAD", "origin/main"), { status: 1 });
+  assert.equal(git(cwd, "diff", "HEAD", "origin/main"), "");
+});
