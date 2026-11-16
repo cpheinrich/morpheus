@@ -45,7 +45,8 @@ already merged roadmap items, as the PM command normally does.
 
 ## Review handoff
 
-Independent review is pending; this delegated run may not launch another agent. The coordinator
+Independent review of [PR #725](https://github.com/cpheinrich/morpheus/pull/725) is pending;
+this delegated run may not launch another agent. The coordinator
 must start a fresh reviewer with the prepared exact-head packet, record real provenance/timing,
 validate the review record, and wait for required CI before protected merge. Auto-merge stays off.
 No review clearance is claimed here.
