@@ -18,7 +18,7 @@ import { QA_COLUMN_PX, QA_PIN_COLOR, siteTheme, themeVariables } from "./visuals
 export class WebQaRejectedError extends Error {
 }
 const CSS = `:host{all:initial}*{box-sizing:border-box}
-.panel{position:fixed;top:0;right:0;bottom:0;width:${QA_COLUMN_PX}px;display:flex;flex-direction:column;pointer-events:auto;
+.panel{position:fixed;top:0;right:0;bottom:0;width:${QA_COLUMN_PX}px;display:flex;flex-direction:column;pointer-events:auto;overflow-y:auto;overscroll-behavior:contain;
 background:var(--qa-bg);color:var(--qa-fg);border-left:1px solid var(--qa-rule);font:13px/1.45 var(--qa-font);color-scheme:var(--qa-scheme);box-shadow:-2px 0 12px rgba(0,0,0,.12)}
 header{padding:12px 16px;border-bottom:1px solid var(--qa-rule);display:flex;flex-direction:column;gap:8px}
 .row{display:flex;align-items:center;gap:8px}.row strong{flex:1;font-weight:600;font-size:14px}
@@ -46,7 +46,7 @@ button.x{border:0;padding:0 4px;line-height:20px;color:var(--qa-muted)}
 font:700 11px/20px system-ui,-apple-system,sans-serif;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.4);pointer-events:none}
 .pin.live{pointer-events:auto}.pin.pending{opacity:.6}.pin.focused{outline:2px solid ${QA_PIN_COLOR};outline-offset:2px}
 [hidden]{display:none!important}
-@media (max-width:999px){.panel{top:auto;left:0;width:auto;max-height:55vh;overflow-y:auto;overscroll-behavior:contain;border-left:0;border-top:1px solid var(--qa-rule);box-shadow:0 -2px 12px rgba(0,0,0,.12)}ol{max-height:18vh}}`;
+@media (max-width:999px){.panel{top:auto;left:0;width:auto;max-height:55vh;border-left:0;border-top:1px solid var(--qa-rule);box-shadow:0 -2px 12px rgba(0,0,0,.12)}ol{max-height:18vh}}`;
 const SCOPES = [["element", "Element"], ["view", "Current view"], ["page", "Whole page"]];
 // Events Pin mode keeps from the site: the press, its click, and the context menu.
 const PIN_EVENTS = ["pointerdown", "mousedown", "mouseup", "click", "auxclick", "contextmenu"];
@@ -359,12 +359,12 @@ export function mountWebQa(options) {
             return;
         }
         // Keyboard pinning: Enter on a focused page element pins its centre.
-        if (e.key === "Enter") {
-            const target = pinTarget(e);
-            if (!target || target === document.body)
-                return;
+        if (e.key === "Enter" && e.target !== document.body) {
             e.preventDefault();
             e.stopImmediatePropagation();
+            const target = pinTarget(e);
+            if (!target)
+                return;
             const r = target.getBoundingClientRect();
             addPin(target, r.left + r.width / 2, r.top + r.height / 2);
         }

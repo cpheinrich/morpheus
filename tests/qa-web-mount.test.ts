@@ -203,7 +203,7 @@ describe("mountWebQa", () => {
     click(trigger);
     expect(status()).toContain("This area is private");
     trigger.focus();
-    key(trigger, "Enter");
+    expect(key(trigger, "Enter")).toBe(false);
     expect(status()).toContain("This area is private");
     expect(q("ol li").textContent).toBe("No comments yet.");
   });
