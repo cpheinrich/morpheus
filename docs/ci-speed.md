@@ -54,9 +54,9 @@ Two behaviours differ in this mode, both only for a caller that opts in:
 - The tests read the rebuilt `dist/`. Verification proves it identical to the committed one
   whenever the step passes, so a passing job tested the same bytes as before.
 
-Nothing else moves: the required check names, the path selector, the full suite on every
-Node-scoped pull request and every main push, `dist/` verification, and every other caller's
-steps.
+The required check names and path selector are the same. The full suite follows a successful
+static check on Node-scoped pull requests and main pushes. In the pilot, the generated-output
+check verifies `dist/` before tests start. The default workflow verifies it after tests.
 
 ## Result
 
@@ -64,30 +64,24 @@ Across four pull-request runs on this branch, against thirteen on other branches
 
 - The steps around the tests took 25 seconds (22 to 32) instead of 43 (30 to 59).
 - `node / check` took 155 seconds (143 to 165) instead of 177 (141 to 209).
-- The required checks reported at 167 seconds (155 to 176) instead of 194 (153 to 222).
+- Measured from workflow creation, `node / check` finished at 167 seconds (155 to 176)
+  instead of 194 (153 to 222).
 
-The 18 seconds in the first line is the change itself; the few seconds beyond it are
-test-machine variance in a small sample. So the honest saving is about a tenth of the wait,
-for no added runner time. All required checks kept reporting under their names.
+The four overlapping steps saved 18 seconds at the median using one runner. Whole-job
+timings also include variation in test time and setup. The required `node / check`
+kept its name. Draft-check reporting is described below.
 
 ## Rollout and revert
 
-1. **Morpheus (this change).** Watch a week of runs; the step log prints each check's own
-   duration.
-2. **`web-ci.yml`, then Darwin.** None of the twelve project repositories checked calls
-   `node-ci.yml`; Evo, Darwin and heinrich.llc call `web-ci.yml`, which runs the same serial
-   steps. Darwin is the suitable
-   next project: `web / web` is its whole wait, and typecheck, lint and build take about
-   60 of its 165 seconds, bounded by a 35-second build. Porting the same opt-in input to
-   `web-ci.yml` is a separate Morpheus item; Darwin then sets the input in its own caller.
-3. **Evo**, once Darwin has a week of clean runs. Its `web / web` spends about 78 of 215
-   seconds on the same three steps. Its iOS check is longer when native code changes, so
-   only web-only pull requests get faster.
-4. heinrich.llc's job is under 45 seconds; leave it.
+Morpheus enables the input and the step log prints each check's duration. A same-commit
+consumer experiment on a two-core runner took longer when typecheck and lint shared the
+runner with unit tests. That project needed to keep its build after those checks because
+the build writes generated types and design tokens. Adoption of that variant stops at
+the experiment. Measure any future variant on the consumer's runner and keep its build
+dependencies and required checks in the comparison.
 
-Each step is one line in the caller and is judged on its own runs. To revert, delete
-`parallel-static-checks: true` from the caller; the serial steps resume on the next run. No
-branch rule, required check, runner, cache or secret is involved in either direction.
+To revert in Morpheus, delete `parallel-static-checks: true` from the caller. The serial
+steps resume on the next run.
 
 ## Follow-ups worth an item each
 
@@ -148,9 +142,10 @@ install. Whole-workflow time is unchanged within noise (307 against 294) because
 finishes last. Runner seconds for the three runs without the measurement job were 676, 706
 and 739, against a baseline of 730.
 
-Checks on every run: `node / check`, `pm / pm`, `changes`, `qa-browser`, `factory` and
-`artifact-abi` passed; `pr / conventions` and `agent-review / delivery` were skipped, as they
-are for any unlabelled draft.
+On every run, `node / check`, `pm / pm`, `changes`, `qa-browser`, `factory` and
+`artifact-abi` passed. GitHub reported `agent-review / delivery` as skipped. The caller
+job `pr` skipped on the unlabelled draft, leaving the required `pr / conventions` check
+unreported until review.
 
 ## Appendix C: tool measurements
 
