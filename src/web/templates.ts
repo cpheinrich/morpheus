@@ -824,9 +824,9 @@ export function WaitlistForm({
 
   if (status === "done") {
     return (
-      <output className="block text-sm">
+      <p role="status" className="text-sm">
         {confirmation}
-      </output>
+      </p>
     );
   }
 
@@ -2344,8 +2344,15 @@ export const appOxlintConfig = `{
   "ignorePatterns": [".next/**", "out/**", "build/**", "next-env.d.ts"],
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/exhaustive-deps": "warn"
-  }
+    "react/exhaustive-deps": "warn",
+    "jsx-a11y/prefer-tag-over-role": "off"
+  },
+  "overrides": [
+    {
+      "files": ["lib/auth/safe-next.ts"],
+      "rules": { "no-control-regex": "off" }
+    }
+  ]
 }
 `;
 

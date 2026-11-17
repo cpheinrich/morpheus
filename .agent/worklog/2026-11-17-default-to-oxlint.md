@@ -17,13 +17,13 @@ invoke the caller's script.
 The first install selected 1.94.0 and proposed minimum-release-age exemptions
 for the native packages. Pinned 1.93.0 and regenerated the lock from the original
 lockfile under the current policy. No new policy exemptions were needed.
-The first scaffold run also found a generated live-status element that could
-use the native `output` element. The scaffold now emits that element with block
-layout and the existing text style.
+The first review also linted optional consumer-auth output. Kept the scaffold's
+valid status roles and scoped the control-character regex exception to
+`lib/auth/safe-next.ts`, where it intentionally rejects unsafe URLs.
 
 ## Verification
 
 - `pnpm lint`
-- `pnpm exec vitest run tests/lint-contract.test.ts tests/web-scaffold.test.ts tests/web-provision.test.ts tests/profile/classify.test.ts tests/workflows.test.ts` passed 313 tests covering the new lint contract, the generated app and its CI callers.
+- `pnpm exec vitest run tests/lint-contract.test.ts tests/web-scaffold.test.ts tests/consumer-auth.test.ts tests/web-provision.test.ts tests/profile/classify.test.ts tests/workflows.test.ts` passed 345 tests covering lint, generated apps, optional consumer auth, and the workflow callers.
 - `pnpm typecheck`, `pnpm compile`, `pnpm morpheus pm index`, and `morpheus complexity check` passed.
 - The full suite runs through the required Node job on GitHub.
