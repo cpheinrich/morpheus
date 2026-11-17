@@ -8,6 +8,8 @@ here is canonical; anything rendered elsewhere is a view.
 
 - [CI scope](ci-scope.md) — which checks run for each changed path, required status
   reporting and Python compatibility versus artifact transport.
+- [CI speed](ci-speed.md) — where pull-request CI time goes, what was measured for each
+  speed-up idea, the concurrent static checks pilot, rollout order and revert.
 - [Factory delegation](../plugins/factory/README.md) — direct gateway workers and task-owned workspaces.
 - [Paperclip retirement](paperclip-overview.md) — deletion boundary and preserved offline history.
 - [CD pipeline V2](cd-pipeline-v2.md) — delivery ownership, automatic recovery and

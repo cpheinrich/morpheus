@@ -2711,3 +2711,22 @@ GitHub delivery. Keep existing admission, leases, reconciliation, capacity, quot
 review/release boundaries. Synthetic source qualification is distinct from host adoption.
 These are Factory-specific policy and Git adapters using existing Zod and Node/Git APIs;
 no generic module or new dependency is introduced.
+
+## Speed up CI inside the required job first; defer tool swaps and shards — 2026-11-16
+
+MO-26-11-16-21.10.20. Chris asked which of five CI speed ideas hold up for Morpheus. Measured
+on recent Actions runs, the required `node / check` is the whole critical path and the tests
+are about two thirds of it, so swapping tools that take 5–15 seconds cannot move it much.
+`node-ci.yml` gains a default-off `parallel-static-checks` input that runs typecheck, lint,
+the context-runtime install and the verified build concurrently before the tests, in the same
+job and with the serial steps' own scripts. Morpheus opts in; other callers are unchanged.
+
+Considered and not adopted now, each with its measurement in docs/ci-speed.md: `bun check`
+(Bun 1.4.4, published 2026-10-22, a checker only) and Oxlint 1.94.0 are both far faster and
+agreed with `tsc` and ESLint here, but once the checks run concurrently neither is on the
+critical path, and each adds a second toolchain and reverses the pinned ESLint contract.
+Vitest's native `--shard` is supported and measured, but it needs a second runner and an
+aggregating `check` job; that is a separate item. Time-balanced shards and diff-reachable
+test selection need custom infrastructure or drop coverage this suite depends on, so both are
+rejected. The concurrent step is about forty lines of bash in the workflow; no package or
+action is added.
