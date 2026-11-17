@@ -81,7 +81,7 @@ jobs:
       build-script: compile
       verify-build-clean: true
       build-output-directory: dist
-      # Morpheus pilots this first; see docs/ci-scope.md for the measurements.
+      # Morpheus pilots this first; docs/ci-speed.md has the measurements and the revert.
       parallel-static-checks: true
 
   qa-browser:

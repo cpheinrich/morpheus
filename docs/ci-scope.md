@@ -46,6 +46,14 @@ runner job, cache, artifact, model call or runtime dependency. Shellcheck and
 pyflakes integrations are disabled; workflow, expression-context and action
 validation remain enabled.
 
+Morpheus also enables `node-ci.yml`'s optional `parallel-static-checks` input.
+Typecheck, lint, the context-runtime install and the verified build then run
+concurrently in one step of the same required `node / check`, before the tests,
+instead of one after another around them. Each runs the serial step's own script;
+any failure fails the step, and so the check. The input defaults false, so other
+callers keep the serial steps. [CI speed](ci-speed.md) has the measurements, the
+verdict on each idea considered, and the revert.
+
 For local workflow checks and `tests/workflow-expressions.test.ts`, install
 actionlint 1.7.12 (for example `brew install actionlint`) and run
 `actionlint -shellcheck= -pyflakes=`. The focused tests invoke the real checker on
