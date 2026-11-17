@@ -830,6 +830,9 @@ before building to strip what it does not need; for the same result, fewer parts
 win. Add a state, option, gate or approval step only when observed behaviour proves the need. Read
 a requested safeguard narrowly: only a check that protects users blocks, others warn. Ask before
 tightening one; removing one is a recorded decision.
+Identify the existing owner of the behavior. Name the supported scenario before adding a layer,
+state, or fallback. Consolidate repeated code when callers share a contract and can evolve
+together. For a coordinated cleanup, see [structural simplification audits](${MORPHEUS_REPO}/blob/main/docs/runbooks/simplification-audit.md).
 
 **Leave the code you touch better.** Merge repeated logic instead of copying it; fix a clear bug
 in or next to your change, with a test, instead of only reporting it. Change a feature's behaviour
