@@ -45,10 +45,9 @@ async function architectureRef(kit: Record<string, unknown>, isMorpheus: boolean
 
 /**
  * Where each heading's section sits in a local Markdown record, keyed by its GitHub anchor.
- * A section runs to the next heading of the same or a higher level and is capped at the
- * 100 lines one exact read accepts; a longer one continues from the read's `next` range.
+ * A section runs to the next heading of the same or a higher level.
  */
-function sectionRanges(text: string): Map<string, { from: number; to: number }> {
+function sectionRanges(text: string): Map<string, { from: number; end: number }> {
   const lines = text.replace(/\r?\n$/, "").split(/\r?\n/);
   const headings: { anchor: string; level: number; line: number }[] = [];
   let fenced = false;
@@ -60,11 +59,11 @@ function sectionRanges(text: string): Map<string, { from: number; to: number }> 
     const anchor = heading[2]!.toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, "").replace(/\s/g, "-");
     headings.push({ anchor, level: heading[1]!.length, line: index + 1 });
   });
-  const ranges = new Map<string, { from: number; to: number }>();
+  const ranges = new Map<string, { from: number; end: number }>();
   headings.forEach(({ anchor, level, line }, index) => {
     const next = headings.slice(index + 1).find(later => later.level <= level);
     // GitHub gives a repeated heading a numbered anchor; the plain one is the first.
-    if (!ranges.has(anchor)) ranges.set(anchor, { from: line, to: Math.min((next?.line ?? lines.length + 1) - 1, line + 99) });
+    if (!ranges.has(anchor)) ranges.set(anchor, { from: line, end: (next?.line ?? lines.length + 1) - 1 });
   });
   return ranges;
 }
@@ -72,14 +71,16 @@ function sectionRanges(text: string): Map<string, { from: number; to: number }> 
 /**
  * `href` is the link a person follows. `read` is the exact `read_project_record` input for the
  * section, present only when the specification is a local, indexed record: a pinned GitHub
- * link is never fetched as a record read.
+ * link is never fetched as a record read. One read takes at most 100 lines, so `sectionEnd`
+ * says how far a longer section runs past `read.to`.
  */
 async function architectureSections(root: string, architecture: string, included: readonly string[]) {
   const [local] = included.includes(architecture) ? await readContextSources(root, [architecture]) : [];
-  const ranges = local ? sectionRanges(local.text) : new Map<string, { from: number; to: number }>();
+  const ranges = local ? sectionRanges(local.text) : undefined;
   return ARCHITECTURE.map(({ title, anchor }) => {
-    const range = ranges.get(anchor);
-    return { title, href: `${architecture}#${anchor}`, ...(range ? { read: { path: architecture, ...range } } : {}) };
+    const range = ranges?.get(anchor);
+    const located = range && { read: { path: architecture, from: range.from, to: Math.min(range.end, range.from + 99) }, sectionEnd: range.end };
+    return { title, href: `${architecture}#${anchor}`, ...located };
   });
 }
 

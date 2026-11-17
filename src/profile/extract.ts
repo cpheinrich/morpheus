@@ -17,7 +17,7 @@ export interface ExtractOptions {
   /**
    * Substring of each session's derived repository name, case-insensitive. Not
    * matched against the path: every task worktree sits under
-   * `.morpheus-worktrees/` and every scratchpad under a path naming its parent
+   * `morpheus-worktrees/` and every scratchpad under a path naming its parent
    * project, so `--repo morpheus` would otherwise pull in all of them.
    */
   repo?: string;

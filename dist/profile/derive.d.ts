@@ -44,7 +44,7 @@ export declare function deriveItem(...sources: Array<string | null | undefined>)
  * a task name, not a repository:
  *
  * - `<repo>/.claude/worktrees/<name>` and `<repo>/local/worktrees/<name>`
- * - `<anything>/.morpheus-worktrees/<repo>-<12 hex>/<item>-<rand>` (and `.morpheus/worktrees`)
+ * - Morpheus task worktrees and Factory checkouts, by their repository key (`KEYED_CHECKOUTS`)
  * - `<anything>/.<repo>-worktrees/<repo>-<task>` for other tools' sibling worktrees
  * - `~/.codex/worktrees/<hash>/<repo>`
  *

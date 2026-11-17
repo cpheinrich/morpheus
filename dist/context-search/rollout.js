@@ -7,6 +7,8 @@ const DAY_MS = 86_400_000;
 const TRACE_DAYS = 30;
 const DAILY_TRACE_LIMIT = 1_048_576;
 const MAX_CORE_BYTES = 8_192;
+/** Why an exact read was refused. A fixed vocabulary: a trace never carries the message or the path. */
+export const CONTEXT_ERROR_REASONS = ["coverage", "range", "unavailable", "other"];
 export function providerSessionId(env = process.env) {
     return env.MORPHEUS_CONTEXT_SESSION_ID || (env.CLAUDECODE === "1" ? env.CLAUDE_CODE_SESSION_ID : undefined)
         || env.CODEX_THREAD_ID || undefined;
@@ -113,6 +115,7 @@ function traceUsage(event) {
         transport: event.transport === "cli" || event.transport === "mcp" || event.transport === "hook" ? event.transport : undefined,
         operation: ["search", "read", "coverage", "overview", "related"].includes(event.operation) ? event.operation : undefined,
         outcome: ["ok", "empty", "error"].includes(event.outcome) ? event.outcome : undefined,
+        reason: event.outcome === "error" && CONTEXT_ERROR_REASONS.includes(event.reason) ? event.reason : undefined,
     };
 }
 /** Keep this intentionally allowlisted. A caller cannot write text by spreading a result object. */

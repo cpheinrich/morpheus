@@ -4,6 +4,12 @@ export declare function contextOverview(root: string, task?: string): Promise<{
     architecture: {
         source: string;
         sections: {
+            read?: {
+                path: string;
+                from: number;
+                to: number;
+            } | undefined;
+            sectionEnd?: number | undefined;
             title: "Project manifest" | "Instruction layering" | "The work loop" | "Agent records" | "Context freshness" | "Project management" | "Factory distribution and responsibilities";
             href: string;
         }[];

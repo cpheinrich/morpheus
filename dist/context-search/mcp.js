@@ -27,11 +27,24 @@ function activeIndexFor(indexes, root, kinds) {
 function result(text, fields) {
     return { content: [{ type: "text", text }], structuredContent: fields };
 }
-async function recordTool(scope, operation, outcome, started, returnedTokens) {
+/** A refused read names its category, so the trace can say why without the path or the message. */
+class ReadRefusal extends Error {
+    reason;
+    constructor(reason, message) {
+        super(message);
+        this.reason = reason;
+    }
+}
+function refusalReason(operation, error) {
+    if (operation !== "read")
+        return;
+    return error instanceof ReadRefusal ? error.reason : "other";
+}
+async function recordTool(scope, operation, outcome, started, detail = {}) {
     const arm = await contextArm(scope.root, scope.session, scope.config);
     await traceContext(scope.root, {
         type: "tool", arm: arm.arm, engine: arm.engine, session: arm.session, rollout: arm.id,
-        transport: "mcp", operation, outcome, queryMs: performance.now() - started, returnedTokens,
+        transport: "mcp", operation, outcome, queryMs: performance.now() - started, ...detail,
     });
 }
 async function call(cwd, metadata, operation, handler) {
@@ -42,13 +55,13 @@ async function call(cwd, metadata, operation, handler) {
         const response = await handler(scope, started);
         if (operation !== "search") {
             const tokens = response.structuredContent?.returnedTokens;
-            await recordTool(scope, operation, response.structuredContent?.outcome === "empty" ? "empty" : "ok", started, typeof tokens === "number" ? tokens : undefined);
+            await recordTool(scope, operation, response.structuredContent?.outcome === "empty" ? "empty" : "ok", started, { returnedTokens: typeof tokens === "number" ? tokens : undefined });
         }
         return response;
     }
     catch (error) {
         if (scope && operation !== "search")
-            await recordTool(scope, operation, "error", started).catch(() => { });
+            await recordTool(scope, operation, "error", started, { reason: refusalReason(operation, error) }).catch(() => { });
         return { isError: true, content: [{ type: "text", text: error instanceof Error ? error.message : "Morpheus Context could not complete this operation." }] };
     }
 }
@@ -68,15 +81,23 @@ async function search(scope, input, started, active, mcpStartedAt) {
 }
 async function read(scope, input) {
     const { path, from, to = from + 15, max_tokens: budget } = input;
-    if (to < from || to - from > 99)
-        throw new Error("Choose an inclusive range of 1–100 lines.");
+    if (to < from || to - from > 99) {
+        throw new ReadRefusal("range", `Choose an inclusive range of 1–100 lines: read from ${from} to ${from + 99}, then continue from ${from + 100}.`);
+    }
     const sources = await discoverSources(scope.root, scope.config);
-    if (!sources.included.includes(path))
-        throw new Error("The path is outside the project context corpus. Check context coverage.");
+    if (!sources.included.includes(path)) {
+        const file = path.split("#", 1)[0];
+        throw new ReadRefusal("coverage", file !== path && sources.included.includes(file)
+            ? `Read ${file} by line range; a heading anchor is not part of the path.`
+            : "The path is outside the project context corpus. Check context coverage.");
+    }
     const [record] = await readContextSources(scope.root, [path]);
     if (!record)
-        throw new Error("The record is unavailable in this worktree.");
-    const lines = record.text.replace(/\r?\n$/, "").split(/\r?\n/).slice(from - 1, to);
+        throw new ReadRefusal("unavailable", "The record is unavailable in this worktree.");
+    const source = record.text.replace(/\r?\n$/, "").split(/\r?\n/);
+    // The record's own end is not a truncation: only lines dropped for the budget are.
+    const last = Math.min(to, source.length);
+    const lines = source.slice(from - 1, last);
     while (lines.length) {
         const end = from + lines.length - 1;
         const excerpt = `${path}:${from}-${end}\n${lines.join("\n")}`;
@@ -84,7 +105,9 @@ async function read(scope, input) {
         if (Buffer.byteLength(excerpt) <= MCP_EXCERPT_BYTES && tokens <= budget && lines.some(line => line.trim())) {
             const message = `${CONTEXT_SEARCH_HEADER}\n${excerpt}`;
             return result(message, {
-                excerpt: message, outcome: "ok", path, from, to: end, returnedTokens: tokens, truncated: end < to && lines.length < to - from + 1,
+                excerpt: message, outcome: "ok", path, from, to: end, returnedTokens: tokens, truncated: end < last,
+                // The next call picks up at the first line left out, so a continued read skips nothing.
+                ...(end < last ? { next: { path, from: end + 1, to: last } } : {}),
             });
         }
         lines.pop();

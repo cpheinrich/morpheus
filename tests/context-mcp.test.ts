@@ -215,7 +215,7 @@ it("preserves arm, records MCP timing, and only credits the excerpt shown by the
 
 it("opens a local architecture section from the overview and continues a long read without skipping a line", async () => {
   const { call, root } = await fixture();
-  type Section = { title: string; href: string; read?: { path: string; from: number; to: number } };
+  type Section = { title: string; href: string; read?: { path: string; from: number; to: number }; sectionEnd?: number };
   const sections = async () => ((await call("get_context_overview")).structuredContent!.architecture as { sections: Section[] }).sections;
   // Another project's overview links the pinned specification for people and offers nothing to read locally.
   expect(await sections()).toContainEqual({ title: "The work loop", href: expect.stringMatching(/^https:\/\/github\.com\/cpheinrich\/morpheus\/blob\/[^/]+\/architecture\.md#73-the-work-loop$/) });
@@ -233,10 +233,10 @@ it("opens a local architecture section from the overview and continues a long re
   const local = await sections();
   expect(local.filter(section => section.read)).toEqual([
     // A section ends before the next heading of its level; the fenced `#` comment is not one.
-    { title: "Project manifest", href: "architecture.md#4-the-project-manifest", read: { path: "architecture.md", from: 3, to: 9 } },
-    // 120 lines of body: capped at the 100 lines one read accepts.
-    { title: "The work loop", href: "architecture.md#73-the-work-loop", read: { path: "architecture.md", from: 11, to: 110 } },
-    { title: "Context freshness", href: "architecture.md#710-context-freshness", read: { path: "architecture.md", from: 132, to: 133 } },
+    { title: "Project manifest", href: "architecture.md#4-the-project-manifest", read: { path: "architecture.md", from: 3, to: 9 }, sectionEnd: 9 },
+    // 121 lines with the heading: `read` stops at the 100 one read accepts, `sectionEnd` at the last.
+    { title: "The work loop", href: "architecture.md#73-the-work-loop", read: { path: "architecture.md", from: 11, to: 110 }, sectionEnd: 131 },
+    { title: "Context freshness", href: "architecture.md#710-context-freshness", read: { path: "architecture.md", from: 132, to: 133 }, sectionEnd: 133 },
   ]);
   expect(local).toHaveLength(7);
 
@@ -249,6 +249,7 @@ it("opens a local architecture section from the overview and continues a long re
 
   // The listed parameters, on a budget too small for the section: each page names the next.
   const pages: Record<string, unknown>[] = [];
+  expect(local[2]).toMatchObject({ title: "The work loop" });
   for (let input: Record<string, unknown> | undefined = { ...local[2]!.read!, max_tokens: 150 }; input; ) {
     const page = await read(input);
     pages.push(page);
@@ -267,7 +268,11 @@ it("opens a local architecture section from the overview and continues a long re
   const tooLong = refusal("Choose an inclusive range of 1–100 lines: read from 11 to 110, then continue from 111.");
   expect(await call("read_project_record", { path: "architecture.md", from: 11, to: 111 })).toEqual(tooLong);
   expect(await call("read_project_record", { path: "architecture.md", from: 11, to: 10 })).toEqual(tooLong);
-  expect(await read({ path: "architecture.md", from: 111, max_tokens: 2500 })).toMatchObject({ from: 111, to: 126, truncated: false });
+  // The refusal's continuation line, read through to the section's stated end.
+  const rest = await read({ path: "architecture.md", from: 111, to: local[2]!.sectionEnd, max_tokens: 2500 });
+  expect(rest).toMatchObject({ from: 111, to: 131, truncated: false });
+  expect(body(rest.excerpt)).toEqual(source.slice(110, 131));
+  expect(await read({ path: "architecture.md", from: 111 })).toMatchObject({ from: 111, to: 126, truncated: false });
   // The end of the record is not a truncation, and there is nothing after it to continue with.
   const tail = await read({ path: "architecture.md", from: 132 });
   expect(tail).toMatchObject({ from: 132, to: 133, truncated: false });
