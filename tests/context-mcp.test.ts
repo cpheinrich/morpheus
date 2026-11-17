@@ -364,6 +364,10 @@ it("credits the excerpt Claude Code serializes into its hook payload, and nothin
   await recordRead(claudeToolUse(root, session, read, (refused.content[0] as { text: string }).text));
   await recordRead(claudeToolUse(root, session, read, exact, { hook_event_name: "PostToolUseFailure", tool_response: undefined, error: JSON.stringify(exact) }));
   await pending();
+  await recordRead(claudeToolUse(root, session, read, { ...exact, isError: true }));
+  await pending();
+  await recordRead(claudeToolUse(root, session, read, { ...exact, outcome: "empty" }));
+  await pending();
   // Text that does not match the cited source: altered in the result, then changed on disk.
   await recordRead(claudeToolUse(root, session, read, { ...exact, excerpt: (exact.excerpt as string).replace("signed release authority", "unsigned release authority") }));
   await pending();

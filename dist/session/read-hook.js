@@ -269,8 +269,9 @@ function serializedExcerpt(shown) {
         return shown;
     try {
         const value = JSON.parse(shown);
-        if (isObject(value) && typeof value["excerpt"] === "string")
+        if (isObject(value) && value["outcome"] === "ok" && value["isError"] !== true && typeof value["excerpt"] === "string") {
             return value["excerpt"];
+        }
     }
     catch {
         // Not a serialized result.

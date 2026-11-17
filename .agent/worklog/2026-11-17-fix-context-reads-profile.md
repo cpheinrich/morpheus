@@ -112,3 +112,13 @@ pnpm morpheus pm validate
 morpheus complexity check
 git diff --check
 ```
+
+## Controller verification
+
+The compiled hook initially credited an excerpt inside a serialized error. The controller
+made the decoder require a successful result and added regression cases for a serialized
+error and an empty outcome carrying a valid excerpt. A disposable replay confirmed that the
+released hook ignores the observed JSON shape and the candidate credits a successful result
+after source validation. Altered citations and errors earned neither startup credit nor a
+visibility trace. All 319 focused tests passed after this correction, as did typecheck,
+compilation, complexity enforcement, PM index and validation, and the diff check.
