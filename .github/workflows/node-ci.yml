@@ -180,7 +180,7 @@ jobs:
           pids=()
           start() {
             names+=("$1")
-            "${@:2}" > "$logs/$1.log" 2>&1 &
+            ( status=0; "${@:2}" > "$logs/$1.log" 2>&1 || status=$?; echo "$SECONDS" > "$logs/$1.seconds"; exit "$status" ) &
             pids+=("$!")
           }
           start typecheck step "$TYPECHECK_STEP"
@@ -190,7 +190,7 @@ jobs:
           failed=()
           for i in "${!names[@]}"; do
             if wait "${pids[$i]}"; then
-              echo "::group::${names[$i]} passed"
+              echo "::group::${names[$i]} passed in $(cat "$logs/${names[$i]}.seconds")s"
               cat "$logs/${names[$i]}.log"
               echo "::endgroup::"
             else
@@ -199,7 +199,7 @@ jobs:
           done
           # Failures print last and unfolded: `morpheus wait-ci` reports this step's tail.
           for name in ${failed[@]+"${failed[@]}"}; do
-            echo "::error title=${name} failed::${name} failed; its output follows."
+            echo "::error title=${name} failed::${name} failed after $(cat "$logs/$name.seconds")s; its output follows."
             cat "$logs/$name.log"
           done
           [ "${#failed[@]}" -eq 0 ]

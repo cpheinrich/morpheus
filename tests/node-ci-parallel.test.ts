@@ -145,8 +145,9 @@ describe("node-ci parallel static checks", () => {
     const run = runStep({ RUN_CONTEXT_RUNTIME: "true", RENDEZVOUS: "typecheck lint build context" });
     expect(run.output).not.toContain("never overlapped");
     expect(run.status).toBe(0);
+    // Each check reports its own duration, so the log shows which one bounds the step.
     for (const name of ["typecheck", "lint", "context-runtime", "build"]) {
-      expect(run.output).toContain(`::group::${name} passed`);
+      expect(run.output).toMatch(new RegExp(`^::group::${name} passed in \\d+s$`, "m"));
     }
     expect(run.output).not.toContain("::error");
     expect(run.mark("typecheck")).toBe("typecheck\n");
@@ -160,7 +161,7 @@ describe("node-ci parallel static checks", () => {
   it.each(["typecheck", "lint"])("fails when %s fails, after letting the other checks finish", (failing) => {
     const run = runStep({ STUB_FAIL: failing });
     expect(run.status).toBe(1);
-    expect(run.output).toContain(`::error title=${failing} failed::`);
+    expect(run.output).toMatch(new RegExp(`^::error title=${failing} failed::${failing} failed after \\d+s`, "m"));
     for (const name of ["typecheck", "lint", "build"].filter(name => name !== failing)) {
       expect(run.output).toContain(`::group::${name} passed`);
     }
