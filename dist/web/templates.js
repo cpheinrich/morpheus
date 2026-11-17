@@ -777,9 +777,9 @@ export function WaitlistForm({
 
   if (status === "done") {
     return (
-      <p role="status" className="text-sm">
+      <output className="block text-sm">
         {confirmation}
-      </p>
+      </output>
     );
   }
 
@@ -2224,7 +2224,7 @@ export const appPackageJson = (scope, sharedName, hqBuildGuard = false) => `${JS
         build: "next build",
         ...(hqBuildGuard ? { postbuild: "node scripts/check-hq-build.mjs" } : {}),
         start: "next start",
-        lint: "eslint",
+        lint: "oxlint",
         typecheck: "tsc --noEmit",
         test: "vitest run",
     },
@@ -2239,13 +2239,23 @@ export const appPackageJson = (scope, sharedName, hqBuildGuard = false) => `${JS
         "@types/node": "^20",
         "@types/react": "^19",
         "@types/react-dom": "^19",
-        eslint: "^9",
-        "eslint-config-next": "16.2.9",
+        oxlint: "1.93.0",
         tailwindcss: "^4",
         typescript: "^5",
         vitest: "^3",
     },
 }, null, 2)}\n`;
+export const appOxlintConfig = `{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "react", "nextjs", "jsx-a11y"],
+  "categories": { "correctness": "error" },
+  "ignorePatterns": [".next/**", "out/**", "build/**", "next-env.d.ts"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn"
+  }
+}
+`;
 export const appTsconfig = () => `${JSON.stringify({
     compilerOptions: {
         target: "ES2017",

@@ -19,6 +19,8 @@ describe("command phase rules", () => {
     ["cd /repo && pnpm typecheck && pnpm test", "checks"],
     ["pnpm -C apps/web test", "checks"],
     ["pnpm exec vitest run tests/profile", "checks"],
+    ["pnpm exec oxlint src", "checks"],
+    ["pnpm oxlint src", "checks"],
     ["CI=1 npx tsc --noEmit", "checks"],
     [".venv/bin/pytest -q tests/test_x.py", "checks"],
     ["uv run --project apps/backend pytest -q", "checks"],
