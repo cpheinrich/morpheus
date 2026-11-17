@@ -6,7 +6,8 @@ supply candidates. A single local cleanup usually fits in its ordinary PR.
 
 ## 1. Survey and rank
 
-Start the audit brief in one report. Record the current revision, in-scope surfaces and
+Start the audit brief in the project's audit folder (typically `qa/audits/`) and link it from
+the task worklog. Record the current revision, in-scope surfaces and
 compatibility promises, exclusions, observed pain, and the available time and resources.
 Separate the audit mandate from authorization to implement or release.
 
@@ -25,7 +26,9 @@ Separate the audit mandate from authorization to implement or release.
 
 ## 2. Turn the plan into reviewable slices
 
-Record this in the approved plan; the normal PR and worklog can carry the evidence.
+Keep the plan beside the brief or in the same document. An audit-only mandate ends at the
+proposal. Start implementation when the existing mandate or its accountable owner authorizes it.
+The normal PR and worklog can carry the evidence.
 
 | Slice and outcome | Needs merged first | Owner and shared files | Before/after checks | Rollback or stopping point |
 | --- | --- | --- | --- | --- |

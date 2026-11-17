@@ -832,7 +832,7 @@ a requested safeguard narrowly: only a check that protects users blocks, others 
 tightening one; removing one is a recorded decision.
 Identify the existing owner of the behavior. Name the supported scenario before adding a layer,
 state, or fallback. Consolidate repeated code when callers share a contract and can evolve
-together. See [structural simplification audits](${MORPHEUS_REPO}/blob/main/docs/runbooks/simplification-audit.md).
+together. For a coordinated cleanup, see [structural simplification audits](${MORPHEUS_REPO}/blob/main/docs/runbooks/simplification-audit.md).
 
 **Leave the code you touch better.** Merge repeated logic instead of copying it; fix a clear bug
 in or next to your change, with a test, instead of only reporting it. Change a feature's behaviour
