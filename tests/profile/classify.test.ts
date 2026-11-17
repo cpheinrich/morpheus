@@ -143,6 +143,11 @@ describe("repository and item derivation", () => {
     ["/Users/x/code/morpheus/local/worktrees/pr-check", "morpheus"],
     ["/Users/x/code/.morpheus-worktrees/evo-b44b2f5bc3a9/ev-26-10-02-13-20-53-VTtnOY", "evo"],
     ["/Users/x/code/.morpheus-worktrees/cpheinrich.com-0856b538bae9/cph-26-10-01-10-00-00-abc", "cpheinrich.com"],
+    // The current layout sits in the temp directory with no leading dot, on macOS and on Linux.
+    ["/private/var/folders/y2/abc/T/morpheus-worktrees/morpheus-c7bd78c009b1/mo-26-11-17-01.45.10-gpt2hR", "morpheus"],
+    ["/tmp/morpheus-worktrees/evo-e5e266d12739/ev-26-10-02-13-20-53-VTtnOY/apps/ios", "evo"],
+    ["/Users/x/.local/share/factory/worktrees/71fe1079b5f7d3479342fef0481c1c23/primary/alpha-8fbdcca1", "alpha"],
+    ["/Users/x/.local/share/factory/worktrees/71fe1079b5f7d3479342fef0481c1c23/reviewer-2/alpha-8fbdcca1/src", "alpha"],
     ["/Users/x/code/.pace-worktrees/pace-commitment-entGAR", "pace"],
     ["/Users/x/.codex/worktrees/0ec5/evo", "evo"],
     ["/Users/x/Documents/Codex/2026-10-02/ca", "(chat)"],
@@ -152,6 +157,40 @@ describe("repository and item derivation", () => {
     ["file:///Users/x/code/kairos/", "kairos"],
   ])("%s → %s", (cwd, repo) => {
     expect(deriveRepo(cwd, [], "/Users/x")).toBe(repo);
+  });
+
+  it("leaves a path that only resembles a keyed checkout to the ordinary rules", () => {
+    // One hex digit short of a repository key, and of a Factory task or checkout key.
+    expect(deriveRepo("/tmp/morpheus-worktrees/evo-e5e266d1273/ev-26-10-02-13-20-53-VTtnOY")).toBe("(scratch)");
+    expect(deriveRepo("/Users/x/factory/worktrees/71fe1079b5f7d3479342fef0481c1c2/primary/alpha-8fbdcca1")).toBe("alpha-8fbdcca1");
+    expect(deriveRepo("/Users/x/factory/worktrees/71fe1079b5f7d3479342fef0481c1c23/primary/alpha-8fbdcca")).toBe("alpha-8fbdcca");
+    expect(deriveRepo("/Users/x/code/morpheus-worktrees-notes/evo-e5e266d12739/draft")).toBe("draft");
+    expect(deriveRepo("/Users/x/code/notmorpheus-worktrees/evo-e5e266d12739/draft")).toBe("draft");
+  });
+
+  it("identifies a keyed checkout by its repository key rather than its name", () => {
+    const roots = ["/Users/x/code/morpheus/", "/Users/x/code/evo"];
+    const factory = "/Users/x/.local/share/factory/worktrees/71fe1079b5f7d3479342fef0481c1c23/primary";
+    // The key is SHA-256 of the registered root's common Git directory: 12 hex for Morpheus, 8 for Factory.
+    expect(deriveRepo("/var/folders/y2/abc/T/morpheus-worktrees/morpheus-c7bd78c009b1/mo-26-11-17-01.45.10-gpt2hR", roots)).toBe("morpheus");
+    expect(deriveRepo("/Users/x/code/.morpheus-worktrees/evo-e5e266d12739/ev-26-10-02-13-20-53-VTtnOY", roots)).toBe("evo");
+    expect(deriveRepo(`${factory}/evo-e5e266d1`, roots)).toBe("evo");
+    // A Factory checkout cut from a task worktree carries that worktree's name, and still the repository's key.
+    expect(deriveRepo(`${factory}/mo-26-11-17-01.45.10-gpt2hR-c7bd78c0/src`, roots)).toBe("morpheus");
+    expect(deriveRepo("/tmp/morpheus-worktrees/renamed-c7bd78c009b1/mo-26-11-17-01.45.10-gpt2hR", roots)).toBe("morpheus");
+    // An unregistered repository keeps the name its directory gives it.
+    expect(deriveRepo("/tmp/morpheus-worktrees/lakina-0856b538bae9/la-26-10-01-10-00-00-abc", roots)).toBe("lakina");
+    expect(deriveRepo(`${factory}/alpha-8fbdcca1`, roots)).toBe("alpha");
+  });
+
+  it("does not merge a same-named checkout with a different key into the registered project", () => {
+    const roots = ["/Users/x/code/morpheus", "/Users/x/code/evo"];
+    // One hex digit away from morpheus's key: another repository that happens to share the name.
+    expect(deriveRepo("/tmp/morpheus-worktrees/morpheus-c7bd78c009b2/mo-26-11-17-01.45.10-gpt2hR", roots)).toBeNull();
+    expect(deriveRepo("/Users/x/code/.morpheus-worktrees/evo-b44b2f5bc3a9/ev-26-10-02-13-20-53-VTtnOY", roots)).toBeNull();
+    expect(deriveRepo("/Users/x/.local/share/factory/worktrees/71fe1079b5f7d3479342fef0481c1c23/primary/evo-e5e266d2", roots)).toBeNull();
+    // With no registry there is no identity to contradict the name.
+    expect(deriveRepo("/tmp/morpheus-worktrees/morpheus-c7bd78c009b2/mo-26-11-17-01.45.10-gpt2hR")).toBe("morpheus");
   });
 
   it("attributes a subdirectory to its registered project root", () => {

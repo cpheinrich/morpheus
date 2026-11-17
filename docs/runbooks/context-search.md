@@ -74,6 +74,19 @@ See [Codex remote connections](https://learn.chatgpt.com/docs/remote-connections
 | `get_context_overview` | Orient a fresh agent with portable task and architecture pointers |
 | `get_related_context` | Traverse explicit roadmap, Markdown and GitHub links with source-line evidence |
 
+`get_context_overview` links each governing architecture section for people (`href`). Where
+the specification is a local indexed record, as in Morpheus's own checkout, a section also
+carries `read`: the exact `path`, `from` and `to` to pass to `read_project_record`, and
+`sectionEnd`, the section's last line when it runs past the 100 lines of one read. A pinned
+GitHub link is never fetched as a record read, and a `path#anchor` is refused with the plain
+path to read instead.
+
+An exact read takes 1–100 lines, 16 by default, within its token budget. A wider range is
+refused with the range to read first and the line to continue from. When the budget cuts a
+read short, the result has `truncated: true` and `next`, the range that starts at the first
+line left out, so following `next` skips nothing. Reaching the end of the record is not a
+truncation.
+
 Use the MCP first for governing decisions, lessons, roadmap, worklogs, runbooks and meeting
 notes. Use `read_project_record` to open relevant citations. Review packets and Factory handoffs
 carry this rule; the advisory `SubagentStart` hook gives fresh Codex and Claude Code subagents
@@ -92,8 +105,15 @@ use the usual tools. When MCP is unavailable or scoped to the wrong checkout, ru
 
 Use `morpheus context profile [YYYY-MM-DD]` for call timing, empty results, index builds, cache
 behavior and independently observed excerpts. It still reads historical engine cohorts and
-overrides. Use `morpheus profile report --repo <name> --since YYYY-MM-DD` for session time,
-requests and token use grouped by interface. Traces omit raw queries, document text, local
+overrides. Each operation reports `partial`, the results served from the previous index during
+a rebuild, and `errorReasons`, refused exact reads by fixed category: `coverage` (the path is
+outside the corpus), `range` (not 1–100 lines), `unavailable` (tracked but missing in the
+worktree) and `other`. Rows written before reasons existed count under `errors` only, and input
+the tool schema rejects never reaches a trace. Use `morpheus profile report --repo <name>
+--since YYYY-MM-DD` for session time, requests and token use grouped by interface. A Morpheus
+task worktree or a Factory checkout is attributed by the repository key in its directory name,
+matched against the registered projects. One that shares a registered project's name under a
+different key is reported as `(unknown)`. Traces omit raw queries, document text, local
 paths and provider session IDs.
 
 The MCP starts warming the current worktree's full Tantivy index when the host launches
@@ -140,7 +160,11 @@ Before the first governed action, the freshness gate checks for a result
 the read hook actually observed in that session. An empty search, a
 redirected result or an excerpt from the already-required startup core
 does not satisfy it. Evidence follows the session across linked worktrees,
-and an excerpt is verified against the checkout that returned it. The core
+and an excerpt is verified against the checkout that returned it. Claude Code
+hands the hook a structured MCP result as one JSON string; the hook decodes
+its `excerpt` and verifies that text against the source like any other. The
+hook runs the device's installed Morpheus, so a host credits these results
+once its CLI includes this behavior. The core
 receipt remains a separate check. A terminal or a session without active
 prompt and read hooks keeps the existing freshness policy. A checkout with
 no readable task records falls back to the core and reports how to check

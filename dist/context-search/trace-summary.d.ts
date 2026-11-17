@@ -1,3 +1,4 @@
+import { type ContextErrorReason } from "./rollout.js";
 declare const ARMS: readonly ["tantivy-compact", "tantivy-full", "tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"];
 declare const ENGINES: readonly ["tantivy", "ripgrep"];
 declare const OPERATIONS: readonly ["search", "read", "coverage", "overview", "related"];
@@ -25,8 +26,10 @@ export type Trace = {
     engineQueryMs?: number;
     buildMs?: number;
     cacheHit?: boolean;
+    partial?: true;
     returnedTokens?: number;
     outcome?: typeof OUTCOMES[number];
+    reason?: ContextErrorReason;
 };
 /** Aggregate workspace, legacy and archived traces without emitting any per-session values. */
 export declare function summarizeContextTraces(root: string, options?: {
@@ -51,6 +54,10 @@ export declare function summarizeContextTraces(root: string, options?: {
                 calls: number;
                 empty: number;
                 errors: number;
+                errorReasons: {
+                    [k: string]: number;
+                };
+                partial: number;
                 latencySamples: number;
                 p50Ms: number | null;
                 p95Ms: number | null;
@@ -69,6 +76,10 @@ export declare function summarizeContextTraces(root: string, options?: {
                 calls: number;
                 empty: number;
                 errors: number;
+                errorReasons: {
+                    [k: string]: number;
+                };
+                partial: number;
                 latencySamples: number;
                 p50Ms: number | null;
                 p95Ms: number | null;

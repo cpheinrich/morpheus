@@ -973,8 +973,10 @@ Each execution host still needs its own runtime and trust. See
 
 The local `morpheus_context` server resolves the host worktree and uses the session identity
 for validated bindings and profiling when one is available. It exposes search, exact reads,
-coverage, overview and relationship traversal. The host read hook validates visible excerpts
-against their source.
+coverage, overview and relationship traversal. The overview gives exact read ranges for local
+architecture sections, and a read cut short by its budget names the range to continue with.
+The host read hook validates visible excerpts against their source, in the form each host
+presents them.
 Explicit Markdown and project record links provide traversable relationships, with the declaring
 path and line retained as evidence.
 

@@ -3,7 +3,7 @@ import { join, posix } from "node:path";
 import { ROADMAP_ID } from "../pm/id.js";
 import { INSTALL_RECEIPT, MORPHEUS_PACKAGE_ROOT, MORPHEUS_REMOTE } from "../self.js";
 import { getSearchConfig } from "./rollout.js";
-import { discoverSources } from "./sources.js";
+import { discoverSources, readContextSources } from "./sources.js";
 
 const ARCHITECTURE = [
   { title: "Project manifest", anchor: "4-the-project-manifest" },
@@ -43,6 +43,47 @@ async function architectureRef(kit: Record<string, unknown>, isMorpheus: boolean
   return `https://github.com/cpheinrich/morpheus/blob/${packagePin(kit) ?? installedPin ?? "main"}/architecture.md`;
 }
 
+/**
+ * Where each heading's section sits in a local Markdown record, keyed by its GitHub anchor.
+ * A section runs to the next heading of the same or a higher level.
+ */
+function sectionRanges(text: string): Map<string, { from: number; end: number }> {
+  const lines = text.replace(/\r?\n$/, "").split(/\r?\n/);
+  const headings: { anchor: string; level: number; line: number }[] = [];
+  let fenced = false;
+  lines.forEach((line, index) => {
+    // A `#` line inside a code fence is a comment, not a heading.
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+    const heading = fenced ? null : /^(#{1,6}) +(.+?)\s*$/.exec(line);
+    if (!heading) return;
+    const anchor = heading[2]!.toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, "").replace(/\s/g, "-");
+    headings.push({ anchor, level: heading[1]!.length, line: index + 1 });
+  });
+  const ranges = new Map<string, { from: number; end: number }>();
+  headings.forEach(({ anchor, level, line }, index) => {
+    const next = headings.slice(index + 1).find(later => later.level <= level);
+    // GitHub gives a repeated heading a numbered anchor; the plain one is the first.
+    if (!ranges.has(anchor)) ranges.set(anchor, { from: line, end: (next?.line ?? lines.length + 1) - 1 });
+  });
+  return ranges;
+}
+
+/**
+ * `href` is the link a person follows. `read` is the exact `read_project_record` input for the
+ * section, present only when the specification is a local, indexed record: a pinned GitHub
+ * link is never fetched as a record read. One read takes at most 100 lines, so `sectionEnd`
+ * says how far a longer section runs past `read.to`.
+ */
+async function architectureSections(root: string, architecture: string, included: readonly string[]) {
+  const [local] = included.includes(architecture) ? await readContextSources(root, [architecture]) : [];
+  const ranges = local ? sectionRanges(local.text) : undefined;
+  return ARCHITECTURE.map(({ title, anchor }) => {
+    const range = ranges?.get(anchor);
+    const located = range && { read: { path: architecture, from: range.from, to: Math.min(range.end, range.from + 99) }, sectionEnd: range.end };
+    return { title, href: `${architecture}#${anchor}`, ...located };
+  });
+}
+
 /** Portable pointers for a fresh agent. Contents and absolute host paths stay in the project. */
 export async function contextOverview(root: string, task?: string) {
   const [manifest, kit] = await Promise.all([
@@ -54,6 +95,7 @@ export async function contextOverview(root: string, task?: string) {
     architectureRef(kit, isMorpheus),
     getSearchConfig(root).then(config => discoverSources(root, config)),
   ]);
+  const sections = await architectureSections(root, architecture, sources.included);
   const taskId = task && ROADMAP_ID.test(task) ? task : undefined;
   const roadmap = taskId ? sources.included.find(path => {
     const file = posix.basename(path);
@@ -61,7 +103,7 @@ export async function contextOverview(root: string, task?: string) {
   }) : undefined;
   return {
     project: typeof manifest.name === "string" ? manifest.name.slice(0, 128) : undefined,
-    architecture: { source: architecture, sections: ARCHITECTURE.map(({ title, anchor }) => ({ title, href: `${architecture}#${anchor}` })) },
+    architecture: { source: architecture, sections },
     projectRecords: [
       { purpose: "Project-specific agent instructions", path: "AGENTS.md" },
       { purpose: "Project settings and search scope", path: "morpheus.json" },
