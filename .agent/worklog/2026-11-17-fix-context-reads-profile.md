@@ -122,3 +122,56 @@ released hook ignores the observed JSON shape and the candidate credits a succes
 after source validation. Altered citations and errors earned neither startup credit nor a
 visibility trace. All 319 focused tests passed after this correction, as did typecheck,
 compilation, complexity enforcement, PM index and validation, and the diff check.
+
+## Independent review
+
+Independent review cleared the Claude hook, read ranges, checkout attribution and trace summaries. All 197 tests in the reviewer's focused suite passed, and the reviewer verified the compiled output.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "b7ebe5c7db2d1c411868ba359745139b559fe32f",
+  "reviewed": "e83a1c0c1490889a3d7d4257635b8797f61bf0db",
+  "covered": "e83a1c0c1490889a3d7d4257635b8797f61bf0db",
+  "authorSession": "01a1df5e-48f0-7c92-aeb5-b5eae423a91c",
+  "reviewerSession": "a24787b6-2aed-4069-8ee9-958befa5efeb",
+  "risk": "normal",
+  "elapsedMinutes": 2.4656333333333333,
+  "timing": {
+    "source": "runner",
+    "durationMs": 147938,
+    "evidence": "Claude Factory review run c615e205-3d65-4cfb-b583-c67fb04ef972 recorded duration_ms in its successful terminal result."
+  },
+  "outcome": "complete",
+  "summary": "Independent review cleared the Claude hook, read ranges, checkout attribution and trace summaries. All 197 tests in the reviewer's focused suite passed, and the reviewer verified the compiled output.",
+  "contextRead": [
+    "hq/product/roadmap/MO-26-11-17-01.45.10-fix-context-diagnostics.md",
+    ".agent/worklog/2026-11-17-fix-context-reads-profile.md",
+    ".agent/worklog/2026-11-08-expose-context-mcp.md",
+    "docs/runbooks/context-search.md",
+    "architecture.md"
+  ],
+  "findings": [
+    {
+      "id": "R01",
+      "severity": "minor",
+      "description": "The heading scanner treats backtick and tilde fences as interchangeable. A fence marker of the other type inside a code block can affect section boundaries in a future spec.",
+      "paths": [
+        "src/context-search/overview.ts"
+      ],
+      "disposition": "disputed",
+      "response": "The scanner serves seven fixed anchors in the indexed Morpheus specification, and the reviewer verified all of them in the current file. A general Markdown parser change is outside this fix."
+    },
+    {
+      "id": "R02",
+      "severity": "minor",
+      "description": "For a registered root using a symlink or separate Git directory, hashing the registered path plus /.git may not reproduce the worktree key.",
+      "paths": [
+        "src/profile/derive.ts"
+      ],
+      "disposition": "disputed",
+      "response": "Standard registered checkout roots match the actual key and the old and current layouts have regression coverage. The few nonstandard layouts can stay unattributed until there is authoritative Git directory identity, preventing sessions from being assigned to a same-named repository."
+    }
+  ]
+}
+```
