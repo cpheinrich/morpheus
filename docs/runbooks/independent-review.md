@@ -88,7 +88,9 @@ and problems preventing acceptance criteria, are in scope. Other pre-existing bu
 follow-ups. Flag independently discovered critical risks for human judgment; do not silently widen
 the PR. Blocking findings need a concrete failure scenario and a causal connection to this change.
 Complexity the PR adds is in scope too ([`architecture.md` §2](../../architecture.md), principle
-11). A simpler version with the same behaviour, in fewer parts or lines, is a minor finding. A gate,
+11). Identify the mechanism and the callers or contract it serves. Check whether an existing owner
+can handle the supported scenario and whether a shared abstraction fits each caller. Describe the
+smallest simpler approach that preserves the behavior. A local simplification is a minor finding. A gate,
 approval step, state, option or mechanism that the requirements do not need is substantive. Its
 failure scenario is the legitimate work it would stop or delay.
 
