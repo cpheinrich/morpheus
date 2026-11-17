@@ -14,6 +14,7 @@ import { tantivyPython } from "../src/context-search/runtime.js";
 import { summarizeContextTraces } from "../src/context-search/trace-summary.js";
 import { armMcpTaskContext, taskContextRefusal, taskPrompt } from "../src/context-search/task-start.js";
 import { warmTrunkContext } from "../src/context-search/warm.js";
+import { sessionTag } from "../src/session/evidence.js";
 import { bindTask } from "../src/session/tasks.js";
 import { recordRead } from "../src/session/read-hook.js";
 
@@ -166,6 +167,10 @@ exec "$PROBE_PYTHON" "$@"
     expect(second.structuredContent?.citations).toEqual([{ path: added, from: 1, to: 1, kind: "other" }]);
     expect((await search("thirdphrase")).structuredContent?.citations)
       .toEqual([{ path: taskPath, from: 1, to: 1, kind: "roadmap" }]);
+    // Five of the ten searches above answered from the previous index, and the profile says so.
+    expect((await summarizeContextTraces(root)).byArmTransport).toEqual([expect.objectContaining({
+      transport: "mcp", operations: expect.objectContaining({ search: expect.objectContaining({ calls: 10, empty: 4, partial: 5 }) }),
+    })]);
   } finally {
     await Promise.all([0, 1, 2].map(release));
   }
@@ -206,6 +211,204 @@ it("preserves arm, records MCP timing, and only credits the excerpt shown by the
   expect((await summarizeContextTraces(root)).byArmTransport).toEqual(expect.arrayContaining([
     expect.objectContaining({ arm: "tantivy-compact", transport: "mcp", visibleSessions: 1 }),
   ]));
+});
+
+it("opens a local architecture section from the overview and continues a long read without skipping a line", async () => {
+  const { call, root } = await fixture();
+  type Section = { title: string; href: string; read?: { path: string; from: number; to: number } };
+  const sections = async () => ((await call("get_context_overview")).structuredContent!.architecture as { sections: Section[] }).sections;
+  // Another project's overview links the pinned specification for people and offers nothing to read locally.
+  expect(await sections()).toContainEqual({ title: "The work loop", href: expect.stringMatching(/^https:\/\/github\.com\/cpheinrich\/morpheus\/blob\/[^/]+\/architecture\.md#73-the-work-loop$/) });
+
+  const loop = Array.from({ length: 120 }, (_, i) => `Loop step ${i + 1} keeps its own line.`);
+  const source = [
+    "# Specification", "",
+    "## 4. The project manifest", "Manifest rule.", "```sh", "# 7.3 The work loop", "```", "### 4.1 Detail", "Detail rule.",
+    "## 7. Agents", "### 7.3 The work loop", ...loop, "### 7.10 Context freshness", "Freshness rule.",
+  ];
+  await writeFile(join(root, "architecture.md"), source.join("\n") + "\n");
+  await writeFile(join(root, "package.json"), JSON.stringify({ name: "morpheus-kit" }));
+  await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "morpheus", prefix: "MO" }));
+  execFileSync("git", ["add", "architecture.md"], { cwd: root });
+  const local = await sections();
+  expect(local.filter(section => section.read)).toEqual([
+    // A section ends before the next heading of its level; the fenced `#` comment is not one.
+    { title: "Project manifest", href: "architecture.md#4-the-project-manifest", read: { path: "architecture.md", from: 3, to: 9 } },
+    // 120 lines of body: capped at the 100 lines one read accepts.
+    { title: "The work loop", href: "architecture.md#73-the-work-loop", read: { path: "architecture.md", from: 11, to: 110 } },
+    { title: "Context freshness", href: "architecture.md#710-context-freshness", read: { path: "architecture.md", from: 132, to: 133 } },
+  ]);
+  expect(local).toHaveLength(7);
+
+  const read = async (input: Record<string, unknown>) => (await call("read_project_record", input)).structuredContent!;
+  const body = (excerpt: unknown) => (excerpt as string).split("\n").slice(2);
+  const manifest = await read(local[0]!.read!);
+  expect(manifest).toMatchObject({ outcome: "ok", from: 3, to: 9, truncated: false });
+  expect(manifest.next).toBeUndefined();
+  expect(body(manifest.excerpt)).toEqual(source.slice(2, 9));
+
+  // The listed parameters, on a budget too small for the section: each page names the next.
+  const pages: Record<string, unknown>[] = [];
+  for (let input: Record<string, unknown> | undefined = { ...local[2]!.read!, max_tokens: 150 }; input; ) {
+    const page = await read(input);
+    pages.push(page);
+    input = page.next ? { ...page.next as object, max_tokens: 150 } : undefined;
+  }
+  expect(pages.length).toBeGreaterThan(3);
+  expect(pages[0]).toMatchObject({ from: 11, truncated: true, next: { path: "architecture.md", from: (pages[0]!.to as number) + 1, to: 110 } });
+  expect(pages.at(-1)).toMatchObject({ to: 110, truncated: false });
+  expect(pages.at(-1)!.next).toBeUndefined();
+  for (const page of pages) expect(page.returnedTokens as number).toBeLessThanOrEqual(150);
+  expect(pages.flatMap(page => body(page.excerpt))).toEqual(source.slice(10, 110));
+
+  // 100 lines is the most one read takes; 101 is refused with the range to use instead.
+  expect(await read({ path: "architecture.md", from: 11, to: 110, max_tokens: 2500 })).toMatchObject({ from: 11, to: 110, truncated: false });
+  const refusal = (text: string) => ({ isError: true, content: [{ type: "text", text }] });
+  const tooLong = refusal("Choose an inclusive range of 1–100 lines: read from 11 to 110, then continue from 111.");
+  expect(await call("read_project_record", { path: "architecture.md", from: 11, to: 111 })).toEqual(tooLong);
+  expect(await call("read_project_record", { path: "architecture.md", from: 11, to: 10 })).toEqual(tooLong);
+  expect(await read({ path: "architecture.md", from: 111, max_tokens: 2500 })).toMatchObject({ from: 111, to: 126, truncated: false });
+  // The end of the record is not a truncation, and there is nothing after it to continue with.
+  const tail = await read({ path: "architecture.md", from: 132 });
+  expect(tail).toMatchObject({ from: 132, to: 133, truncated: false });
+  expect(tail.next).toBeUndefined();
+  expect(await read({ path: "architecture.md", from: 134 })).toEqual({ outcome: "empty" });
+  // The human link is not a path: the refusal says how to read the record it names.
+  expect(await call("read_project_record", { path: "architecture.md#73-the-work-loop" }))
+    .toEqual(refusal("Read architecture.md by line range; a heading anchor is not part of the path."));
+  expect(await call("read_project_record", { path: "https://github.com/cpheinrich/morpheus/blob/main/architecture.md#73-the-work-loop" }))
+    .toEqual(refusal("The path is outside the project context corpus. Check context coverage."));
+});
+
+it("traces why a read was refused as a fixed category, and reads older rows without one", async () => {
+  const { call, root, session } = await fixture();
+  const read = (input: Record<string, unknown>) => call("read_project_record", input);
+  expect((await read({ path: worklogPath, from: 1, to: 101 })).isError).toBe(true);
+  expect((await read({ path: "docs/private/safety.md" })).isError).toBe(true);
+  await rm(join(root, worklogPath));
+  expect(await read({ path: worklogPath })).toMatchObject({ isError: true, content: [{ text: "The record is unavailable in this worktree." }] });
+  // A record whose directory became a file fails in the filesystem, not in a rule of ours.
+  await rm(join(root, "research/.draft"), { recursive: true });
+  await writeFile(join(root, "research/.draft"), "not a directory");
+  expect((await read({ path: "research/.draft/safety.md" })).isError).toBe(true);
+  expect((await read({ path: ".agent/decisions.md" })).structuredContent).toMatchObject({ outcome: "ok" });
+
+  const arm = await contextArm(root, session);
+  const base = { type: "tool", arm: arm.arm, engine: arm.engine, session: arm.session, rollout: arm.id, transport: "mcp", operation: "read" } as const;
+  // Only the fixed vocabulary is written, and only on an error.
+  await traceContext(root, { ...base, outcome: "error", reason: "docs/private/safety.md is private" as "other" });
+  await traceContext(root, { ...base, outcome: "ok", reason: "coverage" });
+  const date = new Date().toISOString().slice(0, 10);
+  const file = join(root, "local/context-search/traces", date + ".jsonl");
+  const rows = (await readFile(file, "utf8")).split("\n").filter(Boolean).map(line => JSON.parse(line));
+  expect(rows.filter(row => row.operation === "read").map(row => [row.outcome, row.reason])).toEqual([
+    ["error", "range"], ["error", "coverage"], ["error", "unavailable"], ["error", "other"], ["ok", undefined],
+    ["error", undefined], ["ok", undefined],
+  ]);
+  const log = await readFile(file, "utf8");
+  for (const text of ["private", "safety", "worklog", "unavailable in this worktree", session]) expect(log).not.toContain(text);
+  // A row from before reasons existed, and one carrying a reason this build does not know.
+  const older = { version: 1, at: new Date().toISOString(), type: "tool", arm: arm.arm, engine: "tantivy", rollout: arm.id, transport: "mcp", operation: "read", outcome: "error" };
+  await writeFile(file, [older, { ...older, queryMs: 1, reason: "quota" }].map(row => JSON.stringify(row) + "\n").join(""), { flag: "a" });
+  const summary = await summarizeContextTraces(root);
+  expect(summary.invalidRows).toBe(0);
+  expect(summary.byArmTransport).toEqual([expect.objectContaining({
+    transport: "mcp", operations: { read: expect.objectContaining({
+      calls: 9, errors: 7, empty: 0, partial: 0, errorReasons: { coverage: 1, other: 1, range: 1, unavailable: 1 },
+    }) },
+  })]);
+});
+
+/**
+ * Claude Code's PostToolUse input for an MCP tool, in the shape captured live from Claude Code
+ * 2.1.322 on 2026-11-17: no `turn_id`, and `tool_response` is the structured content serialized
+ * to one string. Identifiers and host paths are placeholders; the keys and types are the capture's.
+ */
+function claudeToolUse(root: string, session: string, tool: string, structured: unknown, overrides: Record<string, unknown> = {}) {
+  return JSON.stringify({
+    session_id: session, transcript_path: join(root, "transcript.jsonl"), cwd: root, prompt_id: "prompt-fixture",
+    permission_mode: "bypassPermissions", effort: { level: "high" }, hook_event_name: "PostToolUse",
+    tool_name: "mcp__morpheus_context__" + tool, tool_input: {}, tool_response: JSON.stringify(structured),
+    tool_use_id: "toolu_fixture", duration_ms: 65, mcp_server: { name: "morpheus_context", source: "dynamic" }, ...overrides,
+  });
+}
+
+it("credits the excerpt Claude Code serializes into its hook payload, and nothing it cannot verify", async () => {
+  const { call, root, session } = await fixture();
+  const seen = (id: string) => readFile(join(root, "local/context-search/startup", sessionTag(id) + ".seen"), "utf8").catch(() => null);
+  const pending = async (id = session) => {
+    expect(await seen(id)).toBeNull();
+    expect(await taskContextRefusal(root, id)).toContain("Load context");
+  };
+  const search = "search_project_context";
+  await armMcpTaskContext(root, session);
+  // Liveness alone: the hook ran for this session and has seen no task excerpt yet.
+  await recordRead(claudeToolUse(root, session, search, (await call(search, { query: "zzzzunused" })).structuredContent));
+  await pending();
+
+  const found = (await call(search, { query: secretQuery })).structuredContent!;
+  expect(found).toMatchObject({ outcome: "ok", citations: expect.arrayContaining([{ path: ".agent/decisions.md", from: 1, to: 3, kind: "decision" }]) });
+  // One citation, so that altering it leaves nothing else in the result to verify.
+  const read = "read_project_record";
+  const exact = (await call(read, { path: ".agent/decisions.md", from: 1, to: 3 })).structuredContent!;
+  expect(exact).toMatchObject({ outcome: "ok", from: 1, to: 3, truncated: false });
+
+  // A refused call shows the model an error, whatever text rides along with it.
+  const refused = await call(read, { path: "../private.md" });
+  expect(refused.isError).toBe(true);
+  await recordRead(claudeToolUse(root, session, read, (refused.content[0] as { text: string }).text));
+  await recordRead(claudeToolUse(root, session, read, exact, { hook_event_name: "PostToolUseFailure", tool_response: undefined, error: JSON.stringify(exact) }));
+  await pending();
+  // Text that does not match the cited source: altered in the result, then changed on disk.
+  await recordRead(claudeToolUse(root, session, read, { ...exact, excerpt: (exact.excerpt as string).replace("signed release authority", "unsigned release authority") }));
+  await pending();
+  const decisions = await readFile(join(root, ".agent/decisions.md"), "utf8");
+  await writeFile(join(root, ".agent/decisions.md"), decisions.replace("signed", "countersigned"));
+  await recordRead(claudeToolUse(root, session, read, exact));
+  await pending();
+  await writeFile(join(root, ".agent/decisions.md"), decisions);
+  // Outside this checkout's corpus, from another server, and past the size the model is shown in full.
+  const excluded = `Morpheus context search excerpts\ndocs/private/safety.md:1-2\n# Zircon checklist\nPrivate material.`;
+  await recordRead(claudeToolUse(root, session, read, { ...exact, excerpt: excluded }));
+  await recordRead(claudeToolUse(root, session, read, exact, { tool_name: "mcp__other_server__read_project_record" }));
+  const padded = (bytes: number) => {
+    const pad = bytes - Buffer.byteLength(JSON.stringify({ ...exact, pad: "" }));
+    return { ...exact, pad: "x".repeat(pad) };
+  };
+  expect(Buffer.byteLength(JSON.stringify(padded(20_001)))).toBe(20_001);
+  await recordRead(claudeToolUse(root, session, read, padded(20_001)));
+  await pending();
+  // A result this session never saw credits only the session that did.
+  await armMcpTaskContext(root, "other-claude-session");
+  await recordRead(claudeToolUse(root, "other-claude-session", read, padded(20_000)));
+  expect(await seen("other-claude-session")).toBe("1\n");
+  expect(await taskContextRefusal(root, "other-claude-session")).toBeUndefined();
+  await pending();
+
+  // The positive control: the unmodified result, byte-verified against the tracked record.
+  await recordRead(claudeToolUse(root, session, search, found));
+  expect(await seen(session)).toBe("1\n");
+  expect(await taskContextRefusal(root, session)).toBeUndefined();
+
+  const date = new Date().toISOString().slice(0, 10);
+  const log = await readFile(join(root, "local/context-search/traces", date + ".jsonl"), "utf8");
+  for (const text of [secretQuery, session, "release authority", "decisions.md"]) expect(log).not.toContain(text);
+  const visible = log.split("\n").filter(Boolean).map(line => JSON.parse(line)).filter(row => row.type === "visible");
+  expect(visible.map(row => [row.transport, row.operation, row.session])).toEqual([
+    ["mcp", "read", contextTraceSession("fixture-pilot", "other-claude-session")],
+    ["mcp", "search", contextTraceSession("fixture-pilot", session)],
+  ]);
+});
+
+it("keeps crediting a literal excerpt from a host that passes the text block through", async () => {
+  const { call, root, session } = await fixture();
+  await armMcpTaskContext(root, session);
+  const found = await call("search_project_context", { query: secretQuery });
+  await recordRead(claudeToolUse(root, session, "search_project_context", null, { tool_response: found.structuredContent!.excerpt }));
+  expect(await taskContextRefusal(root, session)).toBeUndefined();
+  await armMcpTaskContext(root, "block-session");
+  await recordRead(claudeToolUse(root, "block-session", "search_project_context", null, { tool_response: found.content }));
+  expect(await taskContextRefusal(root, "block-session")).toBeUndefined();
 });
 
 it("uses the session worktree and refuses to move a pinned Factory worker outside its admitted checkout", async () => {

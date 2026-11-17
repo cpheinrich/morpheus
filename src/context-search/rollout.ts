@@ -14,6 +14,9 @@ export type ContextTransport = "cli" | "mcp";
 export type TraceTransport = ContextTransport | "hook";
 export type ContextOperation = "search" | "read" | "coverage" | "overview" | "related";
 export type ContextOutcome = "ok" | "empty" | "error";
+/** Why an exact read was refused. A fixed vocabulary: a trace never carries the message or the path. */
+export const CONTEXT_ERROR_REASONS = ["coverage", "range", "unavailable", "other"] as const;
+export type ContextErrorReason = typeof CONTEXT_ERROR_REASONS[number];
 
 export type SearchEngine = "tantivy" | "ripgrep";
 export type Arm = "tantivy-compact" | "tantivy-full" | "tantivy-bounded" | "ripgrep-bounded" | "ripgrep-full" | "manual" | "legacy";
@@ -140,6 +143,7 @@ export interface ContextTrace {
   transport?: TraceTransport;
   operation?: ContextOperation;
   outcome?: ContextOutcome;
+  reason?: ContextErrorReason;
   arm: Arm;
   engine: SearchEngine;
   /** Actual engine, when different from the assigned engine. */
@@ -177,6 +181,7 @@ function traceUsage(event: ContextTrace) {
     transport: event.transport === "cli" || event.transport === "mcp" || event.transport === "hook" ? event.transport : undefined,
     operation: (["search", "read", "coverage", "overview", "related"] as const).includes(event.operation!) ? event.operation : undefined,
     outcome: (["ok", "empty", "error"] as const).includes(event.outcome!) ? event.outcome : undefined,
+    reason: event.outcome === "error" && CONTEXT_ERROR_REASONS.includes(event.reason!) ? event.reason : undefined,
   };
 }
 
