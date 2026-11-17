@@ -60,15 +60,15 @@ steps.
 
 ## Result
 
-Across three pull-request runs on this branch, against thirteen on other branches the same day:
+Across four pull-request runs on this branch, against thirteen on other branches the same day:
 
 - The steps around the tests took 25 seconds (22 to 32) instead of 43 (30 to 59).
-- `node / check` took 148 seconds (143 to 161) instead of 177 (141 to 209).
-- The required checks reported at 159 seconds (155 to 174) instead of 194 (153 to 222).
+- `node / check` took 155 seconds (143 to 165) instead of 177 (141 to 209).
+- The required checks reported at 167 seconds (155 to 176) instead of 194 (153 to 222).
 
-About 18 seconds of that is the change; the rest is luck with faster test machines in a small
-sample. So the honest saving is about a tenth of the wait, for no added runner time. All
-required checks kept reporting under their names.
+The 18 seconds in the first line is the change itself; the few seconds beyond it are
+test-machine variance in a small sample. So the honest saving is about a tenth of the wait,
+for no added runner time. All required checks kept reporting under their names.
 
 ## Rollout and revert
 
@@ -139,11 +139,14 @@ Pull request #733, `parallel-static-checks: true`.
 | 44024584533 | 33d1ec60 | 25 | — | — | — | — | 116 | 161 | 174 |
 | 44025455712 | 1a368a6d | 32 | 15 | 9 | 13 | 32 | 87 | 143 | 155 |
 | 44026398365 | cf07fdd5 | 22 | 19 | 11 | 15 | 22 | 103 | 148 | 159 |
+| 44027316932 | 447563cc | 25 | 23 | 14 | 19 | 24 | 119 | 165 | 176 |
 
 Per-check durations were added in the second commit. Running together slows each check
-(typecheck 11 to 15–19, lint 5 to 9–11, build 8 to 13–15), but the step lasts only as long as
-the slowest. Whole-workflow time is unchanged (289 against 294) because browser QA finishes
-last. Runner seconds for the two runs without the measurement job were 676 and 706.
+(typecheck 11 to 15–23, lint 5 to 9–14, build 8 to 13–19), but the step lasts only as long as
+the slowest. On a slow machine (the last run) typecheck nearly matches the context-runtime
+install. Whole-workflow time is unchanged within noise (307 against 294) because browser QA
+finishes last. Runner seconds for the three runs without the measurement job were 676, 706
+and 739, against a baseline of 730.
 
 Checks on every run: `node / check`, `pm / pm`, `changes`, `qa-browser`, `factory` and
 `artifact-abi` passed; `pr / conventions` and `agent-review / delivery` were skipped, as they
