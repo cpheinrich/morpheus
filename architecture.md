@@ -2923,6 +2923,11 @@ provisioned:
 | A registered web app, and its public SDK config | The Firestore deny block for `waitlist` |
 | Workload Identity Federation for Vercel | `.env.example`, and the dependencies the code imports |
 
+New Next.js apps scaffold an app-local `.oxlintrc.json` and a pinned Oxlint dev dependency.
+Their `lint` script checks JavaScript and TypeScript using correctness, React hooks, Next.js,
+and JSX accessibility rules. The shared web CI runs that script alongside typecheck, tests,
+and build. Established apps keep their existing lint config during scaffolding.
+
 Then it calls `firebase auth setup` (§ Firebase Google sign-in), which is the only step that can
 need a human at a consent screen — and is therefore last, so everything before it survives a stop.
 

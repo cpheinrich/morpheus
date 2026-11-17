@@ -1,6 +1,9 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   buildContext,
@@ -28,6 +31,7 @@ import * as libs from "../src/web/consumer-auth/templates-lib.js";
 import * as app from "../src/web/consumer-auth/templates-app.js";
 import * as suites from "../src/web/consumer-auth/templates-tests.js";
 import type { WebSurvey } from "../src/web/survey.js";
+import { appOxlintConfig } from "../src/web/templates.js";
 
 /**
  * The templates were extracted from Evo, where every property asserted below
@@ -258,6 +262,30 @@ describe("scaffoldConsumerAuth", () => {
     expect(second.written).toEqual([]);
     expect(second.drifted).toEqual([]);
     expect(second.merged).toEqual([]);
+  });
+
+  it("lints consumer auth scaffold output with the new web app defaults", async () => {
+    const webRoot = join(root, "apps/web");
+    await writeFile(join(webRoot, ".oxlintrc.json"), appOxlintConfig);
+    await scaffoldConsumerAuth({ root, survey, ctx });
+
+    const require = createRequire(import.meta.url);
+    const oxlint = join(dirname(require.resolve("oxlint/package.json")), "bin/oxlint");
+    const exec = promisify(execFile);
+    const lint = (...files: string[]) =>
+      exec(process.execPath, [oxlint, "--format", "json", ...files], { cwd: webRoot });
+
+    const result = JSON.parse((await lint()).stdout);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.number_of_files).toBeGreaterThan(20);
+
+    // The safe-next template intentionally rejects control characters in URLs.
+    // Its exemption must not hide the same pattern in another source file.
+    await writeFile(join(webRoot, "lib", "control-chars.ts"), "export const control = /\\u0000/;\n");
+    await expect(lint("lib/control-chars.ts")).rejects.toMatchObject({
+      code: 1,
+      stdout: expect.stringContaining("no-control-regex"),
+    });
   });
 
   it("never overwrites, and names a drifted plumbing file", async () => {

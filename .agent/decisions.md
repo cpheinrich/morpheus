@@ -2730,3 +2730,13 @@ aggregating `check` job; that is a separate item. Time-balanced shards and diff-
 test selection need custom infrastructure or drop coverage this suite depends on, so both are
 rejected. The concurrent step is about forty lines of bash in the workflow; no package or
 action is added.
+
+## Default JavaScript and TypeScript lint to Oxlint — 2026-11-17
+
+MO-26-11-17-01.05.07 adopts the previously measured Oxlint migration for Morpheus and
+for newly scaffolded Next.js apps. This supersedes the linter decision in the preceding
+CI pilot. Morpheus converts the existing TypeScript rules and keeps the positive and
+negative lint fixtures. Fresh apps use correctness, React hooks, Next.js and accessibility
+rules. Shared workflows run each repository's lint script. Existing projects migrate their
+own configuration with positive and negative checks for important local behavior.
+The initial version is pinned to the newest release that fits the existing pnpm policy.

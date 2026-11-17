@@ -31,7 +31,7 @@ hold a merge.
 |---|---|---|
 | Parallel lint, typecheck, build | **Adopted as an opt-in pilot** | The four steps around the tests run at once in the same job: 25 seconds instead of 43. No extra runner. |
 | `bun check` for `tsc` | Not now | 0.1 s against 5.5 s locally, with identical errors. But typecheck no longer holds anything up once it runs alongside the other checks, and `dist/` still needs `tsc`. |
-| Oxlint for ESLint | Not now | 0.06 s against 3.4 s locally; every rule migrates. Lint is 5 seconds in CI and no longer holds anything up. Swapping it reverses the pinned ESLint contract. |
+| Oxlint for ESLint | Adopted for lint feedback in MO-26-11-17-01.05.07 | The pilot measured 0.06 s against 3.4 s locally. Lint took about 5 seconds in CI and finished inside the concurrent block. |
 | Test shards | Promising, separate item | Two native shards cut the test step from 87 to 63 seconds in the same run. It costs a second runner and a restructured required check. |
 | Shards balanced by time | Rejected | Vitest splits by file, not time. Balancing would save roughly ten more seconds and needs a custom sequencer plus stored timings. |
 | Only tests the diff reaches | Rejected | Vitest follows imports. It selected no tests for a change to a workflow, `AGENTS.md` or a doc, though 90 of 159 test files read such files from disk. |
@@ -162,8 +162,8 @@ Local, 16-core Apple silicon, three runs each, this repository at 898406bd.
 
 `bun check` is a port of typescript-go that tracks TypeScript 7; it checks only, with no
 JavaScript or declaration output, so the build keeps `tsc`. Morpheus is on TypeScript 5.9, so
-adopting it would also mean two type-system versions in one pipeline. `tests/lint-contract.test.ts`
-pins lint to ESLint 10.
+adopting it would also mean two type-system versions in one pipeline. This benchmark used the
+ESLint 10 contract in effect at the time.
 
 ## Appendix D: shard measurement
 

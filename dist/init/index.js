@@ -478,7 +478,7 @@ async function scaffoldIndexes(root, dirs) {
             if (!(await exists(join(productDir, kind))))
                 continue;
             const { items } = await parseArtifact(productDir, kind);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // oxlint-disable-next-line typescript/no-explicit-any
             const rendered = renderers[kind](items);
             await gen.writeIndex(join(productDir, kind), rendered);
         }

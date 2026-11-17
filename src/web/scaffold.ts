@@ -147,6 +147,7 @@ async function scaffoldNewApp({ opts, survey, name, app, notes }: WebRun): Promi
     "package.json",
     t.appPackageJson(opts.scope, survey.shared?.name, Boolean(opts.hq && opts.firebase)),
   );
+  await app(".oxlintrc.json", t.appOxlintConfig);
   await app("tsconfig.json", t.appTsconfig());
   await app("next.config.ts", t.nextConfig());
   await app("postcss.config.mjs", t.postcssConfig());

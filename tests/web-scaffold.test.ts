@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
@@ -158,6 +159,7 @@ describe("waitlist schema placement", () => {
 describe("scaffoldWeb", () => {
   it("adds the missing half to an established app without touching what is there", async () => {
     const root = await establishedProject();
+    await write(root, "apps/web/eslint.config.mjs", "export default [];\n");
     const before = await readFile(join(root, "apps/web/app/page.tsx"), "utf8");
     const survey = await surveyWeb(root);
 
@@ -200,7 +202,34 @@ describe("scaffoldWeb", () => {
     ) as { dependencies: Record<string, string>; scripts: Record<string, string> };
     expect(manifest.dependencies["morpheus-kit"]).toBe("github:cpheinrich/morpheus#main");
     expect(manifest.scripts.postbuild).toBeUndefined();
+    expect(manifest.scripts.lint).toBeUndefined();
+    expect(await readFile(join(root, "apps/web/eslint.config.mjs"), "utf8")).toBe("export default [];\n");
+    await expect(readFile(join(root, "apps/web/.oxlintrc.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
     expect(result.notes.some((note) => note.includes("After classifying its existing HQ routes"))).toBe(true);
+  });
+
+  it("generates an Oxlint configuration that checks a new Next.js app", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-web-"));
+    roots.push(root);
+    await scaffoldWeb(options(root, await surveyWeb(root)));
+    const webRoot = join(root, "apps/web");
+    const manifest = JSON.parse(await readFile(join(webRoot, "package.json"), "utf8"));
+    expect(manifest.scripts.lint).toBe("oxlint");
+    expect(manifest.devDependencies.oxlint).toBeTruthy();
+
+    const require = createRequire(import.meta.url);
+    const oxlint = join(dirname(require.resolve("oxlint/package.json")), "bin/oxlint");
+    const lint = (...files: string[]) => execFileAsync(process.execPath, [oxlint, "--format", "json", ...files], { cwd: webRoot });
+    const result = JSON.parse((await lint()).stdout);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.number_of_files).toBeGreaterThan(1);
+
+    const badPath = "app/async-client.tsx";
+    await write(root, `apps/web/${badPath}`, '"use client";\nexport default async function Client() { return <p>Hi</p>; }\n');
+    await expect(lint(badPath)).rejects.toMatchObject({
+      code: 1,
+      stdout: expect.stringContaining("no-async-client-component"),
+    });
   });
 
   it("generates an executable postbuild contract for new HQ apps", async () => {
