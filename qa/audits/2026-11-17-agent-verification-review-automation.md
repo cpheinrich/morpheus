@@ -4,7 +4,7 @@ November 17, 2026 · Evidence and proposed experiments
 
 Morpheus already uses many of the practices Anthropic describes. Its independent reviewer is a fresh session, substantive findings have dispositions, reviews cover concrete commits, and product teams already use browser, simulator, physical-device, and replay harnesses. The gaps are more specific. A candidate can influence the policy used to judge it. A passing stage can stand in for a user-visible outcome. Worklogs preserve useful failure cases, but the current measures cannot tell us which reviewer would have caught past escapes.
 
-**Start with two small changes in separate follow-ups.** Fix the ownership of review policy using a trusted base. Then pilot one short Evo journey and trace its evidence through Darwin's Operations Desk. Run the review evaluation and automation replay in shadow mode before changing review budgets or adding gates.
+**Start with two small changes in separate follow-ups.** Fix the ownership of review policy using a trusted base. Then pilot one short Evo journey and check how Darwin's Operations Desk presents delivery evidence. Run the review evaluation and automation replay in shadow mode before changing review budgets or adding gates.
 
 ## What transfers from the three posts
 
@@ -38,7 +38,7 @@ Ranking weighs blast radius, direct evidence, and the cost of getting a decisive
 
 **Pass.** The synthetic weakening case is refused, every established intended exception still reports correctly, and no ordinary unchanged-policy case changes its verdict on a 20-PR replay. Review every disagreement and measure the added required-check time before choosing where to run the comparison. The merge authority belongs in a protected GitHub rule or independently governed check if the project can also change its workflow. Use a named owner to approve relaxations to required review or comparable release and authorization controls. Leave the ordinary risk-tiered route available for product changes.
 
-### 2. Make one Evo journey reproducible before review and trace it through Darwin
+### 2. Pair a short Evo journey with Darwin delivery-evidence checks
 
 **Evidence.** Evo's release and review records distinguish source, native evidence and delivery. Darwin's operator-verified dashboard contract was built using synthetic browser states, which are well suited to fast checks. Morpheus already recommends testing observed effects and assigns closure to the verified downstream receipt. [Release ownership](../../docs/runbooks/pm-workflow.md#what-a-pr-carries) · [Infra dashboard verification](../../docs/runbooks/infra-dashboard-design.md)
 
