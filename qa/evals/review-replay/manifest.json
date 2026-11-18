@@ -1,0 +1,36 @@
+{
+  "packetsSha256": "81bb58938a37035d2e1f063c08c2ff8b6ded98e9cda162b0d91a52bce73867a2",
+  "rubricSha256": "1629ef381d5a2761013c05315db49d8ea7d93c7f82c0e595461b2fc7451f2320",
+  "baseRevision": "9c4c3e58539f75d0bcabc545bfa9df3346488c30",
+  "policyFile": "src/review/local-prompt.ts",
+  "policyFileSha256": {
+    "base": "a6f259da34ae62401b6d024bc528e424285a8992b7c104405783e4a1d6550c1a",
+    "candidate": "7484817bd57498bc37d7a43cbbe352cd40d648b943e5ebcae9ea8fda807a5db6"
+  },
+  "requested": {
+    "provider": "Claude gateway",
+    "model": "claude-opus-5-5",
+    "effort": "high",
+    "speed": "standard"
+  },
+  "groups": {
+    "K": [
+      "R08",
+      "R01",
+      "R10",
+      "R09",
+      "R02",
+      "R04"
+    ],
+    "L": [
+      "R06",
+      "R12",
+      "R03",
+      "R07",
+      "R05",
+      "R11"
+    ]
+  },
+  "repeat": "Reverse case order within each group and reverse the arm launch order within each group.",
+  "decisionRule": "An effect worth promoting has zero lost target detections (all six are substantive), no newly created false blocker, at least one additional target caught on both repeats, and fewer harmful waste cases on both repeats. Ceiling and disagreement are pilot limitations."
+}

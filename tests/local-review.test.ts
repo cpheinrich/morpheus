@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkLocalReview, committedConfig, git, MISSING_CONTEXT_READ, MISSING_LABEL, parseReviewRecord, REVIEW_FLOOR_RULE, reviewRequired, trivialDiff, type LocalReviewRecord } from "../src/review/local.js";
 import { checkPr, formatFindings } from "../src/check/pr.js";
+import { pr as checkPrCommand } from "../src/cli/check.js";
 import { prepareReview, validateReview } from "../src/cli/review.js";
 import { AUTHOR_CONTEXT_SLOT } from "../src/review/packet.js";
 import { authorRecordProblem } from "../src/gh-manager/verify.js";
@@ -1483,6 +1484,29 @@ describe("reading committed review policy", () => {
       rule: "agent-review",
       message: expect.stringContaining(`commit ${base} is not in this checkout`),
     }]);
+  });
+  it("fails check pr when a tag shadows a missing trusted ref", async () => {
+    writeFileSync(join(root, "morpheus.json"), '{"review":{"required":false}}');
+    commit();
+    const trustedRef = "refs/remotes/origin/main";
+    git(root, ["tag", trustedRef]);
+    const previous = process.cwd();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv("GITHUB_EVENT_PATH", undefined);
+    vi.stubEnv("GITHUB_HEAD_REF", undefined);
+    vi.stubEnv("MORPHEUS_BRANCH", "fixture");
+    vi.stubEnv("MORPHEUS_PR_BODY", "## Test plan\nReviewed fixture.\n\n## Open questions\nNone.");
+    process.chdir(root);
+    try {
+      expect(await checkPrCommand("hq/product", trustedRef)).toBe(1);
+      expect(errors.mock.calls).toEqual([[
+        `commit ${trustedRef} is not in this checkout. Fetch the trusted target branch and re-run.`,
+      ]]);
+    } finally {
+      process.chdir(previous);
+      vi.unstubAllEnvs();
+      errors.mockRestore();
+    }
   });
   it("reports an unparseable manifest as such", () => {
     writeFileSync(join(root, "morpheus.json"), "{ not json");
