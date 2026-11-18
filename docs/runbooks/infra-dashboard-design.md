@@ -155,7 +155,9 @@ fixture data, and capture it in Chromium. It must fail on:
 - Overview rows that open the wrong work item or deployment channel;
 - deep links, including old fragments; reload; Back and Forward;
 - an inexact or same-tab job link;
-- a stale live status shown as current, or an unreported job given a result or link.
+- a stale live deployment status without Awaiting update or a dated last report on the attempt;
+- an absent job without Job not reported or with a link;
+- an observed unclassified job without Unknown and its exact link.
 
 Capture at 1440, 1024 and 390px in light and dark, and inspect the images. When the desk shows a
 private or cross-owner source, also verify the deployed desk: an authorized operator, an ordinary
