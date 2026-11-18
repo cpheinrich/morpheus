@@ -21,6 +21,10 @@ on:
       working-directory:
         type: string
         default: "."
+      checkout-fetch-depth:
+        description: Number of commits to fetch. Use 0 when tests need full Git history.
+        type: number
+        default: 1
       runner:
         description: >
           Single runner label for the job: a GitHub-hosted image
@@ -84,6 +88,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: ${{ inputs.checkout-fetch-depth }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4

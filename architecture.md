@@ -3817,6 +3817,9 @@ its triggers, application directory and encrypted `VERCEL_TOKEN`, `VERCEL_ORG_ID
 build, while the other spends model budget to judge a change, so neither workflow controls or
 implicitly enables the other.
 
+`python-ci` checks out a single commit by default. Callers whose tests consult Git history
+can request full history with `checkout-fetch-depth: 0`.
+
 Shipped: `node-ci`, `web-ci`, `python-ci`, `ios-ci`, `ios-nightly-build`, `firebase-tests`,
 `pm-check`, `pr-check`, `vercel-deploy`, `heartbeat`,
 `agent-review`, and `dependabot-maintainer`, plus composite actions `ios-testflight-upload` and `firebase-release`. Planned:

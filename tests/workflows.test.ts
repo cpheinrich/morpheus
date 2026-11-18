@@ -2753,6 +2753,19 @@ describe("python-ci", () => {
     }>;
   }
 
+  it("lets Python CI callers fetch history while defaulting to a shallow checkout", async () => {
+    const wf = (await read("python-ci.yml")) as PythonCi;
+    expect(wf.on?.workflow_call?.inputs?.["checkout-fetch-depth"]).toMatchObject({
+      type: "number",
+      default: 1,
+    });
+    const checkout = wf.jobs?.check?.steps?.find((s) =>
+      String(s["uses"] ?? "").startsWith("actions/checkout"));
+    expect(checkout?.["with"]).toMatchObject({
+      "fetch-depth": "${{ inputs.checkout-fetch-depth }}",
+    });
+  });
+
   it("refuses to measure coverage without being told what to measure", async () => {
     const wf = (await read("python-ci.yml")) as PythonCi;
     const step = wf.jobs?.check?.steps?.find((s) => s["name"] === "Test with coverage");
