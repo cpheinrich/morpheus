@@ -25,7 +25,7 @@ is synthetic.
 - [ ] Every selection lives in the URL fragment, so Back/Forward, reload, a shared link and
   sign-in all restore it. Old fragments keep resolving.
 - [ ] Statuses sit in one fixed-width column. Terminal outcomes stay dated when a source goes
-  stale; live states become Unknown.
+  stale. Withdraw live states when their reading expires.
 - [ ] The health strip counts confirmed failures only. Unknown is never a failure, and a
   no-change check is never a delivery.
 - [ ] Each source reports itself as available, failed or absent, never as an empty list.
@@ -110,8 +110,12 @@ enrolled read-only projection, never a controller login or direct database acces
 - One status column per list, left-aligned at a fixed width (about 12–13rem on desktop and 8.5rem
   at 760px and below), so every dot starts at the same x.
 - Times read `Nov 12, 9:19pm PST` in the viewer's zone, with relative ages beside them.
-- A live state (`running`, `queued`) needs a current reading. When the reading is stale, show
-  Unknown and keep the dated last report beside it.
+- A live state (`running`, `queued`) needs a current reading. In Deployments, show **Awaiting
+  update** for stale live statuses, with the dated last report on the attempt. Keep terminal
+  statuses and their exact links.
+- Say **Job not reported** when a successful job read has no record for an expected stage.
+  Reserve **Unknown** for an observed job whose result cannot be classified. When the job read
+  itself fails, say the jobs could not be read.
 - Separate a scheduled check that found nothing to ship from an actual delivery, using the job
   that performs the delivery (for example `Upload`), not the run's overall result.
 - The health strip lists confirmed problems only, as jump links. With none, it says "No confirmed
@@ -151,7 +155,9 @@ fixture data, and capture it in Chromium. It must fail on:
 - Overview rows that open the wrong work item or deployment channel;
 - deep links, including old fragments; reload; Back and Forward;
 - an inexact or same-tab job link;
-- stale or stopped evidence that is not shown as Unknown for what it cannot know.
+- a stale live deployment status without Awaiting update or a dated last report on the attempt;
+- an absent job without Job not reported or with a link;
+- an observed unclassified job without Unknown and its exact link.
 
 Capture at 1440, 1024 and 390px in light and dark, and inspect the images. When the desk shows a
 private or cross-owner source, also verify the deployed desk: an authorized operator, an ordinary
