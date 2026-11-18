@@ -1,0 +1,62 @@
+[
+  {
+    "base": {
+      "R01": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R02": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]},
+      "R03": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]},
+      "R04": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R05": {"outcome":"complete","caught":false,"waste":["redundant-change"],"usefulSecondary":[]},
+      "R06": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R07": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R08": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]},
+      "R09": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R10": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":["pending-upload-tracking"]},
+      "R11": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R12": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]}
+    },
+    "candidate": {
+      "R01": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R02": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]},
+      "R03": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]},
+      "R04": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R05": {"outcome":"complete","caught":false,"waste":["redundant-change"],"usefulSecondary":[]},
+      "R06": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R07": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R08": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]},
+      "R09": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R10": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":["pending-upload-tracking"]},
+      "R11": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R12": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]}
+    }
+  },
+  {
+    "base": {
+      "R01": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R02": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]},
+      "R03": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]},
+      "R04": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R05": {"outcome":"complete","caught":false,"waste":["redundant-change","nit"],"usefulSecondary":[]},
+      "R06": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R07": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R08": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]},
+      "R09": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R10": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":["pending-upload-tracking"]},
+      "R11": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R12": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]}
+    },
+    "candidate": {
+      "R01": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R02": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]},
+      "R03": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]},
+      "R04": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R05": {"outcome":"complete","caught":false,"waste":["redundant-change"],"usefulSecondary":[]},
+      "R06": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R07": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R08": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]},
+      "R09": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R10": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":["pending-upload-tracking"]},
+      "R11": {"outcome":"complete","caught":true,"waste":[],"usefulSecondary":[]},
+      "R12": {"outcome":"complete","caught":false,"waste":[],"usefulSecondary":[]}
+    }
+  }
+]
