@@ -14,7 +14,9 @@ import { useFragmentView } from "morpheus-kit/ops-desk/react";
   project's own copy.
 - **States.** `displayedState(state, current)` keeps a dated terminal outcome (`succeeded`,
   `failed`, `cancelled`, `skipped`) when the source is stale, and turns a live state into
-  `unknown` so a stale `running` never claims work is active. `newestAttemptFirst` orders attempts
+  `unknown` so a stale `running` never claims work is active. Desks use that result with the source
+  evidence to label expired observations and missing jobs in Deployments.
+  `newestAttemptFirst` orders attempts
   by start time, then run id — never by read order or status.
 - **Links.** Run, attempt, job, commit and pull-request URLs are built only from a valid
   `owner/name` and positive safe-integer ids or a full 40-character SHA; anything else yields
