@@ -129,6 +129,15 @@ describe("independent review lifecycle", () => {
     expect(check(save(record()))).toEqual([]);
   });
 
+  it("takes the tracked base when a same-named tag points to a proposed opt-out", () => {
+    git(root, ["update-ref", "refs/remotes/origin/main", base]);
+    writeFileSync(join(root, "morpheus.json"), '{"review":{"required":false}}');
+    const head = commit();
+    git(root, ["tag", "origin/main", head]);
+    base = "origin/main";
+    expect(check(head, "", [])).toEqual([{ level: "error", rule: "agent-review", message: MISSING_LABEL }]);
+  });
+
   it("reports an established opt-out until a proposed opt-in lands", () => {
     writeFileSync(join(root, "morpheus.json"), '{"review":{"required":false}}');
     base = commit();

@@ -742,6 +742,11 @@ export function committedConfig(root: string, commit: string): unknown {
   }
 }
 
+/** The normal remote-tracking shorthand must never resolve to a same-named tag. */
+export function reviewBaseRef(base: string): string {
+  return base.startsWith("origin/") ? `refs/remotes/${base}` : base;
+}
+
 /** Keep candidate configuration valid while taking the review decision from the target branch. */
 export function reviewRequiredAtBase(root: string, base: string, head: string): boolean {
   const required = reviewRequired(committedConfig(root, base));
@@ -762,9 +767,10 @@ export const MISSING_CONTEXT_READ = "review record has no contextRead: the revie
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts: { root: string; body: string; labels: string[]; head: string; base: string }): Finding[] {
   try {
-    if (!reviewRequiredAtBase(opts.root, opts.base, opts.head)) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
+    const base = reviewBaseRef(opts.base);
+    if (!reviewRequiredAtBase(opts.root, base, opts.head)) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
     if (!opts.labels.includes("agent-reviewed")) throw new Error(MISSING_LABEL);
-    const { record, waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
+    const { record, waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base });
     const findings: Finding[] = waivers.map(message => ({ level: "waived", rule: REVIEW_FLOOR_RULE, message }));
     if (!record.contextRead?.length) findings.push({ level: "warning", rule: "review-context", message: MISSING_CONTEXT_READ });
     return findings;

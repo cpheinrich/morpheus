@@ -770,6 +770,10 @@ export function committedConfig(root, commit) {
         throw new Error(`morpheus.json at ${commit.slice(0, 12)} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
+/** The normal remote-tracking shorthand must never resolve to a same-named tag. */
+export function reviewBaseRef(base) {
+    return base.startsWith("origin/") ? `refs/remotes/${base}` : base;
+}
 /** Keep candidate configuration valid while taking the review decision from the target branch. */
 export function reviewRequiredAtBase(root, base, head) {
     const required = reviewRequired(committedConfig(root, base));
@@ -787,11 +791,12 @@ export const MISSING_CONTEXT_READ = "review record has no contextRead: the revie
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts) {
     try {
-        if (!reviewRequiredAtBase(opts.root, opts.base, opts.head))
+        const base = reviewBaseRef(opts.base);
+        if (!reviewRequiredAtBase(opts.root, base, opts.head))
             return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
         if (!opts.labels.includes("agent-reviewed"))
             throw new Error(MISSING_LABEL);
-        const { record, waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
+        const { record, waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base });
         const findings = waivers.map(message => ({ level: "waived", rule: REVIEW_FLOOR_RULE, message }));
         if (!record.contextRead?.length)
             findings.push({ level: "warning", rule: "review-context", message: MISSING_CONTEXT_READ });

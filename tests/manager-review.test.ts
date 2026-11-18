@@ -182,7 +182,7 @@ describe("the GitHub Manager's review record", () => {
     put(".github/morpheus-gh-manager.json", JSON.stringify({ version: 1, protectedPaths: ["billing"] }));
     commit("policy on trunk");
     git(root, ["checkout", "-q", "feature"]);
-    git(root, ["merge", "-q", "--no-edit", "main"]);
+    expect(git(root, ["ls-tree", "HEAD", "--", ".github/morpheus-gh-manager.json"])).toBe("");
     put("billing/plan.ts", "export const price = 5;");
     reviewed = commit("touch billing");
     expect(message(save(record()))).toContain("billing/plan.ts");
@@ -191,7 +191,6 @@ describe("the GitHub Manager's review record", () => {
     put(".github/morpheus-gh-manager.json", "{ not json");
     commit("broken policy on trunk");
     git(root, ["checkout", "-q", "feature"]);
-    git(root, ["merge", "-q", "--no-edit", "main"]);
     expect(message(git(root, ["rev-parse", "HEAD"]), { clearedHead: git(root, ["rev-parse", "HEAD"]) })).toContain("protected paths cannot be determined");
   });
 

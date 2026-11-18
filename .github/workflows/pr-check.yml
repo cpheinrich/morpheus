@@ -251,14 +251,17 @@ jobs:
           # reports as "exists on disk, but not in <sha>". Fetch it by its pull
           # ref (that also covers a fork, whose branch is not among origin's
           # heads) and check it out, rather than judge some other tree.
-          # A failed fetch is not fatal here: `check pr` then names the missing
-          # commit, which says more than a raw fetch error would.
+          # Refuse if it is still absent. An empty diff against a checkout of
+          # the base would otherwise look like an exempt PR.
           if ! git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null; then
             git fetch --no-tags origin "+refs/pull/$PR_NUMBER/head:refs/remotes/pull/$PR_NUMBER/head" \
               || echo "::warning::Could not fetch refs/pull/$PR_NUMBER/head."
           fi
-          if git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null \
-            && [ "$(git rev-parse HEAD)" != "$EXPECTED_HEAD" ] \
+          if ! git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null; then
+            echo "::error::Cannot read pull request head $EXPECTED_HEAD."
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" != "$EXPECTED_HEAD" ] \
             && [ "$(git rev-parse --verify --quiet 'HEAD^2' || true)" != "$EXPECTED_HEAD" ]; then
             echo "::notice::The checkout is not this pull request's merge commit; checking the PR head out directly."
             git checkout --quiet --detach "$EXPECTED_HEAD"
@@ -284,9 +287,13 @@ jobs:
                manager_clearance: (if ($clearance | length) == 0 then null else $clearance end)})}' \
             "$RUNNER_TEMP/live-pr.json" > "$RUNNER_TEMP/review-event.json"
           echo "Morpheus conventions checker: $(git -C ../.morpheus rev-parse HEAD)"
-          echo "Trusted review policy: $(git rev-parse --verify "origin/$BASE_REF^{commit}")"
+          if ! TRUSTED_BASE="$(git rev-parse --verify "refs/remotes/origin/$BASE_REF^{commit}")"; then
+            echo "::error::Cannot resolve the target branch origin/$BASE_REF in the PR checkout."
+            exit 1
+          fi
+          echo "Trusted review policy: $TRUSTED_BASE"
           GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json" node ../.morpheus/dist/cli/index.js check pr \
-            --dir "$PRODUCT_DIR" --base "origin/$BASE_REF"
+            --dir "$PRODUCT_DIR" --base "$TRUSTED_BASE"
 
       # Function complexity of the PR head, from its own morpheus.json
       # `complexity` block (docs/runbooks/complexity.md). Inside this required
@@ -315,14 +322,17 @@ jobs:
           # reports as "exists on disk, but not in <sha>". Fetch it by its pull
           # ref (that also covers a fork, whose branch is not among origin's
           # heads) and check it out, rather than judge some other tree.
-          # A failed fetch is not fatal here: `check pr` then names the missing
-          # commit, which says more than a raw fetch error would.
+          # Refuse if it is still absent. An empty diff against a checkout of
+          # the base would otherwise look like an exempt PR.
           if ! git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null; then
             git fetch --no-tags origin "+refs/pull/$PR_NUMBER/head:refs/remotes/pull/$PR_NUMBER/head" \
               || echo "::warning::Could not fetch refs/pull/$PR_NUMBER/head."
           fi
-          if git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null \
-            && [ "$(git rev-parse HEAD)" != "$EXPECTED_HEAD" ] \
+          if ! git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null; then
+            echo "::error::Cannot read pull request head $EXPECTED_HEAD."
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" != "$EXPECTED_HEAD" ] \
             && [ "$(git rev-parse --verify --quiet 'HEAD^2' || true)" != "$EXPECTED_HEAD" ]; then
             echo "::notice::The checkout is not this pull request's merge commit; checking the PR head out directly."
             git checkout --quiet --detach "$EXPECTED_HEAD"
@@ -354,7 +364,7 @@ jobs:
           rc=0
           node ../.morpheus/dist/cli/index.js complexity install || rc=$?
           if [ "$rc" -eq 0 ]; then
-            node ../.morpheus/dist/cli/index.js complexity check --ci --base "origin/$BASE_REF" || rc=$?
+            node ../.morpheus/dist/cli/index.js complexity check --ci --base "refs/remotes/origin/$BASE_REF" || rc=$?
           fi
           if [ "$rc" -eq 0 ]; then
             exit 0

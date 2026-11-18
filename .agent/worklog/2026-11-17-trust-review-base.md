@@ -33,3 +33,16 @@ also matched non-reusable top-level callers; the guard now checks its intended r
   `actionlint -shellcheck= .github/workflows/{ci,pr-check,review-metadata}.yml`, and diff whitespace passed.
 - Complexity passes in enforce mode. Final scope 36 functions in 8 measured files.
 - Reran the baseline CLI probe against the compiled checker for both waiver cases.
+
+## Trusted ref verification
+
+Git can prefer a same-named tag to an abbreviated remote-tracking ref. The hosted checker resolves
+the exact remote-tracking ref and passes its commit SHA. The CLI qualifies the default `origin/`
+shorthand before resolving it. Reproduced the conflicting tag in both the workflow fixture and the
+local review tests. GitHub's reusable workflow lookup also prefers a same-named tag. Checked that
+`refs/tags/main` was absent, created [ruleset 27524573](https://github.com/cpheinrich/morpheus/rules/27524573)
+for its creation and update, then read back the active tag rule with the exact include and no bypass
+actors. The tag remained absent. Only this reserved name is targeted.
+
+While checking that boundary, also made an unavailable PR head fail the required job after fetch.
+A base-only checkout with no candidate object must not be treated as a records-only diff.

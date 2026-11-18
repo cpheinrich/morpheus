@@ -73,10 +73,13 @@ The Manager also reads its protected paths from the target branch.
 
 Morpheus's own required check uses the shared workflow on protected `main` and the checker from
 the event's base commit. Consumers use the released checker on Morpheus `main`. Both checkouts
-are separate from the PR source. The Morpheus Node tests exercise the proposed checker and workflow
+are separate from the PR source. The hosted check resolves the target through its fully qualified
+remote-tracking ref and passes the commit SHA to the checker. The Morpheus Node tests exercise the proposed checker and workflow
 contract. The old `morpheus-ref` input is accepted for caller compatibility. It cannot select the
 required checker. GitHub branch protection and control of the workflow caller remain part of
-enforcement.
+enforcement. The [Morpheus tag ruleset](https://github.com/cpheinrich/morpheus/rules/27524573)
+reserves the exact `main` tag because GitHub resolves a tag before a branch in a reusable workflow
+reference. This keeps the shared `@main` reference bound to the protected branch.
 
 Records/board-only changes, exact dependency-only Dependabot PRs, and
 marked dependency-only PRs from the exact `morpheus-security[bot]` App keep narrow exemptions.

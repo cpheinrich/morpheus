@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { checkLocalReview } from "../review/local.js";
+import { checkLocalReview, reviewBaseRef } from "../review/local.js";
 import { checkManagerReview, usesManagerReview } from "../review/manager.js";
 import { parseMarker } from "../gh-manager/sweep.js";
 import { checkPr, formatFindings } from "../check/pr.js";
@@ -118,7 +118,8 @@ export async function pr(productDir, base) {
     }
     catch { /* local overrides below */ }
     const head = reviewEvent.pull_request?.head?.sha ?? gitOutput(["rev-parse", "HEAD"]);
-    if (!gitOutput(["rev-parse", "--verify", `${base}^{commit}`])) {
+    const target = gitOutput(["rev-parse", "--verify", "--end-of-options", `${reviewBaseRef(base)}^{commit}`]);
+    if (!target) {
         console.error(`The trusted PR base ${base} is not in this checkout. Fetch the target branch and re-run.`);
         return 1;
     }
@@ -130,8 +131,8 @@ export async function pr(productDir, base) {
     // inside it names the commit, and that is what binds the label to something the App reviewed.
     const clearance = reviewEvent.pull_request?.manager_clearance ?? process.env["MORPHEUS_MANAGER_CLEARANCE"] ?? "";
     const clearedHead = parseMarker(clearance)?.cleared;
-    const review = { root: process.cwd(), body: prBody(), labels, head, base };
-    const files = changedFiles(base);
+    const review = { root: process.cwd(), body: prBody(), labels, head, base: target };
+    const files = changedFiles(target);
     const findings = await checkPr({
         agentReview: usesManagerReview(labels) ? checkManagerReview({ ...review, labelActor, clearedHead }) : checkLocalReview(review),
         // The separate CI proof job reads live GitHub App receipts with read-only checks access.
@@ -140,11 +141,11 @@ export async function pr(productDir, base) {
             process.env["MORPHEUS_SECURITY_IMPORT_VERIFIED"] === "true",
         body: prBody(),
         title: prTitle(),
-        commitMessages: prCommitMessages(base, head),
+        commitMessages: prCommitMessages(target, head),
         author: prAuthor(),
         branch: currentBranch(),
         changedFiles: files,
-        trunkChanges: trunkChanges(base),
+        trunkChanges: trunkChanges(target),
         visualEvidence: projectVisualEvidencePolicy(),
         productDir,
     });
