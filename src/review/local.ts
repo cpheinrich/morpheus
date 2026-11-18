@@ -742,9 +742,16 @@ export function committedConfig(root: string, commit: string): unknown {
   }
 }
 
-/** The normal remote-tracking shorthand must never resolve to a same-named tag. */
-export function reviewBaseRef(base: string): string {
-  return base.startsWith("origin/") ? `refs/remotes/${base}` : base;
+/** Resolve the configured base once. A tag cannot replace a missing remote-tracking ref. */
+export function resolveReviewBase(root: string, base: string): string {
+  const ref = base.startsWith("origin/") ? `refs/remotes/${base}` : base;
+  try {
+    return ref.startsWith("refs/remotes/")
+      ? git(root, ["show-ref", "--verify", "--hash", ref])
+      : git(root, ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`]);
+  } catch {
+    throw new Error(`commit ${base} is not in this checkout. Fetch the trusted target branch and re-run.`);
+  }
 }
 
 /** Keep candidate configuration valid while taking the review decision from the target branch. */
@@ -767,7 +774,7 @@ export const MISSING_CONTEXT_READ = "review record has no contextRead: the revie
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts: { root: string; body: string; labels: string[]; head: string; base: string }): Finding[] {
   try {
-    const base = reviewBaseRef(opts.base);
+    const base = resolveReviewBase(opts.root, opts.base);
     if (!reviewRequiredAtBase(opts.root, base, opts.head)) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
     if (!opts.labels.includes("agent-reviewed")) throw new Error(MISSING_LABEL);
     const { record, waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base });

@@ -330,8 +330,8 @@ export declare function verifyUncoveredCommits(root: string, record: {
  * the defaults apply: review stays required, which is the safe direction.
  */
 export declare function committedConfig(root: string, commit: string): unknown;
-/** The normal remote-tracking shorthand must never resolve to a same-named tag. */
-export declare function reviewBaseRef(base: string): string;
+/** Resolve the configured base once. A tag cannot replace a missing remote-tracking ref. */
+export declare function resolveReviewBase(root: string, base: string): string;
 /** Keep candidate configuration valid while taking the review decision from the target branch. */
 export declare function reviewRequiredAtBase(root: string, base: string, head: string): boolean;
 /**

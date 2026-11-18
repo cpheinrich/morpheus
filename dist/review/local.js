@@ -770,9 +770,17 @@ export function committedConfig(root, commit) {
         throw new Error(`morpheus.json at ${commit.slice(0, 12)} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
-/** The normal remote-tracking shorthand must never resolve to a same-named tag. */
-export function reviewBaseRef(base) {
-    return base.startsWith("origin/") ? `refs/remotes/${base}` : base;
+/** Resolve the configured base once. A tag cannot replace a missing remote-tracking ref. */
+export function resolveReviewBase(root, base) {
+    const ref = base.startsWith("origin/") ? `refs/remotes/${base}` : base;
+    try {
+        return ref.startsWith("refs/remotes/")
+            ? git(root, ["show-ref", "--verify", "--hash", ref])
+            : git(root, ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`]);
+    }
+    catch {
+        throw new Error(`commit ${base} is not in this checkout. Fetch the trusted target branch and re-run.`);
+    }
 }
 /** Keep candidate configuration valid while taking the review decision from the target branch. */
 export function reviewRequiredAtBase(root, base, head) {
@@ -791,7 +799,7 @@ export const MISSING_CONTEXT_READ = "review record has no contextRead: the revie
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts) {
     try {
-        const base = reviewBaseRef(opts.base);
+        const base = resolveReviewBase(opts.root, opts.base);
         if (!reviewRequiredAtBase(opts.root, base, opts.head))
             return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
         if (!opts.labels.includes("agent-reviewed"))

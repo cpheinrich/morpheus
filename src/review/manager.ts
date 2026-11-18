@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Finding } from "../check/pr.js";
 import { visibleProse, visibleText } from "../check/pr.js";
 import { GH_MANAGER_LOGIN, GH_MANAGER_POLICY_PATH, humanGatedPaths, MANAGER_REVIEWED_LABEL, parsePolicy } from "../gh-manager/policy.js";
-import { changedPaths, git, isAncestor, reviewBaseRef, reviewRequiredAtBase, verifyUncoveredCommits } from "./local.js";
+import { changedPaths, git, isAncestor, resolveReviewBase, reviewRequiredAtBase, verifyUncoveredCommits } from "./local.js";
 
 /**
  * The GitHub Manager's review: one review and its own fixes, in one session.
@@ -149,7 +149,7 @@ function assertManagerScope(opts: ManagerReviewInput, record: ReturnType<typeof 
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkManagerReview(opts: ManagerReviewInput): Finding[] {
   try {
-    opts = { ...opts, base: reviewBaseRef(opts.base) };
+    opts = { ...opts, base: resolveReviewBase(opts.root, opts.base) };
     if (!reviewRequiredAtBase(opts.root, opts.base, opts.head)) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
     assertManagerClearance(opts);
     const { record, path } = readManagerRecord(opts);

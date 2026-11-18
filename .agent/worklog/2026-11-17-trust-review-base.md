@@ -46,3 +46,7 @@ actors. The tag remained absent. Only this reserved name is targeted.
 
 While checking that boundary, also made an unavailable PR head fail the required job after fetch.
 A base-only checkout with no candidate object must not be treated as a records-only diff.
+
+The first follow-up showed that Git's revision lookup could still fall through when a fully
+qualified ref was absent. Both the workflow and local CLI now use exact `git show-ref --verify`
+for remote-tracking refs, with regressions against a tag named like the missing full ref.

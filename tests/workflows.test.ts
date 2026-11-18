@@ -3160,7 +3160,7 @@ describe("local review metadata", () => {
   async function runSteps(
     steps: PrCheckStep[],
     live: { head?: string | null; updatedAt?: string | null; base?: string },
-    event: { head?: string; updatedAt?: string; headResult?: string; supersededBy?: string } = {},
+    event: { head?: string; updatedAt?: string; headResult?: string; supersededBy?: string; missingBase?: boolean } = {},
   ) {
     const tmp = await mkdtemp(join(tmpdir(), "pr-superseded-"));
     try {
@@ -3176,10 +3176,11 @@ describe("local review metadata", () => {
       await git("add", ".");
       await git("commit", "-qm", "head");
       const base = await git("rev-parse", "HEAD");
-      await git("update-ref", "refs/remotes/origin/main", base);
+      if (!event.missingBase) await git("update-ref", "refs/remotes/origin/main", base);
       await writeFile(join(repo, "morpheus.json"), '{"review":{"required":false}}');
       await git("commit", "-qam", "propose an opt-out");
       await git("tag", "origin/main");
+      if (event.missingBase) await git("tag", "refs/remotes/origin/main");
       await mkdir(join(tmp, ".morpheus"));
       await execFileAsync("git", ["clone", "-q", repo, join(tmp, ".morpheus")]);
       const head = event.head ?? await git("rev-parse", "HEAD");
@@ -3310,6 +3311,10 @@ describe("local review metadata", () => {
     expect(current.head).not.toBe(current.base);
     expect(current.stdout).toContain(`Trusted review policy: ${current.base}`);
     expect(current.checkPr).toBe(`../.morpheus/dist/cli/index.js check pr --dir hq/product --base ${current.base}\n`);
+    const noBase = await runSteps(steps, {}, { missingBase: true });
+    expect(noBase.code).toBe(1);
+    expect(noBase.stdout).toContain("Cannot resolve the target branch origin/main in the PR checkout.");
+    expect(noBase.checkPr).toBe("");
     const unavailable = await runSteps(steps, {}, { head: NEWER });
     expect(unavailable.code).toBe(1);
     expect(unavailable.stdout).toContain(`Cannot read pull request head ${NEWER}.`);

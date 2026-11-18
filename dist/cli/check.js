@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { checkLocalReview, reviewBaseRef } from "../review/local.js";
+import { checkLocalReview, resolveReviewBase } from "../review/local.js";
 import { checkManagerReview, usesManagerReview } from "../review/manager.js";
 import { parseMarker } from "../gh-manager/sweep.js";
 import { checkPr, formatFindings } from "../check/pr.js";
@@ -118,9 +118,12 @@ export async function pr(productDir, base) {
     }
     catch { /* local overrides below */ }
     const head = reviewEvent.pull_request?.head?.sha ?? gitOutput(["rev-parse", "HEAD"]);
-    const target = gitOutput(["rev-parse", "--verify", "--end-of-options", `${reviewBaseRef(base)}^{commit}`]);
-    if (!target) {
-        console.error(`The trusted PR base ${base} is not in this checkout. Fetch the target branch and re-run.`);
+    let target;
+    try {
+        target = resolveReviewBase(process.cwd(), base);
+    }
+    catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
         return 1;
     }
     const labels = reviewEvent.pull_request?.labels?.map(l => l.name) ?? (process.env["MORPHEUS_PR_LABELS"] ?? "").split(",").map(s => s.trim());

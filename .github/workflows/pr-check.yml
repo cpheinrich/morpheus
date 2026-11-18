@@ -287,7 +287,7 @@ jobs:
                manager_clearance: (if ($clearance | length) == 0 then null else $clearance end)})}' \
             "$RUNNER_TEMP/live-pr.json" > "$RUNNER_TEMP/review-event.json"
           echo "Morpheus conventions checker: $(git -C ../.morpheus rev-parse HEAD)"
-          if ! TRUSTED_BASE="$(git rev-parse --verify "refs/remotes/origin/$BASE_REF^{commit}")"; then
+          if ! TRUSTED_BASE="$(git show-ref --verify --hash "refs/remotes/origin/$BASE_REF")"; then
             echo "::error::Cannot resolve the target branch origin/$BASE_REF in the PR checkout."
             exit 1
           fi
