@@ -550,9 +550,10 @@ launches that worker; the run's
   never wider than the coordinator. It can ask live questions; the coordinator answers them
   with `factory_answer` (`source: root` for a routine clarification, `user` to attest a real
   answer).
-- **A Codex worker for a Codex task** runs `codex exec` against the gateway with the task's own
-  model and effort. Its sandbox follows the task's approval policy: never-approve full access
-  maps to full access, on-request to read-only.
+- **A Codex worker for a Codex task** runs `codex exec` against the gateway with the Factory
+  selection, which defaults to GPT-6.2 Sol at High effort and supports explicit overrides.
+  Its sandbox follows the task's approval policy: never-approve full access maps to full
+  access, on-request to read-only.
 - **Sessions are kept per task on the pinned route.** A root session pins executor and
   gateway once; its primary provider conversation is keyed by its first working directory and
   spans the task's mapped checkouts. Because the route never changes, the conversation never
