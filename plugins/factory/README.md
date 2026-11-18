@@ -393,10 +393,10 @@ how a credentials manager stays the single source of truth, for example
 `exec:/opt/homebrew/bin/darwin-env get FACTORY_CLAUDE_KEY`; give the command an absolute
 path, since the bridge service inherits the PATH of whichever session started it.
 
-`factory_delegate` defaults to `gpt-6.1-sol` on Codex and `claude-opus-5-5` on Claude,
-independent of the controller's model. Standard speed applies to both workers. Specify
-`model` or `speed: "fast"` only for a user-requested override; `selection` reports the
-requested model, effort and speed. Legacy client model maps do not select models for
+For local placement, `factory_delegate` defaults to `gpt-6.2-sol` at High effort on Codex
+and `claude-opus-5-5` with the controller's mapped effort on Claude. Both use Standard
+speed. The `selection` reports the requested model, effort and speed. An explicit
+Codex model other than GPT-6.2 Sol inherits the controller's effort unless overridden. Legacy client model maps do not select models for
 `factory_delegate`. Unattended services retain their explicitly configured model.
 Codex selects a dedicated gateway provider with a required environment key and sets the
 default service tier per launch. A missing gateway key fails before any request and cannot
@@ -550,9 +550,10 @@ launches that worker; the run's
   never wider than the coordinator. It can ask live questions; the coordinator answers them
   with `factory_answer` (`source: root` for a routine clarification, `user` to attest a real
   answer).
-- **A Codex worker for a Codex task** runs `codex exec` against the gateway with the task's own
-  model and effort. Its sandbox follows the task's approval policy: never-approve full access
-  maps to full access, on-request to read-only.
+- **A Codex worker for a Codex task** runs `codex exec` against the gateway with the Factory
+  selection, which defaults to GPT-6.2 Sol at High effort and supports explicit overrides.
+  Its sandbox follows the task's approval policy: never-approve full access maps to full
+  access, on-request to read-only.
 - **Sessions are kept per task on the pinned route.** A root session pins executor and
   gateway once; its primary provider conversation is keyed by its first working directory and
   spans the task's mapped checkouts. Because the route never changes, the conversation never
