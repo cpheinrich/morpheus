@@ -4,7 +4,7 @@
 //   node qa/audits/2026-11-18-test-suite/inventory.mjs            # rewrite ledger.tsv
 //   node qa/audits/2026-11-18-test-suite/inventory.mjs --check    # fail when it would change
 //
-// Counts come from the tracked tree (`git ls-files`), never from a graph or an index. A
+// Counts come from the audited Git tree. A
 // *declaration* is one `it(`/`test(`/`def test_` in source; a *runtime instance* is what the
 // runner reports after `.each` expansion and is joined from `runtime.tsv`, which records where
 // each number came from. Ratings are joined from `ratings.tsv` and are a human judgement.
@@ -15,7 +15,9 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
-const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean);
+const baseline = '9c4c3e58539f75d0bcabc545bfa9df3346488c30';
+const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
+const tracked = git('ls-tree', '-r', '--name-only', '-z', baseline).split('\0').filter(Boolean);
 
 // First match wins. `lane` is the CI job that executes the file on a pull request, or `none`.
 const SUITES = [
@@ -70,7 +72,7 @@ const rows = [];
 for (const path of tracked) {
   const suite = SUITES.find(([pattern]) => pattern.test(path));
   if (!suite) continue;
-  const m = measure(path, readFileSync(join(root, path), 'utf8'));
+  const m = measure(path, git('show', `${baseline}:${path}`));
   const run = runtime.get(path) ?? { instances: '', seconds: '', source: '' };
   const rating = rate(path);
   if (!rating) throw new Error(`no rating for ${path}`);

@@ -12,7 +12,7 @@ that buys in CI waiting and maintenance. Keep the suite broadly intact.
 
 ## What was done
 
-- Enumerated every tracked first-party test file from `git ls-files` and mapped it to the CI job
+- Enumerated every tracked first-party test file at the baseline and mapped it to the CI job
   that runs it on a pull request.
 - Rated all 240 files 1 to 5, and read the candidates the scans nominated line by line.
 - Took timing from four already-finished `main` runs. Nothing was dispatched for measurement.
@@ -61,8 +61,7 @@ generated HQ access rules) runs only under `pnpm test:rules`, which no active wo
 4. **Six rating-2 cases** (appendix D). The method says prune three of them as "asserting the
    past"; this repository's own rule that a written "never do X" needs a failing test says keep.
    I left all six in place.
-5. **Independent review.** The author of this PR is not its reviewer. It is a draft with
-   auto-merge off.
+5. **Delivery review.** The [worklog](../../.agent/worklog/MO-26-11-18-01.57.13.md) records review and validation.
 
 ---
 
@@ -153,7 +152,7 @@ In the bridge step, `plugins/factory/tests/unattended-worker.test.mjs` is 46.3 s
 
 ## Appendix B — Inventory
 
-240 tracked test files, 4,057 source declarations. A declaration is one `it(`, `test(` or
+The baseline contains 240 tracked test files and 4,057 source declarations. A declaration is one `it(`, `test(` or
 `def test_`. A runtime instance is what the runner reports after table and loop expansion.
 
 | PR lane | Runner | Files | Declarations | Runtime instances (CI receipt) |
