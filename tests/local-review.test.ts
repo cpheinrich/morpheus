@@ -145,7 +145,7 @@ describe("independent review lifecycle", () => {
     git(root, ["tag", "refs/remotes/origin/main", head]);
     base = "origin/main";
     expect(check(head, "", [])).toEqual([{
-      level: "error", rule: "agent-review", message: `commit ${trustedRef} is not in this checkout. Fetch the trusted target branch and re-run.`,
+      level: "error", rule: "agent-review", message: "commit origin/main is not in this checkout. Fetch the trusted target branch and re-run.",
     }]);
   });
 
