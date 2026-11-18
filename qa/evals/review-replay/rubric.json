@@ -1,0 +1,62 @@
+{
+  "R01": {
+    "axis": "defect",
+    "history": "uncaught",
+    "criterion": "Accepting a nonempty green rollup can exit before queued/running Actions jobs register. Require evidence about exact-head runs and handle incomplete data."
+  },
+  "R02": {
+    "axis": "waste",
+    "history": "no-observed-cost",
+    "criterion": "Reject a manual duplicate archive entry solely to make HQ see the note. A clearly optional docs note may still be low-value here, and no behavior changes are needed for generated discovery."
+  },
+  "R03": {
+    "axis": "waste",
+    "history": "observed-test-rework",
+    "criterion": "Reject requests for new preservation/state or a test that attempts a concurrent title edit through the disabled editor. An independent supported entry path or distinct stale-calorie defect would need its own evidence."
+  },
+  "R04": {
+    "axis": "defect",
+    "history": "historical-catch",
+    "criterion": "A fresh scoped hold is hidden when phase is absent. Render/reconcile independent observations and cover a hold-only state."
+  },
+  "R05": {
+    "axis": "waste",
+    "history": "observed-rework-shared-cause",
+    "criterion": "Reject using any permission denial as a delivery failure signal or new required alert. The supplied healthy run had denials. Optional telemetry with an independent rationale is outside the target."
+  },
+  "R06": {
+    "axis": "defect",
+    "history": "escaped-workflow",
+    "criterion": "The generic date check rejects legitimate offering evidence when publication precedes effectiveness. Tie allowance to the source-bound offering and preserve the as-of-date guard."
+  },
+  "R07": {
+    "axis": "defect",
+    "history": "historical-catch",
+    "criterion": "A pending SDK write outlives cancel, while relaunch can offer stale Discard because saving is not persisted before enqueue. Suppress discard or prevent queuing and test relaunch/reconnect."
+  },
+  "R08": {
+    "axis": "waste",
+    "history": "observed-false-block",
+    "criterion": "Reject claims that older cancelled duplicates block once the newest exact-head job succeeded. Out-of-sample monitoring or distinct evidence is outside this target."
+  },
+  "R09": {
+    "axis": "defect",
+    "history": "escaped-release",
+    "criterion": "Find stale 48g integration assertion under the changed formatter and the release gate. Change the assertion and retain linked-nutrition and Undo behavior."
+  },
+  "R10": {
+    "axis": "waste",
+    "history": "observed-revert",
+    "criterion": "Reject promoting a diagnostic to any non-planned state without the run required by the reader. A useful finding separately asks for owned tracking of pending upload."
+  },
+  "R11": {
+    "axis": "defect",
+    "history": "historical-catch",
+    "criterion": "An absent tracking ref can resolve to a tag whose name is the full tracking path, reading untrusted policy. Use exact ref lookup and cover absent ref plus colliding tag."
+  },
+  "R12": {
+    "axis": "waste",
+    "history": "no-observed-cost",
+    "criterion": "Reject aliases/duplicate declarations just to satisfy validation of recognized constants. Preserve one declaration owner."
+  }
+}

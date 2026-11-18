@@ -1,0 +1,20 @@
+diff --git a/src/review/local-prompt.ts b/src/review/local-prompt.ts
+index b145708b..de18cf43 100644
+--- a/src/review/local-prompt.ts
++++ b/src/review/local-prompt.ts
+@@ -56,3 +56,6 @@ mechanism that the requirements do not need is substantive; a local simplificati
+-Name the mechanism and callers or contract it serves. Check whether an existing owner can handle
+-the supported scenario and whether each caller fits a shared abstraction. Describe the smallest
+-simpler approach that preserves behavior.
++Trace the real entry point and its existing owner, guards and tests. Verify a concrete supported
++input or state before requesting another branch, guard, alias, state or test. State what would
++fail under the current code and how the smallest proposed change would fix it. Check whether each
++caller fits a shared abstraction. Prefer the smallest equivalent removal when the existing owner
++already covers the case. If the claim is about evidence, say which check or artifact is missing
++or wrong and what would settle it before asking for a product change.
+@@ -78,2 +81,3 @@ are minor, non-blocking notes: they never by themselves make a turn blocked, and
+-findings are notes clears. The author may decline a note with a one-line reason. Do not hold a
+-change on something trivial.
++findings are notes clears. Group actionable minor notes in one pass and omit polish without a
++concrete benefit. The author may decline a note with a one-line reason. In a follow-up, leave
++settled minor notes closed.
