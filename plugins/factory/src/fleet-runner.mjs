@@ -323,7 +323,15 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     checkLeaseBoundary();
     if (snapshot?.task?.attempt?.id !== record.attemptId) return snapshot;
     if (snapshot.task.cancelRequestedAt != null) abort("canceled");
-    return { ...snapshot, renewed: await renew(record) };
+    const renewed = await renew(record);
+    // A successful grant can arrive after a later cancellation. Re-read before
+    // launching from source preparation or resuming from a saved answer.
+    const current = renewed && record.phase !== "running"
+      ? await call("inspect", identity(record))
+      : snapshot;
+    checkLeaseBoundary();
+    if (current?.task?.cancelRequestedAt != null) abort("canceled");
+    return { ...current, renewed: renewed && leaseIsCurrent() };
   }
 
   async function drive(record) {
@@ -370,12 +378,13 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     if (reply?.attempt?.id !== record.attemptId) throw new Error("Invalid Factory claim response.");
     if (recovered || reply.replay || stopping)
       return finishBeforeLaunch(record, failed, "Runner recovered an attempt that never launched.");
+    const renewed = await renew(record);
     const { task } = await call("inspect", identity(record));
     if (task?.attempt?.id !== record.attemptId) return "held";
     if (task.cancelRequestedAt != null)
       return finishBeforeLaunch(record, canceled, "Canceled before launching the worker.");
     if (task.state !== "TASK_STATE_WORKING") return "held";
-    if (!await renew(record))
+    if (!renewed || !leaseIsCurrent())
       return finishBeforeLaunch(record, failed, "Runner lease expired before launch.");
     if (prepare && task.source?.checkout === "git") return prepareSource(record, task);
     return start(record, task, task.brief.text);
