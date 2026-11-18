@@ -187,7 +187,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"done","str
   );
 });
 
-test("a Codex task delegates to Codex behind a gateway with its own model and sandbox", async (t) => {
+test("a Codex task delegates to the default Codex gateway model and effort with its mapped sandbox", async (t) => {
   const { root, repo } = await harness(t, {
     codex: `#!/bin/sh
 printf '%s\\n' "$@" > "__ROOT__/argv"
@@ -219,7 +219,7 @@ echo '{"type":"turn.completed","usage":{}}'
   const started = await m.factoryDelegate({ rootKind: "codex", rootId: threadId, prompt: "Generate the image" });
   assert.equal(started.executor, "codex");
   assert.equal(started.gateway, "pool");
-  assert.deepEqual(started.selection, { model: "gpt-6.1-sol", effort: "low", speed: "standard" });
+  assert.deepEqual(started.selection, { model: "gpt-6.2-sol", effort: "high", speed: "standard" });
   const done = await settle(m, started.id);
   assert.equal(done.state, "completed");
   const taskResult = await m.factoryRun({ rootKind: "codex", rootId: threadId, runId: started.id });
@@ -239,7 +239,8 @@ echo '{"type":"turn.completed","usage":{}}'
     'model_providers.factory-gateway.requires_openai_auth=false',
   ]);
   assert.ok(overrides.includes('service_tier="default"'));
-  assert.equal(argv[argv.indexOf("-m") + 1], "gpt-6.1-sol");
+  assert.equal(argv[argv.indexOf("-m") + 1], "gpt-6.2-sol");
+  assert.ok(overrides.includes('model_reasoning_effort="high"'));
   assert.ok(argv.includes("--dangerously-bypass-approvals-and-sandbox"));
   const env = await readFile(join(root, "env"), "utf8");
   assert.match(env, /^OPENAI_API_KEY=sk-gateway-test$/m);
@@ -271,7 +272,7 @@ echo '{"type":"turn.completed","usage":{}}'
     /belongs to a different worker provider/,
   );
   const second = await m.factoryDelegate({
-    rootKind: "codex", rootId: threadId, prompt: "Look only", model: "gpt-6.1-terra", speed: "fast",
+    rootKind: "codex", rootId: threadId, prompt: "Look only", model: "gpt-6.2-sol", effort: "low", speed: "fast",
   });
   assert.equal(second.task.id, second.id);
   assert.notEqual(second.task.id, started.task.id);
@@ -282,7 +283,8 @@ echo '{"type":"turn.completed","usage":{}}'
   assert.deepEqual(resumed.slice(0, 2), ["exec", "resume"]);
   assert.ok(resumed.includes("0199bbbb-cccc-7ddd-8eee-ffff00001111"));
   assert.ok(resumed.includes('service_tier="fast"'));
-  assert.equal(resumed[resumed.indexOf("-m") + 1], "gpt-6.1-terra");
+  assert.equal(resumed[resumed.indexOf("-m") + 1], "gpt-6.2-sol");
+  assert.ok(resumed.includes('model_reasoning_effort="low"'));
   // A question asked on another route cannot be answered on this one: a native Claude
   // worker's needs_input stays with native Claude even though the Codex gateway is chosen.
   const asked = "0199dddd-eeee-7fff-8000-111122223333";

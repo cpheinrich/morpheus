@@ -393,10 +393,10 @@ how a credentials manager stays the single source of truth, for example
 `exec:/opt/homebrew/bin/darwin-env get FACTORY_CLAUDE_KEY`; give the command an absolute
 path, since the bridge service inherits the PATH of whichever session started it.
 
-`factory_delegate` defaults to `gpt-6.1-sol` on Codex and `claude-opus-5-5` on Claude,
-independent of the controller's model. Standard speed applies to both workers. Specify
-`model` or `speed: "fast"` only for a user-requested override; `selection` reports the
-requested model, effort and speed. Legacy client model maps do not select models for
+For local placement, `factory_delegate` defaults to `gpt-6.2-sol` at High effort on Codex
+and `claude-opus-5-5` with the controller's mapped effort on Claude. Both use Standard
+speed. The `selection` reports the requested model, effort and speed. An explicit
+Codex model other than GPT-6.2 Sol inherits the controller's effort unless overridden. Legacy client model maps do not select models for
 `factory_delegate`. Unattended services retain their explicitly configured model.
 Codex selects a dedicated gateway provider with a required environment key and sets the
 default service tier per launch. A missing gateway key fails before any request and cannot

@@ -82,26 +82,25 @@ export function previewSelection(config, snapshot) {
     return { error: error.message };
   }
 }
-const DEFAULT_WORKER_MODELS = { codex: "gpt-6.1-sol", claude: "claude-opus-5-5" };
+const DEFAULT_WORKER_MODELS = { codex: "gpt-6.2-sol", claude: "claude-opus-5-5" };
 function explicitModelProvider(model) {
   if (/^(claude-|(?:opus|sonnet|haiku)$)/i.test(model ?? "")) return "claude";
   if (/^(gpt-|codex-|o[1-9](?:-|$))/i.test(model ?? "")) return "codex";
   return undefined;
 }
+function factoryCodexEffort(config, rootKind, model, requestedEffort, override) {
+  if (model === DEFAULT_WORKER_MODELS.codex && override == null) return "high";
+  const effort = model === "gpt-6.1-sol" && requestedEffort === "none" ? "low" : requestedEffort;
+  return rootKind === "claude" ? codexWorkerEffort(config, effort) : codexRootEffort(effort);
+}
 function factoryWorkerSelection(worker, config, rootKind, rootEffort, args = {}) {
   const model = args.model ?? DEFAULT_WORKER_MODELS[worker];
   if (!modelIdPattern.test(model) || MOVING_MODEL_ALIASES.has(model.toLowerCase()))
     throw new Error("Name a fixed worker model or an approved Claude family alias.");
-  const inheritedEffort = args.effort ?? rootEffort;
-  // A controller can use a model with no reasoning; the pinned Sol model starts at low.
-  const requestedEffort = model === DEFAULT_WORKER_MODELS.codex && inheritedEffort === "none"
-    ? "low"
-    : inheritedEffort;
+  const requestedEffort = args.effort ?? rootEffort;
   const effort = worker === "claude"
     ? config.effortMap[requestedEffort ?? "high"]
-    : rootKind === "claude"
-      ? codexWorkerEffort(config, requestedEffort)
-      : codexRootEffort(requestedEffort);
+    : factoryCodexEffort(config, rootKind, model, requestedEffort, args.effort);
   if (requestedEffort && !effort) throw new Error("Unsupported Factory worker effort.");
   return { model, effort, speed: args.speed ?? "standard" };
 }
