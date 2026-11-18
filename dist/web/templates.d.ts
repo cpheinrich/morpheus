@@ -120,6 +120,7 @@ export declare const hqBuildContract: () => string;
 export declare const hqBuildCheck: () => string;
 export declare const noAccessPage: () => string;
 export declare const appPackageJson: (scope: string, sharedName?: string, hqBuildGuard?: boolean) => string;
+export declare const appOxlintConfig = "{\n  \"$schema\": \"./node_modules/oxlint/configuration_schema.json\",\n  \"plugins\": [\"eslint\", \"typescript\", \"react\", \"nextjs\", \"jsx-a11y\"],\n  \"categories\": { \"correctness\": \"error\" },\n  \"ignorePatterns\": [\".next/**\", \"out/**\", \"build/**\", \"next-env.d.ts\"],\n  \"rules\": {\n    \"react/rules-of-hooks\": \"error\",\n    \"react/exhaustive-deps\": \"warn\",\n    \"jsx-a11y/prefer-tag-over-role\": \"off\"\n  },\n  \"overrides\": [\n    {\n      \"files\": [\"lib/auth/safe-next.ts\"],\n      \"rules\": { \"no-control-regex\": \"off\" }\n    }\n  ]\n}\n";
 export declare const appTsconfig: () => string;
 export declare const nextConfig: () => string;
 export declare const postcssConfig: () => string;

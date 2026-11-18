@@ -27,7 +27,7 @@ export const COMMAND_RULES = [
     },
     {
         phase: "checks",
-        pattern: /^(vitest|jest|tsc|eslint|prettier --check|pytest|ruff|mypy|swift test|cargo (test|clippy)|go (test|vet)|swift-format lint)\b/,
+        pattern: /^(vitest|jest|tsc|eslint|oxlint|prettier --check|pytest|ruff|mypy|swift test|cargo (test|clippy)|go (test|vet)|swift-format lint)\b/,
         why: "test runners, type checkers and linters invoked directly",
     },
     { phase: "checks", pattern: /^(xcodebuild|xcrun xcodebuild)\b.*\b(test|test-without-building)\b/, why: "iOS test runs" },
@@ -121,7 +121,7 @@ function normaliseSegment(segment) {
     s = s.replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)+/, "");
     // Runners that only locate a binary: `pnpm exec vitest`, `npx tsc`, `pnpm morpheus pm index`,
     // `uv run --project apps/backend pytest`, `python -m pytest`.
-    s = s.replace(/^(?:pnpm (?:exec|dlx) |npx |bunx |pnpm (?=(?:morpheus|vitest|tsc|eslint|jest|prettier)\b)|(?:uv|poetry) run (?:--?\S+(?: (?!-)\S+)? )*|python3? -m (?=(?:pytest|mypy|ruff)\b))/, "");
+    s = s.replace(/^(?:pnpm (?:exec|dlx) |npx |bunx |pnpm (?=(?:morpheus|vitest|tsc|eslint|oxlint|jest|prettier)\b)|(?:uv|poetry) run (?:--?\S+(?: (?!-)\S+)? )*|python3? -m (?=(?:pytest|mypy|ruff)\b))/, "");
     s = s.replace(/^node dist\/cli\/index\.js\b/, "morpheus");
     // A program named by path is still that program: `.venv/bin/pytest`, `./node_modules/.bin/tsc`.
     s = s.replace(/^(?:\S*\/)([A-Za-z][\w.-]*)(?=\s|$)/, "$1");

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { basename } from "node:path";
 
 /**
@@ -109,12 +110,40 @@ export function deriveItem(...sources: Array<string | null | undefined>): string
 }
 
 /**
+ * A Morpheus task worktree and a Factory checkout both name their directory after the source
+ * checkout and the leading hex of SHA-256 over the repository's common Git directory:
+ *
+ * - `<tmp>/morpheus-worktrees/<repo>-<12 hex>/<item>-<rand>`, and the earlier
+ *   `<parent>/.morpheus-worktrees/…` and `.morpheus/worktrees/…`
+ * - `<factory home>/worktrees/<32 hex task>/<slot>/<checkout>-<8 hex>`
+ */
+const KEYED_CHECKOUTS = [
+  /\/(?:\.?morpheus-worktrees|\.morpheus\/worktrees)\/([^/]+?)-([0-9a-f]{12})(?:\/|-|$)/,
+  /\/worktrees\/[0-9a-f]{32}\/[^/]+\/([^/]+)-([0-9a-f]{8})(?:\/|$)/,
+];
+
+const trimmed = (path: string) => path.replace(/\/+$/, "");
+
+/**
+ * The key is the repository's identity; the name beside it is only the source directory's
+ * basename, which for a Factory checkout can be another task worktree. A registered root with
+ * the same key is therefore the answer whatever the name says. Without one the name stands,
+ * unless a registered project already has that name under a different key: that is another
+ * repository (or one moved since), and it stays unattributed rather than being merged in.
+ */
+function keyedRepo(name: string, key: string, roots: string[]): string | null {
+  const identified = roots.find((root) => createHash("sha256").update(`${root}/.git`).digest("hex").startsWith(key));
+  if (identified) return basename(identified);
+  return roots.some((root) => basename(root) === name) ? null : name;
+}
+
+/**
  * The repository a working directory belongs to, by its directory name.
  * Worktree layouts are recognised first, because a worktree's own basename is
  * a task name, not a repository:
  *
  * - `<repo>/.claude/worktrees/<name>` and `<repo>/local/worktrees/<name>`
- * - `<anything>/.morpheus-worktrees/<repo>-<12 hex>/<item>-<rand>` (and `.morpheus/worktrees`)
+ * - Morpheus task worktrees and Factory checkouts, by their repository key (`KEYED_CHECKOUTS`)
  * - `<anything>/.<repo>-worktrees/<repo>-<task>` for other tools' sibling worktrees
  * - `~/.codex/worktrees/<hash>/<repo>`
  *
@@ -123,11 +152,14 @@ export function deriveItem(...sources: Array<string | null | undefined>): string
  */
 export function deriveRepo(cwd: string | null | undefined, roots: string[] = [], home?: string): string | null {
   if (!cwd) return null;
-  const path = cwd.replace(/^file:\/\//, "").replace(/\/+$/, "");
+  const path = trimmed(cwd.replace(/^file:\/\//, ""));
+  const registered = roots.map(trimmed);
   let m = /^(.*?)\/(?:\.claude|local)\/worktrees\/[^/]+/.exec(path);
   if (m) return deriveRepo(m[1], roots, home);
-  m = /\/\.morpheus(?:-worktrees|\/worktrees)\/(.+?)-[0-9a-f]{12}(?:\/|-|$)/.exec(path);
-  if (m) return m[1]!;
+  for (const layout of KEYED_CHECKOUTS) {
+    m = layout.exec(path);
+    if (m) return keyedRepo(m[1]!, m[2]!, registered);
+  }
   m = /\/\.([^/]+)-worktrees\/[^/]+/.exec(path);
   if (m) return m[1]!;
   m = /\/\.codex\/worktrees\/[^/]+\/([^/]+)/.exec(path);
@@ -135,9 +167,8 @@ export function deriveRepo(cwd: string | null | undefined, roots: string[] = [],
   if (/\/scratch-workspaces\/|^\/(private\/)?tmp\//.test(path)) return "(scratch)";
   // Codex desktop chats run in a dated folder or a ChatGPT project, not a repository.
   if (/\/Documents\/Codex\/\d{4}-\d{2}-\d{2}\/|\/\.codex\/\.chatgpt-projects\//.test(path)) return "(chat)";
-  if (home && path === home.replace(/\/+$/, "")) return "(home)";
-  const root = roots
-    .map((r) => r.replace(/\/+$/, ""))
+  if (home && path === trimmed(home)) return "(home)";
+  const root = registered
     .filter((r) => path === r || path.startsWith(`${r}/`))
     .sort((a, b) => b.length - a.length)[0];
   return basename(root ?? path) || null;

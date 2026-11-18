@@ -10,7 +10,7 @@ import { contextOverview } from "./overview.js";
 import { buildRelationships, relatedContext } from "./relationships.js";
 import { retrieveContext } from "./retrieve.js";
 import { warmContextMcp } from "./warm.js";
-import { contextArm, traceContext, type ContextOperation, type ContextOutcome } from "./rollout.js";
+import { contextArm, traceContext, type ContextErrorReason, type ContextOperation, type ContextOutcome } from "./rollout.js";
 import { CONTEXT_KINDS, contextCoverage, contextKind, discoverSources, readContextSources, type ContextKind } from "./sources.js";
 
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -32,11 +32,23 @@ function result(text: string, fields: Record<string, unknown>): CallToolResult {
   return { content: [{ type: "text", text }], structuredContent: fields };
 }
 
-async function recordTool(scope: Scope, operation: ContextOperation, outcome: ContextOutcome, started: number, returnedTokens?: number) {
+/** A refused read names its category, so the trace can say why without the path or the message. */
+class ReadRefusal extends Error {
+  constructor(readonly reason: ContextErrorReason, message: string) { super(message); }
+}
+
+function refusalReason(operation: ContextOperation, error: unknown): ContextErrorReason | undefined {
+  if (operation !== "read") return;
+  return error instanceof ReadRefusal ? error.reason : "other";
+}
+
+async function recordTool(
+  scope: Scope, operation: ContextOperation, outcome: ContextOutcome, started: number, detail: { returnedTokens?: number; reason?: ContextErrorReason } = {},
+) {
   const arm = await contextArm(scope.root, scope.session, scope.config);
   await traceContext(scope.root, {
     type: "tool", arm: arm.arm, engine: arm.engine, session: arm.session, rollout: arm.id,
-    transport: "mcp", operation, outcome, queryMs: performance.now() - started, returnedTokens,
+    transport: "mcp", operation, outcome, queryMs: performance.now() - started, ...detail,
   });
 }
 
@@ -51,11 +63,11 @@ async function call(
     if (operation !== "search") {
       const tokens = response.structuredContent?.returnedTokens;
       await recordTool(scope, operation, response.structuredContent?.outcome === "empty" ? "empty" : "ok", started,
-        typeof tokens === "number" ? tokens : undefined);
+        { returnedTokens: typeof tokens === "number" ? tokens : undefined });
     }
     return response;
   } catch (error) {
-    if (scope && operation !== "search") await recordTool(scope, operation, "error", started).catch(() => {});
+    if (scope && operation !== "search") await recordTool(scope, operation, "error", started, { reason: refusalReason(operation, error) }).catch(() => {});
     return { isError: true, content: [{ type: "text", text: error instanceof Error ? error.message : "Morpheus Context could not complete this operation." }] };
   }
 }
@@ -77,12 +89,22 @@ async function search(scope: Scope, input: { query: string; max_tokens: number; 
 
 async function read(scope: Scope, input: { path: string; from: number; to?: number; max_tokens: number }) {
   const { path, from, to = from + 15, max_tokens: budget } = input;
-  if (to < from || to - from > 99) throw new Error("Choose an inclusive range of 1–100 lines.");
+  if (to < from || to - from > 99) {
+    throw new ReadRefusal("range", `Choose an inclusive range of 1–100 lines: read from ${from} to ${from + 99}, then continue from ${from + 100}.`);
+  }
   const sources = await discoverSources(scope.root, scope.config);
-  if (!sources.included.includes(path)) throw new Error("The path is outside the project context corpus. Check context coverage.");
+  if (!sources.included.includes(path)) {
+    const file = path.split("#", 1)[0]!;
+    throw new ReadRefusal("coverage", file !== path && sources.included.includes(file)
+      ? `Read ${file} by line range; a heading anchor is not part of the path.`
+      : "The path is outside the project context corpus. Check context coverage.");
+  }
   const [record] = await readContextSources(scope.root, [path]);
-  if (!record) throw new Error("The record is unavailable in this worktree.");
-  const lines = record.text.replace(/\r?\n$/, "").split(/\r?\n/).slice(from - 1, to);
+  if (!record) throw new ReadRefusal("unavailable", "The record is unavailable in this worktree.");
+  const source = record.text.replace(/\r?\n$/, "").split(/\r?\n/);
+  // The record's own end is not a truncation: only lines dropped for the budget are.
+  const last = Math.min(to, source.length);
+  const lines = source.slice(from - 1, last);
   while (lines.length) {
     const end = from + lines.length - 1;
     const excerpt = `${path}:${from}-${end}\n${lines.join("\n")}`;
@@ -90,7 +112,9 @@ async function read(scope: Scope, input: { path: string; from: number; to?: numb
     if (Buffer.byteLength(excerpt) <= MCP_EXCERPT_BYTES && tokens <= budget && lines.some(line => line.trim())) {
       const message = `${CONTEXT_SEARCH_HEADER}\n${excerpt}`;
       return result(message, {
-        excerpt: message, outcome: "ok", path, from, to: end, returnedTokens: tokens, truncated: end < to && lines.length < to - from + 1,
+        excerpt: message, outcome: "ok", path, from, to: end, returnedTokens: tokens, truncated: end < last,
+        // The next call picks up at the first line left out, so a continued read skips nothing.
+        ...(end < last ? { next: { path, from: end + 1, to: last } } : {}),
       });
     }
     lines.pop();

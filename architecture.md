@@ -973,8 +973,10 @@ Each execution host still needs its own runtime and trust. See
 
 The local `morpheus_context` server resolves the host worktree and uses the session identity
 for validated bindings and profiling when one is available. It exposes search, exact reads,
-coverage, overview and relationship traversal. The host read hook validates visible excerpts
-against their source.
+coverage, overview and relationship traversal. The overview gives exact read ranges for local
+architecture sections, and a read cut short by its budget names the range to continue with.
+The host read hook validates visible excerpts against their source, in the form each host
+presents them.
 Explicit Markdown and project record links provide traversable relationships, with the declaring
 path and line retained as evidence.
 
@@ -2922,6 +2924,11 @@ provisioned:
 | Firestore in `nam5` | `/hq` behind Google sign-in, its private search index, and the route gate |
 | A registered web app, and its public SDK config | The Firestore deny block for `waitlist` |
 | Workload Identity Federation for Vercel | `.env.example`, and the dependencies the code imports |
+
+New Next.js apps scaffold an app-local `.oxlintrc.json` and a pinned Oxlint dev dependency.
+Their `lint` script checks JavaScript and TypeScript using correctness, React hooks, Next.js,
+and JSX accessibility rules. The shared web CI runs that script alongside typecheck, tests,
+and build. Established apps keep their existing lint config during scaffolding.
 
 Then it calls `firebase auth setup` (§ Firebase Google sign-in), which is the only step that can
 need a human at a consent screen — and is therefore last, so everything before it survives a stop.

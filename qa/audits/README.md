@@ -2,3 +2,6 @@
 
 Periodic, repository-wide technical-health reports live here. An audit is an evidence package,
 not an instruction to change code: findings are ranked, and any remediation is proposed separately.
+
+For a coordinated structural cleanup, use the [simplification audit runbook](../../docs/runbooks/simplification-audit.md).
+Recurring reports can nominate candidates for a scoped audit.

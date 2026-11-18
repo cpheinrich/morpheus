@@ -237,8 +237,10 @@ async function recordContextMcpResult(payload: Json, root: string, session: stri
   const operation = tool === CONTEXT_MCP_PREFIX + "search_project_context" ? "search"
     : tool === CONTEXT_MCP_PREFIX + "read_project_record" ? "read" : undefined;
   if (!operation) return;
-  const text = mcpResultText(payload["tool_response"], provider);
-  if (!text || !withinCap(text, provider) || !isContextSearchOutput(text)) return;
+  const shown = mcpResultText(payload["tool_response"], provider);
+  if (!shown || !withinCap(shown, provider)) return;
+  const text = provider === "claude" ? serializedExcerpt(shown) : shown;
+  if (!isContextSearchOutput(text)) return;
   const { contextMcpScope } = await import("../context-search/mcp-scope.js");
   const scope = await contextMcpScope(root, session);
   const { observeTaskContext } = await import("../context-search/task-start.js");
@@ -257,6 +259,25 @@ function mcpResultText(response: unknown, provider: Provider): string | null {
   if (!Array.isArray(blocks)) return null;
   const first: unknown = blocks[0];
   return isObject(first) && first["type"] === "text" && typeof first["text"] === "string" ? first["text"] : null;
+}
+
+/**
+ * Claude Code shows the model a structured MCP result as one JSON string, and passes the hook
+ * the same string as `tool_response` (captured from Claude Code 2.1.322). The excerpt the model
+ * read is that object's `excerpt`, JSON-escaped, so it is decoded here and then checked against
+ * the cited source like any other excerpt. Anything else is validated exactly as shown.
+ */
+function serializedExcerpt(shown: string): string {
+  if (!shown.startsWith("{")) return shown;
+  try {
+    const value: unknown = JSON.parse(shown);
+    if (isObject(value) && value["outcome"] === "ok" && value["isError"] !== true && typeof value["excerpt"] === "string") {
+      return value["excerpt"];
+    }
+  } catch {
+    // Not a serialized result.
+  }
+  return shown;
 }
 
 async function recordTaskResult(payload: Json, root: string, session: string, text: string): Promise<void> {

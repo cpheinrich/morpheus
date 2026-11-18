@@ -51,6 +51,9 @@ documentation rules. This creates no approval pause, required artifact or merge 
 Prefer the simplest change that meets the requirements: when the same behaviour needs fewer parts
 or fewer lines, name the simpler version as a finding. A gate, approval step, state, option or
 mechanism that the requirements do not need is substantive; a local simplification is minor.
+Name the mechanism and callers or contract it serves. Check whether an existing owner can handle
+the supported scenario and whether each caller fits a shared abstraction. Describe the smallest
+simpler approach that preserves behavior.
 For a human-facing HQ change, apply docs/runbooks/hq-product-design.md: current direction is a
 verb-led outcome of at most ten words, the executive brief is at most 75 words or five one-sentence
 bullets, and a verbose legacy page should usually lose 40–60% of its prose without losing the
