@@ -207,29 +207,30 @@ test("Factory tools fail closed when the host cannot inject a verified root id",
   }
   assert.deepEqual(await readdir(root), []);
 });
-test("removed pool tools are absent and refuse without contacting the bridge", async (t) => {
+test("a delegated worker cannot delegate again through either MCP server", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "mcp-delegated-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: [fileURLToPath(new URL("../scripts/mcp.mjs", import.meta.url))],
-    env: { PATH: process.env.PATH, FACTORY_HOME: root, FACTORY_DELEGATED: "1" },
-  });
-  const client = new Client({ name: "test", version: "1" });
-  t.after(() => client.close());
-  await client.connect(transport);
-  assert.equal((await client.listTools()).tools.some(({ name }) => name.startsWith("pool_")), false);
-  const conversationId = "00000000-0000-4000-8000-000000000001";
-  for (const [name, args] of [
-    ["pool_start", { threadId: "t", profile: "p", prompt: "x" }],
-    ["pool_followup", { threadId: "t", conversationId, prompt: "x" }],
-    ["pool_answer", { threadId: "t", conversationId, questionId: "q", source: "codex", reason: "r" }],
-    ["pool_reattach", { threadId: "t", conversationId, retry: true }],
-    ["pool_recover", { threadId: "t", conversationId }],
+  // Every tool that hands work to another worker, on both servers. The exact
+  // message matters: without the guard these calls still fail, on the missing
+  // root id, so `isError` alone would pass with the guard deleted.
+  for (const [script, calls] of [
+    ["../scripts/mcp.mjs", [["factory_delegate", { prompt: "x" }], ["claude_start", { threadId: "t", prompt: "x" }]]],
+    ["../scripts/claude-mcp.mjs", [["factory_delegate", { prompt: "x" }], ["codex_start", { prompt: "x" }]]],
   ]) {
-    const result = await client.callTool({ name, arguments: args });
-    assert.equal(result.isError, true);
-    assert.match(result.content[0].text, /not found/);
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [fileURLToPath(new URL(script, import.meta.url))],
+      env: { PATH: process.env.PATH, FACTORY_HOME: root, FACTORY_DELEGATED: "1" },
+    });
+    const client = new Client({ name: "delegated-test", version: "1" });
+    // Registered before any assertion: a failed one must not leave the server running.
+    t.after(() => client.close());
+    await client.connect(transport);
+    for (const [name, args] of calls) {
+      const result = await client.callTool({ name, arguments: args });
+      assert.equal(result.isError, true, `${script} ${name}`);
+      assert.equal(result.content[0].text, "Delegated workers cannot delegate again.", `${script} ${name}`);
+    }
   }
   assert.deepEqual(await readdir(root), []);
 });

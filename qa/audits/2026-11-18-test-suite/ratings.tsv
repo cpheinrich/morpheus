@@ -1,0 +1,96 @@
+# pattern	rating	review_depth	note
+# An exact path wins over a directory prefix; among prefixes the first listed wins. Depths: targeted = named cases read line by line (report section 6),
+# the rest of the file by scan; timed = every case timed locally; scanned = title and body pattern scans plus metrics, bodies not read.
+plugins/factory/tests/mcp.test.mjs	5	targeted	Sole suite for the MCP tool contract and root binding. One past-dependent case rewritten in this PR against the untested no-redelegation guard.
+plugins/factory/tests/config.test.mjs	5	targeted	Saved-configuration compatibility and permission mapping; the two legacy-named cases read and kept (they pin how existing saved files parse).
+plugins/factory/tests/unattended-worker.test.mjs	5	targeted	Unattended worker admission, guardian deadlines and replay refusal. 46 s of the 79 s bridge step; cost noted, no case nominated.
+plugins/factory/tests/probe.test.mjs	4	targeted	First case is a did-not-raise check; the second proves the probe can fail, so the pair is anchored.
+tests/team.test.ts	3	targeted	Three past-dependent cases (old hq/inbox path) rated 2 in the report; the rest is roster and inbox behaviour.
+tests/workflows.test.ts	5	targeted	Drift and policy assertions on workflows every project calls. One past-dependent case (schedule.yml cron) rated 2 in the report; 189 declarations not read one by one.
+tests/claim.test.ts	4	targeted	Branch naming and claim refs. Three slug cases repeat tests/id.test.ts inputs through a one-line delegate; rated 2 in the report.
+tests/id.test.ts	4	targeted	Owner of the slug rules the claim cases repeat.
+tests/cd/quota-reader.test.ts	3	targeted	Guards quota reads that gate spend. One case sleeps 10.2 s of real time; needs an injectable deadline to test the boundary cheaply (product seam, out of scope).
+tests/cd/quota-reader-cli.test.ts	3	targeted	Two cases wait out a real 3 s cleanup fuse (6.6 s of 13.6 s). Same injectable-clock improvement.
+tests/complexity-check.test.ts	3	targeted	Installs five real analyzer builds; four cases refuse historical pins (15.7 s). They work as mutation tests of the canary; consolidation needs evidence that one bad build exercises every canary file.
+tests/workflow-repair.test.ts	3	targeted	Wrapper that puts qa/evals/workflow-repair on the required lane. Pins the count (Ran 30 tests) so a silent skip fails.
+tests/firestore-rules.test.mjs	3	targeted	Generated HQ rules against the emulator. No active workflow runs pnpm test:rules, so it detects nothing on a pull request today.
+tests/cd/adapters.test.ts	4	targeted	Zero-assertion scan hit was a one-line case; read and anchored.
+tests/cd/claude-quota.test.ts	4	targeted	Zero-assertion scan hit was a one-line case; read and anchored.
+tests/cd/state.test.ts	4	targeted	Zero-assertion scan hit was a one-line case; read and anchored.
+tests/local-review.test.ts	5	targeted	Required review gate. Heaviest root file (40.7 s, 173 instances, each builds git history); scan hit read and anchored.
+tests/trunk-rescue.test.ts	5	targeted	Trunk rescue never publishes private edits. Scan hit read and anchored.
+tests/cd/controller.test.ts	5	targeted	CD controller state machine. Three scan hits use a shared assertion helper; read and anchored.
+plugins/factory/src/host/tests/capacity.test.ts	4	targeted	Duplicate-title pair read: different units (broker auth vs parsed config).
+plugins/factory/src/host/tests/config.test.ts	4	targeted	Duplicate-title pair read: different units (broker auth vs parsed config).
+tests/doctor.test.ts	4	targeted	Duplicate-title pair read: doctor finding vs scaffold output, different behaviours.
+tests/init.test.ts	4	targeted	Duplicate-title pair read: doctor finding vs scaffold output, different behaviours.
+tests/browser/qa-comments.spec.ts	4	timed	All 25 cases timed locally on Chromium (14.4 s total). Bodies not read.
+tests/browser/qa-web-context.spec.ts	4	timed	All 25 cases timed locally on Chromium (14.4 s total). Bodies not read.
+tests/browser/qa-web-production.spec.ts	4	timed	All 25 cases timed locally on Chromium (14.4 s total). Bodies not read.
+tests/review.test.ts	5	scanned	Review, merge and PR-convention gates.
+tests/check.test.ts	5	scanned	Review, merge and PR-convention gates.
+tests/cli-check.test.ts	5	scanned	Review, merge and PR-convention gates.
+tests/manager-review.test.ts	5	scanned	Review, merge and PR-convention gates.
+tests/gh-manager.test.ts	5	scanned	Review, merge and PR-convention gates.
+tests/gh-manager-evidence.test.ts	5	scanned	Review, merge and PR-convention gates.
+tests/gh-manager-preview.test.ts	5	scanned	Review, merge and PR-convention gates.
+tests/security-import-review.test.ts	5	scanned	Review, merge and PR-convention gates.
+tests/security-policy.test.ts	5	scanned	Review, merge and PR-convention gates.
+tests/session.test.ts	5	scanned	Session freshness receipts and governed-action gates.
+tests/session-gate.test.ts	5	scanned	Session freshness receipts and governed-action gates.
+tests/session-evidence.test.ts	5	scanned	Session freshness receipts and governed-action gates.
+tests/session-git.test.ts	5	scanned	Session freshness receipts and governed-action gates.
+tests/session-start.test.ts	5	scanned	Session freshness receipts and governed-action gates.
+tests/session-install.test.ts	5	scanned	Session freshness receipts and governed-action gates.
+tests/session-bootstrap.test.ts	5	scanned	Session freshness receipts and governed-action gates.
+tests/context-task-start.test.ts	5	scanned	Session freshness receipts and governed-action gates.
+tests/codex-hooks.test.ts	5	scanned	Session freshness receipts and governed-action gates.
+tests/doctor-codex-trust.test.ts	5	scanned	Session freshness receipts and governed-action gates.
+tests/trunk-changes.test.ts	5	scanned	Git safety: claims, blocking, shipping, trunk and worktree handling.
+tests/trunk-churn.test.ts	5	scanned	Git safety: claims, blocking, shipping, trunk and worktree handling.
+tests/worktree-cleanup.test.ts	5	scanned	Git safety: claims, blocking, shipping, trunk and worktree handling.
+tests/block.test.ts	5	scanned	Git safety: claims, blocking, shipping, trunk and worktree handling.
+tests/ship.test.ts	5	scanned	Git safety: claims, blocking, shipping, trunk and worktree handling.
+tests/git-env.test.ts	5	scanned	Git safety: claims, blocking, shipping, trunk and worktree handling.
+tests/repo-visibility.test.ts	5	scanned	Git safety: claims, blocking, shipping, trunk and worktree handling.
+tests/access.test.ts	5	scanned	Auth, roles and credentials.
+tests/hq.test.ts	5	scanned	Auth, roles and credentials.
+tests/hq-session.test.ts	5	scanned	Auth, roles and credentials.
+tests/consumer-auth.test.ts	5	scanned	Auth, roles and credentials.
+tests/web-hq-signin.test.ts	5	scanned	Auth, roles and credentials.
+tests/credentials.test.ts	5	scanned	Auth, roles and credentials.
+tests/firebase-google-auth.test.ts	5	scanned	Auth, roles and credentials.
+tests/firebase-cli.test.ts	5	scanned	Auth, roles and credentials.
+tests/workflow-expressions.test.ts	5	scanned	Protected CI and release contracts.
+tests/ci-scope.test.ts	5	scanned	Protected CI and release contracts.
+tests/artifact-workflows.test.ts	5	scanned	Protected CI and release contracts.
+tests/node-ci-parallel.test.ts	5	scanned	Protected CI and release contracts.
+tests/firebase-release.test.ts	5	scanned	Protected CI and release contracts.
+tests/dependabot.test.ts	5	scanned	Protected CI and release contracts.
+tests/upload-configuration.test.ts	5	scanned	Protected CI and release contracts.
+tests/self-auto-update.test.ts	5	scanned	Protected CI and release contracts.
+tests/wait-ci/	5	scanned	Required-check waiting and failure reporting.
+tests/signing-lock.test.ts	5	scanned	Signing, entitlement and upload-receipt suites and their Vitest wrappers.
+tests/upload-receipt.test.ts	5	scanned	Signing, entitlement and upload-receipt suites and their Vitest wrappers.
+tests/ios-entitlements.test.ts	5	scanned	Signing, entitlement and upload-receipt suites and their Vitest wrappers.
+tests/signing-lock.test.py	5	scanned	Signing, entitlement and upload-receipt suites and their Vitest wrappers.
+tests/upload-receipt.test.py	5	scanned	Signing, entitlement and upload-receipt suites and their Vitest wrappers.
+tests/ios_entitlements_test.py	5	scanned	Signing, entitlement and upload-receipt suites and their Vitest wrappers.
+tests/cd/	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/factory-fleet-firestore.test.mjs	5	scanned	Fleet claims and supervision against the Firestore emulator.
+plugins/factory/tests/	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/src/host/tests/test_	5	scanned	Factory host: controller, updates, root helper, worker setup.
+plugins/factory/src/host/tests/	4	scanned	Factory host placement core.
+plugins/factory/src/host/reporting/tests/	4	scanned	Factory host reporting.
+tests/artifacts/test_abi_fixture.py	4	scanned	Artifact staging ABI across two Python versions.
+tests/artifacts/test_ci_trace.py	4	scanned	Artifact staging ABI across two Python versions.
+tests/artifacts/test_processing_environment.py	4	scanned	Artifact staging ABI across two Python versions.
+tests/artifacts/test_stage.py	4	scanned	Artifact staging ABI across two Python versions.
+tests/artifacts/test_stage_mutants.py	4	scanned	Mutation harness, off the pull-request lane by design (docs/artifact-snapshots.md).
+tests/artifacts/test_trace_mutants.py	4	scanned	Mutation harness, off the pull-request lane by design (docs/artifact-snapshots.md).
+.github/actions/ios-simulator/simulator.test.mjs	4	scanned	Simulator ownership and cleanup, run through its Vitest wrapper.
+tests/ios-simulator.test.ts	4	scanned	Simulator ownership and cleanup, run through its Vitest wrapper.
+qa/evals/workflow-repair/	4	scanned	Offline study helpers, run through tests/workflow-repair.test.ts.
+qa/evals/context-retrieval/	3	scanned	No workflow or wrapper runs it. 61 cases pass locally with the prototype; decide whether it is on-demand by intent.
+qa/prototypes/	3	scanned	No workflow or wrapper runs it. 61 cases pass locally with the prototype; decide whether it is on-demand by intent.
+tests/	4	scanned	Product behaviour; scans raised nothing.
