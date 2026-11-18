@@ -1311,6 +1311,11 @@ gateway is `limited`. Old supervisors still heartbeat and run tasks, with quota
 shown as unknown. A new supervisor refreshes the quota observation no more than
 once per minute while idle and checks again before each model invocation.
 
+Worker control requests use a 20-second total deadline, including token acquisition
+and the full response. This gives a degraded link room to finish a request while
+the supervisor still stops at its last acknowledged lease boundary. Controller
+requests use eight seconds and artifact transfers use 45 seconds.
+
 The service grants a two-minute attempt lease and tells the supervisor its duration
 on a successful renewal. A supervisor talking to an older service uses the
 original one-minute grant. The supervisor measures from before the renewal request

@@ -48,8 +48,26 @@ test("Fleet marks network and service interruptions separately from an authority
   await assert.rejects(client.call("submit", {}), { message: "Project revision or model is outside the pilot enrollment", retryable: false });
 });
 
+test("slow worker control requests have room to finish while controller and artifact deadlines stay bounded", async (t) => {
+  const timeout = t.mock.method(AbortSignal, "timeout", () => new AbortController().signal);
+  const fetch = t.mock.method(globalThis, "fetch", async () => Response.json({ accepted: true }));
+  const client = await connectFleet(config, async () => ({ user: { getIdToken: async () => "fixture-id-token" } }));
+  t.after(() => client.close());
+  const operations = {
+    heartbeat: 20_000, claim: 20_000, inspect: 20_000, renew: 20_000, question: 20_000, finish: 20_000,
+    submit: 8_000, get: 8_000, upload: 45_000, download: 45_000,
+  };
+  for (const [op, duration] of Object.entries(operations)) {
+    assert.deepEqual(await client.call(op, {}), { accepted: true });
+    assert.equal(timeout.mock.calls.at(-1).arguments[0], duration, op);
+    assert.equal(JSON.parse(fetch.mock.calls.at(-1).arguments[1].body).op, op);
+  }
+});
+
 test("the total deadline includes token acquisition and a stalled successful response body", async (t) => {
-  const keepAlive = setTimeout(() => {}, 12_000);
+  const timeout = AbortSignal.timeout.bind(AbortSignal);
+  t.mock.method(AbortSignal, "timeout", () => timeout(50));
+  const keepAlive = setTimeout(() => {}, 1_000);
   t.after(() => clearTimeout(keepAlive));
   const token = Promise.withResolvers();
   const clientWaitingForToken = await connectFleet(config, async () => ({ user: { getIdToken: () => token.promise } }));
