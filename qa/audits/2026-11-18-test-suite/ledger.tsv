@@ -1,0 +1,241 @@
+path	runner	pr_lane	declarations	each_tables	runtime_instances	case_seconds	runtime_source	assertions	assertions_per_declaration	absence_shapes	source_reads	mock_call_assertions	rating	review_depth	note
+tests/artifacts/test_abi_fixture.py	python-script	artifact-abi	4	0				14	3.5	2	0	0	4	scanned	Artifact staging ABI across two Python versions.
+tests/artifacts/test_ci_trace.py	python-script	artifact-abi	7	0				31	4.4	2	0	0	4	scanned	Artifact staging ABI across two Python versions.
+tests/artifacts/test_processing_environment.py	python-script	artifact-abi	0	0				6		0	0	0	4	scanned	Artifact staging ABI across two Python versions.
+tests/artifacts/test_stage.py	python-script	artifact-abi	23	0				88	3.8	7	0	0	4	scanned	Artifact staging ABI across two Python versions.
+plugins/factory/tests/claude.test.mjs	factory-bridge node:test	factory	2	0	2	0.007	ci:44253481138/134629583869 name-matched	4	2.0	0	0	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/client.test.mjs	factory-bridge node:test	factory	5	0	5	0.235	ci:44253481138/134629583869 name-matched	11	2.2	0	0	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/config.test.mjs	factory-bridge node:test	factory	23	0	23	0.038	ci:44253481138/134629583869 name-matched	134	5.8	1	0	0	5	targeted	Saved-configuration compatibility and permission mapping; the two legacy-named cases read and kept (they pin how existing saved files parse).
+plugins/factory/tests/dispatch.test.mjs	factory-bridge node:test	factory	6	0	6	0.169	ci:44253481138/134629583869 name-matched	29	4.8	2	3	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/fleet-artifacts.test.mjs	factory-bridge node:test	factory	8	0	8	0.080	ci:44253481138/134629583869 name-matched	26	3.3	0	0	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/fleet-capacity.test.mjs	factory-bridge node:test	factory	2	0	2	0.001	ci:44253481138/134629583869 name-matched	5	2.5	0	0	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/fleet-claims.test.mjs	factory-bridge node:test	factory	5	0	5	0.003	ci:44253481138/134629583869 name-matched	25	5.0	0	0	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/fleet-client.test.mjs	factory-bridge node:test	factory	5	0	5	0.110	ci:44253481138/134629583869 name-matched	14	2.8	0	0	2	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/fleet-display.test.mjs	factory-bridge node:test	factory	1	0	1	0.003	ci:44253481138/134629583869 name-matched	1	1.0	0	0	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/fleet-execution.test.mjs	factory-bridge node:test	factory	6	0	6	1.571	ci:44253481138/134629583869 name-matched	30	5.0	0	0	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/fleet-quota.test.mjs	factory-bridge node:test	factory	2	0	2	0.005	ci:44253481138/134629583869 name-matched	20	10.0	0	0	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/fleet-runner.test.mjs	factory-bridge node:test	factory	24	0	23	0.379	ci:44253481138/134629583869 name-matched	135	5.6	0	4	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/fleet-source.test.mjs	factory-bridge node:test	factory	2	0	2	3.095	ci:44253481138/134629583869 name-matched	39	19.5	0	5	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/fleet-work.test.mjs	factory-bridge node:test	factory	1	0	1	0.004	ci:44253481138/134629583869 name-matched	2	2.0	0	0	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/fleet-workspace.test.mjs	factory-bridge node:test	factory	12	0	11	18.777	ci:44253481138/134629583869 name-matched	112	9.3	0	9	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/gateway-workers.test.mjs	factory-bridge node:test	factory	5	0	5	3.896	ci:44253481138/134629583869 name-matched	75	15.0	3	10	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/guardian.test.mjs	factory-bridge node:test	factory	5	0	5	2.043	ci:44253481138/134629583869 name-matched	18	3.6	0	5	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/install-lib.test.mjs	factory-bridge node:test	factory	6	0	6	0.032	ci:44253481138/134629583869 name-matched	33	5.5	1	3	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/install.test.mjs	factory-bridge node:test	factory	1	0	1	0.312	ci:44253481138/134629583869 name-matched	3	3.0	1	0	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/manager.test.mjs	factory-bridge node:test	factory	10	0	10	0.363	ci:44253481138/134629583869 name-matched	60	6.0	0	5	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/mcp.test.mjs	factory-bridge node:test	factory	9	0	9	1.864	ci:44253481138/134629583869 name-matched	28	3.1	0	2	0	5	targeted	Sole suite for the MCP tool contract and root binding. One past-dependent case rewritten in this PR against the untested no-redelegation guard.
+plugins/factory/tests/memory.test.mjs	factory-bridge node:test	factory	3	0	3	0.379	ci:44253481138/134629583869 name-matched	9	3.0	0	1	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/probe.test.mjs	factory-bridge node:test	factory	2	0	2	0.724	ci:44253481138/134629583869 name-matched	5	2.5	0	0	0	4	targeted	First case is a did-not-raise check; the second proves the probe can fail, so the pair is anchored.
+plugins/factory/tests/processes.test.mjs	factory-bridge node:test	factory	3	0	3	1.280	ci:44253481138/134629583869 name-matched	11	3.7	0	1	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/release.test.mjs	factory-bridge node:test	factory	8	0	8	2.198	ci:44253481138/134629583869 name-matched	37	4.6	1	1	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/reverse.test.mjs	factory-bridge node:test	factory	21	0	21	3.695	ci:44253481138/134629583869 name-matched	156	7.4	0	5	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/snapshot.test.mjs	factory-bridge node:test	factory	1	0	1	0.040	ci:44253481138/134629583869 name-matched	16	16.0	0	0	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/task-model.test.mjs	factory-bridge node:test	factory	2	0	2	0.001	ci:44253481138/134629583869 name-matched	4	2.0	0	0	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/unattended-worker.test.mjs	factory-bridge node:test	factory	28	0	27	46.332	ci:44253481138/134629583869 name-matched	273	9.8	5	49	0	5	targeted	Unattended worker admission, guardian deadlines and replay refusal. 46 s of the 79 s bridge step; cost noted, no case nominated.
+plugins/factory/tests/viewer.test.mjs	factory-bridge node:test	factory	1	0	1	0.064	ci:44253481138/134629583869 name-matched	9	9.0	0	0	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/tests/workspace.test.mjs	factory-bridge node:test	factory	12	0	12	7.156	ci:44253481138/134629583869 name-matched	84	7.0	0	8	0	5	scanned	Factory bridge: fleet binding, workspaces, gateways, release and install.
+plugins/factory/src/host/reporting/tests/org-runners.test.mjs	factory-host node:test	factory	5	0	5	0.032	ci:44253481138/134629583869 name-matched	20	4.0	0	0	0	4	scanned	Factory host reporting.
+plugins/factory/src/host/reporting/tests/phone.test.mjs	factory-host node:test	factory	8	0	8	0.007	ci:44253481138/134629583869 name-matched	27	3.4	0	0	0	4	scanned	Factory host reporting.
+plugins/factory/src/host/reporting/tests/quota.test.mjs	factory-host node:test	factory	13	0	13	0.032	ci:44253481138/134629583869 name-matched	41	3.2	0	0	0	4	scanned	Factory host reporting.
+plugins/factory/src/host/reporting/tests/reporting.test.mjs	factory-host node:test	factory	19	0	19	0.629	ci:44253481138/134629583869 name-matched	119	6.3	0	4	0	4	scanned	Factory host reporting.
+plugins/factory/src/host/reporting/tests/scheduled-tasks.test.mjs	factory-host node:test	factory	7	0	7	0.099	ci:44253481138/134629583869 name-matched	26	3.7	0	0	0	4	scanned	Factory host reporting.
+plugins/factory/src/host/reporting/tests/source-gaps.test.mjs	factory-host node:test	factory	14	0	14	1.192	ci:44253481138/134629583869 name-matched	76	5.4	0	4	0	4	scanned	Factory host reporting.
+plugins/factory/src/host/reporting/tests/ssh-http.test.mjs	factory-host node:test	factory	5	0	5	0.413	ci:44253481138/134629583869 name-matched	34	6.8	0	0	0	4	scanned	Factory host reporting.
+plugins/factory/src/host/tests/test_cleanup_development_cache.py	factory-host unittest	factory	26	6				103	4.0	13	0	18	5	scanned	Factory host: controller, updates, root helper, worker setup.
+plugins/factory/src/host/tests/test_cleanup_old_worktrees.py	factory-host unittest	factory	3	0				6	2.0	0	0	1	5	scanned	Factory host: controller, updates, root helper, worker setup.
+plugins/factory/src/host/tests/test_fleet_controller.py	factory-host unittest	factory	73	0				210	2.9	20	0	6	5	scanned	Factory host: controller, updates, root helper, worker setup.
+plugins/factory/src/host/tests/test_host_config.py	factory-host unittest	factory	19	0				35	1.8	5	0	0	5	scanned	Factory host: controller, updates, root helper, worker setup.
+plugins/factory/src/host/tests/test_install_updates.py	factory-host unittest	factory	15	0				58	3.9	5	0	0	5	scanned	Factory host: controller, updates, root helper, worker setup.
+plugins/factory/src/host/tests/test_public_fixtures.py	factory-host unittest	factory	3	0				8	2.7	3	0	0	5	scanned	Factory host: controller, updates, root helper, worker setup.
+plugins/factory/src/host/tests/test_runner_plist.py	factory-host unittest	factory	8	1				21	2.6	1	0	0	5	scanned	Factory host: controller, updates, root helper, worker setup.
+plugins/factory/src/host/tests/test_setup_sub2api.py	factory-host unittest	factory	5	0				24	4.8	5	0	0	5	scanned	Factory host: controller, updates, root helper, worker setup.
+plugins/factory/src/host/tests/test_update_controller.py	factory-host unittest	factory	99	0				291	2.9	21	0	42	5	scanned	Factory host: controller, updates, root helper, worker setup.
+plugins/factory/src/host/tests/test_validate_consumer_main.py	factory-host unittest	factory	5	0				15	3.0	0	0	4	5	scanned	Factory host: controller, updates, root helper, worker setup.
+plugins/factory/src/host/tests/test_worker_setup.py	factory-host unittest	factory	3	0				17	5.7	6	0	0	5	scanned	Factory host: controller, updates, root helper, worker setup.
+plugins/factory/src/host/tests/test_xcode_root_helper.py	factory-host unittest	factory	19	1				67	3.5	6	0	0	5	scanned	Factory host: controller, updates, root helper, worker setup.
+plugins/factory/src/host/tests/admit.test.ts	factory-host vitest	factory	15	0				26	1.7	0	0	0	4	scanned	Factory host placement core.
+plugins/factory/src/host/tests/capacity.test.ts	factory-host vitest	factory	14	0				22	1.6	0	0	0	4	targeted	Duplicate-title pair read: different units (broker auth vs parsed config).
+plugins/factory/src/host/tests/config.test.ts	factory-host vitest	factory	16	0				35	2.2	0	0	0	4	targeted	Duplicate-title pair read: different units (broker auth vs parsed config).
+plugins/factory/src/host/tests/place.test.ts	factory-host vitest	factory	13	0				25	1.9	0	0	0	4	scanned	Factory host placement core.
+plugins/factory/src/host/tests/plan.test.ts	factory-host vitest	factory	10	0				25	2.5	1	0	0	4	scanned	Factory host placement core.
+tests/factory-fleet-firestore.test.mjs	node:test+firestore-emulator	factory	2	0				75	37.5	0	1	0	5	scanned	Fleet claims and supervision against the Firestore emulator.
+.github/actions/ios-simulator/simulator.test.mjs	node:test-via-root-vitest	node / check	18	0				59	3.3	2	5	0	4	scanned	Simulator ownership and cleanup, run through its Vitest wrapper.
+tests/ios_entitlements_test.py	python-via-root-vitest	node / check	10	2				11	1.1	0	0	0	5	scanned	Signing, entitlement and upload-receipt suites and their Vitest wrappers.
+tests/signing-lock.test.py	python-via-root-vitest	node / check	9	0				36	4.0	7	0	0	5	scanned	Signing, entitlement and upload-receipt suites and their Vitest wrappers.
+tests/upload-receipt.test.py	python-via-root-vitest	node / check	18	3				77	4.3	17	0	0	5	scanned	Signing, entitlement and upload-receipt suites and their Vitest wrappers.
+tests/access.test.ts	root-vitest	node / check	17	0	17	0.009	ci:44253481138/134629583975	29	1.7	0	0	0	5	scanned	Auth, roles and credentials.
+tests/agent-instructions.test.ts	root-vitest	node / check	20	0	20	0.019	ci:44253481138/134629583975	71	3.5	9	5	0	4	scanned	Product behaviour; scans raised nothing.
+tests/agentic-cto-skill.test.ts	root-vitest	node / check	15	5	42	0.426	ci:44253481138/134629583975	53	3.5	1	4	1	4	scanned	Product behaviour; scans raised nothing.
+tests/artifact-workflows.test.ts	root-vitest	node / check	7	0	7	1.588	ci:44253481138/134629583975	42	6.0	0	5	0	5	scanned	Protected CI and release contracts.
+tests/block.test.ts	root-vitest	node / check	34	0	34	0.099	ci:44253481138/134629583975	71	2.1	2	9	2	5	scanned	Git safety: claims, blocking, shipping, trunk and worktree handling.
+tests/brand-workflow.test.ts	root-vitest	node / check	12	0	12	0.063	ci:44253481138/134629583975	51	4.3	0	21	0	4	scanned	Product behaviour; scans raised nothing.
+tests/cd/adapters.test.ts	root-vitest	node / check	17	1	24	0.374	ci:44253481138/134629583975	58	3.4	0	1	2	4	targeted	Zero-assertion scan hit was a one-line case; read and anchored.
+tests/cd/blocker-proof.test.ts	root-vitest	node / check	15	6	44	0.036	ci:44253481138/134629583975	50	3.3	1	0	0	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/claude-executor.test.ts	root-vitest	node / check	23	5	35	7.296	ci:44253481138/134629583975	81	3.5	2	0	1	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/claude-quota.test.ts	root-vitest	node / check	17	4	48	0.516	ci:44253481138/134629583975	34	2.0	1	0	0	4	targeted	Zero-assertion scan hit was a one-line case; read and anchored.
+tests/cd/controller.test.ts	root-vitest	node / check	66	23	219	0.639	ci:44253481138/134629583975	351	5.3	1	0	116	5	targeted	CD controller state machine. Three scan hits use a shared assertion helper; read and anchored.
+tests/cd/external.test.ts	root-vitest	node / check	29	5	48	0.252	ci:44253481138/134629583975	121	4.2	0	0	62	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/host.test.ts	root-vitest	node / check	2	0	2	1.548	ci:44253481138/134629583975	4	2.0	0	0	0	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/native-worker.test.ts	root-vitest	node / check	60	30	117	26.858	ci:44253481138/134629583975	376	6.3	7	29	26	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/physical-device.test.ts	root-vitest	node / check	14	3	46	0.103	ci:44253481138/134629583975	48	3.4	2	0	0	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/post-resume-controller.test.ts	root-vitest	node / check	28	6	35	0.298	ci:44253481138/134629583975	138	4.9	0	1	25	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/post-resume-store.test.ts	root-vitest	node / check	5	2	9	0.052	ci:44253481138/134629583975	21	4.2	0	0	0	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/post-resume.test.ts	root-vitest	node / check	19	6	38	0.097	ci:44253481138/134629583975	54	2.8	0	0	0	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/quota-reader-cli.test.ts	root-vitest	node / check	9	6	24	13.644	ci:44253481138/134629583975	47	5.2	2	2	0	3	targeted	Two cases wait out a real 3 s cleanup fuse (6.6 s of 13.6 s). Same injectable-clock improvement.
+tests/cd/quota-reader-process.test.ts	root-vitest	node / check	1	0	1	0.103	ci:44253481138/134629583975	1	1.0	0	0	0	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/quota-reader.test.ts	root-vitest	node / check	31	10	102	11.619	ci:44253481138/134629583975	77	2.5	1	6	10	3	targeted	Guards quota reads that gate spend. One case sleeps 10.2 s of real time; needs an injectable deadline to test the boundary cheaply (product seam, out of scope).
+tests/cd/repair-checks.test.ts	root-vitest	node / check	24	9	65	0.124	ci:44253481138/134629583975	79	3.3	0	1	5	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/repair-control.test.ts	root-vitest	node / check	12	1	15	0.025	ci:44253481138/134629583975	43	3.6	1	0	0	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/repair-diagnostic-cli.test.ts	root-vitest	node / check	7	4	24	0.449	ci:44253481138/134629583975	38	5.4	0	2	4	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/repair-diagnostic.test.ts	root-vitest	node / check	15	5	57	0.102	ci:44253481138/134629583975	64	4.3	2	0	0	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/request.test.ts	root-vitest	node / check	3	1	5	0.032	ci:44253481138/134629583975	14	4.7	0	0	0	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/schema.test.ts	root-vitest	node / check	1	0	1	0.004	ci:44253481138/134629583975	4	4.0	0	0	0	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/source-finance-cli.test.ts	root-vitest	node / check	11	7	43	0.131	ci:44253481138/134629583975	50	4.5	0	1	14	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/source-finance.test.ts	root-vitest	node / check	20	10	52	0.163	ci:44253481138/134629583975	80	4.0	0	0	0	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/spending-policy-cli.test.ts	root-vitest	node / check	5	2	14	0.064	ci:44253481138/134629583975	34	6.8	0	0	3	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/spending-policy.test.ts	root-vitest	node / check	6	0	6	0.021	ci:44253481138/134629583975	34	5.7	0	0	0	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/state.test.ts	root-vitest	node / check	33	1	34	0.040	ci:44253481138/134629583975	108	3.3	0	0	0	4	targeted	Zero-assertion scan hit was a one-line case; read and anchored.
+tests/cd/store.test.ts	root-vitest	node / check	7	0	7	0.068	ci:44253481138/134629583975	30	4.3	0	0	0	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/cd/worker.test.ts	root-vitest	node / check	16	3	27	0.092	ci:44253481138/134629583975	79	4.9	3	3	7	5	scanned	Continuous-delivery controller, workers, quota and spend.
+tests/check.test.ts	root-vitest	node / check	94	7	127	0.171	ci:44253481138/134629583975	157	1.7	3	0	0	5	scanned	Review, merge and PR-convention gates.
+tests/ci-scope.test.ts	root-vitest	node / check	10	1	40	2.490	ci:44253481138/134629583975	30	3.0	1	3	0	5	scanned	Protected CI and release contracts.
+tests/claim.test.ts	root-vitest	node / check	23	0	23	0.021	ci:44253481138/134629583975	33	1.4	1	1	0	4	targeted	Branch naming and claim refs. Three slug cases repeat tests/id.test.ts inputs through a one-line delegate; rated 2 in the report.
+tests/cli-args.test.ts	root-vitest	node / check	4	2	56	0.021	ci:44253481138/134629583975	20	5.0	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/cli-check.test.ts	root-vitest	node / check	1	0	1	0.094	ci:44253481138/134629583975	2	2.0	0	0	0	5	scanned	Review, merge and PR-convention gates.
+tests/cli-dispatch.test.ts	root-vitest	node / check	10	6	109	0.023	ci:44253481138/134629583975	29	2.9	0	0	12	4	scanned	Product behaviour; scans raised nothing.
+tests/cli-exit.test.ts	root-vitest	node / check	2	0	2	2.848	ci:44253481138/134629583975	12	6.0	0	2	0	4	scanned	Product behaviour; scans raised nothing.
+tests/codebase-memory.test.ts	root-vitest	node / check	6	0	6	0.015	ci:44253481138/134629583975	21	3.5	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/codex-hooks.test.ts	root-vitest	node / check	16	1	17	1.762	ci:44253481138/134629583975	66	4.1	1	14	3	5	scanned	Session freshness receipts and governed-action gates.
+tests/complexity-check.test.ts	root-vitest	node / check	31	0	31	27.786	ci:44253481138/134629583975	80	2.6	3	2	0	3	targeted	Installs five real analyzer builds; four cases refuse historical pins (15.7 s). They work as mutation tests of the canary; consolidation needs evidence that one bad build exercises every canary file.
+tests/complexity-diff.test.ts	root-vitest	node / check	14	0	14	0.442	ci:44253481138/134629583975	24	1.7	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/complexity-policy.test.ts	root-vitest	node / check	12	0	12	0.013	ci:44253481138/134629583975	25	2.1	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/complexity-prompt.test.ts	root-vitest	node / check	4	0	4	0.007	ci:44253481138/134629583975	7	1.8	1	5	0	4	scanned	Product behaviour; scans raised nothing.
+tests/consumer-auth.test.ts	root-vitest	node / check	32	0	32	0.368	ci:44253481138/134629583975	84	2.6	2	12	0	5	scanned	Auth, roles and credentials.
+tests/context-client-install.test.ts	root-vitest	node / check	7	0	7	0.051	ci:44253481138/134629583975	35	5.0	1	1	0	4	scanned	Product behaviour; scans raised nothing.
+tests/context-mcp.test.ts	root-vitest	node / check	18	0	18	9.384	ci:44253481138/134629583975	174	9.7	4	12	1	4	scanned	Product behaviour; scans raised nothing.
+tests/context-rollout-policy.test.ts	root-vitest	node / check	5	0	5	0.092	ci:44253481138/134629583975	15	3.0	0	2	0	4	scanned	Product behaviour; scans raised nothing.
+tests/context-search-engine.test.ts	root-vitest	node / check	5	0	5	1.710	ci:44253481138/134629583975	18	3.6	1	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/context-search-hook.test.ts	root-vitest	node / check	8	0	8	1.198	ci:44253481138/134629583975	38	4.8	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/context-search-sources.test.ts	root-vitest	node / check	2	0	2	0.029	ci:44253481138/134629583975	5	2.5	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/context-task-start.test.ts	root-vitest	node / check	6	0	6	2.356	ci:44253481138/134629583975	33	5.5	0	1	4	5	scanned	Session freshness receipts and governed-action gates.
+tests/credentials.test.ts	root-vitest	node / check	16	0	16	1.871	ci:44253481138/134629583975	52	3.3	4	6	2	5	scanned	Auth, roles and credentials.
+tests/dependabot.test.ts	root-vitest	node / check	12	3	22	0.008	ci:44253481138/134629583975	17	1.4	0	0	0	5	scanned	Protected CI and release contracts.
+tests/doctor-codex-trust.test.ts	root-vitest	node / check	19	2	25	0.443	ci:44253481138/134629583975	65	3.4	1	0	0	5	scanned	Session freshness receipts and governed-action gates.
+tests/doctor-instructions.test.ts	root-vitest	node / check	11	0	11	0.178	ci:44253481138/134629583975	21	1.9	0	2	0	4	scanned	Product behaviour; scans raised nothing.
+tests/doctor.test.ts	root-vitest	node / check	26	1	27	0.766	ci:44253481138/134629583975	59	2.3	2	0	0	4	targeted	Duplicate-title pair read: doctor finding vs scaffold output, different behaviours.
+tests/factory-distribution.test.ts	root-vitest	node / check	4	0	4	0.029	ci:44253481138/134629583975	11	2.8	0	5	0	4	scanned	Product behaviour; scans raised nothing.
+tests/firebase-cli.test.ts	root-vitest	node / check	5	0	5	0.017	ci:44253481138/134629583975	14	2.8	0	4	4	5	scanned	Auth, roles and credentials.
+tests/firebase-google-auth.test.ts	root-vitest	node / check	12	0	12	0.052	ci:44253481138/134629583975	43	3.6	0	4	0	5	scanned	Auth, roles and credentials.
+tests/firebase-release.test.ts	root-vitest	node / check	17	5	31	1.910	ci:44253481138/134629583975	120	7.1	3	14	0	5	scanned	Protected CI and release contracts.
+tests/gh-manager-evidence.test.ts	root-vitest	node / check	16	0	16	0.031	ci:44253481138/134629583975	51	3.2	0	0	0	5	scanned	Review, merge and PR-convention gates.
+tests/gh-manager-preview.test.ts	root-vitest	node / check	17	0	17	0.148	ci:44253481138/134629583975	29	1.7	0	0	1	5	scanned	Review, merge and PR-convention gates.
+tests/gh-manager.test.ts	root-vitest	node / check	94	0	94	0.048	ci:44253481138/134629583975	303	3.2	9	1	2	5	scanned	Review, merge and PR-convention gates.
+tests/git-env.test.ts	root-vitest	node / check	6	0	10	0.793	ci:44253481138/134629583975	16	2.7	1	1	0	5	scanned	Git safety: claims, blocking, shipping, trunk and worktree handling.
+tests/gstack-lifecycle.test.ts	root-vitest	node / check	10	0	10	0.110	ci:44253481138/134629583975	49	4.9	0	2	9	4	scanned	Product behaviour; scans raised nothing.
+tests/heartbeat.test.ts	root-vitest	node / check	42	0	42	0.016	ci:44253481138/134629583975	67	1.6	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/hq-search-react.test.tsx	root-vitest	node / check	2	0	2	0.202	ci:44253481138/134629583975	11	5.5	0	0	3	4	scanned	Product behaviour; scans raised nothing.
+tests/hq-search.test.ts	root-vitest	node / check	16	4	24	0.187	ci:44253481138/134629583975	40	2.5	3	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/hq-session.test.ts	root-vitest	node / check	34	0	34	0.015	ci:44253481138/134629583975	83	2.4	1	1	1	5	scanned	Auth, roles and credentials.
+tests/hq.test.ts	root-vitest	node / check	28	0	28	0.017	ci:44253481138/134629583975	56	2.0	0	4	1	5	scanned	Auth, roles and credentials.
+tests/id.test.ts	root-vitest	node / check	37	0	37	0.068	ci:44253481138/134629583975	65	1.8	1	7	0	4	targeted	Owner of the slug rules the claim cases repeat.
+tests/inbox.test.ts	root-vitest	node / check	16	0	16	0.016	ci:44253481138/134629583975	23	1.4	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/init.test.ts	root-vitest	node / check	75	0	75	6.628	ci:44253481138/134629583975	300	4.0	22	5	0	4	targeted	Duplicate-title pair read: doctor finding vs scaffold output, different behaviours.
+tests/ios-build-cache.test.ts	root-vitest	node / check	3	0	4	0.262	ci:44253481138/134629583975	22	7.3	3	6	0	4	scanned	Product behaviour; scans raised nothing.
+tests/ios-change-scope.test.ts	root-vitest	node / check	9	2	14	1.464	ci:44253481138/134629583975	46	5.1	0	5	0	4	scanned	Product behaviour; scans raised nothing.
+tests/ios-entitlements.test.ts	root-vitest	node / check	1	0	1	0.061	ci:44253481138/134629583975	1	1.0	0	0	0	5	scanned	Signing, entitlement and upload-receipt suites and their Vitest wrappers.
+tests/ios-evidence-workflow.test.ts	root-vitest	node / check	8	0	8	0.237	ci:44253481138/134629583975	42	5.3	1	9	0	4	scanned	Product behaviour; scans raised nothing.
+tests/ios-nightly-core.test.ts	root-vitest	node / check	30	2	37	0.031	ci:44253481138/134629583975	93	3.1	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/ios-nightly-recovery.test.ts	root-vitest	node / check	7	2	12	0.022	ci:44253481138/134629583975	17	2.4	0	1	9	4	scanned	Product behaviour; scans raised nothing.
+tests/ios-release-tooling.test.ts	root-vitest	node / check	1	1	4	0.086	ci:44253481138/134629583975	7	7.0	1	2	0	4	scanned	Product behaviour; scans raised nothing.
+tests/ios-runner-labels.test.ts	root-vitest	node / check	6	2	37	1.318	ci:44253481138/134629583975	25	4.2	1	2	0	4	scanned	Product behaviour; scans raised nothing.
+tests/ios-simulator.test.ts	root-vitest	node / check	1	0	1	0.136	ci:44253481138/134629583975	1	1.0	0	0	0	4	scanned	Simulator ownership and cleanup, run through its Vitest wrapper.
+tests/ios-test-retry.test.ts	root-vitest	node / check	28	4	39	8.557	ci:44253481138/134629583975	200	7.1	21	8	0	4	scanned	Product behaviour; scans raised nothing.
+tests/lint-contract.test.ts	root-vitest	node / check	2	0	2	0.095	ci:44253481138/134629583975	7	3.5	0	2	0	4	scanned	Product behaviour; scans raised nothing.
+tests/local-review.test.ts	root-vitest	node / check	165	7	173	40.663	ci:44253481138/134629583975	394	2.4	4	1	1	5	targeted	Required review gate. Heaviest root file (40.7 s, 173 instances, each builds git history); scan hit read and anchored.
+tests/manager-review.test.ts	root-vitest	node / check	22	0	22	4.199	ci:44253481138/134629583975	62	2.8	0	0	2	5	scanned	Review, merge and PR-convention gates.
+tests/meeting-intake.test.ts	root-vitest	node / check	15	0	15	0.239	ci:44253481138/134629583975	72	4.8	2	2	4	4	scanned	Product behaviour; scans raised nothing.
+tests/node-ci-parallel.test.ts	root-vitest	node / check	10	1	11	0.903	ci:44253481138/134629583975	55	5.5	4	4	0	5	scanned	Protected CI and release contracts.
+tests/onboarding.test.ts	root-vitest	node / check	35	0	35	0.077	ci:44253481138/134629583975	65	1.9	6	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/ops-desk-react.test.tsx	root-vitest	node / check	3	0	3	0.036	ci:44253481138/134629583975	8	2.7	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/ops-desk.test.ts	root-vitest	node / check	15	0	15	0.027	ci:44253481138/134629583975	50	3.3	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/package-manifest.test.ts	root-vitest	node / check	2	0	2	0.005	ci:44253481138/134629583975	9	4.5	0	1	0	4	scanned	Product behaviour; scans raised nothing.
+tests/paperclip-closeout-markdown.test.ts	root-vitest	node / check	16	4	32	4.863	ci:44253481138/134629583975	59	3.7	2	5	0	4	scanned	Product behaviour; scans raised nothing.
+tests/paperclip-closeout.test.ts	root-vitest	node / check	15	4	28	1.947	ci:44253481138/134629583975	89	5.9	2	10	0	4	scanned	Product behaviour; scans raised nothing.
+tests/pm.test.ts	root-vitest	node / check	59	1	63	0.659	ci:44253481138/134629583975	139	2.4	4	9	4	4	scanned	Product behaviour; scans raised nothing.
+tests/product-skills.test.ts	root-vitest	node / check	6	2	10	0.129	ci:44253481138/134629583975	22	3.7	0	2	1	4	scanned	Product behaviour; scans raised nothing.
+tests/profile/classify.test.ts	root-vitest	node / check	19	3	73	0.019	ci:44253481138/134629583975	65	3.4	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/profile/extract-report.test.ts	root-vitest	node / check	19	0	19	0.098	ci:44253481138/134629583975	63	3.3	1	1	0	4	scanned	Product behaviour; scans raised nothing.
+tests/profile/human-wait.test.ts	root-vitest	node / check	12	4	26	0.008	ci:44253481138/134629583975	27	2.3	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/profile/parse.test.ts	root-vitest	node / check	16	0	16	0.008	ci:44253481138/134629583975	28	1.8	4	1	0	4	scanned	Product behaviour; scans raised nothing.
+tests/project-skills.test.ts	root-vitest	node / check	9	1	11	0.143	ci:44253481138/134629583975	41	4.6	0	3	5	4	scanned	Product behaviour; scans raised nothing.
+tests/qa-comments.test.ts	root-vitest	node / check	34	0	34	6.411	ci:44253481138/134629583975	185	5.4	0	15	1	4	scanned	Product behaviour; scans raised nothing.
+tests/qa-overlay-pins.test.ts	root-vitest	node / check	9	0	9	0.268	ci:44253481138/134629583975	27	3.0	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/qa-preview.test.ts	root-vitest	node / check	41	0	44	0.052	ci:44253481138/134629583975	122	3.0	5	1	0	4	scanned	Product behaviour; scans raised nothing.
+tests/qa-web-drafts.test.ts	root-vitest	node / check	18	1	26	0.029	ci:44253481138/134629583975	45	2.5	1	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/qa-web-lifecycle.test.ts	root-vitest	node / check	14	3	18	3.693	ci:44253481138/134629583975	75	5.4	4	4	0	4	scanned	Product behaviour; scans raised nothing.
+tests/qa-web-mount.test.ts	root-vitest	node / check	21	0	21	1.031	ci:44253481138/134629583975	87	4.1	1	0	19	4	scanned	Product behaviour; scans raised nothing.
+tests/qa-web-readiness.test.ts	root-vitest	node / check	5	1	9	0.335	ci:44253481138/134629583975	19	3.8	0	0	8	4	scanned	Product behaviour; scans raised nothing.
+tests/qa-web-schema.test.ts	root-vitest	node / check	17	1	29	0.013	ci:44253481138/134629583975	45	2.6	4	1	0	4	scanned	Product behaviour; scans raised nothing.
+tests/qa-web.test.ts	root-vitest	node / check	40	0	40	0.396	ci:44253481138/134629583975	153	3.8	5	1	0	4	scanned	Product behaviour; scans raised nothing.
+tests/registry.test.ts	root-vitest	node / check	13	0	13	0.034	ci:44253481138/134629583975	21	1.6	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/repo-visibility.test.ts	root-vitest	node / check	10	0	10	0.151	ci:44253481138/134629583975	29	2.9	0	0	4	5	scanned	Git safety: claims, blocking, shipping, trunk and worktree handling.
+tests/research-library.test.ts	root-vitest	node / check	7	0	7	0.455	ci:44253481138/134629583975	26	3.7	3	10	0	4	scanned	Product behaviour; scans raised nothing.
+tests/review.test.ts	root-vitest	node / check	80	0	80	0.053	ci:44253481138/134629583975	140	1.8	6	2	0	5	scanned	Review, merge and PR-convention gates.
+tests/scheduler.test.ts	root-vitest	node / check	43	0	43	0.149	ci:44253481138/134629583975	157	3.7	3	7	0	4	scanned	Product behaviour; scans raised nothing.
+tests/section-links-react.test.tsx	root-vitest	node / check	13	0	13	0.834	ci:44253481138/134629583975	42	3.2	0	0	8	4	scanned	Product behaviour; scans raised nothing.
+tests/section-links.test.ts	root-vitest	node / check	12	0	12	0.053	ci:44253481138/134629583975	40	3.3	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/security-import-review.test.ts	root-vitest	node / check	4	0	4	0.005	ci:44253481138/134629583975	34	8.5	0	0	0	5	scanned	Review, merge and PR-convention gates.
+tests/security-policy.test.ts	root-vitest	node / check	1	0	1	0.002	ci:44253481138/134629583975	4	4.0	0	0	0	5	scanned	Review, merge and PR-convention gates.
+tests/self-auto-update.test.ts	root-vitest	node / check	11	0	11	0.328	ci:44253481138/134629583975	56	5.1	0	18	0	5	scanned	Protected CI and release contracts.
+tests/self.test.ts	root-vitest	node / check	8	0	8	0.016	ci:44253481138/134629583975	19	2.4	0	2	0	4	scanned	Product behaviour; scans raised nothing.
+tests/session-bootstrap.test.ts	root-vitest	node / check	9	2	13	0.347	ci:44253481138/134629583975	40	4.4	3	8	0	5	scanned	Session freshness receipts and governed-action gates.
+tests/session-evidence.test.ts	root-vitest	node / check	39	0	39	4.170	ci:44253481138/134629583975	112	2.9	0	5	5	5	scanned	Session freshness receipts and governed-action gates.
+tests/session-gate.test.ts	root-vitest	node / check	58	0	60	4.355	ci:44253481138/134629583975	126	2.2	9	0	0	5	scanned	Session freshness receipts and governed-action gates.
+tests/session-git.test.ts	root-vitest	node / check	3	1	6	0.041	ci:44253481138/134629583975	12	4.0	0	0	1	5	scanned	Session freshness receipts and governed-action gates.
+tests/session-install.test.ts	root-vitest	node / check	20	0	20	0.225	ci:44253481138/134629583975	81	4.0	1	1	0	5	scanned	Session freshness receipts and governed-action gates.
+tests/session-start.test.ts	root-vitest	node / check	23	0	23	5.379	ci:44253481138/134629583975	115	5.0	0	8	2	5	scanned	Session freshness receipts and governed-action gates.
+tests/session.test.ts	root-vitest	node / check	34	0	34	0.026	ci:44253481138/134629583975	98	2.9	2	0	0	5	scanned	Session freshness receipts and governed-action gates.
+tests/shared-helpers.test.ts	root-vitest	node / check	4	0	4	0.013	ci:44253481138/134629583975	20	5.0	0	1	0	4	scanned	Product behaviour; scans raised nothing.
+tests/ship.test.ts	root-vitest	node / check	19	1	20	0.047	ci:44253481138/134629583975	41	2.2	7	3	3	5	scanned	Git safety: claims, blocking, shipping, trunk and worktree handling.
+tests/signing-lock.test.ts	root-vitest	node / check	1	0	1	2.759	ci:44253481138/134629583975	0	0.0	0	0	0	5	scanned	Signing, entitlement and upload-receipt suites and their Vitest wrappers.
+tests/swift-changed-files.test.ts	root-vitest	node / check	14	1	15	0.853	ci:44253481138/134629583975	23	1.6	3	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/swift-tokens.test.ts	root-vitest	node / check	8	2	27	0.031	ci:44253481138/134629583975	36	4.5	0	6	0	4	scanned	Product behaviour; scans raised nothing.
+tests/team-declarations.test.ts	root-vitest	node / check	1	0	1	1.998	ci:44253481138/134629583975	2	2.0	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/team.test.ts	root-vitest	node / check	40	0	40	0.131	ci:44253481138/134629583975	63	1.6	1	2	0	3	targeted	Three past-dependent cases (old hq/inbox path) rated 2 in the report; the rest is roster and inbox behaviour.
+tests/tokens.test.ts	root-vitest	node / check	17	0	17	0.009	ci:44253481138/134629583975	27	1.6	2	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/trunk-changes.test.ts	root-vitest	node / check	10	0	10	0.529	ci:44253481138/134629583975	19	1.9	0	0	0	5	scanned	Git safety: claims, blocking, shipping, trunk and worktree handling.
+tests/trunk-churn.test.ts	root-vitest	node / check	13	0	13	0.014	ci:44253481138/134629583975	40	3.1	0	1	0	5	scanned	Git safety: claims, blocking, shipping, trunk and worktree handling.
+tests/trunk-rescue.test.ts	root-vitest	node / check	56	0	56	14.207	ci:44253481138/134629583975	229	4.1	6	27	10	5	targeted	Trunk rescue never publishes private edits. Scan hit read and anchored.
+tests/upload-configuration.test.ts	root-vitest	node / check	7	2	13	0.468	ci:44253481138/134629583975	25	3.6	0	8	0	5	scanned	Protected CI and release contracts.
+tests/upload-receipt.test.ts	root-vitest	node / check	3	0	3	6.921	ci:44253481138/134629583975	19	6.3	0	2	0	5	scanned	Signing, entitlement and upload-receipt suites and their Vitest wrappers.
+tests/visual-design-skill.test.ts	root-vitest	node / check	3	1	5	0.159	ci:44253481138/134629583975	20	6.7	0	6	3	4	scanned	Product behaviour; scans raised nothing.
+tests/voice.test.ts	root-vitest	node / check	38	0	38	0.027	ci:44253481138/134629583975	57	1.5	5	1	0	4	scanned	Product behaviour; scans raised nothing.
+tests/wait-ci/checks.test.ts	root-vitest	node / check	21	6	65	0.010	ci:44253481138/134629583975	41	2.0	0	0	0	5	scanned	Required-check waiting and failure reporting.
+tests/wait-ci/logs.test.ts	root-vitest	node / check	9	0	9	0.008	ci:44253481138/134629583975	30	3.3	0	1	0	5	scanned	Required-check waiting and failure reporting.
+tests/wait-ci/poll-guard.test.ts	root-vitest	node / check	22	3	59	0.240	ci:44253481138/134629583975	62	2.8	0	3	1	5	scanned	Required-check waiting and failure reporting.
+tests/wait-ci/wait-run.test.ts	root-vitest	node / check	30	4	61	1.014	ci:44253481138/134629583975	74	2.5	1	1	0	5	scanned	Required-check waiting and failure reporting.
+tests/wait-ci/wait.test.ts	root-vitest	node / check	46	7	65	0.029	ci:44253481138/134629583975	108	2.3	5	1	0	5	scanned	Required-check waiting and failure reporting.
+tests/web-hq-signin.test.ts	root-vitest	node / check	13	0	13	0.052	ci:44253481138/134629583975	53	4.1	0	0	32	5	scanned	Auth, roles and credentials.
+tests/web-provision.test.ts	root-vitest	node / check	11	0	11	0.008	ci:44253481138/134629583975	36	3.3	0	0	0	4	scanned	Product behaviour; scans raised nothing.
+tests/web-scaffold.test.ts	root-vitest	node / check	36	2	40	0.553	ci:44253481138/134629583975	154	4.3	19	38	0	4	scanned	Product behaviour; scans raised nothing.
+tests/work-tags.test.ts	root-vitest	node / check	11	1	23	0.085	ci:44253481138/134629583975	33	3.0	0	2	2	4	scanned	Product behaviour; scans raised nothing.
+tests/workflow-expressions.test.ts	root-vitest	node / check	4	1	7	0.256	ci:44253481138/134629583975	20	5.0	0	3	0	5	scanned	Protected CI and release contracts.
+tests/workflow-repair.test.ts	root-vitest	node / check	1	0	1	0.229	ci:44253481138/134629583975	3	3.0	0	0	0	3	targeted	Wrapper that puts qa/evals/workflow-repair on the required lane. Pins the count (Ran 30 tests) so a silent skip fails.
+tests/workflows.test.ts	root-vitest	node / check	189	3	196	5.941	ci:44253481138/134629583975	818	4.3	57	57	0	5	targeted	Drift and policy assertions on workflows every project calls. One past-dependent case (schedule.yml cron) rated 2 in the report; 189 declarations not read one by one.
+tests/worktree-cleanup.test.ts	root-vitest	node / check	25	0	25	7.198	ci:44253481138/134629583975	93	3.7	5	19	0	5	scanned	Git safety: claims, blocking, shipping, trunk and worktree handling.
+qa/evals/workflow-repair/test_campaign.py	unittest-via-root-vitest	node / check	7	0				23	3.3	2	0	0	4	scanned	Offline study helpers, run through tests/workflow-repair.test.ts.
+qa/evals/workflow-repair/test_grading.py	unittest-via-root-vitest	node / check	15	0				24	1.6	0	0	0	4	scanned	Offline study helpers, run through tests/workflow-repair.test.ts.
+qa/evals/workflow-repair/test_isolate.py	unittest-via-root-vitest	node / check	2	0				8	4.0	0	0	0	4	scanned	Offline study helpers, run through tests/workflow-repair.test.ts.
+qa/evals/workflow-repair/test_score_campaign.py	unittest-via-root-vitest	node / check	3	0				13	4.3	1	0	0	4	scanned	Offline study helpers, run through tests/workflow-repair.test.ts.
+qa/evals/workflow-repair/test_summarize.py	unittest-via-root-vitest	node / check	5	0				13	2.6	0	0	0	4	scanned	Offline study helpers, run through tests/workflow-repair.test.ts.
+qa/evals/context-retrieval/corpus.test.mjs	node:test	none	1	0				3	3.0	0	0	0	3	scanned	No workflow or wrapper runs it. 61 cases pass locally with the prototype; decide whether it is on-demand by intent.
+qa/evals/context-retrieval/engines.test.mjs	node:test	none	3	0				5	1.7	0	0	0	3	scanned	No workflow or wrapper runs it. 61 cases pass locally with the prototype; decide whether it is on-demand by intent.
+qa/evals/context-retrieval/frame.test.mjs	node:test	none	8	0				20	2.5	0	0	0	3	scanned	No workflow or wrapper runs it. 61 cases pass locally with the prototype; decide whether it is on-demand by intent.
+qa/evals/context-retrieval/measure.test.mjs	node:test	none	4	0				10	2.5	0	0	0	3	scanned	No workflow or wrapper runs it. 61 cases pass locally with the prototype; decide whether it is on-demand by intent.
+qa/prototypes/cd-v2/protocol.test.mjs	node:test	none	45	0				135	3.0	1	4	0	3	scanned	No workflow or wrapper runs it. 61 cases pass locally with the prototype; decide whether it is on-demand by intent.
+tests/firestore-rules.test.mjs	node:test+firestore-emulator	none	12	0				17	1.4	0	0	0	3	targeted	Generated HQ rules against the emulator. No active workflow runs pnpm test:rules, so it detects nothing on a pull request today.
+tests/artifacts/test_stage_mutants.py	python-script	none	0	0				2		0	0	0	4	scanned	Mutation harness, off the pull-request lane by design (docs/artifact-snapshots.md).
+tests/artifacts/test_trace_mutants.py	python-script	none	0	0				2		0	0	0	4	scanned	Mutation harness, off the pull-request lane by design (docs/artifact-snapshots.md).
+tests/browser/qa-comments.spec.ts	playwright	qa-browser	2	0				22	11.0	0	1	0	4	timed	All 25 cases timed locally on Chromium (14.4 s total). Bodies not read.
+tests/browser/qa-web-context.spec.ts	playwright	qa-browser	21	0				193	9.2	5	4	0	4	timed	All 25 cases timed locally on Chromium (14.4 s total). Bodies not read.
+tests/browser/qa-web-production.spec.ts	playwright	qa-browser	1	0				2	2.0	0	0	0	4	timed	All 25 cases timed locally on Chromium (14.4 s total). Bodies not read.
