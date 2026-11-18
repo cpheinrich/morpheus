@@ -1,6 +1,7 @@
 # path	runtime_instances	case_seconds	source
 # Root Vitest rows: per-file lines of the Test step, Actions run 44253481138 job 134629583975 (push to main at 9c4c3e585). They sum to the runner's own totals: 4535 instances, 270.32 s of case time.
 # Factory bridge rows: TAP durations from run 44253481138 job 134629583869, matched to a file by literal test name. Loop-generated names are not attributed (9 bridge, 27 reporting instances).
+# Playwright, Factory host unittest and Factory host Vitest totals are job-level receipts in the main report.
 tests/access.test.ts	17	0.009	ci:44253481138/134629583975
 tests/agent-instructions.test.ts	20	0.019	ci:44253481138/134629583975
 tests/agentic-cto-skill.test.ts	42	0.426	ci:44253481138/134629583975

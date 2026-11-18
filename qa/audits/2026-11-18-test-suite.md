@@ -169,6 +169,8 @@ The baseline contains 240 tracked test files and 4,057 source declarations. A de
 | none | Firestore rules, retrieval evals, CD prototype, two mutation harnesses | 8 | 73 | none |
 
 The per-file ledger is [`2026-11-18-test-suite/ledger.tsv`](2026-11-18-test-suite/ledger.tsv).
+Its runtime totals cover matched per-file receipts. The lane totals above also include suites
+reported only at job level, including Playwright and the Factory host's unittest and Vitest runs.
 
 ## Appendix C — Rating buckets
 
@@ -204,7 +206,7 @@ Ranked strongest first.
 
 | # | Rating | Case | What it asserts | Keeper, or why there is none |
 |---:|---:|---|---|---|
-| 1 | 1, rewritten | `plugins/factory/tests/mcp.test.mjs:210` "removed pool tools are absent and refuse without contacting the bridge" | No listed tool starts with `pool_`; five removed names return "not found"; nothing is written to the Factory home | `:84` "MCP advertises tools…" compares the listed names to the contract and checks the home is empty; `:103` and `:160` compare the same list. "Not found" for an unknown name is the MCP SDK's behaviour. Fault B confirms. |
+| 1 | 1, rewritten | `plugins/factory/tests/mcp.test.mjs:210` "removed pool tools are absent and refuse without contacting the bridge" | No listed tool starts with `pool_`; five removed names return "not found"; nothing is written to the Factory home | `:84` "MCP advertises tools…" compares the listed names to the contract and checks the home is empty; `:103` and `:159` compare the same list. "Not found" for an unknown name is the MCP SDK's behaviour. Fault B confirms. |
 | 2 | 2 | `tests/team.test.ts:427` "no longer exempts the directory nothing has" | `isRecordsOnly(["hq/inbox/…"])` is false | None. Fault C: re-exempting the path fails only this case and #3. `src/paths.ts:59` calls that return a mistake in prose, and the repository rule is that such prose needs a failing test. Kept. |
 | 3 | 2 | `tests/team.test.ts:383` "leaves no source file pointing at the old inbox path" | No `src/**/*.ts` names `hq/inbox` outside comments | None. Textbook "moved, and asserted absent from its old path". It also stops a scaffold template shipping a dead path to new projects. Kept. |
 | 4 | 2 | `tests/team.test.ts:343` "catches the old path in code while leaving prose about it alone" | Twelve assertions on `namesOldPath`, a helper defined in the test file at `:280` | Tests the test. It has a reason only while #3 stays, and goes with it. |
@@ -226,7 +228,7 @@ confirmed clean afterwards.
 | Check | Fault | Command | Result |
 |---|---|---|---|
 | A, before the edit | Disable the "cannot delegate again" guard in `scripts/mcp.mjs` and `scripts/claude-mcp.mjs` | `node --test tests/*.test.mjs` in `plugins/factory` | 228 of 230 pass. Both failures are in `unattended-worker.test.mjs`, which loads neither server and fails 2 of 30 on unmodified code on this machine. The guard was untested. |
-| B | Register a `pool_start` tool in `scripts/mcp.mjs` | `node --test tests/mcp.test.mjs` | 4 of 9 fail: the candidate and three keepers (`:84`, `:103`, `:160`). |
+| B | Register a `pool_start` tool in `scripts/mcp.mjs` | `node --test tests/mcp.test.mjs` | 4 of 9 fail: the candidate and three keepers (`:84`, `:103`, `:159`). |
 | A, after the edit | Disable the guard in one server at a time | `node --test tests/mcp.test.mjs` | The rewritten case fails each time, 8 of 9 pass. It reports the root-id refusal where the guard's message was expected. |
 | C | Add `hq/inbox/` back to `RECORDS` in `src/paths.ts` | `vitest run tests/team.test.ts tests/check.test.ts` | 2 of 167 fail, both candidates. No other case notices. |
 
