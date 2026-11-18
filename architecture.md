@@ -1886,7 +1886,11 @@ Four of them, each catching what it can so the rung above only sees what genuine
 | 4 | **Human sign-off** | Taste, strategy, real risk | Deploy |
 
 **Rung 2 is a bounded, author-managed independent session, required by default.**
-`review.required` defaults to true; false is a project opt-out reported by conventions. The author
+`review.required` defaults to true; false is a project opt-out reported by conventions.
+The required check takes that decision from the target branch and reads the review record at the
+exact PR head. The Manager's additional protected paths also come from the target branch. Morpheus
+runs its own required checker from reviewed base code and exercises the candidate in its Node tests.
+The author
 runs `morpheus review prepare` to print a packet, then explicitly spawns a fresh reviewer
 subagent/session without author chat, responds once, and resumes the reviewer
 if substantive findings were raised. Minor-only findings need no second pass. A reviewer blocks

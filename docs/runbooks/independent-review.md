@@ -66,7 +66,19 @@ findings. Visual planning adds no approval pause, required artifact or merge gat
 procedure is printed by `morpheus skills guide visual-design`.
 
 `review.required` in `morpheus.json` defaults to true, including existing manifests. False is a
-visible project opt-out. Records/board-only changes, exact dependency-only Dependabot PRs, and
+visible project opt-out. The target branch's committed manifest supplies this decision. A proposed
+opt-out must pass the current review requirement before it takes effect. The PR head's manifest
+must still be valid, and the review label and committed record are verified against the exact head.
+The Manager also reads its protected paths from the target branch.
+
+Morpheus's own required check uses the shared workflow on protected `main` and the checker from
+the event's base commit. Consumers use the released checker on Morpheus `main`. Both checkouts
+are separate from the PR source. The Morpheus Node tests exercise the proposed checker and workflow
+contract. The old `morpheus-ref` input is accepted for caller compatibility. It cannot select the
+required checker. GitHub branch protection and control of the workflow caller remain part of
+enforcement.
+
+Records/board-only changes, exact dependency-only Dependabot PRs, and
 marked dependency-only PRs from the exact `morpheus-security[bot]` App keep narrow exemptions.
 The security-App exemption waives human authoring and independent review only; branch-protection
 checks remain mandatory. This gate covers all other authors, not just particular model names.

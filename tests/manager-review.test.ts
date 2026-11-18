@@ -204,7 +204,13 @@ describe("the GitHub Manager's review record", () => {
 
   it("is waived outright when the project opted out of review", () => {
     put("morpheus.json", JSON.stringify({ review: { required: false } }));
-    expect(check(commit("opt out"), { labelActor: "anyone" })).toEqual([{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }]);
+    const proposed = commit("proposed opt-out");
+    expect(check(proposed, { labelActor: "anyone" })).toEqual([{
+      level: "error", rule: "agent-review", message: expect.stringContaining("it was applied by anyone"),
+    }]);
+    expect(check(proposed, { base: proposed, labelActor: "anyone" })).toEqual([{
+      level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false",
+    }]);
   });
 });
 

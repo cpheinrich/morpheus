@@ -32,6 +32,7 @@ on:
         type: string
         default: "hq/product"
       morpheus-ref:
+        description: Deprecated and ignored. Retained for existing callers.
         type: string
         default: "main"
       node-version:
@@ -161,6 +162,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           # Reruns must read current labels/body, not the original event snapshot.
@@ -174,12 +176,18 @@ jobs:
             echo "::error::Pull request #$PR_NUMBER moved to '$LIVE_HEAD' after this run's head check found $EXPECTED_HEAD current. This job already reports as the required conventions check, so it cannot pass unchecked; its result is moot, and the run on the new head is the one that counts."
             exit 1
           fi
+          LIVE_BASE="$(jq -r '.base.ref // ""' "$RUNNER_TEMP/live-pr.json")"
+          if [ "$LIVE_BASE" != "$BASE_REF" ]; then
+            echo "::error::The PR target is '$LIVE_BASE'; this run expected '$BASE_REF'. Run conventions on the current target."
+            exit 1
+          fi
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         if: needs.head.outputs.superseded-by == ''
         with:
           # checkPr diffs against the base ref, so it needs the history.
           fetch-depth: 0
+          path: pr-source
 
       # Build the CLI from a checkout rather than installing it in the consuming
       # repo. Running `pnpm install` here would require the consumer to be a pnpm
@@ -190,7 +198,9 @@ jobs:
         if: needs.head.outputs.superseded-by == ''
         with:
           repository: cpheinrich/morpheus
-          ref: ${{ inputs.morpheus-ref }}
+          # Morpheus gates its own PRs with the target commit. Consumers use
+          # the released checker on Morpheus's protected main.
+          ref: ${{ github.repository == 'cpheinrich/morpheus' && github.event.pull_request.base.sha || 'refs/heads/main' }}
           path: .morpheus
 
       # Read the version from Morpheus's own manifest, not the consuming
@@ -214,10 +224,11 @@ jobs:
         working-directory: .morpheus
         # Old pinned refs still build through their prepare hook; new refs
         # already carry dist/. Either way the workflow body stays compatible
-        # with the exact Morpheus ref the consumer selected.
+        # with the reviewed Morpheus revision selected above.
         run: pnpm install --frozen-lockfile
 
       - name: Check PR conventions
+        working-directory: pr-source
         if: needs.head.outputs.superseded-by == ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -232,7 +243,7 @@ jobs:
           # The live pull request was read, and its head matched, before setup.
           # >>> pr-head
           # Every check below must read the PR head: the review gate reads
-          # morpheus.json and the record there, the rest diff and read its tree.
+          # the record there, and diffs use that tree. Review policy comes from the base.
           # Normally the checkout is refs/pull/N/merge, whose second parent is
           # the head. Some runs get a checkout of the base branch instead, or a
           # merge ref GitHub has not recomputed for the newest push, and then
@@ -272,7 +283,9 @@ jobs:
                manager_label_actor: (if $actor == "" then null else $actor end),
                manager_clearance: (if ($clearance | length) == 0 then null else $clearance end)})}' \
             "$RUNNER_TEMP/live-pr.json" > "$RUNNER_TEMP/review-event.json"
-          GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json" node .morpheus/dist/cli/index.js check pr \
+          echo "Morpheus conventions checker: $(git -C ../.morpheus rev-parse HEAD)"
+          echo "Trusted review policy: $(git rev-parse --verify "origin/$BASE_REF^{commit}")"
+          GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json" node ../.morpheus/dist/cli/index.js check pr \
             --dir "$PRODUCT_DIR" --base "origin/$BASE_REF"
 
       # Function complexity of the PR head, from its own morpheus.json
@@ -284,6 +297,7 @@ jobs:
       # and `--ci` measures every in-scope file there. It runs after the
       # conventions check, so it never hides a conventions failure.
       - name: Check function complexity
+        working-directory: pr-source
         if: needs.head.outputs.superseded-by == ''
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -293,7 +307,7 @@ jobs:
           set -euo pipefail
           # >>> pr-head
           # Every check below must read the PR head: the review gate reads
-          # morpheus.json and the record there, the rest diff and read its tree.
+          # the record there, and diffs use that tree. Review policy comes from the base.
           # Normally the checkout is refs/pull/N/merge, whose second parent is
           # the head. Some runs get a checkout of the base branch instead, or a
           # merge ref GitHub has not recomputed for the newest push, and then
@@ -338,9 +352,9 @@ jobs:
             exit 0
           fi
           rc=0
-          node .morpheus/dist/cli/index.js complexity install || rc=$?
+          node ../.morpheus/dist/cli/index.js complexity install || rc=$?
           if [ "$rc" -eq 0 ]; then
-            node .morpheus/dist/cli/index.js complexity check --ci --base "origin/$BASE_REF" || rc=$?
+            node ../.morpheus/dist/cli/index.js complexity check --ci --base "origin/$BASE_REF" || rc=$?
           fi
           if [ "$rc" -eq 0 ]; then
             exit 0

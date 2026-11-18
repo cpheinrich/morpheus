@@ -330,6 +330,8 @@ export declare function verifyUncoveredCommits(root: string, record: {
  * the defaults apply: review stays required, which is the safe direction.
  */
 export declare function committedConfig(root: string, commit: string): unknown;
+/** Keep candidate configuration valid while taking the review decision from the target branch. */
+export declare function reviewRequiredAtBase(root: string, base: string, head: string): boolean;
 /**
  * A PR without the label is never passed here, draft or not. Keeping a draft from going red is the
  * caller's job: its `pr` job skips an unlabelled draft, which leaves the required check unreported,

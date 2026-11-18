@@ -20,6 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          # App proof for a review exemption runs reviewed code as well.
+          ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
       - name: Verify distinct App receipts and the exact PR head
         id: verify
@@ -39,7 +41,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-    uses: ./.github/workflows/pr-check.yml
+    uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
     with:
-      morpheus-ref: ${{ github.sha }}
       security-import-verified: ${{ needs.security-import-proof.outputs.verified == 'true' }}

@@ -122,10 +122,23 @@ describe("independent review lifecycle", () => {
       writeFileSync(join(root, path), text); expect(check(commit())).toHaveLength(1);
     }
   });
-  it("reports explicit project opt-out as waived, not reviewed", () => {
+  it("requires existing independent review when the proposed manifest opts out", () => {
     writeFileSync(join(root, "morpheus.json"), '{"review":{"required":false}}');
+    reviewed = commit();
+    expect(check(reviewed, "", [])).toEqual([{ level: "error", rule: "agent-review", message: MISSING_LABEL }]);
+    expect(check(save(record()))).toEqual([]);
+  });
+
+  it("reports an established opt-out until a proposed opt-in lands", () => {
+    writeFileSync(join(root, "morpheus.json"), '{"review":{"required":false}}');
+    base = commit();
+    writeFileSync(join(root, "morpheus.json"), '{"review":{"required":true}}');
     const head = commit();
-    expect(check(head, "", [])[0]?.level).toBe("waived");
+    expect(check(head, "", [])).toEqual([{
+      level: "waived",
+      rule: "agent-review",
+      message: "independent review disabled by project review.required=false",
+    }]);
     expect(authorRecordProblem(root, "", head, base)).toContain("no author record was validated");
   });
   it("wires missing evidence into PR conventions while preserving records-only work", async () => {
@@ -144,6 +157,7 @@ describe("measured review timing", () => {
     try {
       expect(await prepareReview(join(root, "hq/product"), root, base)).toBe(0);
       const output = log.mock.calls.map(args => args.join(" ")).join("\n");
+      expect(output).toContain(`Trusted target commit for governing instructions: ${base}`);
       const template = JSON.parse(output.match(/```morpheus-review\n([\s\S]*?)\n```/)![1]!);
       expect(template.version).toBe(2);
       expect(template.timing).toEqual({ source: "runner", durationMs: 0, evidence: "Replace with this turn's runner result reference and measured duration." });
@@ -1428,7 +1442,7 @@ describe("the gate itself never waives the label", () => {
   });
 });
 
-describe("reading morpheus.json at the head", () => {
+describe("reading committed review policy", () => {
   it("treats a manifest absent at a present commit as defaults, so review stays required", () => {
     git(root, ["rm", "-q", "morpheus.json"]);
     const head = commit();
@@ -1440,6 +1454,16 @@ describe("reading morpheus.json at the head", () => {
     expect(() => committedConfig(root, missing)).toThrow(`commit ${missing} is not in this checkout`);
     expect(check(missing)[0]?.message).toContain(`git fetch origin ${missing}`);
     expect(check(missing)[0]?.message).not.toContain("Command failed");
+  });
+  it("refuses an unavailable target rather than applying a candidate waiver", () => {
+    writeFileSync(join(root, "morpheus.json"), '{"review":{"required":false}}');
+    const head = commit();
+    base = "f".repeat(40);
+    expect(check(head, "", [])).toEqual([{
+      level: "error",
+      rule: "agent-review",
+      message: expect.stringContaining(`commit ${base} is not in this checkout`),
+    }]);
   });
   it("reports an unparseable manifest as such", () => {
     writeFileSync(join(root, "morpheus.json"), "{ not json");
@@ -1489,6 +1513,14 @@ describe("review validate runs CI's record check before a push", () => {
     expect(validateReview(root, base, ".agent/worklog/2026-09-10-other.md", body)).toBe(1);
     expect(errors[1]).toBe(`✗ [agent-review] the PR body names ${path}, not .agent/worklog/2026-09-10-other.md`);
     expect(validateReview(root, base, undefined, body)).toBe(0);
+  });
+  it("validates review on a proposed opt-out under the current base policy", () => {
+    writeFileSync(join(root, "morpheus.json"), '{"review":{"required":false}}');
+    reviewed = commit();
+    expect(validateReview(root, base)).toBe(1);
+    expect(errors[0]).toContain("no committed worklog");
+    save(record());
+    expect(validateReview(root, base, path)).toBe(0);
   });
   it("refuses to guess between records, or when none is committed", () => {
     expect(validateReview(root, base)).toBe(1);

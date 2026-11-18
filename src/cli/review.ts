@@ -6,7 +6,7 @@ import { addressesPriorFindings, pathsMentioned } from "../review/findings.js";
 import { assessReviewDelivery } from "../review/delivery.js";
 import { loadReviewContext, ReviewError } from "../review/context.js";
 import { LOCAL_REVIEW_PROMPT } from "../review/local-prompt.js";
-import { MISSING_CONTEXT_READ, committedConfig, git, reviewRecordLine, reviewRequired, verifyReviewRecord } from "../review/local.js";
+import { MISSING_CONTEXT_READ, git, reviewRecordLine, reviewRequiredAtBase, verifyReviewRecord } from "../review/local.js";
 import { buildReviewPrompt } from "../review/prompt.js";
 import { projectCommands, reviewPacket } from "../review/packet.js";
 import { runCheck } from "../complexity/check.js";
@@ -219,8 +219,10 @@ export async function prepareReview(productDir: string, root: string, base: stri
   try {
     const ctx = await loadReviewContext({ root, productDir, branch: currentBranch(), persona: LOCAL_REVIEW_PROMPT });
     const head = git(root, ["rev-parse", "HEAD"]);
-    const fork = git(root, ["merge-base", base, head]);
+    const target = git(root, ["rev-parse", "--verify", `${base}^{commit}`]);
+    const fork = git(root, ["merge-base", target, head]);
     console.log(LOCAL_REVIEW_PROMPT);
+    console.log(`Trusted target commit for governing instructions: ${target}`);
     console.log(
       "\n" +
         reviewPacket({
@@ -274,7 +276,7 @@ function changedRecords(root: string, base: string, head: string): string[] {
 export function validateReview(root: string, base: string, worklog?: string, prBodyFile?: string): number {
   try {
     const head = git(root, ["rev-parse", "HEAD"]);
-    if (!reviewRequired(committedConfig(root, head))) {
+    if (!reviewRequiredAtBase(root, base, head)) {
       console.log("~ independent review disabled by project review.required=false; nothing to validate.");
       return 0;
     }

@@ -118,6 +118,10 @@ export async function pr(productDir, base) {
     }
     catch { /* local overrides below */ }
     const head = reviewEvent.pull_request?.head?.sha ?? gitOutput(["rev-parse", "HEAD"]);
+    if (!gitOutput(["rev-parse", "--verify", `${base}^{commit}`])) {
+        console.error(`The trusted PR base ${base} is not in this checkout. Fetch the target branch and re-run.`);
+        return 1;
+    }
     const labels = reviewEvent.pull_request?.labels?.map(l => l.name) ?? (process.env["MORPHEUS_PR_LABELS"] ?? "").split(",").map(s => s.trim());
     // The GitHub Manager's label selects its own, narrower record. Who applied the label is not
     // in the pull request payload; the workflow reads it from the issue events and passes it here.
