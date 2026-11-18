@@ -18,7 +18,9 @@ try {
     capacity: studioCapacity,
     quotaObservation: checkQuota.observation,
   });
-  const tick = () => runner.tick().catch(() => console.error("Factory Studio tick failed; reconciling on next wake"));
+  const tick = () => runner.tick().then(result => {
+    if (result === "reconciling") console.error("Factory control request interrupted; retaining the last confirmed lease");
+  }).catch(() => console.error("Factory Studio tick failed; reconciling on next wake"));
   const unsubscribe = client.listen(tick, () => console.error("Factory Studio listener disconnected; using timed reconciliation"));
   const interval = setInterval(tick, 5000);
   const stop = () => {

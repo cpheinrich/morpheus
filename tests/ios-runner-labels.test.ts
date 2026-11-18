@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 const exec = promisify(execFile);
 type Job = {
-  if: string; needs?: string; "runs-on": string; "timeout-minutes": number;
+  if: string; needs?: string[]; "runs-on": string; "timeout-minutes": number;
   outputs?: Record<string, string>;
   concurrency?: { group: string; "cancel-in-progress": string };
   steps: { id?: string; env?: Record<string, string>; run: string }[];
@@ -36,13 +36,16 @@ async function validate(input: string) {
 
 // Evaluate only this workflow's fixed boolean/string/array expressions. These
 // fixture values share Actions' short-circuit semantics; this is not a runner.
-function expression(source: string, labels: string, runner: string, result: string, output = "", cancelled = false): unknown {
+function expression(source: string, labels: string, runner: string, result: string, output = "", cancelled = false,
+  scopeResult = "skipped", scopeRun = ""): unknown {
   const body = source.slice(3, -2)
     .replaceAll("inputs.runner-labels-json", "labels")
     .replaceAll("inputs.runner", "runner")
     .replaceAll("needs.validate-runner.result", "result")
-    .replaceAll("needs.validate-runner.outputs.labels", "output");
-  return runInNewContext(body, { labels, runner, result, output, cancelled: () => cancelled, fromJSON: JSON.parse });
+    .replaceAll("needs.validate-runner.outputs.labels", "output")
+    .replaceAll("needs.native-scope.result", "scopeResult")
+    .replaceAll("needs.native-scope.outputs.run", "scopeRun");
+  return runInNewContext(body, { labels, runner, result, output, scopeResult, scopeRun, cancelled: () => cancelled, fromJSON: JSON.parse });
 }
 
 describe("opt-in iOS runner label conjunction", () => {
@@ -50,11 +53,24 @@ describe("opt-in iOS runner label conjunction", () => {
     const wf = await workflow();
     expect(wf.on.workflow_call.inputs["runner-labels-json"]).toMatchObject({ type: "string", default: "" });
     expect(wf.on.workflow_call.inputs.runner!.default).toBe("macos-26");
-    expect(wf.jobs.test.needs).toBe("validate-runner");
+    expect(wf.jobs.test.needs).toEqual(["validate-runner", "native-scope"]);
     for (const runner of ["macos-26", "macos-vm"]) {
       expect(expression(wf.jobs["validate-runner"].if, "", runner, "skipped")).toBe(false);
       expect(expression(wf.jobs.test.if, "", runner, "skipped")).toBe(true);
       expect(expression(wf.jobs.test["runs-on"], "", runner, "skipped")).toBe(runner);
+    }
+  });
+
+  it("omits the Mac only for a successful, explicit unchanged preflight", async () => {
+    const condition = (await workflow()).jobs.test.if;
+    for (const [scopeResult, scopeRun, shouldRun] of [
+      ["success", "false", false],
+      ["success", "true", true],
+      ["success", "", true],
+      ["failure", "false", true],
+      ["skipped", "", true],
+    ] as const) {
+      expect(expression(condition, "", "macos-vm", "skipped", "", false, scopeResult, scopeRun)).toBe(shouldRun);
     }
   });
 

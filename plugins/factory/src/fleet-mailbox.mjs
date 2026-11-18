@@ -41,8 +41,8 @@ export function submitTask(db, { contextId, messageId, text, launch, display, no
     if (prior) {
       const task = await data(transaction, db.doc(taskPath(prior.taskId)));
       matchContext(task, contextId);
-      if (task.brief.text !== text || !isDeepStrictEqual(prior.launch, spec) ||
-          !isDeepStrictEqual(task.display, display))
+      // Presentation can be backfilled without changing the execution intent.
+      if (task.brief.text !== text || !isDeepStrictEqual(prior.launch, spec))
         throw new Error("Message ID already used for a different brief");
       return { task, replay: true };
     }

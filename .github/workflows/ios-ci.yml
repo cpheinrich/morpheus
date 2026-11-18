@@ -42,7 +42,7 @@ on:
         type: string
         default: main
       watch-paths:
-        description: Optional newline-separated Git pathspecs. Unrelated pull requests report success without native work; other events always run.
+        description: Optional newline-separated Git pathspecs. Ordinary unrelated pull requests avoid queuing a native runner; other events always run.
         type: string
         default: ""
       runner:
@@ -216,6 +216,79 @@ permissions:
   contents: read
 
 jobs:
+  native-scope:
+    name: Check native change scope before queuing
+    # An explicit CD source or runner selection retains its ordinary native checks.
+    if: ${{ github.event_name == 'pull_request' && inputs.watch-paths != '' && inputs.source-sha == '' && inputs.execution-id == '' && inputs.runner-labels-json == '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: ios-ci-native-scope-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-${{ inputs.scheme }}
+      cancel-in-progress: true
+    outputs:
+      run: ${{ steps.scope.outcome == 'success' && steps.scope.outputs.run || '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        id: source
+        continue-on-error: true
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check native change scope
+        id: scope
+        working-directory: .
+        if: ${{ steps.source.outcome == 'success' }}
+        continue-on-error: true
+        env: &native_scope_env
+          WATCH_PATHS: ${{ inputs.watch-paths }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: &native_scope_command |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != pull_request ] || [ -z "$WATCH_PATHS" ]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # GitHub can regenerate the merge ref against newer trunk while the
+          # event still names its old base. Verify ancestry, but keep the exact head.
+          if ! [[ "$PR_BASE_SHA" =~ ^[a-f0-9]{40}$ && "$PR_HEAD_SHA" =~ ^[a-f0-9]{40}$ ]]; then
+            echo '::error::Native scope requires valid event base and head SHAs.' >&2
+            exit 1
+          fi
+          read -r -a parents <<< "$(git show -s --format=%P HEAD)"
+          if [ "${#parents[@]}" -ne 2 ]; then
+            echo '::error::Native scope requires a two-parent PR merge.' >&2
+            exit 1
+          fi
+          merge_base="${parents[0]}"
+          merge_head="${parents[1]}"
+          echo "Native scope: event base=$PR_BASE_SHA head=$PR_HEAD_SHA; checkout base=$merge_base head=$merge_head"
+          if [ "$merge_head" != "$PR_HEAD_SHA" ]; then
+            echo '::error::PR merge head does not match event head.' >&2
+            exit 1
+          fi
+          if ! git cat-file -e "$merge_head^{commit}" || ! git merge-base --is-ancestor "$PR_BASE_SHA" "$merge_base"; then
+            echo '::error::PR merge base is not descended from event base, or comparison history is missing.' >&2
+            exit 1
+          fi
+          test -n "${WATCH_PATHS//[[:space:]]/}"
+          pathspecs=()
+          while IFS= read -r pathspec; do
+            [ -z "$pathspec" ] || pathspecs+=("$pathspec")
+          done <<< "$WATCH_PATHS"
+          test "${#pathspecs[@]}" -gt 0
+          # Git owns matching, exclusions, deletes and names containing spaces.
+          if git diff --quiet --no-renames HEAD^1 HEAD -- "${pathspecs[@]}"; then
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+            echo 'No native app, dependency or test/build inputs changed; native work skipped.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            status=$?
+            test "$status" -eq 1
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          fi
+
   validate-runner:
     if: ${{ inputs.runner-labels-json != '' }}
     runs-on: ubuntu-latest
@@ -247,10 +320,14 @@ jobs:
           appendFileSync(process.env.GITHUB_OUTPUT, `labels=${JSON.stringify(labels)}\n`);
           NODE
   test:
-    needs: validate-runner
+    needs: [validate-runner, native-scope]
     # A skipped opt-in validator must not skip ordinary callers. A failed or
     # cancelled validator must never select the ordinary runner as a fallback.
-    if: ${{ !cancelled() && (inputs.runner-labels-json == '' || needs.validate-runner.result == 'success') }}
+    # Skip only when hosted Git verified the exact PR and found no watched changes.
+    # An inconclusive preflight leaves the original native scope check in control.
+    if: >-
+      ${{ !cancelled() && (inputs.runner-labels-json == '' || needs.validate-runner.result == 'success')
+          && !(needs.native-scope.result == 'success' && needs.native-scope.outputs.run == 'false') }}
     runs-on: ${{ inputs.runner-labels-json == '' && inputs.runner || fromJSON(needs.validate-runner.outputs.labels) }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     # `github.workflow` names the *caller*, which is what separates a pull
@@ -307,54 +384,8 @@ jobs:
       - name: Check native change scope
         id: scope
         working-directory: .
-        env:
-          WATCH_PATHS: ${{ inputs.watch-paths }}
-          EVENT_NAME: ${{ github.event_name }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          if [ "$EVENT_NAME" != pull_request ] || [ -z "$WATCH_PATHS" ]; then
-            echo 'run=true' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # GitHub can regenerate the merge ref against newer trunk while the
-          # event still names its old base. Verify ancestry, but keep the exact head.
-          if ! [[ "$PR_BASE_SHA" =~ ^[a-f0-9]{40}$ && "$PR_HEAD_SHA" =~ ^[a-f0-9]{40}$ ]]; then
-            echo '::error::Native scope requires valid event base and head SHAs.' >&2
-            exit 1
-          fi
-          read -r -a parents <<< "$(git show -s --format=%P HEAD)"
-          if [ "${#parents[@]}" -ne 2 ]; then
-            echo '::error::Native scope requires a two-parent PR merge.' >&2
-            exit 1
-          fi
-          merge_base="${parents[0]}"
-          merge_head="${parents[1]}"
-          echo "Native scope: event base=$PR_BASE_SHA head=$PR_HEAD_SHA; checkout base=$merge_base head=$merge_head"
-          if [ "$merge_head" != "$PR_HEAD_SHA" ]; then
-            echo '::error::PR merge head does not match event head.' >&2
-            exit 1
-          fi
-          if ! git cat-file -e "$merge_head^{commit}" || ! git merge-base --is-ancestor "$PR_BASE_SHA" "$merge_base"; then
-            echo '::error::PR merge base is not descended from event base, or comparison history is missing.' >&2
-            exit 1
-          fi
-          test -n "${WATCH_PATHS//[[:space:]]/}"
-          pathspecs=()
-          while IFS= read -r pathspec; do
-            [ -z "$pathspec" ] || pathspecs+=("$pathspec")
-          done <<< "$WATCH_PATHS"
-          test "${#pathspecs[@]}" -gt 0
-          # Git owns matching, exclusions, deletes and names containing spaces.
-          if git diff --quiet --no-renames HEAD^1 HEAD -- "${pathspecs[@]}"; then
-            echo 'run=false' >> "$GITHUB_OUTPUT"
-            echo 'No native app, dependency or test/build inputs changed; native work skipped.' >> "$GITHUB_STEP_SUMMARY"
-          else
-            status=$?
-            test "$status" -eq 1
-            echo 'run=true' >> "$GITHUB_OUTPUT"
-          fi
+        env: *native_scope_env
+        run: *native_scope_command
 
       # A caller's Linux selection job cannot provide a runtime to this job.
       # Persistent macOS service accounts may not have Node on their PATH.

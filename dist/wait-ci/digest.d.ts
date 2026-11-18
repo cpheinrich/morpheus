@@ -26,6 +26,10 @@ export interface DigestInput {
     truncated: boolean;
     /** Checks dropped by `--required-only`, so an empty required set is not mistaken for no CI. */
     ignored: number;
+    /** GitHub's `mergeStateStatus` from the final poll. */
+    mergeState?: string;
+    /** Required check runs cancelled and then replaced by a newer attempt of the same job. */
+    supersededCancelled?: Check[];
 }
 export declare function renderDigest(input: DigestInput): string;
 export interface RunDigestInput {
@@ -38,6 +42,8 @@ export interface RunDigestInput {
     elapsedMs: number;
     /** Deadline reached before the run completed. */
     timedOut: boolean;
+    /** `--attempt` asked for this attempt, and the deadline came while GitHub still reported an older one. */
+    expectedAttempt?: number;
     /** Keyed by {@link checkKey}. */
     details: Map<string, FailureDetail>;
     /** Earlier matching runs replaced by a newer one during the wait, oldest first. */

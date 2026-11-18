@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { percentile } from "../profile/derive.js";
 import { evidenceCheckouts } from "../session/certify.js";
 import { checkoutIdentity } from "../session/start.js";
+import { CONTEXT_ERROR_REASONS, type ContextErrorReason } from "./rollout.js";
 import { ContextPipeline } from "./trace-pipeline.js";
 
 const ARMS = ["tantivy-compact", "tantivy-full", "tantivy-bounded", "ripgrep-bounded", "ripgrep-full", "manual", "legacy"] as const;
@@ -38,8 +39,10 @@ export type Trace = {
   engineQueryMs?: number;
   buildMs?: number;
   cacheHit?: boolean;
+  partial?: true;
   returnedTokens?: number;
   outcome?: typeof OUTCOMES[number];
+  reason?: ContextErrorReason;
 };
 
 type Cohort = { rollout: string | null; arm: Arm; sessions: Set<string>; unattributed: number };
@@ -60,6 +63,10 @@ type OperationMetrics = {
   calls: number;
   empty: number;
   errors: number;
+  /** Errors by recorded reason. Rows written before reasons existed count under `errors` only. */
+  errorReasons: Partial<Record<ContextErrorReason, number>>;
+  /** Results served from the last ready index while a replacement was building. */
+  partial: number;
   durations: number[];
   tokens: number[];
 };
@@ -109,8 +116,10 @@ function traceRow(line: string): Trace | undefined {
     engineQueryMs: nonnegative(value.engineQueryMs),
     buildMs: nonnegative(value.buildMs),
     cacheHit: typeof value.cacheHit === "boolean" ? value.cacheHit : undefined,
+    partial: value.partial === true ? true : undefined,
     returnedTokens: nonnegative(value.returnedTokens),
     outcome: outcome ?? (resultCount === 0 ? "empty" : undefined),
+    reason: outcome === "error" ? member(CONTEXT_ERROR_REASONS, value.reason) : undefined,
   };
 }
 
@@ -165,13 +174,15 @@ function observeCohort(cohorts: Map<string, Cohort>, key: string, trace: Trace):
 }
 
 function emptyMetrics(): OperationMetrics {
-  return { calls: 0, empty: 0, errors: 0, durations: [], tokens: [] };
+  return { calls: 0, empty: 0, errors: 0, errorReasons: {}, partial: 0, durations: [], tokens: [] };
 }
 
 function observeMetrics(metric: OperationMetrics, trace: Trace): void {
   metric.calls++;
   if (trace.outcome === "empty") metric.empty++;
   if (trace.outcome === "error") metric.errors++;
+  if (trace.reason) metric.errorReasons[trace.reason] = (metric.errorReasons[trace.reason] ?? 0) + 1;
+  if (trace.partial) metric.partial++;
   if (trace.durationMs !== undefined) metric.durations.push(trace.durationMs);
   if (trace.returnedTokens !== undefined) metric.tokens.push(trace.returnedTokens);
 }
@@ -237,6 +248,8 @@ function formatMetrics(metric: OperationMetrics) {
     calls: metric.calls,
     empty: metric.empty,
     errors: metric.errors,
+    errorReasons: Object.fromEntries(Object.entries(metric.errorReasons).sort()),
+    partial: metric.partial,
     latencySamples: metric.durations.length,
     p50Ms: percentile(metric.durations, 50),
     p95Ms: percentile(metric.durations, 95),

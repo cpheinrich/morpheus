@@ -1,3 +1,5 @@
+import { QA_COLUMN_PX } from "./visuals.js";
+
 /**
  * The web overlay's script (MO-26-10-06-18.13.32, column layout MO-26-10-07-13.27.17). Plain
  * ES5-style JavaScript with no build step, kept free of backticks and template placeholders so it
@@ -985,4 +987,4 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
 `;
 
 /** Width of the comment column, mirrored in the shell's initial frame width so the first paint is right. */
-export const WEB_OVERLAY_COLUMN_PX = 340;
+export const WEB_OVERLAY_COLUMN_PX = QA_COLUMN_PX;

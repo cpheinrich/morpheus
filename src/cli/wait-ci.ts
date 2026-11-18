@@ -13,6 +13,7 @@ export interface WaitCiFlags {
   timeout?: string;
   requiredOnly: boolean;
   run?: string;
+  attempt?: string;
   workflow?: string;
   branch?: string;
   sha?: string;
@@ -36,7 +37,22 @@ export function usageError(flags: WaitCiFlags): string | null {
   const modes = [flags.target !== undefined, flags.run !== undefined, flags.workflow !== undefined].filter(Boolean).length;
   if (modes > 1) return "wait-ci takes one of <pr|branch>, --run <id> or --workflow <name|file>, not several.";
   if (flags.extra.length > 0) return `wait-ci takes one PR number or branch, got also: ${flags.extra.join(" ")}`;
+  if (flags.requiredOnly && (flags.run !== undefined || flags.workflow !== undefined)) {
+    return "--required-only applies to a pull request's checks; a run's own conclusion decides --run and --workflow.";
+  }
+  return runError(flags) ?? workflowError(flags);
+}
+
+/** `--run <id>` and the `--attempt` that only it takes. */
+function runError(flags: WaitCiFlags): string | null {
   if (flags.run !== undefined && !/^\d+$/.test(flags.run)) return `--run takes a workflow run's numeric id, got "${flags.run}".`;
+  if (flags.attempt === undefined) return null;
+  if (flags.run === undefined) return "--attempt names an attempt of one run; use it with --run <id>.";
+  return /^[1-9]\d{0,5}$/.test(flags.attempt) ? null : `--attempt takes a positive attempt number such as 2, got "${flags.attempt}".`;
+}
+
+/** `--workflow` and the `--branch` and `--sha` filters that only it takes. */
+function workflowError(flags: WaitCiFlags): string | null {
   if (flags.workflow === "") return "--workflow takes a workflow name or file.";
   if ((flags.branch !== undefined || flags.sha !== undefined) && flags.workflow === undefined) {
     return "--branch and --sha select among a workflow's runs; use them with --workflow <name|file>.";
@@ -45,9 +61,6 @@ export function usageError(flags: WaitCiFlags): string | null {
   // the no-run grace and report that CI never started.
   if (flags.sha !== undefined && !/^[0-9a-f]{40}$/i.test(flags.sha)) {
     return `--sha takes a full 40-character commit SHA (gh matches no other form), got "${flags.sha}"; try \`git rev-parse ${flags.sha}\`.`;
-  }
-  if (flags.requiredOnly && (flags.run !== undefined || flags.workflow !== undefined)) {
-    return "--required-only applies to a pull request's checks; a run's own conclusion decides --run and --workflow.";
   }
   return null;
 }
@@ -67,7 +80,7 @@ export async function waitCiCommand(flags: WaitCiFlags, gh: GhRunner = ghRunner)
   const deps = { gh, sleep: (ms: number) => new Promise<void>((r) => setTimeout(r, ms)), now: () => Date.now() };
   const result =
     flags.run !== undefined || flags.workflow !== undefined
-      ? await waitRun(deps, { run: flags.run, workflow: flags.workflow, branch: flags.branch, sha: flags.sha, repo: flags.repo, timeoutMs })
+      ? await waitRun(deps, { run: flags.run, attempt: flags.attempt === undefined ? undefined : Number(flags.attempt), workflow: flags.workflow, branch: flags.branch, sha: flags.sha, repo: flags.repo, timeoutMs })
       : await waitCi(deps, { target: flags.target, repo: flags.repo, timeoutMs, requiredOnly: flags.requiredOnly });
   (result.exitCode === EXIT.error ? console.error : console.log)(result.output);
   return result.exitCode;

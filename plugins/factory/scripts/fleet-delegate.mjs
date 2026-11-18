@@ -56,6 +56,8 @@ function checkOptions(args) {
 
 async function submit(method, args, authorize) {
   checkOptions(args);
+  if (method === "delegate" && !args.display)
+    throw new Error("A new Fleet task requires a short display.title and display.summary for the Infra dashboard.");
   const { readFleetConfig } = await import("../src/fleet-client.mjs");
   const config = await readFleetConfig(fleetControllerPath()).catch(error => {
     if (error.code === "ENOENT") throw new Error("No Fleet enrollment exists on this controller. Use explicit local placement only if requested.");

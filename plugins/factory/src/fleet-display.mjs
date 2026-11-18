@@ -8,7 +8,7 @@ export const dashboardMetadata = z.strictObject({
   title: displayText(80),
   summary: displayText(320),
   pullRequests: z.array(number).max(3).refine(prs => new Set(prs).size === prs.length).optional(),
-}).describe("Optional HQ Work display: a short task title and one-sentence summary safe for this project's authorized dashboard viewers. Include same-repository PR numbers when already known. Never copy the private prompt or include secrets, private logs, or task IDs.");
+}).describe("HQ Work display for a new Fleet task: an action title (up to 80 characters) and one sentence (up to 320) explaining what the task is for, in language safe for this project's authorized dashboard viewers. Include same-repository PR numbers when already known. Never copy the private prompt or include secrets, private logs, or task IDs.");
 
 const reportedPullRequest = z.strictObject({
   repository: z.string().max(150).regex(githubRepository),

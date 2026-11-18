@@ -1040,11 +1040,21 @@ flowchart LR
   downloads and opens the file, the exact Studio attempt is recorded, and
   the slot is released after verified cleanup.
 
+During a transient inspect or renewal failure, a live attempt stays in place until
+the supervisor's last confirmed service lease expires. A monotonic timer stops the
+worker before that known lease boundary even if a control request is stalled.
+Denied ownership and explicit cancellation still stop immediately. The existing
+termination census and settlement proof govern release of the slot.
+
 If a supervisor restarts after recording a launch and before seeing cleanup,
 it uses the existing non-signaling process census only for the exact retained
 task, attempt and admission. The interrupted task settles and releases its slot
-when the census proves cleanup. An unverified or still-live worker holds its
-slot. Operators can still use the gateway worker's `--status` and
+when the census proves cleanup. While the original attempt remains supervised
+and authorized by its current lease, late cleanup can also return its completed
+structured result and the declared bounded artifacts from the exact retained
+checkout. Canceled, expired or restarted attempts use cleanup-only recovery. A
+cancellation that wins final settlement leaves previously uploaded files unlinked.
+An unverified or still-live worker holds its slot. Operators can still use the gateway worker's `--status` and
 `--reconcile` to inspect or reconcile an exact admission.
 The pilot uses an enrolled Codex model and a single Studio slot. Firestore
 coordinates placement, and Sub2API retains account routing behind its gateway.
@@ -1085,6 +1095,13 @@ commit and creates its own child checkout there. A clarification keeps that same
 checkout. The runner records preparation before it can start a model, so a
 restart during checkout can settle the attempt without a guardian receipt. Operators can retire old checkouts after verifying their attempts are
 terminal. An explicit SHA enrollment continues to use the fixed pilot checkout.
+
+For single-repository Git enrollments, the supervisor fetches the exact source
+and the observed upstream default branch with their history. The worker starts
+detached at the admitted revision and sees a local `origin` pinned to the
+observed branch tip. Git and Morpheus startup can verify that snapshot without
+access to the supervisor’s upstream key. A new admission is required to get a
+newer comparison tip.
 
 ### Enroll a related repository workspace
 
@@ -1195,10 +1212,15 @@ every SHA and verifies each checkout's root ownership; extra, duplicate or missi
 refuse. A unique one-project workspace can also be selected with only `cwd`.
 
 Service controllers and `factory_remote` use the same submit operation with `project`,
-`revision`, `messageId`, `text` and:
+`revision`, `messageId`, `text`, and the fields below. Legacy direct HTTP callers may still
+omit `display`.
 
 ```json
 {
+  "display": {
+    "title": "Verify cross-repository integration",
+    "summary": "Run the app checks against the pinned library revision."
+  },
   "workspace": {
     "id": "related",
     "revisions": {
@@ -1288,6 +1310,14 @@ gateway is `limited`. Old supervisors still heartbeat and run tasks, with quota
 shown as unknown. A new supervisor refreshes the quota observation no more than
 once per minute while idle and checks again before each model invocation.
 
+The service grants a two-minute attempt lease and tells the supervisor its duration
+on a successful renewal. A supervisor talking to an older service uses the
+original one-minute grant. The supervisor measures from before the renewal request
+with its monotonic clock, preserves the last confirmed cutoff during temporary contact
+loss, and stops at that cutoff unless the service has acknowledged another grant.
+A delayed renewal cannot shorten an existing grant. Cancellation prevents further renewals and the attempt retains its slot and checkout
+until owned-process cleanup is verified.
+
 On verified settlement, the owning controller's `get` and `wait` responses may include
 a separate `receipt` with the exact task, attempt, slot, host, and latest gateway
 admission. In a `session` receipt the session ID comes from the Codex CLI's
@@ -1308,14 +1338,18 @@ until they are idle. Then upgrade supervisor, fixed executor and worker together
 on each slot. Keep the old plugin build for rollback and wait for `readiness` to
 show a fresh observation before testing the new receipt with a synthetic task.
 Older services ignore the additive heartbeat and completion fields.
+To roll back the lease change, drain and roll back the supervisors before moving
+service traffic to an older revision.
 
 ### Read Factory work in an Infra desk
 
-A controller can supply a separate `display: {title, summary, pullRequests?}` on a new Fleet
-delegation. Use a short action title and one sentence about the work, suitable for the project's
-authorized HQ operators. Optional PR numbers must belong to the task's own GitHub repository.
-Never paste the worker brief, conversation, secrets or logs there. Use the same metadata on
-submission retries. Older tasks retain their source revision but may have no display text.
+New Fleet submissions through `factory_delegate` and `factory_remote` supply a separate
+`display: {title, summary, pullRequests?}`. Write a short action title and one sentence about
+the task's purpose for the project's authorized HQ operators. Optional PR numbers must belong to
+the task's own GitHub repository. Keep the worker brief, conversation, secrets and logs private.
+Service controllers should supply the same fields. The HTTP API still accepts legacy submissions.
+A retry with the same brief and launch binding returns the stored task. Later display copy,
+including a backfill, leaves submission identity and the original execution brief intact.
 When a worker reports an exact GitHub pull-request URL in its structured evidence, the result can
 carry that reference. The projection only links references to the task's authorized repository.
 

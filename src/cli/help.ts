@@ -101,6 +101,7 @@ Usage
   morpheus scheduler admit --scheduler-id <id> --scheduled-for <instant>
                             receiver guard: admitted=true|false to GITHUB_OUTPUT
   morpheus tokens build     [--source hq/brand/tokens.json] [--css <path>] [--ts <path>]
+                            [--swift <path>] — opt-in iOS/macOS BrandPalette
                             [--prefix brand] [--check]
   morpheus context refresh  take a receipt — after reading the records; idempotent, and where
                             the read hook is wired it certifies only what the read log covers
@@ -176,10 +177,11 @@ Usage
                             block once until the PR head's checks finish, then print a
                             digest with failing-step logs; exit 0 green, 1 failed,
                             2 timeout, 3 usage or gh error. Never poll gh in a loop
-  morpheus wait-ci --run <id> [--repo owner/name] [--timeout 45m]
+  morpheus wait-ci --run <id> [--attempt <n>] [--repo owner/name] [--timeout 45m]
   morpheus wait-ci --workflow <name|file> [--branch <b>] [--sha <commit>] [--repo owner/name]
                             the same, for one Actions run (TestFlight, release, nightly):
-                            by id, or the latest run of a workflow, following a newer one
+                            by id, or the latest run of a workflow, following a newer one;
+                            --attempt waits past an older attempt, e.g. right after gh run rerun
   morpheus poll-guard       PreToolUse hook (wired by context install): refuses the 3rd
                             gh run view|run watch|pr checks of one target in a session
   morpheus voice knowledge  the standing explainer, to upload once as project knowledge

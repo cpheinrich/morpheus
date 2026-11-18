@@ -973,8 +973,10 @@ Each execution host still needs its own runtime and trust. See
 
 The local `morpheus_context` server resolves the host worktree and uses the session identity
 for validated bindings and profiling when one is available. It exposes search, exact reads,
-coverage, overview and relationship traversal. The host read hook validates visible excerpts
-against their source.
+coverage, overview and relationship traversal. The overview gives exact read ranges for local
+architecture sections, and a read cut short by its budget names the range to continue with.
+The host read hook validates visible excerpts against their source, in the form each host
+presents them.
 Explicit Markdown and project record links provide traversable relationships, with the declaring
 path and line retained as evidence.
 
@@ -2559,8 +2561,8 @@ Assets live in git: small, versioned, diffable, needed at build time. Large medi
 Primitives live with the brand because they *are* the brand. Semantic mapping lives with the design
 system because it is a design decision, not a brand one. Generated output is derived.
 
-**The kit generates primitives only.** `morpheus tokens build` emits CSS custom properties and a
-typed module from `hq/brand/tokens.json` and stops there; the semantic layer stays per project.
+**The kit generates primitives only.** `morpheus tokens build` emits CSS custom properties, a
+typed module, and opt-in Swift colors from `hq/brand/tokens.json`; the semantic layer stays per project.
 Only one project has a semantic layer today, and inventing a shared vocabulary from a sample of one
 would be guessing — principle 10 applies with particular force to a vocabulary, since a wrong one
 propagates into every project that adopts it.
@@ -2609,9 +2611,9 @@ route is worth having: it is the only place you can *see* it.
 
 ```mermaid
 flowchart LR
-    A["hq/brand/tokens.json<br/>primitives"] --> B["packages/shared/<br/>Style Dictionary"]
+    A["hq/brand/tokens.json<br/>primitives"] --> B["morpheus tokens build"]
     B --> C["generated/web/tokens.css"]
-    B --> D["generated/ios/Tokens.swift"]
+    B -->|"--swift"| D["generated/ios/BrandPalette.swift"]
     E["morpheus-kit/design<br/>components + showcase"] --> F["apps/web"]
     C --> F
     D --> G["apps/ios"]
@@ -2626,6 +2628,22 @@ keeping: it **writes nothing when the source has problems** and reports every pr
 because a stylesheet built from a half-read token file still renders, which is how the mistake
 survives to production; and it **emits a TS module as well as CSS**, because a deleted custom
 property renders as nothing while a deleted key does not compile.
+
+**Swift is opt-in:** `morpheus tokens build --swift packages/shared/generated/ios/BrandPalette.swift`.
+Add `--css ''` for Swift-only generation; otherwise existing CSS defaults and explicit `--ts`
+outputs remain unchanged. Repeat the same options with `--check` in CI: missing or stale output
+fails without writing. The generated `BrandPalette` exposes adaptive SwiftUI colors on iOS and
+macOS (including high-contrast dark appearances). Add the generated file to the app's target.
+
+The palette reads `color.*` and optional matching `theme.dark.color.*` overrides; a missing dark
+override inherits the light color. Other groups remain web-only. Names are lower camel case from
+the existing flattened kebab names (`inkMuted` and `ink-muted` both produce `inkMuted`); numeric
+names gain `color` (`500` becomes `color500`). Keywords are escaped. Output is sorted by Swift
+name. Collisions, empty names, orphan dark overrides and unsupported colors are reported together
+before **any** output is written. Supported literals are `#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA`,
+and comma-separated numeric `rgb()`/`rgba()` (channels 0–255, alpha 0–1). CSS references,
+percentages, named colors and other expressions are not evaluated. Swift channels use sRGB,
+rounded to six decimal places; CSS and TS retain their original literal values and order.
 
 ### 12.3 Import, don't sync
 
@@ -2906,6 +2924,11 @@ provisioned:
 | Firestore in `nam5` | `/hq` behind Google sign-in, its private search index, and the route gate |
 | A registered web app, and its public SDK config | The Firestore deny block for `waitlist` |
 | Workload Identity Federation for Vercel | `.env.example`, and the dependencies the code imports |
+
+New Next.js apps scaffold an app-local `.oxlintrc.json` and a pinned Oxlint dev dependency.
+Their `lint` script checks JavaScript and TypeScript using correctness, React hooks, Next.js,
+and JSX accessibility rules. The shared web CI runs that script alongside typecheck, tests,
+and build. Established apps keep their existing lint config during scaffolding.
 
 Then it calls `firebase auth setup` (§ Firebase Google sign-in), which is the only step that can
 need a human at a consent screen — and is therefore last, so everything before it survives a stop.
@@ -3647,9 +3670,10 @@ attempt, job, commit and pull-request links built solely from validated identifi
 terminal outcomes kept when a source goes stale while live states become unknown, latest-attempt
 ordering by start time, and URL-fragment views. `morpheus-kit/ops-desk/react` adds the
 fragment-view hook behind shareable tabs, drilldowns, Back and Forward. Factory Work uses a
-short, deliberately supplied title and summary, with the ID only in details and exact links from
-the authorized repository. The optional Factory plugin stores that display metadata apart from
-the brief and exposes a bounded, project-scoped read-only projection. Sources, readers,
+short title and summary supplied by the controller at submission, with the ID only in details
+and exact links from the authorized repository. The optional Factory plugin stores that display
+metadata apart from the brief and exposes a bounded, project-scoped read-only projection.
+Display-only edits do not alter the submission's execution identity. Sources, readers,
 authorization, copy and pipeline topology stay in each project. See `src/ops-desk/README.md`.
 Layout and interaction (Overview → Devices → Work → Deployments, full-row hit areas, linked rows,
 operator-gated cross-owner health, and the browser checks every desk passes) are in the
@@ -3711,6 +3735,11 @@ appears; visible passing checks alone do not prove completion. `--required-only`
 required-check scope. Check-run identity includes the stable Actions workflow ID and job name, so a
 metadata workflow cannot replace another workflow's failed required job. Only rerun attempts
 inside the same workflow supersede each other; missing suite identity refuses the receipt.
+A required-check pass and GitHub accepting the protection state are separate facts: when
+`--required-only` is green but the same response's `mergeStateStatus` is `BLOCKED`, the digest adds
+an advisory and the exit stays 0. It names, as a possible cause only, required jobs whose cancelled
+run a newer attempt replaced on the same head — rerunning such runs cleared a block in #723 —
+because GitHub does not say which rule blocks. The advisory adds no merge gate.
 Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
 
 `morpheus wait-ci --run <id>` and `--workflow <name|file> [--branch <b>] [--sha <s>]` wait the
@@ -3723,6 +3752,11 @@ no-checks grace applies. A latest run that had already finished when the wait be
 20 seconds unless `--sha` pinned it, because a run just dispatched or pushed lists within
 seconds and the previous run's exit code would otherwise answer for it; if none appears, the
 digest flags it. `--sha` must be a full SHA, the only form `gh run list --commit` matches.
+`--run <id> --attempt <n>` exists because `gh run rerun` returns before GitHub reports the new
+attempt, and an immediate wait answered with the previous attempt's conclusion: while the run's
+`attempt` is below `n` the wait continues whatever its status, and at the timeout it exits 2 naming
+the attempt it saw. A later attempt is accepted, since `gh run view` reports only the latest.
+Without `--attempt` the behaviour is unchanged.
 
 Instructions alone did not stop the polling — sessions polled more after `wait-ci` existed — so
 `morpheus context install` (and `init`) also wires a **poll guard**: a PreToolUse hook on `Bash`

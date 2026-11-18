@@ -49,6 +49,9 @@ the answers arrive.
 
 ## 2. Design before you build
 
+For a structural cleanup across a subsystem or repository, use the
+[Morpheus simplification audit runbook](https://github.com/cpheinrich/morpheus/blob/main/docs/runbooks/simplification-audit.md).
+
 - Read the history: worklogs, decisions, incidents, run logs and failed attempts. Find the root
   cause of what failed, and research how others have solved the problem.
 - Write requirements as observable outcomes, then the simplest robust design that meets them.

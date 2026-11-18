@@ -58,6 +58,13 @@ on:
           verified build.
         type: string
         default: ""
+      parallel-static-checks:
+        description: >
+          Run typecheck, lint and the build concurrently in the same job before the
+          tests, instead of one after another around them. The build then precedes
+          the tests, so a failed build stops the job before they run.
+        type: boolean
+        default: false
 
 jobs:
   check:
@@ -107,52 +114,113 @@ jobs:
           echo "$tool_dir" >> "$GITHUB_PATH"
 
       - name: Typecheck
-        run: pnpm typecheck
+        if: ${{ !inputs.parallel-static-checks }}
+        run: &typecheck pnpm typecheck
 
       - name: Lint
-        if: ${{ inputs.run-lint }}
-        run: pnpm lint
+        if: ${{ !inputs.parallel-static-checks && inputs.run-lint }}
+        run: &lint pnpm lint
 
       - name: Install Morpheus context search runtime
-        if: ${{ github.repository == 'cpheinrich/morpheus' && runner.os == 'Linux' }}
-        run: |
+        if: ${{ !inputs.parallel-static-checks && github.repository == 'cpheinrich/morpheus' && runner.os == 'Linux' }}
+        run: &context_runtime |
           sudo apt-get update -q
           sudo apt-get install -y ripgrep
           pnpm morpheus context runtime install
+
+      # Opt-in. These checks do not depend on one another, and the tests already
+      # saturate the runner, so they share its cores here instead of queueing
+      # around the tests. Each script is the serial step's own, through a YAML
+      # alias, under the serial step's condition. The build moves ahead of the
+      # tests: they then read the rebuilt output, which the verification proves
+      # identical to the committed one whenever this step passes.
+      - name: Typecheck, lint and build concurrently
+        if: ${{ inputs.parallel-static-checks }}
+        env:
+          RUN_LINT: ${{ inputs.run-lint }}
+          RUN_CONTEXT_RUNTIME: ${{ github.repository == 'cpheinrich/morpheus' && runner.os == 'Linux' }}
+          VERIFY_BUILD_CLEAN: ${{ inputs.verify-build-clean }}
+          BUILD_SCRIPT: ${{ inputs.build-script }}
+          BUILD_OUTPUT_DIRECTORY: ${{ inputs.build-output-directory }}
+          TYPECHECK_STEP: *typecheck
+          LINT_STEP: *lint
+          CONTEXT_RUNTIME_STEP: *context_runtime
+          CLEAN_BUILD_STEP: &clean_build |
+            case "$BUILD_OUTPUT_DIRECTORY" in
+              "."|"/"|/*|*".."*|*"*"*|*"?"*|*"["*|*":"*)
+                echo "build-output-directory must be a safe relative path" >&2
+                exit 1
+                ;;
+            esac
+            git ls-files --error-unmatch -- "$BUILD_OUTPUT_DIRECTORY" >/dev/null || {
+              echo "build-output-directory '$BUILD_OUTPUT_DIRECTORY' has no tracked files" >&2
+              exit 1
+            }
+            git rm -r -f -- "$BUILD_OUTPUT_DIRECTORY"
+          BUILD_STEP: &build pnpm run "$BUILD_SCRIPT"
+          VERIFY_BUILD_STEP: &verify_build |
+            if [ -z "$BUILD_OUTPUT_DIRECTORY" ]; then
+              echo "verify-build-clean requires build-output-directory" >&2
+              exit 1
+            fi
+            git add --all -- "$BUILD_OUTPUT_DIRECTORY"
+            git diff --cached --exit-code -- "$BUILD_OUTPUT_DIRECTORY"
+        run: |
+          set -uo pipefail
+          step() { bash -e -c "$1"; }
+          build() {
+            if [ "$VERIFY_BUILD_CLEAN" = true ] && [ -n "$BUILD_OUTPUT_DIRECTORY" ]; then
+              step "$CLEAN_BUILD_STEP" || return
+            fi
+            step "$BUILD_STEP" || return
+            if [ "$VERIFY_BUILD_CLEAN" = true ]; then step "$VERIFY_BUILD_STEP" || return; fi
+          }
+          logs="$(mktemp -d "$RUNNER_TEMP/static-checks.XXXXXX")"
+          names=()
+          pids=()
+          start() {
+            names+=("$1")
+            ( status=0; "${@:2}" > "$logs/$1.log" 2>&1 || status=$?; echo "$SECONDS" > "$logs/$1.seconds"; exit "$status" ) &
+            pids+=("$!")
+          }
+          start typecheck step "$TYPECHECK_STEP"
+          if [ "$RUN_LINT" = true ]; then start lint step "$LINT_STEP"; fi
+          if [ "$RUN_CONTEXT_RUNTIME" = true ]; then start context-runtime step "$CONTEXT_RUNTIME_STEP"; fi
+          start build build
+          failed=()
+          for i in "${!names[@]}"; do
+            if wait "${pids[$i]}"; then
+              echo "::group::${names[$i]} passed in $(cat "$logs/${names[$i]}.seconds")s"
+              cat "$logs/${names[$i]}.log"
+              echo "::endgroup::"
+            else
+              failed+=("${names[$i]}")
+            fi
+          done
+          # Failures print last and unfolded: `morpheus wait-ci` reports this step's tail.
+          for name in ${failed[@]+"${failed[@]}"}; do
+            echo "::error title=${name} failed::${name} failed after $(cat "$logs/$name.seconds")s; its output follows."
+            cat "$logs/$name.log"
+          done
+          [ "${#failed[@]}" -eq 0 ]
 
       - name: Test
         run: pnpm test
 
       - name: Clean committed build output
-        if: ${{ inputs.verify-build-clean && inputs.build-output-directory != '' }}
+        if: ${{ !inputs.parallel-static-checks && inputs.verify-build-clean && inputs.build-output-directory != '' }}
         env:
           BUILD_OUTPUT_DIRECTORY: ${{ inputs.build-output-directory }}
-        run: |
-          case "$BUILD_OUTPUT_DIRECTORY" in
-            "."|"/"|/*|*".."*|*"*"*|*"?"*|*"["*|*":"*)
-              echo "build-output-directory must be a safe relative path" >&2
-              exit 1
-              ;;
-          esac
-          git ls-files --error-unmatch -- "$BUILD_OUTPUT_DIRECTORY" >/dev/null || {
-            echo "build-output-directory '$BUILD_OUTPUT_DIRECTORY' has no tracked files" >&2
-            exit 1
-          }
-          git rm -r -f -- "$BUILD_OUTPUT_DIRECTORY"
+        run: *clean_build
 
       - name: Build
+        if: ${{ !inputs.parallel-static-checks }}
         env:
           BUILD_SCRIPT: ${{ inputs.build-script }}
-        run: pnpm run "$BUILD_SCRIPT"
+        run: *build
 
       - name: Verify committed build output
-        if: ${{ inputs.verify-build-clean }}
+        if: ${{ !inputs.parallel-static-checks && inputs.verify-build-clean }}
         env:
           BUILD_OUTPUT_DIRECTORY: ${{ inputs.build-output-directory }}
-        run: |
-          if [ -z "$BUILD_OUTPUT_DIRECTORY" ]; then
-            echo "verify-build-clean requires build-output-directory" >&2
-            exit 1
-          fi
-          git add --all -- "$BUILD_OUTPUT_DIRECTORY"
-          git diff --cached --exit-code -- "$BUILD_OUTPUT_DIRECTORY"
+        run: *verify_build

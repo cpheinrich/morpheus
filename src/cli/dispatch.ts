@@ -201,6 +201,7 @@ async function dispatchTokens({ flags, command }: Invocation): Promise<number> {
         source: flags.source,
         css: flags.css,
         ts: flags.ts,
+        swift: flags.swift,
         prefix: flags.prefix,
         check: flags.check,
       });
@@ -656,6 +657,7 @@ async function dispatchWaitCi({ flags, command, rest }: Invocation): Promise<num
     timeout: flags.timeout,
     requiredOnly: flags.requiredOnly,
     run: flags.run,
+    attempt: flags.attempt,
     workflow: flags.workflow,
     branch: flags.branch,
     sha: flags.sha,

@@ -17,6 +17,7 @@ export const ROLLUP_QUERY = `query($owner: String!, $name: String!, $number: Int
       number
       url
       mergeable
+      mergeStateStatus
       commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) {
         pageInfo { hasNextPage }
         nodes {
@@ -117,13 +118,16 @@ export function parseRollup(json) {
         if (check)
             checks.push(check);
     }
+    const latest = dedupe(checks);
     return {
         pr: pr.number,
         url: pr.url ?? "",
         headSha: commit.oid,
-        checks: dedupe(checks),
+        checks: latest,
         truncated: contexts?.pageInfo?.hasNextPage === true,
         ...(pr.mergeable === "CONFLICTING" ? { conflicting: true } : {}),
+        mergeState: pr.mergeStateStatus,
+        supersededCancelled: replacedCancellations(checks, latest),
     };
 }
 /**
@@ -160,6 +164,12 @@ export function dedupe(checks) {
             latest.set(key, check);
     }
     return [...latest.values()];
+}
+/** Required rows {@link dedupe} dropped that had been cancelled: still on the head, only replaced in the verdict. */
+function replacedCancellations(all, latest) {
+    const kept = new Set(latest);
+    const replaced = all.filter((c) => !kept.has(c) && c.required && c.outcome === "cancelled");
+    return replaced.length > 0 ? replaced : undefined;
 }
 export function failed(check) {
     return check.outcome === "fail" || check.outcome === "cancelled";

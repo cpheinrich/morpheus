@@ -40,7 +40,9 @@
     "./meeting-intake": "./dist/meeting-intake/index.js",
     "./research-library": "./dist/research-library/index.js",
     "./research-library/client": "./dist/research-library/client.js",
-    "./research-library/server": "./dist/research-library/server.js"
+    "./research-library/server": "./dist/research-library/server.js",
+    "./qa/web": "./dist/qa/web/mount.js",
+    "./qa/web/schema": "./dist/qa/web/schema.js"
   },
   "files": [
     "dist",
@@ -51,10 +53,10 @@
     "dev": "tsc -p tsconfig.build.json --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:qa-browser": "playwright test tests/browser/qa-comments.spec.ts tests/browser/qa-web-context.spec.ts --workers=1",
+    "test:qa-browser": "playwright test tests/browser/qa-comments.spec.ts tests/browser/qa-web-context.spec.ts tests/browser/qa-web-production.spec.ts --workers=1",
     "test:watch": "vitest",
     "test:rules": "pnpm compile && firebase emulators:exec --only firestore --project morpheus-rules-test 'node --test tests/firestore-rules.test.mjs'",
-    "lint": "eslint src",
+    "lint": "oxlint src",
     "morpheus": "tsx src/cli/index.ts"
   },
   "dependencies": {
@@ -94,18 +96,17 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
-    "eslint": "^10.9.1",
     "firebase": "^12.17.0",
     "js-yaml": "^5.2.2",
     "jsdom": "^26.1.0",
+    "oxlint": "1.93.0",
     "pdf-parse": "^2.4.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "typescript-eslint": "^8.68.0",
     "vite": "^7.3.7",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "repository": {
     "type": "git",

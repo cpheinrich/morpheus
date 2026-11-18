@@ -3,6 +3,9 @@ export type ContextTransport = "cli" | "mcp";
 export type TraceTransport = ContextTransport | "hook";
 export type ContextOperation = "search" | "read" | "coverage" | "overview" | "related";
 export type ContextOutcome = "ok" | "empty" | "error";
+/** Why an exact read was refused. A fixed vocabulary: a trace never carries the message or the path. */
+export declare const CONTEXT_ERROR_REASONS: readonly ["coverage", "range", "unavailable", "other"];
+export type ContextErrorReason = typeof CONTEXT_ERROR_REASONS[number];
 export type SearchEngine = "tantivy" | "ripgrep";
 export type Arm = "tantivy-compact" | "tantivy-full" | "tantivy-bounded" | "ripgrep-bounded" | "ripgrep-full" | "manual" | "legacy";
 export interface SearchRollout {
@@ -37,6 +40,7 @@ export interface ContextTrace {
     transport?: TraceTransport;
     operation?: ContextOperation;
     outcome?: ContextOutcome;
+    reason?: ContextErrorReason;
     arm: Arm;
     engine: SearchEngine;
     /** Actual engine, when different from the assigned engine. */

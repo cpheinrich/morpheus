@@ -43,6 +43,7 @@ export interface Flags {
     source?: string;
     css?: string;
     ts?: string;
+    swift?: string;
     priority?: string;
     tags: string[];
     goal?: string;
@@ -79,6 +80,8 @@ export interface Flags {
     requiredOnly: boolean;
     /** `wait-ci --run`: one Actions run's database id. */
     run?: string;
+    /** `wait-ci --run --attempt`: the run attempt to wait for, e.g. after `gh run rerun`. */
+    attempt?: string;
     /** `wait-ci --workflow`: a workflow name or file whose latest matching run is awaited. */
     workflow?: string;
     /** `wait-ci --workflow`: only runs on this branch. */

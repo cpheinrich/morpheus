@@ -48,6 +48,14 @@ sign-in; the client refreshes its ID token before the session cookie is created.
 including users who will not sign in again. A removed account's stale claim is also cleared
 on its next sign-in.
 
+### JavaScript and TypeScript lint
+
+New web apps include a pinned app-local Oxlint and a `lint` script that shared web CI runs.
+Run `pnpm lint` from the app directory or use `pnpm exec oxlint app/changed-file.tsx` for
+feedback while editing. The generated config enables correctness, React hooks, Next.js, and
+JSX accessibility rules. Keep an established app's file scope and project-specific guards
+when migrating it. Seed a failing example for any guard that needs a different rule or pattern.
+
 ### HQ rendering contract
 
 Treat repository content as a deployment input. Read and parse `hq/`, `docs/`, and other approved
