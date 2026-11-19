@@ -758,7 +758,7 @@ export function committedConfig(root, commit) {
         git(root, ["cat-file", "-e", `${commit}^{commit}`]);
     }
     catch {
-        throw new Error(`commit ${commit} is not in this checkout, so morpheus.json and the review record at the pull request head cannot be read. Fetch it (git fetch origin ${commit}) or check out with full history, then re-run.`);
+        throw new Error(`commit ${commit} is not in this checkout, so committed review configuration cannot be read. Fetch it (git fetch origin ${commit}) or check out with full history, then re-run.`);
     }
     if (!git(root, ["ls-tree", "--name-only", commit, "--", "morpheus.json"]))
         return {};
@@ -769,6 +769,24 @@ export function committedConfig(root, commit) {
     catch (error) {
         throw new Error(`morpheus.json at ${commit.slice(0, 12)} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
     }
+}
+/** Resolve the configured base once. A tag cannot replace a missing remote-tracking ref. */
+export function resolveReviewBase(root, base) {
+    const ref = base.startsWith("origin/") ? `refs/remotes/${base}` : base;
+    try {
+        return ref.startsWith("refs/remotes/")
+            ? git(root, ["show-ref", "--verify", "--hash", ref])
+            : git(root, ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`]);
+    }
+    catch {
+        throw new Error(`commit ${base} is not in this checkout. Fetch the trusted target branch and re-run.`);
+    }
+}
+/** Keep candidate configuration valid while taking the review decision from the target branch. */
+export function reviewRequiredAtBase(root, base, head) {
+    const required = reviewRequired(committedConfig(root, base));
+    reviewRequired(committedConfig(root, head));
+    return required;
 }
 /**
  * A PR without the label is never passed here, draft or not. Keeping a draft from going red is the
@@ -781,12 +799,12 @@ export const MISSING_CONTEXT_READ = "review record has no contextRead: the revie
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts) {
     try {
-        const config = committedConfig(opts.root, opts.head);
-        if (!reviewRequired(config))
+        const base = resolveReviewBase(opts.root, opts.base);
+        if (!reviewRequiredAtBase(opts.root, base, opts.head))
             return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
         if (!opts.labels.includes("agent-reviewed"))
             throw new Error(MISSING_LABEL);
-        const { record, waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
+        const { record, waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base });
         const findings = waivers.map(message => ({ level: "waived", rule: REVIEW_FLOOR_RULE, message }));
         if (!record.contextRead?.length)
             findings.push({ level: "warning", rule: "review-context", message: MISSING_CONTEXT_READ });

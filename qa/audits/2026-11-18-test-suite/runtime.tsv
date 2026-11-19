@@ -1,0 +1,202 @@
+# path	runtime_instances	case_seconds	source
+# Root Vitest rows: per-file lines of the Test step, Actions run 44253481138 job 134629583975 (push to main at 9c4c3e585). They sum to the runner's own totals: 4535 instances, 270.32 s of case time.
+# Factory bridge rows: TAP durations from run 44253481138 job 134629583869, matched to a file by literal test name. Loop-generated names are not attributed (9 bridge, 27 reporting instances).
+# Playwright, Factory host unittest and Factory host Vitest totals are job-level receipts in the main report.
+tests/access.test.ts	17	0.009	ci:44253481138/134629583975
+tests/agent-instructions.test.ts	20	0.019	ci:44253481138/134629583975
+tests/agentic-cto-skill.test.ts	42	0.426	ci:44253481138/134629583975
+tests/artifact-workflows.test.ts	7	1.588	ci:44253481138/134629583975
+tests/block.test.ts	34	0.099	ci:44253481138/134629583975
+tests/brand-workflow.test.ts	12	0.063	ci:44253481138/134629583975
+tests/cd/adapters.test.ts	24	0.374	ci:44253481138/134629583975
+tests/cd/blocker-proof.test.ts	44	0.036	ci:44253481138/134629583975
+tests/cd/claude-executor.test.ts	35	7.296	ci:44253481138/134629583975
+tests/cd/claude-quota.test.ts	48	0.516	ci:44253481138/134629583975
+tests/cd/controller.test.ts	219	0.639	ci:44253481138/134629583975
+tests/cd/external.test.ts	48	0.252	ci:44253481138/134629583975
+tests/cd/host.test.ts	2	1.548	ci:44253481138/134629583975
+tests/cd/native-worker.test.ts	117	26.858	ci:44253481138/134629583975
+tests/cd/physical-device.test.ts	46	0.103	ci:44253481138/134629583975
+tests/cd/post-resume-controller.test.ts	35	0.298	ci:44253481138/134629583975
+tests/cd/post-resume-store.test.ts	9	0.052	ci:44253481138/134629583975
+tests/cd/post-resume.test.ts	38	0.097	ci:44253481138/134629583975
+tests/cd/quota-reader-cli.test.ts	24	13.644	ci:44253481138/134629583975
+tests/cd/quota-reader-process.test.ts	1	0.103	ci:44253481138/134629583975
+tests/cd/quota-reader.test.ts	102	11.619	ci:44253481138/134629583975
+tests/cd/repair-checks.test.ts	65	0.124	ci:44253481138/134629583975
+tests/cd/repair-control.test.ts	15	0.025	ci:44253481138/134629583975
+tests/cd/repair-diagnostic-cli.test.ts	24	0.449	ci:44253481138/134629583975
+tests/cd/repair-diagnostic.test.ts	57	0.102	ci:44253481138/134629583975
+tests/cd/request.test.ts	5	0.032	ci:44253481138/134629583975
+tests/cd/schema.test.ts	1	0.004	ci:44253481138/134629583975
+tests/cd/source-finance-cli.test.ts	43	0.131	ci:44253481138/134629583975
+tests/cd/source-finance.test.ts	52	0.163	ci:44253481138/134629583975
+tests/cd/spending-policy-cli.test.ts	14	0.064	ci:44253481138/134629583975
+tests/cd/spending-policy.test.ts	6	0.021	ci:44253481138/134629583975
+tests/cd/state.test.ts	34	0.040	ci:44253481138/134629583975
+tests/cd/store.test.ts	7	0.068	ci:44253481138/134629583975
+tests/cd/worker.test.ts	27	0.092	ci:44253481138/134629583975
+tests/check.test.ts	127	0.171	ci:44253481138/134629583975
+tests/ci-scope.test.ts	40	2.490	ci:44253481138/134629583975
+tests/claim.test.ts	23	0.021	ci:44253481138/134629583975
+tests/cli-args.test.ts	56	0.021	ci:44253481138/134629583975
+tests/cli-check.test.ts	1	0.094	ci:44253481138/134629583975
+tests/cli-dispatch.test.ts	109	0.023	ci:44253481138/134629583975
+tests/cli-exit.test.ts	2	2.848	ci:44253481138/134629583975
+tests/codebase-memory.test.ts	6	0.015	ci:44253481138/134629583975
+tests/codex-hooks.test.ts	17	1.762	ci:44253481138/134629583975
+tests/complexity-check.test.ts	31	27.786	ci:44253481138/134629583975
+tests/complexity-diff.test.ts	14	0.442	ci:44253481138/134629583975
+tests/complexity-policy.test.ts	12	0.013	ci:44253481138/134629583975
+tests/complexity-prompt.test.ts	4	0.007	ci:44253481138/134629583975
+tests/consumer-auth.test.ts	32	0.368	ci:44253481138/134629583975
+tests/context-client-install.test.ts	7	0.051	ci:44253481138/134629583975
+tests/context-mcp.test.ts	18	9.384	ci:44253481138/134629583975
+tests/context-rollout-policy.test.ts	5	0.092	ci:44253481138/134629583975
+tests/context-search-engine.test.ts	5	1.710	ci:44253481138/134629583975
+tests/context-search-hook.test.ts	8	1.198	ci:44253481138/134629583975
+tests/context-search-sources.test.ts	2	0.029	ci:44253481138/134629583975
+tests/context-task-start.test.ts	6	2.356	ci:44253481138/134629583975
+tests/credentials.test.ts	16	1.871	ci:44253481138/134629583975
+tests/dependabot.test.ts	22	0.008	ci:44253481138/134629583975
+tests/doctor-codex-trust.test.ts	25	0.443	ci:44253481138/134629583975
+tests/doctor-instructions.test.ts	11	0.178	ci:44253481138/134629583975
+tests/doctor.test.ts	27	0.766	ci:44253481138/134629583975
+tests/factory-distribution.test.ts	4	0.029	ci:44253481138/134629583975
+tests/firebase-cli.test.ts	5	0.017	ci:44253481138/134629583975
+tests/firebase-google-auth.test.ts	12	0.052	ci:44253481138/134629583975
+tests/firebase-release.test.ts	31	1.910	ci:44253481138/134629583975
+tests/gh-manager-evidence.test.ts	16	0.031	ci:44253481138/134629583975
+tests/gh-manager-preview.test.ts	17	0.148	ci:44253481138/134629583975
+tests/gh-manager.test.ts	94	0.048	ci:44253481138/134629583975
+tests/git-env.test.ts	10	0.793	ci:44253481138/134629583975
+tests/gstack-lifecycle.test.ts	10	0.110	ci:44253481138/134629583975
+tests/heartbeat.test.ts	42	0.016	ci:44253481138/134629583975
+tests/hq-search-react.test.tsx	2	0.202	ci:44253481138/134629583975
+tests/hq-search.test.ts	24	0.187	ci:44253481138/134629583975
+tests/hq-session.test.ts	34	0.015	ci:44253481138/134629583975
+tests/hq.test.ts	28	0.017	ci:44253481138/134629583975
+tests/id.test.ts	37	0.068	ci:44253481138/134629583975
+tests/inbox.test.ts	16	0.016	ci:44253481138/134629583975
+tests/init.test.ts	75	6.628	ci:44253481138/134629583975
+tests/ios-build-cache.test.ts	4	0.262	ci:44253481138/134629583975
+tests/ios-change-scope.test.ts	14	1.464	ci:44253481138/134629583975
+tests/ios-entitlements.test.ts	1	0.061	ci:44253481138/134629583975
+tests/ios-evidence-workflow.test.ts	8	0.237	ci:44253481138/134629583975
+tests/ios-nightly-core.test.ts	37	0.031	ci:44253481138/134629583975
+tests/ios-nightly-recovery.test.ts	12	0.022	ci:44253481138/134629583975
+tests/ios-release-tooling.test.ts	4	0.086	ci:44253481138/134629583975
+tests/ios-runner-labels.test.ts	37	1.318	ci:44253481138/134629583975
+tests/ios-simulator.test.ts	1	0.136	ci:44253481138/134629583975
+tests/ios-test-retry.test.ts	39	8.557	ci:44253481138/134629583975
+tests/lint-contract.test.ts	2	0.095	ci:44253481138/134629583975
+tests/local-review.test.ts	173	40.663	ci:44253481138/134629583975
+tests/manager-review.test.ts	22	4.199	ci:44253481138/134629583975
+tests/meeting-intake.test.ts	15	0.239	ci:44253481138/134629583975
+tests/node-ci-parallel.test.ts	11	0.903	ci:44253481138/134629583975
+tests/onboarding.test.ts	35	0.077	ci:44253481138/134629583975
+tests/ops-desk-react.test.tsx	3	0.036	ci:44253481138/134629583975
+tests/ops-desk.test.ts	15	0.027	ci:44253481138/134629583975
+tests/package-manifest.test.ts	2	0.005	ci:44253481138/134629583975
+tests/paperclip-closeout-markdown.test.ts	32	4.863	ci:44253481138/134629583975
+tests/paperclip-closeout.test.ts	28	1.947	ci:44253481138/134629583975
+tests/pm.test.ts	63	0.659	ci:44253481138/134629583975
+tests/product-skills.test.ts	10	0.129	ci:44253481138/134629583975
+tests/profile/classify.test.ts	73	0.019	ci:44253481138/134629583975
+tests/profile/extract-report.test.ts	19	0.098	ci:44253481138/134629583975
+tests/profile/human-wait.test.ts	26	0.008	ci:44253481138/134629583975
+tests/profile/parse.test.ts	16	0.008	ci:44253481138/134629583975
+tests/project-skills.test.ts	11	0.143	ci:44253481138/134629583975
+tests/qa-comments.test.ts	34	6.411	ci:44253481138/134629583975
+tests/qa-overlay-pins.test.ts	9	0.268	ci:44253481138/134629583975
+tests/qa-preview.test.ts	44	0.052	ci:44253481138/134629583975
+tests/qa-web-drafts.test.ts	26	0.029	ci:44253481138/134629583975
+tests/qa-web-lifecycle.test.ts	18	3.693	ci:44253481138/134629583975
+tests/qa-web-mount.test.ts	21	1.031	ci:44253481138/134629583975
+tests/qa-web-readiness.test.ts	9	0.335	ci:44253481138/134629583975
+tests/qa-web-schema.test.ts	29	0.013	ci:44253481138/134629583975
+tests/qa-web.test.ts	40	0.396	ci:44253481138/134629583975
+tests/registry.test.ts	13	0.034	ci:44253481138/134629583975
+tests/repo-visibility.test.ts	10	0.151	ci:44253481138/134629583975
+tests/research-library.test.ts	7	0.455	ci:44253481138/134629583975
+tests/review.test.ts	80	0.053	ci:44253481138/134629583975
+tests/scheduler.test.ts	43	0.149	ci:44253481138/134629583975
+tests/section-links-react.test.tsx	13	0.834	ci:44253481138/134629583975
+tests/section-links.test.ts	12	0.053	ci:44253481138/134629583975
+tests/security-import-review.test.ts	4	0.005	ci:44253481138/134629583975
+tests/security-policy.test.ts	1	0.002	ci:44253481138/134629583975
+tests/self-auto-update.test.ts	11	0.328	ci:44253481138/134629583975
+tests/self.test.ts	8	0.016	ci:44253481138/134629583975
+tests/session-bootstrap.test.ts	13	0.347	ci:44253481138/134629583975
+tests/session-evidence.test.ts	39	4.170	ci:44253481138/134629583975
+tests/session-gate.test.ts	60	4.355	ci:44253481138/134629583975
+tests/session-git.test.ts	6	0.041	ci:44253481138/134629583975
+tests/session-install.test.ts	20	0.225	ci:44253481138/134629583975
+tests/session-start.test.ts	23	5.379	ci:44253481138/134629583975
+tests/session.test.ts	34	0.026	ci:44253481138/134629583975
+tests/shared-helpers.test.ts	4	0.013	ci:44253481138/134629583975
+tests/ship.test.ts	20	0.047	ci:44253481138/134629583975
+tests/signing-lock.test.ts	1	2.759	ci:44253481138/134629583975
+tests/swift-changed-files.test.ts	15	0.853	ci:44253481138/134629583975
+tests/swift-tokens.test.ts	27	0.031	ci:44253481138/134629583975
+tests/team-declarations.test.ts	1	1.998	ci:44253481138/134629583975
+tests/team.test.ts	40	0.131	ci:44253481138/134629583975
+tests/tokens.test.ts	17	0.009	ci:44253481138/134629583975
+tests/trunk-changes.test.ts	10	0.529	ci:44253481138/134629583975
+tests/trunk-churn.test.ts	13	0.014	ci:44253481138/134629583975
+tests/trunk-rescue.test.ts	56	14.207	ci:44253481138/134629583975
+tests/upload-configuration.test.ts	13	0.468	ci:44253481138/134629583975
+tests/upload-receipt.test.ts	3	6.921	ci:44253481138/134629583975
+tests/visual-design-skill.test.ts	5	0.159	ci:44253481138/134629583975
+tests/voice.test.ts	38	0.027	ci:44253481138/134629583975
+tests/wait-ci/checks.test.ts	65	0.010	ci:44253481138/134629583975
+tests/wait-ci/logs.test.ts	9	0.008	ci:44253481138/134629583975
+tests/wait-ci/poll-guard.test.ts	59	0.240	ci:44253481138/134629583975
+tests/wait-ci/wait-run.test.ts	61	1.014	ci:44253481138/134629583975
+tests/wait-ci/wait.test.ts	65	0.029	ci:44253481138/134629583975
+tests/web-hq-signin.test.ts	13	0.052	ci:44253481138/134629583975
+tests/web-provision.test.ts	11	0.008	ci:44253481138/134629583975
+tests/web-scaffold.test.ts	40	0.553	ci:44253481138/134629583975
+tests/work-tags.test.ts	23	0.085	ci:44253481138/134629583975
+tests/workflow-expressions.test.ts	7	0.256	ci:44253481138/134629583975
+tests/workflow-repair.test.ts	1	0.229	ci:44253481138/134629583975
+tests/workflows.test.ts	196	5.941	ci:44253481138/134629583975
+tests/worktree-cleanup.test.ts	25	7.198	ci:44253481138/134629583975
+plugins/factory/src/host/reporting/tests/org-runners.test.mjs	5	0.032	ci:44253481138/134629583869 name-matched
+plugins/factory/src/host/reporting/tests/phone.test.mjs	8	0.007	ci:44253481138/134629583869 name-matched
+plugins/factory/src/host/reporting/tests/quota.test.mjs	13	0.032	ci:44253481138/134629583869 name-matched
+plugins/factory/src/host/reporting/tests/reporting.test.mjs	19	0.629	ci:44253481138/134629583869 name-matched
+plugins/factory/src/host/reporting/tests/scheduled-tasks.test.mjs	7	0.099	ci:44253481138/134629583869 name-matched
+plugins/factory/src/host/reporting/tests/source-gaps.test.mjs	14	1.192	ci:44253481138/134629583869 name-matched
+plugins/factory/src/host/reporting/tests/ssh-http.test.mjs	5	0.413	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/claude.test.mjs	2	0.007	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/client.test.mjs	5	0.235	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/config.test.mjs	23	0.038	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/dispatch.test.mjs	6	0.169	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/fleet-artifacts.test.mjs	8	0.080	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/fleet-capacity.test.mjs	2	0.001	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/fleet-claims.test.mjs	5	0.003	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/fleet-client.test.mjs	5	0.110	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/fleet-display.test.mjs	1	0.003	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/fleet-execution.test.mjs	6	1.571	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/fleet-quota.test.mjs	2	0.005	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/fleet-runner.test.mjs	23	0.379	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/fleet-source.test.mjs	2	3.095	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/fleet-work.test.mjs	1	0.004	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/fleet-workspace.test.mjs	11	18.777	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/gateway-workers.test.mjs	5	3.896	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/guardian.test.mjs	5	2.043	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/install-lib.test.mjs	6	0.032	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/install.test.mjs	1	0.312	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/manager.test.mjs	10	0.363	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/mcp.test.mjs	9	1.864	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/memory.test.mjs	3	0.379	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/probe.test.mjs	2	0.724	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/processes.test.mjs	3	1.280	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/release.test.mjs	8	2.198	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/reverse.test.mjs	21	3.695	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/snapshot.test.mjs	1	0.040	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/task-model.test.mjs	2	0.001	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/unattended-worker.test.mjs	27	46.332	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/viewer.test.mjs	1	0.064	ci:44253481138/134629583869 name-matched
+plugins/factory/tests/workspace.test.mjs	12	7.156	ci:44253481138/134629583869 name-matched

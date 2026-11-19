@@ -5,6 +5,14 @@ import { deleteApp, initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { doc, getFirestore, onSnapshot, terminate } from "firebase/firestore";
 
+// The supervisor also enforces its last confirmed lease on a separate timer.
+const slowLinkOperations = new Set(["heartbeat", "claim", "inspect", "renew", "question", "finish"]);
+
+function requestTimeout(op) {
+  if (op === "upload" || op === "download") return 45_000;
+  return slowLinkOperations.has(op) ? 20_000 : 8_000;
+}
+
 const transientNetworkCodes = new Set([
   "EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "ENETUNREACH", "ETIMEDOUT",
   "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET",
@@ -71,7 +79,7 @@ export async function connectFleet(config, signIn = signInWithEmailAndPassword) 
     throw error;
   }
   return {
-    call: (op, body) => boundedRequest(op === "upload" || op === "download" ? 45_000 : 8_000,
+    call: (op, body) => boundedRequest(requestTimeout(op),
       signal => requestFleet(endpoint, user, op, body, signal)),
     listen(wake, error) { return onSnapshot(doc(db, "factorySignals", user.uid), wake, error); },
     async close() {

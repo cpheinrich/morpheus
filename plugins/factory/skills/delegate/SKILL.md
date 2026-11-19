@@ -37,9 +37,9 @@ never submit a local task to a different machine by guessing its project path.
    `workspace`; tell the worker which checkout holds which part of the task.
    Do not ask it to redo mutations already completed. Default background=false; true is
    only for explicit user authorization to continue after disconnection.
-4. Local Factory workers default to GPT-6.1 Sol (`gpt-6.1-sol`) for Codex and Claude Opus 5.5
-   (`claude-opus-5-5`) for Claude, both at Standard speed. Effort follows the controller
-   where supported. Pass model, effort, or speed overrides only when the user requests them,
+4. Local Factory workers default to GPT-6.2 Sol (`gpt-6.2-sol`) at High effort for Codex
+   and Claude Opus 5.5 (`claude-opus-5-5`) with the controller's mapped effort for Claude.
+   Both use Standard speed. Pass model, effort, or speed overrides only when the user requests them,
    including on later runs covered by the same request. Check `selection` before reporting
    what was requested. If the CLI refuses a model or speed, report the error and retry only
    with a user-authorized alternative. Full access does not waive business approvals,
@@ -76,7 +76,7 @@ never submit a local task to a different machine by guessing its project path.
     AGENTS.md/CLAUDE.md remain project instructions. Shared full access means this is an
     ownership convention, not an OS-level write sandbox. Do not create cross-store symlinks.
 
-When routing picks Codex behind a gateway, the worker uses this task's model and effort and a
+When routing picks Codex behind a gateway, the worker uses the Factory selection and a
 sandbox no wider than this task's. It cannot ask mid-run: its question arrives as `needs_input`
 and resumes through `factory_delegate` as described above. The legacy `claude_*` tools remain only
 for compatibility; new coordination uses the provider-neutral `factory_*` contract.

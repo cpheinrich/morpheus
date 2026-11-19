@@ -157,6 +157,57 @@ test("a verified invocation deadline settles as failed with its partial artifact
   });
 });
 
+test("a cancellation committed during the first renewal prevents execution", async (t) => {
+  const { options, task, executions } = await fixture(t);
+  const call = options.call;
+  options.call = async (op, input) => {
+    const reply = structuredClone(await call(op, input));
+    if (op === "renew") task.cancelRequestedAt = 1;
+    return reply;
+  };
+  assert.equal(await createFleetRunner(options).tick(), "settled");
+  assert.equal(task.state, "TASK_STATE_CANCELED");
+  assert.equal(executions.length, 0);
+});
+
+test("a cancellation committed during renewal prevents execution after source preparation", async (t) => {
+  const { options, task, executions } = await fixture(t);
+  task.source = { checkout: "git" };
+  options.prepare = async () => true;
+  const call = options.call;
+  let renewals = 0;
+  options.call = async (op, input) => {
+    const reply = structuredClone(await call(op, input));
+    if (op === "renew" && ++renewals === 2) task.cancelRequestedAt = 1;
+    return reply;
+  };
+  const runner = createFleetRunner(options);
+  assert.equal(await runner.tick(), "preparing");
+  await setImmediate();
+  assert.equal(await runner.tick(), "settled");
+  assert.equal(task.state, "TASK_STATE_CANCELED");
+  assert.equal(executions.length, 0);
+});
+
+test("a cancellation committed during renewal prevents relaunching after an answer", async (t) => {
+  const { options, task, executions, respond, started } = await fixture(t);
+  const call = options.call;
+  options.call = async (op, input) => {
+    const reply = structuredClone(await call(op, input));
+    if (op === "renew" && task.answerId) task.cancelRequestedAt = 1;
+    return reply;
+  };
+  const runner = createFleetRunner(options);
+  assert.equal(await runner.tick(), "running");
+  (await started()).resolve(output("needs_input", { question: "Which fixture?" }));
+  await setImmediate();
+  assert.equal(await runner.tick(), "waiting");
+  respond("The existing fixture");
+  assert.equal(await runner.tick(), "settled");
+  assert.equal(task.state, "TASK_STATE_CANCELED");
+  assert.equal(executions.length, 1);
+});
+
 test("a cancellation signals the worker and only verified cleanup releases the attempt", async (t) => {
   const { runner, task, calls, started, journal } = await fixture(t);
   await runner.tick();

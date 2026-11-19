@@ -733,13 +733,32 @@ function trunkMerges(root: string, from: string, to: string, trunk: string): str
  */
 export function committedConfig(root: string, commit: string): unknown {
   try { git(root, ["cat-file", "-e", `${commit}^{commit}`]); } catch {
-    throw new Error(`commit ${commit} is not in this checkout, so morpheus.json and the review record at the pull request head cannot be read. Fetch it (git fetch origin ${commit}) or check out with full history, then re-run.`);
+    throw new Error(`commit ${commit} is not in this checkout, so committed review configuration cannot be read. Fetch it (git fetch origin ${commit}) or check out with full history, then re-run.`);
   }
   if (!git(root, ["ls-tree", "--name-only", commit, "--", "morpheus.json"])) return {};
   const text = git(root, ["show", `${commit}:morpheus.json`]);
   try { return JSON.parse(text); } catch (error) {
     throw new Error(`morpheus.json at ${commit.slice(0, 12)} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+/** Resolve the configured base once. A tag cannot replace a missing remote-tracking ref. */
+export function resolveReviewBase(root: string, base: string): string {
+  const ref = base.startsWith("origin/") ? `refs/remotes/${base}` : base;
+  try {
+    return ref.startsWith("refs/remotes/")
+      ? git(root, ["show-ref", "--verify", "--hash", ref])
+      : git(root, ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`]);
+  } catch {
+    throw new Error(`commit ${base} is not in this checkout. Fetch the trusted target branch and re-run.`);
+  }
+}
+
+/** Keep candidate configuration valid while taking the review decision from the target branch. */
+export function reviewRequiredAtBase(root: string, base: string, head: string): boolean {
+  const required = reviewRequired(committedConfig(root, base));
+  reviewRequired(committedConfig(root, head));
+  return required;
 }
 
 /**
@@ -755,10 +774,10 @@ export const MISSING_CONTEXT_READ = "review record has no contextRead: the revie
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts: { root: string; body: string; labels: string[]; head: string; base: string }): Finding[] {
   try {
-    const config = committedConfig(opts.root, opts.head);
-    if (!reviewRequired(config)) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
+    const base = resolveReviewBase(opts.root, opts.base);
+    if (!reviewRequiredAtBase(opts.root, base, opts.head)) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
     if (!opts.labels.includes("agent-reviewed")) throw new Error(MISSING_LABEL);
-    const { record, waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
+    const { record, waivers } = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base });
     const findings: Finding[] = waivers.map(message => ({ level: "waived", rule: REVIEW_FLOOR_RULE, message }));
     if (!record.contextRead?.length) findings.push({ level: "warning", rule: "review-context", message: MISSING_CONTEXT_READ });
     return findings;

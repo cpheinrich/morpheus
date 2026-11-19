@@ -2,6 +2,7 @@ import importlib.util
 import io
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -91,7 +92,7 @@ class ValidateConsumerMainTests(unittest.TestCase):
         for bad in ("00000000-000000000000000", "../../etc", "00000000-000000000000000E; rm"):
             with self.assertRaisesRegex(ValueError, "hardware UDID"):
                 validator.validate(Path("/nonexistent"), bad)
-            with patch.object(validator.sys, "argv", ["validate_consumer_main.py", "--repo", "/x", "--device-gate", bad]), \
+            with patch.object(sys, "argv", ["validate_consumer_main.py", "--repo", "/x", "--device-gate", bad]), \
                  patch.object(validator, "validate") as validate, redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as exit:
                     validator.main()
@@ -100,13 +101,13 @@ class ValidateConsumerMainTests(unittest.TestCase):
 
     def test_main_passes_device_gate_through(self):
         udid = "00000000-000000000000000F"
-        with patch.object(validator.sys, "argv", ["validate_consumer_main.py", "--repo", "/x", "--device-gate", udid]), \
+        with patch.object(sys, "argv", ["validate_consumer_main.py", "--repo", "/x", "--device-gate", udid]), \
              patch.object(validator, "validate", return_value="b" * 40) as validate, redirect_stdout(io.StringIO()):
             validator.main()
         validate.assert_called_once_with(Path("/x"), udid, "apps/ios/scripts/dev.sh")
 
     def test_build_script_is_configurable_but_stays_inside_the_checkout(self):
-        with patch.object(validator.sys, "argv", ["validate_consumer_main.py", "--repo", "/x", "--script", "ios/build.sh"]), \
+        with patch.object(sys, "argv", ["validate_consumer_main.py", "--repo", "/x", "--script", "ios/build.sh"]), \
              patch.object(validator, "validate", return_value="b" * 40) as validate, redirect_stdout(io.StringIO()):
             validator.main()
         validate.assert_called_once_with(Path("/x"), "", "ios/build.sh")

@@ -2753,6 +2753,19 @@ describe("python-ci", () => {
     }>;
   }
 
+  it("lets Python CI callers fetch history while defaulting to a shallow checkout", async () => {
+    const wf = (await read("python-ci.yml")) as PythonCi;
+    expect(wf.on?.workflow_call?.inputs?.["checkout-fetch-depth"]).toMatchObject({
+      type: "number",
+      default: 1,
+    });
+    const checkout = wf.jobs?.check?.steps?.find((s) =>
+      String(s["uses"] ?? "").startsWith("actions/checkout"));
+    expect(checkout?.["with"]).toMatchObject({
+      "fetch-depth": "${{ inputs.checkout-fetch-depth }}",
+    });
+  });
+
   it("refuses to measure coverage without being told what to measure", async () => {
     const wf = (await read("python-ci.yml")) as PythonCi;
     const step = wf.jobs?.check?.steps?.find((s) => s["name"] === "Test with coverage");
@@ -3023,7 +3036,7 @@ describe("local review metadata", () => {
       await rm(tmp, { recursive: true, force: true });
     }
   });
-  it("leaves the named error to check pr when the head cannot be fetched", async () => {
+  it("refuses the required check when the head cannot be fetched", async () => {
     const block = await prHeadBlock();
     const tmp = await mkdtemp(join(tmpdir(), "pr-head-"));
     try {
@@ -3031,8 +3044,10 @@ describe("local review metadata", () => {
       const clone = join(tmp, "clone");
       await execFileAsync("git", ["clone", "-q", "--no-local", origin, clone]);
       const before = await git(clone, "rev-parse", "HEAD");
-      const { stdout } = await execFileAsync("bash", ["-c", `set -euo pipefail\n${block}`], { cwd: clone, env: { ...process.env, EXPECTED_HEAD: "f".repeat(40), PR_NUMBER: "99" } });
-      expect(stdout).toContain("::warning::Could not fetch refs/pull/99/head.");
+      const missing = "f".repeat(40);
+      await expect(execFileAsync("bash", ["-c", `set -euo pipefail\n${block}`], {
+        cwd: clone, env: { ...process.env, EXPECTED_HEAD: missing, PR_NUMBER: "99" },
+      })).rejects.toMatchObject({ code: 1, stdout: expect.stringContaining(`::error::Cannot read pull request head ${missing}.`) });
       expect(await git(clone, "rev-parse", "HEAD")).toBe(before);
     } finally {
       await rm(tmp, { recursive: true, force: true });
@@ -3057,7 +3072,7 @@ describe("local review metadata", () => {
       await rm(tmp, { recursive: true, force: true });
     }
   });
-  type PrCheckStep = { name?: string; id?: string; if?: string; uses?: string; run?: string; env?: Record<string, string> };
+  type PrCheckStep = { name?: string; id?: string; if?: string; uses?: string; run?: string; env?: Record<string, string>; with?: Record<string, unknown>; "working-directory"?: string };
   type PrCheckJob = {
     name?: string; needs?: string; if?: string; concurrency?: unknown; "timeout-minutes"?: number;
     outputs?: Record<string, string>; steps: PrCheckStep[];
@@ -3102,6 +3117,22 @@ describe("local review metadata", () => {
     expect(head["timeout-minutes"]).toBeGreaterThan(0);
   });
 
+  it("keeps the required checker on trusted revisions, independent of its callers' input", async () => {
+    const { conventions } = await prCheckJobs();
+    const checkout = conventions.steps.find(step => step.with?.repository === "cpheinrich/morpheus");
+    expect(checkout?.with?.path).toBe(".morpheus");
+    expect(conventions.steps.find(step => step.with?.["fetch-depth"] === 0)?.with?.path).toBe("pr-source");
+    expect(stepNamed(conventions, "Check PR conventions")["working-directory"]).toBe("pr-source");
+    expect(checkout?.with?.ref).toBe("${{ github.repository == 'cpheinrich/morpheus' && github.event.pull_request.base.sha || 'refs/heads/main' }}");
+    for (const name of ["ci.yml", "review-metadata.yml"]) {
+      const { jobs } = await read(name) as { jobs: Record<string, { uses?: string; with?: Record<string, unknown> }> };
+      expect(jobs.pr?.uses).toBe("cpheinrich/morpheus/.github/workflows/pr-check.yml@main");
+      expect(jobs.pr?.with?.["morpheus-ref"]).toBeUndefined();
+    }
+    const metadata = await read("review-metadata.yml") as { jobs: Record<string, { steps?: PrCheckStep[] }> };
+    expect(metadata.jobs["security-import-proof"]?.steps?.[0]?.with?.ref).toBe("${{ github.event.pull_request.base.sha }}");
+  });
+
   it("reads live PR metadata against the event's own head and update time", async () => {
     const { head, conventions } = await prCheckJobs();
     const compare = stepNamed(head, "Compare the event's head with the live pull request");
@@ -3116,20 +3147,20 @@ describe("local review metadata", () => {
     const check = stepNamed(conventions, "Check PR conventions");
     expect(check.run).not.toContain("gh api \"repos/$REPOSITORY/pulls/$PR_NUMBER\"");
     expect(check.run).toContain('GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json"');
-    expect(check.run).toContain('--base "origin/$BASE_REF"');
+    expect(check.run).toContain('--base "$TRUSTED_BASE"');
   });
 
   /**
    * Runs workflow steps' own scripts in order, in one job's RUNNER_TEMP, not
    * copies of them. `gh` answers the live pull request read with `live` (and
    * empty events and comments), and `node` records its arguments, so "the
-   * checks ran" means `check pr` was invoked. The repository's only commit is
-   * the event head, so the pr-head block has nothing to fetch.
+   * checks ran" means `check pr` was invoked. The synthetic PR head is already available,
+   * so the pr-head block has nothing to fetch.
    */
   async function runSteps(
     steps: PrCheckStep[],
-    live: { head?: string | null; updatedAt?: string | null },
-    event: { head?: string; updatedAt?: string; headResult?: string; supersededBy?: string } = {},
+    live: { head?: string | null; updatedAt?: string | null; base?: string },
+    event: { head?: string; updatedAt?: string; headResult?: string; supersededBy?: string; missingBase?: boolean } = {},
   ) {
     const tmp = await mkdtemp(join(tmpdir(), "pr-superseded-"));
     try {
@@ -3144,8 +3175,16 @@ describe("local review metadata", () => {
       await writeFile(join(repo, "morpheus.json"), "{}");
       await git("add", ".");
       await git("commit", "-qm", "head");
+      const base = await git("rev-parse", "HEAD");
+      if (!event.missingBase) await git("update-ref", "refs/remotes/origin/main", base);
+      await writeFile(join(repo, "morpheus.json"), '{"review":{"required":false}}');
+      await git("commit", "-qam", "propose an opt-out");
+      await git("tag", "origin/main");
+      if (event.missingBase) await git("tag", "refs/remotes/origin/main");
+      await mkdir(join(tmp, ".morpheus"));
+      await execFileAsync("git", ["clone", "-q", repo, join(tmp, ".morpheus")]);
       const head = event.head ?? await git("rev-parse", "HEAD");
-      const pr: Record<string, unknown> = { number: 7, head: { sha: live.head === undefined ? head : live.head }, labels: [], body: "" };
+      const pr: Record<string, unknown> = { number: 7, head: { sha: live.head === undefined ? head : live.head }, labels: [], body: "", base: { ref: live.base ?? "main" } };
       if (live.updatedAt !== undefined) pr.updated_at = live.updatedAt;
       await writeFile(join(tmp, "live-pr.json"), JSON.stringify(pr));
       await writeFile(join(bin, "gh"), [
@@ -3192,7 +3231,7 @@ describe("local review metadata", () => {
         if (result.code !== 0) break;
       }
       const readOrEmpty = (path: string) => readFile(path, "utf8").catch(() => "");
-      return { ...result, head, checkPr: await readOrEmpty(nodeLog), summary: await readOrEmpty(summary), output: await readOrEmpty(output) };
+      return { ...result, head, base, checkPr: await readOrEmpty(nodeLog), summary: await readOrEmpty(summary), output: await readOrEmpty(output) };
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }
@@ -3269,7 +3308,21 @@ describe("local review metadata", () => {
     const steps = [stepNamed(conventions, "Read the live pull request"), stepNamed(conventions, "Check PR conventions")];
     const current = await runSteps(steps, {});
     expect(current.code).toBe(0);
-    expect(current.checkPr).toBe(".morpheus/dist/cli/index.js check pr --dir hq/product --base origin/main\n");
+    expect(current.head).not.toBe(current.base);
+    expect(current.stdout).toContain(`Trusted review policy: ${current.base}`);
+    expect(current.checkPr).toBe(`../.morpheus/dist/cli/index.js check pr --dir hq/product --base ${current.base}\n`);
+    const noBase = await runSteps(steps, {}, { missingBase: true });
+    expect(noBase.code).toBe(1);
+    expect(noBase.stdout).toContain("Cannot resolve the target branch origin/main in the PR checkout.");
+    expect(noBase.checkPr).toBe("");
+    const unavailable = await runSteps(steps, {}, { head: NEWER });
+    expect(unavailable.code).toBe(1);
+    expect(unavailable.stdout).toContain(`Cannot read pull request head ${NEWER}.`);
+    expect(unavailable.checkPr).toBe("");
+    const retargeted = await runSteps(steps, { base: "release" });
+    expect(retargeted.code).toBe(1);
+    expect(retargeted.stdout).toContain("The PR target is 'release'; this run expected 'main'.");
+    expect(retargeted.checkPr).toBe("");
     // This job already carries the required name, so a move after `head` decided cannot pass it.
     const moved = await runSteps(steps, { head: NEWER, updatedAt: "2026-10-26T00:00:00Z" });
     expect(moved.code).toBe(1);
@@ -3549,6 +3602,8 @@ describe("shared workflows do not float under a consumer's pin", () => {
     const files = (await readdir(DIR)).filter((f) => f.endsWith(".yml"));
     for (const file of files) {
       const text = await readFile(join(DIR, file), "utf8");
+      const wf = load(text) as { on?: { workflow_call?: unknown } };
+      if (!wf.on || !Object.hasOwn(wf.on, "workflow_call")) continue;
       const code = text.split("\n").filter((line) => !/^\s*#/.test(line)).join("\n");
       expect(code, file).not.toMatch(/cpheinrich\/morpheus\/\.github\/[^\s]+@main/);
     }
@@ -3620,11 +3675,13 @@ describe("pr-check complexity step", () => {
   async function runStep(complexity: unknown, codes: { install?: number; check?: number }, manifestText?: string) {
     const tmp = await mkdtemp(join(tmpdir(), "pr-complexity-"));
     try {
-      const git = (...args: string[]) => execFileAsync("git", args, { cwd: tmp }).then((r) => r.stdout.trim());
+      const source = join(tmp, "pr-source");
+      await mkdir(source);
+      const git = (...args: string[]) => execFileAsync("git", args, { cwd: source }).then((r) => r.stdout.trim());
       await git("init", "-q", "-b", "main");
       await git("config", "user.email", "t@example.com");
       await git("config", "user.name", "T");
-      await writeFile(join(tmp, "morpheus.json"), manifestText ?? JSON.stringify(complexity === undefined ? {} : { complexity }));
+      await writeFile(join(source, "morpheus.json"), manifestText ?? JSON.stringify(complexity === undefined ? {} : { complexity }));
       await git("add", ".");
       await git("commit", "-qm", "head");
       const head = await git("rev-parse", "HEAD");
@@ -3641,7 +3698,7 @@ describe("pr-check complexity step", () => {
       await writeFile(summary, "");
       const run = (await complexityStep()).run!;
       const result = await execFileAsync("bash", ["-c", run], {
-        cwd: tmp,
+        cwd: source,
         env: { ...process.env, EXPECTED_HEAD: head, PR_NUMBER: "7", BASE_REF: "main", STUB_LOG: log, GITHUB_STEP_SUMMARY: summary,
           STUB_INSTALL: String(codes.install ?? 0), STUB_CHECK: String(codes.check ?? 0) },
       }).then((r) => ({ code: 0, stdout: r.stdout }), (e: { code: number; stdout: string }) => ({ code: e.code, stdout: e.stdout }));
@@ -3661,7 +3718,7 @@ describe("pr-check complexity step", () => {
   it("installs, then checks in CI mode against the PR base", async () => {
     const out = await runStep({ mode: "enforce" }, {});
     expect(out.code).toBe(0);
-    expect(out.calls).toEqual(["complexity install", "complexity check --ci --base origin/main"]);
+    expect(out.calls).toEqual(["complexity install", "complexity check --ci --base refs/remotes/origin/main"]);
   });
 
   it("never fails advisory: a blocking finding, a check that could not run, or a failed install all warn", async () => {

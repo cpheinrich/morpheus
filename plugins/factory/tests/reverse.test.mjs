@@ -331,17 +331,17 @@ echo '{"type":"turn.completed","usage":{}}'
     cwd: repo,
     permissionMode: "auto",
     model: "claude-opus-5-5",
-    effort: "high",
+    effort: "low",
   });
   assert.match(advice.additionalContext, /"executor":"codex"/);
-  const started = await m.codexStart({
-    sessionId,
+  const started = await m.factoryDelegate({
+    rootKind: "claude",
+    rootId: sessionId,
     prompt: "Implement the thing",
-    operation: "codex",
   });
   assert.equal(started.executor, "codex");
   assert.equal(started.permissions, "workspace-write");
-  assert.deepEqual(started.selection, { model: "gpt-5.6-sol", effort: "high" });
+  assert.deepEqual(started.selection, { model: "gpt-6.2-sol", effort: "high", speed: "standard" });
   let r;
   for (let i = 0; i < 100; i++) {
     r = await m.wait(started.id, 1);
@@ -353,16 +353,26 @@ echo '{"type":"turn.completed","usage":{}}'
   const argv = (await readFile(join(root, "argv"), "utf8")).trim().split("\n");
   assert.deepEqual(argv.slice(0, 3), ["exec", "--json", "--skip-git-repo-check"]);
   assert.equal(argv.at(-1), "-");
+  assert.equal(argv[argv.indexOf("-m") + 1], "gpt-6.2-sol");
+  assert.ok(argv.includes('model_reasoning_effort="high"'));
   assert.match(await readFile(join(root, "stdin"), "utf8"), /Implement the thing$/);
   assert.match(await readFile(join(root, "env"), "utf8"), /^FACTORY_DELEGATED=1$/m);
   const task = await taskRead(claudeTaskId(sessionId));
   assert.equal(Object.values(task.codexSessions)[0], "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000");
   // The next handoff resumes the saved Codex session rather than starting fresh.
-  const again = await m.codexStart({ sessionId, prompt: "Next step", operation: "codex" });
+  const again = await m.factoryDelegate({
+    rootKind: "claude",
+    rootId: sessionId,
+    prompt: "Next step",
+    model: "gpt-6.1-terra",
+    effort: "medium",
+  });
   for (let i = 0; i < 100; i++) if ((r = await m.wait(again.id, 1)).terminal) break;
   const resumed = (await readFile(join(root, "argv"), "utf8")).trim().split("\n");
   assert.deepEqual(resumed.slice(0, 2), ["exec", "resume"]);
   assert.equal(resumed.at(-2), "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000");
+  assert.equal(resumed[resumed.indexOf("-m") + 1], "gpt-6.1-terra");
+  assert.ok(resumed.includes('model_reasoning_effort="medium"'));
 });
 
 test("one Claude session runs Codex concurrently only in different worktrees", async (t) => {

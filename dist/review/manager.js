@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { visibleProse, visibleText } from "../check/pr.js";
 import { GH_MANAGER_LOGIN, GH_MANAGER_POLICY_PATH, humanGatedPaths, MANAGER_REVIEWED_LABEL, parsePolicy } from "../gh-manager/policy.js";
-import { changedPaths, committedConfig, git, isAncestor, reviewRequired, verifyUncoveredCommits } from "./local.js";
+import { changedPaths, git, isAncestor, resolveReviewBase, reviewRequiredAtBase, verifyUncoveredCommits } from "./local.js";
 /**
  * The GitHub Manager's review: one review and its own fixes, in one session.
  *
@@ -123,7 +123,7 @@ function assertManagerScope(opts, record) {
     // `reviewed` must be this pull request's own work, not a trunk commit behind it.
     if (isAncestor(opts.root, record.reviewed, fork))
         throw new Error("the reviewed commit is trunk history, not this pull request's work");
-    const gated = humanGatedPaths(changedPaths(opts.root, fork, opts.head), managerPolicy(opts.root, opts.head));
+    const gated = humanGatedPaths(changedPaths(opts.root, fork, opts.head), managerPolicy(opts.root, opts.base));
     if (gated.length) {
         throw new Error(`the manager cannot clear a change to policy a project is operated by, or to a protected path: ${gated.slice(0, 5).join(", ")}${gated.length > 5 ? ` (+${gated.length - 5} more)` : ""}. This needs the ordinary independent review or a human.`);
     }
@@ -131,8 +131,8 @@ function assertManagerScope(opts, record) {
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkManagerReview(opts) {
     try {
-        const config = committedConfig(opts.root, opts.head);
-        if (!reviewRequired(config))
+        opts = { ...opts, base: resolveReviewBase(opts.root, opts.base) };
+        if (!reviewRequiredAtBase(opts.root, opts.base, opts.head))
             return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
         assertManagerClearance(opts);
         const { record, path } = readManagerRecord(opts);
@@ -159,14 +159,14 @@ export function checkManagerReview(opts) {
         return [{ level: "error", rule: "agent-review", message: error instanceof Error ? error.message : String(error) }];
     }
 }
-/** The repository's manager policy at this head; absent means defaults, unreadable means refuse. */
-function managerPolicy(root, head) {
+/** The repository's manager policy on the trusted base; absent means defaults, unreadable means refuse. */
+function managerPolicy(root, base) {
     let raw = "";
     // An absent file is an answer (no extra protected paths). `ls-tree` distinguishes it from a
     // file that exists and cannot be parsed, which must not silently read as "nothing protected".
-    if (!git(root, ["ls-tree", head, "--", GH_MANAGER_POLICY_PATH]))
+    if (!git(root, ["ls-tree", base, "--", GH_MANAGER_POLICY_PATH]))
         return { protectedPaths: [] };
-    raw = git(root, ["show", `${head}:${GH_MANAGER_POLICY_PATH}`]);
+    raw = git(root, ["show", `${base}:${GH_MANAGER_POLICY_PATH}`]);
     try {
         return parsePolicy(raw);
     }

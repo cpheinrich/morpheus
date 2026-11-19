@@ -7,7 +7,7 @@
 Morpheus Security is a deterministic GitHub-native pipeline. It needs no Codex heartbeat, local
 host, OpenAI key, paid service, or other model. Its public source and policy live in
 [`cpheinrich/morpheus-security`](https://github.com/cpheinrich/morpheus-security); a separate
-private operations repository holds the nightly caller, credential, logs, and raw receipts.
+private operations repository holds the scheduled caller, credential, logs, and raw receipts.
 Installed repositories opt in through a committed policy file; they do not hold the App key or a
 repository-owned schedule.
 
@@ -20,8 +20,8 @@ repository-owned schedule.
   diff, and a clean candidate OSV rescan for the exact package/advisory pair.
 - **Merge:** attest the exact validated head, then merge on a later run only after every explicitly
   configured check passes. A failing check or explicit project hold leaves the PR open.
-- **Schedule:** reconcile nightly and allow manual dispatch. A later clean main-branch run, not the
-  creation or merge of a PR, is the completion receipt.
+- **Schedule:** reconcile every six hours and allow manual dispatch. A clean main-branch scan
+  after the merge is the completion receipt.
 - **Separation:** Dependabot alerts remain an advisory input, but Dependabot security-fix PRs are
   disabled after adoption. Routine non-security upgrades remain a separate maintenance lane.
 - **Malware:** patch `MAL-*` findings immediately and leave an issue in the affected repository
@@ -77,18 +77,21 @@ webhooks remain disabled.
 
 ## Pull-request and merge policy
 
-One dependency is one pull request. At most one bot PR is open for a lockfile at a time, so two
-updates cannot race the same lock graph; independent lockfiles may progress concurrently. The
-creation run writes an App-owned Check Run attestation for the exact validated head and never
-merges. A later run validates that attestation and every configured check before atomically merging
+Each pull request updates one dependency in one lockfile. At most one bot PR is open per lockfile.
+Separate lockfiles can progress independently when they share an affected dependency and advisory.
+The creation run writes an App-owned Check Run attestation for the exact validated head. A later run validates that attestation and every configured check before atomically merging
 only that head. If strict protection makes a candidate stale, the bot closes it, refreshes and
-verifies the live default branch, and recreates the update with all evidence rerun.
+verifies the live default branch, and recreates the update with all evidence rerun. The bot
+retries an unresolved GitHub merge state within a run and logs the outcome and any blocker in
+the private job log and step summary.
 
 The exact App login, marker, and dependency-only diff receive a narrow
 independent-review and roadmap-authoring waiver. It does not waive branch protection. A failed
 configured check or project hold leaves the PR open. Human-authored PRs never receive the waiver.
 
-Projects may put explicit holds in `.github/morpheus-security.json`:
+To pause a bot PR, commit an explicit hold in `.github/morpheus-security.json`. An attested draft
+with merge policy enabled and no applicable hold or outstanding import-only review is marked ready
+by the bot. A later run checks CI and GitHub protection before merging.
 
 ```json
 {
@@ -100,9 +103,9 @@ Projects may put explicit holds in `.github/morpheus-security.json`:
 }
 ```
 
-The default has no holds. A hold is visible policy, not model judgment. Unsupported package-manager
-remediation or an advisory with no safe fixed version fails the run and preserves the evidence; it
-does not dismiss or ignore the advisory.
+The default has no holds. The private run receipt records attempted candidates blocked by an
+unsupported lockfile or a scoped npm override that leaves the affected version installed. An
+advisory without a published fix stays open while the sweep tries another eligible candidate.
 
 An optional `importOnlyCompatibility: true` adds a narrower replacement lane after the engine,
 review-only Manager workflow and both private caller pins are deployed. Morpheus is the first
@@ -133,7 +136,7 @@ Detection is cross-ecosystem because OSV scans repository lockfiles. Delivery us
 adapters for npm `package-lock.json`, pnpm `pnpm-lock.yaml`, and Python `uv.lock`. npm and pnpm
 scripts are disabled, their subprocess environment contains no App token or registry credentials,
 and changed pnpm integrity must match live npmjs release metadata. uv builds are disabled and
-changed artifacts must be hashed PyPI releases. Unsupported lockfiles fail closed.
+changed artifacts must be hashed PyPI releases.
 
 ## Malicious-package incidents
 
@@ -152,9 +155,9 @@ The private caller starts from the reviewed `config/approved-repositories.json` 
 each exact repository's App installation, and requires a valid `.github/morpheus-security.json` on
 the target's live default branch. This keeps an unknown public installation inert. Each run retains
 its before scan, candidate scan, and plan receipt privately for 30 days. A clean run means
-both OSV and the GitHub alert input contained no actionable finding. A successful PR is not final
-evidence: after merge, the next nightly/manual main scan must be clean for that package/advisory,
-and the GitHub alert must close from the merged graph rather than by manual dismissal.
+both OSV and the GitHub alert input contained no actionable finding. After merge, the next
+scheduled or manually dispatched main scan must be clean for that package and advisory. GitHub
+must close the alert based on the merged dependency graph.
 
 ## Adopt in a repository
 
@@ -167,7 +170,7 @@ and the GitHub alert must close from the merged graph rather than by manual dism
 4. Add `.github/morpheus-security.json` with `version: 1`, explicit holds, and exact
    `requiredChecks`. Malware incident issues are filed in this repository; never place credentials
    or sensitive investigation details in a public issue.
-5. Let the central nightly schedule run, or have a maintainer dispatch it. A later run merges a
+5. Let the central six-hour schedule run, or have a maintainer dispatch it. A later run merges a
    validated PR after its configured checks pass; continue until the main-branch receipt is clean
    and the corresponding GitHub alert closes.
 6. Only then disable Dependabot automatic security-fix PRs. Keep Dependabot alerts enabled because

@@ -1886,7 +1886,11 @@ Four of them, each catching what it can so the rung above only sees what genuine
 | 4 | **Human sign-off** | Taste, strategy, real risk | Deploy |
 
 **Rung 2 is a bounded, author-managed independent session, required by default.**
-`review.required` defaults to true; false is a project opt-out reported by conventions. The author
+`review.required` defaults to true; false is a project opt-out reported by conventions.
+The required check takes that decision from the target branch and reads the review record at the
+exact PR head. The Manager's additional protected paths also come from the target branch. Morpheus
+runs its own required checker from reviewed base code and exercises the candidate in its Node tests.
+The author
 runs `morpheus review prepare` to print a packet, then explicitly spawns a fresh reviewer
 subagent/session without author chat, responds once, and resumes the reviewer
 if substantive findings were raised. Minor-only findings need no second pass. A reviewer blocks
@@ -3817,6 +3821,9 @@ its triggers, application directory and encrypted `VERCEL_TOKEN`, `VERCEL_ORG_ID
 build, while the other spends model budget to judge a change, so neither workflow controls or
 implicitly enables the other.
 
+`python-ci` checks out a single commit by default. Callers whose tests consult Git history
+can request full history with `checkout-fetch-depth: 0`.
+
 Shipped: `node-ci`, `web-ci`, `python-ci`, `ios-ci`, `ios-nightly-build`, `firebase-tests`,
 `pm-check`, `pr-check`, `vercel-deploy`, `heartbeat`,
 `agent-review`, and `dependabot-maintainer`, plus composite actions `ios-testflight-upload` and `firebase-release`. Planned:
@@ -3840,17 +3847,17 @@ alerts, deduplicates aliases, and opens one dependency-only PR per lockfile at a
 uv adapters select the smallest reachable fixed line; resolver credentials are scrubbed, builds and
 scripts are disabled, and registry provenance, lockfile integrity, diff scope, and a candidate OSV
 rescan fail closed before delivery. The creation run writes an App-owned Check Run attestation for
-the exact candidate. A later run merges only that head after every repository-configured check
-passes. A stale strict-protection candidate is closed and recreated from a freshly verified default
-branch, repeating all evidence. No AI model or OpenAI credential participates. `MAL-*` findings
+the exact candidate. Reconciliation can mark a validated bot draft ready when the current policy
+permits it. An explicit project hold leaves it open. A later run merges only the attested head
+after every repository-configured check passes. If strict protection makes a candidate stale, the
+bot recreates it from a freshly verified default branch and repeats all validation. No AI model or OpenAI credential participates. `MAL-*` findings
 additionally create or update an issue in the affected repository. Public issues contain only
 non-secret advisory, dependency, manifest/version, and completion-checklist data; sensitive
 investigation records remain private.
 
 The private operations repository invokes an exact reviewed standalone revision for approved
-installations nightly; a maintainer may also use a default-branch repository dispatch. A transient
-workflow failure or policy change can leave work behind, so the scheduled pass treats the open
-pull-request set as the durable source of truth.
+installations every six hours. A maintainer can also use a default-branch repository dispatch.
+Each pass reads the open pull requests and reconciles them against current policy.
 
 Every reusable job carries a `timeout-minutes` ceiling set well above its honest runtime, so it
 fires only on a hang. Without one a stuck step runs to GitHub's six-hour default on billed
