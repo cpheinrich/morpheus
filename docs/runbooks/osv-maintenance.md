@@ -103,9 +103,9 @@ by the bot. A later run checks CI and GitHub protection before merging.
 }
 ```
 
-The default has no holds. Unsupported lockfiles, scoped npm overrides that leave the affected
-version installed, and advisories without published fixes stay open in the private run receipt.
-The sweep can still try a later candidate.
+The default has no holds. The private run receipt records attempted candidates blocked by an
+unsupported lockfile or a scoped npm override that leaves the affected version installed. An
+advisory without a published fix stays open while the sweep tries another eligible candidate.
 
 An optional `importOnlyCompatibility: true` adds a narrower replacement lane after the engine,
 review-only Manager workflow and both private caller pins are deployed. Morpheus is the first
