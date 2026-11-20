@@ -201,6 +201,7 @@ See `src/qa/comments.ts` (`QaCommentBatch`). Summary:
 | `createdAt` | ISO-8601 with offset |
 | `preview` | `{ url, kind?: "serve-sim" \| "web" \| "other", label? }` |
 | `frame` | `{ path?: "frame.png", width, height, capturedAt? }` |
+| `notes` | optional batch guidance, trimmed to at most 2,000 characters. Live web adapters persist it with the batch. |
 | `comments` | ordered list of `{ id, text, createdAt, anchor, screenId?, frame? }` |
 | `comments[].screenId` | screen identifier captured at iOS or web pin placement |
 | `comments[].frame` | `{ path?: "comment-N.png", width, height, capturedAt? }`, captured at iOS or web pin placement |
