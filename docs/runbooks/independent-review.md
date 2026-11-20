@@ -499,6 +499,11 @@ a skipped required check satisfies branch protection, as a pass would. The check
 a PR without the label. Labelling the draft or marking it ready runs the full check, so a ready PR
 without the label fails as before. A draft carrying the label is validated in full.
 
+Once implementation, required evidence and independent review are complete, run `gh pr ready <n>`
+and [follow required CI through merge](pm-workflow.md#merging-the-board-and-the-worklog).
+Keep the PR draft while substantive work remains or when a person explicitly requests a hold.
+Record the blocker or the requester and what clears the hold under `## Open questions`.
+
 The one window this leaves is the one that already exists for removing the label: a draft that
 was labelled (and went green) and then unlabelled keeps that green result on the same head until
 something re-runs it, and marking it ready re-runs it. Removing the label is deliberate; an

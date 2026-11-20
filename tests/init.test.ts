@@ -108,8 +108,11 @@ describe("morpheus init", () => {
     expect(instructions).toContain("CI and PR monitors never start this review");
     expect(instructions).toContain("Measure each turn from runner metadata or actual clock readings, never estimates");
     expect(instructions).toContain("timing source, milliseconds and evidence");
-    expect(await read(".github/pull_request_template.md")).toContain("review prepare only prints the packet");
-    expect(await read(".github/pull_request_template.md")).toContain("review-record:");
+    const template = await read(".github/pull_request_template.md");
+    expect(template).toContain("review prepare only prints the packet");
+    expect(template).toContain("review-record:");
+    expect(template).toContain("no explicit hold applies, run gh pr ready <n>");
+    expect(template).toContain("prefix the title with [WIP] until the hold clears");
   });
 
   it("symlinks CLAUDE.md rather than copying AGENTS.md", async () => {
