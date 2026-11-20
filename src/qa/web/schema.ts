@@ -8,10 +8,12 @@
  * holds real customers' data. Objects are strict so an extra field is a rejection, not a leak.
  */
 import { z } from "zod";
+import { QaNotes, QA_NOTES_MAX_CHARS } from "../notes.js";
 
 export const WEB_QA_LIMITS = {
   comments: 20,
   textChars: 2000,
+  notesChars: QA_NOTES_MAX_CHARS,
   pathChars: 2048,
   anchorChars: 64,
   viewportMax: 16384,
@@ -72,6 +74,7 @@ export type WebQaComment = z.infer<typeof WebQaComment>;
 
 export const WebQaBatch = z.strictObject({
   batchId: z.uuid(),
+  notes: QaNotes,
   comments: z.array(WebQaComment).min(1).max(WEB_QA_LIMITS.comments),
   buildAndDeploy: z.boolean(),
   makeFeatureFlag: z.boolean(),

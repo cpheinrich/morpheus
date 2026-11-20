@@ -11,6 +11,7 @@ import { z } from "zod";
 export declare const WEB_QA_LIMITS: {
     readonly comments: 20;
     readonly textChars: 2000;
+    readonly notesChars: 2000;
     readonly pathChars: 2048;
     readonly anchorChars: 64;
     readonly viewportMax: 16384;
@@ -50,6 +51,7 @@ export declare const WebQaComment: z.ZodObject<{
 export type WebQaComment = z.infer<typeof WebQaComment>;
 export declare const WebQaBatch: z.ZodObject<{
     batchId: z.ZodUUID;
+    notes: z.ZodOptional<z.ZodString>;
     comments: z.ZodArray<z.ZodObject<{
         text: z.ZodString;
         path: z.ZodString;
@@ -101,6 +103,7 @@ export declare function parseWebQaBatch(value: unknown): z.ZodSafeParseResult<{
     }[];
     buildAndDeploy: boolean;
     makeFeatureFlag: boolean;
+    notes?: string | undefined;
 }>;
 export declare function parseWebQaReceipt(value: unknown): z.ZodSafeParseResult<{
     batchId: string;

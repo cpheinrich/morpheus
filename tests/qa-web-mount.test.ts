@@ -27,7 +27,7 @@ const q = <T extends Element = HTMLElement>(sel: string) => root()!.querySelecto
 const button = (label: string) => Array.from(root()!.querySelectorAll("button")).find(b => b.textContent === label)!;
 const status = () => q(".status").textContent;
 const click = (el: Element, init: MouseEventInit = {}) => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, composed: true, clientX: 256, clientY: 192, ...init }));
-const type = (text: string) => { const t = q<HTMLTextAreaElement>("textarea"); t.value = text; t.dispatchEvent(new Event("input")); };
+const type = (text: string) => { const t = q<HTMLTextAreaElement>("textarea[aria-label=Comment]"); t.value = text; t.dispatchEvent(new Event("input")); };
 const key = (el: Element, k: string, init: KeyboardEventInit = {}) => el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, composed: true, ...init }));
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 const stored = () => JSON.parse(sessionStorage.getItem(Object.keys(sessionStorage).find(k => k.startsWith("morpheus-qa-web"))!)!);
@@ -171,7 +171,7 @@ describe("mountWebQa", () => {
       expect(snapshot.pending).toBeNull();
       quota = false;
       type("Still editable");
-      expect(q<HTMLTextAreaElement>("textarea").value).toBe("Still editable");
+      expect(q<HTMLTextAreaElement>("textarea[aria-label=Comment]").value).toBe("Still editable");
     } finally { Object.defineProperty(window, "sessionStorage", own); }
   });
 
@@ -212,13 +212,13 @@ describe("mountWebQa", () => {
     mount();
     click(document.getElementById("card")!);
     type("First");
-    key(q("textarea"), "Escape");
+    key(q("textarea[aria-label=Comment]"), "Escape");
     key(button("Send"), "Escape", { repeat: true });
     expect(stored().drafts).toHaveLength(1);
 
     click(document.getElementById("link")!);
     type("Second");
-    key(q("textarea"), "Escape");
+    key(q("textarea[aria-label=Comment]"), "Escape");
     expect(stored().drafts.map((item: WebQaBatch["comments"][number]) => item.text)).toEqual(["First", "Second"]);
     key(button("Send"), "Escape");
     expect(stored().drafts.map((item: WebQaBatch["comments"][number]) => item.text)).toEqual(["First"]);
@@ -266,15 +266,20 @@ describe("mountWebQa", () => {
     mount({ submit: hang });
     click(document.getElementById("card")!);
     type("Before reload");
+    const notes = q<HTMLTextAreaElement>("textarea[aria-label=Notes]");
+    notes.value = "  Treat this as one change.  ";
+    notes.dispatchEvent(new Event("input"));
     click(button("Sending…") ?? button("Send"));
     await flush();
     unmount!(); unmount = null;
 
     const { submit } = mount();
     expect(status()).toMatch(/^Send not confirmed/);
+    expect(q<HTMLTextAreaElement>("textarea[aria-label=Notes]")).toMatchObject({ value: "Treat this as one change.", disabled: true });
     click(button("Retry"));
     await flush();
     expect(submit.mock.calls[0]![0]).toEqual(hang.mock.calls[0]![0]);
+    expect(submit.mock.calls[0]![0].notes).toBe("Treat this as one change.");
   });
 
   it("shows build controls only when allowed, the flag only with build, and keeps a failed build request retryable", async () => {
@@ -324,19 +329,19 @@ describe("mountWebQa", () => {
     const { submit } = mount();
     click(document.getElementById("card")!);
     type("Keep");
-    key(q("textarea"), "Enter");
-    expect(q<HTMLTextAreaElement>("textarea").disabled).toBe(true);
+    key(q("textarea[aria-label=Comment]"), "Enter");
+    expect(q<HTMLTextAreaElement>("textarea[aria-label=Comment]").disabled).toBe(true);
     expect(status()).toBe("Saved. Send when ready.");
 
     click(document.getElementById("link")!);
     type("Drop");
-    key(q("textarea"), "Escape");
+    key(q("textarea[aria-label=Comment]"), "Escape");
     expect(status()).toBe("Press Esc again to delete pin 2.");
     key(button("Send"), "Escape");
     expect(stored().drafts.map((d: { text: string }) => d.text)).toEqual(["Keep"]);
 
     click(root()!.querySelector("ol .open")!);
-    key(q("textarea"), "Enter", { metaKey: true });
+    key(q("textarea[aria-label=Comment]"), "Enter", { metaKey: true });
     await flush();
     expect(submit.mock.calls[0]![0].comments.map(c => c.text)).toEqual(["Keep"]);
   });

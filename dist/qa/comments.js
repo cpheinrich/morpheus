@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { QaNotes } from "./notes.js";
 /**
  * Structured QA comment batches for agent review.
  *
@@ -161,6 +162,7 @@ export const QaCommentBatch = z
     createdAt: z.string().min(1),
     preview: QaPreview,
     frame: QaFrame.optional(),
+    notes: QaNotes,
     comments: z.array(QaComment).min(1),
     status: z.enum(["pending", "resolved"]),
     resolvedAt: z.string().optional(),

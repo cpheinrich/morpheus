@@ -1,4 +1,5 @@
 /** HTML/JS for the QA comments overlay — no Comment/Interact mode. */
+import { QA_NOTES_MAX_CHARS } from "./notes.js";
 
 export function pageHtml(opts: {
   previewUrl: string;
@@ -45,6 +46,8 @@ export function pageHtml(opts: {
   .composer { padding: 12px; border-top: 1px solid #22262c; display: flex; flex-direction: column; gap: 8px; }
   textarea { width: 100%; min-height: 88px; resize: vertical; border-radius: 8px; border: 1px solid #3c4043; background: #0b0d10; color: #e8eaed; padding: 8px; font: inherit; }
   textarea:disabled { opacity: 0.5; }
+  .batch-notes { display: grid; gap: 5px; padding: 12px 12px 0; font-size: 13px; font-weight: 600; }
+  #notes { min-height: 58px; font-weight: 400; }
   .row { display: flex; gap: 8px; }
   .row .btn { flex: 1; }
   #status { font-size: 12px; color: #9aa0a6; min-height: 1.2em; }
@@ -70,6 +73,9 @@ export function pageHtml(opts: {
     </div>
   </div>
   <aside>
+    <label class="batch-notes">Notes
+      <textarea id="notes" maxlength="${QA_NOTES_MAX_CHARS}" placeholder="Guidance for this batch…"></textarea>
+    </label>
     <h2>Comments</h2>
     <ul id="list"></ul>
     <div class="composer">
@@ -97,6 +103,7 @@ export function pageHtml(opts: {
   const missing = document.getElementById('missing');
   const listEl = document.getElementById('list');
   const textEl = document.getElementById('text');
+  const notesEl = document.getElementById('notes');
   const sendBtn = document.getElementById('send');
   const status = document.getElementById('status');
 
@@ -294,6 +301,7 @@ export function pageHtml(opts: {
         nextN,
         focusedId,
         draft: textEl.disabled ? null : textEl.value,
+        notes: notesEl.value,
       }));
     } catch (_) {}
   }
@@ -303,13 +311,14 @@ export function pageHtml(opts: {
   function restore() {
     let saved = null;
     try { saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); } catch (_) {}
+    if (typeof saved?.notes === 'string') notesEl.value = saved.notes.slice(0, notesEl.maxLength);
     if (!saved || !Array.isArray(saved.pins) || saved.pins.length === 0) return false;
     const usable = saved.pins
       .filter((p) => p && typeof p.id === 'string' && Number.isInteger(p.n) && p.n > 0
         && typeof p.normX === 'number' && typeof p.normY === 'number')
       .map((p) => ({ ...p, text: typeof p.text === 'string' ? p.text : '', createdAt: typeof p.createdAt === 'string' ? p.createdAt : new Date().toISOString() }));
     if (usable.length === 0) {
-      forget();
+      persist();
       return false;
     }
     pins = usable.map((p) => ({
@@ -524,6 +533,8 @@ export function pageHtml(opts: {
 
   textEl.addEventListener('focus', () => { simFocused = false; });
   textEl.addEventListener('input', persist);
+  notesEl.addEventListener('focus', () => { simFocused = false; });
+  notesEl.addEventListener('input', persist);
   document.querySelector('aside')?.addEventListener('pointerdown', () => { simFocused = false; });
 
   async function sendKey(type, code) {
@@ -687,9 +698,12 @@ export function pageHtml(opts: {
   }
 
   async function sendBatch() {
+    if (notesEl.disabled) return;
     saveOpenPin();
     const ready = pins.filter((p) => p.text.trim());
     if (ready.length === 0) return;
+    const notes = notesEl.value.trim();
+    notesEl.disabled = true;
     sendBtn.disabled = true;
     setStatus('Sending…');
     const frameInfo = await captureFrame();
@@ -706,11 +720,13 @@ export function pageHtml(opts: {
     }));
     if (comments.some((comment) => !comment.frame?.dataUrl)) {
       setStatus('A pin lost its placement image. Delete and place that pin again before sending.', 'err');
+      notesEl.disabled = false;
       sendBtn.disabled = false;
       return;
     }
     const body = {
       preview: { url: previewUrl, kind: 'serve-sim' },
+      ...(notes ? { notes } : {}),
       comments,
       frame: frameInfo
         ? { path: 'frame.png', width: frameInfo.width, height: frameInfo.height, dataUrl: frameInfo.dataUrl }
@@ -734,6 +750,7 @@ export function pageHtml(opts: {
       nextN = 1;
       focusedId = null;
       textEl.value = '';
+      notesEl.value = '';
       textEl.disabled = true;
       showPlacement(null);
       forget();
@@ -743,6 +760,8 @@ export function pageHtml(opts: {
     } catch (err) {
       setStatus(String(err.message || err), 'err');
       sendBtn.disabled = !pins.some((p) => p.text.trim());
+    } finally {
+      notesEl.disabled = false;
     }
   }
 

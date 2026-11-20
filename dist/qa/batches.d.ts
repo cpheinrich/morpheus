@@ -12,6 +12,7 @@ export interface PostedBatch {
         kind?: "serve-sim" | "web" | "other";
         label?: string;
     };
+    notes?: unknown;
     comments: unknown[];
     frame?: {
         path?: string;

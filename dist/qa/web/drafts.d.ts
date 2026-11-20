@@ -54,11 +54,13 @@ declare const WebQaSession: z.ZodObject<{
         anchorX: z.ZodOptional<z.ZodNumber>;
         anchorY: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strip>>;
+    notes: z.ZodOptional<z.ZodString>;
     buildAndDeploy: z.ZodBoolean;
     makeFeatureFlag: z.ZodBoolean;
     pending: z.ZodNullable<z.ZodObject<{
         batch: z.ZodObject<{
             batchId: z.ZodUUID;
+            notes: z.ZodOptional<z.ZodString>;
             comments: z.ZodArray<z.ZodObject<{
                 text: z.ZodString;
                 path: z.ZodString;

@@ -17,7 +17,7 @@ const close = async (server: Server) => {
 };
 
 test("iOS: pin, scroll or navigate, pin again, and send each clicked frame", async ({ page }, testInfo) => {
-  const received: { posted: { comments: Array<{ text: string; screenId?: string; frame?: { dataUrl: string } }> } | null } = { posted: null };
+  const received: { posted: { notes?: string; comments: Array<{ text: string; screenId?: string; frame?: { dataUrl: string } }> } | null } = { posted: null };
   const server = createServer(async (req, res) => {
     if (req.url === "/") {
       res.writeHead(200, { "content-type": "text/html" });
@@ -53,6 +53,7 @@ test("iOS: pin, scroll or navigate, pin again, and send each clicked frame", asy
     });
     await page.evaluate((s) => (window as unknown as { emitAx: (value: unknown) => void }).emitAx(s), snapshot("trendsScreen", 100));
     const stage = page.locator("#stage");
+    await page.getByLabel("Notes").fill("  Check both charts together.  ");
     await stage.click({ button: "right", position: { x: 195, y: 150 } });
     await page.locator("#text").fill("First chart");
     await page.locator("#text").press("Enter");
@@ -82,10 +83,12 @@ test("iOS: pin, scroll or navigate, pin again, and send each clicked frame", asy
     await page.reload();
     await expect(page.locator("#text")).toHaveValue("");
     await expect(page.locator("#list li")).toHaveCount(2);
+    await expect(page.getByLabel("Notes")).toHaveValue("  Check both charts together.  ");
     await page.locator("#send").click();
     await expect(page.locator("#status")).toContainText("Queued batch-browser");
     const posted = received.posted;
-    expect(posted).not.toBeNull();
+    expect(posted?.notes).toBe("Check both charts together.");
+    await expect(page.getByLabel("Notes")).toHaveValue("");
     expect(posted!.comments.map((c) => [c.text, c.screenId])).toEqual([
       ["First chart", "trendsScreen"], ["Edited second chart", "trackScreen"],
     ]);
@@ -107,9 +110,10 @@ test("web: pin two elements across page scroll and send both through the proxy",
     await page.goto(`http://127.0.0.1:${qa.port}/`);
     const site = page.frameLocator("#morpheus-qa-site");
     await expect(site.locator("#first")).toBeVisible();
+    await page.getByLabel("Notes").fill("Keep both cards consistent.");
     await site.locator("#first").click({ button: "right", position: { x: 50, y: 50 } });
-    await page.locator("morpheus-qa textarea").fill("First web card");
-    await page.locator("morpheus-qa textarea").press("Enter");
+    await page.locator("morpheus-qa textarea.comment").fill("First web card");
+    await page.locator("morpheus-qa textarea.comment").press("Enter");
     await site.locator("#first").evaluate((el) => { el.ownerDocument.defaultView!.location.href = "/other"; });
     await page.waitForFunction(() => (document.getElementById("morpheus-qa-site") as HTMLIFrameElement).contentWindow?.location.pathname === "/other");
     await page.evaluate(() => (document.getElementById("morpheus-qa-site") as HTMLIFrameElement).contentWindow!.history.back());
@@ -117,8 +121,8 @@ test("web: pin two elements across page scroll and send both through the proxy",
     await expect(page.locator("morpheus-qa ol li")).toHaveCount(1);
     await site.locator("#second").scrollIntoViewIfNeeded();
     await site.locator("#second").click({ button: "right", position: { x: 50, y: 50 } });
-    await page.locator("morpheus-qa textarea").fill("Second web card");
-    await page.locator("morpheus-qa textarea").press("Enter");
+    await page.locator("morpheus-qa textarea.comment").fill("Second web card");
+    await page.locator("morpheus-qa textarea.comment").press("Enter");
     if (process.env.QA_EVIDENCE_DIR) {
       await mkdir(process.env.QA_EVIDENCE_DIR, { recursive: true });
       await page.screenshot({ path: join(process.env.QA_EVIDENCE_DIR, `web-${testInfo.project.name}.png`) });
@@ -128,6 +132,8 @@ test("web: pin two elements across page scroll and send both through the proxy",
     const names = await readdir(join(root, "local/qa-comments/pending"));
     expect(names).toHaveLength(1);
     const batch = JSON.parse(await readFile(join(root, "local/qa-comments/pending", names[0]!, "batch.json"), "utf8"));
+    expect(batch.notes).toBe("Keep both cards consistent.");
+    await expect(page.getByLabel("Notes")).toHaveValue("");
     expect(batch.comments.map((c: { text: string; anchor: { element: { selector: string } } }) => [c.text, c.anchor.element.selector])).toEqual([
       ["First web card", "#first"], ["Second web card", "#second"],
     ]);

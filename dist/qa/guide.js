@@ -105,7 +105,8 @@ verify its child agent and descendants have stopped. Only then run responder rec
 
 Choose a stable responder identity, such as \`codex:<session-id>\`. Call
 \`morpheus qa comments claim --agent <identity> --root <checkout>\` until it prints nothing. For
-each claimed id: \`morpheus qa comments show <id> --root <checkout>\`. Read its evidence by type:
+each claimed id: \`morpheus qa comments show <id> --root <checkout>\`. Read any batch notes first
+and apply that submitter guidance across all comments. Read the evidence for each comment by type:
 
 - **Current web comments** have \`comment.webContext\` as primary placement evidence: sanitized
   route, target/ancestors, view/entity, observable UI state, styles, original viewport and scroll.

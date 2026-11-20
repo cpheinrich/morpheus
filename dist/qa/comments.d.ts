@@ -528,6 +528,7 @@ export declare const QaCommentBatch: z.ZodObject<{
         height: z.ZodNumber;
         capturedAt: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>>;
+    notes: z.ZodOptional<z.ZodString>;
     comments: z.ZodArray<z.ZodObject<{
         id: z.ZodString;
         text: z.ZodString;

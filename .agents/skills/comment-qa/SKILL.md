@@ -5,7 +5,7 @@ description: Run the app or website for interactive comment QA — the person pi
 
 # Comment QA
 
-Run `morpheus qa guide` and follow it. It prints the instructions that ship with the installed
+Read any batch-level Notes before handling the individual comments. Run `morpheus qa guide` and follow it. It prints the instructions that ship with the installed
 CLI, so they always match the commands you will run.
 
 The short form:
