@@ -75,6 +75,8 @@
 .app-research .app-research-link { border: 0; padding: 0; text-decoration: underline; }
 .app-research-accessibility pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; }
 
+.app-research-keywords-scroll { max-width: 100%; overflow-x: auto; }
+.app-research-keywords-scroll:focus-visible { outline: 2px solid var(--app-research-accent); outline-offset: 2px; }
 .app-research-keywords { border-collapse: collapse; width: 100%; }
 .app-research-keywords caption { text-align: left; font-weight: 600; }
 .app-research-keywords th,

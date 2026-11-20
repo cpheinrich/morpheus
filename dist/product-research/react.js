@@ -105,15 +105,15 @@ function StudyNotes({ study, read }) {
 }
 export function AppStoreSignals({ snapshot, appeekyUrl }) {
     const href = /^https:\/\//.test(appeekyUrl) ? appeekyUrl : null;
-    const source = href ? _jsx("a", { href: href, target: "_blank", rel: "noopener noreferrer", children: "Appeeky" }) : "Appeeky";
+    const source = href ? _jsx("a", { href: href, target: "_blank", rel: "noopener noreferrer", children: "Open in Appeeky" }) : "Appeeky";
     // Staleness depends on the reader's clock; resolve it after hydration so server and client agree.
     const [now, setNow] = useState(null);
     useEffect(() => setNow(Date.now()), []);
     if (!snapshot) {
-        return (_jsxs("section", { className: "app-research-signals", "aria-label": "App Store signals", children: [_jsx("h3", { children: "App Store signals" }), _jsxs("p", { className: "app-research-empty", children: ["No App Store snapshot has been fetched yet. Source: ", source, "."] })] }));
+        return (_jsxs("section", { className: "app-research-signals", "aria-label": "App Store signals", children: [_jsx("h2", { children: "App Store signals" }), _jsxs("p", { className: "app-research-empty", children: ["No App Store snapshot has been fetched yet. Source: ", source, "."] })] }));
     }
     const stale = now !== null && now - Date.parse(snapshot.fetchedAt) > STALE_AFTER_MS;
-    return (_jsxs("section", { className: "app-research-signals", "aria-label": "App Store signals", children: [_jsx("h3", { children: "App Store signals" }), _jsxs("p", { className: "app-research-meta", children: ["Source: ", source, " \u00B7 ", snapshot.country.toUpperCase(), " ", snapshot.device, " \u00B7 fetched ", day(snapshot.fetchedAt), stale ? _jsx("span", { className: "app-research-stale", children: " \u00B7 stale, older than 7 days" }) : null] }), _jsx(ListingFacts, { listing: snapshot.listing }), _jsxs("table", { className: "app-research-keywords", children: [_jsx("caption", { children: "Search terms" }), _jsx("thead", { children: _jsxs("tr", { children: [_jsx("th", { scope: "col", children: "Term" }), _jsx("th", { scope: "col", children: "Rank" }), _jsx("th", { scope: "col", children: "7-day change" }), _jsx("th", { scope: "col", children: "Volume" }), _jsx("th", { scope: "col", children: "Difficulty" })] }) }), _jsx("tbody", { children: snapshot.keywords.map((keyword) => _jsx(KeywordRow, { keyword: keyword }, keyword.term)) })] })] }));
+    return (_jsxs("section", { className: "app-research-signals", "aria-label": "App Store signals", children: [_jsx("h2", { children: "App Store signals" }), _jsxs("p", { className: "app-research-meta", children: ["Source: ", source, " \u00B7 ", snapshot.country.toUpperCase(), " ", snapshot.device, " \u00B7 fetched ", day(snapshot.fetchedAt), stale ? _jsx("span", { className: "app-research-stale", children: " \u00B7 stale, older than 7 days" }) : null] }), _jsx(ListingFacts, { listing: snapshot.listing }), _jsx("div", { className: "app-research-keywords-scroll", role: "region", "aria-label": "Keyword rankings", tabIndex: 0, children: _jsxs("table", { className: "app-research-keywords", children: [_jsx("caption", { children: "Search terms" }), _jsx("thead", { children: _jsxs("tr", { children: [_jsx("th", { scope: "col", children: "Term" }), _jsx("th", { scope: "col", children: "Rank" }), _jsx("th", { scope: "col", children: "7-day change" }), _jsx("th", { scope: "col", children: "Volume" }), _jsx("th", { scope: "col", children: "Difficulty" })] }) }), _jsx("tbody", { children: snapshot.keywords.map((keyword) => _jsx(KeywordRow, { keyword: keyword }, keyword.term)) })] }) })] }));
 }
 function ListingFacts({ listing }) {
     const title = listing.appStoreUrl
@@ -124,7 +124,7 @@ function ListingFacts({ listing }) {
     const rating = listing.rating === undefined ? undefined : `${listing.rating.toFixed(1)} of 5${ratings}`;
     const price = listing.downloadPrice === undefined ? undefined
         : listing.downloadPrice === 0 ? "Free" : `${listing.downloadPrice} ${listing.currency ?? ""}`.trim();
-    return (_jsxs("dl", { className: "app-research-facts", children: [fact("Title", title), fact("Category", listing.category), fact("Version", version), fact("Rating", rating), fact("Price", price)] }));
+    return (_jsxs("dl", { className: "app-research-facts", children: [fact("Title", title), fact("Category", listing.category), fact("Version", version), fact("Rating", rating), fact("Download price", price)] }));
 }
 function KeywordRow({ keyword }) {
     return (_jsxs("tr", { children: [_jsxs("th", { scope: "row", children: [keyword.term, keyword.branded ? _jsx("span", { className: "app-research-badge", children: " branded" }) : null] }), _jsx("td", { children: rankText(keyword) }), _jsx("td", { children: changeText(keyword.rankChange7d) }), _jsx("td", { children: keyword.volumeScore ?? "—" }), _jsx("td", { children: keyword.difficulty ?? "—" })] }));

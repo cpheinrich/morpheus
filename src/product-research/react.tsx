@@ -320,14 +320,14 @@ function StudyNotes({ study, read }: { study: AppResearchStudy; read: ReadAsset 
 
 export function AppStoreSignals({ snapshot, appeekyUrl }: { snapshot: AppeekySnapshot | null; appeekyUrl: string }) {
   const href = /^https:\/\//.test(appeekyUrl) ? appeekyUrl : null;
-  const source = href ? <a href={href} target="_blank" rel="noopener noreferrer">Appeeky</a> : "Appeeky";
+  const source = href ? <a href={href} target="_blank" rel="noopener noreferrer">Open in Appeeky</a> : "Appeeky";
   // Staleness depends on the reader's clock; resolve it after hydration so server and client agree.
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => setNow(Date.now()), []);
   if (!snapshot) {
     return (
       <section className="app-research-signals" aria-label="App Store signals">
-        <h3>App Store signals</h3>
+        <h2>App Store signals</h2>
         <p className="app-research-empty">No App Store snapshot has been fetched yet. Source: {source}.</p>
       </section>
     );
@@ -335,17 +335,19 @@ export function AppStoreSignals({ snapshot, appeekyUrl }: { snapshot: AppeekySna
   const stale = now !== null && now - Date.parse(snapshot.fetchedAt) > STALE_AFTER_MS;
   return (
     <section className="app-research-signals" aria-label="App Store signals">
-      <h3>App Store signals</h3>
+      <h2>App Store signals</h2>
       <p className="app-research-meta">
         Source: {source} · {snapshot.country.toUpperCase()} {snapshot.device} · fetched {day(snapshot.fetchedAt)}
         {stale ? <span className="app-research-stale"> · stale, older than 7 days</span> : null}
       </p>
       <ListingFacts listing={snapshot.listing} />
-      <table className="app-research-keywords">
-        <caption>Search terms</caption>
-        <thead><tr><th scope="col">Term</th><th scope="col">Rank</th><th scope="col">7-day change</th><th scope="col">Volume</th><th scope="col">Difficulty</th></tr></thead>
-        <tbody>{snapshot.keywords.map((keyword) => <KeywordRow key={keyword.term} keyword={keyword} />)}</tbody>
-      </table>
+      <div className="app-research-keywords-scroll" role="region" aria-label="Keyword rankings" tabIndex={0}>
+        <table className="app-research-keywords">
+          <caption>Search terms</caption>
+          <thead><tr><th scope="col">Term</th><th scope="col">Rank</th><th scope="col">7-day change</th><th scope="col">Volume</th><th scope="col">Difficulty</th></tr></thead>
+          <tbody>{snapshot.keywords.map((keyword) => <KeywordRow key={keyword.term} keyword={keyword} />)}</tbody>
+        </table>
+      </div>
     </section>
   );
 }
@@ -365,7 +367,7 @@ function ListingFacts({ listing }: { listing: AppeekySnapshot["listing"] }) {
       {fact("Category", listing.category)}
       {fact("Version", version)}
       {fact("Rating", rating)}
-      {fact("Price", price)}
+      {fact("Download price", price)}
     </dl>
   );
 }

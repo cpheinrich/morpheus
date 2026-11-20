@@ -180,7 +180,9 @@ describe("AppStoreSignals", () => {
     render(<AppStoreSignals snapshot={SNAPSHOT} appeekyUrl="https://appeeky.example/app/123" />);
     const rows = screen.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell").map((cell) => cell.textContent));
     expect(rows).toEqual([["#4", "down 2", "—", "—"], ["Not in top results", "—", "—", "—"], ["Not checked", "—", "—", "—"]]);
-    expect(screen.getByRole("link", { name: "Appeeky" }).getAttribute("href")).toBe("https://appeeky.example/app/123");
+    expect(screen.getByRole("link", { name: "Open in Appeeky" }).getAttribute("href")).toBe("https://appeeky.example/app/123");
+    expect(screen.getByRole("region", { name: "Keyword rankings" }).tabIndex).toBe(0);
+    expect(screen.getByRole("heading", { level: 2, name: "App Store signals" })).toBeTruthy();
     expect(screen.getByText(/fetched 2026-11-01/)).toBeTruthy();
     expect(await screen.findByText(/stale, older than 7 days/)).toBeTruthy();
     expect(screen.getByText("4.5 of 5 from 1,200 ratings")).toBeTruthy();
