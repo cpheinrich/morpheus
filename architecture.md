@@ -4066,13 +4066,44 @@ state store.
 
 For a release build, callers can opt into `check-app-store-version` and pass explicit
 `app-store-connect-app-id` and `ios-bundle-id`, plus `app-store-storefront` when the listing is
-outside the default `us` storefront. A read-only Linux job runs after source verification and
-before simulator tests. It checks the project at the exact verified SHA with Morpheus's action at
-`actions-ref` (pass the workflow's pin when pinning). Only a project version ahead of the public
-listing can proceed. Equality proposes a patch bump and stops delivery; a behind version or
-an unavailable or invalid result stops delivery without a proposal. Existing callers are not
-required to opt in, and visual-only runs do not consult the store. Caller-owned upload jobs must
-require the reusable workflow to succeed as well as check its `build` and `sha` outputs.
+outside the default `us` storefront. After source verification and before simulator tests, the
+selected runner and exact Xcode version query archive build settings at the verified SHA without
+building or signing. The supplied project, scheme, and explicit `archive-configuration` (default
+`Release`) must resolve to exactly one installable iOS app for `generic/platform=iOS`. Its resolved
+bundle must match `ios-bundle-id`; its literal marketing version is compared with the public app
+ID and storefront by Morpheus's action at `actions-ref` (pass the workflow's pin when pinning).
+The runner must be able to load the project and any locked package dependencies for this metadata
+query. Equality proposes a patch bump and stops delivery; a behind version or an unavailable or
+invalid result stops delivery without a proposal. Visual-only runs do not consult the store.
+
+Without opt-in, `build` and `sha` retain the change decision and preflight SHA respectively. With
+opt-in, they expose `true` and the verified SHA only after preflight, version comparison and tests
+pass; otherwise they are `false` and empty. Opted-in, caller-owned upload jobs (`run-upload: false`)
+must use the following job guard (for a reusable workflow job named `nightly`):
+
+```yaml
+needs: nightly
+if: >-
+  ${{ needs.nightly.result == 'success' && needs.nightly.outputs.build == 'true'
+      && needs.nightly.outputs.sha != '' && needs.nightly.outputs.archive-version != ''
+      && needs.nightly.outputs.check-attempt == github.run_attempt }}
+```
+
+Check out that exact `sha`. Both upload paths must archive the qualified app with the same Xcode,
+project, scheme, configuration, iOS destination, bundle ID, and App Store Connect app ID as the
+check. Pass `archive-version` as `MARKETING_VERSION` to the caller-owned `ios-testflight-upload`
+step and pass the same identity and configuration inputs to it. Do not override this identity
+through archive build settings, environment, plist, or scripts. The built-in upload passes the
+qualified `BUILD_CONFIGURATION` and `MARKETING_VERSION` to its script and rejects a different
+effective `IOS_BUNDLE_ID` (including a `vars.IOS_BUNDLE_ID` override) before invoking it. The
+script must honor these settings and the supplied `PROJECT_PATH`, `SCHEME_NAME`, and `ASC_APP_ID`.
+
+[GitHub supports rerunning only failed jobs](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-workflow-runs/re-running-workflows-and-jobs),
+and [`github.run_attempt` increases on rerun](https://docs.github.com/en/actions/learn-github-actions/contexts#github-context).
+A selective retry can retain a successful check and its outputs from an earlier attempt, after
+the storefront version has changed. Both upload paths refuse that stale pass. Rerun all jobs to
+get a fresh comparison; if a selective retry retained the old check, start a fresh workflow
+invocation instead of retrying the upload alone.
 
 The [version action and CLI](.github/actions/ios-app-store-version/README.md) are credential-free.
 The caller owns the repair: plan against the candidate, apply only an equal-version proposal on

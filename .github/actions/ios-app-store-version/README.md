@@ -8,7 +8,10 @@ An invalid or unavailable lookup emits no plan. Keep the gate blocking in delive
 the read-only CLI directly in the separate caller-owned repair process.
 
 Use Node 22+ and a reviewed Morpheus checkout. Pass exactly one of `--version` (literal) and
-`--project-file` (for a project with homogeneous literal marketing settings):
+`--project-file` (for a project with homogeneous direct literal marketing settings and no
+inherited xcconfig). The standalone project-file mode does not select a scheme or resolve an
+archive identity. Use the nightly metadata check or pass an Xcode-resolved `--version` for the
+exact archive when project-file mode cannot prove a common literal:
 
 ```sh
 node "$MORPHEUS/.github/actions/ios-app-store-version/version.mjs" plan \
@@ -31,10 +34,11 @@ node "$MORPHEUS/.github/actions/ios-app-store-version/version.mjs" apply \
 ```
 
 `apply` checks the exact source literal and a strictly forward target; it rejects missing,
-mixed marketing, conditional, or indirect assignments. It updates all direct project marketing
-assignments and zeroes all direct numeric `CURRENT_PROJECT_VERSION` assignments in one file
-replacement. Reapplying the exact completed target with all build settings `0` makes no write.
-This does not edit `.xcconfig` files or resolve inherited build settings. Inspect the diff, test
-it, obtain fresh independent review, and land a protected PR. Admit the newly verified merged
+mixed marketing, conditional, indirect, or inherited xcconfig settings. It updates only direct
+`XCBuildConfiguration.buildSettings` marketing values and zeroes their direct numeric
+`CURRENT_PROJECT_VERSION` values in one file replacement. Same-named metadata outside those
+dictionaries is preserved. Reapplying the exact completed target with all build settings `0`
+makes no write. This does not edit `.xcconfig` files or resolve inherited build settings. Inspect
+the diff, test it, obtain fresh independent review, and land a protected PR. Admit the newly verified merged
 SHA and run the gate again. Neither command pushes, opens a PR, publishes, or allocates upload
 build numbers.

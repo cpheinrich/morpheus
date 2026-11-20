@@ -11,11 +11,17 @@ on:
   workflow_call:
     outputs:
       build:
-        description: Whether watched changes or a manual override require a release build.
-        value: ${{ jobs.changes.outputs.build }}
+        description: For opted-in releases, whether source, version and tests passed this attempt; otherwise the change decision.
+        value: ${{ inputs.check-app-store-version && (jobs.release-ready.outputs.check-attempt == github.run_attempt && jobs.release-ready.outputs.build || 'false') || jobs.changes.outputs.build }}
       sha:
-        description: Exact reviewed main SHA that passed preflight and testing.
-        value: ${{ jobs.preflight.outputs.sha }}
+        description: Exact eligible release SHA when opted in; otherwise the preflight SHA.
+        value: ${{ !inputs.check-app-store-version && jobs.preflight.outputs.sha || jobs.release-ready.outputs.check-attempt == github.run_attempt && jobs.release-ready.outputs.sha || '' }}
+      check-attempt:
+        description: Attempt that checked the eligible release; caller-owned upload must compare this with github.run_attempt.
+        value: ${{ jobs.release-ready.outputs.check-attempt }}
+      archive-version:
+        description: Exact resolved marketing version of an eligible opted-in release.
+        value: ${{ jobs.release-ready.outputs.archive-version }}
     inputs:
       actions-ref:
         description: >
@@ -162,6 +168,10 @@ on:
           Requires explicit ios-bundle-id and app-store-connect-app-id, even with run-upload false.
         type: boolean
         default: false
+      archive-configuration:
+        description: Explicit configuration for the opt-in archive metadata query and upload; ignored if not opted in.
+        type: string
+        default: Release
       app-store-storefront:
         description: Two-letter country for the public listing used by the opt-in version check.
         type: string
@@ -395,10 +405,13 @@ jobs:
     name: Verify iOS App Store version
     needs: [changes, preflight]
     if: ${{ inputs.check-app-store-version && needs.changes.outputs.build == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 15
     permissions:
       contents: read
+    outputs:
+      attempt: ${{ steps.checked.outputs.attempt }}
+      version: ${{ steps.identity.outputs.version }}
     steps:
       - name: Check out verified main commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -413,13 +426,77 @@ jobs:
           path: .morpheus-ci
           persist-credentials: false
           sparse-checkout: .github/actions/ios-app-store-version
+      - name: Verify checkout and select Xcode for archive metadata
+        env:
+          EXPECTED_SHA: ${{ needs.preflight.outputs.sha }}
+          XCODE_VERSION: ${{ inputs.xcode-version }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          [[ "$XCODE_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]
+          xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [[ ! -d "$xcode_app" ]]; then xcode_app=/Applications/Xcode.app; fi
+          developer_dir="$xcode_app/Contents/Developer"
+          installed_version=$("$developer_dir/usr/bin/xcodebuild" -version | sed -n '1s/Xcode //p')
+          if [[ "$installed_version" != "$XCODE_VERSION" ]]; then
+            echo "Expected Xcode $XCODE_VERSION, but $xcode_app contains $installed_version" >&2
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$developer_dir" >> "$GITHUB_ENV"
+      - name: Resolve the installed iOS app's archive settings
+        id: identity
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          PROJECT: ${{ inputs.project }}
+          SCHEME: ${{ inputs.scheme }}
+          CONFIGURATION: ${{ inputs.archive-configuration }}
+          BUNDLE_ID: ${{ inputs.ios-bundle-id }}
+        run: |
+          set -euo pipefail
+          for relative_path in "$WORKING_DIRECTORY" "$PROJECT"; do
+            case "$relative_path" in
+              ""|/*|*"../"*|*"/.."|"..")
+                echo "working-directory and project must be relative paths without '..'" >&2
+                exit 1 ;;
+            esac
+          done
+          if [[ -z "$SCHEME" || -z "$CONFIGURATION" || -n "${XCODE_XCCONFIG_FILE:-}" ]]; then
+            echo 'Select a scheme and configuration without an external XCODE_XCCONFIG_FILE override.' >&2
+            exit 1
+          fi
+          xcodebuild -showBuildSettings -json -project "$GITHUB_WORKSPACE/$WORKING_DIRECTORY/$PROJECT" \
+            -scheme "$SCHEME" -configuration "$CONFIGURATION" -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/ios-version-check" \
+            -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile archive |
+          node --input-type=module -e '
+            import { appendFileSync, readFileSync } from "node:fs";
+            const apps = JSON.parse(readFileSync(0, "utf8")).filter(({action, buildSettings: settings}) =>
+              action === "archive" && settings?.PRODUCT_TYPE === "com.apple.product-type.application" &&
+              settings.PLATFORM_NAME === "iphoneos" && settings.SKIP_INSTALL === "NO");
+            if (apps.length !== 1) throw new Error("Expected one installable iOS archive app; found " + apps.length);
+            const settings = apps[0].buildSettings;
+            if (settings.CONFIGURATION !== process.env.CONFIGURATION || !process.env.BUNDLE_ID ||
+                settings.PRODUCT_BUNDLE_IDENTIFIER !== process.env.BUNDLE_ID) {
+              throw new Error("Resolved archive configuration or app bundle ID does not match the version check inputs");
+            }
+            const version = settings.MARKETING_VERSION;
+            if (typeof version !== "string" || !/^(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){1,2}$/.test(version)) {
+              throw new Error("Expected a literal numeric marketing version for the archive app");
+            }
+            appendFileSync(process.env.GITHUB_OUTPUT, "version=" + version + "\n");
+          '
       - name: Check live App Store version
         uses: ./.morpheus-ci/.github/actions/ios-app-store-version
         with:
-          project-file: ${{ format('{0}/{1}/project.pbxproj', inputs.working-directory, inputs.project) }}
+          version: ${{ steps.identity.outputs.version }}
           app-id: ${{ inputs.app-store-connect-app-id }}
           bundle-id: ${{ inputs.ios-bundle-id }}
           storefront: ${{ inputs.app-store-storefront }}
+      - name: Record successful version check attempt
+        id: checked
+        env:
+          CHECK_ATTEMPT: ${{ github.run_attempt }}
+        run: echo "attempt=$CHECK_ATTEMPT" >> "$GITHUB_OUTPUT"
 
   test:
     name: Test before release
@@ -454,10 +531,39 @@ jobs:
       test-evidence-script: ${{ inputs.test-evidence-script }}
       run-tests: true
 
+  release-ready:
+    name: Qualify opted-in release outputs
+    needs: [changes, preflight, version-check, test]
+    if: >-
+      ${{ !cancelled() && inputs.check-app-store-version && needs.changes.result == 'success'
+          && needs.changes.outputs.build == 'true' && needs.preflight.result == 'success'
+          && needs.preflight.outputs.sha != '' && needs.test.result == 'success'
+          && needs.version-check.result == 'success' && needs.version-check.outputs.version != ''
+          && needs.version-check.outputs.attempt == github.run_attempt }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    permissions: {}
+    outputs:
+      build: ${{ steps.qualified.outputs.build }}
+      sha: ${{ steps.qualified.outputs.sha }}
+      check-attempt: ${{ steps.qualified.outputs.check-attempt }}
+      archive-version: ${{ steps.qualified.outputs.archive-version }}
+    steps:
+      - id: qualified
+        env:
+          VERIFIED_SHA: ${{ needs.preflight.outputs.sha }}
+          CHECK_ATTEMPT: ${{ needs.version-check.outputs.attempt }}
+          ARCHIVE_VERSION: ${{ needs.version-check.outputs.version }}
+        run: printf 'build=true\nsha=%s\ncheck-attempt=%s\narchive-version=%s\n' "$VERIFIED_SHA" "$CHECK_ATTEMPT" "$ARCHIVE_VERSION" >> "$GITHUB_OUTPUT"
+
   upload:
     name: Upload TestFlight build
-    needs: [changes, preflight, test]
-    if: ${{ inputs.run-upload && needs.changes.outputs.build == 'true' && needs.preflight.result == 'success' && needs.test.result == 'success' }}
+    needs: [changes, preflight, test, release-ready]
+    if: >-
+      ${{ !cancelled() && inputs.run-upload && needs.changes.result == 'success'
+          && needs.changes.outputs.build == 'true' && needs.preflight.result == 'success' && needs.test.result == 'success'
+          && (!inputs.check-app-store-version || (needs.release-ready.result == 'success'
+              && needs.release-ready.outputs.check-attempt == github.run_attempt)) }}
     runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.upload-timeout-minutes }}
     environment: ${{ inputs.environment }}
@@ -637,6 +743,10 @@ jobs:
       # release-tool installation have all completed.
       - name: Archive, sign, and upload to TestFlight
         env:
+          CHECK_APP_STORE_VERSION: ${{ inputs.check-app-store-version }}
+          CHECKED_BUNDLE_ID: ${{ inputs.ios-bundle-id }}
+          CHECKED_CONFIGURATION: ${{ inputs.archive-configuration }}
+          CHECKED_VERSION: ${{ needs.release-ready.outputs.archive-version }}
           ASC_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           ASC_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
@@ -645,4 +755,14 @@ jobs:
           IOS_DISTRIBUTION_PROFILE_BASE64: ${{ secrets.IOS_DISTRIBUTION_PROFILE_BASE64 }}
           IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        run: '"$GITHUB_WORKSPACE/$UPLOAD_SCRIPT"'
+        run: |
+          set -euo pipefail
+          if [[ "$CHECK_APP_STORE_VERSION" == true ]]; then
+            if [[ -z "$CHECKED_BUNDLE_ID" || "$IOS_BUNDLE_ID" != "$CHECKED_BUNDLE_ID" ]]; then
+              echo "Effective IOS_BUNDLE_ID must match the bundle qualified by the App Store version check." >&2
+              exit 1
+            fi
+            test -z "${XCODE_XCCONFIG_FILE:-}"
+            export BUILD_CONFIGURATION="$CHECKED_CONFIGURATION" MARKETING_VERSION="$CHECKED_VERSION"
+          fi
+          "$GITHUB_WORKSPACE/$UPLOAD_SCRIPT"

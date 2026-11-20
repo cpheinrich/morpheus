@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1558,6 +1558,7 @@ describe("ios-nightly-build.yml", () => {
     jobs?: Record<
       string,
       {
+        "runs-on"?: string;
         uses?: string;
         needs?: string | string[];
         if?: string;
@@ -1618,8 +1619,6 @@ describe("ios-nightly-build.yml", () => {
       expect(call?.inputs?.[selection]?.default, `${selection} defaults to empty`).toBe("");
     }
     expect(call?.inputs?.["run-upload"]?.default).toBe(true);
-    expect(call?.outputs?.build?.value).toBe("${{ jobs.changes.outputs.build }}");
-    expect(call?.outputs?.sha?.value).toBe("${{ jobs.preflight.outputs.sha }}");
     expect(wf.permissions).toEqual({
       actions: "read",
       contents: "read",
@@ -1650,18 +1649,21 @@ describe("ios-nightly-build.yml", () => {
     expect(inputs?.["check-app-store-version"]).toMatchObject({ type: "boolean", default: false });
     expect(inputs?.["app-store-storefront"]).toMatchObject({ type: "string", default: "us" });
     expect(versionCheck?.needs).toEqual(["changes", "preflight"]);
-    expect(versionCheck?.steps).toMatchObject([
+    expect(inputs?.["archive-configuration"]).toMatchObject({ type: "string", default: "Release" });
+    expect(versionCheck?.["runs-on"]).toBe("${{ inputs.runner }}");
+    expect(versionCheck?.steps?.slice(0, 2)).toMatchObject([
       { uses: CHECKOUT_V7, with: { ref: "${{ needs.preflight.outputs.sha }}", "persist-credentials": false } },
       { uses: CHECKOUT_V7, with: {
         repository: "cpheinrich/morpheus", ref: "${{ inputs.actions-ref }}", path: ".morpheus-ci", "persist-credentials": false,
         "sparse-checkout": ".github/actions/ios-app-store-version",
       } },
-      { uses: "./.morpheus-ci/.github/actions/ios-app-store-version", with: {
-        "project-file": "${{ format('{0}/{1}/project.pbxproj', inputs.working-directory, inputs.project) }}",
-        "app-id": "${{ inputs.app-store-connect-app-id }}", "bundle-id": "${{ inputs.ios-bundle-id }}",
-        storefront: "${{ inputs.app-store-storefront }}",
-      } },
     ]);
+    expect(versionCheck?.steps?.find(({ uses }) => uses === "./.morpheus-ci/.github/actions/ios-app-store-version")?.with).toEqual({
+      version: "${{ steps.identity.outputs.version }}", "app-id": "${{ inputs.app-store-connect-app-id }}",
+      "bundle-id": "${{ inputs.ios-bundle-id }}", storefront: "${{ inputs.app-store-storefront }}",
+    });
+    expect(versionCheck?.steps?.at(-1)).toMatchObject({ id: "checked", env: { CHECK_ATTEMPT: "${{ github.run_attempt }}" } });
+    expect(versionCheck?.outputs?.attempt).toBe("${{ steps.checked.outputs.attempt }}");
     expect(JSON.stringify(versionCheck)).not.toContain("secrets.");
     expect(test?.needs).toEqual(["changes", "version-check"]);
 
@@ -1683,6 +1685,127 @@ describe("ios-nightly-build.yml", () => {
       expect(shouldCheck(configured, needs, () => false)).toBe(checks);
       expect(shouldTest(configured, needs, () => false)).toBe(tests);
       expect(shouldTest(configured, needs, () => true)).toBe(false);
+    }
+  });
+
+  function nightlyExpression(expression: string | undefined) {
+    return new Function("inputs", "needs", "jobs", "github", "cancelled", `return (${
+      expression?.trim().slice(3, -2).replace(/\.([\w]+(?:-[\w]+)+)\b/g, '["$1"]')
+    })`);
+  }
+
+  it.each([
+    [true, false, "success", "success", "success", "2", "2", ["true", "verified", "2", "1.0.1"], false, true],
+    [true, false, "failure", "success", "success", "2", "2", ["false", "", "", ""], false, false],
+    [true, false, "success", "failure", "success", "2", "2", ["false", "", "", ""], false, false],
+    [true, false, "success", "success", "failure", "2", "2", ["false", "", "", ""], false, false],
+    [true, true, "success", "success", "success", "1", "2", ["false", "", "1", "1.0.1"], false, false],
+    [true, true, "success", "success", "success", "2", "2", ["true", "verified", "2", "1.0.1"], true, true],
+    [false, true, "success", "success", "skipped", "", "2", ["true", "verified", "", ""], true, false],
+    [false, false, "failure", "failure", "skipped", "", "2", ["true", "", "", ""], false, false],
+  ] as const)("qualifies opt-in %s, built-in %s, test %s, preflight %s, version %s, check %s, attempt %s", async (
+    optIn, runUpload, test, preflight, version, checked, attempt, outputs, shouldUpload, shouldCallerUpload,
+  ) => {
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const configured = { "check-app-store-version": optIn, "run-upload": runUpload };
+    const github = { run_attempt: attempt };
+    const needs = {
+      changes: { result: "success", outputs: { build: "true" } },
+      preflight: { result: preflight, outputs: { sha: preflight === "success" ? "verified" : "" } },
+      "version-check": { result: version, outputs: { attempt: checked, version: "1.0.1" } },
+      test: { result: test },
+    };
+    const ready = wf.jobs?.["release-ready"];
+    expect(ready?.needs).toEqual(["changes", "preflight", "version-check", "test"]);
+    const qualifies = nightlyExpression(ready?.if)(configured, needs, {}, github, () => false);
+    const dependenciesPassed = [preflight, version, test].every((result) => result === "success");
+    const releaseChecked = optIn && dependenciesPassed;
+    expect(qualifies).toBe(releaseChecked && checked === attempt);
+    const retained = releaseChecked && checked !== attempt;
+    const releaseReady = { result: "skipped", outputs: { build: "", sha: "", "check-attempt": "", "archive-version": "" } };
+    if (qualifies || retained) {
+      const root = await mkdtemp(join(tmpdir(), "nightly-qualification-"));
+      try {
+        const output = join(root, "output");
+        const run = spawnSync("bash", ["-e", "-c", ready!.steps![0]!.run!], {
+          env: { ...process.env, GITHUB_OUTPUT: output, VERIFIED_SHA: "verified", CHECK_ATTEMPT: checked, ARCHIVE_VERSION: "1.0.1" }, encoding: "utf8",
+        });
+        expect(run.status, run.stderr).toBe(0);
+        releaseReady.result = "success";
+        releaseReady.outputs = Object.fromEntries((await readFile(output, "utf8")).trim().split("\n").map((line) => line.split("="))) as typeof releaseReady.outputs;
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+    const jobs = { ...needs, "release-ready": releaseReady };
+    const actual = ["build", "sha", "check-attempt", "archive-version"].map((key) =>
+      nightlyExpression(wf.on?.workflow_call?.outputs?.[key]?.value)(configured, jobs, jobs, github, () => false));
+    expect(actual).toEqual(outputs);
+    expect(nightlyExpression(wf.jobs?.upload?.if)(configured, jobs, jobs, github, () => false)).toBe(shouldUpload);
+    const docs = await readFile(join(DIR, "../../architecture.md"), "utf8");
+    const callerGuard = docs.match(/\$\{\{ needs\.nightly\.result == 'success'[\s\S]+?\}\}/)?.[0];
+    const [build, sha, checkAttempt, archiveVersion] = actual;
+    const caller = { result: dependenciesPassed ? "success" : "failure",
+      outputs: { build, sha, "check-attempt": checkAttempt, "archive-version": archiveVersion } };
+    expect(nightlyExpression(callerGuard)({}, { nightly: caller }, {}, github, () => false)).toBe(shouldCallerUpload);
+    if (retained) {
+      expect(nightlyExpression(callerGuard)({}, { nightly: { ...caller, outputs: { ...releaseReady.outputs } } }, {}, github, () => false)).toBe(false);
+    }
+  });
+
+  it("plans from the Xcode archive target's resolved Release settings, not a Debug or skipped target", async () => {
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const resolve = wf.jobs?.["version-check"]?.steps?.find(({ id }) => id === "identity");
+    const root = await mkdtemp(join(tmpdir(), "nightly-archive-settings-"));
+    const app = { target: "ExampleApp", action: "archive", buildSettings: {
+      PRODUCT_TYPE: "com.apple.product-type.application", PLATFORM_NAME: "iphoneos", SKIP_INSTALL: "NO",
+      CONFIGURATION: "Release", PRODUCT_BUNDLE_IDENTIFIER: "com.example.ios", MARKETING_VERSION: "1.0",
+    } };
+    const row = (settings: Record<string, string>) => ({ ...app, buildSettings: { ...app.buildSettings, ...settings } });
+    try {
+      await writeFile(join(root, "xcodebuild"), '#!/bin/bash\nprintf "%s\\n" "$@" > "$ARGV"\nprintf "%s\\n" "$METADATA"\n', { mode: 0o755 });
+      const output = join(root, "output");
+      const run = (metadata: unknown, bundle = "com.example.ios") => spawnSync("bash", ["-e", "-c", resolve!.run!], {
+        env: { ...process.env, PATH: `${root}:${process.env.PATH}`, GITHUB_WORKSPACE: root, RUNNER_TEMP: root, GITHUB_OUTPUT: output,
+          ARGV: join(root, "argv"), METADATA: JSON.stringify(metadata), WORKING_DIRECTORY: "apps/ios", PROJECT: "Example.xcodeproj",
+          SCHEME: "Example Release", CONFIGURATION: "Release", BUNDLE_ID: bundle, XCODE_XCCONFIG_FILE: "" }, encoding: "utf8",
+      });
+      const ignored = row({ SKIP_INSTALL: "YES", MARKETING_VERSION: "1.0.1", CONFIGURATION: "Debug" });
+      expect(run([ignored, app])).toMatchObject({ status: 0, stderr: "" });
+      expect(await readFile(output, "utf8")).toBe("version=1.0\n");
+      expect(await readFile(join(root, "argv"), "utf8")).toBe([
+        "-showBuildSettings", "-json", "-project", `${root}/apps/ios/Example.xcodeproj`, "-scheme", "Example Release", "-configuration",
+        "Release", "-destination", "generic/platform=iOS", "-derivedDataPath", `${root}/ios-version-check`,
+        "-disableAutomaticPackageResolution", "-onlyUsePackageVersionsFromResolvedFile", "archive", "",
+      ].join("\n"));
+      expect(run([app], "com.other.ios")).toMatchObject({ status: 1, stdout: "", stderr: expect.stringContaining("app bundle ID") });
+      expect(run([row({ CONFIGURATION: "Debug", MARKETING_VERSION: "1.0.1" })])).toMatchObject({ status: 1, stdout: "" });
+      expect(run([{ ...app, action: "build" }])).toMatchObject({ status: 1, stdout: "" });
+      expect(run([app, row({ PRODUCT_BUNDLE_IDENTIFIER: "com.other.ios" })])).toMatchObject({ status: 1, stdout: "" });
+      expect(await readFile(output, "utf8")).toBe("version=1.0\n");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses the effective upload bundle override before starting the script", async () => {
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const upload = wf.jobs?.upload;
+    expect(upload?.env?.IOS_BUNDLE_ID).toBe("${{ vars.IOS_BUNDLE_ID || inputs.ios-bundle-id }}");
+    const release = upload?.steps?.find(({ name }) => name === "Archive, sign, and upload to TestFlight");
+    const root = await mkdtemp(join(tmpdir(), "nightly-effect-identity-"));
+    try {
+      await writeFile(join(root, "upload"), '#!/bin/bash\nprintf "%s %s %s\\n" "$IOS_BUNDLE_ID" "$BUILD_CONFIGURATION" "$MARKETING_VERSION"\n', { mode: 0o755 });
+      const run = (bundle: string, optIn: string) => spawnSync("bash", ["-e", "-c", release!.run!], {
+        env: { ...process.env, GITHUB_WORKSPACE: root, UPLOAD_SCRIPT: "upload", CHECK_APP_STORE_VERSION: optIn,
+          IOS_BUNDLE_ID: bundle, CHECKED_BUNDLE_ID: "com.example.ios", CHECKED_VERSION: "1.0.1", CHECKED_CONFIGURATION: "Production",
+          BUILD_CONFIGURATION: "Legacy", MARKETING_VERSION: "0.9", XCODE_XCCONFIG_FILE: "" }, encoding: "utf8",
+      });
+      expect(run("com.other.ios", "true")).toMatchObject({ status: 1, stdout: "", stderr: expect.stringContaining("Effective IOS_BUNDLE_ID") });
+      expect(run("com.example.ios", "true")).toMatchObject({ status: 0, stdout: "com.example.ios Production 1.0.1\n" });
+      expect(run("com.other.ios", "false")).toMatchObject({ status: 0, stdout: "com.other.ios Legacy 0.9\n" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 
@@ -1891,7 +2014,7 @@ jq -r "$expr" "$FIXTURES/$file"
     expect(test?.with?.["test-iterations"]).toBe("${{ inputs.test-iterations }}");
     expect(test?.with?.["only-testing"]).toBe("${{ inputs.only-testing }}");
     expect(test?.with?.["skip-testing"]).toBe("${{ inputs.skip-testing }}");
-    expect(upload?.needs).toEqual(["changes", "preflight", "test"]);
+    expect(upload?.needs).toEqual(["changes", "preflight", "test", "release-ready"]);
     expect(upload?.if).toContain("inputs.run-upload");
     expect(upload?.environment).toBe("${{ inputs.environment }}");
     expect(checkout?.with?.ref).toBe("${{ needs.preflight.outputs.sha }}");
@@ -1916,7 +2039,6 @@ jq -r "$expr" "$FIXTURES/$file"
     expect(release?.env?.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64).toBe(
       "${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}",
     );
-    expect(release?.run).toBe('"$GITHUB_WORKSPACE/$UPLOAD_SCRIPT"');
     expect(steps.indexOf(release!)).toBeGreaterThan(
       steps.findIndex((step) => step.name === "Install release tooling"),
     );

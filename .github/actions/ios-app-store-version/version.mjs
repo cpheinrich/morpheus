@@ -67,35 +67,87 @@ function unquote(value) {
 }
 
 function projectTokens(text) {
-  return [...text.matchAll(/\/\*[\s\S]*?\*\/|\/\/[^\r\n]*|"(?:\\[\s\S]|[^"\\])*"|[\w.$-]+|[^\s]/g)]
+  return [...text.matchAll(/\/\*[\s\S]*?\*\/|\/\/[^\r\n]*|"(?:\\[\s\S]|[^"\\])*"|<[0-9a-fA-F\s]*>|(?:[^\s"={};(),<>/]|\/(?![/*]))+|[^\s]/g)]
     .filter(([token]) => !token.startsWith("//") && !token.startsWith("/*"));
 }
 
-function assignmentOperator(text, tokens, index) {
-  const [token] = tokens[index];
-  const operator = tokens[index + 1]?.[0];
-  if (token === '"' || (token === "/" && text.startsWith("/*", tokens[index].index))) {
-    throw new Error("Unterminated string or comment in the Xcode project");
+function parseProject(text) {
+  const tokens = projectTokens(text);
+  let index = 0;
+  const peek = () => tokens[index]?.[0];
+  function take(expected) {
+    if (peek() !== expected) throw new Error(`Invalid Xcode project: expected ${expected}`);
+    return tokens[index++];
   }
-  if (operator === "=" && token.startsWith('"') && token.includes("\\")) {
-    throw new Error("Escaped assignment key in the Xcode project; refusing to guess its setting");
+  function scalar() {
+    const token = tokens[index++];
+    if (token?.[0] === '"' || (token?.[0] === "/" && text.startsWith("/*", token.index))) {
+      throw new Error("Unterminated string or comment in the Xcode project");
+    }
+    if (!token || /^[={};(),<>]$/.test(token[0])) throw new Error("Invalid scalar in the Xcode project");
+    return { start: token.index, raw: token[0], literal: unquote(token[0]) };
   }
-  return operator;
+  function value() {
+    if (peek() === "{") return dictionary();
+    if (peek() !== "(") return scalar();
+    take("(");
+    while (peek() !== ")") {
+      value();
+      if (peek() === ")") break;
+      take(",");
+    }
+    take(")");
+    return null;
+  }
+  function dictionary() {
+    take("{");
+    const entries = new Map();
+    while (peek() !== "}") {
+      const { literal: name } = scalar();
+      if (name.includes("\\")) throw new Error("Escaped assignment key in the Xcode project");
+      if (entries.has(name)) throw new Error(`Duplicate ${name} key in the Xcode project`);
+      take("=");
+      entries.set(name, value());
+      take(";");
+    }
+    take("}");
+    return entries;
+  }
+  const root = dictionary();
+  const objects = root.get("objects");
+  if (index !== tokens.length || !(objects instanceof Map)) throw new Error("Invalid Xcode project object dictionary");
+  return objects;
 }
 
-function assignments(text, key, pattern) {
-  const tokens = projectTokens(text);
+function projectBuildSettings(text) {
+  const settings = [];
+  for (const object of parseProject(text).values()) {
+    if (!(object instanceof Map) || typeof object.get("isa")?.literal !== "string") {
+      throw new Error("Invalid object in the Xcode project");
+    }
+    if (object.get("isa").literal !== "XCBuildConfiguration") continue;
+    if ([...object.keys()].some((key) => key.startsWith("baseConfigurationReference"))) {
+      throw new Error("Xcode project has an inherited xcconfig; use resolved build settings for plan or edit manually");
+    }
+    const direct = object.get("buildSettings");
+    if (!(direct instanceof Map)) throw new Error("Missing direct buildSettings in XCBuildConfiguration");
+    settings.push(direct);
+  }
+  return settings;
+}
+
+function assignments(settings, key, pattern) {
   const values = [];
-  for (const [index, [token]] of tokens.entries()) {
-    const operator = assignmentOperator(text, tokens, index);
-    const name = unquote(token);
-    if (name !== key && !name.startsWith(`${key}[`)) continue;
-    if (operator !== "=" && operator !== "[") continue;
-    const value = tokens[index + 2];
-    if (name !== key || operator !== "=" || !value || tokens[index + 3]?.[0] !== ";" || !pattern.test(unquote(value[0]))) {
+  for (const direct of settings) {
+    if ([...direct.keys()].some((name) => name.startsWith(`${key}[`))) {
       throw new Error(`Expected an unqualified literal ${key} assignment in the Xcode project`);
     }
-    values.push({ start: value.index, raw: value[0], literal: unquote(value[0]) });
+    if (!direct.has(key)) continue;
+    const value = direct.get(key);
+    if (typeof value?.literal !== "string" || !pattern.test(value.literal)) {
+      throw new Error(`Expected an unqualified literal ${key} assignment in the Xcode project`);
+    }
+    values.push(value);
   }
   if (values.length === 0) throw new Error(`Missing ${key} assignments in the Xcode project`);
   return values;
@@ -145,8 +197,9 @@ function apply({ "project-file": path, "from-version": fromVersion, "to-version"
     throw new Error("--to-version must be greater than --from-version");
   }
   const { text, mode } = readProject(path);
-  const marketingValues = assignments(text, marketing, versionPattern);
-  const buildValues = assignments(text, build, /^[0-9]+$/);
+  const settings = projectBuildSettings(text);
+  const marketingValues = assignments(settings, marketing, versionPattern);
+  const buildValues = assignments(settings, build, /^[0-9]+$/);
   const current = projectVersion(marketingValues);
   if (current === toVersion && buildValues.every(({ literal }) => literal === "0")) return;
   if (current !== fromVersion) throw new Error(`Expected ${marketing} ${fromVersion}, found ${current}; refusing to edit`);
@@ -158,7 +211,7 @@ async function plan({ "app-id": appId, "bundle-id": bundleId, storefront = "us",
   if (bump === -1) throw new Error("--component must be patch, minor or major");
   if ((version === undefined) === (path === undefined)) throw new Error("plan requires exactly one of --version or --project-file");
   const url = lookupUrl(appId, bundleId, storefront);
-  const currentVersion = version ?? projectVersion(assignments(readProject(path).text, marketing, versionPattern));
+  const currentVersion = version ?? projectVersion(assignments(projectBuildSettings(readProject(path).text), marketing, versionPattern));
   const current = versionParts(currentVersion, "Xcode marketing version");
   const storeVersion = listingVersion(await lookup(url), appId, bundleId, storefront);
   const order = compare(current, versionParts(storeVersion, "App Store marketing version"));

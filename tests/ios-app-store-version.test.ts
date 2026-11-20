@@ -43,6 +43,21 @@ function apply(path: string, from = "1.0", to = "1.0.1") {
   return spawnSync(process.execPath, [executable, "apply", "--project-file", path, "--from-version", from, "--to-version", to], { encoding: "utf8" });
 }
 
+function configuration(settings: string, fields = "") {
+  return `{ isa = XCBuildConfiguration; ${fields} buildSettings = { ${settings} }; name = Release; };`;
+}
+
+function project(...configs: string[]) {
+  const ids = configs.map((_, index) => `F${String(index).padStart(23, "0")}`);
+  return [
+    "// !$*UTF8*$!", "{", "archiveVersion = 1;", "classes = {};", "objectVersion = 56;", "objects = {",
+    'AAAAAAAAAAAAAAAAAAAAAAAA = { isa = PBXProject; attributes = { CURRENT_PROJECT_VERSION = 77; MARKETING_VERSION = "9.9"; NOTE = "}/**/;"; }; buildConfigurationList = BBBBBBBBBBBBBBBBBBBBBBBB; targets = (); };',
+    ...configs.map((config, index) => `${ids[index]} /* Configuration */ = ${config}`),
+    `BBBBBBBBBBBBBBBBBBBBBBBB = { isa = XCConfigurationList; buildConfigurations = (${ids.join(", ")},); defaultConfigurationName = Release; };`,
+    "};", "rootObject = AAAAAAAAAAAAAAAAAAAAAAAA;", "}", "",
+  ].join("\r\n");
+}
+
 describe("iOS App Store version CLI", () => {
   it.each([
     ["1.0", "1.0.0", undefined, "bump-required", "1.0.1"],
@@ -89,14 +104,12 @@ describe("iOS App Store version CLI", () => {
   });
 
   it("reads and atomically rewrites all 12 settings of each kind, then guards stale writes", () => {
-    const project = (version: string, build: (index: number) => number) => [
-      "// !$*UTF8*$!", "{", "\t// MARKETING_VERSION = 9.9;", 'NOTE = "MARKETING_VERSION = 9.9;";',
-      ...Array.from({ length: 12 }, (_, index) => [
-        "\t{", `\t\tMARKETING_VERSION = ${index % 2 ? `"${version}"` : version};`,
-        `\t\tCURRENT_PROJECT_VERSION = ${build(index)}; /* preserve */`, "\t}",
-      ]).flat(), "}", "",
-    ].join("\r\n");
-    withProject(project("1.0", (index) => index + 3), (path) => {
+    const sourceProject = (version: string, build: (index: number) => number) => project(
+      ...Array.from({ length: 16 }, (_, index) => configuration(index < 12
+        ? `MARKETING_VERSION = ${index % 2 ? `"${version}"` : version}; CURRENT_PROJECT_VERSION = ${build(index)}; /* preserve */`
+        : 'OTHER_LDFLAGS = ("$(inherited)", "-ObjC",);')),
+    );
+    withProject(sourceProject("1.0", (index) => index + 3), (path) => {
       const result = plan(["--project-file", path]);
       expect(result.status).toBe(0);
       expect(JSON.parse(result.stdout)).toEqual({ status: "bump-required", currentVersion: "1.0", storeVersion: "1.0", nextVersion: "1.0.1" });
@@ -105,35 +118,59 @@ describe("iOS App Store version CLI", () => {
       const installed = statSync(path);
       expect(installed.ino).not.toBe(source.ino);
       expect(installed.mode & 0o777).toBe(source.mode & 0o777);
-      expect(readFileSync(path, "utf8")).toBe(project("1.0.1", () => 0));
+      expect(readFileSync(path, "utf8")).toBe(sourceProject("1.0.1", () => 0));
       expect(apply(path)).toMatchObject({ status: 0, stderr: "" });
       expect(apply(path, "1.0", "1.0.2")).toMatchObject({ status: 1, stderr: expect.stringContaining("refusing to edit") });
       expect(statSync(path).ino).toBe(installed.ino);
-      expect(readFileSync(path, "utf8")).toBe(project("1.0.1", () => 0));
+      expect(readFileSync(path, "utf8")).toBe(sourceProject("1.0.1", () => 0));
     });
   });
 
   it.each([
     ["MARKETING_VERSION = 1.1;", "Mixed MARKETING_VERSION"],
-    ["MARKETING_VERSION = $(VERSION);", "literal MARKETING_VERSION"],
+    ['MARKETING_VERSION = "$(VERSION)";', "literal MARKETING_VERSION"],
     ['"MARKETING_VERSION[sdk=iphoneos*]" = 1.1;', "literal MARKETING_VERSION"],
     ['"MARKETING_\\U0056ERSION" = 1.1;', "Escaped assignment key"],
-    ["CURRENT_PROJECT_VERSION = $(BUILD_NUMBER);", "literal CURRENT_PROJECT_VERSION"],
+    ['CURRENT_PROJECT_VERSION = "$(BUILD_NUMBER)";', "literal CURRENT_PROJECT_VERSION"],
     ["CURRENT_PROJECT_VERSION /* note */ = 1.2;", "literal CURRENT_PROJECT_VERSION"],
     ["/* MARKETING_VERSION = 1.1;", "Unterminated string or comment"],
   ])("refuses an ambiguous project without modifying either setting: %s", (extra, error) => {
-    const text = `{ MARKETING_VERSION = 1.0; CURRENT_PROJECT_VERSION = 12; ${extra} }`;
+    const text = project(configuration("MARKETING_VERSION = 1.0; CURRENT_PROJECT_VERSION = 12;"), configuration(extra));
     withProject(text, (path) => {
       expect(apply(path)).toMatchObject({ status: 1, stderr: expect.stringContaining(error) });
       expect(readFileSync(path, "utf8")).toBe(text);
     });
   });
 
+  it.each([
+    "baseConfigurationReference = AAAAAAAAAAAAAAAAAAAAAAAB;",
+    'baseConfigurationReferenceAnchor = AAAAAAAAAAAAAAAAAAAAAAAB; baseConfigurationReferenceRelativePath = "Release.xcconfig";',
+  ])("refuses inherited Release settings even when Debug has an ahead literal: %s", (reference) => {
+    const text = project(configuration("MARKETING_VERSION = 1.0.1; CURRENT_PROJECT_VERSION = 12;").replace("Release", "Debug"),
+      configuration("", reference));
+    withProject(text, (path) => {
+      expect(plan(["--project-file", path])).toMatchObject({ status: 1, stdout: "", stderr: expect.stringContaining("inherited xcconfig") });
+      expect(apply(path, "1.0.1", "1.0.2")).toMatchObject({ status: 1, stderr: expect.stringContaining("inherited xcconfig") });
+      expect(readFileSync(path, "utf8")).toBe(text);
+    });
+  });
+
+  it("does not take the version from unscoped metadata or accept a repeated setting", () => {
+    withProject(project(configuration("CURRENT_PROJECT_VERSION = 12;")), (path) => {
+      expect(plan(["--project-file", path])).toMatchObject({ status: 1, stdout: "", stderr: expect.stringContaining("Missing MARKETING_VERSION") });
+    });
+    const repeated = project(configuration("MARKETING_VERSION = 1.0; CURRENT_PROJECT_VERSION = 12; MARKETING_VERSION = 1.1;"));
+    withProject(repeated, (path) => {
+      expect(apply(path)).toMatchObject({ status: 1, stderr: expect.stringContaining("Duplicate MARKETING_VERSION") });
+      expect(readFileSync(path, "utf8")).toBe(repeated);
+    });
+  });
+
   it("refuses missing build settings, non-forward targets, and a partial pre-existing bump", () => {
-    withProject("MARKETING_VERSION = 1.0;\n", (path) => {
+    withProject(project(configuration("MARKETING_VERSION = 1.0;")), (path) => {
       expect(apply(path)).toMatchObject({ status: 1, stderr: expect.stringContaining("Missing CURRENT_PROJECT_VERSION") });
     });
-    const partial = "MARKETING_VERSION = 1.0.1;\nCURRENT_PROJECT_VERSION = 27;\n";
+    const partial = project(configuration("MARKETING_VERSION = 1.0.1; CURRENT_PROJECT_VERSION = 27;"));
     withProject(partial, (path) => {
       expect(apply(path, "1.0", "1.0.0")).toMatchObject({ status: 1, stderr: expect.stringContaining("must be greater") });
       expect(apply(path)).toMatchObject({ status: 1, stderr: expect.stringContaining("refusing to edit") });
