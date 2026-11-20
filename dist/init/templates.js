@@ -1592,6 +1592,23 @@ Check the artifact at its intended size and at least one relevant device width. 
 Deliver the artifact, a compact concept key, reference links, assumptions, and any unverified
 constraints. Stop at the comparison stage so the user can choose or combine a direction before
 production animation work begins.
+
+## Choose how to render the production animation
+
+After the user selects a direction and asks to build it, ask whether to render it in code
+(for example, SwiftUI, Core Graphics, or a Metal shader on iOS) or play a pre-rendered sequence
+if they have not already chosen. Recommend one approach and explain the main tradeoff for the
+selected motion at its intended size.
+
+- Prefer rendering in code when the motion reacts to gestures, live progress, layout, theme, or
+  changing content. Start with the platform's drawing APIs and use a shader when per-pixel effects
+  are central to the design.
+- Consider a pre-rendered sequence for a short, fixed loop with complex lighting, texture, or
+  particles. Compare visual fidelity, frame count and rate, app download size, decoded memory,
+  and the cost of updating the art. Reuse an existing sequence player when one fits.
+- Verify either approach in the running product at its intended size. Check the loop seam,
+  playback lifecycle, and Reduce Motion, and measure runtime cost on a representative device
+  when the effect or playback footprint makes the choice material.
 `;
 /**
  * The website initializer's discovery point.
