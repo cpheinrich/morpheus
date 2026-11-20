@@ -1739,8 +1739,8 @@ description: Run the app or website for interactive comment QA — the person pi
 
 # Comment QA
 
-Run \`morpheus qa guide\` and follow it. It prints the instructions that ship with the installed
-CLI, so they always match the commands you will run.
+Run \`morpheus qa guide\` and follow it. Read any batch-level Notes before handling the
+individual comments. The guide ships with the CLI, so its instructions match the commands you run.
 
 The short form:
 

@@ -13,6 +13,7 @@ import { notifyBatchPending, QA_COMMENTS_WEBHOOK_FILE, resolveWebhookConfig } fr
  */
 export interface PostedBatch {
   preview?: { url: string; kind?: "serve-sim" | "web" | "other"; label?: string };
+  notes?: unknown;
   comments: unknown[];
   frame?: { path?: string; width: number; height: number; capturedAt?: string; dataUrl?: string };
 }
@@ -74,6 +75,7 @@ export async function recordBatch(
     version: 1, id, project, createdAt: new Date().toISOString(),
     preview: raw.preview ?? defaultPreview,
     ...(frameMeta ? { frame: frameMeta } : {}),
+    ...(raw.notes !== undefined ? { notes: raw.notes } : {}),
     comments, status: "pending",
   });
   const path = await writePendingBatch(root, batch, frameBytes, commentFrames);

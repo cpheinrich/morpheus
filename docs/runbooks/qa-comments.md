@@ -30,6 +30,8 @@ local/qa-comments/
 `batchId` is `YYYYMMDDTHHMMSSZ-<short>` (UTC clock + 4–6 char suffix) so ids
 sort chronologically without consulting a remote.
 
+An optional Notes field gives the whole batch context. It is saved as `notes` (up to 2,000 characters). Read it before working on the individual comments.
+
 Send publishes `batch.json` and its optional frames together, then returns the
 batch id and current open-batch count. Later Sends append to the queue while an
 agent is working. A claim is created exclusively for one agent identity; other
@@ -199,6 +201,7 @@ See `src/qa/comments.ts` (`QaCommentBatch`). Summary:
 | `createdAt` | ISO-8601 with offset |
 | `preview` | `{ url, kind?: "serve-sim" \| "web" \| "other", label? }` |
 | `frame` | `{ path?: "frame.png", width, height, capturedAt? }` |
+| `notes` | optional batch guidance, trimmed to at most 2,000 characters. Live web adapters persist it with the batch. |
 | `comments` | ordered list of `{ id, text, createdAt, anchor, screenId?, frame? }` |
 | `comments[].screenId` | screen identifier captured at iOS or web pin placement |
 | `comments[].frame` | `{ path?: "comment-N.png", width, height, capturedAt? }`, captured at iOS or web pin placement |

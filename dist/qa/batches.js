@@ -62,6 +62,7 @@ export async function recordBatch(root, project, raw, defaultPreview) {
         version: 1, id, project, createdAt: new Date().toISOString(),
         preview: raw.preview ?? defaultPreview,
         ...(frameMeta ? { frame: frameMeta } : {}),
+        ...(raw.notes !== undefined ? { notes: raw.notes } : {}),
         comments, status: "pending",
     });
     const path = await writePendingBatch(root, batch, frameBytes, commentFrames);

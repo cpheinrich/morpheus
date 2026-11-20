@@ -147,6 +147,13 @@ describe("freeze and settle", () => {
     }
   });
 
+  it("restores the original notes when the submitter reopens a rejected batch", () => {
+    const frozen = freeze({ ...withDrafts(draft()), notes: "  Shared guidance  " }, ID, true);
+    if ("error" in frozen) throw new Error(frozen.error);
+    const rejected = { ...frozen.session, pending: { ...frozen.session.pending!, state: "rejected" as const } };
+    expect(reopenPending(rejected).notes).toBe("Shared guidance");
+  });
+
   it("only edits a rejected batch, or drops a failing build request", () => {
     const frozen = freeze(withDrafts(draft()), ID, true);
     if ("error" in frozen) throw new Error(frozen.error);
