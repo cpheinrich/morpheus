@@ -202,7 +202,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     return null;
   }
 
-  async function start(record, task, prompt, answerId = null) {
+  async function start(record, task, prompt, answerId = null, preparedCheckout) {
     if (task.selection?.provider === "claude" && !stopping && leaseIsCurrent()) {
       const gated = await claudeLaunchGate(record, task, answerId);
       if (gated) return gated;
@@ -220,7 +220,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     const run = { controller, done: false, output: null, stopReason: null };
     active = run;
     Promise.resolve()
-      .then(() => execute({ task, admissionId, resume, prompt, signal: controller.signal }))
+      .then(() => execute({ task, admissionId, resume, prompt, signal: controller.signal, ...(preparedCheckout && { preparedCheckout }) }))
       .then((output) => { run.output = output; }, () => {})
       .finally(() => markDone(run));
     return "running";
@@ -235,7 +235,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     active = run;
     Promise.resolve()
       .then(() => prepare(task, run.controller.signal))
-      .then((ready) => { run.output = ready === true; run.diagnosticCode = fleetDiagnostic.safeParse(ready?.diagnosticCode).data; }, () => {})
+      .then((ready) => { run.output = ready === true || ready?.prepared === true ? ready : false; run.diagnosticCode = fleetDiagnostic.safeParse(ready?.diagnosticCode).data; }, () => {})
       .finally(() => markDone(run));
     return "preparing";
   }
@@ -246,7 +246,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
       return finishBeforeLaunch(record, canceled, "Canceled before launching the worker.");
     if (!active?.output || active.stopReason || stopping)
       return finishBeforeLaunch(record, failed, "Studio source preparation failed or was interrupted before launch.", active?.diagnosticCode);
-    return start(record, task, task.brief.text);
+    return start(record, task, task.brief.text, null, active.output?.checkout);
   }
 
   function abort(reason) {

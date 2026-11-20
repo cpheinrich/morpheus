@@ -1051,8 +1051,9 @@ sys.stdin.read()
 `, { mode: 0o700 });
   const source = { project: 'fixture', revision, checkout: 'git' };
   const selection = { provider: 'claude', gateway: claudeRoute.gateway.name, model: claudeRoute.model };
-  const attempt = { taskId: randomUUID(), attemptId };
-  const envelope = { task: { source, selection }, binding: attempt, gatewayBaseUrl: claudeRoute.gateway.baseUrl };
+  const attempt = { taskId: randomUUID(), attemptId: randomUUID() };
+  const checkout = { attemptId: attempt.attemptId, mirror: f.cwd, comparisonRef: 'refs/remotes/origin/main', comparisonRevision: revision };
+  const envelope = { task: { source, selection }, binding: attempt, checkout, gatewayBaseUrl: claudeRoute.gateway.baseUrl };
   for (const [label, changes] of [
     ['origin', { gatewayBaseUrl: f.config.gateway.baseUrl }],
     ['project', { task: { source: { ...source, project: 'another' }, selection } }],
@@ -1060,7 +1061,9 @@ sys.stdin.read()
     ['model', { task: { source, selection: { ...selection, model: f.config.model } } }],
     ['speed', { task: { source, selection: { ...selection, speed: 'fast' } } }],
   ]) {
-    const refused = await exchange('protected', { envelope: { ...envelope, ...changes } });
+    const probeAttempt = randomUUID();
+    const refused = await exchange('protected', { envelope: { ...envelope, ...changes,
+      binding: { ...attempt, attemptId: probeAttempt }, checkout: { ...checkout, attemptId: probeAttempt } } });
     assert.deepEqual(refused.outcome.invocation, { launch: 'never-launched', admissionId: refused.admissionId, sessionId: null }, label);
     await assert.rejects(readFile(join(f.root, refused.admissionId + '.json')), { code: 'ENOENT' }, label);
   }
@@ -1099,7 +1102,7 @@ sys.stdin.read()
   assert.equal(launched.env.ANTHROPIC_BASE_URL, 'https://claude.invalid/pool');
   for (const variable of ['CLAUDE_FIXTURE_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'CODEX_HOME']) assert.equal(launched.env[variable], undefined);
 
-  const recovery = { op: 'recover', admissionId: done.admissionId, binding: attempt, recovery: { source, checkout: { attemptId, mirror: f.cwd } } };
+  const recovery = { op: 'recover', admissionId: done.admissionId, binding: attempt, recovery: { source, checkout } };
   const replay = await exchange('protected', { envelope: recovery });
   assert.deepEqual(replay.outcome.invocation, done.outcome.invocation);
   assert.deepEqual(replay.artifacts, done.artifacts);

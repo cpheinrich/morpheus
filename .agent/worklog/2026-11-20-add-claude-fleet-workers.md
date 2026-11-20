@@ -28,3 +28,9 @@ route. A prelaunch quota failure releases the initial slot and workspace and res
 task to its queue. A saved answer keeps the live lease and original session while Claude quota
 recovers. Focused regressions verified these cases. The controller corrected the draft Test plan
 to name the exact suites that ran.
+
+The follow-up confirmed the original fixes and found a disk leak on repeated quota holds. The
+supervisor now fetches shared mirror data before checking fresh quota and defers the attempt
+checkout to the admitted launch. Repeated holds made zero attempt checkouts in the real-Git
+fixture. The controller joins a returned receipt to the exact prior attempt and exposes a queued
+receipt as historical evidence.

@@ -17,11 +17,12 @@ const controller = new AbortController();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const lines = input[Symbol.asyncIterator]();
 
-async function executionCheckout(config, source, checkout) {
-  if (source.workspace) return checkoutWorkspace(config.cwd, config.fleetWorkspace, source.workspace, checkout?.attemptId, config.sandbox, true);
+async function executionCheckout(config, source, checkout, { provider, resume } = {}) {
+  const reopen = provider !== "claude" || Boolean(resume);
+  if (source.workspace) return checkoutWorkspace(config.cwd, config.fleetWorkspace, source.workspace, checkout?.attemptId, config.sandbox, reopen);
   if (config.fleetWorkspace) throw new Error("Workspace binding required");
   const cwd = source.checkout === "git"
-    ? await studioCheckout(config.cwd, checkout, source.revision, true) : config.cwd;
+    ? await studioCheckout(config.cwd, checkout, source.revision, reopen) : config.cwd;
   return { cwd };
 }
 
@@ -33,9 +34,9 @@ async function prepare({ task, admissionId, resume, prompt, gatewayBaseUrl, chec
       (claude && (task.source.checkout !== "git" || !checkout)) ||
       !uuid.test(admissionId) || !await enrolledSandbox(config, task.source))
     throw new Error("Studio project or gateway model does not match this enrollment");
-  const { cwd, paths } = await executionCheckout(config, task.source, checkout);
+  const { cwd, paths } = await executionCheckout(config, task.source, checkout, { provider: gateway.provider, resume });
   const git = (path, ...args) => execFileSync("git", ["-C", path, ...args], { env: gitEnv(), encoding: "utf8", timeout: 5000 }).trim();
-  // Preparation creates the checkouts; reopening them does not imply continuation.
+  // A prepared Codex checkout may be reopened for a first turn.
   // Every repository must still be clean immediately before its first invocation.
   if (task.source.revision !== git(cwd, "rev-parse", "HEAD") ||
       (!resume && Object.values(paths ?? { primary: cwd }).some(path => git(path, "status", "--porcelain"))))
@@ -61,6 +62,10 @@ async function emitArtifacts(outputDir, result, deadline) {
 }
 
 async function execute(job) {
+  const { resume, admissionId } = job;
+  if (JSON.stringify(job.binding?.workspace) !== JSON.stringify(job.task.source.workspace) ||
+      (job.checkout && job.binding?.attemptId !== job.checkout.attemptId))
+    return { terminationVerified: true, invocation: notLaunched(admissionId), diagnosticCode: "workspace_policy_mismatch", result: { outcome: "failed" } };
   let prepared;
   try { prepared = await prepare(job); }
   catch {
@@ -68,10 +73,6 @@ async function execute(job) {
     return { terminationVerified: true, invocation, diagnosticCode: "checkout_failed", result: { outcome: "failed", summary: "Studio checkout or model failed the pilot admission check." } };
   }
   const { outputDir, handoff } = prepared;
-  const { resume, admissionId } = job;
-  if (JSON.stringify(job.binding?.workspace) !== JSON.stringify(job.task.source.workspace) ||
-      (job.checkout && job.binding?.attemptId !== job.checkout.attemptId))
-    return { terminationVerified: true, invocation: notLaunched(admissionId), diagnosticCode: "workspace_policy_mismatch", result: { outcome: "failed" } };
   const binding = prepared.claudeGateway ? { ...job.binding, source: job.task.source, gatewayBaseUrl: prepared.claudeGateway } : job.binding;
   const outcome = await gatewayWorker(configPath, handoff, resume, admissionId, controller.signal, prepared.checkout, binding, job.task.selection);
   return publishInvocation(outputDir, outcome);

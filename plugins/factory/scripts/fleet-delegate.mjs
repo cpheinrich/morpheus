@@ -36,14 +36,14 @@ export async function fleetTarget(config, cwd) {
   return { project: candidates[0], revision: git(target.cwd, "rev-parse", "HEAD") };
 }
 
-export function projectRun({ task, question, pending, receipt, queueReason }, runId) {
+export function projectRun({ task, question, pending, receipt, previousAttemptReceipt, queueReason }, runId) {
   if (pending) return { runId, placement: "fleet", pending };
   const state = states[task.state] ?? "interrupted";
   return {
     id: task.id, runId: task.id, placement: "fleet", state, selection: task.selection,
     terminal: ["completed", "failed", "canceled"].includes(state),
     hostId: (task.attempt ?? task.lastAttempt)?.hostId, result: task.result,
-    source: task.source, receipt, question, ...(queueReason ? { queueReason } : {}),
+    source: task.source, receipt, question, ...(previousAttemptReceipt && { previousAttemptReceipt }), ...(queueReason ? { queueReason } : {}),
     task: { id: task.id, contextId: task.contextId, status: { state: task.state } },
   };
 }

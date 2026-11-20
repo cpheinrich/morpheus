@@ -150,7 +150,12 @@ async function controllerSnapshot(db, task, now) {
     task.lastAttempt && !task.attempt ? db.doc(receiptPath(task.id)).get().then((doc) => doc.data()) : null,
     task.state === "TASK_STATE_SUBMITTED" ? fleetQueueReason(db, task, now, maxAgeMs) : null,
   ]);
-  return { task, question, ...(receipt ? { receipt } : {}), ...(queueReason ? { queueReason } : {}) };
+  const snapshot = { task, question, ...(queueReason ? { queueReason } : {}) };
+  if (receipt && receipt.attemptId === task.lastAttempt?.id) {
+    const key = receipt.state === "TASK_STATE_SUBMITTED" ? "previousAttemptReceipt" : "receipt";
+    snapshot[key] = receipt;
+  }
+  return snapshot;
 }
 
 async function heartbeat(db, { hostId, slotId }, input, now) {

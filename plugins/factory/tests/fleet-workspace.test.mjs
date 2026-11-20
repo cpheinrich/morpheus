@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import childProcess, { execFileSync, spawn } from "node:child_process";
 import { once, EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, readdir, rm, writeFile, symlink } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -238,7 +238,11 @@ test("transient launch quota requeues an untouched task and keeps an accepted an
   let quota = "available", denyLaunch = true;
   const launches = [];
   const sessionId = randomUUID();
-  const runner = createFleetRunner({ journalPath: join(f.root, "runner.json"), prepare: async () => true,
+  const executor = createStudioExecutor({ account: "fixture", node: process.execPath, script: executorScript,
+    workerConfig: f.configPath, project: "app", fleetWorkspace: f.host });
+  let preparing;
+  const runner = createFleetRunner({ journalPath: join(f.root, "runner.json"),
+    prepare: (task, signal) => (preparing = executor.prepare(task, signal)),
     quotaObservation: () => [{ provider: "claude", gateway: "anthropic", checkedAt: 100, status: quota }],
     checkLaunchQuota: async () => { if (denyLaunch) { quota = "unknown"; throw new Error("unavailable"); } },
     call: async (op, input) => {
@@ -256,24 +260,37 @@ test("transient launch quota requeues an untouched task and keeps an accepted an
   const tick = async state => { await new Promise(setImmediate); assert.equal(await runner.tick(), state); };
   await tick("preparing");
   const originalAttempt = (await snapshot()).task.attempt.id;
+  await preparing;
   await tick("settled");
   const held = await snapshot();
   assert.equal(held.task.state, "TASK_STATE_SUBMITTED");
   assert.equal(held.task.attempt, null);
-  assert.equal(held.receipt.launch, "never-launched");
-  assert.equal(held.receipt.attemptId, originalAttempt);
+  assert.equal(held.receipt, undefined);
+  assert.equal(held.previousAttemptReceipt.launch, "never-launched");
+  assert.equal(held.previousAttemptReceipt.attemptId, originalAttempt);
+  const receiptPath = `factoryReceipts/${taskId}`;
+  api.db.docs.set(receiptPath, { ...held.previousAttemptReceipt, attemptId: randomUUID() });
+  assert.equal((await snapshot()).previousAttemptReceipt, undefined);
+  api.db.docs.set(receiptPath, held.previousAttemptReceipt);
   assert.deepEqual(launches, []);
   await tick("idle");
   assert.equal((await snapshot()).queueReason, "quota-unavailable");
   assert.equal((await api.call("submit", request)).value.task.id, taskId);
+  quota = "available";
+  await tick("preparing");
+  const lastHeld = (await snapshot()).task.attempt.id;
+  await preparing;
+  await tick("settled");
+  assert.deepEqual(await readdir(f.cwd), []);
   denyLaunch = false; quota = "available";
   await tick("preparing");
+  await preparing;
   await tick("running");
   await tick("waiting");
   const pending = await snapshot();
   assert.equal(pending.task.state, "TASK_STATE_INPUT_REQUIRED");
   assert.notEqual(pending.task.attempt.id, originalAttempt);
-  const replay = await api.call("finish", { taskId, attemptId: originalAttempt, outcome: "TASK_STATE_SUBMITTED", cleanupVerified: true,
+  const replay = await api.call("finish", { taskId, attemptId: lastHeld, outcome: "TASK_STATE_SUBMITTED", cleanupVerified: true,
     result: null, invocation: { launch: "never-launched", admissionId: null, sessionId: null } }, "worker");
   assert.deepEqual(replay.value, { settled: true });
   await api.call("answer", { taskId, attemptId: pending.task.attempt.id, questionId: pending.task.questionId, messageId: "saved-answer", text: "the saved value" });

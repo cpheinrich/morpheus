@@ -118,10 +118,13 @@ export function createStudioExecutor(config, call, checkQuota) {
         }
       } catch { return { prepared: false, diagnosticCode: "source_fetch_failed" }; }
       if (signal.aborted) return false;
+      // A Claude quota hold can requeue this task. Fetch shared mirror data,
+      // then let the admitted invocation materialize its attempt checkout.
+      if (task.selection?.provider === "claude") return { prepared: true, checkout };
       const output = await invoke(config, { op: "prepare", source: task.source, checkout }, signal);
       return output?.outcome?.prepared === true ? true : { prepared: false, diagnosticCode: output ? "checkout_failed" : "executor_invocation_failed" };
     },
-    async execute({ task, admissionId, resume, prompt, signal }) {
+    async execute({ task, admissionId, resume, prompt, signal, preparedCheckout }) {
       if (signal.aborted) return noLaunch(admissionId);
       try {
         if (task.selection.provider !== "claude") await checkQuota(task.selection);
@@ -138,7 +141,7 @@ export function createStudioExecutor(config, call, checkQuota) {
         task: { source: task.source, selection: task.selection }, admissionId, resume, prompt,
         binding: attemptBinding(task),
         gatewayBaseUrl: task.selection.provider === "claude" ? config.claudeGatewayBaseUrl : config.gatewayBaseUrl,
-        checkout: checkoutFor(config, task),
+        checkout: preparedCheckout ?? checkoutFor(config, task),
       }, signal);
       if (!output) return { terminationVerified: false, diagnosticCode: "executor_invocation_failed" };
       if (output.outcome?.terminationVerified !== true) return { terminationVerified: false };
