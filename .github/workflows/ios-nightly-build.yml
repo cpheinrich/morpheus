@@ -19,8 +19,8 @@ on:
     inputs:
       actions-ref:
         description: >
-          Passed through to ios-ci.yml: the cpheinrich/morpheus revision whose composite actions
-          the test stage uses. A consumer pinning this workflow to a commit passes the same commit.
+          The cpheinrich/morpheus revision whose composite actions the version check and ios-ci.yml
+          use. A consumer pinning this workflow to a commit passes the same commit.
         type: string
         required: false
         default: main
@@ -156,20 +156,26 @@ on:
         description: Runner-temp subdirectory shared with the upload script for SwiftPM caching.
         type: string
         default: "TestFlightSourcePackages"
-      # Release identity is only ever read by this workflow's own upload job. A
-      # cross-repository caller has to own that job — GitHub passes it no
-      # environment secrets — so it configures the action directly and leaves
-      # every input below unset rather than stating its identifiers twice.
+      check-app-store-version:
+        description: >
+          Require the verified release candidate to be ahead of the public App Store version.
+          Requires explicit ios-bundle-id and app-store-connect-app-id, even with run-upload false.
+        type: boolean
+        default: false
+      app-store-storefront:
+        description: Two-letter country for the public listing used by the opt-in version check.
+        type: string
+        default: us
       apple-team-id:
         description: Fallback Apple team id when IOS_APPLE_TEAM_ID is not set in the environment.
         type: string
         default: ""
       ios-bundle-id:
-        description: Fallback bundle id when IOS_BUNDLE_ID is not set in the environment.
+        description: Explicit public bundle ID for the version check; upload fallback for IOS_BUNDLE_ID.
         type: string
         default: ""
       app-store-connect-app-id:
-        description: Numeric App Store Connect app id forwarded to the caller's upload script.
+        description: Public numeric app ID for the version check and the upload script.
         type: string
         default: ""
       testflight-beta-group-ids:
@@ -385,10 +391,44 @@ jobs:
     if: ${{ needs.changes.outputs.build == 'true' }}
     uses: ./.github/workflows/release-preflight.yml
 
+  version-check:
+    name: Verify iOS App Store version
+    needs: [changes, preflight]
+    if: ${{ inputs.check-app-store-version && needs.changes.outputs.build == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out verified main commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+          persist-credentials: false
+      - name: Check out this workflow's actions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: cpheinrich/morpheus
+          ref: ${{ inputs.actions-ref }}
+          path: .morpheus-ci
+          persist-credentials: false
+          sparse-checkout: .github/actions/ios-app-store-version
+      - name: Check live App Store version
+        uses: ./.morpheus-ci/.github/actions/ios-app-store-version
+        with:
+          project-file: ${{ format('{0}/{1}/project.pbxproj', inputs.working-directory, inputs.project) }}
+          app-id: ${{ inputs.app-store-connect-app-id }}
+          bundle-id: ${{ inputs.ios-bundle-id }}
+          storefront: ${{ inputs.app-store-storefront }}
+
   test:
     name: Test before release
-    needs: changes
-    if: ${{ needs.changes.outputs.build == 'true' || needs.changes.outputs.capture == 'true' }}
+    needs: [changes, version-check]
+    if: >-
+      ${{ !cancelled() && needs.changes.result == 'success'
+          && (needs.changes.outputs.build == 'true' || needs.changes.outputs.capture == 'true')
+          && (!inputs.check-app-store-version || needs.changes.outputs.build != 'true'
+              || needs.version-check.result == 'success') }}
     uses: ./.github/workflows/ios-ci.yml
     with:
       actions-ref: ${{ inputs.actions-ref }}

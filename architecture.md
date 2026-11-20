@@ -4064,6 +4064,22 @@ non-ancestor baseline builds conservatively. Manual callers may force a build. K
 workflow filename stable makes its successful runs the durable release cursor without a second
 state store.
 
+For a release build, callers can opt into `check-app-store-version` and pass explicit
+`app-store-connect-app-id` and `ios-bundle-id`, plus `app-store-storefront` when the listing is
+outside the default `us` storefront. A read-only Linux job runs after source verification and
+before simulator tests. It checks the project at the exact verified SHA with Morpheus's action at
+`actions-ref` (pass the workflow's pin when pinning). Only a project version ahead of the public
+listing can proceed. Equality proposes a patch bump and stops delivery; a behind version or
+an unavailable or invalid result stops delivery without a proposal. Existing callers are not
+required to opt in, and visual-only runs do not consult the store. Caller-owned upload jobs must
+require the reusable workflow to succeed as well as check its `build` and `sha` outputs.
+
+The [version action and CLI](.github/actions/ios-app-store-version/README.md) are credential-free.
+The caller owns the repair: plan against the candidate, apply only an equal-version proposal on
+the claimed repair branch, reset every governed Xcode build setting to `0`, and land the change
+through independent review and protected merge before admitting a new release SHA. Build-number
+allocation at upload remains with App Store Connect and the caller's upload action.
+
 `ios-nightly-build` requires caller-supplied project and scheme. Callers opting into
 `capture-every-night` run simulator tests even when the release change detector skips an upload.
 Callers should keep their 06:00 local trigger and add off-hour recovery triggers at 06:17,

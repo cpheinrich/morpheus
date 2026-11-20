@@ -1590,9 +1590,7 @@ describe("ios-nightly-build.yml", () => {
     expect(call?.inputs?.scheme?.required).toBe(true);
     expect(call?.inputs?.["capture-every-night"]?.default).toBe(false);
     expect(wf.jobs?.test?.if).toContain("needs.changes.outputs.capture");
-    // Release identity feeds only this workflow's own upload job. A
-    // cross-repository caller must own that job, so it configures the
-    // ios-testflight-upload action instead and states its identifiers once.
+    // Without the version opt-in, release identity remains optional.
     for (const owned of [
       "upload-script",
       "apple-team-id",
@@ -1642,6 +1640,50 @@ describe("ios-nightly-build.yml", () => {
     expect(script).toContain("/actions/runs/${id}/jobs?filter=all&per_page=100");
     expect(script).toContain('git diff --quiet "$baseline" "$CURRENT_SHA" -- "${paths[@]}"');
     expect(script).toContain("building conservatively");
+  });
+
+  it("checks only opted-in release candidates at their verified SHA, before simulator tests", async () => {
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const inputs = wf.on?.workflow_call?.inputs;
+    const versionCheck = wf.jobs?.["version-check"];
+    const test = wf.jobs?.test;
+    expect(inputs?.["check-app-store-version"]).toMatchObject({ type: "boolean", default: false });
+    expect(inputs?.["app-store-storefront"]).toMatchObject({ type: "string", default: "us" });
+    expect(versionCheck?.needs).toEqual(["changes", "preflight"]);
+    expect(versionCheck?.steps).toMatchObject([
+      { uses: CHECKOUT_V7, with: { ref: "${{ needs.preflight.outputs.sha }}", "persist-credentials": false } },
+      { uses: CHECKOUT_V7, with: {
+        repository: "cpheinrich/morpheus", ref: "${{ inputs.actions-ref }}", path: ".morpheus-ci", "persist-credentials": false,
+        "sparse-checkout": ".github/actions/ios-app-store-version",
+      } },
+      { uses: "./.morpheus-ci/.github/actions/ios-app-store-version", with: {
+        "project-file": "${{ format('{0}/{1}/project.pbxproj', inputs.working-directory, inputs.project) }}",
+        "app-id": "${{ inputs.app-store-connect-app-id }}", "bundle-id": "${{ inputs.ios-bundle-id }}",
+        storefront: "${{ inputs.app-store-storefront }}",
+      } },
+    ]);
+    expect(JSON.stringify(versionCheck)).not.toContain("secrets.");
+    expect(test?.needs).toEqual(["changes", "version-check"]);
+
+    const evaluate = (condition: string | undefined) => new Function("inputs", "needs", "cancelled", `return (${
+      condition?.trim().slice(3, -2).replace(/\.(check-app-store-version|version-check)\b/g, '["$1"]')
+    })`);
+    const shouldCheck = evaluate(versionCheck?.if);
+    const shouldTest = evaluate(test?.if);
+    for (const [optIn, build, capture, versionResult, checks, tests] of [
+      [false, "true", "false", "skipped", false, true],
+      [true, "false", "false", "skipped", false, false],
+      [true, "false", "true", "skipped", false, true],
+      [true, "true", "false", "success", true, true],
+      [true, "true", "true", "failure", true, false],
+      [true, "true", "false", "skipped", true, false],
+    ]) {
+      const configured = { "check-app-store-version": optIn };
+      const needs = { changes: { result: "success", outputs: { build, capture } }, "version-check": { result: versionResult } };
+      expect(shouldCheck(configured, needs, () => false)).toBe(checks);
+      expect(shouldTest(configured, needs, () => false)).toBe(tests);
+      expect(shouldTest(configured, needs, () => true)).toBe(false);
+    }
   });
 
   /**

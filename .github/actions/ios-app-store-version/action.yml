@@ -1,0 +1,73 @@
+name: Check iOS App Store version
+description: Require the candidate's marketing version to be ahead of its public App Store listing.
+inputs:
+  version:
+    description: Literal marketing version; provide exactly one of version or project-file.
+    required: false
+  project-file:
+    description: Checked-out project.pbxproj path; provide exactly one of version or project-file.
+    required: false
+  app-id:
+    description: Public numeric App Store app ID.
+    required: true
+  bundle-id:
+    description: Exact iOS bundle identifier for the public listing.
+    required: true
+  storefront:
+    description: Two-letter country for the public App Store listing.
+    default: us
+  component:
+    description: Proposed bump on equality only, patch, minor or major.
+    default: patch
+outputs:
+  status:
+    description: ahead, bump-required or behind.
+    value: ${{ steps.plan.outputs.status }}
+  current-version:
+    description: Marketing version of the candidate.
+    value: ${{ steps.plan.outputs.current-version }}
+  store-version:
+    description: Marketing version reported by the public store.
+    value: ${{ steps.plan.outputs.store-version }}
+  next-version:
+    description: Proposed marketing version on equality; empty otherwise.
+    value: ${{ steps.plan.outputs.next-version }}
+runs:
+  using: composite
+  steps:
+    - name: Plan against live App Store version
+      id: plan
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        PROJECT_FILE: ${{ inputs.project-file }}
+        APP_ID: ${{ inputs.app-id }}
+        BUNDLE_ID: ${{ inputs.bundle-id }}
+        STOREFRONT: ${{ inputs.storefront }}
+        COMPONENT: ${{ inputs.component }}
+      run: |
+        args=()
+        if [[ -n "$VERSION" ]]; then args+=(--version "$VERSION"); fi
+        if [[ -n "$PROJECT_FILE" ]]; then args+=(--project-file "$PROJECT_FILE"); fi
+        plan=$(node "$GITHUB_ACTION_PATH/version.mjs" plan --app-id "$APP_ID" --bundle-id "$BUNDLE_ID" \
+          --storefront "$STOREFRONT" --component "$COMPONENT" "${args[@]}")
+        node --input-type=module -e '
+          import { appendFileSync } from "node:fs";
+          const {status, currentVersion, storeVersion, nextVersion} = JSON.parse(process.argv[1]);
+          appendFileSync(process.env.GITHUB_OUTPUT,
+            `status=${status}\ncurrent-version=${currentVersion}\nstore-version=${storeVersion}\nnext-version=${nextVersion ?? ""}\n`);
+          console.log(`App Store version: ${status} (Xcode ${currentVersion}, store ${storeVersion})${nextVersion ? `; proposed bump: ${nextVersion}` : ""}`);
+        ' "$plan"
+    - name: Require candidate ahead of the App Store
+      shell: bash
+      env:
+        STATUS: ${{ steps.plan.outputs.status }}
+        NEXT_VERSION: ${{ steps.plan.outputs.next-version }}
+      run: |
+        case "$STATUS" in
+          ahead) exit 0 ;;
+          bump-required) echo "Version bump required: land $NEXT_VERSION via a protected PR, then admit the new SHA." >&2 ;;
+          behind) echo 'Xcode is behind the live App Store version; hold delivery and reconcile manually.' >&2 ;;
+          *) echo 'No valid App Store version plan; hold delivery.' >&2 ;;
+        esac
+        exit 1
