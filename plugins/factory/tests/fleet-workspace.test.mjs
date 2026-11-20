@@ -14,6 +14,7 @@ import { bindWorkspace, digest, verifyWorkspace } from "../src/fleet-workspace.m
 import { createFleetApi } from "../src/fleet-api.mjs";
 import { readWorkerConfig } from "../src/gateway-worker.mjs";
 import { createStudioExecutor } from "../src/fleet-execution.mjs";
+import { createFleetRunner } from "../src/fleet-runner.mjs";
 import { authorizeFleetProjects } from "../scripts/fleet-mcp.mjs";
 import { projectRun, dispatchFleet } from "../scripts/fleet-delegate.mjs";
 import { checkoutWorkspace } from "../src/fleet-workspace-checkout.mjs";
@@ -115,8 +116,15 @@ function updateTask(previous, value) {
 function memoryDb() {
   const docs = new Map();
   const doc = path => ({ path, get: async () => ({ data: () => structuredClone(docs.get(path)) }), set: async value => docs.set(path, value) });
-  return { docs, doc, async runTransaction(fn) {
-    return fn({ get: ref => ref.get(), set: (ref, value) => docs.set(ref.path, structuredClone(value)),
+  const collection = name => ({ where(field, op, value) {
+    assert.equal(op, "array-contains");
+    return { limit(n) { return { get: async () => ({ docs: [...docs.entries()]
+      .filter(([path, row]) => path.startsWith(`${name}/`) && row[field]?.includes(value))
+      .slice(0, n).map(([path]) => ({ id: path.split("/").at(-1) })) }) }; } };
+  } });
+  return { docs, doc, collection, async runTransaction(fn) {
+    return fn({ get: ref => ref.get(), set: (ref, value, options) =>
+      docs.set(ref.path, options?.merge ? { ...docs.get(ref.path), ...structuredClone(value) } : structuredClone(value)),
       update: (ref, value) => docs.set(ref.path, updateTask(docs.get(ref.path), value)), delete: ref => docs.delete(ref.path) });
   } };
 }
@@ -182,6 +190,104 @@ test("Claude enrollment shares one workspace and slot without using Codex quota 
   const codex = await api.call("submit", { ...request, messageId: "same-workspace", provider: "codex" });
   assert.deepEqual(codex.value.task.selection, api.config.projects.app.selection);
   assert.equal((await api.call("get", { taskId: codex.value.task.id })).value.queueReason, "workspace-busy");
+});
+
+test("Claude readiness and submission refuse pinned-only and viewer-only enrollment before queueing", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  api.config.claudeSelection = { provider: "claude", gateway: "anthropic", model: "claude-test" };
+  const original = api.config.projects.app;
+  for (const enrollment of [{ ...original, revision: f.revisions.app }, { ...original, eligibleSlots: ["viewer-only"] }]) {
+    api.config.projects.app = enrollment;
+    assert.equal((await api.call("readiness", { project: "app", provider: "claude" })).status, 403);
+    assert.equal((await api.call("submit", { project: "app", revision: f.revisions.app, workspace: f.intent,
+      text: "fixture", messageId: "refuse-before-queue", provider: "claude" })).status, 403);
+  }
+  assert.deepEqual([...api.db.docs.keys()], ["factorySlots/slot"]);
+});
+
+test("16 Claude tasks held for quota cannot hide a runnable Codex task", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  api.config.claudeSelection = { provider: "claude", gateway: "anthropic", model: "claude-test" };
+  const base = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "fixture" };
+  const claudeIds = [];
+  for (let i = 0; i < 17; i++) {
+    const submitted = await api.call("submit", { ...base, provider: "claude", messageId: `claude-${i}` });
+    claudeIds.push(submitted.value.task.id);
+  }
+  const codex = (await api.call("submit", { ...base, messageId: "codex" })).value.task.id;
+  const quota = [{ provider: "claude", gateway: "anthropic", checkedAt: 100, status: "limited" },
+    { provider: "codex", gateway: "fixture", checkedAt: 100, status: "available" }];
+  const heartbeat = () => api.call("heartbeat", { available: true, capacity: 1, quota }, "worker").then(reply => reply.value.tasks);
+  assert.deepEqual(await heartbeat(), [codex]);
+  const claim = await api.call("claim", { taskId: codex, attemptId: randomUUID() }, "worker");
+  assert.equal(claim.value.task.id, codex);
+  const refused = await api.call("finish", { taskId: codex, attemptId: claim.value.attempt.id,
+    outcome: "TASK_STATE_SUBMITTED", cleanupVerified: true, result: null,
+    invocation: { launch: "never-launched", admissionId: null, sessionId: null } }, "worker");
+  assert.deepEqual(refused.value, { settled: false });
+  quota[0].status = "available";
+  assert.deepEqual(await heartbeat(), claudeIds.slice(0, 16));
+});
+
+test("transient launch quota requeues an untouched task and keeps an accepted answer bound to its session", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  api.config.claudeSelection = { provider: "claude", gateway: "anthropic", model: "claude-test" };
+  const request = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "original brief", messageId: "held-original", provider: "claude" };
+  const taskId = (await api.call("submit", request)).value.task.id;
+  const snapshot = async () => (await api.call("get", { taskId })).value;
+  let quota = "available", denyLaunch = true;
+  const launches = [];
+  const sessionId = randomUUID();
+  const runner = createFleetRunner({ journalPath: join(f.root, "runner.json"), prepare: async () => true,
+    quotaObservation: () => [{ provider: "claude", gateway: "anthropic", checkedAt: 100, status: quota }],
+    checkLaunchQuota: async () => { if (denyLaunch) { quota = "unknown"; throw new Error("unavailable"); } },
+    call: async (op, input) => {
+      const response = await api.call(op, input, "worker");
+      assert.equal(response.status, 200, JSON.stringify(response.value));
+      return response.value;
+    },
+    execute: async ({ admissionId, resume, prompt }) => {
+      launches.push({ admissionId, resume, prompt });
+      return { terminationVerified: true, sessionId, invocation: { launch: "session", admissionId, sessionId },
+        result: resume ? { outcome: "completed", summary: "done" } : { outcome: "needs_input", question: "Which value?" } };
+    },
+  });
+  t.after(() => runner.stop());
+  const tick = async state => { await new Promise(setImmediate); assert.equal(await runner.tick(), state); };
+  await tick("preparing");
+  const originalAttempt = (await snapshot()).task.attempt.id;
+  await tick("settled");
+  const held = await snapshot();
+  assert.equal(held.task.state, "TASK_STATE_SUBMITTED");
+  assert.equal(held.task.attempt, null);
+  assert.equal(held.receipt.launch, "never-launched");
+  assert.equal(held.receipt.attemptId, originalAttempt);
+  assert.deepEqual(launches, []);
+  await tick("idle");
+  assert.equal((await snapshot()).queueReason, "quota-unavailable");
+  assert.equal((await api.call("submit", request)).value.task.id, taskId);
+  denyLaunch = false; quota = "available";
+  await tick("preparing");
+  await tick("running");
+  await tick("waiting");
+  const pending = await snapshot();
+  assert.equal(pending.task.state, "TASK_STATE_INPUT_REQUIRED");
+  assert.notEqual(pending.task.attempt.id, originalAttempt);
+  const replay = await api.call("finish", { taskId, attemptId: originalAttempt, outcome: "TASK_STATE_SUBMITTED", cleanupVerified: true,
+    result: null, invocation: { launch: "never-launched", admissionId: null, sessionId: null } }, "worker");
+  assert.deepEqual(replay.value, { settled: true });
+  await api.call("answer", { taskId, attemptId: pending.task.attempt.id, questionId: pending.task.questionId, messageId: "saved-answer", text: "the saved value" });
+  denyLaunch = true;
+  await tick("waiting");
+  assert.equal((await snapshot()).task.answerId, "saved-answer");
+  assert.equal(launches.length, 1);
+  denyLaunch = false; quota = "available";
+  await tick("running");
+  await tick("settled");
+  const complete = await snapshot();
+  assert.equal(complete.task.state, "TASK_STATE_COMPLETED");
+  assert.equal(complete.receipt.sessionId, sessionId);
+  assert.deepEqual(launches.map(({ resume,prompt }) => [resume,prompt]), [[null,"original brief"],[launches[0].admissionId,"the saved value"]]);
 });
 
 async function exchange(f, job, protectedConfig = true, environment = {}) {

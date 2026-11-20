@@ -5,6 +5,11 @@ const taskPath = (id) => `factoryTasks/${id}`;
 const messagePath = (taskId, messageId) => `${taskPath(taskId)}/messages/${messageId}`;
 const identifier = /^[A-Za-z0-9_-]{1,128}$/;
 
+// Keep the existing indexed field and the legacy Codex slot keys. A provider
+// blocked on quota must not occupy the other provider's candidate window.
+export const claudeQueueKey = slot => `claude:${slot}`;
+export const taskQueueKeys = (slots, selection) => selection?.provider === "claude" ? slots.map(claudeQueueKey) : slots;
+
 function assertId(value) {
   if (typeof value !== "string" || !identifier.test(value)) throw new Error("Invalid Factory identity");
 }
@@ -47,7 +52,7 @@ export function submitTask(db, { contextId, messageId, text, launch, display, no
       return { task, replay: true };
     }
     const brief = { messageId, role: "ROLE_USER", text, createdAt: now };
-    const task = { ...spec, queuedSlots: eligibleSlots, id, contextId, brief, ...(display && { display }), state: "TASK_STATE_SUBMITTED", createdAt: now };
+    const task = { ...spec, queuedSlots: taskQueueKeys(eligibleSlots, selection), id, contextId, brief, ...(display && { display }), state: "TASK_STATE_SUBMITTED", createdAt: now };
     transaction.set(db.doc(taskPath(id)), task);
     transaction.set(submission, { taskId: id, launch: spec });
     return { task, replay: false };

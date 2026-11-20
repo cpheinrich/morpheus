@@ -124,7 +124,7 @@ export function createStudioExecutor(config, call, checkQuota) {
     async execute({ task, admissionId, resume, prompt, signal }) {
       if (signal.aborted) return noLaunch(admissionId);
       try {
-        await checkQuota(task.selection);
+        if (task.selection.provider !== "claude") await checkQuota(task.selection);
       } catch {
         return { terminationVerified: true, invocation: notLaunched(admissionId), result: { outcome: "failed", summary: "Studio gateway quota is unavailable or above the Factory limit." } };
       }

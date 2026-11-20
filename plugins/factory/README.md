@@ -966,7 +966,8 @@ flowchart LR
 
    Once both supervisors and every enrolled execution account are qualified for Claude, add the
    optional `claudeSelection` object (`provider`, `gateway`, and exact `model`) to this enrollment.
-   It applies to the existing project and slot grants without duplicating those grants.
+   It applies to every existing Git-backed execution grant without duplicating policy by
+   project. Pinned checkouts and viewer-only slots are refused before Claude submission.
 
 4. Deploy `factory-pilot` with the runtime service account, an explicit region
    and a pinned image digest. Have an admin disable the Cloud Run Invoker IAM
@@ -1311,7 +1312,10 @@ from the controller. The service returns the project's selected provider, gatewa
 model, plus each eligible slot's heartbeat, capacity, busy state and quota status.
 For Claude readiness, add `provider: "claude"`. Submit Claude work with the same provider
 field or the exact enrolled Claude model. The existing default applies when neither is
-specified. A slot must report fresh Claude headroom to claim a Claude task.
+specified. A slot must report fresh Claude headroom to claim a Claude task. The shared queue
+checks a separate bounded candidate window for each runnable provider. If quota disappears
+before the first launch, the same task returns to the queue after both leases are released.
+An accepted clarification waits with its original session and answer until quota returns.
 `placementCandidate` means the slot was free in a heartbeat at most 45 seconds old
 and its last scoped quota check reported headroom within two minutes. It does not
 test the source checkout, inference credential, model or later claim. Every eligible

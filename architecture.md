@@ -3514,9 +3514,11 @@ shared workspace. Synthetic source qualification and actual host/profile canarie
 separate evidence. See the [workspace enrollment contract](plugins/factory/README.md#enroll-a-related-repository-workspace).
 Artifacts are private Cloud Storage generations referenced by Firestore.
 Sub2API selects the upstream account within the provider bound to the task. Codex is
-the existing default. One optional service-wide Claude binding applies to the same
-enrolled projects and slots. A slot advertises scoped quota for both providers, shares
-one lease and journal between them, and checks quota again before invocation. Restricted
+the existing default. One optional service-wide Claude binding applies to each Git-backed
+execution grant. Pinned checkouts and viewer grants do not admit Claude tasks. A slot advertises scoped quota for both providers, shares
+one lease and journal between them, and checks quota again before invocation. Provider-specific
+windows in the same indexed queue allow either pool to advance. A verified prelaunch quota
+hold releases the initial slot and workspace under the same task identity. Restricted
 Claude workers share the same guardian under an OS write sandbox. A per-invocation
 loopback relay restricts their network access to the configured model endpoint.
 A retryable submit replays the same stable message ID, and existing status reports the

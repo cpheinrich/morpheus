@@ -1,4 +1,5 @@
 import { receiptPath } from "./fleet-receipt.mjs";
+import { taskQueueKeys } from "./fleet-mailbox.mjs";
 import { quotaStatus } from "./fleet-quota.mjs";
 
 export const legacyLeaseMs = 60_000;
@@ -74,7 +75,7 @@ export function claimTask(db, {
 
     const attempt = { id: attemptId, hostId, slotId, leaseUntil: now + leaseMs };
     transaction.update(taskRef, { state: "TASK_STATE_WORKING", attempt, queuedSlots: [] });
-    transaction.update(db.doc(slotPath(slotId)), { attemptId });
+    transaction.update(db.doc(slotPath(slotId)), { attemptId, lastProvider: task.selection?.provider ?? "codex" });
     transaction.set(workspaceRef, { attemptId, taskId });
     return { attempt, replay: false };
   });
@@ -126,6 +127,32 @@ export function settleAttempt(db, { taskId, attemptId, hostId, outcome, result, 
       });
     }
     transaction.update(slotRef, { attemptId: null });
+    transaction.delete(workspaceRef);
+    return true;
+  });
+}
+
+// A still-owned reservation that has never started inference can release
+// both leases after a fresh quota failure. The slot remembers this release
+// for a lost reply, even if another host has already reclaimed the task.
+export function requeueUnstartedTask(db, { taskId, attemptId, hostId, slotId, invocation }) {
+  return db.runTransaction(async transaction => {
+    const slotRef = db.doc(slotPath(slotId));
+    const slot = await read(transaction, slotRef);
+    if (slot?.hostId !== hostId) return false;
+    if (slot.requeued?.taskId === taskId && slot.requeued.attemptId === attemptId) return true;
+    const taskRef = db.doc(taskPath(taskId));
+    const task = await read(transaction, taskRef);
+    if (!ownsAttempt(task, attemptId, hostId) || task.attempt.slotId !== slotId || slot.attemptId !== attemptId) return false;
+    if (task.selection?.provider !== "claude" || task.questionId || task.answerId || task.state !== "TASK_STATE_WORKING") return false;
+    const workspaceRef = db.doc(workspacePath(task.workspaceKey));
+    const workspace = await read(transaction, workspaceRef);
+    if (workspace?.attemptId !== attemptId || workspace.taskId !== taskId) return false;
+    const state = task.cancelRequestedAt != null ? "TASK_STATE_CANCELED" : "TASK_STATE_SUBMITTED";
+    const queuedSlots = state === "TASK_STATE_SUBMITTED" ? taskQueueKeys(task.eligibleSlots, task.selection) : [];
+    transaction.update(taskRef, { state, queuedSlots, attempt: null, lastAttempt: task.attempt });
+    transaction.update(slotRef, { attemptId: null, available: false, requeued: { taskId, attemptId } });
+    transaction.set(db.doc(receiptPath(taskId)), { ...invocation, taskId, attemptId, hostId, slotId, state, terminationVerified: true, selection: task.selection, source: task.source });
     transaction.delete(workspaceRef);
     return true;
   });

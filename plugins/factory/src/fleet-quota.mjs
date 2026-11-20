@@ -23,9 +23,15 @@ const observationSchema = z.object({
 });
 export const quotaObservation = z.union([observationSchema, z.array(observationSchema).max(2)]);
 
+export function hasClaudeHeadroom(value, now) {
+  const observations = Array.isArray(value) ? value : [value];
+  const claude = observations.find(item => item?.provider === "claude");
+  return claude && quotaStatus(value, { provider: claude.provider, gateway: claude.gateway }, now).status === "available";
+}
+
 export function quotaStatus(value, selection, now) {
   const parsed = quotaObservation.safeParse(value).data;
-  if (!parsed) return { status: "unknown" };
+  if (!parsed || !selection) return { status: "unknown" };
   const observations = Array.isArray(parsed) ? parsed : [parsed];
   const match = observations.find(item => item.provider === selection.provider && item.gateway === selection.gateway);
   if (!match) return { status: "incompatible" };
@@ -66,7 +72,8 @@ export function createFleetQuota(config, { resolve = resolveKeyRef, read = readG
     if (request.provider !== selection.provider || request.gateway !== selection.gateway)
       throw new Error("Factory gateway is not enrolled on Studio");
     // Admission always asks the gateway. A previous readiness heartbeat never admits a run.
-    if ((await refresh()).status !== "available")
+    const held = provider === "claude" && observation?.status !== "available" && now() - lastStartedAt < observationIntervalMs;
+    if ((held ? observation ?? await inFlight : await refresh()).status !== "available")
       throw new Error("Factory gateway is above its threshold or quota is unknown");
   }
 

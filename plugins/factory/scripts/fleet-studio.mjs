@@ -24,6 +24,7 @@ try {
     journalPath: config.journalPath,
     capacity: studioCapacity,
     quotaObservation,
+    checkLaunchQuota: checkClaudeQuota,
   });
   const tick = () => runner.tick().then(result => {
     if (result === "reconciling") console.error("Factory control request interrupted; retaining the last confirmed lease");
