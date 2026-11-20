@@ -31,6 +31,9 @@ on:
       sha:
         description: Exact reviewed main commit the release job must check out.
         value: ${{ jobs.verify.outputs.sha }}
+      current-main-attempt:
+        description: Run attempt that verified the source was current main, empty for an older pinned source.
+        value: ${{ jobs.verify.outputs.current-main-attempt }}
   workflow_dispatch:
 
 permissions:
@@ -42,6 +45,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       sha: ${{ steps.source.outputs.sha }}
+      current-main-attempt: ${{ steps.source.outputs.current-main-attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -123,4 +127,7 @@ jobs:
           {
             echo "sha=$EXPECTED_SHA"
             echo "pr=$merged_pr"
+            if [ "$main_sha" = "$EXPECTED_SHA" ]; then
+              echo "current-main-attempt=$GITHUB_RUN_ATTEMPT"
+            fi
           } >> "$GITHUB_OUTPUT"

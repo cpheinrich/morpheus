@@ -1,5 +1,5 @@
 import { execFile, spawnSync } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -165,6 +165,8 @@ describe("release-preflight.yml", () => {
     expect((wf.on as { workflow_dispatch?: unknown }).workflow_dispatch ?? null).toBeNull();
     expect(call?.secrets).toBeUndefined();
     expect(call?.outputs?.sha?.value).toBe("${{ jobs.verify.outputs.sha }}");
+    expect(call?.outputs?.["current-main-attempt"]?.value).toBe("${{ jobs.verify.outputs.current-main-attempt }}");
+    expect(wf.jobs?.verify?.outputs?.["current-main-attempt"]).toBe("${{ steps.source.outputs.current-main-attempt }}");
     expect(wf.permissions).toEqual({ contents: "read", "pull-requests": "read" });
   });
 
@@ -273,6 +275,7 @@ esac
             PATH: `${bin}:${process.env.PATH}`,
             GITHUB_REF: f.ref ?? "refs/heads/main",
             GITHUB_REPOSITORY: "cpheinrich/example",
+            GITHUB_RUN_ATTEMPT: "2",
             GITHUB_OUTPUT: output,
             EXPECTED_SHA: f.expected ?? source,
             ...(f.allow === undefined ? {} : { ALLOW_PINNED_SOURCE: f.allow }),
@@ -298,7 +301,7 @@ esac
       for (const allow of [undefined, "false", "true"]) {
         const run = await runPreflight(() => ({ allow }));
         expect(run, String(allow)).toMatchObject({ ok: true });
-        expect(run.output).toBe(`sha=${run.source}\npr=42\n`);
+        expect(run.output).toBe(`sha=${run.source}\npr=42\ncurrent-main-attempt=2\n`);
         expect(run.ghCalls.some((call) => call.includes("/compare/"))).toBe(false);
       }
     });
@@ -1651,7 +1654,7 @@ describe("ios-nightly-build.yml", () => {
     expect(versionCheck?.needs).toEqual(["changes", "preflight"]);
     expect(inputs?.["archive-configuration"]).toMatchObject({ type: "string", default: "Release" });
     expect(versionCheck?.["runs-on"]).toBe("${{ inputs.runner }}");
-    expect(versionCheck?.steps?.slice(0, 2)).toMatchObject([
+    expect(versionCheck?.steps?.slice(1, 3)).toMatchObject([
       { uses: CHECKOUT_V7, with: { ref: "${{ needs.preflight.outputs.sha }}", "persist-credentials": false } },
       { uses: CHECKOUT_V7, with: {
         repository: "cpheinrich/morpheus", ref: "${{ inputs.actions-ref }}", path: ".morpheus-ci", "persist-credentials": false,
@@ -1688,6 +1691,23 @@ describe("ios-nightly-build.yml", () => {
     }
   });
 
+  it("refuses to start a fresh store check when source verification was retained by a selective retry", async () => {
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const guard = wf.jobs?.["version-check"]?.steps?.[0];
+    expect(guard?.env).toEqual({
+      SOURCE_ATTEMPT: "${{ needs.preflight.outputs.current-main-attempt }}",
+      CHECK_ATTEMPT: "${{ github.run_attempt }}",
+    });
+    for (const sourceAttempt of ["1", "", "2"]) {
+      const run = spawnSync("bash", ["-e", "-c", guard!.run!], {
+        env: { ...process.env, SOURCE_ATTEMPT: sourceAttempt, CHECK_ATTEMPT: "2" }, encoding: "utf8",
+      });
+      expect(run, sourceAttempt).toMatchObject(sourceAttempt === "2"
+        ? { status: 0, stderr: "" }
+        : { status: 1, stderr: expect.stringContaining("Start a fresh workflow invocation from current main") });
+    }
+  });
+
   function nightlyExpression(expression: string | undefined) {
     return new Function("inputs", "needs", "jobs", "github", "cancelled", `return (${
       expression?.trim().slice(3, -2).replace(/\.([\w]+(?:-[\w]+)+)\b/g, '["$1"]')
@@ -1697,21 +1717,23 @@ describe("ios-nightly-build.yml", () => {
   it.each([
     [true, false, "success", "success", "success", "2", "2", ["true", "verified", "2", "1.0.1"], false, true],
     [true, false, "failure", "success", "success", "2", "2", ["false", "", "", ""], false, false],
-    [true, false, "success", "failure", "success", "2", "2", ["false", "", "", ""], false, false],
+    [true, false, "success", "failure", "success", "", "2", ["false", "", "", ""], false, false],
     [true, false, "success", "success", "failure", "2", "2", ["false", "", "", ""], false, false],
-    [true, true, "success", "success", "success", "1", "2", ["false", "", "1", "1.0.1"], false, false],
+    [true, true, "success", "success", "success", "1", "1", ["false", "", "1", "1.0.1"], false, false],
+    [true, true, "success", "success", "success", "1", "2", ["false", "", "", ""], false, false],
+    [true, true, "success", "success", "success", "", "2", ["false", "", "", ""], false, false],
     [true, true, "success", "success", "success", "2", "2", ["true", "verified", "2", "1.0.1"], true, true],
-    [false, true, "success", "success", "skipped", "", "2", ["true", "verified", "", ""], true, false],
-    [false, false, "failure", "failure", "skipped", "", "2", ["true", "", "", ""], false, false],
-  ] as const)("qualifies opt-in %s, built-in %s, test %s, preflight %s, version %s, check %s, attempt %s", async (
-    optIn, runUpload, test, preflight, version, checked, attempt, outputs, shouldUpload, shouldCallerUpload,
+    [false, true, "success", "success", "skipped", "", "", ["true", "verified", "", ""], true, false],
+    [false, false, "failure", "failure", "skipped", "", "", ["true", "", "", ""], false, false],
+  ] as const)("qualifies opt-in %s, built-in %s, test %s, preflight %s, version %s, source attempt %s, version attempt %s", async (
+    optIn, runUpload, test, preflight, version, sourceAttempt, checked, outputs, shouldUpload, shouldCallerUpload,
   ) => {
     const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
     const configured = { "check-app-store-version": optIn, "run-upload": runUpload };
-    const github = { run_attempt: attempt };
+    const github = { run_attempt: "2" };
     const needs = {
       changes: { result: "success", outputs: { build: "true" } },
-      preflight: { result: preflight, outputs: { sha: preflight === "success" ? "verified" : "" } },
+      preflight: { result: preflight, outputs: { sha: preflight === "success" ? "verified" : "", "current-main-attempt": sourceAttempt } },
       "version-check": { result: version, outputs: { attempt: checked, version: "1.0.1" } },
       test: { result: test },
     };
@@ -1720,8 +1742,8 @@ describe("ios-nightly-build.yml", () => {
     const qualifies = nightlyExpression(ready?.if)(configured, needs, {}, github, () => false);
     const dependenciesPassed = [preflight, version, test].every((result) => result === "success");
     const releaseChecked = optIn && dependenciesPassed;
-    expect(qualifies).toBe(releaseChecked && checked === attempt);
-    const retained = releaseChecked && checked !== attempt;
+    expect(qualifies).toBe(releaseChecked && checked === github.run_attempt && sourceAttempt === github.run_attempt);
+    const retained = releaseChecked && checked === "1" && sourceAttempt === "1";
     const releaseReady = { result: "skipped", outputs: { build: "", sha: "", "check-attempt": "", "archive-version": "" } };
     if (qualifies || retained) {
       const root = await mkdtemp(join(tmpdir(), "nightly-qualification-"));
@@ -1760,6 +1782,7 @@ describe("ios-nightly-build.yml", () => {
     const app = { target: "ExampleApp", action: "archive", buildSettings: {
       PRODUCT_TYPE: "com.apple.product-type.application", PLATFORM_NAME: "iphoneos", SKIP_INSTALL: "NO",
       CONFIGURATION: "Release", PRODUCT_BUNDLE_IDENTIFIER: "com.example.ios", MARKETING_VERSION: "1.0",
+      GENERATE_INFOPLIST_FILE: "YES",
     } };
     const row = (settings: Record<string, string>) => ({ ...app, buildSettings: { ...app.buildSettings, ...settings } });
     try {
@@ -1783,6 +1806,88 @@ describe("ios-nightly-build.yml", () => {
       expect(run([{ ...app, action: "build" }])).toMatchObject({ status: 1, stdout: "" });
       expect(run([app, row({ PRODUCT_BUNDLE_IDENTIFIER: "com.other.ios" })])).toMatchObject({ status: 1, stdout: "" });
       expect(await readFile(output, "utf8")).toBe("version=1.0\n");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("requires the selected Release plist to produce the planned marketing version", async () => {
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const resolve = wf.jobs?.["version-check"]?.steps?.find(({ id }) => id === "identity");
+    const root = await mkdtemp(join(tmpdir(), "nightly-archive-plist-"));
+    const workspace = join(root, "repo");
+    const project = join(workspace, "apps/Example iOS");
+    const output = join(root, "output");
+    const versionKey = "CFBundleShortVersionString";
+    const plistName = "Example Info.plist";
+    const plist = (version: string, extra = "") => `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+  <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+  <key>${versionKey}</key><string>${version}</string>
+  <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+  ${extra}
+</dict></plist>
+`;
+    const settings = {
+      PRODUCT_TYPE: "com.apple.product-type.application", PLATFORM_NAME: "iphoneos", SKIP_INSTALL: "NO",
+      CONFIGURATION: "Release", PRODUCT_BUNDLE_IDENTIFIER: "com.example.ios", MARKETING_VERSION: "1.0.1",
+      SRCROOT: project, INFOPLIST_FILE: plistName, INFOPLIST_PREPROCESS: "NO", INFOPLIST_EXPAND_BUILD_SETTINGS: "YES",
+      GENERATE_INFOPLIST_FILE: "NO",
+    };
+    try {
+      await mkdir(project, { recursive: true });
+      await execFileAsync("git", ["init", "--quiet", workspace]);
+      await writeFile(join(root, "xcodebuild"), '#!/bin/bash\nprintf "%s\\n" "$METADATA"\n', { mode: 0o755 });
+      if (process.platform !== "darwin") {
+        await writeFile(join(root, "plutil"), `#!/usr/bin/env python3
+import json, plistlib, sys
+assert sys.argv[1:-1] == ["-convert", "json", "-o", "-", "--"]
+with open(sys.argv[-1], "rb") as source:
+    print(json.dumps(plistlib.load(source)))
+`, { mode: 0o755 });
+      }
+      await writeFile(join(project, plistName), plist("1.0"));
+      await execFileAsync("git", ["-C", project, "add", "--", plistName]);
+      await writeFile(join(root, "Outside.plist"), plist("1.0.1"));
+      await symlink(join(root, "Outside.plist"), join(project, "Link.plist"));
+      await writeFile(join(project, "Untracked.plist"), plist("1.0.1"));
+      const run = (overrides: Record<string, string> = {}) => spawnSync("bash", ["-e", "-c", resolve!.run!], {
+        env: { ...process.env, PATH: `${root}:${process.env.PATH}`, GITHUB_WORKSPACE: workspace, RUNNER_TEMP: root,
+          GITHUB_OUTPUT: output, XCODE_XCCONFIG_FILE: "", WORKING_DIRECTORY: "apps/Example iOS", PROJECT: "Example.xcodeproj",
+          SCHEME: "Example", CONFIGURATION: "Release", BUNDLE_ID: settings.PRODUCT_BUNDLE_IDENTIFIER, METADATA: JSON.stringify([
+            { action: "archive", buildSettings: { ...settings, SKIP_INSTALL: "YES", INFOPLIST_FILE: "Ignored.plist" } },
+            { action: "archive", buildSettings: { ...settings, ...overrides } },
+          ]) }, encoding: "utf8",
+      });
+      const rejected = async (overrides: Record<string, string>, diagnostic: string) => {
+        expect(run(overrides), JSON.stringify(overrides)).toMatchObject({ status: 1, stderr: expect.stringContaining(diagnostic) });
+        expect(await readFile(output, "utf8").catch(() => "")).toBe("");
+      };
+      const versionDiagnostic = `Info.plist must set ${versionKey} to the resolved MARKETING_VERSION (1.0.1)`;
+      await rejected({}, versionDiagnostic);
+      await rejected({ INFOPLIST_FILE: "Missing.plist" }, "Cannot read the archive app Info.plist");
+      await rejected({ INFOPLIST_FILE: "Link.plist" }, "Cannot read the archive app Info.plist");
+      await rejected({ INFOPLIST_FILE: "Untracked.plist" }, "Cannot read the archive app Info.plist");
+      await rejected({ INFOPLIST_FILE: "" }, "must generate its Info.plist");
+      await rejected({ INFOPLIST_FILE: "", GENERATE_INFOPLIST_FILE: "YES", DONT_GENERATE_INFOPLIST_FILE: "YES" }, "must generate its Info.plist");
+      await writeFile(join(project, plistName), "not a plist");
+      await rejected({}, "Cannot read the archive app Info.plist");
+      await writeFile(join(project, plistName), plist("1.0.1", `<key>${versionKey}-iphoneos</key><string>1.0</string>`));
+      await rejected({}, "without overriding keys");
+      await writeFile(join(project, plistName), plist("$(MARKETING_VERSION)"));
+      await rejected({ INFOPLIST_EXPAND_BUILD_SETTINGS: "NO" }, versionDiagnostic);
+      await rejected({ INFOPLIST_PREPROCESS: "YES" }, "Info.plist preprocessing");
+      await rejected({ INFOPLIST_KEY_CFBundleShortVersionString: "1.0" }, "short-version build setting override");
+      await rejected({ INFOPLIST_FILE: "", GENERATE_INFOPLIST_FILE: "YES", INFOPLIST_KEY_CFBundleShortVersionString: "1.0" },
+        "short-version build setting override");
+      for (const version of ["1.0.1", "$(MARKETING_VERSION)", "${MARKETING_VERSION}"]) {
+        await writeFile(join(project, plistName), plist(version));
+        expect(run(), version).toMatchObject({ status: 0, stderr: "" });
+        expect(await readFile(output, "utf8")).toBe("version=1.0.1\n");
+        await rm(output);
+      }
     } finally {
       await rm(root, { recursive: true, force: true });
     }

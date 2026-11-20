@@ -4070,15 +4070,23 @@ outside the default `us` storefront. After source verification and before simula
 selected runner and exact Xcode version query archive build settings at the verified SHA without
 building or signing. The supplied project, scheme, and explicit `archive-configuration` (default
 `Release`) must resolve to exactly one installable iOS app for `generic/platform=iOS`. Its resolved
-bundle must match `ios-bundle-id`; its literal marketing version is compared with the public app
-ID and storefront by Morpheus's action at `actions-ref` (pass the workflow's pin when pinning).
+bundle must match `ios-bundle-id`. Before comparing the resolved `MARKETING_VERSION` with the
+public app ID and storefront, the check proves the app's `CFBundleShortVersionString` will match
+it. Supported shapes are `GENERATE_INFOPLIST_FILE=YES` with no `INFOPLIST_FILE`, or the selected
+target's checked-in `INFOPLIST_FILE` (resolved from its `SRCROOT` and confined to the checkout).
+In that file, the short version must equal the resolved version literally or be exactly
+`$(MARKETING_VERSION)` or `${MARKETING_VERSION}` with `INFOPLIST_EXPAND_BUILD_SETTINGS=YES`.
+Plist preprocessing, ambiguous keys, short-version build setting overrides, and unreadable or
+unsupported plists refuse delivery. The comparison uses Morpheus's action at `actions-ref` (pass
+the workflow's pin when pinning).
 The runner must be able to load the project and any locked package dependencies for this metadata
 query. Equality proposes a patch bump and stops delivery; a behind version or an unavailable or
 invalid result stops delivery without a proposal. Visual-only runs do not consult the store.
 
 Without opt-in, `build` and `sha` retain the change decision and preflight SHA respectively. With
 opt-in, they expose `true` and the verified SHA only after preflight, version comparison and tests
-pass; otherwise they are `false` and empty. Opted-in, caller-owned upload jobs (`run-upload: false`)
+pass, with both source and version verified in the current run attempt; otherwise they are `false`
+and empty. Opted-in, caller-owned upload jobs (`run-upload: false`)
 must use the following job guard (for a reusable workflow job named `nightly`):
 
 ```yaml
@@ -4100,10 +4108,10 @@ script must honor these settings and the supplied `PROJECT_PATH`, `SCHEME_NAME`,
 
 [GitHub supports rerunning only failed jobs](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-workflow-runs/re-running-workflows-and-jobs),
 and [`github.run_attempt` increases on rerun](https://docs.github.com/en/actions/learn-github-actions/contexts#github-context).
-A selective retry can retain a successful check and its outputs from an earlier attempt, after
-the storefront version has changed. Both upload paths refuse that stale pass. Rerun all jobs to
-get a fresh comparison; if a selective retry retained the old check, start a fresh workflow
-invocation instead of retrying the upload alone.
+A selective retry can retain a successful source or version check from an earlier attempt, after
+main or the storefront has moved. The version job refuses retained source verification, and
+neither upload path accepts eligibility unless both checks ran in the same, current attempt.
+Start a fresh complete workflow invocation from current `main` instead of retrying selected jobs.
 
 The [version action and CLI](.github/actions/ios-app-store-version/README.md) are credential-free.
 The caller owns the repair: plan against the candidate, apply only an equal-version proposal on
@@ -4428,6 +4436,8 @@ The preflight then also accepts a reviewed merge that current `main` strictly co
 compare must report `ahead`, and anything else, including an unreadable `main`, refuses. The
 exact checkout, merged-PR binding and read-only permissions are the same in both modes, and there
 is still no caller-selected source. A manual dispatch has no inputs, so it keeps the default.
+The additive `current-main-attempt` output is set only when successful preflight verified equality
+with the current head of `main`; existing SHA consumers do not need to use it.
 
 The workflow is only the middle of the external-action contract:
 

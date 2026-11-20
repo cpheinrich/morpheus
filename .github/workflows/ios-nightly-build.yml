@@ -413,6 +413,15 @@ jobs:
       attempt: ${{ steps.checked.outputs.attempt }}
       version: ${{ steps.identity.outputs.version }}
     steps:
+      - name: Require current-attempt source verification
+        env:
+          SOURCE_ATTEMPT: ${{ needs.preflight.outputs.current-main-attempt }}
+          CHECK_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          if [[ -z "$SOURCE_ATTEMPT" || "$SOURCE_ATTEMPT" != "$CHECK_ATTEMPT" ]]; then
+            echo 'Release source was not verified as current main in this attempt. Start a fresh workflow invocation from current main instead of retrying selected jobs.' >&2
+            exit 1
+          fi
       - name: Check out verified main commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -469,7 +478,9 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/ios-version-check" \
             -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile archive |
           node --input-type=module -e '
-            import { appendFileSync, readFileSync } from "node:fs";
+            import { execFileSync } from "node:child_process";
+            import { appendFileSync, readFileSync, realpathSync, statSync } from "node:fs";
+            import { isAbsolute, relative, resolve } from "node:path";
             const apps = JSON.parse(readFileSync(0, "utf8")).filter(({action, buildSettings: settings}) =>
               action === "archive" && settings?.PRODUCT_TYPE === "com.apple.product-type.application" &&
               settings.PLATFORM_NAME === "iphoneos" && settings.SKIP_INSTALL === "NO");
@@ -482,6 +493,39 @@ jobs:
             const version = settings.MARKETING_VERSION;
             if (typeof version !== "string" || !/^(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){1,2}$/.test(version)) {
               throw new Error("Expected a literal numeric marketing version for the archive app");
+            }
+            const versionKey = "CFBundleShortVersionString";
+            if (![undefined, "", "NO"].includes(settings.INFOPLIST_PREPROCESS) ||
+                Object.keys(settings).some((key) => key.startsWith("INFOPLIST_KEY_" + versionKey))) {
+              throw new Error("Cannot prove the archive version with Info.plist preprocessing or a short-version build setting override");
+            }
+            if (settings.INFOPLIST_FILE) {
+              let plist;
+              try {
+                const workspace = realpathSync(process.env.GITHUB_WORKSPACE);
+                const path = realpathSync(resolve(workspace, settings.SRCROOT, settings.INFOPLIST_FILE));
+                const within = relative(workspace, path);
+                if (!within || within === ".." || within.startsWith("../") || isAbsolute(within) || !statSync(path).isFile()) {
+                  throw new Error();
+                }
+                const options = { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000, maxBuffer: 1024 * 1024 };
+                execFileSync("git", ["--literal-pathspecs", "-C", workspace, "ls-files", "--error-unmatch", "--", within], options);
+                plist = JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", "--", path], options));
+              } catch {
+                throw new Error("Cannot read the archive app Info.plist as a checked-in plist inside the checkout");
+              }
+              const shortVersion = plist?.[versionKey];
+              const ambiguous = Object.keys(plist ?? {}).some((key) =>
+                (key !== versionKey && key.startsWith(versionKey)) || /[$][({]/.test(key));
+              const expandsVersion = settings.INFOPLIST_EXPAND_BUILD_SETTINGS === "YES" &&
+                typeof shortVersion === "string" && /^[$](?:\(MARKETING_VERSION\)|\{MARKETING_VERSION\})$/.test(shortVersion);
+              if (ambiguous || (shortVersion !== version && !expandsVersion)) {
+                throw new Error("Archive app Info.plist must set CFBundleShortVersionString to the resolved MARKETING_VERSION (" +
+                  version + ") or expand MARKETING_VERSION directly, without overriding keys");
+              }
+            } else if (settings.GENERATE_INFOPLIST_FILE !== "YES" ||
+                       ![undefined, "", "NO"].includes(settings.DONT_GENERATE_INFOPLIST_FILE)) {
+              throw new Error("Archive app must generate its Info.plist or supply a checked-in INFOPLIST_FILE");
             }
             appendFileSync(process.env.GITHUB_OUTPUT, "version=" + version + "\n");
           '
@@ -538,6 +582,7 @@ jobs:
       ${{ !cancelled() && inputs.check-app-store-version && needs.changes.result == 'success'
           && needs.changes.outputs.build == 'true' && needs.preflight.result == 'success'
           && needs.preflight.outputs.sha != '' && needs.test.result == 'success'
+          && needs.preflight.outputs.current-main-attempt == github.run_attempt
           && needs.version-check.result == 'success' && needs.version-check.outputs.version != ''
           && needs.version-check.outputs.attempt == github.run_attempt }}
     runs-on: ubuntu-24.04
