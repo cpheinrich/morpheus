@@ -44,7 +44,7 @@ APPEEKY_API_KEY=… morpheus product-research aso --app <numeric-id> --country u
   --terms "term one,term two,term three" [--branded-terms "brand"] --out <path>
 ```
 
-Three to five distinct terms. Before any paid call it reads `GET /v1/auth/usage` (free) and stops
+Three to five distinct terms. Before any paid call it reads `GET /v1/auth/usage` and stops
 unless included general plan credits cover the worst case: listing (2), organic keywords (3) and a
 per-term rank lookup (2 each) for terms the organic list lacks. The wallet is never relied on.
 Requests use `platform=apple`. A term is `ranked`, `unranked` (verified outside the results) or
@@ -68,6 +68,7 @@ import "morpheus-kit/product-research/styles.css";
 
 `readAsset` receives only paths from the study inventory; the viewer fetches the selected screen's
 screenshot, opens accessibility text on demand, and verifies size and SHA-256 before display or
-download. Deep links use `#screen=<id>&control=<id>`. Brand the views by overriding the
+download. Deep links use `#screen=<id>&control=<id>` with an optional `capture` path. A screen with multiple screenshots
+offers a labeled capture selector. Brand the views by overriding the
 `--app-research-accent`, `-border`, `-muted`, `-surface`, `-selected`, `-radius` and `-gap` custom
 properties, or target the `app-research-*` classes.

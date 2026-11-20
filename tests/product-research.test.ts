@@ -168,6 +168,16 @@ const ORGANIC = { data: { keywords: [{ keyword: "Alpha Term", rank: 4, rankChang
 describe("fetchAppeekySnapshot", () => {
   const request = { appId: "123", country: "us", device: "iphone" as const, terms: ["alpha term", "beta", "gamma"], brandedTerms: ["Example"] };
 
+  it("marks a missing rank result list as unchecked", async () => {
+    const { fetcher } = fakeAppeeky({
+      "/v1/auth/usage": USAGE_OK, "/v1/apps/123": LISTING, "/v1/apps/123/keywords": ORGANIC,
+      "ranks:beta": { data: {} }, "ranks:gamma": { data: { ranks: [] } }, "ranks:Example": { data: { ranks: [] } },
+    });
+    const snapshot = await fetchAppeekySnapshot(request, { apiKey: "test-key", fetch: fetcher });
+    expect(snapshot.keywords.find(({ term }) => term === "beta")?.status).toBe("missing");
+    expect(snapshot.keywords.find(({ term }) => term === "gamma")?.status).toBe("unranked");
+  });
+
   it("joins listing, organic ranks and per-term fallbacks, distinguishing unranked from missing", async () => {
     const { fetcher, calls } = fakeAppeeky({
       "/v1/auth/usage": USAGE_OK,

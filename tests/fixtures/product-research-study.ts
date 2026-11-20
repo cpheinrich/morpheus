@@ -29,7 +29,7 @@ export function syntheticStudy() {
           ],
           screenshots: [{
             path: "screens/home.png", accessibility: "screens/home.ax.json", capturedAt: "2026-11-01T12:00:00Z",
-            sha256: sha(FILES["screens/home.png"]!), width: 1179, height: 2556,
+            sha256: sha(FILES["screens/home.png"]!), width: 1179, height: 2556, position: "top",
           }],
         },
         {

@@ -9,19 +9,23 @@ const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 export function ProductResearchViewer({ study, readAsset }) {
     const { app } = study;
     const screens = useMemo(() => new Map(app.screens.map((screen) => [screen.id, screen])), [app.screens]);
-    const entry = { screen: app.entryScreenId, control: null };
+    const entry = { screen: app.entryScreenId, control: null, restoring: true };
     const { view, navigate } = useFragmentView({
         initial: entry,
         historyKey: `appResearch:${study.studyId}`,
         read: (hash) => readView(hash, screens, app.entryScreenId),
-        write: (next) => next.screen === app.entryScreenId && !next.control ? "" :
-            "#" + new URLSearchParams({ screen: next.screen, ...(next.control ? { control: next.control } : {}) }).toString(),
+        write: (next) => next.screen === app.entryScreenId && !next.control && !next.capture ? "" :
+            "#" + new URLSearchParams({
+                screen: next.screen,
+                ...(next.control ? { control: next.control } : {}),
+                ...(next.capture ? { capture: next.capture } : {}),
+            }).toString(),
     });
     const screen = screens.get(view.screen) ?? screens.get(app.entryScreenId);
     const reader = useRef(readAsset);
     reader.current = readAsset;
     const read = useMemo(() => (path) => reader.current(path), []);
-    return (_jsxs("div", { className: "app-research", children: [_jsxs("header", { className: "app-research-header", children: [_jsx("h2", { className: "app-research-title", children: app.name }), _jsxs("p", { className: "app-research-meta", children: ["Version ", app.version, " \u00B7 ", _jsx("span", { className: "app-research-badge", children: app.status }), " \u00B7 ", study.device.model, study.device.osVersion ? ` (iOS ${study.device.osVersion})` : "", " \u00B7 captured ", day(study.capturedAt)] }), app.summary ? _jsx("p", { className: "app-research-summary", children: app.summary }) : null] }), _jsxs("div", { className: "app-research-layout", children: [_jsx(ScreenList, { screens: app.screens, selected: screen.id, onSelect: (id) => navigate({ screen: id, control: null }) }), _jsx(ScreenDetail, { study: study, screen: screen, screens: screens, control: view.control, read: read, navigate: navigate }, screen.id)] }), _jsx(StudyNotes, { study: study, read: read })] }));
+    return (_jsxs("div", { className: "app-research", children: [_jsxs("header", { className: "app-research-header", children: [_jsx("h2", { className: "app-research-title", children: app.name }), _jsxs("p", { className: "app-research-meta", children: ["Version ", app.version, " \u00B7 ", _jsx("span", { className: "app-research-badge", children: app.status }), " \u00B7 ", study.device.model, study.device.osVersion ? ` (iOS ${study.device.osVersion})` : "", " \u00B7 captured ", day(study.capturedAt)] }), app.summary ? _jsx("p", { className: "app-research-summary", children: app.summary }) : null] }), _jsxs("div", { className: "app-research-layout", children: [_jsx(ScreenList, { screens: app.screens, selected: screen.id, onSelect: (id) => navigate({ screen: id, control: null }) }), _jsx(ScreenDetail, { study: study, screen: screen, screens: screens, control: view.control, capture: view.capture, restoring: view.restoring, read: read, navigate: navigate }, screen.id)] }), _jsx(StudyNotes, { study: study, read: read })] }));
 }
 function readView(hash, screens, entry) {
     const params = new URLSearchParams(hash.replace(/^#/, ""));
@@ -29,7 +33,8 @@ function readView(hash, screens, entry) {
     if (!screen)
         return { screen: entry, control: null };
     const control = params.get("control");
-    return { screen: screen.id, control: screen.elements.some((element) => element.id === control) ? control : null };
+    const capture = screen.screenshots.find((shot) => shot.path === params.get("capture"))?.path;
+    return { screen: screen.id, control: screen.elements.some((element) => element.id === control) ? control : null, capture };
 }
 function ScreenList({ screens, selected, onSelect }) {
     const [query, setQuery] = useState("");
@@ -39,20 +44,33 @@ function ScreenList({ screens, selected, onSelect }) {
         .some((value) => value.toLowerCase().includes(needle))) : screens;
     return (_jsxs("nav", { className: "app-research-screens", "aria-label": "Screens", children: [_jsx("label", { className: "app-research-search-label", htmlFor: inputId, children: "Search screens" }), _jsx("input", { id: inputId, className: "app-research-search", type: "search", value: query, onChange: (event) => setQuery(event.target.value) }), _jsxs("p", { className: "app-research-count", "aria-live": "polite", children: [matches.length, " of ", screens.length, " screens"] }), _jsx("ul", { className: "app-research-screen-list", children: matches.map((screen) => (_jsx("li", { children: _jsxs("button", { type: "button", className: "app-research-screen-button", "aria-current": screen.id === selected ? "true" : undefined, onClick: () => onSelect(screen.id), children: [_jsx("span", { className: "app-research-screen-name", children: screen.title }), _jsxs("span", { className: "app-research-screen-state", children: [screen.state, screen.screenshots.length ? "" : " · text only"] })] }) }, screen.id))) })] }));
 }
-function ScreenDetail({ study, screen, screens, control, read, navigate }) {
+function ScreenDetail({ study, screen, screens, control, capture, restoring, read, navigate }) {
     const [pane, setPane] = useState("wireframe");
-    const shot = screen.screenshots[0] ?? null;
     const selected = screen.elements.find((element) => element.id === control) ?? null;
-    const select = (id) => navigate({ screen: screen.id, control: id });
+    const capturePath = capture ?? selected?.screenshotPath;
+    const shot = screen.screenshots.find(({ path }) => path === capturePath) ?? screen.screenshots[0] ?? null;
+    const select = (id) => {
+        const targetCapture = screen.elements.find((element) => element.id === id)?.screenshotPath;
+        navigate({ screen: screen.id, control: id, capture: targetCapture ?? capture });
+    };
     const outgoing = study.app.transitions.filter((transition) => transition.from === screen.id);
-    const screenshot = useVerifiedAsset(study, read, shot?.path ?? null, toObjectUrl, revokeObjectUrl);
-    return (_jsxs("section", { className: "app-research-detail", "aria-label": `Screen: ${screen.title}`, children: [_jsx("h3", { className: "app-research-screen-title", children: screen.title }), _jsx("p", { className: "app-research-meta", children: screen.state }), screen.description ? _jsx("p", { children: screen.description }) : null, _jsx("div", { className: "app-research-pane-switch", role: "group", "aria-label": "View", children: ["wireframe", "capture"].map((option) => (_jsx("button", { type: "button", "aria-pressed": pane === option, onClick: () => setPane(option), children: option === "wireframe" ? "Wireframe" : "Screenshot" }, option))) }), _jsxs("div", { className: "app-research-figures", "data-pane": pane, children: [_jsxs("figure", { className: "app-research-wireframe", children: [_jsx("div", { className: "app-research-canvas", style: { aspectRatio: canvasRatio(shot) }, children: screen.elements.map((element) => {
+    return (_jsxs("section", { className: "app-research-detail", "aria-label": `Screen: ${screen.title}`, children: [_jsx("h3", { className: "app-research-screen-title", children: screen.title }), _jsx("p", { className: "app-research-meta", children: screen.state }), screen.description ? _jsx("p", { children: screen.description }) : null, _jsx(CaptureChoice, { shots: screen.screenshots, selected: shot?.path, onSelect: (path) => navigate({ screen: screen.id, control, capture: path }) }), _jsx("div", { className: "app-research-pane-switch", role: "group", "aria-label": "View", children: ["wireframe", "capture"].map((option) => (_jsx("button", { type: "button", "aria-pressed": pane === option, onClick: () => setPane(option), children: option === "wireframe" ? "Wireframe" : "Screenshot" }, option))) }), _jsxs("div", { className: "app-research-figures", "data-pane": pane, children: [_jsxs("figure", { className: "app-research-wireframe", children: [_jsx("div", { className: "app-research-canvas", style: { aspectRatio: canvasRatio(shot) }, children: screen.elements.map((element) => {
                                     const box = geometry(element, screen);
                                     return box ? (_jsx("button", { type: "button", className: "app-research-region", style: box, "aria-pressed": element.id === control, "aria-label": `${element.label} (${element.role})`, onClick: () => select(element.id === control ? null : element.id), children: _jsx("span", { className: "app-research-region-label", children: element.label }) }, element.id)) : null;
-                                }) }), _jsx("figcaption", { children: "Wireframe from recorded element bounds" })] }), _jsxs("figure", { className: "app-research-capture", children: [_jsx(Capture, { screen: screen, shot: shot, load: screenshot, selected: selected }), _jsx("figcaption", { children: shot ? `Captured ${day(shot.capturedAt)} · ${shot.width}×${shot.height}` : "No screenshot" })] })] }), _jsxs("section", { className: "app-research-controls", "aria-label": "Controls", children: [_jsx("h4", { children: "Controls" }), screen.elements.length ? (_jsx("ul", { children: screen.elements.map((element) => (_jsx("li", { children: _jsxs("button", { type: "button", className: "app-research-control-button", "aria-pressed": element.id === control, onClick: () => select(element.id === control ? null : element.id), children: [element.label, " ", _jsxs("span", { className: "app-research-meta", children: [element.role, " \u00B7 ", element.status] })] }) }, element.id))) })) : _jsx("p", { className: "app-research-meta", children: "No controls were recorded on this screen." })] }), selected ? (_jsx(ControlDetail, { element: selected, transitions: study.app.transitions.filter((t) => t.elementId === selected.id), screens: screens, navigate: navigate })) : null, _jsxs("section", { className: "app-research-paths", "aria-label": "Paths from this screen", children: [_jsx("h4", { children: "Paths from this screen" }), outgoing.length ? _jsx(TransitionList, { transitions: outgoing, screens: screens, navigate: navigate }) :
-                        _jsx("p", { className: "app-research-meta", children: "No recorded transitions leave this screen." })] }), shot?.accessibility ? _jsx(AccessibilityText, { study: study, read: read, path: shot.accessibility }) : null] }));
+                                }) }), _jsx("figcaption", { children: "Wireframe from recorded element bounds" })] }), _jsxs("figure", { className: "app-research-capture", children: [_jsx(Capture, { screen: screen, shot: shot, study: study, read: read, selected: selected, restoring: restoring }, shot?.path), _jsx("figcaption", { children: shot ? `Captured ${day(shot.capturedAt)} · ${shot.width}×${shot.height}` : "No screenshot" })] })] }), _jsxs("section", { className: "app-research-controls", "aria-label": "Controls", children: [_jsx("h4", { children: "Controls" }), screen.elements.length ? (_jsx("ul", { children: screen.elements.map((element) => (_jsx("li", { children: _jsxs("button", { type: "button", className: "app-research-control-button", "aria-pressed": element.id === control, onClick: () => select(element.id === control ? null : element.id), children: [element.label, " ", _jsxs("span", { className: "app-research-meta", children: [element.role, " \u00B7 ", element.status] })] }) }, element.id))) })) : _jsx("p", { className: "app-research-meta", children: "No controls were recorded on this screen." })] }), selected ? (_jsx(ControlDetail, { element: selected, transitions: study.app.transitions.filter((t) => t.elementId === selected.id), screens: screens, navigate: navigate })) : null, _jsxs("section", { className: "app-research-paths", "aria-label": "Paths from this screen", children: [_jsx("h4", { children: "Paths from this screen" }), outgoing.length ? _jsx(TransitionList, { transitions: outgoing, screens: screens, navigate: navigate }) :
+                        _jsx("p", { className: "app-research-meta", children: "No recorded transitions leave this screen." })] }), shot?.accessibility ? _jsx(AccessibilityText, { study: study, read: read, path: shot.accessibility }, shot.accessibility) : null] }));
 }
-function Capture({ screen, shot, load, selected }) {
+function CaptureChoice({ shots, selected, onSelect }) {
+    if (shots.length < 2)
+        return null;
+    return (_jsxs("label", { className: "app-research-capture-choice", children: ["Captured screenshot", _jsx("select", { value: selected, onChange: (event) => onSelect(event.target.value), children: shots.map((shot, index) => (_jsx("option", { value: shot.path, children: captureLabel(shot, index) }, shot.path))) })] }));
+}
+function captureLabel(shot, index) {
+    const label = typeof shot.position === "string" && shot.position.trim();
+    return label ? `${index + 1}. ${label}` : `Capture ${index + 1}`;
+}
+function Capture({ screen, shot, study, read, selected, restoring }) {
+    const load = useVerifiedAsset(study, read, restoring ? null : shot?.path ?? null, toObjectUrl, revokeObjectUrl);
     if (!shot) {
         return _jsxs("p", { className: "app-research-empty", children: ["No screenshot for this state (", screen.state || "text only", "). The description and controls are the record."] });
     }
@@ -61,7 +79,7 @@ function Capture({ screen, shot, load, selected }) {
     }
     if (load.state.status !== "ready")
         return _jsx("p", { className: "app-research-empty", "aria-live": "polite", children: "Loading screenshot\u2026" });
-    const box = selected && (!selected.screenshotPath || selected.screenshotPath === shot.path) ? geometry(selected, screen) : null;
+    const box = selected && (selected.screenshotPath ?? screen.screenshots[0]?.path) === shot.path ? geometry(selected, screen) : null;
     return (_jsxs("div", { className: "app-research-canvas", style: { aspectRatio: canvasRatio(shot) }, children: [_jsx("img", { className: "app-research-image", src: load.state.value, alt: `${screen.title} screenshot`, width: shot.width, height: shot.height }), box ? _jsx("span", { className: "app-research-highlight", style: box, "aria-hidden": "true" }) : null] }));
 }
 function ControlDetail({ element, transitions, screens, navigate }) {

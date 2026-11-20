@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseAppeekySnapshot, parseAppResearchStudy } from "../src/product-research/index.js";
 import { AppStoreSignals, ProductResearchViewer } from "../src/product-research/react.js";
-import { FILES, syntheticStudy } from "./fixtures/product-research-study.js";
+import { asset, FILES, sha, syntheticStudy } from "./fixtures/product-research-study.js";
 
 const study = parseAppResearchStudy(syntheticStudy());
 let created: string[];
@@ -41,6 +41,38 @@ describe("ProductResearchViewer", () => {
     expect(readAsset.mock.calls).toEqual([["screens/home.png"]]);
   });
 
+  it("reveals all captures for a screen and restores a capture deep link", async () => {
+    const raw = syntheticStudy();
+    const secondCapture = "screens/home-scrolled.png";
+    const accessibility = "screens/home-scrolled.ax.json";
+    const imageBytes = "synthetic-png-scrolled";
+    const accessibilityText = '{"role":"scrollview"}';
+    raw.app.screens[0]!.screenshots!.push({
+      ...raw.app.screens[0]!.screenshots![0]!, path: secondCapture, sha256: sha(imageBytes), accessibility,
+      position: "scrolled",
+    });
+    Object.assign(raw.assets, {
+      [secondCapture]: asset(imageBytes, "image/png"),
+      [accessibility]: asset(accessibilityText, "application/json"),
+    });
+    const studyWithCaptures = parseAppResearchStudy(raw);
+    const readAsset = reader({ [secondCapture]: imageBytes, [accessibility]: accessibilityText });
+    const view = render(<ProductResearchViewer study={studyWithCaptures} readAsset={readAsset} />);
+    await screen.findByRole("img", { name: "Home screenshot" });
+    expect(readAsset.mock.calls).toEqual([["screens/home.png"]]);
+    const chooser = screen.getByRole("combobox", { name: "Captured screenshot" }) as HTMLSelectElement;
+    await userEvent.selectOptions(chooser, screen.getByRole("option", { name: "2. scrolled" }));
+    expect(window.location.hash).toBe("#screen=home&capture=screens%2Fhome-scrolled.png");
+    await waitFor(() => expect(readAsset.mock.calls).toEqual([["screens/home.png"], [secondCapture]]));
+    expect(revoked).toContain("blob:test/0");
+    await userEvent.click(screen.getByText("Accessibility snapshot"));
+    expect(await screen.findByText(accessibilityText)).toBeTruthy();
+    view.unmount();
+
+    render(<ProductResearchViewer study={studyWithCaptures} readAsset={readAsset} />);
+    expect((screen.getByRole("combobox", { name: "Captured screenshot" }) as HTMLSelectElement).value).toBe(secondCapture);
+  });
+
   it("filters the screen list by title, state, description or control label", async () => {
     render(<ProductResearchViewer study={study} readAsset={reader()} />);
     await userEvent.type(screen.getByRole("searchbox", { name: "Search screens" }), "secure");
@@ -72,6 +104,14 @@ describe("ProductResearchViewer", () => {
     render(<ProductResearchViewer study={study} readAsset={reader()} />);
     expect(await screen.findByRole("region", { name: "Selected control: Settings" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Settings (button)" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("does not read the entry screenshot before restoring another screen", () => {
+    window.history.replaceState(null, "", "/hq/research#screen=settings");
+    const readAsset = reader();
+    render(<ProductResearchViewer study={study} readAsset={readAsset} />);
+    expect(screen.getByRole("heading", { level: 3, name: "Settings" })).toBeTruthy();
+    expect(readAsset).not.toHaveBeenCalled();
   });
 
   it("falls back to the entry screen for an unknown deep link", () => {

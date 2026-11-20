@@ -25,7 +25,7 @@ import {
  */
 
 export type ReadAsset = (path: string) => Promise<Blob>;
-type View = { screen: string; control: string | null };
+type View = { screen: string; control: string | null; capture?: string; restoring?: true };
 type Load<T> = { status: "idle" | "loading" } | { status: "ready"; value: T } | { status: "error"; message: string };
 
 const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
@@ -33,13 +33,17 @@ const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 export function ProductResearchViewer({ study, readAsset }: { study: AppResearchStudy; readAsset: ReadAsset }) {
   const { app } = study;
   const screens = useMemo(() => new Map(app.screens.map((screen) => [screen.id, screen])), [app.screens]);
-  const entry = { screen: app.entryScreenId, control: null };
+  const entry: View = { screen: app.entryScreenId, control: null, restoring: true };
   const { view, navigate } = useFragmentView<View>({
     initial: entry,
     historyKey: `appResearch:${study.studyId}`,
     read: (hash) => readView(hash, screens, app.entryScreenId),
-    write: (next) => next.screen === app.entryScreenId && !next.control ? "" :
-      "#" + new URLSearchParams({ screen: next.screen, ...(next.control ? { control: next.control } : {}) }).toString(),
+    write: (next) => next.screen === app.entryScreenId && !next.control && !next.capture ? "" :
+      "#" + new URLSearchParams({
+        screen: next.screen,
+        ...(next.control ? { control: next.control } : {}),
+        ...(next.capture ? { capture: next.capture } : {}),
+      }).toString(),
   });
   const screen = screens.get(view.screen) ?? screens.get(app.entryScreenId)!;
   const reader = useRef(readAsset);
@@ -64,6 +68,8 @@ export function ProductResearchViewer({ study, readAsset }: { study: AppResearch
           screen={screen}
           screens={screens}
           control={view.control}
+          capture={view.capture}
+          restoring={view.restoring}
           read={read}
           navigate={navigate}
         />
@@ -78,7 +84,8 @@ function readView(hash: string, screens: Map<string, AppResearchScreen>, entry: 
   const screen = screens.get(params.get("screen") ?? "");
   if (!screen) return { screen: entry, control: null };
   const control = params.get("control");
-  return { screen: screen.id, control: screen.elements.some((element) => element.id === control) ? control : null };
+  const capture = screen.screenshots.find((shot) => shot.path === params.get("capture"))?.path;
+  return { screen: screen.id, control: screen.elements.some((element) => element.id === control) ? control : null, capture };
 }
 
 function ScreenList({ screens, selected, onSelect }: {
@@ -113,22 +120,27 @@ function ScreenList({ screens, selected, onSelect }: {
   );
 }
 
-function ScreenDetail({ study, screen, screens, control, read, navigate }: {
+function ScreenDetail({ study, screen, screens, control, capture, restoring, read, navigate }: {
   study: AppResearchStudy; screen: AppResearchScreen; screens: Map<string, AppResearchScreen>;
-  control: string | null; read: ReadAsset; navigate: (view: View) => void;
+  control: string | null; capture?: string; restoring?: true; read: ReadAsset; navigate: (view: View) => void;
 }) {
   const [pane, setPane] = useState<"wireframe" | "capture">("wireframe");
-  const shot = screen.screenshots[0] ?? null;
   const selected = screen.elements.find((element) => element.id === control) ?? null;
-  const select = (id: string | null) => navigate({ screen: screen.id, control: id });
+  const capturePath = capture ?? selected?.screenshotPath;
+  const shot = screen.screenshots.find(({ path }) => path === capturePath) ?? screen.screenshots[0] ?? null;
+  const select = (id: string | null) => {
+    const targetCapture = screen.elements.find((element) => element.id === id)?.screenshotPath;
+    navigate({ screen: screen.id, control: id, capture: targetCapture ?? capture });
+  };
   const outgoing = study.app.transitions.filter((transition) => transition.from === screen.id);
-  const screenshot = useVerifiedAsset(study, read, shot?.path ?? null, toObjectUrl, revokeObjectUrl);
 
   return (
     <section className="app-research-detail" aria-label={`Screen: ${screen.title}`}>
       <h3 className="app-research-screen-title">{screen.title}</h3>
       <p className="app-research-meta">{screen.state}</p>
       {screen.description ? <p>{screen.description}</p> : null}
+      <CaptureChoice shots={screen.screenshots} selected={shot?.path}
+        onSelect={(path) => navigate({ screen: screen.id, control, capture: path })} />
       <div className="app-research-pane-switch" role="group" aria-label="View">
         {(["wireframe", "capture"] as const).map((option) => (
           <button key={option} type="button" aria-pressed={pane === option} onClick={() => setPane(option)}>
@@ -153,7 +165,7 @@ function ScreenDetail({ study, screen, screens, control, read, navigate }: {
           <figcaption>Wireframe from recorded element bounds</figcaption>
         </figure>
         <figure className="app-research-capture">
-          <Capture screen={screen} shot={shot} load={screenshot} selected={selected} />
+          <Capture key={shot?.path} screen={screen} shot={shot} study={study} read={read} selected={selected} restoring={restoring} />
           <figcaption>{shot ? `Captured ${day(shot.capturedAt)} · ${shot.width}×${shot.height}` : "No screenshot"}</figcaption>
         </figure>
       </div>
@@ -181,14 +193,37 @@ function ScreenDetail({ study, screen, screens, control, read, navigate }: {
         {outgoing.length ? <TransitionList transitions={outgoing} screens={screens} navigate={navigate} /> :
           <p className="app-research-meta">No recorded transitions leave this screen.</p>}
       </section>
-      {shot?.accessibility ? <AccessibilityText study={study} read={read} path={shot.accessibility} /> : null}
+      {shot?.accessibility ? <AccessibilityText key={shot.accessibility} study={study} read={read} path={shot.accessibility} /> : null}
     </section>
   );
 }
 
-function Capture({ screen, shot, load, selected }: {
-  screen: AppResearchScreen; shot: AppResearchScreenshot | null; load: AssetLoad<string>; selected: AppResearchElement | null;
+function CaptureChoice({ shots, selected, onSelect }: {
+  shots: AppResearchScreenshot[]; selected?: string; onSelect: (path: string) => void;
 }) {
+  if (shots.length < 2) return null;
+  return (
+    <label className="app-research-capture-choice">
+      Captured screenshot
+      <select value={selected} onChange={(event) => onSelect(event.target.value)}>
+        {shots.map((shot, index) => (
+          <option key={shot.path} value={shot.path}>{captureLabel(shot, index)}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function captureLabel(shot: AppResearchScreenshot, index: number): string {
+  const label = typeof shot.position === "string" && shot.position.trim();
+  return label ? `${index + 1}. ${label}` : `Capture ${index + 1}`;
+}
+
+function Capture({ screen, shot, study, read, selected, restoring }: {
+  screen: AppResearchScreen; shot: AppResearchScreenshot | null; study: AppResearchStudy;
+  read: ReadAsset; selected: AppResearchElement | null; restoring?: true;
+}) {
+  const load = useVerifiedAsset(study, read, restoring ? null : shot?.path ?? null, toObjectUrl, revokeObjectUrl);
   if (!shot) {
     return <p className="app-research-empty">No screenshot for this state ({screen.state || "text only"}). The description and controls are the record.</p>;
   }
@@ -201,7 +236,7 @@ function Capture({ screen, shot, load, selected }: {
     );
   }
   if (load.state.status !== "ready") return <p className="app-research-empty" aria-live="polite">Loading screenshot…</p>;
-  const box = selected && (!selected.screenshotPath || selected.screenshotPath === shot.path) ? geometry(selected, screen) : null;
+  const box = selected && (selected.screenshotPath ?? screen.screenshots[0]?.path) === shot.path ? geometry(selected, screen) : null;
   return (
     <div className="app-research-canvas" style={{ aspectRatio: canvasRatio(shot) }}>
       <img className="app-research-image" src={load.state.value} alt={`${screen.title} screenshot`} width={shot.width} height={shot.height} />

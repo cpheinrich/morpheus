@@ -135,6 +135,7 @@ async function rankedKeyword(
     }
     throw error;
   }
+  if (!Array.isArray(data.ranks)) return { term, branded, rank: null, status: "missing" };
   const match = arrayOf(data.ranks).find((entry) => String(entry.appId) === appId);
   const rank = match ? positiveInteger(match.rank) : null;
   return {
