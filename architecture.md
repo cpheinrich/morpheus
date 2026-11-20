@@ -3040,6 +3040,27 @@ CLI, and Docling through Babel's managed environment. No third-party archive or 
 was adopted: the maintained packages considered would add a second implementation of capabilities
 already present at these boundaries without reducing the security-critical code.
 
+#### `morpheus-kit/product-research` shows host app research without owning capture
+
+A project captures its own app (screens, controls, transitions, screenshots, accessibility text)
+into a private study directory: `study.json` (schema version 1) plus exactly the assets its
+inventory names. Morpheus owns the contract and the surfaces around that boundary, not capture:
+
+- `morpheus product-research validate <dir>` proves a directory is importable offline — schema,
+  unique ids, resolving references, confined relative paths, no symlinks, no unlisted or missing
+  files, and every byte count and SHA-256.
+- `morpheus product-research aso` writes a compact Appeeky snapshot read-only. It spends only
+  included plan credits (never the wallet), keeps the previous file on any failure, and records
+  whether a term was ranked, verified unranked, or not checked.
+- The root entry parses both shapes and throws a typed validation error; `/server` holds the Node
+  validator and fetcher; `/react` is a `"use client"` viewer that reads assets only through the
+  project's authenticated callback, verifies them before display, and never renders supplied HTML.
+
+The project owns publication: create-only object uploads of the validated directory, its storage
+rules, routes and brand. The ASO snapshot is a separate, mutable, small document because rankings
+change daily and the study is an immutable capture. `docs/runbooks/product-research.md` has the
+details.
+
 ## 13. Secrets and credentials
 
 Production and sensitive values never enter application Git repositories. Their manifest declares
