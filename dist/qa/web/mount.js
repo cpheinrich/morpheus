@@ -36,6 +36,7 @@ li .meta{display:block;color:var(--qa-muted);font-size:11px}.empty{color:var(--q
 textarea{width:100%;min-height:80px;resize:vertical;font:inherit;color:var(--qa-fg);background:var(--qa-field);border:1px solid var(--qa-rule);border-radius:8px;padding:8px}
 textarea:disabled{opacity:.5}select{font:inherit}
 label{display:flex;align-items:center;gap:6px}
+.batch-notes{display:grid;gap:5px;padding:12px 16px 0;font-weight:600}.batch-notes textarea{min-height:58px;font-weight:400}
 .status{min-height:1.3em;font-size:12px;color:var(--qa-muted);margin:0}.status.ok{color:var(--qa-ok)}.status.err{color:#d93025}
 button{font:inherit;color:var(--qa-fg);background:transparent;border:1px solid var(--qa-rule);border-radius:6px;padding:6px 10px;cursor:pointer}
 button:disabled{opacity:.45;cursor:default}button[aria-pressed=true]{background:var(--qa-fg);color:var(--qa-bg)}
@@ -111,6 +112,7 @@ export function mountWebQa(options) {
     const hint = h("p", { class: "hint" });
     const pageBtn = h("button", { type: "button" }, "Comment on this page");
     const list = h("ol", { "aria-label": "Comments" });
+    const notesEl = h("textarea", { "aria-label": "Notes", maxlength: String(WEB_QA_LIMITS.notesChars), placeholder: "Guidance for this batch…" });
     const pendingBox = h("div", { class: "pending-box", role: "group", "aria-label": "Unsent batch" });
     const scopeEl = h("select", { "aria-label": "Applies to" }, ...SCOPES.map(([v, label]) => h("option", { value: v }, label)));
     const textEl = h("textarea", { "aria-label": "Comment", maxlength: String(WEB_QA_LIMITS.textChars), placeholder: "Comment for this pin…" });
@@ -122,7 +124,7 @@ export function mountWebQa(options) {
     const statusEl = h("p", { class: "status", role: "status", "aria-live": "polite" });
     const sendBtn = h("button", { type: "button", class: "primary" }, "Send");
     const pinsEl = h("div", { class: "pins" });
-    const panel = h("aside", { class: "panel", "aria-label": `QA comments for ${project}` }, h("header", {}, h("div", { class: "row" }, h("strong", {}, `QA · ${project}`), closeBtn), h("div", { class: "row" }, h("div", { class: "modes", role: "group", "aria-label": "Mode" }, pinBtn, browseBtn), pageBtn), hint), list, pendingBox, h("div", { class: "composer" }, h("label", {}, "Applies to", scopeEl), textEl, countEl, h("p", { class: "keys" }, "Enter saves · Shift+Enter newline · Esc Esc deletes · ⌘Enter sends"), buildRow, statusEl, sendBtn));
+    const panel = h("aside", { class: "panel", "aria-label": `QA comments for ${project}` }, h("header", {}, h("div", { class: "row" }, h("strong", {}, `QA · ${project}`), closeBtn), h("div", { class: "row" }, h("div", { class: "modes", role: "group", "aria-label": "Mode" }, pinBtn, browseBtn), pageBtn), hint), h("label", { class: "batch-notes" }, "Notes", notesEl), list, pendingBox, h("div", { class: "composer" }, h("label", {}, "Applies to", scopeEl), textEl, countEl, h("p", { class: "keys" }, "Enter saves · Shift+Enter newline · Esc Esc deletes · ⌘Enter sends"), buildRow, statusEl, sendBtn));
     buildRow.hidden = !canBuild;
     root.append(pinsEl, panel);
     // ---- state helpers ----------------------------------------------------------------------------
@@ -157,6 +159,10 @@ export function mountWebQa(options) {
             : "The site works normally. Choose Pin to add comments.";
         renderList();
         renderPending();
+        notesEl.disabled = !!session.pending;
+        const notes = session.pending?.batch.notes ?? session.notes ?? "";
+        if (notesEl.value !== notes)
+            notesEl.value = notes;
         const d = focused();
         textEl.disabled = scopeEl.disabled = !d;
         if (!d)
@@ -399,6 +405,10 @@ export function mountWebQa(options) {
     sendBtn.addEventListener("click", () => { void send(); });
     scopeEl.addEventListener("change", () => edit({ scope: scopeEl.value }));
     textEl.addEventListener("input", () => edit({ text: textEl.value }));
+    notesEl.addEventListener("input", () => {
+        session = { ...session, notes: notesEl.value };
+        persist();
+    });
     buildEl.addEventListener("change", () => update({ ...session, buildAndDeploy: buildEl.checked, makeFeatureFlag: buildEl.checked && session.makeFeatureFlag }));
     flagEl.addEventListener("change", () => update({ ...session, makeFeatureFlag: session.buildAndDeploy && flagEl.checked }));
     textEl.addEventListener("keydown", e => {

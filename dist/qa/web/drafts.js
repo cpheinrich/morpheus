@@ -31,6 +31,7 @@ const WebQaDraft = z.object({
 const WebQaSession = z.object({
     version: z.literal(1),
     drafts: z.array(WebQaDraft).max(WEB_QA_LIMITS.comments),
+    notes: z.string().max(WEB_QA_LIMITS.notesChars).optional(),
     buildAndDeploy: z.boolean(),
     makeFeatureFlag: z.boolean(),
     pending: z.object({
@@ -177,8 +178,10 @@ export function freeze(session, batchId, canBuild) {
     if (!ready.length)
         return { error: "Write a comment before sending." };
     const buildAndDeploy = canBuild && session.buildAndDeploy;
+    const notes = session.notes?.trim();
     const parsed = WebQaBatch.safeParse({
         batchId, comments: ready.map(comment), buildAndDeploy, makeFeatureFlag: buildAndDeploy && session.makeFeatureFlag,
+        ...(notes ? { notes } : {}),
     });
     if (!parsed.success)
         return { error: "These comments cannot be sent: " + (parsed.error.issues[0]?.message ?? "invalid") };
@@ -187,6 +190,7 @@ export function freeze(session, batchId, canBuild) {
         session: {
             ...session,
             drafts: session.drafts.filter(d => !ready.includes(d)),
+            notes: undefined,
             buildAndDeploy: false,
             makeFeatureFlag: false,
             pending: { batch: parsed.data, drafts: ready, state: "unconfirmed" },
@@ -212,7 +216,7 @@ export function reopenPending(session) {
     if (!session.pending || session.pending.state !== "rejected")
         return session;
     // `canPin` caps drafts plus pending together, so the merge never exceeds one batch.
-    return { ...session, drafts: [...session.pending.drafts, ...session.drafts], pending: null };
+    return { ...session, notes: session.pending.batch.notes, drafts: [...session.pending.drafts, ...session.drafts], pending: null };
 }
 /** Drop a build request that keeps failing; the comments themselves were already saved. */
 export function skipBuild(session) {

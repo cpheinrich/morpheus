@@ -36,6 +36,14 @@ describe("parseWebQaBatch", () => {
     expect(parseWebQaBatch(batch({}, { text: "   " })).success).toBe(false);
   });
 
+  it("accepts optional batch notes up to 2000 characters after trimming", () => {
+    const notes = "a".repeat(2000);
+    expect(parseWebQaBatch(batch({ notes: " " + notes })).data?.notes).toBe(notes);
+    expect(parseWebQaBatch(batch({ notes: notes + "b" })).success).toBe(false);
+    expect(parseWebQaBatch(batch({ notes: { text: "not a string" } })).success).toBe(false);
+    expect(parseWebQaBatch(batch()).data).not.toHaveProperty("notes");
+  });
+
   it("requires a UUID batch id", () => {
     expect(parseWebQaBatch(batch({ batchId: "20261115T000000Z-ab12" })).success).toBe(false);
   });

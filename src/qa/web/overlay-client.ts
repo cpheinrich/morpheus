@@ -1,4 +1,5 @@
 import { QA_COLUMN_PX } from "./visuals.js";
+import { QA_NOTES_MAX_CHARS } from "../notes.js";
 
 /**
  * The web overlay's script (MO-26-10-06-18.13.32, column layout MO-26-10-07-13.27.17). Plain
@@ -533,6 +534,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     ".composer{padding:12px 16px 16px;border-top:1px solid var(--qa-rule);display:flex;flex-direction:column;gap:8px}" +
     "textarea{width:100%;min-height:88px;resize:vertical;font:inherit;color:var(--qa-fg);background:var(--qa-field);border:1px solid var(--qa-rule);border-radius:8px;padding:8px}" +
     "textarea:focus{outline:none;border-color:var(--qa-fg)}textarea:disabled{opacity:.5}" +
+    ".batch-notes{display:grid;gap:5px;padding:12px 16px 0;font-weight:600}.batch-notes textarea{min-height:58px;font-weight:400}" +
     ".status{min-height:1.3em;font-size:12px;color:var(--qa-muted)}.status.ok{color:var(--qa-ok)}.status.err{color:#d93025}" +
     ".placement-status{margin:0;color:#d93025;font-size:12px;overflow-wrap:anywhere}" +
     ".keys{font-size:11px;color:var(--qa-muted)}" +
@@ -553,10 +555,11 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     "<header><div class=title><strong></strong></div><div class=title><button class=mode type=button title='Click to pin instead of using the site'>Comment</button><span style='flex:1'></span><button class=layout type=button></button></div>" +
     "<div class=hint>Right-click anything in the page to pin a comment, or turn on Comment and click.</div>" +
     "<div class=away hidden>The page left this site (a sign-in redirect?) and cannot be shown beside the column. <button class=go type=button>Continue full page</button></div></header>" +
+    "<label class=batch-notes>Notes<textarea class=notes maxlength=${QA_NOTES_MAX_CHARS} placeholder='Guidance for this batch…'></textarea></label>" +
     "<h2>Comments</h2><ol></ol>" +
     "<div class=composer><div class=status></div>" +
     "<label>Applies to <select class=scope disabled><option value=element>Element</option><option value=view>Current view</option><option value=page>Whole page</option></select></label>" +
-    "<textarea placeholder='Comment for this pin…' disabled maxlength=8000></textarea>" +
+    "<textarea class=comment placeholder='Comment for this pin…' disabled maxlength=8000></textarea>" +
     "<p class=placement-status role=status hidden></p>" +
     "<div class=keys>Enter saves · Shift+Enter newline · Esc Esc deletes · ⌘Enter sends</div>" +
     "<button class=primary type=button disabled>Send batch</button></div>" +
@@ -564,7 +567,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   root.querySelector(".title strong").textContent = "QA comments · " + String(PROJECT);
   var col = root.querySelector(".col"), listEl = root.querySelector("ol"), pinsLayer = root.querySelector(".pins"), clip = root.querySelector(".clip");
   var hl = root.querySelector(".hl"), modeBtn = root.querySelector(".mode"), sendBtn = root.querySelector(".primary");
-  var textEl = root.querySelector("textarea"), statusEl = root.querySelector(".status");
+  var textEl = root.querySelector(".comment"), notesEl = root.querySelector(".notes"), statusEl = root.querySelector(".status");
   var scopeEl = root.querySelector(".scope");
   var placementStatusEl = root.querySelector(".placement-status");
   var layoutBtn = root.querySelector(".layout"), awayEl = root.querySelector(".away");
@@ -607,7 +610,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   function persist() {
     if (!storeKey) return false;
     try {
-      var data = JSON.stringify({ pins: pins.map(function (p) { return { id: p.id, n: p.n, anchor: p.anchor, text: p.text, byPage: !!p.byPage, createdAt: p.createdAt, webContext: p.webContext, identity: p.identity }; }), nextN: nextN, legacyConsumed: legacyConsumed });
+      var data = JSON.stringify({ pins: pins.map(function (p) { return { id: p.id, n: p.n, anchor: p.anchor, text: p.text, byPage: !!p.byPage, createdAt: p.createdAt, webContext: p.webContext, identity: p.identity }; }), nextN: nextN, notes: notesEl.value, legacyConsumed: legacyConsumed });
       if (new Blob([data]).size > 262144) throw new Error("Draft limit reached");
       sessionStorage.setItem(storeKey, data);
       draftStorageError = false;
@@ -675,6 +678,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     pins = []; nextN = 1; focusedId = null;
     try {
       var saved = JSON.parse(sessionStorage.getItem(storeKey) || "null");
+      if (saved && typeof saved.notes === "string") notesEl.value = saved.notes.slice(0, notesEl.maxLength);
       if (saved && saved.legacyConsumed && typeof saved.legacyConsumed === "object") legacyConsumed = saved.legacyConsumed;
       if (saved && saved.pins && saved.pins.length) {
         pins = saved.pins.slice(0, 30).filter(function (p) { return p && p.anchor && typeof p.n === "number"; }).map(restoredPin);
@@ -817,6 +821,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   }
 
   textEl.addEventListener("input", function () { var p = focused(); if (p) { p.text = textEl.value; renderList(); persist(); } });
+  notesEl.addEventListener("input", persist);
   textEl.addEventListener("keydown", function (e) {
     e.stopPropagation();
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveFocused(true); send(); return; }
@@ -938,7 +943,8 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     var submitted = ready.map(function (p) {
       return { pin: p, text: p.text, scope: p.webContext && p.webContext.scope, comment: JSON.parse(JSON.stringify({ id: "c" + p.n, text: p.text.trim(), createdAt: p.createdAt || "unknown (legacy pin)", anchor: p.anchor, webContext: p.webContext })) };
     });
-    sending = true; renderList(); setStatus("Sending placement context…");
+    var notes = notesEl.value.trim();
+    sending = true; notesEl.disabled = true; renderList(); setStatus("Sending placement context…");
     Promise.all(ready.map(function (p) { return p.imageWork || Promise.resolve(); })).then(function () {
     var body = {
       preview: { url: safeUrl(site.win), kind: "web", label: short(site.doc.title || site.win.location.pathname) },
@@ -950,6 +956,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
         return comment;
       })
     };
+    if (notes) body.notes = notes;
     return fetch("/__qa/api/batches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     })
       .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.status); return j; }); })
@@ -958,11 +965,12 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
       pins = pins.filter(function (p) { return acknowledged.indexOf(p) < 0; });
       acknowledged.forEach(function (p) { imageRecord(storeKey + ":" + p.id, null).catch(function () {}); });
       if (!pins.length) nextN = 1;
+      notesEl.value = "";
       if (acknowledged.some(function (p) { return p.id === focusedId; })) clearComposer();
       persist(); render();
       setStatus("Queued " + result.id + " · " + result.pendingCount + " open batch(es). " + (result.responderActive ? "Background responder running." : result.wakeConfigured ? "Agent wake configured." : "No agent wake configured; message your agent to resume."), "ok");
     }).catch(function (e) { setStatus("Send failed: " + e.message + ". Pins kept.", "err"); })
-      .then(function () { sending = false; renderList(); });
+      .then(function () { sending = false; notesEl.disabled = false; renderList(); });
   }
 
   function mount() {

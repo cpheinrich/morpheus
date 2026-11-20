@@ -296,7 +296,7 @@ describe("the injected client", () => {
     const host = w.document.querySelector("morpheus-qa")!;
     const col = host.shadowRoot!.querySelector(".col") as HTMLElement;
     expect(col).toBeTruthy();
-    expect(host.shadowRoot!.querySelector("textarea")).toBeTruthy();
+    expect(host.shadowRoot!.querySelector("textarea.comment")).toBeTruthy();
     expect(w.document.documentElement.style.getPropertyValue("margin-right")).toBe("340px");
   });
 
@@ -311,7 +311,7 @@ describe("the injected client", () => {
       h1.dispatchEvent(new w.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
     }
     expect(qa.pins()).toHaveLength(1);
-    const box = w.document.querySelector("morpheus-qa")!.shadowRoot!.querySelector("textarea")!;
+    const box = w.document.querySelector("morpheus-qa")!.shadowRoot!.querySelector<HTMLTextAreaElement>("textarea.comment")!;
     box.value = "hello"; box.dispatchEvent(new w.Event("input"));
     box.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true, cancelable: true }));
     expect(qa.pins()).toHaveLength(1);
