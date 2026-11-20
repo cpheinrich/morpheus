@@ -839,8 +839,10 @@ would unblock you>"\`.
 **Break loops.** If the same command fails the same way twice or three polls agree,
 change approach. Never idle-loop. For one run use \`morpheus wait-ci --run <id>\`.
 
-**Follow your PR through merge.** If authorized to merge, use \`morpheus wait-ci <n> --required-only\`.
-Fix or retry failures. Verify the merge or record the hard blocker. GitHub Manager is the backstop.
+**Follow your PR through merge.** Run \`gh pr ready <n>\` once work, evidence and review are complete,
+unless a person requested a hold. Name the blocker or requester and what clears it in \`## Open questions\`.
+Use a \`[WIP]\` title for explicit holds in repos with GitHub Manager enabled.
+Follow \`morpheus wait-ci <n> --required-only\`, fix failures and verify the authorized merge.
 
 **The authoring agent owns the entire review loop.** Finish the relevant focused tests and inspect
 results before the reviewer's first turn; send the full packet and available UI evidence. If a test
@@ -860,9 +862,8 @@ never self-review.
 **Independent review is required before merge.** Before spawning the reviewer, read the
 [review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md).
 Record the review in the task worklog, commit
-it, and run \`morpheus review validate\`. Then label the PR and mark it ready, or create it labelled
-with a visible \`review-record:\` line. For CI or PR evidence, open an unlabelled draft before
-review; drafts wait instead of failing. Merge trunk rather
+it, and run \`morpheus review validate\`. Apply \`agent-reviewed\` and add a visible
+\`review-record:\` line. Open an unlabelled draft early if needed for CI or evidence. Merge trunk rather
 than rebase after review. \`review.required\` defaults to true; project false opts out visibly.
 
 **Every PR must carry** tests for anything testable, a documentation update when behaviour
@@ -1378,12 +1379,14 @@ recording; screenshots are accepted otherwise.
 <!-- The authoring agent must launch a fresh reviewer session; review prepare only prints the packet.
 CI validates evidence and does not start a reviewer.
 After review, run morpheus review validate, then add agent-reviewed and a visible
-review-record: .agent/worklog/<task>.md line. Open the PR as a draft until then.
-Include a short outcome and a link to the worklog. Run morpheus review prepare for the contract. -->
+review-record: .agent/worklog/<task>.md line. Start as a draft if opening early.
+When implementation, required evidence and review are complete and no explicit hold applies, run gh pr ready <n>.
+Follow required CI through merge when authorized. Link the worklog and summarize the review. -->
 
 ## Open questions
 
-<!-- State unresolved questions, or write None explicitly. -->
+<!-- State blockers, or write None. For an explicit hold, name the requester and what clears it.
+If GitHub Manager is enabled, prefix the title with [WIP] until the hold clears. -->
 `;
 export const productReadme = (kind, _s) => {
     if (kind === "roadmap")

@@ -23,8 +23,11 @@ Paste GitHub attachments here. Prefer a screen recording; screenshots are accept
 <!-- The authoring agent must launch a fresh reviewer session; review prepare only prints the packet.
 CI validates evidence and does not start a reviewer.
 Add a visible review-record: .agent/worklog/<task>.md line, a linked summary, and agent-reviewed after completion.
-Run morpheus review validate before pushing. Open the PR as a draft until review is recorded. -->
+Run morpheus review validate before pushing. If the PR needs to open before review, start it as a draft.
+When implementation, required evidence and review are complete and no explicit hold applies, run gh pr ready <n>.
+Follow required CI through merge when authorized. -->
 
 ## Open questions
 
-<!-- State unresolved questions, or write None explicitly. -->
+<!-- State blockers, or write None. For an explicit hold, name the requester and what clears it.
+If GitHub Manager is enabled, prefix the title with [WIP] until the hold clears. -->
