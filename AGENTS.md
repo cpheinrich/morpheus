@@ -163,8 +163,11 @@ unblock you>"`. Escalating is cheap; shipping half-baked is expensive. "Blocked 
 **Break loops.** If the same command fails the same way twice or three polls agree,
 change approach. Never idle-loop. For one run use `morpheus wait-ci --run <id>`.
 
-**Follow your PR through merge.** If authorized to merge, use `morpheus wait-ci <n> --required-only`.
-Fix or retry failures. Verify the merge or record the hard blocker.
+**Follow your PR through merge.** Once implementation, required evidence and independent review
+are complete, run `gh pr ready <n>` for a draft. Keep it draft while substantive work remains or
+when a person explicitly requests a hold. In `## Open questions`, record the blocker or the
+requester and what clears the hold. Use `morpheus wait-ci <n> --required-only`, fix or retry
+failures, and merge when authorized and green. Verify the merge or record the hard blocker.
 
 **Browser-reachable work is not blocked.** If the only obstacle is a browser step (a console,
 dashboard or setting), do it yourself rather than describing the clicks. A gate for human
