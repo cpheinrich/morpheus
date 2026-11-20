@@ -166,7 +166,9 @@ change approach. Never idle-loop. For one run use `morpheus wait-ci --run <id>`.
 **Follow your PR through merge.** Once implementation, required evidence and independent review
 are complete, run `gh pr ready <n>` for a draft. Keep it draft while substantive work remains or
 when a person explicitly requests a hold. In `## Open questions`, record the blocker or the
-requester and what clears the hold. Use `morpheus wait-ci <n> --required-only`, fix or retry
+requester and what clears the hold. In Manager-managed repos, use a `[WIP]` title for an explicit
+hold as described in the [merge runbook](docs/runbooks/pm-workflow.md#merging-the-board-and-the-worklog).
+Use `morpheus wait-ci <n> --required-only`, fix or retry
 failures, and merge when authorized and green. Verify the merge or record the hard blocker.
 
 **Browser-reachable work is not blocked.** If the only obstacle is a browser step (a console,

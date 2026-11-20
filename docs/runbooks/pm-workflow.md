@@ -216,6 +216,8 @@ The author owns a PR authorized to merge until the merge is verified or a hard b
 recorded. Promote a completed draft with `gh pr ready <n>` after recording its required evidence
 and independent review. Keep it draft while substantive work remains or when a person explicitly
 requests a hold. Name the blocker or the requester and what clears the hold in `## Open questions`.
+In repositories with GitHub Manager enabled, prefix an explicitly held draft's title with `[WIP]`
+to prevent automatic promotion. Remove the prefix when the hold clears and continue through CI.
 Use `morpheus wait-ci <n> --required-only` to follow required checks. Resolve any reported merge conflict before relying on a CI verdict. It exits 0 for green,
 1 for failure, 2 for timeout and 3 for an observer error. On failure, read the failing step,
 fix the cause within scope or rerun the failed job when there is evidence of a transient failure.
