@@ -117,14 +117,17 @@ export function createStudioExecutor(config, call, checkQuota) {
           Object.assign(checkout, await fetchStudioRevision(checkout.mirror, task.source.revision));
         }
       } catch { return { prepared: false, diagnosticCode: "source_fetch_failed" }; }
+      // The journal remains in preparation during this quota check and local
+      // checkout. Interrupted preparation cannot have launched a provider.
+      if (task.selection?.provider === "claude") {
+        try { await checkQuota(task.selection); }
+        catch { return { quotaHeld: true }; }
+      }
       if (signal.aborted) return false;
-      // A Claude quota hold can requeue this task. Fetch shared mirror data,
-      // then let the admitted invocation materialize its attempt checkout.
-      if (task.selection?.provider === "claude") return { prepared: true, checkout };
       const output = await invoke(config, { op: "prepare", source: task.source, checkout }, signal);
       return output?.outcome?.prepared === true ? true : { prepared: false, diagnosticCode: output ? "checkout_failed" : "executor_invocation_failed" };
     },
-    async execute({ task, admissionId, resume, prompt, signal, preparedCheckout }) {
+    async execute({ task, admissionId, resume, prompt, signal }) {
       if (signal.aborted) return noLaunch(admissionId);
       try {
         if (task.selection.provider !== "claude") await checkQuota(task.selection);
@@ -141,7 +144,7 @@ export function createStudioExecutor(config, call, checkQuota) {
         task: { source: task.source, selection: task.selection }, admissionId, resume, prompt,
         binding: attemptBinding(task),
         gatewayBaseUrl: task.selection.provider === "claude" ? config.claudeGatewayBaseUrl : config.gatewayBaseUrl,
-        checkout: preparedCheckout ?? checkoutFor(config, task),
+        checkout: checkoutFor(config, task),
       }, signal);
       if (!output) return { terminationVerified: false, diagnosticCode: "executor_invocation_failed" };
       if (output.outcome?.terminationVerified !== true) return { terminationVerified: false };

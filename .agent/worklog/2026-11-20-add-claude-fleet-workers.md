@@ -34,3 +34,9 @@ supervisor now fetches shared mirror data before checking fresh quota and defers
 checkout to the admitted launch. Repeated holds made zero attempt checkouts in the real-Git
 fixture. The controller joins a returned receipt to the exact prior attempt and exposes a queued
 receipt as historical evidence.
+
+A subsequent reviewer found that creating the checkout during the journal’s running phase could
+strand a reservation after a restart before provider admission. The supervisor checks Claude
+quota after the shared source fetch and before checkout materialization within the recoverable
+preparation phase. Restart during preparation releases the exact task’s two leases with a
+never-launched receipt. A saved answer still checks quota before its continuation.

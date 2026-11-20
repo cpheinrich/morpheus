@@ -238,13 +238,22 @@ test("transient launch quota requeues an untouched task and keeps an accepted an
   let quota = "available", denyLaunch = true;
   const launches = [];
   const sessionId = randomUUID();
+  const originalSpawn = childProcess.spawn;
+  t.mock.method(childProcess, "spawn", (command, args, options) => {
+    if (command === process.execPath) return originalSpawn(command, args, options);
+    assert.equal(command, "/usr/bin/sudo");
+    return originalSpawn(args[5], ["--import", f.preload, ...args.slice(6)], { ...options, env: { ...options.env, FACTORY_HOME: f.state } });
+  });
+  syncBuiltinESMExports();
+  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  const checkQuota = async () => { if (denyLaunch) { quota = "unknown"; throw new Error("unavailable"); } };
   const executor = createStudioExecutor({ account: "fixture", node: process.execPath, script: executorScript,
-    workerConfig: f.configPath, project: "app", fleetWorkspace: f.host });
+    workerConfig: f.configPath, project: "app", fleetWorkspace: f.host }, undefined, checkQuota);
   let preparing;
   const runner = createFleetRunner({ journalPath: join(f.root, "runner.json"),
     prepare: (task, signal) => (preparing = executor.prepare(task, signal)),
     quotaObservation: () => [{ provider: "claude", gateway: "anthropic", checkedAt: 100, status: quota }],
-    checkLaunchQuota: async () => { if (denyLaunch) { quota = "unknown"; throw new Error("unavailable"); } },
+    checkLaunchQuota: checkQuota,
     call: async (op, input) => {
       const response = await api.call(op, input, "worker");
       assert.equal(response.status, 200, JSON.stringify(response.value));
@@ -290,6 +299,7 @@ test("transient launch quota requeues an untouched task and keeps an accepted an
   const pending = await snapshot();
   assert.equal(pending.task.state, "TASK_STATE_INPUT_REQUIRED");
   assert.notEqual(pending.task.attempt.id, originalAttempt);
+  assert.deepEqual(await readdir(f.cwd), [pending.task.attempt.id]);
   const replay = await api.call("finish", { taskId, attemptId: lastHeld, outcome: "TASK_STATE_SUBMITTED", cleanupVerified: true,
     result: null, invocation: { launch: "never-launched", admissionId: null, sessionId: null } }, "worker");
   assert.deepEqual(replay.value, { settled: true });
@@ -305,6 +315,40 @@ test("transient launch quota requeues an untouched task and keeps an accepted an
   assert.equal(complete.task.state, "TASK_STATE_COMPLETED");
   assert.equal(complete.receipt.sessionId, sessionId);
   assert.deepEqual(launches.map(({ resume,prompt }) => [resume,prompt]), [[null,"original brief"],[launches[0].admissionId,"the saved value"]]);
+});
+
+test("restarting during a post-quota Claude checkout releases the exact slot and workspace without provider recovery", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  api.config.claudeSelection = { provider: "claude", gateway: "anthropic", model: "claude-test" };
+  const request = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "fixture",
+    messageId: "interrupted-checkout", provider: "claude" };
+  const taskId = (await api.call("submit", request)).value.task.id;
+  const journalPath = join(f.root, "interrupted.json");
+  const copying = Promise.withResolvers();
+  const options = { journalPath,
+    quotaObservation: () => [{ provider: "claude", gateway: "anthropic", checkedAt: 100, status: "available" }],
+    call: async (op, input) => (await api.call(op, input, "worker")).value,
+    prepare: async (task) => { copying.resolve(task.attempt.id); await new Promise(() => {}); },
+    execute: () => assert.fail("provider must not start during an interrupted checkout"),
+    recover: () => assert.fail("no provider admission exists during checkout"),
+  };
+  const initial = createFleetRunner(options);
+  assert.equal(await initial.tick(), "preparing");
+  const attemptId = await copying.promise;
+  const journal = JSON.parse(await readFile(journalPath, "utf8"));
+  assert.equal(journal.phase, "preparing");
+  assert.equal(journal.admissionId, undefined);
+  assert.equal(journal.attemptId, attemptId);
+  const restarted = createFleetRunner(options);
+  assert.equal(await restarted.tick(), "settled");
+  const { task, receipt } = (await api.call("get", { taskId })).value;
+  assert.equal(task.state, "TASK_STATE_FAILED");
+  assert.equal(task.attempt, null);
+  assert.equal(receipt.launch, "never-launched");
+  assert.equal(receipt.attemptId, attemptId);
+  assert.equal(api.db.docs.get("factorySlots/slot").attemptId, null);
+  assert.equal(api.db.docs.has("factoryWorkspaces/related-lock"), false);
+  await assert.rejects(readFile(journalPath), { code: "ENOENT" });
 });
 
 async function exchange(f, job, protectedConfig = true, environment = {}) {

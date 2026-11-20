@@ -1316,7 +1316,8 @@ specified. A slot must report fresh Claude headroom to claim a Claude task. The 
 checks a separate bounded candidate window for each runnable provider. If quota disappears
 before the first launch, the same task returns to the queue after both leases are released.
 Claude fetches into the shared mirror before that check and creates its attempt checkout only
-after quota is approved. A queued receipt is exposed as `previousAttemptReceipt` and must
+after quota is approved. Checkout remains in the recoverable preparation phase before the
+runner records any provider admission. A queued receipt is exposed as `previousAttemptReceipt` and must
 match the task snapshot’s last attempt.
 An accepted clarification waits with its original session and answer until quota returns.
 `placementCandidate` means the slot was free in a heartbeat at most 45 seconds old

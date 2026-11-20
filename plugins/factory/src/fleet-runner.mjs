@@ -186,25 +186,19 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     return finish(record, outcome, { summary, ...(diagnosticCode ? { diagnosticCode } : {}) }, true, notLaunched(record.admissionId));
   }
 
-  async function claudeLaunchGate(record, task, answerId) {
+  async function claudeContinuationGate(record, task) {
     try { await checkLaunchQuota(task.selection); }
-    catch {
-      // A continuation must stay with its original session and saved answer.
-      // Initial attempts can release both leases because inference never started.
-      return answerId ? "waiting" : finishBeforeLaunch(record, submitted, "Waiting for fresh Claude gateway quota.");
-    }
+    catch { return "waiting"; }
     const current = await observeLease(record);
     if (current.task?.attempt?.id !== record.attemptId) return "held";
-    if (current.task.cancelRequestedAt != null) return answerId
-      ? finishWaiting(record, task, canceled, "Canceled while waiting for quota.")
-      : finishBeforeLaunch(record, canceled, "Canceled while waiting for quota.");
+    if (current.task.cancelRequestedAt != null) return finishWaiting(record, task, canceled, "Canceled while waiting for quota.");
     if (!current.renewed) return finishExpired(record, current.task);
     return null;
   }
 
-  async function start(record, task, prompt, answerId = null, preparedCheckout) {
-    if (task.selection?.provider === "claude" && !stopping && leaseIsCurrent()) {
-      const gated = await claudeLaunchGate(record, task, answerId);
+  async function start(record, task, prompt, answerId = null) {
+    if (task.selection?.provider === "claude" && answerId && !stopping && leaseIsCurrent()) {
+      const gated = await claudeContinuationGate(record, task);
       if (gated) return gated;
     }
     const admissionId = randomUUID();
@@ -220,7 +214,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     const run = { controller, done: false, output: null, stopReason: null };
     active = run;
     Promise.resolve()
-      .then(() => execute({ task, admissionId, resume, prompt, signal: controller.signal, ...(preparedCheckout && { preparedCheckout }) }))
+      .then(() => execute({ task, admissionId, resume, prompt, signal: controller.signal }))
       .then((output) => { run.output = output; }, () => {})
       .finally(() => markDone(run));
     return "running";
@@ -235,7 +229,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     active = run;
     Promise.resolve()
       .then(() => prepare(task, run.controller.signal))
-      .then((ready) => { run.output = ready === true || ready?.prepared === true ? ready : false; run.diagnosticCode = fleetDiagnostic.safeParse(ready?.diagnosticCode).data; }, () => {})
+      .then((ready) => { run.output = ready === true; run.quotaHeld = ready?.quotaHeld === true; run.diagnosticCode = fleetDiagnostic.safeParse(ready?.diagnosticCode).data; }, () => {})
       .finally(() => markDone(run));
     return "preparing";
   }
@@ -244,9 +238,11 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     if (active && !active.done) return "preparing";
     if (task.cancelRequestedAt != null)
       return finishBeforeLaunch(record, canceled, "Canceled before launching the worker.");
+    if (active?.quotaHeld && !active.stopReason)
+      return finishBeforeLaunch(record, submitted, "Waiting for fresh Claude gateway quota.");
     if (!active?.output || active.stopReason || stopping)
       return finishBeforeLaunch(record, failed, "Studio source preparation failed or was interrupted before launch.", active?.diagnosticCode);
-    return start(record, task, task.brief.text, null, active.output?.checkout);
+    return start(record, task, task.brief.text);
   }
 
   function abort(reason) {
