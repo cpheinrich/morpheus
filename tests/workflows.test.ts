@@ -1549,6 +1549,19 @@ describe("firebase-tests.yml", () => {
 });
 
 describe("ios-nightly-build.yml", () => {
+  const mockArchiveSettings = `#!/usr/bin/env node
+const args = process.argv.slice(2);
+const assignment = args.find((arg) => arg.startsWith("CURRENT_PROJECT_VERSION="));
+const probe = assignment?.split("=")[1];
+const rows = JSON.parse((probe && process.env.PROBE_METADATA) || process.env.METADATA);
+if (probe) {
+  for (const { buildSettings } of rows) {
+    buildSettings.CURRENT_PROJECT_VERSION = process.env.PROBE_REPORTED_VERSION || probe;
+  }
+}
+if (process.env.ARGV) require("node:fs").appendFileSync(process.env.ARGV, JSON.stringify(args) + "\\n");
+console.log(JSON.stringify(rows));
+`;
   type NightlyIosBuild = {
     on?: {
       workflow_call?: {
@@ -1782,36 +1795,54 @@ describe("ios-nightly-build.yml", () => {
     const app = { target: "ExampleApp", action: "archive", buildSettings: {
       PRODUCT_TYPE: "com.apple.product-type.application", PLATFORM_NAME: "iphoneos", SKIP_INSTALL: "NO",
       CONFIGURATION: "Release", PRODUCT_BUNDLE_IDENTIFIER: "com.example.ios", MARKETING_VERSION: "1.0",
-      GENERATE_INFOPLIST_FILE: "YES",
+      GENERATE_INFOPLIST_FILE: "YES", CURRENT_PROJECT_VERSION: "13",
     } };
     const row = (settings: Record<string, string>) => ({ ...app, buildSettings: { ...app.buildSettings, ...settings } });
     try {
-      await writeFile(join(root, "xcodebuild"), '#!/bin/bash\nprintf "%s\\n" "$@" > "$ARGV"\nprintf "%s\\n" "$METADATA"\n', { mode: 0o755 });
+      await writeFile(join(root, "xcodebuild"), mockArchiveSettings, { mode: 0o755 });
       const output = join(root, "output");
-      const run = (metadata: unknown, bundle = "com.example.ios") => spawnSync("bash", ["-e", "-c", resolve!.run!], {
+      const run = (metadata: unknown, overrides: Record<string, string> = {}) => spawnSync("bash", ["-e", "-c", resolve!.run!], {
         env: { ...process.env, PATH: `${root}:${process.env.PATH}`, GITHUB_WORKSPACE: root, RUNNER_TEMP: root, GITHUB_OUTPUT: output,
           ARGV: join(root, "argv"), METADATA: JSON.stringify(metadata), WORKING_DIRECTORY: "apps/ios", PROJECT: "Example.xcodeproj",
-          SCHEME: "Example Release", CONFIGURATION: "Release", BUNDLE_ID: bundle, XCODE_XCCONFIG_FILE: "" }, encoding: "utf8",
+          SCHEME: "Example Release", CONFIGURATION: "Release", BUNDLE_ID: "com.example.ios", XCODE_XCCONFIG_FILE: "", ...overrides }, encoding: "utf8",
       });
       const ignored = row({ SKIP_INSTALL: "YES", MARKETING_VERSION: "1.0.1", CONFIGURATION: "Debug" });
       expect(run([ignored, app])).toMatchObject({ status: 0, stderr: "" });
       expect(await readFile(output, "utf8")).toBe("version=1.0\n");
-      expect(await readFile(join(root, "argv"), "utf8")).toBe([
+      const calls: string[][] = (await readFile(join(root, "argv"), "utf8")).trimEnd().split("\n").map((line) => JSON.parse(line));
+      const scratch = calls[0]?.[11];
+      expect(scratch?.startsWith(`${root}/ios-version-check.`)).toBe(true);
+      const args = [
         "-showBuildSettings", "-json", "-project", `${root}/apps/ios/Example.xcodeproj`, "-scheme", "Example Release", "-configuration",
-        "Release", "-destination", "generic/platform=iOS", "-derivedDataPath", `${root}/ios-version-check`,
-        "-disableAutomaticPackageResolution", "-onlyUsePackageVersionsFromResolvedFile", "archive", "",
-      ].join("\n"));
-      expect(run([app], "com.other.ios")).toMatchObject({ status: 1, stdout: "", stderr: expect.stringContaining("app bundle ID") });
+        "Release", "-destination", "generic/platform=iOS", "-derivedDataPath", scratch,
+        "-disableAutomaticPackageResolution", "-onlyUsePackageVersionsFromResolvedFile",
+      ];
+      expect(calls).toEqual([[...args, "archive"], [...args, "CURRENT_PROJECT_VERSION=14", "archive"]]);
+      expect(run([app], { BUNDLE_ID: "com.other.ios" })).toMatchObject({ status: 1, stdout: "", stderr: expect.stringContaining("app bundle ID") });
       expect(run([row({ CONFIGURATION: "Debug", MARKETING_VERSION: "1.0.1" })])).toMatchObject({ status: 1, stdout: "" });
       expect(run([{ ...app, action: "build" }])).toMatchObject({ status: 1, stdout: "" });
       expect(run([app, row({ PRODUCT_BUNDLE_IDENTIFIER: "com.other.ios" })])).toMatchObject({ status: 1, stdout: "" });
       expect(await readFile(output, "utf8")).toBe("version=1.0\n");
+      await rm(output);
+      const unstable = "Cannot prove stable archive identity";
+      const changedSettings: Record<string, string>[] = [{ MARKETING_VERSION: "1.0.1" }, { PRODUCT_BUNDLE_IDENTIFIER: "com.other.ios" },
+        { CONFIGURATION: "Debug" }, { GENERATE_INFOPLIST_FILE: "NO" }, { INFOPLIST_EXPAND_BUILD_SETTINGS: "NO" }];
+      for (const override of changedSettings) {
+        expect(run([app], { PROBE_METADATA: JSON.stringify([row(override)]) }), JSON.stringify(override)).toMatchObject({
+          status: 1, stderr: expect.stringContaining(unstable),
+        });
+      }
+      expect(run([app], { PROBE_METADATA: JSON.stringify([app, app]) })).toMatchObject({
+        status: 1, stderr: expect.stringContaining("Expected one installable iOS archive app; found 2"),
+      });
+      expect(run([app], { PROBE_REPORTED_VERSION: "13" })).toMatchObject({ status: 1, stderr: expect.stringContaining(unstable) });
+      expect(await readFile(output, "utf8").catch(() => "")).toBe("");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   });
 
-  it("requires the selected Release plist to produce the planned marketing version", async () => {
+  it("requires a stable Release plist source with the planned marketing version and bundle ID", async () => {
     const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
     const resolve = wf.jobs?.["version-check"]?.steps?.find(({ id }) => id === "identity");
     const root = await mkdtemp(join(tmpdir(), "nightly-archive-plist-"));
@@ -1820,11 +1851,12 @@ describe("ios-nightly-build.yml", () => {
     const output = join(root, "output");
     const versionKey = "CFBundleShortVersionString";
     const plistName = "Example Info.plist";
-    const plist = (version: string, extra = "") => `<?xml version="1.0" encoding="UTF-8"?>
+    const bundleKey = "CFBundleIdentifier";
+    const plist = (version: string, extra = "", bundle = "$(PRODUCT_BUNDLE_IDENTIFIER)") => `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
-  <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+  <key>${bundleKey}</key><string>${bundle}</string>
   <key>${versionKey}</key><string>${version}</string>
   <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
   ${extra}
@@ -1834,12 +1866,12 @@ describe("ios-nightly-build.yml", () => {
       PRODUCT_TYPE: "com.apple.product-type.application", PLATFORM_NAME: "iphoneos", SKIP_INSTALL: "NO",
       CONFIGURATION: "Release", PRODUCT_BUNDLE_IDENTIFIER: "com.example.ios", MARKETING_VERSION: "1.0.1",
       SRCROOT: project, INFOPLIST_FILE: plistName, INFOPLIST_PREPROCESS: "NO", INFOPLIST_EXPAND_BUILD_SETTINGS: "YES",
-      GENERATE_INFOPLIST_FILE: "NO",
+      GENERATE_INFOPLIST_FILE: "NO", CURRENT_PROJECT_VERSION: "12",
     };
     try {
       await mkdir(project, { recursive: true });
       await execFileAsync("git", ["init", "--quiet", workspace]);
-      await writeFile(join(root, "xcodebuild"), '#!/bin/bash\nprintf "%s\\n" "$METADATA"\n', { mode: 0o755 });
+      await writeFile(join(root, "xcodebuild"), mockArchiveSettings, { mode: 0o755 });
       if (process.platform !== "darwin") {
         await writeFile(join(root, "plutil"), `#!/usr/bin/env python3
 import json, plistlib, sys
@@ -1853,16 +1885,20 @@ with open(sys.argv[-1], "rb") as source:
       await writeFile(join(root, "Outside.plist"), plist("1.0.1"));
       await symlink(join(root, "Outside.plist"), join(project, "Link.plist"));
       await writeFile(join(project, "Untracked.plist"), plist("1.0.1"));
-      const run = (overrides: Record<string, string> = {}) => spawnSync("bash", ["-e", "-c", resolve!.run!], {
+      const metadata = (overrides: Record<string, string>) => JSON.stringify([
+        { action: "archive", buildSettings: { ...settings, SKIP_INSTALL: "YES", INFOPLIST_FILE: "Ignored.plist" } },
+        { action: "archive", buildSettings: { ...settings, ...overrides } },
+      ]);
+      const run = (overrides: Record<string, string> = {}, probeOverrides = overrides) => spawnSync("bash", ["-e", "-c", resolve!.run!], {
         env: { ...process.env, PATH: `${root}:${process.env.PATH}`, GITHUB_WORKSPACE: workspace, RUNNER_TEMP: root,
           GITHUB_OUTPUT: output, XCODE_XCCONFIG_FILE: "", WORKING_DIRECTORY: "apps/Example iOS", PROJECT: "Example.xcodeproj",
-          SCHEME: "Example", CONFIGURATION: "Release", BUNDLE_ID: settings.PRODUCT_BUNDLE_IDENTIFIER, METADATA: JSON.stringify([
-            { action: "archive", buildSettings: { ...settings, SKIP_INSTALL: "YES", INFOPLIST_FILE: "Ignored.plist" } },
-            { action: "archive", buildSettings: { ...settings, ...overrides } },
-          ]) }, encoding: "utf8",
+          SCHEME: "Example", CONFIGURATION: "Release", BUNDLE_ID: settings.PRODUCT_BUNDLE_IDENTIFIER,
+          METADATA: metadata(overrides), PROBE_METADATA: metadata(probeOverrides) }, encoding: "utf8",
       });
-      const rejected = async (overrides: Record<string, string>, diagnostic: string) => {
-        expect(run(overrides), JSON.stringify(overrides)).toMatchObject({ status: 1, stderr: expect.stringContaining(diagnostic) });
+      const rejected = async (overrides: Record<string, string>, diagnostic: string, probeOverrides = overrides) => {
+        expect(run(overrides, probeOverrides), JSON.stringify([overrides, probeOverrides])).toMatchObject({
+          status: 1, stderr: expect.stringContaining(diagnostic),
+        });
         expect(await readFile(output, "utf8").catch(() => "")).toBe("");
       };
       const versionDiagnostic = `Info.plist must set ${versionKey} to the resolved MARKETING_VERSION (1.0.1)`;
@@ -1879,19 +1915,34 @@ with open(sys.argv[-1], "rb") as source:
       await writeFile(join(project, plistName), plist("$(MARKETING_VERSION)"));
       await rejected({ INFOPLIST_EXPAND_BUILD_SETTINGS: "NO" }, versionDiagnostic);
       await rejected({ INFOPLIST_PREPROCESS: "YES" }, "Info.plist preprocessing");
-      await rejected({ INFOPLIST_KEY_CFBundleShortVersionString: "1.0" }, "short-version build setting override");
+      await rejected({ INFOPLIST_KEY_CFBundleShortVersionString: "1.0" }, "identity build setting override");
       await rejected({ INFOPLIST_FILE: "", GENERATE_INFOPLIST_FILE: "YES", INFOPLIST_KEY_CFBundleShortVersionString: "1.0" },
-        "short-version build setting override");
-      for (const version of ["1.0.1", "$(MARKETING_VERSION)", "${MARKETING_VERSION}"]) {
-        await writeFile(join(project, plistName), plist(version));
-        expect(run(), version).toMatchObject({ status: 0, stderr: "" });
+        "identity build setting override");
+      await writeFile(join(project, plistName), plist("1.0.1", "", "com.example.other"));
+      const bundleDiagnostic = `Info.plist must set ${bundleKey} to the resolved PRODUCT_BUNDLE_IDENTIFIER (com.example.ios)`;
+      await rejected({}, bundleDiagnostic);
+      await writeFile(join(project, plistName), plist("1.0.1", `<key>${bundleKey}-iphoneos</key><string>com.example.other</string>`));
+      await rejected({}, "without overriding keys");
+      await writeFile(join(project, plistName), plist("1.0.1"));
+      await rejected({ INFOPLIST_EXPAND_BUILD_SETTINGS: "NO" }, bundleDiagnostic);
+      await rejected({ INFOPLIST_KEY_CFBundleIdentifier: "com.example.other" }, "identity build setting override");
+      await rejected({ INFOPLIST_FILE: "", GENERATE_INFOPLIST_FILE: "YES", INFOPLIST_KEY_CFBundleIdentifier: "com.example.other" },
+        "identity build setting override");
+      await rejected({}, "identity build setting override", { INFOPLIST_KEY_CFBundleIdentifier: "com.example.other" });
+      for (const build of [12, 13]) await writeFile(join(project, `Info-${build}.plist`), plist("1.0.1"));
+      await execFileAsync("git", ["-C", project, "add", "--", "Info-12.plist", "Info-13.plist"]);
+      await rejected({ INFOPLIST_FILE: "Info-12.plist" }, "Cannot prove stable archive identity", { INFOPLIST_FILE: "Info-13.plist" });
+      for (const [version, bundle] of [["1.0.1", "com.example.ios"], ["$(MARKETING_VERSION)", "$(PRODUCT_BUNDLE_IDENTIFIER)"],
+        ["${MARKETING_VERSION}", "${PRODUCT_BUNDLE_IDENTIFIER}"]] as const) {
+        await writeFile(join(project, plistName), plist(version, "", bundle));
+        expect(run({}, { INFOPLIST_FILE: join(project, plistName) }), `${version} / ${bundle}`).toMatchObject({ status: 0, stderr: "" });
         expect(await readFile(output, "utf8")).toBe("version=1.0.1\n");
         await rm(output);
       }
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 
   it("refuses the effective upload bundle override before starting the script", async () => {
     const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
