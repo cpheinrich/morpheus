@@ -58,6 +58,7 @@ import { noteWrite } from "../session/context.js";
 import { install as codebaseMemoryInstall } from "./codebase-memory.js";
 import { check as complexityCheck, install as complexityInstall, prompt as complexityPrompt } from "./complexity.js";
 import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
+import { asoProductResearch, validateProductResearch } from "./product-research.js";
 import {
   autoUpdate as selfAutoUpdate,
   check as selfCheck,
@@ -245,6 +246,13 @@ async function dispatchResearchLibrary({ flags, command, rest }: Invocation): Pr
     console.error(`Unknown research-library command "${command ?? ""}".\n\n${HELP}`);
     return 1;
   
+}
+
+async function dispatchProductResearch({ flags, command, rest }: Invocation): Promise<number> {
+  if (command === "validate") return validateProductResearch(rest[0]);
+  if (command === "aso") return asoProductResearch(rest, flags.out);
+  console.error(`Unknown product-research command "${command ?? ""}".\n\n${HELP}`);
+  return 1;
 }
 
 async function dispatchInit({ flags, command, rest }: Invocation): Promise<number> {
@@ -683,6 +691,7 @@ const groups: Record<string, (invocation: Invocation) => Promise<number>> = {
   "voice": dispatchVoice,
   "tokens": dispatchTokens,
   "research-library": dispatchResearchLibrary,
+  "product-research": dispatchProductResearch,
   "init": dispatchInit,
   "web": dispatchWeb,
   "registry": dispatchRegistry,

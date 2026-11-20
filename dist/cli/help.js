@@ -76,6 +76,11 @@ Usage
   morpheus research-library publish <source-directory> --slug <slug> --title <title> --author <name>
   morpheus research-library push|pull|verify|bundle|verify-bundle [arguments]
                             publish, restore, and verify canonical Babel book directories
+  morpheus product-research validate <study-directory>
+                            check study.json, exact asset inventory, sizes and SHA-256 before import
+  morpheus product-research aso --app <id> --country us --device iphone --terms <a,b,c>
+                            [--branded-terms <x,y>] --out <path>
+                            bounded read-only Appeeky snapshot (APPEEKY_API_KEY, plan credits only)
   morpheus registry list | add [--prefix XX] | remove <name>
   morpheus init             [--name <Acme>] [--prefix XX] [--kind company|personal|internal]
   morpheus init status      [--offline]

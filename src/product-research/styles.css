@@ -1,0 +1,90 @@
+/*
+ * Layout for morpheus-kit/product-research/react. Brand belongs to the consumer: override the
+ * --app-research-* properties on .app-research / .app-research-signals (or an ancestor), or target
+ * the app-research-* classes. Colours default to the surrounding text colour.
+ */
+.app-research,
+.app-research-signals {
+  --app-research-accent: currentColor;
+  --app-research-border: color-mix(in srgb, currentColor 22%, transparent);
+  --app-research-muted: color-mix(in srgb, currentColor 68%, transparent);
+  --app-research-surface: color-mix(in srgb, currentColor 5%, transparent);
+  --app-research-selected: color-mix(in srgb, var(--app-research-accent) 18%, transparent);
+  --app-research-radius: 0.5rem;
+  --app-research-gap: 1rem;
+}
+
+.app-research-meta { color: var(--app-research-muted); font-size: 0.875em; }
+.app-research-badge {
+  border: 1px solid var(--app-research-border); border-radius: 999px; padding: 0 0.5em; font-size: 0.8125em;
+}
+.app-research-stale { font-weight: 600; }
+.app-research-empty { color: var(--app-research-muted); }
+.app-research-error { border-left: 3px solid var(--app-research-accent); padding-left: 0.75rem; }
+
+.app-research button {
+  font: inherit; color: inherit; cursor: pointer; text-align: left;
+  border: 1px solid var(--app-research-border); border-radius: var(--app-research-radius);
+  background: transparent; padding: 0.375rem 0.625rem;
+}
+.app-research button:focus-visible,
+.app-research-search:focus-visible,
+.app-research-signals a:focus-visible { outline: 2px solid var(--app-research-accent); outline-offset: 2px; }
+.app-research button[aria-pressed="true"],
+.app-research button[aria-current="true"] { background: var(--app-research-selected); border-color: var(--app-research-accent); }
+
+.app-research-layout {
+  display: grid; gap: var(--app-research-gap); grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+}
+.app-research-screens ul,
+.app-research-controls ul,
+.app-research-transitions,
+.app-research-downloads { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.375rem; }
+.app-research-search-label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+.app-research-search {
+  width: 100%; box-sizing: border-box; font: inherit; color: inherit; background: transparent;
+  border: 1px solid var(--app-research-border); border-radius: var(--app-research-radius); padding: 0.375rem 0.5rem;
+}
+.app-research-screen-button { display: grid; width: 100%; }
+.app-research-screen-state { color: var(--app-research-muted); font-size: 0.8125em; }
+
+.app-research-pane-switch { display: none; gap: 0.5rem; margin-bottom: 0.75rem; }
+.app-research-figures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--app-research-gap); }
+.app-research-figures figure { margin: 0; }
+.app-research-figures figcaption { color: var(--app-research-muted); font-size: 0.8125em; margin-top: 0.375rem; }
+.app-research-canvas {
+  position: relative; width: 100%; max-width: 24rem; overflow: hidden;
+  border: 1px solid var(--app-research-border); border-radius: var(--app-research-radius); background: var(--app-research-surface);
+}
+.app-research-image { display: block; width: 100%; height: auto; }
+.app-research .app-research-region {
+  position: absolute; box-sizing: border-box; padding: 0.125rem; overflow: hidden;
+  border-radius: 0.25rem; font-size: 0.6875rem; line-height: 1.1; background: var(--app-research-surface);
+}
+.app-research-region-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-research-highlight {
+  position: absolute; box-sizing: border-box; pointer-events: none;
+  border: 3px solid var(--app-research-accent); border-radius: 0.25rem; box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.25);
+}
+
+.app-research-facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
+.app-research-facts > div { display: contents; }
+.app-research-facts dt { color: var(--app-research-muted); }
+.app-research-facts dd { margin: 0; }
+.app-research-control { border: 1px solid var(--app-research-border); border-radius: var(--app-research-radius); padding: 0.75rem; }
+.app-research .app-research-link { border: 0; padding: 0; text-decoration: underline; }
+.app-research-accessibility pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; }
+
+.app-research-keywords { border-collapse: collapse; width: 100%; }
+.app-research-keywords caption { text-align: left; font-weight: 600; }
+.app-research-keywords th,
+.app-research-keywords td { text-align: left; padding: 0.375rem 0.5rem; border-bottom: 1px solid var(--app-research-border); }
+
+/* Phones: stack the list above the detail and show one figure at a time behind the switch. */
+@media (max-width: 47.99rem) {
+  .app-research-layout { grid-template-columns: minmax(0, 1fr); }
+  .app-research-pane-switch { display: flex; }
+  .app-research-figures { grid-template-columns: minmax(0, 1fr); }
+  .app-research-figures[data-pane="wireframe"] .app-research-capture,
+  .app-research-figures[data-pane="capture"] .app-research-wireframe { display: none; }
+}

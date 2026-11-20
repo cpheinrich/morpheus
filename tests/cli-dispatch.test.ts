@@ -8,6 +8,7 @@ import { HELP } from "../src/cli/help.js";
 import { guard } from "../src/cli/context.js";
 import { webInit } from "../src/cli/web.js";
 import { build as tokensBuild } from "../src/cli/tokens.js";
+import { asoProductResearch } from "../src/cli/product-research.js";
 vi.mock("../src/cli/pm.js", () => ({ block: vi.fn(async () => ({ code: 73, written: [] })), claim: vi.fn(async () => 73), unbind: vi.fn(async () => 73), resume: vi.fn(async () => 73), cleanup: vi.fn(async () => 73), worktrees: vi.fn(async () => 73), claims: vi.fn(async () => 73), tagged: vi.fn(async () => 73), create: vi.fn(async () => 73), index: vi.fn(async () => 73), linkIssue: vi.fn(async () => 73), migrateIds: vi.fn(async () => 73), ship: vi.fn(async () => 73), unblock: vi.fn(async () => 73), validate: vi.fn(async () => 73) }));
 vi.mock("../src/cli/check.js", () => ({ pr: vi.fn(async () => 73) }));
 vi.mock("../src/ios/changed-swift.js", () => ({ run: vi.fn(() => 73) }));
@@ -29,6 +30,7 @@ vi.mock("../src/cli/team.js", () => ({ validate: vi.fn(async () => 73) }));
 vi.mock("../src/cli/context.js", () => ({ check: vi.fn(async () => 73), guard: vi.fn(async () => ({ refused: null, contained: false })), brief: vi.fn(async () => 73), install: vi.fn(async () => 73), refresh: vi.fn(async () => 73), status: vi.fn(async () => 73) }));
 vi.mock("../src/session/context.js", () => ({ noteWrite: vi.fn(async () => 73) }));
 vi.mock("../src/cli/codebase-memory.js", () => ({ install: vi.fn(async () => 73) }));
+vi.mock("../src/cli/product-research.js", () => ({ asoProductResearch: vi.fn(async () => 73), validateProductResearch: vi.fn(async () => 73) }));
 vi.mock("../src/cli/research-library.js", () => ({ initResearchLibrary: vi.fn(async () => 73), runResearchLibrary: vi.fn(async () => 73) }));
 vi.mock("../src/cli/self.js", () => ({ autoUpdate: vi.fn(async () => 73), check: vi.fn(async () => 73), ensure: vi.fn(async () => 73), install: vi.fn(async () => 73), update: vi.fn(async () => 73), reportContextMcpSetup: vi.fn(async () => {}) }));
 vi.mock("../src/cli/registry.js", () => ({ list: vi.fn(async () => 73), add: vi.fn(async () => 73), remove: vi.fn(async () => 73) }));
@@ -40,12 +42,16 @@ describe("CLI invocation contract", () => {
     expect(await run(["tokens", "build", "--swift", "Shared/Palette.swift", "--css", "", "--check"])).toBe(73);
     expect(tokensBuild).toHaveBeenCalledWith(expect.objectContaining({ swift: "Shared/Palette.swift", css: "", check: true }));
   });
+  it("passes product-research aso options through and --out separately", async () => {
+    expect(await run(["product-research", "aso", "--app", "1", "--terms", "a,b,c", "--out", "x.json"])).toBe(73);
+    expect(asoProductResearch).toHaveBeenCalledWith(["--app", "1", "--terms", "a,b,c"], "x.json");
+  });
   it.each([[], ["--help"], ["pm", "new", "--help"], ["bad", "-h"]])("help wins before dispatch: %j", async (...argv) => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     expect(await run(argv)).toBe(0);
     expect(log).toHaveBeenCalledWith(HELP);
   });
-  it.each(["self", "codebase-memory", "voice", "tokens", "research-library", "init", "web", "registry", "hq", "access", "firebase", "brand", "inbox", "review", "team", "context", "check", "ios", "pm", "profile"])("preserves %s errors", async (group) => {
+  it.each(["self", "codebase-memory", "voice", "tokens", "research-library", "product-research", "init", "web", "registry", "hq", "access", "firebase", "brand", "inbox", "review", "team", "context", "check", "ios", "pm", "profile"])("preserves %s errors", async (group) => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await run([group, "nonsense"])).toBe(1);
     expect(error).toHaveBeenCalledWith(`Unknown ${group} command "nonsense".\n\n${HELP}`);
@@ -55,7 +61,7 @@ describe("CLI invocation contract", () => {
     expect(await run([group])).toBe(1);
     expect(error).toHaveBeenCalledWith(`Unknown command "${group}".\n\n${HELP}`);
   });
-  it.each(["self", "self check", "self update", "self install", "self ensure", "self auto-update enable", "doctor", "codebase-memory", "codebase-memory install", "heartbeat", "voice knowledge", "voice brief a topic", "tokens", "tokens build", "research-library init", "research-library bundle", "research-library publish book --author A", "init", "init status", "init done task", "init doing task", "init todo task", "web", "web status", "web init", "web add-consumer-auth", "registry list", "registry add", "registry remove item", "hq rules", "hq rules --print", "access sync", "firebase auth setup", "firebase auth check", "brand", "brand status", "brand build", "brand explore", "brand refresh", "brand finalize", "brand migrate", "brand check", "brand init", "inbox validate", "review prepare", "review prompt", "review needed", "review delivery", "team validate", "context", "context refresh", "context check", "context install", "context status", "check pr", "ios changed-swift apps/ios", "pm validate", "pm index", "pm claim MO-001", "pm claims", "pm tagged engineering devops --json", "pm resume MO-001", "pm unbind MO-001", "pm cleanup MO-001", "pm worktrees", "pm link-issue MO-001 1", "pm block MO-001 --needs approval", "pm unblock MO-001", "pm ship MO-001", "pm migrate-ids", "pm new roadmap title", "profile", "profile report --since 2026-09-01 --json", "profile extract --repo evo --out x.jsonl"])("routes %s to its handler", async (line) => {
+  it.each(["self", "self check", "self update", "self install", "self ensure", "self auto-update enable", "doctor", "codebase-memory", "codebase-memory install", "heartbeat", "voice knowledge", "voice brief a topic", "tokens", "tokens build", "research-library init", "research-library bundle", "research-library publish book --author A", "product-research validate dir", "product-research aso --app 1 --out x.json", "init", "init status", "init done task", "init doing task", "init todo task", "web", "web status", "web init", "web add-consumer-auth", "registry list", "registry add", "registry remove item", "hq rules", "hq rules --print", "access sync", "firebase auth setup", "firebase auth check", "brand", "brand status", "brand build", "brand explore", "brand refresh", "brand finalize", "brand migrate", "brand check", "brand init", "inbox validate", "review prepare", "review prompt", "review needed", "review delivery", "team validate", "context", "context refresh", "context check", "context install", "context status", "check pr", "ios changed-swift apps/ios", "pm validate", "pm index", "pm claim MO-001", "pm claims", "pm tagged engineering devops --json", "pm resume MO-001", "pm unbind MO-001", "pm cleanup MO-001", "pm worktrees", "pm link-issue MO-001 1", "pm block MO-001 --needs approval", "pm unblock MO-001", "pm ship MO-001", "pm migrate-ids", "pm new roadmap title", "profile", "profile report --since 2026-09-01 --json", "profile extract --repo evo --out x.jsonl"])("routes %s to its handler", async (line) => {
     expect(await run(line.split(" "))).toBe(73);
   });
   it.each(["brief", "start"])("reconciles device context setup before context %s", async command => {
