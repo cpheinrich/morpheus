@@ -1,13 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { fleetCodexModel } from "./config.mjs";
-import { claimTask, leaseMs, renewAttempt, settleAttempt } from "./fleet-claims.mjs";
+import { fleetModel, fleetProvider } from "./config.mjs";
+import { claimTask, fleetQueueReason, leaseMs, renewAttempt, settleAttempt } from "./fleet-claims.mjs";
 import { answerQuestion, askQuestion, cancelTask, submitTask } from "./fleet-mailbox.mjs";
 import { fleetDiagnostic, invocationReceipt, receiptPath } from "./fleet-receipt.mjs";
 import { workspaceIntent, workspaceLaunch } from "./fleet-workspace.mjs";
 import { dashboardMetadata, reportedPullRequests } from "./fleet-display.mjs";
 import { readFleetWork } from "./fleet-work.mjs";
-import { fleetReadiness, quotaObservation } from "./fleet-readiness.mjs";
+import { fleetReadiness } from "./fleet-readiness.mjs";
+import { quotaObservation } from "./fleet-quota.mjs";
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const digest = /^[0-9a-f]{64}$/;
@@ -40,9 +41,9 @@ const worker = {
   }),
 };
 const controller = {
-  submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, workspace: workspaceIntent.optional(), model: fleetCodexModel.optional(), display: dashboardMetadata.optional() }),
+  submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, workspace: workspaceIntent.optional(), provider: fleetProvider.optional(), model: fleetModel.optional(), display: dashboardMetadata.optional() }),
   get: z.object(scope),
-  readiness: z.object({ rootId: id, project: id }),
+  readiness: z.object({ rootId: id, project: id, provider: fleetProvider.optional() }),
   answer: z.object({ ...scope, attemptId: id, questionId: id, messageId: id, text: message }),
   cancel: z.object(scope),
   download: z.object({ ...scope, name }),
@@ -74,11 +75,17 @@ function enrolledProject(config, principal, name) {
   return principal.projects.includes(name) && Object.hasOwn(config.projects, name) && config.projects[name];
 }
 
+function projectSelection(config, project, provider, model) {
+  const claude = config.claudeSelection;
+  const useClaude = provider === "claude" || (!provider && claude && model === claude.model);
+  return useClaude ? claude : project?.selection;
+}
+
 function launchFor(config, principal, input) {
   const project = enrolledProject(config, principal, input.project);
-  const selection = project?.selection;
+  const selection = projectSelection(config, project, input.provider, input.model);
   const fetchSource = project?.revision === "git";
-  if (!project || (!fetchSource && project.revision !== input.revision) || (input.model && input.model !== selection.model))
+  if (!project || !selection || (!fetchSource && project.revision !== input.revision) || (input.model && input.model !== selection.model))
     throw failure(403, "Project revision or model is outside the pilot enrollment");
   let workspace;
   if (input.workspace || project.workspace) {
@@ -100,14 +107,16 @@ async function signal(db, uids, log) {
   }));
 }
 
-function inspectReadiness(db, config, principal, projectName, now) {
+function inspectReadiness(db, config, principal, { project: projectName, provider }, now) {
   const project = enrolledProject(config, principal, projectName);
-  if (!project) throw failure(403, "Project is outside the pilot enrollment");
-  return fleetReadiness(db, config.users, projectName, project, now, maxAgeMs);
+  if (!project) throw failure(403, "Project is outside enrollment");
+  const selection = projectSelection(config, project, provider);
+  if (!selection) throw failure(403, "Worker provider is outside enrollment");
+  return fleetReadiness(db, config.users, projectName, { ...project, selection }, now, maxAgeMs);
 }
 
 async function handleController(op, input, { db, config, principal, uid, objects, log, now }) {
-  if (op === "readiness") return inspectReadiness(db, config, principal, input.project, now);
+  if (op === "readiness") return inspectReadiness(db, config, principal, input, now);
   const contextId = hash(`${uid}\0${input.rootId}`);
   const notify = (slots) => signal(db, Object.keys(config.users).filter((key) =>
     slots.includes(config.users[key].slotId)), log);
@@ -117,7 +126,7 @@ async function handleController(op, input, { db, config, principal, uid, objects
     return result;
   }
   const task = await loadTask(db, input.taskId, (row) => row.contextId === contextId);
-  if (op === "get") return controllerSnapshot(db, task);
+  if (op === "get") return controllerSnapshot(db, task, now);
   if (op === "download") {
     const artifact = task.result?.artifacts?.find(({ name }) => name === input.name);
     if (!artifact) throw failure(404, "Unknown Factory artifact");
@@ -131,12 +140,13 @@ async function handleController(op, input, { db, config, principal, uid, objects
   return result;
 }
 
-async function controllerSnapshot(db, task) {
-  const [question, receipt] = await Promise.all([
+async function controllerSnapshot(db, task, now) {
+  const [question, receipt, queueReason] = await Promise.all([
     task.questionId ? messageRef(db, task.id, task.questionId).get().then((doc) => doc.data()) : null,
     task.lastAttempt && !task.attempt ? db.doc(receiptPath(task.id)).get().then((doc) => doc.data()) : null,
+    task.state === "TASK_STATE_SUBMITTED" ? fleetQueueReason(db, task, now, maxAgeMs) : null,
   ]);
-  return { task, question, ...(receipt ? { receipt } : {}) };
+  return { task, question, ...(receipt ? { receipt } : {}), ...(queueReason ? { queueReason } : {}) };
 }
 
 async function heartbeat(db, { hostId, slotId }, input, now) {

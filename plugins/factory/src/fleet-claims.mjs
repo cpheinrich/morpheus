@@ -1,4 +1,5 @@
 import { receiptPath } from "./fleet-receipt.mjs";
+import { quotaStatus } from "./fleet-quota.mjs";
 
 export const legacyLeaseMs = 60_000;
 export const leaseMs = 120_000;
@@ -23,14 +24,31 @@ export function available(slot, now, maxAgeMs) {
     Number.isSafeInteger(slot.capacity) && slot.capacity > 0;
 }
 
-async function preferredSlot(db, transaction, eligibleSlots, now, maxAgeMs) {
-  const candidates = await Promise.all(eligibleSlots.map(async (id) => ({
+async function preferredSlot(db, transaction, task, now, maxAgeMs) {
+  const candidates = await Promise.all(task.eligibleSlots.map(async (id) => ({
     id,
     slot: await read(transaction, db.doc(slotPath(id))),
   })));
   return candidates
-    .filter(({ slot }) => available(slot, now, maxAgeMs))
+    .filter(({ slot }) => available(slot, now, maxAgeMs) && matchesClaudeQuota(slot, task.selection, now))
     .sort((a, b) => b.slot.capacity - a.slot.capacity || a.id.localeCompare(b.id))[0];
+}
+
+function matchesClaudeQuota(slot, selection, now) {
+  return selection?.provider !== "claude" || quotaStatus(slot.quota, selection, now).status === "available";
+}
+
+export async function fleetQueueReason(db, task, now, maxAgeMs) {
+  const [workspace, ...slots] = await Promise.all([
+    db.doc(workspacePath(task.workspaceKey)).get(),
+    ...task.eligibleSlots.map(id => db.doc(slotPath(id)).get()),
+  ]);
+  if (workspace.data()?.attemptId) return "workspace-busy";
+  const idle = slots.map(doc => doc.data()).filter(slot => available(slot, now, maxAgeMs));
+  if (!idle.length) return "worker-unavailable";
+  const statuses = idle.map(slot => quotaStatus(slot.quota, task.selection, now).status);
+  if (statuses.includes("available")) return "awaiting-worker";
+  return statuses.includes("limited") ? "quota-limited" : "quota-unavailable";
 }
 
 export function claimTask(db, {
@@ -49,7 +67,7 @@ export function claimTask(db, {
     }
     if (task.state !== "TASK_STATE_SUBMITTED" || prior) return { reason: "already-claimed" };
 
-    const winner = await preferredSlot(db, transaction, task.eligibleSlots, now, maxAgeMs);
+    const winner = await preferredSlot(db, transaction, task, now, maxAgeMs);
     if (winner?.id !== slotId || winner.slot.hostId !== hostId) return { reason: "not-preferred" };
     const workspaceRef = db.doc(workspacePath(task.workspaceKey));
     if ((await read(transaction, workspaceRef))?.attemptId) return { reason: "workspace-busy" };

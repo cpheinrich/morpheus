@@ -4,7 +4,7 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { z } from "zod";
-import { fleetCodexModel } from "../src/config.mjs";
+import { fleetModel } from "../src/config.mjs";
 import { createFleetApi } from "../src/fleet-api.mjs";
 import { githubRepository } from "../src/fleet-display.mjs";
 import { fleetObjects } from "../src/fleet-objects.mjs";
@@ -22,12 +22,13 @@ const schema = z.strictObject({
     z.strictObject({ role: z.literal("worker"), hostId: id, slotId: id }),
   ])),
   workspaces: z.record(id, workspacePolicy).optional(),
+  claudeSelection: z.strictObject({ provider: z.literal("claude"), gateway: id, model: fleetModel }).optional(),
   projects: z.record(id, z.strictObject({
     revision: z.union([z.string().regex(/^[a-f0-9]{40}$/), z.literal("git")]),
     workspaceKey: id,
     workspace: id.optional(),
     eligibleSlots: z.array(id).min(1).max(16),
-    selection: z.strictObject({ provider: z.literal("codex"), gateway: id, model: fleetCodexModel }),
+    selection: z.strictObject({ provider: z.literal("codex"), gateway: id, model: fleetModel }),
   })),
 });
 

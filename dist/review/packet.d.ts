@@ -35,6 +35,7 @@ export declare function reviewPacket(opts: {
     commands: string[];
     /** `morpheus complexity check` on the range, or why it did not run; never just the command. */
     complexity?: string;
+    changedFiles?: string[];
     /** Records the reviewer reads while orienting; the ticket's own files come first. */
     suggested?: string[];
 }): string;

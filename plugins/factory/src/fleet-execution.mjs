@@ -137,7 +137,7 @@ export function createStudioExecutor(config, call, checkQuota) {
       const output = await invoke(config, {
         task: { source: task.source, selection: task.selection }, admissionId, resume, prompt,
         binding: attemptBinding(task),
-        gatewayBaseUrl: config.gatewayBaseUrl,
+        gatewayBaseUrl: task.selection.provider === "claude" ? config.claudeGatewayBaseUrl : config.gatewayBaseUrl,
         checkout: checkoutFor(config, task),
       }, signal);
       if (!output) return { terminationVerified: false, diagnosticCode: "executor_invocation_failed" };

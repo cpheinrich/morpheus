@@ -233,6 +233,7 @@ export async function prepareReview(productDir: string, root: string, base: stri
           commands: await projectCommands(root),
           complexity: packetSummary(await runCheck({ root, base, all: false })),
           suggested: ctx.records,
+          changedFiles: git(root, ["diff", "--name-only", "--no-renames", fork, head]).split("\n").filter(Boolean),
         }),
     );
     console.log("\nWorklog record template (replace placeholders; never mark an unfinished review complete):");

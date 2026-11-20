@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
+import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { gatewayWorker, readWorkerConfig, workerResult } from '../src/gateway-worker.mjs';
 import { key } from '../src/store.mjs';
@@ -832,6 +833,105 @@ time.sleep(60)
 });
 }
 
+test('Fleet Claude relay closes after a final report and does not wait on an overage', async () => {
+  const driver = fileURLToPath(new URL('../src/fleet-claude.mjs', import.meta.url));
+  for (const overage of [false, true]) {
+    const event = overage ? { type: 'rate_limit_event', rate_limit_info: { isUsingOverage: true } } : { type: 'result' };
+    const cli = `process.stdin.resume(); process.stdin.once('data', () => console.log(${JSON.stringify(JSON.stringify(event))}));`;
+    const child = spawn(process.execPath, [driver, '65536', 'null', process.execPath, '-e', cli], {
+      stdio: ['pipe', 'pipe', 'ignore'], timeout: 4000,
+    });
+    child.stdin.write('fixture prompt\n');
+    let stdout = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', data => { stdout += data; });
+    assert.deepEqual(await once(child, 'close'), [overage ? 1 : 0, null]);
+    assert.deepEqual(JSON.parse(stdout), event);
+  }
+});
+
+test('Fleet Claude restricted mode confines writes and reaches only its authenticated model relay', { skip: process.platform !== 'darwin' }, async t => {
+  const f = await setup(t);
+  const workerHome = join(f.root, 'claude-home');
+  await mkdir(workerHome);
+  const calls = [];
+  const upstream = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    calls.push([req.url, req.headers.authorization, JSON.parse(Buffer.concat(chunks))]);
+    res.writeHead(200).end('fixture response');
+  }).listen(0, '127.0.0.1');
+  await once(upstream, 'listening');
+  t.after(() => { upstream.closeAllConnections(); upstream.close(); });
+  const origin = `http://127.0.0.1:${upstream.address().port}`;
+  const outside = join(f.root, 'outside-file');
+  const cli = `
+    import { writeFile } from 'node:fs/promises';
+    import { once } from 'node:events';
+    import assert from 'node:assert/strict';
+    process.stdin.resume(); await once(process.stdin, 'data');
+    await writeFile('allowed.txt', 'workspace');
+    await assert.rejects(writeFile(${JSON.stringify(outside)}, 'outside'), { code: 'EPERM' });
+    await assert.rejects(writeFile('.git/blocked', 'git data'), { code: 'EPERM' });
+    await assert.rejects(fetch(${JSON.stringify(origin)} + '/v1/messages', { signal: AbortSignal.timeout(1500) }));
+    const { ANTHROPIC_BASE_URL: relay, ANTHROPIC_AUTH_TOKEN: capability } = process.env;
+    assert.notEqual(capability, ${JSON.stringify(secret)});
+    const invoke = (path, token, model) => fetch(relay + path, {method:'POST', headers: {authorization: 'Bearer ' + token}, body: JSON.stringify({model})});
+    assert.equal((await invoke('/v1/messages', 'other-account', 'fixed-claude')).status, 403);
+    assert.equal((await invoke('/v1/messages', capability, 'other-model')).status, 403);
+    assert.equal((await invoke('/admin', capability, 'fixed-claude')).status, 404);
+    assert.equal(await (await invoke('/v1/messages', capability, 'fixed-claude')).text(), 'fixture response');
+    console.log(JSON.stringify({type:'result'}));
+  `;
+  const driver = fileURLToPath(new URL('../src/fleet-claude.mjs', import.meta.url));
+  const child = spawn(process.execPath, [driver, '65536', JSON.stringify([f.cwd]), process.execPath, '--input-type=module', '-e', cli, '--', '--model', 'fixed-claude'], {
+    cwd: f.cwd, env: { ...process.env, CLAUDE_CONFIG_DIR: workerHome, ANTHROPIC_BASE_URL: origin, ANTHROPIC_AUTH_TOKEN: secret },
+    stdio: ['pipe', 'pipe', 'pipe'], timeout: 10_000,
+  });
+  let failure = '';
+  child.stderr.on('data', chunk => { failure += chunk; });
+  child.stdout.resume();
+  child.stdin.write('fixture prompt\n');
+  assert.deepEqual(await once(child, 'close'), [0, null], failure);
+  assert.equal(await readFile(join(f.cwd, 'allowed.txt'), 'utf8'), 'workspace');
+  assert.deepEqual(calls, [['/v1/messages', `Bearer ${secret}`, { model: 'fixed-claude' }]]);
+});
+
+test('Fleet Claude replay trusts only a matching session and verified structured result', async t => {
+  const f = await setup(t);
+  const admissionId = randomUUID(), sessionId = randomUUID();
+  const directory = join(f.state, admissionId);
+  const evidence = { outcome: 'completed', summary: 'done', evidence: ['artifact:result.txt'] };
+  const init = { type: 'system', subtype: 'init', session_id: sessionId };
+  const result = { type: 'result', session_id: sessionId, structured_output: evidence };
+  const overage = { type: 'rate_limit_event', rate_limit_info: { isUsingOverage: true } };
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, 'admission.json'), JSON.stringify({ admissionId, sessionId, binding: { gateway: { provider: 'claude' } } }));
+  const state = { runId: admissionId, state: 'exited', exitCode: 0, cleanupVerified: true };
+  await writeFile(join(directory, 'process.json'), JSON.stringify(state));
+  async function status(events) {
+    await writeFile(join(directory, 'events.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');
+    return workerResult(admissionId);
+  }
+  const valid = await status([init, result]);
+  assert.equal(valid.launch, 'session');
+  assert.equal(valid.sessionId, sessionId);
+  assert.deepEqual(valid.result, evidence);
+  assert.deepEqual(await workerResult(admissionId), valid);
+  const invalidSession = await status([{ ...init, session_id: randomUUID() }, result]);
+  assert.equal(invalidSession.launch, 'unknown');
+  assert.equal(invalidSession.sessionId, null);
+  const fallback = await status([init, { ...result, structured_output: undefined, result: 'private provider text' }]);
+  assert.equal(fallback.result.summary, 'Gateway worker exited without a successful structured turn; no fallback.');
+  assert.equal(fallback.sessionId, sessionId);
+  const paid = await status([init, overage, result]);
+  assert.deepEqual(paid.result, { outcome: 'failed', summary: 'Claude reported paid overage; worker stopped without fallback.', evidence: [], question: '' });
+  await writeFile(join(directory, 'process.json'), JSON.stringify({ ...state, state: 'running' }));
+  const running = await status([init, result]);
+  assert.equal(running.terminationVerified, false);
+  assert.equal(running.launch, 'unknown');
+});
+
 test('Fleet launches full access only for a protected Git enrollment and private non-root home', async t => {
   const f = await setup(t, doneScript.replace('session-fixture', randomUUID()));
   execFileSync('git', ['-C', f.cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
@@ -880,23 +980,25 @@ fs.access = async (path, mode) => {
 };
 syncBuiltinESMExports();
 `);
-  async function exchange(fixture, { home = privateHome, checkout = 'git' } = {}) {
+  async function exchange(fixture, { home = privateHome, checkout = 'git', envelope = {} } = {}) {
     const admissionId = randomUUID();
     const job = {
       task: { source: { project: 'fixture', revision, checkout },
         selection: { provider: 'codex', gateway: f.config.gateway.name, model: f.config.model } },
       admissionId, prompt: 'Report fixture success', binding: { taskId: randomUUID(), attemptId },
-      gatewayBaseUrl: f.config.gateway.baseUrl, checkout: { attemptId, mirror: f.cwd },
+      gatewayBaseUrl: f.config.gateway.baseUrl, checkout: { attemptId, mirror: f.cwd }, ...envelope,
     };
     const args = [...(fixture ? ['--import', preload] : []), executor, f.configPath, 'fixture'];
-    const child = spawn(process.execPath, args, { env: { ...process.env, HOME: home, OPERATOR_FIXTURE: fixture },
+    const child = spawn(process.execPath, args, { env: { ...process.env, HOME: home, OPERATOR_FIXTURE: fixture,
+      CLAUDE_FIXTURE_KEY: 'claude-gateway-only-test', ANTHROPIC_API_KEY: 'unrelated-native-key', CLAUDE_CONFIG_DIR: '/unrelated-native-home' },
       stdio: ['pipe', 'pipe', 'inherit'] });
     child.stdin.write(JSON.stringify(job) + '\n');
     let stdout = '';
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', chunk => { stdout += chunk; });
     assert.equal((await once(child, 'close'))[0], 0);
-    return { admissionId, outcome: JSON.parse(stdout).outcome };
+    const messages = stdout.trim().split('\n').map(line => JSON.parse(line));
+    return { admissionId: job.admissionId, outcome: messages.at(-1).outcome, artifacts: messages.slice(0, -1).map(message => message.artifact) };
   }
   for (const [label, fixture, options] of [
     ['worker-owned config', ''], ['replaceable parent', 'replaceable'], ['worker-writable ACL', 'writable-acl'],
@@ -917,4 +1019,108 @@ syncBuiltinESMExports();
   const { binding } = await json(join(f.state, admissionId, 'admission.json'));
   assert.equal(binding.sandbox, 'danger-full-access');
   assert.equal(binding.approvalPolicy, 'never');
+
+  const claudeRoute = { gateway: { name: 'claude-pool', provider: 'claude', baseUrl: 'https://claude.invalid/pool/', keyRef: 'env:CLAUDE_FIXTURE_KEY' }, model: 'claude-sonnet-4-6' };
+  const config = { ...f.config, cwd: workspaces, sandbox: 'danger-full-access', fleetClaude: claudeRoute };
+  await writeFile(f.configPath, JSON.stringify(config));
+  await assert.rejects(readWorkerConfig(f.configPath), /Fleet Claude requires protected operator configuration/);
+  await rm(join(workspaces, attemptId, 'observed.json'));
+  await writeFile(join(workspaces, attemptId, '.git', 'info', 'exclude'), '.factory-artifacts-*/\n');
+  const sessionId = randomUUID(), otherSession = randomUUID();
+  await writeFile(join(f.root, 'bin', 'claude'), `#!/usr/bin/env python3
+import json, os, pathlib, sys, time
+msg = json.loads(sys.stdin.readline())
+prompt = msg['message']['content']
+run = os.environ['FACTORY_WORKER_RUN_ID']
+pathlib.Path(${JSON.stringify(f.root)}, run + '.json').write_text(json.dumps({'argv':sys.argv[1:],'msg':msg,'env':dict(os.environ),'pid':os.getpid()}))
+session = ${JSON.stringify(sessionId)} if 'wrong session' not in prompt else ${JSON.stringify(otherSession)}
+def emit(event): print(json.dumps(dict(event,session_id=session)),flush=True)
+emit({'type':'system','subtype':'init'})
+output = pathlib.Path('.factory-artifacts-' + run)
+(output/'result.txt').write_text('claude fixture')
+if 'deadline fixture' in prompt:
+ (output/'checkpoint.json').write_text(json.dumps(['result.txt']))
+ time.sleep(30)
+if 'overage fixture' in prompt:
+ print(json.dumps({'type':'rate_limit_event','rate_limit_info':{'isUsingOverage':True}}),flush=True)
+ time.sleep(30)
+report = {'outcome':'completed','summary':'done','evidence':['artifact:result.txt']}
+if 'question fixture' in prompt: report = {'outcome':'needs_input','summary':'blocked','evidence':[],'question':'Which target?'}
+emit({'type':'result','result':'unstructured private provider text', **({} if 'no report' in prompt else {'structured_output':report})})
+sys.stdin.read()
+`, { mode: 0o700 });
+  const source = { project: 'fixture', revision, checkout: 'git' };
+  const selection = { provider: 'claude', gateway: claudeRoute.gateway.name, model: claudeRoute.model };
+  const attempt = { taskId: randomUUID(), attemptId };
+  const envelope = { task: { source, selection }, binding: attempt, gatewayBaseUrl: claudeRoute.gateway.baseUrl };
+  for (const [label, changes] of [
+    ['origin', { gatewayBaseUrl: f.config.gateway.baseUrl }],
+    ['project', { task: { source: { ...source, project: 'another' }, selection } }],
+    ['revision', { task: { source: { ...source, revision: '0'.repeat(40) }, selection } }],
+    ['model', { task: { source, selection: { ...selection, model: f.config.model } } }],
+    ['speed', { task: { source, selection: { ...selection, speed: 'fast' } } }],
+  ]) {
+    const refused = await exchange('protected', { envelope: { ...envelope, ...changes } });
+    assert.deepEqual(refused.outcome.invocation, { launch: 'never-launched', admissionId: refused.admissionId, sessionId: null }, label);
+    await assert.rejects(readFile(join(f.root, refused.admissionId + '.json')), { code: 'ENOENT' }, label);
+  }
+  await writeFile(f.configPath, JSON.stringify({ ...config, sandbox: 'read-only' }));
+  const readOnly = await exchange('protected', { envelope });
+  assert.equal(readOnly.outcome.invocation.launch, 'never-launched');
+  await writeFile(f.configPath, JSON.stringify(config));
+  const runClaude = (prompt, resume) => exchange('protected', { envelope: { ...envelope, prompt, resume } });
+  const first = await runClaude('question fixture');
+  assert.deepEqual(first.outcome.result, { outcome: 'needs_input', summary: 'blocked', evidence: [], question: 'Which target?' });
+  assert.equal(first.outcome.invocation.sessionId, sessionId);
+  const done = await runClaude('finish fixture', first.admissionId);
+  assert.equal(done.outcome.terminationVerified, true);
+  assert.deepEqual(done.outcome.result, { outcome: 'completed', summary: 'done', evidence: ['artifact:result.txt'] });
+  const { timing, ...receipt } = done.outcome.invocation;
+  assert.deepEqual(receipt, { launch: 'session', admissionId: done.admissionId, sessionId });
+  assert.equal(timing.source, 'runner');
+  assert.deepEqual(done.artifacts.map(file => [file.name, Buffer.from(file.bytes, 'base64').toString()]), [['result.txt', 'claude fixture']]);
+  const launched = await json(join(f.root, done.admissionId + '.json'));
+  const arg = flag => launched.argv[launched.argv.indexOf(flag) + 1];
+  assert.equal(arg('--model'), claudeRoute.model);
+  assert.equal(arg('--permission-mode'), 'bypassPermissions');
+  assert.equal(arg('--input-format'), 'stream-json');
+  assert.equal(arg('--output-format'), 'stream-json');
+  assert.equal(arg('--setting-sources'), '');
+  assert.ok(launched.argv.includes('--strict-mcp-config'));
+  assert.equal(arg('--resume'), sessionId);
+  assert.deepEqual(JSON.parse(arg('--settings')), { env: { CLAUDE_CODE_DISABLE_FAST_MODE: '1' } });
+  assert.equal(launched.msg.type, 'user');
+  assert.match(launched.msg.message.content, /finish fixture/);
+  const initial = await json(join(f.root, first.admissionId + '.json'));
+  assert.equal(initial.argv.includes('--resume'), false);
+  assert.equal(launched.env.CLAUDE_CONFIG_DIR, initial.env.CLAUDE_CONFIG_DIR);
+  assert.match(launched.env.CLAUDE_CONFIG_DIR, /\/state\/unattended\/sessions\//);
+  assert.equal(launched.env.ANTHROPIC_AUTH_TOKEN, 'claude-gateway-only-test');
+  assert.equal(launched.env.ANTHROPIC_BASE_URL, 'https://claude.invalid/pool');
+  for (const variable of ['CLAUDE_FIXTURE_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'CODEX_HOME']) assert.equal(launched.env[variable], undefined);
+
+  const recovery = { op: 'recover', admissionId: done.admissionId, binding: attempt, recovery: { source, checkout: { attemptId, mirror: f.cwd } } };
+  const replay = await exchange('protected', { envelope: recovery });
+  assert.deepEqual(replay.outcome.invocation, done.outcome.invocation);
+  assert.deepEqual(replay.artifacts, done.artifacts);
+  const wrongSource = await exchange('protected', { envelope: { ...recovery, recovery: { ...recovery.recovery, source: { ...source, revision: '0'.repeat(40) } } } });
+  assert.deepEqual(wrongSource.artifacts, []);
+  assert.equal(wrongSource.outcome.result, undefined);
+  const unstructured = await runClaude('no report', done.admissionId);
+  assert.deepEqual(unstructured.outcome.result, { outcome: 'failed', summary: 'Gateway worker exited without a successful structured turn; no fallback.', evidence: [], question: '' });
+  const wrongSession = await runClaude('wrong session', done.admissionId);
+  assert.equal(wrongSession.outcome.invocation.launch, 'unknown');
+  assert.equal(wrongSession.outcome.sessionId, null);
+  assert.equal(wrongSession.outcome.result.summary, 'Claude session differs from the admitted session.');
+  const overage = await runClaude('overage fixture', done.admissionId);
+  assert.equal(overage.outcome.terminationVerified, true);
+  assert.equal(overage.outcome.result.summary, 'Claude reported paid overage; worker stopped without fallback.');
+  assert.deepEqual(overage.artifacts, []);
+  const stopped = await json(join(f.root, overage.admissionId + '.json'));
+  assert.throws(() => process.kill(stopped.pid, 0), { code: 'ESRCH' });
+  await writeFile(f.configPath, JSON.stringify({ ...config, maxRunSeconds: 1 }));
+  const deadline = await runClaude('deadline fixture', done.admissionId);
+  assert.equal(deadline.outcome.diagnosticCode, 'deadline_reached');
+  assert.equal(deadline.outcome.invocation.sessionId, sessionId);
+  assert.deepEqual(deadline.artifacts.map(file => file.name), ['result.txt']);
 });

@@ -1,27 +1,9 @@
-import { z } from "zod";
 import { available, freshHeartbeat } from "./fleet-claims.mjs";
-
-const quotaMaxAgeMs = 120_000;
-export const quotaObservation = z.object({
-  provider: z.literal("codex"),
-  gateway: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/),
-  checkedAt: z.number().int().nonnegative(),
-  status: z.enum(["available", "limited", "unknown"]),
-});
-
-function quotaStatus(slot, selection, now) {
-  const quota = quotaObservation.safeParse(slot?.quota).data;
-  if (!quota) return { status: "unknown" };
-  const { checkedAt } = quota;
-  if (!freshHeartbeat({ observedAt: checkedAt }, now, quotaMaxAgeMs)) return { status: "unknown", checkedAt };
-  if (quota.provider !== selection.provider || quota.gateway !== selection.gateway)
-    return { status: "incompatible", checkedAt };
-  return { status: quota.status, checkedAt };
-}
+import { quotaStatus } from "./fleet-quota.mjs";
 
 function projectSlot(slotId, hostId, slot, selection, now, maxAgeMs) {
   const fresh = freshHeartbeat(slot, now, maxAgeMs);
-  const quota = quotaStatus(slot, selection, now);
+  const quota = quotaStatus(slot?.quota, selection, now);
   const heartbeat = { observedAt: slot?.observedAt ?? null, fresh, capacityMiB: fresh ? slot.capacity : null };
   const idle = available(slot, now, maxAgeMs);
   return { slotId, hostId: hostId ?? null, heartbeat, busy: Boolean(slot?.attemptId), quota, placementCandidate: idle && quota.status === "available" };

@@ -155,6 +155,35 @@ test("the service advertises the same authenticated lease duration it grants", a
   assert.equal(confirmed.value.task.attempt.leaseUntil, 120_180);
 });
 
+test("Claude enrollment shares one workspace and slot without using Codex quota or widening project access", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  const selection = { provider: "claude", gateway: "claude-queue", model: "claude-opus-fixture" };
+  const request = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "fixture", messageId: "claude-queue", provider: "claude" };
+  assert.equal((await api.call("submit", request)).status, 403);
+  api.config.claudeSelection = selection;
+  assert.equal((await api.call("submit", { ...request, project: "outside" })).status, 403);
+  assert.equal((await api.call("submit", { ...request, model: "different-model" })).status, 403);
+  const sent = await api.call("submit", { ...request, provider: undefined, model: selection.model });
+  assert.equal(sent.status, 200);
+  assert.deepEqual(sent.value.task.selection, selection);
+  const taskId = sent.value.task.id;
+  const get = async () => (await api.call("get", { taskId })).value.queueReason;
+  const binding = { taskId, attemptId: randomUUID() };
+  assert.equal(await get(), "quota-unavailable");
+  assert.deepEqual((await api.call("claim", binding, "worker")).value, { reason: "not-preferred" });
+  const slot = api.db.docs.get("factorySlots/slot");
+  slot.quota = [{ provider: "codex", gateway: "fixture", checkedAt: 100, status: "available" },
+    { provider: "claude", gateway: selection.gateway, checkedAt: 100, status: "limited" }];
+  assert.equal(await get(), "quota-limited");
+  slot.quota[1].status = "available";
+  assert.equal(await get(), "awaiting-worker");
+  const claim = await api.call("claim", binding, "worker");
+  assert.equal(claim.value.attempt.id, binding.attemptId);
+  const codex = await api.call("submit", { ...request, messageId: "same-workspace", provider: "codex" });
+  assert.deepEqual(codex.value.task.selection, api.config.projects.app.selection);
+  assert.equal((await api.call("get", { taskId: codex.value.task.id })).value.queueReason, "workspace-busy");
+});
+
 async function exchange(f, job, protectedConfig = true, environment = {}) {
   const child = spawn(process.execPath, [...(protectedConfig ? ["--import", f.preload] : []), executorScript, f.configPath, "app"], {
     env: { ...process.env, PATH: `${f.bin}:${process.env.PATH}`, FACTORY_HOME: f.state, FIXTURE_GATEWAY_KEY: "synthetic-key", ...environment }, stdio: ["pipe", "pipe", "inherit"],

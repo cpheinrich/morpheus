@@ -1,11 +1,10 @@
 // Runs as the unprivileged execution account. The fixed argv paths are
 // installed by the host operator; the supervisor supplies one JSON line.
 import { execFileSync } from "node:child_process";
-import { mkdir, stat } from "node:fs/promises";
-import { homedir } from "node:os";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { gatewayWorker, readWorkerConfig, reconcileWorker, workerResult } from "../src/gateway-worker.mjs";
+import { enrolledSandbox, fleetWorkerRoute, gatewayWorker, readWorkerConfig, reconcileWorker, workerResult } from "../src/gateway-worker.mjs";
 import { readArtifactFiles, readCheckpointFiles } from "../src/fleet-artifacts.mjs";
 import { checkoutWorkspace } from "../src/fleet-workspace-checkout.mjs";
 import { studioCheckout } from "../src/fleet-source.mjs";
@@ -18,15 +17,6 @@ const controller = new AbortController();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const lines = input[Symbol.asyncIterator]();
 
-async function enrolledSandbox(config, source) {
-  const { sandbox, authority } = config;
-  if (sandbox === "workspace-write") return true;
-  if (sandbox !== "danger-full-access" || authority !== "operator" || source.checkout !== "git" || process.getuid() === 0)
-    return false;
-  const info = await stat(homedir());
-  return info.isDirectory() && info.uid === process.getuid() && !(info.mode & 0o077);
-}
-
 async function executionCheckout(config, source, checkout) {
   if (source.workspace) return checkoutWorkspace(config.cwd, config.fleetWorkspace, source.workspace, checkout?.attemptId, config.sandbox, true);
   if (config.fleetWorkspace) throw new Error("Workspace binding required");
@@ -37,9 +27,10 @@ async function executionCheckout(config, source, checkout) {
 
 async function prepare({ task, admissionId, resume, prompt, gatewayBaseUrl, checkout }) {
   const config = await readWorkerConfig(configPath);
-  if (task.source.project !== project || task.selection.provider !== "codex" ||
-      task.selection.model !== config.model || task.selection.gateway !== config.gateway.name ||
-      gatewayBaseUrl?.replace(/\/+$/, "") !== config.gateway.baseUrl ||
+  const { gateway } = fleetWorkerRoute(config, task.selection);
+  const claude = gateway.provider === "claude";
+  if (task.source.project !== project || gatewayBaseUrl?.replace(/\/+$/, "") !== gateway.baseUrl ||
+      (claude && (task.source.checkout !== "git" || !checkout)) ||
       !uuid.test(admissionId) || !await enrolledSandbox(config, task.source))
     throw new Error("Studio project or gateway model does not match this enrollment");
   const { cwd, paths } = await executionCheckout(config, task.source, checkout);
@@ -52,7 +43,7 @@ async function prepare({ task, admissionId, resume, prompt, gatewayBaseUrl, chec
   const outputDir = join(cwd, `.factory-artifacts-${admissionId}`);
   await mkdir(outputDir, { mode: 0o700 });
   const handoff = `${prompt}${paths ? `\n\nAuthorized workspace checkouts: ${JSON.stringify(paths)}. Comparison refs are pinned in each checkout. Use morpheus credentials run -- <trusted-command> only for declared companions; keep all repositories on their normal review, CI and release path.` : ""}\n\nFor output artifacts, write files directly in ${outputDir}. Include each file in the final evidence array as artifact:<filename>. Use flat filenames. Before a long operation, atomically write checkpoint.json there as a JSON array of completed artifact filenames to return if the invocation reaches its deadline. Each file must be at most 8 MiB.`;
-  return { outputDir, handoff, checkout: checkout ? cwd : undefined };
+  return { outputDir, handoff, checkout: checkout ? cwd : undefined, claudeGateway: claude ? gateway.baseUrl : undefined };
 }
 
 async function emitArtifacts(outputDir, result, deadline) {
@@ -81,7 +72,12 @@ async function execute(job) {
   if (JSON.stringify(job.binding?.workspace) !== JSON.stringify(job.task.source.workspace) ||
       (job.checkout && job.binding?.attemptId !== job.checkout.attemptId))
     return { terminationVerified: true, invocation: notLaunched(admissionId), diagnosticCode: "workspace_policy_mismatch", result: { outcome: "failed" } };
-  const outcome = await gatewayWorker(configPath, handoff, resume, admissionId, controller.signal, prepared.checkout, job.binding);
+  const binding = prepared.claudeGateway ? { ...job.binding, source: job.task.source, gatewayBaseUrl: prepared.claudeGateway } : job.binding;
+  const outcome = await gatewayWorker(configPath, handoff, resume, admissionId, controller.signal, prepared.checkout, binding, job.task.selection);
+  return publishInvocation(outputDir, outcome);
+}
+
+async function publishInvocation(outputDir, outcome) {
   const invocation = invocationFromWorker(outcome);
   const deadline = outcome.diagnosticCode === "deadline_reached";
   const result = deadline ? { outcome: "failed" } : outcome.result;
@@ -116,6 +112,9 @@ async function recover(job) {
 
 async function recoverCompleted(job, observed, proof) {
   const { source, checkout } = job.recovery;
+  const admitted = observed.binding.fleet?.source;
+  if (admitted && (source.project !== admitted.project || source.revision !== admitted.revision ||
+      source.checkout !== admitted.checkout || JSON.stringify(source.workspace) !== JSON.stringify(admitted.workspace))) return proof;
   const config = await readWorkerConfig(configPath);
   const { cwd } = await executionCheckout(config, source, checkout);
   if (observed.binding.cwd !== cwd) return proof;

@@ -721,6 +721,17 @@ describe("the review packet", () => {
     expect(packet).toContain("Acceptance: - it works");
   });
 
+  it("binds paginated diff evidence and the full blob list to the same published commits", () => {
+    const fork = "a".repeat(40), head = "b".repeat(40);
+    const changedFiles = Array.from({ length: 25 }, (_, i) => `file-${i}.ts`);
+    const packet = reviewPacket({ root: "/r", fork, head, ticket: {}, commands: [], changedFiles });
+    const exact = `git diff --no-ext-diff --no-textconv --no-color --full-index --no-renames ${fork} ${head}`;
+    expect(packet).toContain(`${exact} -- <path>`);
+    expect(packet).toContain(`${exact} --raw --no-abbrev`);
+    expect(packet).toContain(`${exact} --name-only`);
+    expect(packet.split("\n").filter(line => line.startsWith("- file-"))).toEqual(changedFiles.slice(0, 24).map(path => `- ${path}`));
+  });
+
   it("carries the complexity result, or why it did not run, as its last line", () => {
     const base = { root: "/r", fork: "a".repeat(40), head: "b".repeat(40), ticket: {}, commands: [] };
     expect(reviewPacket({ ...base, complexity: "Complexity: NOT RUN — not installed" }).split("\n").at(-1)).toBe("Complexity: NOT RUN — not installed");
