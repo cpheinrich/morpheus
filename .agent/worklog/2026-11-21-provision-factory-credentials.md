@@ -40,3 +40,7 @@ No full suite or live credential checks were run.
 Independent review and protected delivery are owned by the parent. Real host/account
 provisioning and idle-boundary canaries remain open. No external provider, credential,
 repository delivery, or deployment changes were made by this worker.
+
+## Controller verification
+
+Root verified the implementation artifact digest and exact source. After normal root/plugin dependency setup, 78 affected/direct-dependent Node checks passed, then the five gateway checks passed. Credentials Vitest 16/16, typecheck, compile and plugin check passed. Complexity passed for 39 changed functions and 229 measured in four files. Private operator provisioning and trusted read probes verified the actual companion and PostHog definition access under all seven authorized execution accounts. Live native qualification of the reviewed runtime follows protected delivery.
