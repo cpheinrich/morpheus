@@ -1,6 +1,6 @@
 "use client";
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useFragmentView } from "../ops-desk/react.js";
 import { verifiedResearchLibraryBlob } from "../research-library/client.js";
 import { formatResearchLibraryBytes } from "../research-library/index.js";
@@ -54,11 +54,36 @@ function ScreenDetail({ study, screen, screens, control, capture, restoring, rea
         navigate({ screen: screen.id, control: id, capture: targetCapture ?? capture });
     };
     const outgoing = study.app.transitions.filter((transition) => transition.from === screen.id);
-    return (_jsxs("section", { className: "app-research-detail", "aria-label": `Screen: ${screen.title}`, children: [_jsx("h3", { className: "app-research-screen-title", children: screen.title }), _jsx("p", { className: "app-research-meta", children: screen.state }), screen.description ? _jsx("p", { children: screen.description }) : null, _jsx(CaptureChoice, { shots: screen.screenshots, selected: shot?.path, onSelect: (path) => navigate({ screen: screen.id, control, capture: path }) }), _jsx("div", { className: "app-research-pane-switch", role: "group", "aria-label": "View", children: ["wireframe", "capture"].map((option) => (_jsx("button", { type: "button", "aria-pressed": pane === option, onClick: () => setPane(option), children: option === "wireframe" ? "Wireframe" : "Screenshot" }, option))) }), _jsxs("div", { className: "app-research-figures", "data-pane": pane, children: [_jsxs("figure", { className: "app-research-wireframe", children: [_jsx("div", { className: "app-research-canvas", style: { aspectRatio: canvasRatio(shot) }, children: screen.elements.map((element) => {
-                                    const box = geometry(element, screen);
-                                    return box ? (_jsx("button", { type: "button", className: "app-research-region", style: box, "aria-pressed": element.id === control, "aria-label": `${element.label} (${element.role})`, onClick: () => select(element.id === control ? null : element.id), children: _jsx("span", { className: "app-research-region-label", children: element.label }) }, element.id)) : null;
-                                }) }), _jsx("figcaption", { children: "Wireframe from recorded element bounds" })] }), _jsxs("figure", { className: "app-research-capture", children: [_jsx(Capture, { screen: screen, shot: shot, study: study, read: read, selected: selected, restoring: restoring }, shot?.path), _jsx("figcaption", { children: shot ? `Captured ${day(shot.capturedAt)} · ${shot.width}×${shot.height}` : "No screenshot" })] })] }), _jsxs("section", { className: "app-research-controls", "aria-label": "Controls", children: [_jsx("h4", { children: "Controls" }), screen.elements.length ? (_jsx("ul", { children: screen.elements.map((element) => (_jsx("li", { children: _jsxs("button", { type: "button", className: "app-research-control-button", "aria-pressed": element.id === control, onClick: () => select(element.id === control ? null : element.id), children: [element.label, " ", _jsxs("span", { className: "app-research-meta", children: [element.role, " \u00B7 ", element.status] })] }) }, element.id))) })) : _jsx("p", { className: "app-research-meta", children: "No controls were recorded on this screen." })] }), selected ? (_jsx(ControlDetail, { element: selected, transitions: study.app.transitions.filter((t) => t.elementId === selected.id), screens: screens, navigate: navigate })) : null, _jsxs("section", { className: "app-research-paths", "aria-label": "Paths from this screen", children: [_jsx("h4", { children: "Paths from this screen" }), outgoing.length ? _jsx(TransitionList, { transitions: outgoing, screens: screens, navigate: navigate }) :
+    return (_jsxs("section", { className: "app-research-detail", "aria-label": `Screen: ${screen.title}`, children: [_jsx("h3", { className: "app-research-screen-title", children: screen.title }), _jsx("p", { className: "app-research-meta", children: screen.state }), screen.description ? _jsx("p", { children: screen.description }) : null, _jsx(CaptureChoice, { shots: screen.screenshots, selected: shot?.path, onSelect: (path) => navigate({ screen: screen.id, control, capture: path }) }), _jsx("div", { className: "app-research-pane-switch", role: "group", "aria-label": "View", children: ["wireframe", "capture"].map((option) => (_jsx("button", { type: "button", "aria-pressed": pane === option, onClick: () => setPane(option), children: option === "wireframe" ? "Wireframe" : "Screenshot" }, option))) }), _jsxs("div", { className: "app-research-figures", "data-pane": pane, children: [_jsxs("figure", { className: "app-research-wireframe", children: [_jsx("h4", { className: "app-research-figure-title", children: "Wireframe" }), _jsx(Wireframe, { screen: screen, shot: shot, control: control, select: select }), _jsx("figcaption", { children: "Wireframe from recorded element bounds" })] }), _jsxs("figure", { className: "app-research-capture", children: [_jsx("h4", { className: "app-research-figure-title", children: "Screenshot" }), _jsx(Capture, { screen: screen, shot: shot, study: study, read: read, selected: selected, restoring: restoring }, shot?.path), _jsx("figcaption", { children: shot ? `Captured ${day(shot.capturedAt)} · ${shot.width}×${shot.height}` : "No screenshot" })] })] }), _jsxs("section", { className: "app-research-controls", "aria-label": "Controls", children: [_jsx("h4", { children: "Controls" }), screen.elements.length ? (_jsx("ul", { children: screen.elements.map((element, index) => (_jsx("li", { children: _jsxs("button", { type: "button", className: "app-research-control-button", "aria-pressed": element.id === control, onClick: () => select(element.id === control ? null : element.id), children: [_jsx("span", { className: "app-research-control-number", "aria-hidden": "true", children: index + 1 }), element.label, " ", _jsxs("span", { className: "app-research-meta", children: [element.role, " \u00B7 ", element.status] })] }) }, element.id))) })) : _jsx("p", { className: "app-research-meta", children: "No controls were recorded on this screen." })] }), selected ? (_jsx(ControlDetail, { element: selected, transitions: study.app.transitions.filter((t) => t.elementId === selected.id), screens: screens, navigate: navigate })) : null, _jsxs("section", { className: "app-research-paths", "aria-label": "Paths from this screen", children: [_jsx("h4", { children: "Paths from this screen" }), outgoing.length ? _jsx(TransitionList, { transitions: outgoing, screens: screens, navigate: navigate }) :
                         _jsx("p", { className: "app-research-meta", children: "No recorded transitions leave this screen." })] }), shot?.accessibility ? _jsx(AccessibilityText, { study: study, read: read, path: shot.accessibility }, shot.accessibility) : null] }));
+}
+function Wireframe({ screen, shot, control, select }) {
+    const canvas = useRef(null);
+    useLayoutEffect(() => {
+        const root = canvas.current;
+        if (!root)
+            return;
+        const labels = root.querySelectorAll(".app-research-region-label");
+        function fitLabels() {
+            for (const label of labels) {
+                const region = label.parentElement;
+                region.toggleAttribute("data-compact", label.scrollHeight > region.clientHeight || label.scrollWidth > region.clientWidth);
+            }
+        }
+        fitLabels();
+        if (typeof ResizeObserver === "undefined")
+            return;
+        // Measure the labels even in compact mode so they return when the layout widens.
+        const observer = new ResizeObserver(fitLabels);
+        observer.observe(root);
+        for (const label of labels)
+            observer.observe(label);
+        return () => observer.disconnect();
+    }, [screen, shot]);
+    return (_jsx("div", { ref: canvas, className: "app-research-canvas", style: { aspectRatio: canvasRatio(shot) }, children: screen.elements.map((element, index) => {
+            const box = geometry(element, screen);
+            return box ? (_jsxs("button", { type: "button", className: "app-research-region", style: box, "aria-pressed": element.id === control, "aria-label": `${element.label} (${element.role})`, title: element.label, onClick: () => select(element.id === control ? null : element.id), children: [_jsx("span", { className: "app-research-region-label", children: element.label }), _jsx("span", { className: "app-research-region-number", "aria-hidden": "true", children: index + 1 })] }, element.id)) : null;
+        }) }));
 }
 function CaptureChoice({ shots, selected, onSelect }) {
     if (shots.length < 2)
