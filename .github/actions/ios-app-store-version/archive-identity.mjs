@@ -94,6 +94,36 @@ function resolvedApp(project, args) {
   return apps[0];
 }
 
+function readCheckedInPlist(project, file, settings) {
+  try {
+    const directory = dirname(project);
+    if (!file || !settings.INFOPLIST_FILE || isAbsolute(file) || file.split("/").includes("..") ||
+        realpathSync(settings.SRCROOT) !== directory || resolve(directory, file) !== realpathSync(resolve(directory, settings.INFOPLIST_FILE))) {
+      throw new Error();
+    }
+    const source = trackedFile(resolve(directory, file));
+    return JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", "--", source],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000, maxBuffer: 1024 * 1024 }));
+  } catch {
+    throw new Error("Cannot read the archive app Info.plist as a literal checked-in plist inside the checkout");
+  }
+}
+
+function checkPlistIdentity(plist, direct, settings) {
+  if (Object.keys(plist ?? {}).some((key) => /[$][({]/.test(key) ||
+      identityKeys.some((identityKey) => key !== identityKey && key.startsWith(identityKey)))) {
+    throw new Error("Archive app Info.plist must declare its identity without overriding keys");
+  }
+  for (const [key, setting] of identityFields) {
+    const value = plist?.[key];
+    const expands = direct("INFOPLIST_EXPAND_BUILD_SETTINGS") !== "NO" && settings.INFOPLIST_EXPAND_BUILD_SETTINGS === "YES" &&
+      ["$(" + setting + ")", "${" + setting + "}"].includes(value);
+    if (value !== settings[setting] && !expands) {
+      throw new Error(`Archive app Info.plist must set ${key} to the resolved ${setting} (${settings[setting]}) or expand ${setting} directly`);
+    }
+  }
+}
+
 function checkPlist(project, direct, settings) {
   if (![undefined, "", "NO"].includes(settings.INFOPLIST_PREPROCESS) || direct("INFOPLIST_PREPROCESS") === "YES") {
     throw new Error("Cannot prove the archive identity with Info.plist preprocessing");
@@ -109,31 +139,7 @@ function checkPlist(project, direct, settings) {
     }
     return;
   }
-  let plist;
-  try {
-    const directory = dirname(project);
-    if (!file || !settings.INFOPLIST_FILE || isAbsolute(file) || file.split("/").includes("..") ||
-        realpathSync(settings.SRCROOT) !== directory || resolve(directory, file) !== realpathSync(resolve(directory, settings.INFOPLIST_FILE))) {
-      throw new Error();
-    }
-    const source = trackedFile(resolve(directory, file));
-    plist = JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", "--", source],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000, maxBuffer: 1024 * 1024 }));
-  } catch {
-    throw new Error("Cannot read the archive app Info.plist as a literal checked-in plist inside the checkout");
-  }
-  if (Object.keys(plist ?? {}).some((key) => /[$][({]/.test(key) ||
-      identityKeys.some((identityKey) => key !== identityKey && key.startsWith(identityKey)))) {
-    throw new Error("Archive app Info.plist must declare its identity without overriding keys");
-  }
-  for (const [key, setting] of identityFields) {
-    const value = plist?.[key];
-    const expands = direct("INFOPLIST_EXPAND_BUILD_SETTINGS") !== "NO" && settings.INFOPLIST_EXPAND_BUILD_SETTINGS === "YES" &&
-      ["$(" + setting + ")", "${" + setting + "}"].includes(value);
-    if (value !== settings[setting] && !expands) {
-      throw new Error(`Archive app Info.plist must set ${key} to the resolved ${setting} (${settings[setting]}) or expand ${setting} directly`);
-    }
-  }
+  checkPlistIdentity(readCheckedInPlist(project, file, settings), direct, settings);
 }
 
 try {
