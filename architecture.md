@@ -1853,7 +1853,9 @@ qa/
 | Pre-deploy | E2E against the preview deployment | Deploy |
 | Human review | Preview link + screenshots + test plan | Deploy |
 
-Interactive comment QA uses a checkout-local durable queue. Each Send atomically
+Live web and in-app iOS QA feedback use the reporting site's or build's configured Firestore
+project. The shared `comment-qa` skill starts there for submitted feedback.
+Local desktop preview overlays use a checkout-local durable queue. Each Send atomically
 publishes one batch and optional frame under `local/qa-comments/pending/`; later
 batches accumulate while a responder works. An agent claims one batch with an
 exclusive on-disk record before acting, resolves it after work, or releases the
@@ -3500,10 +3502,10 @@ Under full access this is ownership enforced at delegation, not an OS sandbox. R
 before workspaces migrate when their primary checkout is a linked worktree; one bound to an
 original or non-Git directory is refused with the remedy to start a new root session.
 
-The opt-in Codex Studio route is available through the ordinary Factory
+Fleet placement is available through the ordinary Factory
 tools with `placement: "fleet"` and a clean, claimed linked checkout. The
 controller resolves the commit. A repository enrolled for Git checkout lets
-the Studio supervisor fetch that commit into its read-only shared mirror and
+an enrolled supervisor fetch that commit into its read-only shared mirror and
 the executor materialize an attempt-owned checkout. Upstream credentials
 stay with the supervisor. The controller owns PR review, CI and merge after
 the worker returns its artifacts. The direct `factory_remote` tool also
@@ -3511,8 +3513,8 @@ supports the original pinned checkout and artifact retrieval.
 A Firebase-authenticated HTTPS service verifies enrollment and owns the
 Firestore task, message, and lease transactions. Native listeners watch
 per-client wake documents. Workstations fetch the authoritative snapshot from
-the service after a wake or a timed reconciliation. The Studio supervisor
-journals admissions before launching the existing Codex gateway worker as a
+the service after a wake or a timed reconciliation. Each supervisor
+journals admissions before launching the enrolled gateway worker as a
 separate OS user. The slot and checkout remain held until cleanup is verified.
 Operator-enrolled related workspaces extend the same launch binding. Both interactive
 and service controllers supply an exact source revision for every declared repository;
@@ -3534,7 +3536,16 @@ failures in the existing settlement journal and receipt; uncertain cleanup still
 shared workspace. Synthetic source qualification and actual host/profile canaries are
 separate evidence. See the [workspace enrollment contract](plugins/factory/README.md#enroll-a-related-repository-workspace).
 Artifacts are private Cloud Storage generations referenced by Firestore.
-Sub2API selects the upstream account behind the enrolled Codex gateway.
+Sub2API selects the upstream account within the provider bound to the task. Codex is
+the existing default. One optional service-wide Claude binding applies to each Git-backed
+execution grant. Pinned checkouts and viewer grants do not admit Claude tasks. A slot advertises scoped quota for both providers, shares
+one lease and journal between them, and checks quota again before invocation. Provider-specific
+windows in the same indexed queue allow either pool to advance. A verified prelaunch quota
+hold releases the initial slot and workspace under the same task identity. Restricted
+Claude workers share the same guardian under an OS write sandbox. A per-invocation
+loopback relay restricts their network access to the configured model endpoint.
+A retryable submit replays the same stable message ID, and existing status reports the
+current queue condition for the workspace, eligible slots, or selected provider.
 The pilot keeps the A2A task semantics and uses the Factory transport described
 in the [operator instructions](plugins/factory/README.md#authenticated-studio-pilot).
 The supervisor journals attested invocation evidence before settlement. The service

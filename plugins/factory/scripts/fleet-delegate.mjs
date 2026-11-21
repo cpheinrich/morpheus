@@ -36,22 +36,22 @@ export async function fleetTarget(config, cwd) {
   return { project: candidates[0], revision: git(target.cwd, "rev-parse", "HEAD") };
 }
 
-export function projectRun({ task, question, pending, receipt }, runId) {
+export function projectRun({ task, question, pending, receipt, previousAttemptReceipt, queueReason }, runId) {
   if (pending) return { runId, placement: "fleet", pending };
   const state = states[task.state] ?? "interrupted";
   return {
     id: task.id, runId: task.id, placement: "fleet", state, selection: task.selection,
     terminal: ["completed", "failed", "canceled"].includes(state),
     hostId: (task.attempt ?? task.lastAttempt)?.hostId, result: task.result,
-    source: task.source, receipt, question,
+    source: task.source, receipt, question, ...(previousAttemptReceipt && { previousAttemptReceipt }), ...(queueReason ? { queueReason } : {}),
     task: { id: task.id, contextId: task.contextId, status: { state: task.state } },
   };
 }
 
 function checkOptions(args) {
-  if (args.provider === "claude" || args.effort || args.speed === "fast" ||
+  if (args.effort || args.speed === "fast" ||
       args.fresh || args.background)
-    throw new Error("This Fleet route requires enrolled Codex settings and an explicitly enrolled repository set.");
+    throw new Error("This Fleet route requires enrolled worker settings and an explicitly enrolled repository set.");
 }
 
 async function submit(method, args, authorize) {
@@ -80,7 +80,7 @@ async function submit(method, args, authorize) {
       reason: "Local source preflight passed. The service validates enrollment at submission and Studio checks quota before launch." };
   }
   const result = await fleetOperation(args.rootId, {
-    op: "submit", ...target, text: args.prompt, display: args.display, model: args.model, messageId: args.messageId ?? randomUUID(),
+    op: "submit", ...target, text: args.prompt, display: args.display, provider: args.provider, model: args.model, messageId: args.messageId ?? randomUUID(),
   }, { checkoutPath: args.cwd, checkoutPaths });
   await mkdir(join(home(), "fleet-runs"), { recursive: true, mode: 0o700 });
   await atomic(runPath(result.task.id), { rootId: args.rootId, checkoutPath: args.cwd, checkoutPaths });

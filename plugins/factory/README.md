@@ -145,7 +145,7 @@ Ask Codex naturally:
 **On the local route, routing chooses once per root session.** The first
 local `factory_delegate` of a root session routes like this. The
 [Fleet route](#opt-in-from-the-normal-codex-factory-tools) instead uses the
-enrolled Codex worker and supervises by run ID.
+enrolled worker for the selected provider and supervises by run ID.
 
 1. With no explicit provider, the gateway with the most headroom below the threshold
    (**90% used** by default). With no gateway configured, or none below it, the **other
@@ -964,6 +964,11 @@ flowchart LR
    }
    ```
 
+   Once both supervisors and every enrolled execution account are qualified for Claude, add the
+   optional `claudeSelection` object (`provider`, `gateway`, and exact `model`) to this enrollment.
+   It applies to every existing Git-backed execution grant without duplicating policy by
+   project. Pinned checkouts and viewer-only slots are refused before Claude submission.
+
 4. Deploy `factory-pilot` with the runtime service account, an explicit region
    and a pinned image digest. Have an admin disable the Cloud Run Invoker IAM
    check for this service so the Pro and Studio can send Firebase ID tokens.
@@ -994,8 +999,16 @@ flowchart LR
   `name`, `baseUrl`, Factory `threshold`, and a private `keyRef` to a
   Sub2API key scoped to `accounts.read`, `accounts.identity.read`, and `openai.quota.read` for the
   enrolled Codex OAuth group. The supervisor checks fresh quota before each
-  invocation. The execution account receives only the separate inference
-  key. On macOS, the placement signal counts free and inactive pages and
+  invocation. A Claude-capable supervisor also has a `claudeQuota` object with the
+  same fields and an independent restricted key with `accounts.read` and
+  `accounts.usage.read` for the existing Anthropic OAuth group. Each execution account
+  receives its own inference key only, along with a protected `fleetClaude` binding
+  containing the exact `gateway` object and `model`. Install Claude Code on the same trusted
+  path as Codex. The same slot and project workspace lease apply to both providers.
+  A Claude workspace-write launch uses the macOS sandbox for the authorized checkout and
+  isolated session state, including Claude Code's internal temporary files. Its guardian-owned
+  relay admits only the enrolled model at the configured gateway. Read-only host profiles still
+  refuse Claude execution. On macOS, the placement signal counts free and inactive pages and
   reserves 4 GiB before advertising capacity. Set an absolute `journalPath` in the supervisor's
   mode `0700` directory and an `execution` object. The latter provides
   `account` (execution username), `node`, `script` (absolute
@@ -1078,12 +1091,13 @@ node ~/plugins/factory/scripts/bridge.mjs placement fleet
 
 Pass `placement: "local"` to override for a new request. A missing, dirty or
 unenrolled Fleet checkout is refused; it does not fall back to a local worker.
-Fleet does not accept local-only options such as another provider, `fresh: true`, background operation, effort overrides or Fast.
-Already-started runs keep their original route. To reset the controller default,
+Fleet accepts `provider: "claude"` or an exact enrolled Claude model on an eligible Git-backed
+route. Omit the provider to use the existing Codex default. Fleet accepts Standard speed and
+refuses `fresh: true`, background operation and effort overrides. Already-started runs keep
+their original route. To reset the controller default,
 run the same command with `local`. This preference affects the normal Codex
 Factory tools; Claude tools and the explicit unattended runner are unchanged.
-The Fleet route supports the enrolled Codex worker configuration and either one checkout
-or the exact operator-declared workspace described below.
+The Fleet route supports one checkout or the exact operator-declared workspace described below.
 
 To admit new commits without changing the service for each ticket, enroll the
 project with `revision: "git"` and configure its supervisor `execution.sourceMirror`
@@ -1298,6 +1312,18 @@ implementation ticket through independent review, CI, and merge.
 Call `factory_remote` with `{ operation: { op: "readiness", project: "<enrolled project>" } }`
 from the controller. The service returns the project's selected provider, gateway and
 model, plus each eligible slot's heartbeat, capacity, busy state and quota status.
+For Claude readiness, add `provider: "claude"`. Submit Claude work with the same provider
+field or the exact enrolled Claude model. The existing default applies when neither is
+specified. A slot must report fresh Claude headroom to claim a Claude task. The shared queue
+checks a separate bounded candidate window for each runnable provider. If quota disappears
+before the first launch, the same task returns to the queue after both leases are released.
+Claude fetches into the shared mirror before that check and creates its attempt checkout only
+after quota is approved. Checkout remains in the recoverable preparation phase before the
+runner records any provider admission. If recovery reaches an empty admission reservation
+before the executor, it atomically retires that exact ID and can recover a never-launched
+receipt. An existing reservation still needs its ordinary termination evidence. A queued receipt is exposed as `previousAttemptReceipt` and must
+match the task snapshot’s last attempt.
+An accepted clarification waits with its original session and answer until quota returns.
 `placementCandidate` means the slot was free in a heartbeat at most 45 seconds old
 and its last scoped quota check reported headroom within two minutes. It does not
 test the source checkout, inference credential, model or later claim. Every eligible
@@ -1316,6 +1342,9 @@ and the full response. This gives a degraded link room to finish a request while
 the supervisor still stops at its last acknowledged lease boundary. Before
 starting or resuming a turn it checks the attempt again after renewal for
 cancellation and ownership. Controller requests use eight seconds and artifact transfers use 45 seconds.
+A retryable submit error replays the same message ID once. If acknowledgement is still
+uncertain, retry the same brief with that ID. Queued status reports the workspace, slot or
+provider-quota condition currently holding the request.
 
 The service grants a two-minute attempt lease and tells the supervisor its duration
 on a successful renewal. A supervisor talking to an older service uses the

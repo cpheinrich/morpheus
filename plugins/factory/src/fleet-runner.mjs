@@ -11,6 +11,7 @@ const states = ["claiming", "preparing", "running", "waiting", "finishing"];
 const maxJournalBytes = 64 * 1024;
 const failed = "TASK_STATE_FAILED";
 const canceled = "TASK_STATE_CANCELED";
+const submitted = "TASK_STATE_SUBMITTED";
 const isId = (value) => typeof value === "string" && uuid.test(value);
 
 function identity(record) {
@@ -29,7 +30,7 @@ function validSettlement(record) {
   const { settlement } = record;
   const invocation = invocationReceipt.safeParse(settlement?.invocation).data;
   return invocation?.admissionId === (record.admissionId ?? null) &&
-    ["TASK_STATE_FAILED", "TASK_STATE_CANCELED", "TASK_STATE_COMPLETED"].includes(settlement.outcome);
+    [failed, canceled, "TASK_STATE_COMPLETED", submitted].includes(settlement.outcome);
 }
 
 async function loadJournal(path) {
@@ -110,7 +111,7 @@ function finishIdentity(record) {
 
 // One supervised process owns this journal and slot. RPC deadlines and process
 // termination are the caller's responsibility. The runner never replays a spawn.
-export function createFleetRunner({ call, execute, prepare, recover = async () => false, journalPath, capacity = () => 1, quotaObservation }) {
+export function createFleetRunner({ call, execute, prepare, recover = async () => false, journalPath, capacity = () => 1, quotaObservation, checkLaunchQuota }) {
   if (!isAbsolute(journalPath)) throw new Error("Factory runner journal path must be absolute.");
   let busy = false;
   let stopping = false;
@@ -185,7 +186,21 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     return finish(record, outcome, { summary, ...(diagnosticCode ? { diagnosticCode } : {}) }, true, notLaunched(record.admissionId));
   }
 
+  async function claudeContinuationGate(record, task) {
+    try { await checkLaunchQuota(task.selection); }
+    catch { return "waiting"; }
+    const current = await observeLease(record);
+    if (current.task?.attempt?.id !== record.attemptId) return "held";
+    if (current.task.cancelRequestedAt != null) return finishWaiting(record, task, canceled, "Canceled while waiting for quota.");
+    if (!current.renewed) return finishExpired(record, current.task);
+    return null;
+  }
+
   async function start(record, task, prompt, answerId = null) {
+    if (task.selection?.provider === "claude" && answerId && !stopping && leaseIsCurrent()) {
+      const gated = await claudeContinuationGate(record, task);
+      if (gated) return gated;
+    }
     const admissionId = randomUUID();
     const resume = answerId ? record.admissionId : null;
     const next = { ...record, phase: "running", admissionId, answerId };
@@ -214,7 +229,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     active = run;
     Promise.resolve()
       .then(() => prepare(task, run.controller.signal))
-      .then((ready) => { run.output = ready === true; run.diagnosticCode = fleetDiagnostic.safeParse(ready?.diagnosticCode).data; }, () => {})
+      .then((ready) => { run.output = ready === true; run.quotaHeld = ready?.quotaHeld === true; run.diagnosticCode = fleetDiagnostic.safeParse(ready?.diagnosticCode).data; }, () => {})
       .finally(() => markDone(run));
     return "preparing";
   }
@@ -223,6 +238,8 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     if (active && !active.done) return "preparing";
     if (task.cancelRequestedAt != null)
       return finishBeforeLaunch(record, canceled, "Canceled before launching the worker.");
+    if (active?.quotaHeld && !active.stopReason)
+      return finishBeforeLaunch(record, submitted, "Waiting for fresh Claude gateway quota.");
     if (!active?.output || active.stopReason || stopping)
       return finishBeforeLaunch(record, failed, "Studio source preparation failed or was interrupted before launch.", active?.diagnosticCode);
     return start(record, task, task.brief.text);

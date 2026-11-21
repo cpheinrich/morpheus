@@ -117,6 +117,12 @@ export function createStudioExecutor(config, call, checkQuota) {
           Object.assign(checkout, await fetchStudioRevision(checkout.mirror, task.source.revision));
         }
       } catch { return { prepared: false, diagnosticCode: "source_fetch_failed" }; }
+      // The journal remains in preparation during this quota check and local
+      // checkout. Interrupted preparation cannot have launched a provider.
+      if (task.selection?.provider === "claude") {
+        try { await checkQuota(task.selection); }
+        catch { return { quotaHeld: true }; }
+      }
       if (signal.aborted) return false;
       const output = await invoke(config, { op: "prepare", source: task.source, checkout }, signal);
       return output?.outcome?.prepared === true ? true : { prepared: false, diagnosticCode: output ? "checkout_failed" : "executor_invocation_failed" };
@@ -124,7 +130,7 @@ export function createStudioExecutor(config, call, checkQuota) {
     async execute({ task, admissionId, resume, prompt, signal }) {
       if (signal.aborted) return noLaunch(admissionId);
       try {
-        await checkQuota(task.selection);
+        if (task.selection.provider !== "claude") await checkQuota(task.selection);
       } catch {
         return { terminationVerified: true, invocation: notLaunched(admissionId), result: { outcome: "failed", summary: "Studio gateway quota is unavailable or above the Factory limit." } };
       }
@@ -137,7 +143,7 @@ export function createStudioExecutor(config, call, checkQuota) {
       const output = await invoke(config, {
         task: { source: task.source, selection: task.selection }, admissionId, resume, prompt,
         binding: attemptBinding(task),
-        gatewayBaseUrl: config.gatewayBaseUrl,
+        gatewayBaseUrl: task.selection.provider === "claude" ? config.claudeGatewayBaseUrl : config.gatewayBaseUrl,
         checkout: checkoutFor(config, task),
       }, signal);
       if (!output) return { terminationVerified: false, diagnosticCode: "executor_invocation_failed" };
