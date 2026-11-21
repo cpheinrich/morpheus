@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { WEB_QA_LIMITS, parseWebQaBatch, parseWebQaReceipt, webQaPathIssue } from "../src/qa/web/schema.js";
+import { WEB_QA_JPEG_MAX_CHARS, WEB_QA_JPEG_MAX_EDGE, WEB_QA_LIMITS, WEB_QA_MAX_BODY_BYTES, WebQaEvidence, WebQaEvidenceStatus, parseWebQaBatch, parseWebQaReceipt, webQaPathIssue } from "../src/qa/web/schema.js";
 import { WEB_OVERLAY_COLUMN_PX, WEB_OVERLAY_JS } from "../src/qa/web/overlay-client.js";
 import { QA_COLUMN_PX, QA_PIN_COLOR } from "../src/qa/web/visuals.js";
 
@@ -8,6 +8,54 @@ const ID = "6f1c1b2e-6a3b-4c1d-9e2f-0a1b2c3d4e5f";
 const comment = { text: "Button overlaps the footer", path: "/settings/billing", scope: "element", x: 0.25, y: 0.75, viewportWidth: 1280, viewportHeight: 800 };
 const batch = (over: Record<string, unknown> = {}, c: Record<string, unknown> = {}) =>
   ({ batchId: ID, comments: [{ ...comment, ...c }], buildAndDeploy: false, makeFeatureFlag: false, ...over });
+
+function jpegHeader(width: number, height: number, length = 30): string {
+  const size = (edge: number) => [edge >> 8, edge & 255];
+  return Buffer.concat([
+    Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0, 11, 8, ...size(height), ...size(width), 1, 1, 0x11, 0]),
+    Buffer.from([0xff, 0xda, 0, 8, 1, 1, 0, 0, 63, 0]),
+    Buffer.alloc(length - 27), Buffer.from([0xff, 0xd9]),
+  ]).toString("base64");
+}
+
+const evidence = {
+  schemaVersion: 1, capturedAt: "2026-11-21T08:00:00.000Z", input: "keyboard",
+  browser: { family: "Chrome", version: "140.0.0.0", versionSource: "user-agent" }, os: "macOS",
+  dpr: 2, theme: "dark", resources: 4096, errorsSinceMount: 0,
+  status: { kind: "unavailable", reason: "interrupted" },
+};
+
+describe("WebQaEvidence", () => {
+  it("accepts an explicit failure without changing the comment or permitting extra data", () => {
+    expect(parseWebQaBatch(batch({}, { evidence })).data?.comments[0]).toEqual({ ...comment, evidence });
+    expect(WebQaEvidence.safeParse({ ...evidence, status: { ...evidence.status, detail: "Browser error" } }).success).toBe(false);
+    expect(WebQaEvidence.safeParse({ ...evidence, browser: { family: "Safari", versionSource: "unavailable" } }).success).toBe(true);
+    expect(WebQaEvidence.safeParse({ ...evidence, browser: { ...evidence.browser, version: "140.0 user agent" } }).success).toBe(false);
+    expect(WebQaEvidence.safeParse({ ...evidence, resources: 4097 }).success).toBe(false);
+    const element = { tag: "button", role: "button", position: "sticky", width: 80, height: 20, scrollTop: 0 };
+    expect(WebQaEvidence.safeParse({ ...evidence, elements: Array(4).fill(element) }).success).toBe(true);
+    expect(WebQaEvidence.safeParse({ ...evidence, elements: Array(5).fill(element) }).success).toBe(false);
+    expect(WebQaEvidence.safeParse({ ...evidence, elements: [{ ...element, id: "private" }] }).success).toBe(false);
+  });
+
+  it("checks canonical base64, JPEG markers, matching dimensions and image limits", () => {
+    const width = WEB_QA_JPEG_MAX_EDGE;
+    const status = { kind: "captured", width, height: 1, jpegBase64: jpegHeader(width, 1, 75_000) };
+    expect(status.jpegBase64).toHaveLength(WEB_QA_JPEG_MAX_CHARS);
+    expect(WebQaEvidenceStatus.safeParse(status).data).toEqual(status);
+    for (const invalid of [
+      { jpegBase64: jpegHeader(width, 1, 75_001) }, { width: width - 1 }, { height: 0 },
+      { width: width + 1, jpegBase64: jpegHeader(width + 1, 1) },
+      { jpegBase64: "data:image/jpeg;base64," + status.jpegBase64 },
+      { jpegBase64: "iVBORw0KGgo=" }, { jpegBase64: status.jpegBase64.slice(0, -4) },
+      { jpegBase64: jpegHeader(width, 1, 31).replace(/Q==$/, "R==") },
+    ]) expect(WebQaEvidenceStatus.safeParse({ ...status, ...invalid }).success, JSON.stringify({ ...invalid, jpegBase64: invalid.jpegBase64?.slice(-20) })).toBe(false);
+    const maximum = batch({ comments: Array(20).fill({ ...comment, text: "\u0001".repeat(2000), evidence: { ...evidence, status } }) });
+    expect(parseWebQaBatch(maximum).success).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(maximum))).toBeLessThan(WEB_QA_MAX_BODY_BYTES);
+    expect(WEB_QA_MAX_BODY_BYTES).toBe(3 * 1024 * 1024);
+  });
+});
 
 describe("parseWebQaBatch", () => {
   it("accepts the exact payload and returns it unchanged", () => {
