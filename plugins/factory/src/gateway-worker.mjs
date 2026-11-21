@@ -13,6 +13,7 @@ import { checkCodex, codexArgs, codexHandoff, applyCodexEvent } from './codex-ex
 import { checkClaude, claudeArgs, applyClaudeEvent } from './claude.mjs';
 import { claudeOverage } from './fleet-claude.mjs';
 import { atomic, readJSON, key } from './store.mjs';
+import { materializeInputs, privateInputPrompt, removeInputs } from './fleet-input-files.mjs';
 
 import { workspaceHost, enrolledWorkspace } from './fleet-workspace-checkout.mjs';
 
@@ -184,7 +185,7 @@ function workerArgv(config, sessionId) {
   return codexArgs(sessionId, config, permission, config.gateway, config.cwd);
 }
 // Every step before the guardian spawn; `step.summary` names the phase a failure is reported as.
-async function prepareJob({ config, prompt, resume, admissionId, root, directory, binding, record }, step) {
+async function prepareJob({ config, prompt, resume, admissionId, root, directory, binding, record, inputs }, step) {
   let sessionId = null;
   let sessionBinding = binding;
   if (resume) {
@@ -200,6 +201,10 @@ async function prepareJob({ config, prompt, resume, admissionId, root, directory
   const isolated = await gatewayEnv(config, root, sessionBinding, step);
   const argv = workerArgv(config, sessionId);
   const claude = config.gateway.provider === 'claude';
+  if (inputs) {
+    const paths = await materializeInputs(root, binding.fleet.attemptId, inputs.manifest, inputs.bytes, resume);
+    prompt += privateInputPrompt(config.gateway.provider, paths);
+  }
   record.sessionId = sessionId;
   await atomic(join(directory, 'admission.json'), record);
   const job = {
@@ -263,7 +268,7 @@ async function admittedWorkerConfig(configPath, checkout, fleet, selection) {
     throw new Error('Checkout differs from the enrolled Fleet attempt');
   return config;
 }
-export async function gatewayWorker(configPath, prompt, resume = null, admissionId = randomUUID(), signal, checkout, fleet, selection) {
+export async function gatewayWorker(configPath, prompt, resume = null, admissionId = randomUUID(), signal, checkout, fleet, selection, inputs) {
   assertWorkerInputs(prompt, admissionId);
   const config = await admittedWorkerConfig(configPath, checkout, fleet, selection);
   const claude = config.gateway.provider === 'claude';
@@ -283,7 +288,7 @@ export async function gatewayWorker(configPath, prompt, resume = null, admission
   const step = { summary: 'Worker preparation failed; no launch.' };
   let isolated;
   try {
-    isolated = await prepareJob({ config, prompt, resume, admissionId, root, directory, binding, record }, step);
+    isolated = await prepareJob({ config, prompt, resume, admissionId, root, directory, binding, record, inputs }, step);
   } catch {
     // No guardian spawn has been attempted. Never persist raw resolver/OS errors.
     return neverLaunched('preparation', step.summary);
@@ -446,6 +451,14 @@ export async function recoverWorkerAdmission(configPath, admissionId, fleet) {
   }
   await retireAdmission(await workerStateRoot(await readWorkerConfig(configPath)), admissionId, fleet);
   return workerResult(admissionId);
+}
+
+export async function cleanupWorkerInputs(configPath, admissionId, fleet) {
+  const prior = await recoverWorkerAdmission(configPath, admissionId, fleet);
+  const binding = prior.binding?.fleet;
+  if (!prior.terminationVerified || binding?.taskId !== fleet.taskId || binding?.attemptId !== fleet.attemptId) return false;
+  await removeInputs(await workerStateRoot(await readWorkerConfig(configPath)), fleet.attemptId);
+  return true;
 }
 
 async function readRetiredAdmission(path, admissionId) {

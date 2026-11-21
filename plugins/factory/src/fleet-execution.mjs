@@ -6,6 +6,7 @@ import { realpathSync, statSync } from "node:fs";
 import { once } from "node:events";
 import { isAbsolute } from "node:path";
 import { createInterface } from "node:readline";
+import { downloadTaskInputs } from "./fleet-inputs.mjs";
 
 const maxLine = 12 * 1024 * 1024;
 const noLaunch = (admissionId) => ({ terminationVerified: true, invocation: notLaunched(admissionId), result: { outcome: "failed", summary: "Studio did not start the worker." } });
@@ -97,6 +98,16 @@ function checkoutFor(config, task) {
   if (task.source.checkout === "git") return sourceBinding(config, task);
 }
 
+async function executionInput(config, call, { task, admissionId, resume, prompt, signal }) {
+  const metadata = { source: task.source, selection: task.selection };
+  const common = { admissionId, resume, prompt, binding: attemptBinding(task),
+    gatewayBaseUrl: task.selection.provider === "claude" ? config.claudeGatewayBaseUrl : config.gatewayBaseUrl,
+    checkout: checkoutFor(config, task) };
+  if (!task.inputs?.length) return { ...common, task: metadata };
+  const inputFiles = await downloadTaskInputs(call, task, signal);
+  return { ...common, op: "execute-with-inputs", inputTask: { ...metadata, inputs: task.inputs }, inputFiles };
+}
+
 export function createStudioExecutor(config, call, checkQuota) {
   if (!validExecution(config)) throw new Error("Invalid Studio execution configuration");
   return {
@@ -127,7 +138,8 @@ export function createStudioExecutor(config, call, checkQuota) {
       const output = await invoke(config, { op: "prepare", source: task.source, checkout }, signal);
       return output?.outcome?.prepared === true ? true : { prepared: false, diagnosticCode: output ? "checkout_failed" : "executor_invocation_failed" };
     },
-    async execute({ task, admissionId, resume, prompt, signal }) {
+    async execute(args) {
+      const { task, admissionId, signal } = args;
       if (signal.aborted) return noLaunch(admissionId);
       try {
         if (task.selection.provider !== "claude") await checkQuota(task.selection);
@@ -139,16 +151,18 @@ export function createStudioExecutor(config, call, checkQuota) {
         try { enrolledWorkspace(config.fleetWorkspace, task.source.workspace, config.fleetWorkspace?.policy.sandbox); }
         catch { return { ...noLaunch(admissionId), diagnosticCode: "workspace_policy_mismatch" }; }
       } else if (config.fleetWorkspace) return { ...noLaunch(admissionId), diagnosticCode: "workspace_policy_mismatch" };
-      // Do not serialize the retained brief or mailbox with the current prompt.
-      const output = await invoke(config, {
-        task: { source: task.source, selection: task.selection }, admissionId, resume, prompt,
-        binding: attemptBinding(task),
-        gatewayBaseUrl: task.selection.provider === "claude" ? config.claudeGatewayBaseUrl : config.gatewayBaseUrl,
-        checkout: checkoutFor(config, task),
-      }, signal);
+      let input;
+      try { input = await executionInput(config, call, args); }
+      catch { return { ...noLaunch(admissionId), result: { outcome: "failed", summary: "Studio could not verify private task inputs or source binding." } }; }
+      if (signal.aborted) return noLaunch(admissionId);
+      const output = await invoke(config, input, signal);
       if (!output) return { terminationVerified: false, diagnosticCode: "executor_invocation_failed" };
       if (output.outcome?.terminationVerified !== true) return { terminationVerified: false };
       return publish(call, output, task, signal);
+    },
+    async cleanupInputs({ admissionId, ...binding }) {
+      const output = await invoke(config, { op: "cleanup-inputs", admissionId, binding });
+      return output?.outcome?.removed === true;
     },
     async recover(admissionId, task, restore) {
       const recovery = restore?.canPublish() ? { source: task.source, checkout: checkoutFor(config, task) } : undefined;
@@ -213,6 +227,9 @@ export function createStudioExecutors(config, call, checkQuota, create = createS
     },
     async recover(admissionId, task, restore) {
       return select(task)?.recover(admissionId, task, restore) ?? false;
+    },
+    async cleanupInputs(admissionId, binding, source) {
+      return select({ source })?.cleanupInputs({ admissionId, ...binding }) ?? false;
     },
   };
 }

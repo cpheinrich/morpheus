@@ -1,15 +1,17 @@
 // Runs as the unprivileged execution account. The fixed argv paths are
 // installed by the host operator; the supervisor supplies one JSON line.
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { enrolledSandbox, fleetWorkerRoute, gatewayWorker, readWorkerConfig, reconcileWorker, recoverWorkerAdmission } from "../src/gateway-worker.mjs";
+import { cleanupWorkerInputs, enrolledSandbox, fleetWorkerRoute, gatewayWorker, readWorkerConfig, reconcileWorker, recoverWorkerAdmission } from "../src/gateway-worker.mjs";
 import { readArtifactFiles, readCheckpointFiles } from "../src/fleet-artifacts.mjs";
 import { checkoutWorkspace } from "../src/fleet-workspace-checkout.mjs";
 import { studioCheckout } from "../src/fleet-source.mjs";
 import { invocationFromWorker, notLaunched } from "../src/fleet-receipt.mjs";
 import { gitEnv } from "../src/workspace.mjs";
+import { inputManifest, maxInputTotal } from "../src/fleet-inputs.mjs";
 
 const [configPath, project] = process.argv.slice(2);
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -73,7 +75,9 @@ async function execute(job) {
       (job.checkout && job.binding?.attemptId !== job.checkout.attemptId))
     return { terminationVerified: true, invocation: notLaunched(admissionId), diagnosticCode: "workspace_policy_mismatch", result: { outcome: "failed" } };
   const binding = prepared.claudeGateway ? { ...job.binding, source: job.task.source, gatewayBaseUrl: prepared.claudeGateway } : job.binding;
-  const outcome = await gatewayWorker(configPath, handoff, resume, admissionId, controller.signal, prepared.checkout, binding, job.task.selection);
+  const inputs = job.inputs;
+  if (inputs) binding.inputManifest = createHash("sha256").update(JSON.stringify(inputs.manifest)).digest("hex");
+  const outcome = await gatewayWorker(configPath, handoff, resume, admissionId, controller.signal, prepared.checkout, binding, job.task.selection, inputs);
   return publishInvocation(outputDir, outcome);
 }
 
@@ -88,8 +92,12 @@ async function publishInvocation(outputDir, outcome) {
 }
 
 function admissionEnvelope(value) {
-  if (!value || Buffer.byteLength(value) > 512 * 1024) return null;
-  try { return JSON.parse(value); }
+  const size = value ? Buffer.byteLength(value) : 0;
+  if (!size || size > Math.ceil(maxInputTotal / 3) * 4 + 512 * 1024) return null;
+  try {
+    const job = JSON.parse(value);
+    return size <= 512 * 1024 || job.op === "execute-with-inputs" ? job : null;
+  }
   catch { return null; }
 }
 
@@ -137,6 +145,11 @@ async function dispatch(value) {
     return { prepared: true };
   }
   if (job.op === "recover") return recover(job);
+  if (job.op === "cleanup-inputs") return { removed: await cleanupWorkerInputs(configPath, job.admissionId, job.binding) };
+  if (job.op === "execute-with-inputs") {
+    const manifest = inputManifest.parse(job.inputTask?.inputs);
+    return execute({ ...job, task: job.inputTask, inputs: { manifest, bytes: job.inputFiles } });
+  }
   return execute(job);
 }
 

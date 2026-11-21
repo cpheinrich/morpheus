@@ -3545,12 +3545,24 @@ workspaces use the shared lease. Each authenticated slot has its own supervised
 admission, even when multiple slots share a physical host. Stable submission
 replay preserves the task's originally recorded lease and eligible slots.
 Artifacts are private Cloud Storage generations referenced by Firestore.
+Private controller inputs use a separate create-only object prefix scoped to authenticated
+context, project and submission message. Admission binds the exact generation and digest
+manifest, not the bytes, to the task and its submission replay record. Only a capable
+supervisor can claim such a task, and only its exact worker identity, attempt and live lease
+can read an input. Outside the source checkouts the executor writes verified owner-read-only
+files (`0400`) and seals the populated attempt directory (`0500`) before handing out paths.
+Continuation requires the sealed directory and rechecks the files' permissions and contents.
+The executor restores directory write permission for removal only after verified termination
+and attempt binding, before settlement. This prevents ordinary writes and rename-over
+replacements, not deliberate permission changes by a full-access process under the same
+account. It does not automatically include inputs in result artifacts or the dashboard.
 Sub2API selects the upstream account within the provider bound to the task. Codex is
 the existing default. One optional service-wide Claude binding applies to each Git-backed
 execution grant. Pinned checkouts and viewer grants do not admit Claude tasks. A slot advertises scoped quota for both providers, shares
-one lease and journal between them, and checks quota again before invocation. Provider-specific
-windows in the same indexed queue allow either pool to advance. A verified prelaunch quota
-hold releases the initial slot and workspace under the same task identity. Restricted
+one lease and journal between them, and checks quota again before invocation. Windows in the
+same indexed queue let both providers advance; capable slots alternate priority between legacy
+and private input tasks within each provider based on the last successful claim. A verified
+prelaunch quota hold releases the initial slot and workspace under the same task identity. Restricted
 Claude workers share the same guardian under an OS write sandbox. A per-invocation
 loopback relay restricts their network access to the configured model endpoint.
 A retryable submit replays the same stable message ID, and existing status reports the

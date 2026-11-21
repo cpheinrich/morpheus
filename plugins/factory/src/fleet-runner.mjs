@@ -111,8 +111,9 @@ function finishIdentity(record) {
 
 // One supervised process owns this journal and slot. RPC deadlines and process
 // termination are the caller's responsibility. The runner never replays a spawn.
-export function createFleetRunner({ call, execute, prepare, recover = async () => false, journalPath, capacity = () => 1, quotaObservation, checkLaunchQuota }) {
+export function createFleetRunner({ call, execute, prepare, recover = async () => false, cleanupInputs, journalPath, capacity = () => 1, quotaObservation, checkLaunchQuota }) {
   if (!isAbsolute(journalPath)) throw new Error("Factory runner journal path must be absolute.");
+  const capabilities = cleanupInputs ? { privateInputs: true } : {};
   let busy = false;
   let stopping = false;
   let active;
@@ -173,6 +174,8 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
   }
 
   async function postFinish(record, outcome, result, cleanupVerified, invocation) {
+    if (cleanupVerified && record.inputSource && !await cleanupInputs(record.admissionId, identity(record), record.inputSource))
+      return "held";
     const receipt = invocation ? { ...finishIdentity(record), invocation } : {};
     const reply = await call("finish", { ...identity(record), outcome, result, cleanupVerified, ...receipt });
     if (cleanupVerified && reply?.settled === true) {
@@ -204,6 +207,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
     const admissionId = randomUUID();
     const resume = answerId ? record.admissionId : null;
     const next = { ...record, phase: "running", admissionId, answerId };
+    if (task.inputs?.length) next.inputSource = { project: task.source.project, checkout: task.source.checkout };
     delete next.invocation;
     await writeJournal(journalPath, next);
     if (stopping)
@@ -385,7 +389,7 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
   }
 
   async function claim(record, recovered) {
-    const reply = await call("claim", identity(record));
+    const reply = await call("claim", { ...identity(record), ...capabilities });
     if (reply?.reason === "lease-expired" || reply?.reason === "attempt-held")
       return finishBeforeLaunch(record, failed, "Runner recovered an attempt that never launched.");
     if (reply?.reason) {
@@ -425,7 +429,8 @@ export function createFleetRunner({ call, execute, prepare, recover = async () =
       const free = stopping ? 0 : await capacity();
       const available = Number.isSafeInteger(free) && free > 0;
       const quota = quotaObservation?.();
-      const { tasks } = await call("heartbeat", { available, capacity: available ? free : 0, ...(quota ? { quota } : {}) });
+      const { tasks } = await call("heartbeat", { available, capacity: available ? free : 0,
+        ...(quota ? { quota } : {}), ...capabilities });
       if (!available || !tasks?.length) return "idle";
       for (const taskId of tasks) {
         if (!isId(taskId)) throw new Error("Invalid Factory task candidate.");

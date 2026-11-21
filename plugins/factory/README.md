@@ -924,6 +924,89 @@ flowchart LR
   Sub2API -->|Provider requests| Provider[Subscription accounts]
 ```
 
+### Controller private task inputs
+
+Use the existing authenticated `POST /v1` endpoint. The upload and submission must use
+the same controller identity, `rootId`, `project`, and stable `messageId`:
+
+1. For each file, send `{ "op": "upload_input", "rootId": "…", "messageId": "…", "project": "…", "name": "capture.png", "type": "image/png", "bytes": "<base64>" }`.
+   The response is `{ name, type, size, sha256, generation, objectName }`. Keep `generation`
+   as a string. A lost reply can be retried with the same file and scope; different bytes or
+   type at that name return a conflict. Use flat ASCII names starting with a letter or digit,
+   containing only letters, digits, dots, underscores, and hyphens (128 characters maximum).
+2. Add `inputs: [<returned descriptors>]` to the ordinary `submit` body, including its existing
+   project, revision, brief and any workspace/provider fields. The optional ordered manifest
+   allows up to 64 names (case-insensitively distinct), 8 MiB per file and 32 MiB total, measured
+   before base64. An empty or omitted array is the legacy request. Retry the exact same
+   manifest with the same message ID; changing it is a conflict. Do not substitute arbitrary
+   bucket references. Unsubmitted uploads cannot be fetched by workers.
+3. Supervisors advertise `privateInputs: true` on `heartbeat` and `claim`. Only the claimed
+   worker can call `{ "op": "input", "taskId": "…", "attemptId": "…", "name": "capture.png" }`
+   for `{ input: <descriptor>, bytes: "<base64>" }` under its live lease. Codex and Claude
+   receive local file paths in the prompt, not base64 or source-project credentials.
+
+```mermaid
+flowchart TB
+  Controller[Authenticated controller] -->|Upload file| Storage[Immutable private object]
+  Storage -->|Verify manifest at submit| Task[Task admission]
+  Task -->|Exact live worker and attempt| Supervisor[Studio supervisor]
+  Storage -->|Verified generation and bytes| Supervisor
+  Supervisor -->|Private executor pipe| Files[Owner-only attempt directory]
+  Files -->|Local paths| Worker[Codex or Claude]
+```
+
+Input files live outside the source checkout and output directory. Files are owner-read-only
+(`0400`), and the populated attempt directory allows only owner read and search (`0500`)
+before the worker receives the paths. Continuation requires the sealed directory and rechecks
+file modes and contents. After verifying termination and the attempt binding, the executor
+restores directory write permission for removal before settlement, including cancellation.
+This prevents ordinary writes and rename-over replacements, not deliberate permission changes
+by a full-access process running as the same owner. Provider sessions and prompts remain
+subject to existing private retention; the worker is instructed not to copy inputs into Git, logs,
+results, or artifacts. The private bucket still owns cloud retention: apply the approved policy to
+`factory-inputs/`, including unattached uploads, with a window longer than supported queued and
+continuation tasks. This does not grant the API a delete permission or add storage credentials
+to Studio.
+
+**Rollout:** deploy the updated service first, then the supervisor and matching executor
+as one reviewed runtime revision, before enabling controller uploads. Older supervisors can
+still claim legacy tasks, but cannot claim tasks with private inputs. Capable slots prefer the
+other input class after a successful claim within each provider, while respecting provider quota.
+An old executor cannot interpret the private-input envelope as a legacy invocation. Do not roll
+the service back while producers can submit inputs: an older service does not recognize `upload_input` and may
+ignore `inputs` on `submit`. Stop producers and drain input tasks before rolling back the
+runtime. Existing enrollment, Firestore rules and Storage IAM are unchanged.
+
+### Qualify development worker environments
+
+An inference receipt alone does not establish development readiness. Qualify the exact
+execution identity and enrolled provider on each host before admitting real QA work:
+
+- Read the admitted source and applicable project context through the Context MCP or the
+  working CLI fallback; verify the pinned context-search runtime and complexity analyzer.
+- Resolve the project's pinned package manager, compiler, formatter and test tools from the
+  service's actual PATH. Install public tools into an operator-managed readable runtime,
+  rather than depending on an interactive user's private home.
+- Verify outbound access required for source, package resolution and documentation, and write
+  access to the dedicated account's own build caches. For native work, verify the simulator
+  service under the actual worker policy; a successful command outside that policy is not proof.
+- Use the minimum operator-authorized profile that supports the project. When native build
+  caches or simulator services require full development access, the existing
+  `danger-full-access` profile requires protected operator configuration, a Git-backed
+  enrollment and a private non-root home. Keep project identities, inference-only credentials,
+  source mirrors and publication ownership separate. Do not copy the desktop user's auth store
+  or unrelated connector credentials.
+- Retain bounded logs sufficient for the observed workload. If an invocation reaches its log
+  ceiling, retain its work and termination proof, repair the observed limit, and verify a new
+  invocation; a successful small canary alone does not clear the original failure.
+
+Roll one idle host at a time. Drain its availability through its authenticated supervisor,
+verify there is no live journal, retain rollback files, then replace the reviewed runtime and
+approved configuration. Preserve active owners. After restart, verify authenticated capability,
+quota, a real invocation with required tools, private input digests and cleanup. Finally trace a
+synthetic QA-tool request from its opted-in receipt through implementation, independent review,
+required CI and protected delivery. Keep source capture, transport and delivery evidence distinct.
+
 ### Provision the service
 
 1. Create a dedicated Native Firestore database, a private uniform-access
