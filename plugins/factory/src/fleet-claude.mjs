@@ -90,7 +90,8 @@ async function restrictedLaunch(command, args, roots) {
     `(deny file-write* ${protectedRules})(deny network*)(allow network-outbound (remote tcp "localhost:${port}"))`;
   const params = [...directories, ...protectedParams].flatMap(([name, path]) => ['-D', `${name}=${path}`]);
   return { relay, command: '/usr/bin/sandbox-exec', args: ['-p', policy, ...params, command, ...args],
-    env: { ...env, HOME: home, CLAUDE_CONFIG_DIR: home, TMPDIR: temp, ANTHROPIC_BASE_URL: `http://127.0.0.1:${port}`, ANTHROPIC_AUTH_TOKEN: capability } };
+    env: { ...env, HOME: home, CLAUDE_CONFIG_DIR: home, TMPDIR: temp, CLAUDE_CODE_TMPDIR: temp,
+      ANTHROPIC_BASE_URL: `http://127.0.0.1:${port}`, ANTHROPIC_AUTH_TOKEN: capability } };
 }
 
 async function invokeClaude(limit, command, args, roots) {
