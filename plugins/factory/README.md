@@ -1135,10 +1135,11 @@ Add each slot only to its enrolled project, and check its available quota before
 admitting it. Keep CI runner capacity separate from these worker slots. Verify
 overlapping launches on distinct slots and check exact cleanup for each one.
 
-The workspace policy and slot set apply when a task is first submitted. Retrying
-a stable message ID preserves the original task and eligibility after either
-setting changes. Keep the currently enrolled identities available until any
-tasks that need them have settled.
+The `workspaceLease` setting and slot set apply when a task is first submitted.
+Retrying a stable message ID preserves the original task and eligibility after
+either setting changes. A change to the task intent, including a related
+workspace policy change, still requires a new message ID. Keep the currently
+enrolled identities available until any tasks that need them have settled.
 
 ### Enroll a related repository workspace
 

@@ -85,11 +85,10 @@ function projectSelection(config, project, provider, model, replay = false) {
   return replay || Object.values(config.users).some(user => user.role === "worker" && project.eligibleSlots.includes(user.slotId)) ? claude : undefined;
 }
 
-function taskWorkspaceLease(project) {
-  const { workspaceLease, revision, workspace } = project;
-  if (workspaceLease !== undefined && (workspaceLease !== "task" || revision !== "git" || workspace))
-    throw failure(403, "Task workspace leases require single-repository Git enrollment");
-  return workspaceLease;
+export const taskWorkspaceLeaseError = "Task workspace leases require single-repository Git enrollment";
+
+export function validTaskWorkspaceLease({ workspaceLease, revision, workspace }) {
+  return workspaceLease === undefined || (workspaceLease === "task" && revision === "git" && !workspace);
 }
 
 function launchFor(config, principal, input, replay) {
@@ -98,7 +97,7 @@ function launchFor(config, principal, input, replay) {
   const fetchSource = project?.revision === "git";
   if (!project || !selection || (!fetchSource && project.revision !== input.revision) || (input.model && input.model !== selection.model))
     throw failure(403, "Project revision or model is outside the pilot enrollment");
-  const workspaceLease = taskWorkspaceLease(project);
+  if (!validTaskWorkspaceLease(project)) throw failure(403, taskWorkspaceLeaseError);
   let workspace;
   if (input.workspace || project.workspace) {
     try { workspace = workspaceLaunch(config, principal, input, project); }
@@ -106,7 +105,7 @@ function launchFor(config, principal, input, replay) {
     if (!fetchSource) throw failure(403, "Workspace requires Git enrollment");
   }
   return {
-    workspaceKey: project.workspaceKey, workspaceLease, eligibleSlots: project.eligibleSlots,
+    workspaceKey: project.workspaceKey, workspaceLease: project.workspaceLease, eligibleSlots: project.eligibleSlots,
     source: { project: input.project, revision: input.revision, ...(fetchSource ? { checkout: "git" } : {}), ...(workspace ? { workspace } : {}) },
     selection,
   };
