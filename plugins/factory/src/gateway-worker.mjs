@@ -1,7 +1,7 @@
 // Explicit unattended admission is separate from desktop task/permission discovery.
 import { z } from 'zod';
 import { constants } from 'node:fs';
-import { access, link, mkdir, open, readFile, realpath, rm, stat } from 'node:fs/promises';
+import { link, mkdir, open, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { join, dirname, isAbsolute, relative } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn, execFileSync, spawnSync } from 'node:child_process';
@@ -15,7 +15,7 @@ import { claudeOverage } from './fleet-claude.mjs';
 import { atomic, readJSON, key } from './store.mjs';
 import { materializeInputs, privateInputPrompt, removeInputs } from './fleet-input-files.mjs';
 
-import { workspaceHost, enrolledWorkspace } from './fleet-workspace-checkout.mjs';
+import { workspaceHost, enrolledWorkspace, singleProjectCredentials, credentialEnrollment, checkoutSingleProjectCredentials, operatorControls } from './fleet-workspace-checkout.mjs';
 
 const gatewaySchema = provider => z.strictObject({
   name: z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/),
@@ -34,25 +34,12 @@ const schema = z.strictObject({
   sandbox: z.enum(['read-only', 'workspace-write', 'danger-full-access']),
   approvalPolicy: z.literal('never'),
   fleetWorkspace: workspaceHost.optional(),
+  fleetCredentials: singleProjectCredentials.optional(),
   fleetClaude: z.strictObject({ gateway: gatewaySchema('claude'), model: fixedModel }).optional(),
   maxRunSeconds: z.number().int().min(1).max(28800),
   maxLogBytes: z.number().int().min(256).max(16 * 1024 * 1024),
 });
 const inside = (root, path) => { const rel = relative(root, path); return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel)); };
-async function operatorControls(path) {
-  // A root-owned file in an agent-writable directory can still be replaced.
-  for (let target = path; ; target = dirname(target)) {
-    const info = await stat(target);
-    if (info.uid !== 0 || (info.mode & 0o022)) return false;
-    try {
-      await access(target, constants.W_OK);
-      return false;
-    } catch (error) {
-      if (!['EACCES', 'EPERM', 'EROFS'].includes(error.code)) throw error;
-    }
-    if (target === dirname(target)) return true;
-  }
-}
 async function configAuthority(path) {
   const info = await stat(path);
   if (info.isFile() && info.uid === process.getuid() && !(info.mode & 0o077)) return 'worker';
@@ -74,6 +61,8 @@ export async function readWorkerConfig(path) {
   catch { throw new Error('Invalid unattended worker configuration'); }
   config.cwd = await realpath(config.cwd);
   if (config.fleetWorkspace && authority !== 'operator') throw new Error('Workspace policy requires protected operator configuration');
+  if (config.fleetCredentials && (authority !== 'operator' || path !== configPath || config.fleetWorkspace))
+    throw new Error('Single-project credentials require canonical protected operator configuration without a workspace policy');
   if (config.fleetClaude && authority !== 'operator') throw new Error('Fleet Claude requires protected operator configuration');
   // A service authority file cannot be part of an agent-editable checkout.
   let workspaceRoot;
@@ -136,7 +125,7 @@ async function continuationSession(resume, binding) {
   if (!/^[0-9a-f-]{36}$/.test(resume)) throw new Error('Invalid continuation admission ID');
   const previous = await workerResult(resume);
   // An upgrade may resume a pre-receipt admission with the checkout's old binding.
-  const upgrading = binding.gateway.provider === 'codex' && binding.fleet && !previous.binding?.fleet;
+  const upgrading = binding.gateway.provider === 'codex' && binding.fleet && !binding.fleet.credentialEnrollment && !previous.binding?.fleet;
   const expected = upgrading ? legacyBinding(binding) : binding;
   if (JSON.stringify(previous.binding) !== JSON.stringify(expected) || !previous.terminationVerified || !previous.sessionId)
     throw new Error('Continuation requires a terminated session with the same job, checkout and gateway binding');
@@ -184,6 +173,18 @@ function workerArgv(config, sessionId) {
   const permission = codexPermission({ 'read-only': 'plan', 'workspace-write': 'acceptEdits', 'danger-full-access': 'bypassPermissions' }[config.sandbox]);
   return codexArgs(sessionId, config, permission, config.gateway, config.cwd);
 }
+async function enrolledCredentials(config, fleet, resume) {
+  if (config.fleetCredentials && !fleet) throw new Error('Credential enrollment requires a matching Fleet Git attempt');
+  if (credentialEnrollment(config) !== fleet?.credentialEnrollment)
+    throw new Error('Credential enrollment changed before invocation');
+  if (!config.fleetCredentials) return false;
+  if (!z.uuid().safeParse(fleet.taskId).success || !z.uuid().safeParse(fleet.attemptId).success ||
+      config.cwd !== join(dirname(config.cwd), fleet.attemptId) || !await enrolledSandbox(config, fleet.source))
+    throw new Error('Credential enrollment requires a matching Fleet Git attempt');
+  await checkoutSingleProjectCredentials(config.cwd, fleet.source, config.fleetCredentials, resume);
+  return true;
+}
+
 // Every step before the guardian spawn; `step.summary` names the phase a failure is reported as.
 async function prepareJob({ config, prompt, resume, admissionId, root, directory, binding, record, inputs }, step) {
   let sessionId = null;
@@ -198,6 +199,9 @@ async function prepareJob({ config, prompt, resume, admissionId, root, directory
       record.legacySessionHome = true;
     }
   }
+  step.summary = 'Studio credential enrollment or checkout verification failed; no launch.';
+  if (await enrolledCredentials(config, binding.fleet, Boolean(resume)))
+    prompt += '\n\nUse the enrolled local companion only as needed for this project. Use `morpheus credentials list`, `morpheus credentials doctor`, or `morpheus credentials run -- <trusted-command>`. Never read secret files or print, copy, or record credential values.';
   const isolated = await gatewayEnv(config, root, sessionBinding, step);
   const argv = workerArgv(config, sessionId);
   const claude = config.gateway.provider === 'claude';

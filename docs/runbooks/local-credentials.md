@@ -80,6 +80,11 @@ Sync requires a clean default branch and fast-forwards only. It never resets, st
 the diff. Resolve dirty/divergent/task branches separately; do not treat a stale clone as proof
 that a credential is absent. Use `sync` before declaring a key missing.
 
+In a Factory worker, the operator provisions and updates an enrolled, pinned companion.
+Use `list`, `doctor`, or `run` normally when the declared link is attached. Do not run `setup`
+or `sync` to make up for an absent or stale Factory enrollment. Report it to the operator;
+see [single-project enrollment](../../plugins/factory/README.md#enroll-a-single-project-credential-companion).
+
 Read the companion's AGENTS.md before use. Never open secret files, dump the environment,
 enable shell tracing, or print authorization headers. Child flags (including `--help`) pass
 through unchanged. Use a program that reads its own environment; outer-shell `$VARIABLE`

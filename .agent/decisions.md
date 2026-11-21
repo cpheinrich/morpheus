@@ -2740,3 +2740,14 @@ negative lint fixtures. Fresh apps use correctness, React hooks, Next.js and acc
 rules. Shared workflows run each repository's lint script. Existing projects migrate their
 own configuration with positive and negative checks for important local behavior.
 The initial version is pinned to the newest release that fits the existing pnpm policy.
+
+## Bind optional single-project Factory credentials to the worker admission - 2026-11-21
+
+MO-26-11-21-15.18.22 extends the existing protected workspace companion implementation to
+explicitly enrolled single-project Git workers. The operator's canonical worker config
+names the project and pins the exact pointer bytes, companion repo, checkout path and
+revision. No controller grant or provider environment changes. The Codex and Claude worker
+attaches the ignored symlink on first invocation only; continuation and result recovery
+require the same enrollment digest and usable link. Independent termination proof remains
+available when a result cannot be restored. This is a Factory-specific extension of the
+existing Zod and Node/Git checks; it adds no package or second credential authority.
