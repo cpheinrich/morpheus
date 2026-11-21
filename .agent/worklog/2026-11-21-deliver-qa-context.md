@@ -31,8 +31,8 @@ pinned complexity checks; the controller independently passed those checks in th
   continuation, cleanup, full-development enrollment and the original native guardian cases.
 - Factory syntax check, root TypeScript checking and compilation passed. No generated drift.
 - Complexity passed: 121 changed functions, 429 measured functions in12 files, CCN limit15;
-  two existing handler-family cognitive warnings remain advisory.
-- The Firestore concurrency suite is pending at this checkpoint. Required CI, independent review,
+  two handler-family cognitive warnings remain advisory.
+- Both real Firestore-emulator concurrency and authenticated API tests passed. Required CI, independent review,
   cloud adoption, per-host qualification and the synthetic QA delivery remain pending.
 
 No real QA media, metadata or report text is used as repository evidence. Operational rollout
