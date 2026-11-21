@@ -31,6 +31,14 @@ function matchContext(task, contextId) {
   if (task?.contextId !== contextId) throw new Error("Unknown Factory task");
 }
 
+function assertReplay(task, prior, { text, source, selection, inputs }) {
+  if (task.brief.text === text && isDeepStrictEqual(prior.source, source) &&
+      isDeepStrictEqual(prior.selection, selection) && isDeepStrictEqual(prior.inputs ?? [], inputs ?? [])) return;
+  const conflict = new Error("Message ID already used for a different brief");
+  if (prior.inputs?.length || inputs?.length) conflict.status = 409;
+  throw conflict;
+}
+
 // This boundary takes the authenticated controller's context and a launch
 // spec resolved by the service from a registered project and exact revision.
 export async function submitTask(db, { contextId, messageId, text, launch, resolveLaunch = () => launch, display, inputs, validateInputs, now }) {
@@ -48,12 +56,7 @@ export async function submitTask(db, { contextId, messageId, text, launch, resol
       const task = await data(transaction, db.doc(taskPath(prior.taskId)));
       matchContext(task, contextId);
       // Presentation can be backfilled without changing the execution intent.
-      if (task.brief.text !== text || !isDeepStrictEqual(prior.launch.source, source) ||
-          !isDeepStrictEqual(prior.launch.selection, selection) || !isDeepStrictEqual(prior.launch.inputs ?? [], inputs ?? [])) {
-        const conflict = new Error("Message ID already used for a different brief");
-        if (prior.launch.inputs?.length || inputs?.length) conflict.status = 409;
-        throw conflict;
-      }
+      assertReplay(task, prior.launch, { text, source, selection, inputs });
       return { task, replay: true };
     }
     if (!Array.isArray(eligibleSlots) || !eligibleSlots.length || eligibleSlots.length > 16)
