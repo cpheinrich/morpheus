@@ -29,28 +29,28 @@ function matchContext(task, contextId) {
 
 // This boundary takes the authenticated controller's context and a launch
 // spec resolved by the service from a registered project and exact revision.
-export function submitTask(db, { contextId, messageId, text, launch, display, now }) {
+export function submitTask(db, { contextId, messageId, text, launch, resolveLaunch = () => launch, display, now }) {
   assertId(contextId);
   assertId(messageId);
   assertText(text);
-  const { eligibleSlots, workspaceKey, source, selection } = launch;
-  if (!Array.isArray(eligibleSlots) || !eligibleSlots.length || eligibleSlots.length > 16)
-    throw new Error("Factory requires between one and sixteen eligible slots");
-  for (const value of [workspaceKey, ...eligibleSlots]) assertId(value);
-  const spec = { eligibleSlots, workspaceKey, source, selection };
   const submissionId = createHash("sha256").update(contextId).update("\0").update(messageId).digest("hex");
   const submission = db.doc(`factorySubmissions/${submissionId}`);
   const id = randomUUID();
   return db.runTransaction(async (transaction) => {
     const prior = await data(transaction, submission);
+    const { eligibleSlots, workspaceKey, workspaceLease, source, selection } = resolveLaunch(Boolean(prior));
     if (prior) {
       const task = await data(transaction, db.doc(taskPath(prior.taskId)));
       matchContext(task, contextId);
       // Presentation can be backfilled without changing the execution intent.
-      if (task.brief.text !== text || !isDeepStrictEqual(prior.launch, spec))
+      if (task.brief.text !== text || !isDeepStrictEqual(prior.launch.source, source) || !isDeepStrictEqual(prior.launch.selection, selection))
         throw new Error("Message ID already used for a different brief");
       return { task, replay: true };
     }
+    if (!Array.isArray(eligibleSlots) || !eligibleSlots.length || eligibleSlots.length > 16)
+      throw new Error("Factory requires between one and sixteen eligible slots");
+    for (const value of [workspaceKey, ...eligibleSlots]) assertId(value);
+    const spec = { eligibleSlots, workspaceKey: workspaceLease === "task" ? `task-${id}` : workspaceKey, source, selection };
     const brief = { messageId, role: "ROLE_USER", text, createdAt: now };
     const task = { ...spec, queuedSlots: taskQueueKeys(eligibleSlots, selection), id, contextId, brief, ...(display && { display }), state: "TASK_STATE_SUBMITTED", createdAt: now };
     transaction.set(db.doc(taskPath(id)), task);

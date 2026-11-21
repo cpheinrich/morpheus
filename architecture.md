@@ -3539,6 +3539,11 @@ Fixed sanitized diagnostics distinguish source fetch, executor invocation and ch
 failures in the existing settlement journal and receipt; uncertain cleanup still holds the
 shared workspace. Synthetic source qualification and actual host/profile canaries are
 separate evidence. See the [workspace enrollment contract](plugins/factory/README.md#enroll-a-related-repository-workspace).
+Single-repository Git enrollments can opt into a workspace lease per task
+when each attempt materializes its own private checkout. Fixed and related
+workspaces use the shared lease. Each authenticated slot has its own supervised
+admission, even when multiple slots share a physical host. Stable submission
+replay preserves the task's originally recorded lease and eligible slots.
 Artifacts are private Cloud Storage generations referenced by Firestore.
 Sub2API selects the upstream account within the provider bound to the task. Codex is
 the existing default. One optional service-wide Claude binding applies to each Git-backed
