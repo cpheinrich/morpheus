@@ -30,3 +30,7 @@ readable media before applying its budget. A new Chromium and WebKit pixel asser
 that readable canvas content is still present alongside the masked regions. The production
 panel suite passed all eight cases after this refinement. The preceding full browser suite
 passed 54 cases, and the 128 focused unit checks passed again after the refinement.
+
+The capture carries the open state of native disclosure panels without copying their other
+attributes. A checked pixel inside the expanded panel passed on Chromium and WebKit. Each
+engine still passed the redaction, media, pin timing, and exact retry checks.

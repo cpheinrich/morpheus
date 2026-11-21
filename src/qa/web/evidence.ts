@@ -229,6 +229,7 @@ function freezeViewport(win: Window): Snapshot | Reason {
     const isMedia = node.matches("img, video, canvas");
     const pixels = !hidden && isMedia ? takeMedia(node, rect, style) : undefined;
     const clone = snapshot.createElement(cloneTag(node, hidden, !!pixels));
+    clone.toggleAttribute("open", clone.localName === "details" && node.hasAttribute("open"));
     copyStyle(style, clone);
     if (dx || dy) clone.style.setProperty("translate", `${dx}px ${dy}px`);
     const fixedOrSticky = positionBox(clone, style, rect, positioned ? undefined : positions);
