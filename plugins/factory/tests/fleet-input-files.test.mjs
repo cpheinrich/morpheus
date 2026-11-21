@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, link, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdir, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -11,6 +11,18 @@ const contents = Buffer.from("{}");
 const descriptor = { name: "notes.json", type: "application/json", size: contents.length,
   sha256: createHash("sha256").update(contents).digest("hex"), generation: "12345678901234567", objectName: "fixture" };
 const encoded = [contents.toString("base64")];
+const redirectedDirectory = error => ["ELOOP", "ENOTDIR"].includes(error.code);
+
+async function inputFixture(t) {
+  const state = await mkdtemp(join(tmpdir(), "fleet-private-inputs-"));
+  const attemptId = randomUUID();
+  const directory = join(state, `${attemptId}.inputs`);
+  t.after(async () => {
+    if ((await lstat(directory).catch(() => null))?.isDirectory()) await chmod(directory, 0o700);
+    await rm(state, { recursive: true, force: true });
+  });
+  return { state, attemptId, directory, path: join(directory, descriptor.name) };
+}
 
 test("private input byte and manifest boundaries are inclusive at exact limits", async () => {
   const scope = { contextId: "context", project: "project", messageId: "message" };
@@ -29,35 +41,35 @@ test("private input byte and manifest boundaries are inclusive at exact limits",
 });
 
 test("private input materialization refuses traversal, redirected directories and linked files", async t => {
-  const root = await mkdtemp(join(tmpdir(), "fleet-private-inputs-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const state = join(root, "state");
-  await mkdir(state, { mode: 0o700 });
-  const attemptId = randomUUID();
-  const directory = join(state, `${attemptId}.inputs`);
-  const path = join(directory, descriptor.name);
-  const target = join(root, "external.json");
+  const { state, attemptId, directory, path } = await inputFixture(t);
+  const target = join(state, "external.json");
+  const redirect = join(state, "redirect");
   await writeFile(target, contents, { mode: 0o600 });
+  await mkdir(redirect, { mode: 0o500 });
 
   await assert.rejects(materializeInputs(state, "../outside", [descriptor], encoded), /UUID/i);
   await assert.rejects(materializeInputs(state, attemptId, [{ ...descriptor, name: "../external.json" }], encoded));
-  await symlink(root, directory);
+  await symlink(redirect, directory);
   await assert.rejects(materializeInputs(state, attemptId, [descriptor], encoded), { code: "EEXIST" });
-  await assert.rejects(materializeInputs(state, attemptId, [descriptor], encoded, true), /not private/);
-  await removeInputs(state, attemptId);
-  assert.deepEqual(await readFile(target), contents);
+  await assert.rejects(materializeInputs(state, attemptId, [descriptor], encoded, true), redirectedDirectory);
+  await assert.rejects(removeInputs(state, attemptId), redirectedDirectory);
+  assert.equal((await stat(redirect)).mode & 0o777, 0o500);
+  await rm(directory);
 
   assert.deepEqual(await materializeInputs(state, attemptId, [descriptor], encoded), [path]);
-  assert.equal((await stat(directory)).mode & 0o777, 0o700);
   const info = await stat(path);
   assert.equal(info.uid, process.getuid());
-  await t.test("ordinary writes by the input owner are refused", { skip: process.getuid() === 0 && "root bypasses file modes" }, async () => {
-    await assert.rejects(writeFile(path, "[]"), { code: "EACCES" });
-  });
   assert.equal(info.mode & 0o777, 0o400);
   assert.deepEqual(await readFile(path), contents);
   assert.deepEqual(await materializeInputs(state, attemptId, [descriptor], encoded, true), [path]);
   assert.match(privateInputPrompt("claude", [path]), /Use Read to inspect images/);
+  await chmod(directory, 0o700);
+  await assert.rejects(materializeInputs(state, attemptId, [descriptor], encoded, true), /not sealed/);
+  await chmod(directory, 0o550);
+  await assert.rejects(materializeInputs(state, attemptId, [descriptor], encoded, true), /not private/);
+  await assert.rejects(removeInputs(state, attemptId), /not private/);
+  assert.equal((await stat(directory)).mode & 0o777, 0o550);
+  await chmod(directory, 0o500);
   for (const mode of [0o600, 0o420, 0o402]) {
     await chmod(path, mode);
     await assert.rejects(materializeInputs(state, attemptId, [descriptor], encoded, true), /Unsafe retained/);
@@ -66,16 +78,46 @@ test("private input materialization refuses traversal, redirected directories an
   await writeFile(path, "[]");
   await chmod(path, 0o400);
   await assert.rejects(materializeInputs(state, attemptId, [descriptor], encoded, true), /integrity/);
+  await chmod(directory, 0o700);
   await rm(path);
   await symlink(target, path);
+  await chmod(directory, 0o500);
   await assert.rejects(materializeInputs(state, attemptId, [descriptor], encoded, true), { code: "ELOOP" });
+  await chmod(directory, 0o700);
   await rm(path);
   await chmod(target, 0o400);
   await link(target, path);
+  await chmod(directory, 0o500);
   await assert.rejects(materializeInputs(state, attemptId, [descriptor], encoded, true), /Unsafe retained/);
   await removeInputs(state, attemptId);
   await assert.rejects(stat(directory), { code: "ENOENT" });
   assert.deepEqual(await readFile(target), contents);
+});
+
+test("ordinary writes and temp-file replacement by the input owner are refused",
+  { skip: process.getuid() === 0 && "root bypasses file modes" }, async t => {
+    const { state, attemptId, directory, path } = await inputFixture(t);
+    await materializeInputs(state, attemptId, [descriptor], encoded);
+    await assert.rejects(writeFile(path, "[]"), { code: "EACCES" });
+    const temporary = join(state, "notes.tmp");
+    await writeFile(temporary, "[]");
+    await assert.rejects(rename(temporary, path), { code: "EACCES" });
+    assert.deepEqual(await materializeInputs(state, attemptId, [descriptor], encoded, true), [path]);
+    assert.deepEqual(await readFile(path), contents);
+    assert.equal(await readFile(temporary, "utf8"), "[]");
+    assert.equal((await stat(directory)).mode & 0o777, 0o500);
+  });
+
+test("cleanup accepts absent and partially materialized input directories", async t => {
+  const { state, attemptId, directory, path } = await inputFixture(t);
+  await removeInputs(state, attemptId);
+  await assert.rejects(lstat(directory), { code: "ENOENT" });
+  await assert.rejects(materializeInputs(state, attemptId,
+    [descriptor, { ...descriptor, name: "second.json" }], [encoded[0], "W10="]), /integrity/);
+  assert.deepEqual(await readFile(path), contents);
+  await removeInputs(state, attemptId);
+  await assert.rejects(lstat(directory), { code: "ENOENT" });
+  await removeInputs(state, attemptId);
 });
 
 test("the supervisor rejects incorrect input replies and stops requesting later files on abort", async () => {

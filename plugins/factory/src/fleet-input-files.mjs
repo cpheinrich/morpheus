@@ -6,16 +6,19 @@ import { assertInputBytes, decodedInput, inputManifest } from "./fleet-inputs.mj
 
 const readFlags = constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW;
 const createFlags = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
+const directoryFlags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
+const writableMode = 0o700;
+const sealedMode = 0o500;
 const inputMode = 0o400;
 
-async function privateDirectory(path) {
-  const info = await lstat(path);
+function privateDirectoryMode(info) {
   if (!info.isDirectory() || info.uid !== process.getuid() || (info.mode & 0o077))
     throw new Error("Factory input directory is not private");
+  return info.mode & 0o7777;
 }
 
 async function inputDirectory(root, attemptId) {
-  await privateDirectory(root);
+  privateDirectoryMode(await lstat(root));
   return join(root, `${z.uuid().parse(attemptId)}.inputs`);
 }
 
@@ -40,8 +43,18 @@ export async function materializeInputs(root, attemptId, manifest, encoded, resu
   const files = inputManifest.parse(manifest);
   if (!files.length || !Array.isArray(encoded) || encoded.length !== files.length) throw new Error("Invalid Factory input bundle");
   const directory = await inputDirectory(root, attemptId);
-  if (!resume) await mkdir(directory, { mode: 0o700 });
-  await privateDirectory(directory);
+  if (!resume) await mkdir(directory, { mode: writableMode });
+  const handle = await open(directory, directoryFlags);
+  try {
+    const mode = privateDirectoryMode(await handle.stat());
+    if (resume && mode !== sealedMode) throw new Error("Retained Factory input directory is not sealed");
+    const paths = await populateInputs(directory, files, encoded, resume);
+    if (!resume) await handle.chmod(sealedMode);
+    return paths;
+  } finally { await handle.close(); }
+}
+
+async function populateInputs(directory, files, encoded, resume) {
   const paths = [];
   for (const [index, file] of files.entries()) {
     const bytes = decodedInput(file, encoded[index]);
@@ -60,7 +73,16 @@ export async function materializeInputs(root, attemptId, manifest, encoded, resu
 }
 
 export async function removeInputs(root, attemptId) {
-  await rm(await inputDirectory(root, attemptId), { recursive: true, force: true });
+  const directory = await inputDirectory(root, attemptId);
+  const handle = await open(directory, directoryFlags).catch(error => {
+    if (error.code !== "ENOENT") throw error;
+    return null;
+  });
+  if (!handle) return;
+  try {
+    if (privateDirectoryMode(await handle.stat()) === sealedMode) await handle.chmod(writableMode);
+    await rm(directory, { recursive: true, force: true });
+  } finally { await handle.close(); }
 }
 
 export function privateInputPrompt(provider, paths) {

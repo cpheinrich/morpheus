@@ -955,10 +955,13 @@ flowchart TB
   Files -->|Local paths| Worker[Codex or Claude]
 ```
 
-Input files live outside the source checkout and output directory and are owner-read-only
-(`0400`). Continuation rechecks the mode and contents; the executor removes the files before
-verified settlement, including cancellation. This prevents ordinary writes, not deliberate
-changes by a full-access process running as the same owner. Provider sessions and prompts remain
+Input files live outside the source checkout and output directory. Files are owner-read-only
+(`0400`), and the populated attempt directory allows only owner read and search (`0500`)
+before the worker receives the paths. Continuation requires the sealed directory and rechecks
+file modes and contents. After verifying termination and the attempt binding, the executor
+restores directory write permission for removal before settlement, including cancellation.
+This prevents ordinary writes and rename-over replacements, not deliberate permission changes
+by a full-access process running as the same owner. Provider sessions and prompts remain
 subject to existing private retention; the worker is instructed not to copy inputs into Git, logs,
 results, or artifacts. The private bucket still owns cloud retention: apply the approved policy to
 `factory-inputs/`, including unattached uploads, with a window longer than supported queued and

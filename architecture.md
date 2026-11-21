@@ -3545,11 +3545,13 @@ Private controller inputs use a separate create-only object prefix scoped to aut
 context, project and submission message. Admission binds the exact generation and digest
 manifest, not the bytes, to the task and its submission replay record. Only a capable
 supervisor can claim such a task, and only its exact worker identity, attempt and live lease
-can read an input. The executor uses a private attempt directory outside the source checkouts
-for verified owner-read-only files, rechecks permissions and contents on continuation, and
-removes it before verified task settlement. This prevents ordinary writes, not deliberate
-changes by a full-access process under the same account. It does not automatically include
-inputs in result artifacts or the dashboard.
+can read an input. Outside the source checkouts the executor writes verified owner-read-only
+files (`0400`) and seals the populated attempt directory (`0500`) before handing out paths.
+Continuation requires the sealed directory and rechecks the files' permissions and contents.
+The executor restores directory write permission for removal only after verified termination
+and attempt binding, before settlement. This prevents ordinary writes and rename-over
+replacements, not deliberate permission changes by a full-access process under the same
+account. It does not automatically include inputs in result artifacts or the dashboard.
 Sub2API selects the upstream account within the provider bound to the task. Codex is
 the existing default. One optional service-wide Claude binding applies to each Git-backed
 execution grant. Pinned checkouts and viewer grants do not admit Claude tasks. A slot advertises scoped quota for both providers, shares
