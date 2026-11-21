@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { link, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -49,18 +49,32 @@ test("private input materialization refuses traversal, redirected directories an
 
   assert.deepEqual(await materializeInputs(state, attemptId, [descriptor], encoded), [path]);
   assert.equal((await stat(directory)).mode & 0o777, 0o700);
-  assert.equal((await stat(path)).mode & 0o777, 0o600);
+  const info = await stat(path);
+  assert.equal(info.uid, process.getuid());
+  await t.test("ordinary writes by the input owner are refused", { skip: process.getuid() === 0 && "root bypasses file modes" }, async () => {
+    await assert.rejects(writeFile(path, "[]"), { code: "EACCES" });
+  });
+  assert.equal(info.mode & 0o777, 0o400);
   assert.deepEqual(await readFile(path), contents);
+  assert.deepEqual(await materializeInputs(state, attemptId, [descriptor], encoded, true), [path]);
   assert.match(privateInputPrompt("claude", [path]), /Use Read to inspect images/);
+  for (const mode of [0o600, 0o420, 0o402]) {
+    await chmod(path, mode);
+    await assert.rejects(materializeInputs(state, attemptId, [descriptor], encoded, true), /Unsafe retained/);
+  }
+  await chmod(path, 0o600);
   await writeFile(path, "[]");
+  await chmod(path, 0o400);
   await assert.rejects(materializeInputs(state, attemptId, [descriptor], encoded, true), /integrity/);
   await rm(path);
   await symlink(target, path);
   await assert.rejects(materializeInputs(state, attemptId, [descriptor], encoded, true), { code: "ELOOP" });
   await rm(path);
+  await chmod(target, 0o400);
   await link(target, path);
   await assert.rejects(materializeInputs(state, attemptId, [descriptor], encoded, true), /Unsafe retained/);
   await removeInputs(state, attemptId);
+  await assert.rejects(stat(directory), { code: "ENOENT" });
   assert.deepEqual(await readFile(target), contents);
 });
 

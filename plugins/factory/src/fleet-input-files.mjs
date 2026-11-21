@@ -6,6 +6,7 @@ import { assertInputBytes, decodedInput, inputManifest } from "./fleet-inputs.mj
 
 const readFlags = constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW;
 const createFlags = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
+const inputMode = 0o400;
 
 async function privateDirectory(path) {
   const info = await lstat(path);
@@ -22,7 +23,7 @@ async function verifyLocal(file, path) {
   const handle = await open(path, readFlags);
   try {
     const stat = await handle.stat();
-    if (!stat.isFile() || stat.uid !== process.getuid() || stat.nlink !== 1 || (stat.mode & 0o077) || stat.size !== file.size)
+    if (!stat.isFile() || stat.uid !== process.getuid() || stat.nlink !== 1 || (stat.mode & 0o777) !== inputMode || stat.size !== file.size)
       throw new Error("Unsafe retained Factory input");
     const buffer = Buffer.alloc(file.size + 1);
     let offset = 0;
@@ -47,8 +48,11 @@ export async function materializeInputs(root, attemptId, manifest, encoded, resu
     const path = join(directory, file.name);
     if (resume) await verifyLocal(file, path);
     else {
-      const handle = await open(path, createFlags, 0o600);
-      try { await handle.writeFile(bytes); } finally { await handle.close(); }
+      const handle = await open(path, createFlags, inputMode);
+      try {
+        await handle.writeFile(bytes);
+        await handle.chmod(inputMode);
+      } finally { await handle.close(); }
     }
     paths.push(path);
   }

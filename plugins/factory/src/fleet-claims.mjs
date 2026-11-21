@@ -84,7 +84,9 @@ export function claimTask(db, {
     const attempt = { id: attemptId, hostId, slotId, leaseUntil: now + leaseMs,
       ...(task.inputs?.length && { inputWorkerUid: uid }) };
     transaction.update(taskRef, { state: "TASK_STATE_WORKING", attempt, queuedSlots: [] });
-    transaction.update(db.doc(slotPath(slotId)), { attemptId, lastProvider: task.selection?.provider ?? "codex" });
+    const provider = task.selection?.provider ?? "codex";
+    transaction.update(db.doc(slotPath(slotId)), { attemptId, lastProvider: provider,
+      lastClaimHadInputs: { ...winner.slot.lastClaimHadInputs, [provider]: Boolean(attempt.inputWorkerUid) } });
     transaction.set(workspaceRef, { attemptId, taskId });
     return { attempt, replay: false };
   });

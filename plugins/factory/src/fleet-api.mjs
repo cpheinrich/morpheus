@@ -170,21 +170,24 @@ async function controllerSnapshot(db, task, now) {
 
 async function heartbeat(db, { hostId, slotId }, input, now) {
   const slot = db.doc(`factorySlots/${slotId}`);
-  const lastProvider = await db.runTransaction(async (tx) => {
+  const previous = await db.runTransaction(async (tx) => {
     const prior = (await tx.get(slot)).data();
     if (prior && prior.hostId !== hostId) throw failure(409, "Factory slot belongs to another host");
     tx.set(slot, { hostId, available: input.available, capacity: input.capacity, observedAt: now,
       quota: input.quota ?? null, privateInputs: input.privateInputs === true }, { merge: true });
-    return prior?.lastProvider;
+    return prior;
   });
   if (!input.available) return { tasks: [] };
-  const queues = [slotId];
-  if (hasClaudeHeadroom(input.quota, now)) queues.push(claudeQueueKey(slotId));
-  if (lastProvider === "codex") queues.reverse();
-  if (input.privateInputs) queues.push(...queues.map(key => inputQueueKey(key)));
+  const providers = ["codex"];
+  if (hasClaudeHeadroom(input.quota, now)) providers.push("claude");
+  if (previous?.lastProvider === "codex") providers.reverse();
+  const queues = providers.flatMap(provider => {
+    const legacy = provider === "codex" ? slotId : claudeQueueKey(slotId);
+    if (!input.privateInputs) return [legacy];
+    const withInputs = inputQueueKey(legacy);
+    return previous?.lastClaimHadInputs?.[provider] === false ? [withInputs, legacy] : [legacy, withInputs];
+  });
   const pending = await Promise.all(queues.map(key => db.collection("factoryTasks").where("queuedSlots", "array-contains", key).limit(16).get()));
-  // Each provider has its own bounded window in the shared queue. Interleave
-  // them so both advance when the slot supports both providers.
   return { tasks: Array.from({ length: 16 }, (_, i) => pending.flatMap(({ docs }) => docs[i]?.id ?? [])).flat() };
 }
 

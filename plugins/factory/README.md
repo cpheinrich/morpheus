@@ -955,20 +955,22 @@ flowchart TB
   Files -->|Local paths| Worker[Codex or Claude]
 ```
 
-Input files live outside the source checkout and output directory. They are reverified
-before continuation, and the executor removes them before verified settlement, including
-cancellation. Provider sessions and prompts remain subject to existing private retention;
-the worker is instructed not to copy inputs into Git, logs, results, or artifacts. The private
-bucket still owns cloud retention: apply the existing approved retention policy to
+Input files live outside the source checkout and output directory and are owner-read-only
+(`0400`). Continuation rechecks the mode and contents; the executor removes the files before
+verified settlement, including cancellation. This prevents ordinary writes, not deliberate
+changes by a full-access process running as the same owner. Provider sessions and prompts remain
+subject to existing private retention; the worker is instructed not to copy inputs into Git, logs,
+results, or artifacts. The private bucket still owns cloud retention: apply the approved policy to
 `factory-inputs/`, including unattached uploads, with a window longer than supported queued and
 continuation tasks. This does not grant the API a delete permission or add storage credentials
 to Studio.
 
 **Rollout:** deploy the updated service first, then the supervisor and matching executor
 as one reviewed runtime revision, before enabling controller uploads. Older supervisors can
-still claim legacy tasks, but cannot claim tasks with private inputs. An old executor cannot
-interpret the private-input envelope as a legacy invocation. Do not roll the service back
-while producers can submit inputs: an older service does not recognize `upload_input` and may
+still claim legacy tasks, but cannot claim tasks with private inputs. Capable slots prefer the
+other input class after a successful claim within each provider, while respecting provider quota.
+An old executor cannot interpret the private-input envelope as a legacy invocation. Do not roll
+the service back while producers can submit inputs: an older service does not recognize `upload_input` and may
 ignore `inputs` on `submit`. Stop producers and drain input tasks before rolling back the
 runtime. Existing enrollment, Firestore rules and Storage IAM are unchanged.
 
