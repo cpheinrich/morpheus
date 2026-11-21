@@ -453,8 +453,8 @@ regions and closed shadow hosts with `data-qa-private`; unmarked closed roots on
 ordinary HTML elements cannot be detected. Form controls, editable regions, QA chrome,
 custom elements, shadow roots, embeds and unsupported media are masked or omitted.
 Loaded readable pixels can be copied from images, canvases and video without fetching
-their URLs again. CSS image resources, site fonts, generated content and SVG are not
-copied. The image is a DOM reconstruction; font layout, transformed/nested scroll
+their URLs again. CSS image resources, web font files, generated content and SVG are omitted.
+Already installed fonts can render from their computed font stack. The image is a DOM reconstruction; font layout, transformed/nested scroll
 containers and complex stacking can differ. Pinch-zoomed and over-budget pages report
 unavailable, as do browser policies that block the isolated frame or its data image.
 Inspect synthetic artifacts in both engines before releasing an integration.

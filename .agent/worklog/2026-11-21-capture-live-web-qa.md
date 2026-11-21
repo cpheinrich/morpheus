@@ -23,3 +23,10 @@ and no patch. The retry returned a checksum-verified patch from the exact publis
 Local verification found that headless Chromium reports `HeadlessChrome` in the user agent.
 The parser now retains that browser family and its version. The controller also factored
 image validation and capture helpers to satisfy the repository's enforced complexity limit.
+
+Visual review of the first host captures showed the photo omitted and the Evo heading wrapping
+where the built page did not. The capture now retains installed font names and compresses
+readable media before applying its budget. A new Chromium and WebKit pixel assertion proves
+that readable canvas content is still present alongside the masked regions. The production
+panel suite passed all eight cases after this refinement. The preceding full browser suite
+passed 54 cases, and the 128 focused unit checks passed again after the refinement.

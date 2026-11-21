@@ -13,7 +13,7 @@ const MASKED = "[data-qa-private], [contenteditable]:not([contenteditable=false]
 const TAGS = new Set("a abbr address article aside b bdi bdo blockquote button caption cite code col colgroup dd del details dfn div dl dt em fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hgroup hr i ins kbd label legend li main mark menu nav ol p pre q s samp section small span strong sub summary sup table tbody td tfoot th thead time tr u ul var wbr".split(" "));
 const STYLES = ("display visibility opacity position top right bottom left z-index box-sizing width height min-width min-height max-width max-height aspect-ratio " +
     "margin padding border border-radius border-top border-right border-bottom border-left outline outline-offset box-shadow background-color color " +
-    "font-size font-style font-weight font-stretch line-height letter-spacing word-spacing text-align text-decoration text-transform text-indent text-shadow " +
+    "font-family font-size font-style font-weight font-stretch line-height letter-spacing word-spacing text-align text-decoration text-transform text-indent text-shadow " +
     "white-space overflow-wrap word-break direction writing-mode vertical-align overflow-x overflow-y text-overflow " +
     "flex flex-direction flex-wrap order justify-content justify-items justify-self align-content align-items align-self gap " +
     "grid-template-columns grid-template-rows grid-row grid-column grid-auto-flow grid-auto-columns grid-auto-rows " +
@@ -98,8 +98,6 @@ function copyStyle(style, clone) {
         if (value.length <= 500 && !/url\s*\(|image\s*\(|image-set\s*\(/i.test(value))
             clone.style.setProperty(property, value);
     }
-    const family = style.fontFamily;
-    clone.style.fontFamily = /\bmonospace\b/.test(family) ? "monospace" : /(?:^|[, ])serif(?:$|,)/.test(family) ? "serif" : "sans-serif";
 }
 function mediaSize(node) {
     if (node instanceof HTMLImageElement && node.complete && node.naturalWidth) {
@@ -126,8 +124,11 @@ function mediaPixels(node, budget) {
         if (!context)
             return;
         context.drawImage(node, 0, 0, canvas.width, canvas.height);
-        const data = canvas.toDataURL("image/png");
-        return data.startsWith("data:image/png;base64,") && data.length <= budget ? data : undefined;
+        const data = canvas.toDataURL("image/webp", 0.8);
+        if (data.length <= budget && /^data:image\/(?:webp|png);base64,/.test(data))
+            return data;
+        const jpeg = canvas.toDataURL("image/jpeg", 0.76);
+        return jpeg.length <= budget && jpeg.startsWith("data:image/jpeg;base64,") ? jpeg : undefined;
     }
     catch {
         return undefined;

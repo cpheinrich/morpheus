@@ -63,15 +63,18 @@ html,body{margin:0;background:white} body{min-height:2200px;font:20px sans-serif
 .private,.field,.editable,.embedded,.custom,.launcher,.asset{position:absolute;top:180px;width:84px;height:44px;border:0;padding:0;background:#fa00fc}
 .private{left:20px}.field{left:120px}.editable{left:220px}.embedded{left:320px}
 .custom{display:block;left:420px}.launcher{left:1080px;top:120px}.asset{left:520px;background:white url('/fixture.svg?token=synthetic')}
+.photo{position:absolute;left:625px;top:180px;width:84px;height:44px}
 </style><div class="fixed">Fixed</div><div class="sticky">Sticky</div>
 <section class="phase first"><p class="target" tabindex="0" role="button" aria-pressed="false">First state</p>
 <div class="private" data-qa-private>PRIVATE-MARKER</div>
 <input class="field" value="PRIVATE-FIELD"><div class="editable" contenteditable>PRIVATE-EDITABLE</div>
 <iframe class="embedded" srcdoc="&lt;body style='background:magenta'&gt;PRIVATE-FRAME"></iframe>
 <fixture-secret class="custom">PRIVATE-CUSTOM</fixture-secret><div data-qa-chrome class="launcher">QA</div>
-<div class="asset"></div></section>
+<div class="asset"></div><canvas class="photo" width="640" height="440"></canvas></section>
 <section class="phase second"><p class="target" tabindex="0">Second state</p></section>
-<script>document.querySelector('fixture-secret').attachShadow({mode:'closed'}).innerHTML = '<div>PRIVATE-SHADOW</div>';</script>`;
+<script>document.querySelector('fixture-secret').attachShadow({mode:'closed'}).innerHTML = '<div>PRIVATE-SHADOW</div>';
+const ctx = document.querySelector('.photo').getContext('2d');
+ctx.fillStyle = 'rgb(35, 164, 72)'; ctx.fillRect(0, 0, 640, 440);</script>`;
 
 async function mountEvidence(page: Page, bundle: string): Promise<void> {
   await page.addScriptTag({ content: bundle + `
@@ -169,7 +172,7 @@ test("freezes redacted JPEG pixels at each pin and retries the exact batch acros
       colors: points.map(([x, y]) => [...context.getImageData(Math.floor(x! * canvas.width / innerWidth), Math.floor(y! * canvas.height / innerHeight), 1, 1).data].slice(0, 3)),
     };
   }, { image, points });
-  const firstPixels = await pixels(firstImage, [[700, 150], [125, 25], [125, 62], [159, 145], [40, 210], [150, 210], [250, 210], [350, 210], [450, 210], [550, 210], [1110, 145]]);
+  const firstPixels = await pixels(firstImage, [[700, 150], [125, 25], [125, 62], [159, 145], [40, 210], [150, 210], [250, 210], [350, 210], [450, 210], [550, 210], [665, 210], [1110, 145]]);
   expect(firstPixels.dimensions).toEqual([firstImage.width, firstImage.height]);
   const secondPixels = await pixels(secondImage, [[700, 150], [125, 25], [125, 62]]);
   const expectPixels = (actual: number[][], expected: number[][]) => {
@@ -177,7 +180,7 @@ test("freezes redacted JPEG pixels at each pin and retries the exact batch acros
     expected.forEach((color, pixel) => color.forEach((channel, index) => expect(Math.abs(actual[pixel]![index]! - channel), `pixel ${pixel}, channel ${index}`).toBeLessThan(30)));
   };
   const mask = [101, 106, 114], yellow = [255, 205, 53], cyan = [37, 216, 210], white = [255, 255, 255];
-  expectPixels(firstPixels.colors, [[218, 53, 39], yellow, cyan, white, mask, mask, mask, mask, mask, white, white]);
+  expectPixels(firstPixels.colors, [[218, 53, 39], yellow, cyan, white, mask, mask, mask, mask, mask, white, [35, 164, 72], white]);
   expectPixels(secondPixels.colors, [[39, 93, 220], yellow, cyan]);
   if (process.env.QA_EVIDENCE_DIR) {
     await mkdir(process.env.QA_EVIDENCE_DIR, { recursive: true });
