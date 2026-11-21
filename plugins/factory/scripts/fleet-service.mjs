@@ -26,10 +26,12 @@ const schema = z.strictObject({
   projects: z.record(id, z.strictObject({
     revision: z.union([z.string().regex(/^[a-f0-9]{40}$/), z.literal("git")]),
     workspaceKey: id,
+    workspaceLease: z.literal("task").optional(),
     workspace: id.optional(),
     eligibleSlots: z.array(id).min(1).max(16),
     selection: z.strictObject({ provider: z.literal("codex"), gateway: id, model: fleetModel }),
-  })),
+  }).refine(project => !project.workspaceLease || (project.revision === "git" && !project.workspace),
+    "Task workspace leases require single-repository Git enrollment")),
 });
 
 const config = schema.parse(JSON.parse(process.env.FACTORY_ENROLLMENT ?? "{}"));

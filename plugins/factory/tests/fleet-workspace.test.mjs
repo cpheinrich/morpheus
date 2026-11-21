@@ -192,6 +192,128 @@ test("Claude enrollment shares one workspace and slot without using Codex quota 
   assert.equal((await api.call("get", { taskId: codex.value.task.id })).value.queueReason, "workspace-busy");
 });
 
+test("four Git tasks across two providers hold four slots on one host until verified cleanup", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  const slots = ["slot", "slot-2", "slot-3", "slot-4"];
+  const project = api.config.projects.app;
+  delete project.workspace;
+  Object.assign(project, { workspaceLease: "task", eligibleSlots: slots });
+  api.config.claudeSelection = { provider: "claude", gateway: "anthropic", model: "claude-test" };
+  const quota = [{ provider: "codex", gateway: "fixture", checkedAt: 100, status: "available" },
+    { provider: "claude", gateway: "anthropic", checkedAt: 100, status: "available" }];
+  for (const slotId of slots) {
+    api.config.users[slotId] = { role: "worker", hostId: "host", slotId };
+    assert.deepEqual(await api.call("heartbeat", { available: true, capacity: 1, quota }, slotId),
+      { status: 200, value: { tasks: [] } });
+  }
+  api.config.users.impostor = { role: "worker", hostId: "other-host", slotId: slots[0] };
+  assert.equal((await api.call("heartbeat", { available: true, capacity: 1, quota }, "impostor")).status, 409);
+
+  const input = { project: "app", revision: f.revisions.app, text: "isolated fixture" };
+  const attempts = [];
+  for (const [index, slotId] of slots.entries()) {
+    const provider = index % 2 ? "claude" : "codex";
+    const { status, value: { task } } = await api.call("submit", { ...input, messageId: `isolated-${index}`, provider });
+    assert.equal(status, 200);
+    assert.equal(task.selection.provider, provider);
+    assert.equal(task.workspaceKey, `task-${task.id}`);
+    const binding = { taskId: task.id, attemptId: randomUUID() };
+    if (index === 0) {
+      assert.deepEqual((await api.call("claim", binding, "impostor")).value, { reason: "not-preferred" });
+      assert.deepEqual((await api.call("claim", binding, slots[1])).value, { reason: "not-preferred" });
+    }
+    const claim = await api.call("claim", binding, slotId);
+    assert.deepEqual(claim.value.attempt, { id: binding.attemptId, hostId: "host", slotId, leaseUntil: 120_100 });
+    attempts.push({ ...binding, slotId, workspaceKey: task.workspaceKey });
+  }
+  const { taskId, attemptId, workspaceKey } = attempts[0];
+  const finish = { taskId, attemptId, outcome: "TASK_STATE_COMPLETED", result: { summary: "done" } };
+  assert.equal((await api.call("renew", { taskId, attemptId }, slots[1])).status, 404);
+  assert.equal((await api.call("finish", { ...finish, cleanupVerified: true }, slots[1])).status, 404);
+  assert.deepEqual((await api.call("finish", { ...finish, cleanupVerified: false }, slots[0])).value, { settled: false });
+  for (const attempt of attempts) {
+    assert.equal(api.db.docs.get(`factorySlots/${attempt.slotId}`).attemptId, attempt.attemptId);
+    assert.deepEqual(api.db.docs.get(`factoryWorkspaces/${attempt.workspaceKey}`),
+      { taskId: attempt.taskId, attemptId: attempt.attemptId });
+  }
+  const queued = (await api.call("submit", { ...input, messageId: "fifth" })).value.task;
+  const next = { taskId: queued.id, attemptId: randomUUID() };
+  assert.deepEqual((await api.call("claim", next, slots[0])).value, { reason: "not-preferred" });
+  assert.deepEqual((await api.call("finish", { ...finish, cleanupVerified: true }, slots[0])).value, { settled: true });
+  assert.equal(api.db.docs.has(`factoryWorkspaces/${workspaceKey}`), false);
+  assert.equal((await api.call("claim", next, slots[0])).value.attempt.id, next.attemptId);
+  const history = (await api.call("get", { taskId })).value.task;
+  assert.equal(history.state, "TASK_STATE_COMPLETED");
+  delete project.workspaceLease;
+  project.eligibleSlots = ["replacement-slot"];
+  assert.deepEqual(await api.call("submit", { ...input, messageId: "isolated-0", provider: "codex" }),
+    { status: 200, value: { task: history, replay: true } });
+});
+
+test("submission replay preserves queued placement across operator changes without accepting changed intent", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  const project = api.config.projects.app;
+  const related = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "related", messageId: "related" };
+  assert.equal((await api.call("submit", related)).status, 200);
+  const policy = api.config.workspaces.related;
+  api.config.workspaces.related = { ...policy, profile: "changed-profile" };
+  assert.equal((await api.call("submit", related)).status, 500);
+  delete project.workspace;
+  api.config.claudeSelection = { provider: "claude", gateway: "anthropic", model: "claude-test" };
+  const input = { project: "app", revision: f.revisions.app, text: "replay fixture", messageId: "before-opt-in", provider: "claude" };
+  const prior = (await api.call("submit", input)).value.task;
+  assert.equal(prior.workspaceKey, "related-lock");
+  assert.deepEqual(prior.eligibleSlots, ["slot"]);
+  Object.assign(project, { workspaceLease: "task", workspaceKey: "new-lock", eligibleSlots: ["new-slot"] });
+  assert.deepEqual(await api.call("submit", input), { status: 200, value: { task: prior, replay: true } });
+  const optedIn = { ...input, messageId: "after-opt-in" };
+  assert.equal((await api.call("submit", optedIn)).status, 403);
+  api.config.users.replacement = { role: "worker", hostId: "host", slotId: "new-slot" };
+  const isolated = (await api.call("submit", optedIn)).value.task;
+  assert.equal(isolated.workspaceKey, `task-${isolated.id}`);
+  assert.deepEqual(isolated.eligibleSlots, ["new-slot"]);
+  delete project.workspaceLease;
+  project.eligibleSlots = ["slot"];
+  assert.deepEqual(await api.call("submit", optedIn), { status: 200, value: { task: isolated, replay: true } });
+  for (const change of [{ revision: f.revisions.library }, { provider: "codex" }, { text: "different brief" }])
+    assert.equal((await api.call("submit", { ...optedIn, ...change })).status, 500);
+  const selection = api.config.claudeSelection;
+  for (const change of [{ model: "different-model" }, { gateway: "different-gateway" }]) {
+    api.config.claudeSelection = { ...selection, ...change };
+    assert.equal((await api.call("submit", optedIn)).status, 500);
+  }
+  api.config.claudeSelection = selection;
+  api.config.users.controller.projects = ["library"];
+  assert.equal((await api.call("submit", optedIn)).status, 403);
+  assert.equal([...api.db.docs.keys()].filter(path => path.startsWith("factorySubmissions/")).length, 3);
+});
+
+test("default, related and pinned sources retain their shared lock and incompatible opt-ins refuse", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  const single = { ...api.config.projects.app };
+  delete single.workspace;
+  api.config.projects.single = { ...single, eligibleSlots: ["other-slot"] };
+  api.config.projects.pinned = { ...single, revision: f.revisions.app, eligibleSlots: ["other-slot"] };
+  api.config.users.controller.projects.push("single", "pinned");
+  api.config.users.other = { role: "worker", hostId: "host", slotId: "other-slot" };
+  await api.call("heartbeat", { available: true, capacity: 1 }, "other");
+  const input = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "shared fixture", messageId: "related-shared" };
+  const held = (await api.call("submit", input)).value.task;
+  const attemptId = randomUUID();
+  assert.equal((await api.call("claim", { taskId: held.id, attemptId }, "worker")).value.attempt.id, attemptId);
+  for (const project of ["single", "pinned"]) {
+    const request = { ...input, project, workspace: undefined, workspaceLease: "task", messageId: project };
+    const task = (await api.call("submit", request)).value.task;
+    assert.equal(task.workspaceKey, held.workspaceKey);
+    assert.deepEqual((await api.call("claim", { taskId: task.id, attemptId: randomUUID() }, "other")).value, { reason: "workspace-busy" });
+  }
+  for (const [project, workspace, workspaceLease] of [["app", f.intent, "task"], ["pinned", undefined, "task"], ["single", undefined, "other"]]) {
+    api.config.projects[project].workspaceLease = workspaceLease;
+    assert.equal((await api.call("submit", { ...input, project, workspace, messageId: `invalid-${project}` })).status, 403);
+  }
+  assert.equal([...api.db.docs.keys()].filter(path => path.startsWith("factorySubmissions/")).length, 3);
+});
+
 test("Claude readiness and submission refuse pinned-only and viewer-only enrollment before queueing", async t => {
   const f = await fixture(t), api = await service(t, f);
   api.config.claudeSelection = { provider: "claude", gateway: "anthropic", model: "claude-test" };
