@@ -1198,6 +1198,29 @@ observed branch tip. Git and Morpheus startup can verify that snapshot without
 access to the supervisor’s upstream key. A new admission is required to get a
 newer comparison tip.
 
+### Run isolated Git tasks concurrently
+
+A single-repository `revision: "git"` enrollment can set `workspaceLease: "task"`.
+Each new task then owns its own workspace lease and materializes an isolated
+checkout under its worker's private attempt directory. Leave the option absent
+for a shared workspace lease. Fixed checkouts and related-repository policies
+use the shared lease. The existing slot, exact-attempt renewal, and verified
+cleanup still govern the task.
+
+A machine can run multiple supervisors on the same reviewed runtime. Register
+each supervisor with its own worker identity and unique slot ID, and use the
+same host ID for all slots on the physical device. Separate their protected
+configuration, journals, executor accounts, writable checkouts and mirror state.
+Add each slot only to its enrolled project, and check its available quota before
+admitting it. Keep CI runner capacity separate from these worker slots. Verify
+overlapping launches on distinct slots and check exact cleanup for each one.
+
+The `workspaceLease` setting and slot set apply when a task is first submitted.
+Retrying a stable message ID preserves the original task and eligibility after
+either setting changes. A change to the task intent, including a related
+workspace policy change, still requires a new message ID. Keep the currently
+enrolled identities available until any tasks that need them have settled.
+
 ### Enroll a related repository workspace
 
 This is opt-in enrollment. Existing fixed-SHA and single-repository Git enrollments keep

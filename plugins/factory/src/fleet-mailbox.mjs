@@ -33,32 +33,34 @@ function matchContext(task, contextId) {
 
 // This boundary takes the authenticated controller's context and a launch
 // spec resolved by the service from a registered project and exact revision.
-export async function submitTask(db, { contextId, messageId, text, launch, display, inputs, validateInputs, now }) {
+export async function submitTask(db, { contextId, messageId, text, launch, resolveLaunch = () => launch, display, inputs, validateInputs, now }) {
   assertId(contextId);
   assertId(messageId);
   assertText(text);
-  const { eligibleSlots, workspaceKey, source, selection } = launch;
-  if (!Array.isArray(eligibleSlots) || !eligibleSlots.length || eligibleSlots.length > 16)
-    throw new Error("Factory requires between one and sixteen eligible slots");
-  for (const value of [workspaceKey, ...eligibleSlots]) assertId(value);
-  const spec = { eligibleSlots, workspaceKey, source, selection, ...(inputs?.length && { inputs }) };
   const submissionId = createHash("sha256").update(contextId).update("\0").update(messageId).digest("hex");
   const submission = db.doc(`factorySubmissions/${submissionId}`);
   const id = randomUUID();
   let validated = false;
   return db.runTransaction(async (transaction) => {
     const prior = await data(transaction, submission);
+    const { eligibleSlots, workspaceKey, workspaceLease, source, selection } = resolveLaunch(Boolean(prior));
     if (prior) {
       const task = await data(transaction, db.doc(taskPath(prior.taskId)));
       matchContext(task, contextId);
       // Presentation can be backfilled without changing the execution intent.
-      if (task.brief.text !== text || !isDeepStrictEqual(prior.launch, spec)) {
+      if (task.brief.text !== text || !isDeepStrictEqual(prior.launch.source, source) ||
+          !isDeepStrictEqual(prior.launch.selection, selection) || !isDeepStrictEqual(prior.launch.inputs ?? [], inputs ?? [])) {
         const conflict = new Error("Message ID already used for a different brief");
-        if (prior.launch.inputs || spec.inputs) conflict.status = 409;
+        if (prior.launch.inputs?.length || inputs?.length) conflict.status = 409;
         throw conflict;
       }
       return { task, replay: true };
     }
+    if (!Array.isArray(eligibleSlots) || !eligibleSlots.length || eligibleSlots.length > 16)
+      throw new Error("Factory requires between one and sixteen eligible slots");
+    for (const value of [workspaceKey, ...eligibleSlots]) assertId(value);
+    const spec = { eligibleSlots, workspaceKey: workspaceLease === "task" ? `task-${id}` : workspaceKey, source, selection,
+      ...(inputs?.length && { inputs }) };
     if (spec.inputs && !validated) {
       await validateInputs();
       validated = true;

@@ -80,20 +80,27 @@ function enrolledProject(config, principal, name) {
   return principal.projects.includes(name) && Object.hasOwn(config.projects, name) && config.projects[name];
 }
 
-function projectSelection(config, project, provider, model) {
+function projectSelection(config, project, provider, model, replay = false) {
   const claude = config.claudeSelection;
   const useClaude = provider === "claude" || (!provider && claude && model === claude.model);
   if (!useClaude) return project?.selection;
   if (project?.revision !== "git") return undefined;
-  return Object.values(config.users).some(user => user.role === "worker" && project.eligibleSlots.includes(user.slotId)) ? claude : undefined;
+  return replay || Object.values(config.users).some(user => user.role === "worker" && project.eligibleSlots.includes(user.slotId)) ? claude : undefined;
 }
 
-function launchFor(config, principal, input) {
+export const taskWorkspaceLeaseError = "Task workspace leases require single-repository Git enrollment";
+
+export function validTaskWorkspaceLease({ workspaceLease, revision, workspace }) {
+  return workspaceLease === undefined || (workspaceLease === "task" && revision === "git" && !workspace);
+}
+
+function launchFor(config, principal, input, replay) {
   const project = enrolledProject(config, principal, input.project);
-  const selection = projectSelection(config, project, input.provider, input.model);
+  const selection = projectSelection(config, project, input.provider, input.model, replay);
   const fetchSource = project?.revision === "git";
   if (!project || !selection || (!fetchSource && project.revision !== input.revision) || (input.model && input.model !== selection.model))
     throw failure(403, "Project revision or model is outside the pilot enrollment");
+  if (!validTaskWorkspaceLease(project)) throw failure(403, taskWorkspaceLeaseError);
   let workspace;
   if (input.workspace || project.workspace) {
     try { workspace = workspaceLaunch(config, principal, input, project); }
@@ -101,7 +108,7 @@ function launchFor(config, principal, input) {
     if (!fetchSource) throw failure(403, "Workspace requires Git enrollment");
   }
   return {
-    workspaceKey: project.workspaceKey, eligibleSlots: project.eligibleSlots,
+    workspaceKey: project.workspaceKey, workspaceLease: project.workspaceLease, eligibleSlots: project.eligibleSlots,
     source: { project: input.project, revision: input.revision, ...(fetchSource ? { checkout: "git" } : {}), ...(workspace ? { workspace } : {}) },
     selection,
   };
@@ -133,8 +140,8 @@ async function handleController(op, input, { db, config, principal, uid, objects
   const notify = (slots) => signal(db, Object.keys(config.users).filter((key) =>
     slots.includes(config.users[key].slotId)), log);
   if (op === "submit") {
-    const launch = launchFor(config, principal, input);
-    const result = await submitTask(db, { ...inputScope, now, launch,
+    const result = await submitTask(db, { ...inputScope, now,
+      resolveLaunch: replay => launchFor(config, principal, input, replay),
       validateInputs: () => validateStoredInputs(objects, inputScope, input.inputs ?? []) });
     await notify(result.task.eligibleSlots);
     return result;
