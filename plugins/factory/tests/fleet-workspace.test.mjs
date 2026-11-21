@@ -317,38 +317,84 @@ test("transient launch quota requeues an untouched task and keeps an accepted an
   assert.deepEqual(launches.map(({ resume,prompt }) => [resume,prompt]), [[null,"original brief"],[launches[0].admissionId,"the saved value"]]);
 });
 
-test("restarting during a post-quota Claude checkout releases the exact slot and workspace without provider recovery", async t => {
+test("a restarted supervisor retires an exact preadmission while the real Claude executor checks Git", async t => {
   const f = await fixture(t), api = await service(t, f);
-  api.config.claudeSelection = { provider: "claude", gateway: "anthropic", model: "claude-test" };
+  const gateway = { name: "anthropic", provider: "claude", baseUrl: "https://fixture.invalid", keyRef: "env:FIXTURE_CLAUDE_KEY" };
+  const model = "claude-test";
+  api.config.claudeSelection = { provider: gateway.provider, gateway: gateway.name, model };
+  await writeFile(f.configPath, JSON.stringify({ ...f.config, fleetClaude: { gateway, model } }));
   const request = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "fixture",
     messageId: "interrupted-checkout", provider: "claude" };
   const taskId = (await api.call("submit", request)).value.task.id;
   const journalPath = join(f.root, "interrupted.json");
-  const copying = Promise.withResolvers();
-  const options = { journalPath,
+  const barrier = join(f.root, "checking"), release = join(f.root, "release");
+  await writeFile(join(f.bin, "git"), `#!/bin/sh
+if [ "$FIXTURE_PAUSE" = 1 ] && [ "$3" = status ]; then
+  /usr/bin/touch "$FIXTURE_BARRIER"
+  while [ ! -f "$FIXTURE_RELEASE" ]; do /bin/sleep 0.01; done
+fi
+exec /usr/bin/git "$@"
+`, { mode: 0o700 });
+  await writeFile(join(f.bin, "claude"), '#!/bin/sh\n/usr/bin/touch .fixture-launched\n', { mode: 0o700 });
+  const originalSpawn = childProcess.spawn;
+  let pause = false;
+  t.mock.method(childProcess, "spawn", (command, args, options) => {
+    if (command === process.execPath) return originalSpawn(command, args, options);
+    assert.equal(command, "/usr/bin/sudo");
+    return originalSpawn(args[5], ["--import", f.preload, ...args.slice(6)], { ...options, env: { ...options.env,
+      PATH: `${f.bin}:${process.env.PATH}`, FACTORY_HOME: f.state, FIXTURE_CLAUDE_KEY: "fixture-key",
+      FIXTURE_PAUSE: pause ? "1" : "0", FIXTURE_BARRIER: barrier, FIXTURE_RELEASE: release,
+    } });
+  });
+  syncBuiltinESMExports();
+  t.after(async () => { t.mock.restoreAll(); syncBuiltinESMExports(); await writeFile(release, "release").catch(() => {}); });
+  const call = async (op, input) => (await api.call(op, input, "worker")).value;
+  const executor = createStudioExecutor({ account: "fixture", node: process.execPath, script: executorScript,
+    workerConfig: f.configPath, project: "app", fleetWorkspace: f.host, claudeGatewayBaseUrl: gateway.baseUrl }, call, async () => {});
+  let preparation, execution;
+  const options = { ...executor, call, journalPath,
     quotaObservation: () => [{ provider: "claude", gateway: "anthropic", checkedAt: 100, status: "available" }],
-    call: async (op, input) => (await api.call(op, input, "worker")).value,
-    prepare: async (task) => { copying.resolve(task.attempt.id); await new Promise(() => {}); },
-    execute: () => assert.fail("provider must not start during an interrupted checkout"),
-    recover: () => assert.fail("no provider admission exists during checkout"),
+    prepare: (...args) => (preparation = executor.prepare(...args)),
+    execute: (...args) => (execution = executor.execute(...args)),
   };
   const initial = createFleetRunner(options);
   assert.equal(await initial.tick(), "preparing");
-  const attemptId = await copying.promise;
-  const journal = JSON.parse(await readFile(journalPath, "utf8"));
-  assert.equal(journal.phase, "preparing");
-  assert.equal(journal.admissionId, undefined);
-  assert.equal(journal.attemptId, attemptId);
+  assert.equal(await preparation, true);
+  pause = true;
+  assert.equal(await initial.tick(), "running");
+  for (let i = 0; i < 200; i++) {
+    if (await readFile(barrier).catch(() => null)) break;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.deepEqual(await readFile(barrier), Buffer.alloc(0));
+  const { phase, attemptId, admissionId } = JSON.parse(await readFile(journalPath, "utf8"));
+  assert.equal(phase, "running");
+  assert.equal(api.db.docs.get("factorySlots/slot").attemptId, attemptId);
+  assert.equal(api.db.docs.get("factoryWorkspaces/related-lock").attemptId, attemptId);
+  await assert.rejects(readFile(join(f.state, "unattended", admissionId, "admission.json")), { code: "ENOENT" });
+  pause = false;
   const restarted = createFleetRunner(options);
   assert.equal(await restarted.tick(), "settled");
   const { task, receipt } = (await api.call("get", { taskId })).value;
   assert.equal(task.state, "TASK_STATE_FAILED");
   assert.equal(task.attempt, null);
   assert.equal(receipt.launch, "never-launched");
+  assert.equal(receipt.admissionId, admissionId);
   assert.equal(receipt.attemptId, attemptId);
   assert.equal(api.db.docs.get("factorySlots/slot").attemptId, null);
   assert.equal(api.db.docs.has("factoryWorkspaces/related-lock"), false);
   await assert.rejects(readFile(journalPath), { code: "ENOENT" });
+  await writeFile(release, "release");
+  await execution;
+  await assert.rejects(readFile(join(f.cwd, attemptId, "app", ".fixture-launched")), { code: "ENOENT" });
+  const binding = { taskId, attemptId, workspace: task.source.workspace };
+  const repeat = await exchange(f, { op: "recover", admissionId, binding });
+  assert.deepEqual(repeat.invocation, { launch: "never-launched", admissionId, sessionId: null });
+  const ambiguous = randomUUID();
+  await mkdir(join(f.state, "unattended", ambiguous), { mode: 0o700 });
+  const held = await exchange(f, { op: "recover", admissionId: ambiguous, binding });
+  assert.equal(held.terminationVerified, false);
+  assert.deepEqual(await readdir(join(f.state, "unattended", ambiguous)), []);
 });
 
 async function exchange(f, job, protectedConfig = true, environment = {}) {

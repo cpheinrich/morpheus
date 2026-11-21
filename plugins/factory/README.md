@@ -1317,7 +1317,9 @@ checks a separate bounded candidate window for each runnable provider. If quota 
 before the first launch, the same task returns to the queue after both leases are released.
 Claude fetches into the shared mirror before that check and creates its attempt checkout only
 after quota is approved. Checkout remains in the recoverable preparation phase before the
-runner records any provider admission. A queued receipt is exposed as `previousAttemptReceipt` and must
+runner records any provider admission. If recovery reaches an empty admission reservation
+before the executor, it atomically retires that exact ID and can recover a never-launched
+receipt. An existing reservation still needs its ordinary termination evidence. A queued receipt is exposed as `previousAttemptReceipt` and must
 match the task snapshot’s last attempt.
 An accepted clarification waits with its original session and answer until quota returns.
 `placementCandidate` means the slot was free in a heartbeat at most 45 seconds old

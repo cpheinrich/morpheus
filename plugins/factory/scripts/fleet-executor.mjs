@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { enrolledSandbox, fleetWorkerRoute, gatewayWorker, readWorkerConfig, reconcileWorker, workerResult } from "../src/gateway-worker.mjs";
+import { enrolledSandbox, fleetWorkerRoute, gatewayWorker, readWorkerConfig, reconcileWorker, recoverWorkerAdmission } from "../src/gateway-worker.mjs";
 import { readArtifactFiles, readCheckpointFiles } from "../src/fleet-artifacts.mjs";
 import { checkoutWorkspace } from "../src/fleet-workspace-checkout.mjs";
 import { studioCheckout } from "../src/fleet-source.mjs";
@@ -94,7 +94,7 @@ function admissionEnvelope(value) {
 }
 
 async function recover(job) {
-  const prior = await workerResult(job.admissionId);
+  const prior = await recoverWorkerAdmission(configPath, job.admissionId, job.binding);
   const binding = prior.binding?.fleet;
   const sameAttempt = uuid.test(binding?.taskId) && uuid.test(binding?.attemptId)
     && binding.taskId === job.binding?.taskId && binding.attemptId === job.binding?.attemptId

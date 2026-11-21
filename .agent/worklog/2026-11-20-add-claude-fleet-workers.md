@@ -40,3 +40,10 @@ strand a reservation after a restart before provider admission. The supervisor c
 quota after the shared source fetch and before checkout materialization within the recoverable
 preparation phase. Restart during preparation releases the exact task’s two leases with a
 never-launched receipt. A saved answer still checks quota before its continuation.
+
+A fourth independent turn found the remaining pre-admission gap during the executor’s Git
+revalidation. Recovery can now atomically retire a never-reserved admission in the same
+exclusive namespace. A delayed executor cannot reserve that ID. Existing admission directories
+still require normal termination proof. The regression pauses the real executor during Git
+validation, restarts the supervisor, verifies release of both exact leases with a never-launched
+receipt, and confirms that the delayed executor starts no provider.

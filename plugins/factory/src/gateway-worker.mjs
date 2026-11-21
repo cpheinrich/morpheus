@@ -1,7 +1,7 @@
 // Explicit unattended admission is separate from desktop task/permission discovery.
 import { z } from 'zod';
 import { constants } from 'node:fs';
-import { access, mkdir, open, readFile, realpath, stat } from 'node:fs/promises';
+import { access, link, mkdir, open, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { join, dirname, isAbsolute, relative } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn, execFileSync, spawnSync } from 'node:child_process';
@@ -302,7 +302,12 @@ const proofValid = (directory, admissionId) =>
 export async function reconcileWorker(admissionId) {
   if (!/^[0-9a-f-]{36}$/.test(admissionId)) throw new Error('Invalid admission ID');
   const directory = join(home(), 'unattended', admissionId);
-  const record = await readJSON(join(directory, 'admission.json'), null);
+  let record;
+  try { record = await readJSON(join(directory, 'admission.json'), null); }
+  catch (error) {
+    if (error.code === 'ENOTDIR') return readRetiredAdmission(directory, admissionId);
+    throw error;
+  }
   if (!record || record.admissionId !== admissionId) throw new Error('Unknown admission ID');
   const run = spawnSync('python3', [terminationProof, 'reconcile', directory, admissionId], { encoding: 'utf8', timeout: 30000 });
   let reconciliation;
@@ -415,10 +420,56 @@ function workerLaunch(state, verified, run) {
   if (state.admissionRejected || state.launchFailed) return 'never-launched';
   return run.observedSession ? 'session' : 'unknown';
 }
+// Recovery competes with launch in the existing admission namespace. The
+// exclusive hard link publishes a complete retirement or leaves the existing
+// reservation untouched. A late executor's mkdir cannot win after retirement.
+async function retireAdmission(root, admissionId, fleet) {
+  const reservation = join(root, admissionId);
+  const staging = `${reservation}.${randomUUID()}.retiring`;
+  const file = await open(staging, 'wx', 0o600);
+  try {
+    try {
+      await file.writeFile(JSON.stringify({ kind: 'retired-prelaunch', admissionId, fleet }));
+      await file.sync();
+    } finally { await file.close(); }
+    await link(staging, reservation).catch(error => { if (error.code !== 'EEXIST') throw error; });
+    const directory = await open(root, 'r');
+    try { await directory.sync(); } finally { await directory.close(); }
+  } finally { await rm(staging, { force: true }); }
+}
+
+export async function recoverWorkerAdmission(configPath, admissionId, fleet) {
+  z.uuid().parse(admissionId);
+  try { return await workerResult(admissionId); }
+  catch (error) {
+    if (!z.uuid().safeParse(fleet?.taskId).success || !z.uuid().safeParse(fleet?.attemptId).success) throw error;
+  }
+  await retireAdmission(await workerStateRoot(await readWorkerConfig(configPath)), admissionId, fleet);
+  return workerResult(admissionId);
+}
+
+async function readRetiredAdmission(path, admissionId) {
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const info = await file.stat();
+    if (!info.isFile() || info.uid !== process.getuid() || (info.mode & 0o077) || info.size > 64 * 1024)
+      throw new Error('Unsafe retired admission');
+    const record = JSON.parse(await file.readFile('utf8'));
+    if (record.kind !== 'retired-prelaunch' || record.admissionId !== admissionId)
+      throw new Error('Invalid retired admission');
+    return { admissionId, binding: { fleet: record.fleet }, state: 'failed', sessionId: null,
+      launch: 'never-launched', terminationVerified: true };
+  } finally { await file.close(); }
+}
 export async function workerResult(admissionId) {
   if (!/^[0-9a-f-]{36}$/.test(admissionId)) throw new Error('Invalid admission ID');
   const directory = join(home(), 'unattended', admissionId);
-  const record = await readJSON(join(directory, 'admission.json'), null);
+  let record;
+  try { record = await readJSON(join(directory, 'admission.json'), null); }
+  catch (error) {
+    if (error.code === 'ENOTDIR') return readRetiredAdmission(directory, admissionId);
+    throw error;
+  }
   if (!record || record.admissionId !== admissionId) throw new Error('Unknown admission ID');
   const state = await readJSON(join(directory, 'process.json'), null);
   if (prelaunchFailed(record, state)) {
