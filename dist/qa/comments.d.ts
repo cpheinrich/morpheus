@@ -107,8 +107,8 @@ export declare const QaWebContext: z.ZodObject<{
         }, z.core.$strict>;
         styles: z.ZodRecord<z.ZodEnum<{
             color: "color";
-            display: "display";
             position: "position";
+            display: "display";
             "background-color": "background-color";
             "font-size": "font-size";
             "text-decoration-line": "text-decoration-line";
@@ -141,8 +141,8 @@ export declare const QaWebContext: z.ZodObject<{
         }, z.core.$strict>;
         styles: z.ZodRecord<z.ZodEnum<{
             color: "color";
-            display: "display";
             position: "position";
+            display: "display";
             "background-color": "background-color";
             "font-size": "font-size";
             "text-decoration-line": "text-decoration-line";
@@ -182,8 +182,8 @@ export declare const QaWebContext: z.ZodObject<{
             }, z.core.$strict>;
             styles: z.ZodRecord<z.ZodEnum<{
                 color: "color";
-                display: "display";
                 position: "position";
+                display: "display";
                 "background-color": "background-color";
                 "font-size": "font-size";
                 "text-decoration-line": "text-decoration-line";
@@ -329,8 +329,8 @@ export declare const QaComment: z.ZodObject<{
             }, z.core.$strict>;
             styles: z.ZodRecord<z.ZodEnum<{
                 color: "color";
-                display: "display";
                 position: "position";
+                display: "display";
                 "background-color": "background-color";
                 "font-size": "font-size";
                 "text-decoration-line": "text-decoration-line";
@@ -363,8 +363,8 @@ export declare const QaComment: z.ZodObject<{
             }, z.core.$strict>;
             styles: z.ZodRecord<z.ZodEnum<{
                 color: "color";
-                display: "display";
                 position: "position";
+                display: "display";
                 "background-color": "background-color";
                 "font-size": "font-size";
                 "text-decoration-line": "text-decoration-line";
@@ -404,8 +404,8 @@ export declare const QaComment: z.ZodObject<{
                 }, z.core.$strict>;
                 styles: z.ZodRecord<z.ZodEnum<{
                     color: "color";
-                    display: "display";
                     position: "position";
+                    display: "display";
                     "background-color": "background-color";
                     "font-size": "font-size";
                     "text-decoration-line": "text-decoration-line";
@@ -595,8 +595,8 @@ export declare const QaCommentBatch: z.ZodObject<{
                 }, z.core.$strict>;
                 styles: z.ZodRecord<z.ZodEnum<{
                     color: "color";
-                    display: "display";
                     position: "position";
+                    display: "display";
                     "background-color": "background-color";
                     "font-size": "font-size";
                     "text-decoration-line": "text-decoration-line";
@@ -629,8 +629,8 @@ export declare const QaCommentBatch: z.ZodObject<{
                 }, z.core.$strict>;
                 styles: z.ZodRecord<z.ZodEnum<{
                     color: "color";
-                    display: "display";
                     position: "position";
+                    display: "display";
                     "background-color": "background-color";
                     "font-size": "font-size";
                     "text-decoration-line": "text-decoration-line";
@@ -670,8 +670,8 @@ export declare const QaCommentBatch: z.ZodObject<{
                     }, z.core.$strict>;
                     styles: z.ZodRecord<z.ZodEnum<{
                         color: "color";
-                        display: "display";
                         position: "position";
+                        display: "display";
                         "background-color": "background-color";
                         "font-size": "font-size";
                         "text-decoration-line": "text-decoration-line";
