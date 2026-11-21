@@ -145,7 +145,7 @@ Ask Codex naturally:
 **On the local route, routing chooses once per root session.** The first
 local `factory_delegate` of a root session routes like this. The
 [Fleet route](#opt-in-from-the-normal-codex-factory-tools) instead uses the
-enrolled Codex worker and supervises by run ID.
+enrolled worker for the selected provider and supervises by run ID.
 
 1. With no explicit provider, the gateway with the most headroom below the threshold
    (**90% used** by default). With no gateway configured, or none below it, the **other
@@ -1006,8 +1006,9 @@ flowchart LR
   containing the exact `gateway` object and `model`. Install Claude Code on the same trusted
   path as Codex. The same slot and project workspace lease apply to both providers.
   A Claude workspace-write launch uses the macOS sandbox for the authorized checkout and
-  isolated session state. Its guardian-owned relay admits only the enrolled model at the
-  configured gateway. Read-only host profiles still refuse Claude execution. On macOS, the placement signal counts free and inactive pages and
+  isolated session state, including Claude Code's internal temporary files. Its guardian-owned
+  relay admits only the enrolled model at the configured gateway. Read-only host profiles still
+  refuse Claude execution. On macOS, the placement signal counts free and inactive pages and
   reserves 4 GiB before advertising capacity. Set an absolute `journalPath` in the supervisor's
   mode `0700` directory and an `execution` object. The latter provides
   `account` (execution username), `node`, `script` (absolute
@@ -1090,12 +1091,13 @@ node ~/plugins/factory/scripts/bridge.mjs placement fleet
 
 Pass `placement: "local"` to override for a new request. A missing, dirty or
 unenrolled Fleet checkout is refused; it does not fall back to a local worker.
-Fleet does not accept local-only options such as another provider, `fresh: true`, background operation, effort overrides or Fast.
-Already-started runs keep their original route. To reset the controller default,
+Fleet accepts `provider: "claude"` or an exact enrolled Claude model on an eligible Git-backed
+route. Omit the provider to use the existing Codex default. Fleet accepts Standard speed and
+refuses `fresh: true`, background operation and effort overrides. Already-started runs keep
+their original route. To reset the controller default,
 run the same command with `local`. This preference affects the normal Codex
 Factory tools; Claude tools and the explicit unattended runner are unchanged.
-The Fleet route supports the enrolled Codex worker configuration and either one checkout
-or the exact operator-declared workspace described below.
+The Fleet route supports one checkout or the exact operator-declared workspace described below.
 
 To admit new commits without changing the service for each ticket, enroll the
 project with `revision: "git"` and configure its supervisor `execution.sourceMirror`

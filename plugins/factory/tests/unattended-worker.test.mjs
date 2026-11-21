@@ -865,11 +865,18 @@ test('Fleet Claude restricted mode confines writes and reaches only its authenti
   t.after(() => { upstream.closeAllConnections(); upstream.close(); });
   const origin = `http://127.0.0.1:${upstream.address().port}`;
   const outside = join(f.root, 'outside-file');
+  const workerTemp = join(workerHome, 'tmp');
+  const claudeTempName = `claude-${process.getuid()}`;
   const cli = `
-    import { writeFile } from 'node:fs/promises';
+    import { mkdir, writeFile } from 'node:fs/promises';
+    import { join } from 'node:path';
     import { once } from 'node:events';
     import assert from 'node:assert/strict';
     process.stdin.resume(); await once(process.stdin, 'data');
+    assert.equal(process.env.CLAUDE_CODE_TMPDIR, ${JSON.stringify(workerTemp)});
+    const claudeTemp = join(process.env.CLAUDE_CODE_TMPDIR, ${JSON.stringify(claudeTempName)});
+    await mkdir(claudeTemp);
+    await writeFile(join(claudeTemp, 'scratch.txt'), 'claude temp');
     await writeFile('allowed.txt', 'workspace');
     await assert.rejects(writeFile(${JSON.stringify(outside)}, 'outside'), { code: 'EPERM' });
     await assert.rejects(writeFile('.git/blocked', 'git data'), { code: 'EPERM' });
@@ -885,7 +892,8 @@ test('Fleet Claude restricted mode confines writes and reaches only its authenti
   `;
   const driver = fileURLToPath(new URL('../src/fleet-claude.mjs', import.meta.url));
   const child = spawn(process.execPath, [driver, '65536', JSON.stringify([f.cwd]), process.execPath, '--input-type=module', '-e', cli, '--', '--model', 'fixed-claude'], {
-    cwd: f.cwd, env: { ...process.env, CLAUDE_CONFIG_DIR: workerHome, ANTHROPIC_BASE_URL: origin, ANTHROPIC_AUTH_TOKEN: secret },
+    cwd: f.cwd, env: { ...process.env, CLAUDE_CONFIG_DIR: workerHome, CLAUDE_CODE_TMPDIR: join(f.root, 'inherited-claude-temp'),
+      ANTHROPIC_BASE_URL: origin, ANTHROPIC_AUTH_TOKEN: secret },
     stdio: ['pipe', 'pipe', 'pipe'], timeout: 10_000,
   });
   let failure = '';
@@ -893,6 +901,7 @@ test('Fleet Claude restricted mode confines writes and reaches only its authenti
   child.stdout.resume();
   child.stdin.write('fixture prompt\n');
   assert.deepEqual(await once(child, 'close'), [0, null], failure);
+  assert.equal(await readFile(join(workerTemp, claudeTempName, 'scratch.txt'), 'utf8'), 'claude temp');
   assert.equal(await readFile(join(f.cwd, 'allowed.txt'), 'utf8'), 'workspace');
   assert.deepEqual(calls, [['/v1/messages', `Bearer ${secret}`, { model: 'fixed-claude' }]]);
 });
