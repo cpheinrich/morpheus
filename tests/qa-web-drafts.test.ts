@@ -101,6 +101,24 @@ describe("storage", () => {
 });
 
 describe("freeze and settle", () => {
+  it("persists one copy of each pending attachment and restores it for retry or reopening", () => {
+    const evidence = {
+      schemaVersion: 1, capturedAt: "2026-11-21T08:00:00.000Z", input: "page",
+      browser: { family: "Safari", versionSource: "unavailable" }, os: "macOS", theme: "light",
+      status: { kind: "unavailable", reason: "snapshot-limit" },
+    } as const;
+    const frozen = freeze(withDrafts(draft({ evidence })), ID, false);
+    if ("error" in frozen) throw new Error(frozen.error);
+    let stored = "";
+    const storage = { getItem: () => stored, setItem: (_key: string, value: string) => { stored = value; } };
+    expect(saveSession(storage, "draft", frozen.session)).toBe(true);
+    expect(stored.match(/"evidence":/g)).toEqual(['"evidence":']);
+    const reloaded = loadSession(storage, "draft");
+    expect(freeze(reloaded, "other", false)).toEqual({ session: reloaded, batch: frozen.batch });
+    const rejected = { ...reloaded, pending: { ...reloaded.pending!, state: "rejected" as const } };
+    expect(reopenPending(rejected).drafts[0]?.evidence).toEqual(evidence);
+  });
+
   it("freezes only drafts with text and leaves the rest editable", () => {
     const empty = draft({ id: "d2", text: "  " });
     const frozen = freeze(withDrafts(draft({ text: " Fix " }), empty), ID, false);

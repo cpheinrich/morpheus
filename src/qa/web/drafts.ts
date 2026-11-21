@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 import {
-  WEB_QA_ANCHOR, WEB_QA_LIMITS, WebQaBatch, WebQaScope, parseWebQaReceipt, webQaPathIssue,
+  WEB_QA_ANCHOR, WEB_QA_LIMITS, WebQaBatch, WebQaEvidence, WebQaScope, parseWebQaReceipt, webQaPathIssue,
   type WebQaComment, type WebQaReceipt,
 } from "./schema.js";
 
@@ -26,6 +26,7 @@ const WebQaDraft = z.object({
   scrollX: z.number().int().min(0).max(WEB_QA_LIMITS.scrollMax).optional(),
   scrollY: z.number().int().min(0).max(WEB_QA_LIMITS.scrollMax).optional(),
   anchor: z.string().max(WEB_QA_LIMITS.anchorChars).regex(WEB_QA_ANCHOR).optional(),
+  evidence: WebQaEvidence.optional(),
   // Local-only, never sent: where to redraw the marker after scrolling.
   pageX: z.number().finite(),
   pageY: z.number().finite(),
@@ -65,7 +66,10 @@ export function loadSession(storage: Pick<Storage, "getItem"> | null, key: strin
     const raw = storage?.getItem(key);
     if (!raw) return emptySession();
     const parsed = WebQaSession.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : emptySession();
+    if (!parsed.success) return emptySession();
+    const { pending } = parsed.data;
+    if (pending) pending.drafts = pending.drafts.map((draft, index) => ({ ...draft, evidence: pending.batch.comments[index]?.evidence }));
+    return parsed.data;
   } catch {
     return emptySession();
   }
@@ -75,7 +79,11 @@ export function loadSession(storage: Pick<Storage, "getItem"> | null, key: strin
 export function saveSession(storage: Pick<Storage, "setItem"> | null, key: string, session: WebQaSession): boolean {
   try {
     if (!storage) return false;
-    storage.setItem(key, JSON.stringify(session));
+    const pending = session.pending && {
+      ...session.pending,
+      drafts: session.pending.drafts.map(draft => ({ ...draft, evidence: undefined })),
+    };
+    storage.setItem(key, JSON.stringify({ ...session, pending }));
     return true;
   } catch {
     return false;
@@ -173,8 +181,8 @@ export function markerPoint(draft: WebQaDraft, win: PinWindow, doc: Pick<Documen
 }
 
 function comment(draft: WebQaDraft): WebQaComment {
-  const { text, path, scope, x, y, viewportWidth, viewportHeight, scrollX, scrollY, anchor } = draft;
-  return { text: text.trim(), path, scope, x, y, viewportWidth, viewportHeight, scrollX, scrollY, ...(anchor ? { anchor } : {}) };
+  const { text, path, scope, x, y, viewportWidth, viewportHeight, scrollX, scrollY, anchor, evidence } = draft;
+  return { text: text.trim(), path, scope, x, y, viewportWidth, viewportHeight, scrollX, scrollY, ...(anchor ? { anchor } : {}), ...(evidence ? { evidence } : {}) };
 }
 
 /**

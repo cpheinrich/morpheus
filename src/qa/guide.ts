@@ -22,7 +22,10 @@ and resolve only when authorized to act on the batch.
    comment, even when the page is about a different project. Open \`webQaBatches/{batchId}\` if
    you have a receipt ID. Otherwise query a small set ordered by \`createdAt\` newest first and
    match the submitter, time, page, or comment. Read the batch's \`notes\`, then its comments
-   and deployment metadata.
+   and deployment metadata. Use each comment's zero-based \`evidenceIndex\` to read
+   \`webQaBatches/{batchId}/evidence/{evidenceIndex}\` in the same Firebase project when present. Inspect the pinned
+   JPEG and browser/page diagnostics, or report the recorded capture failure.
+   Keep the attachment private.
 2. **In-app iOS.** Use the Firebase project for the reporting build and the project's QA
    intake instructions. For user-scoped bug reports, look under
    \`users/{uid}/bugReports/{reportId}\` using the reporter's UID in that project. Open the

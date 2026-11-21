@@ -1855,6 +1855,10 @@ qa/
 
 Live web and in-app iOS QA feedback use the reporting site's or build's configured Firestore
 project. The shared `comment-qa` skill starts there for submitted feedback.
+Live web integrations that enable pin evidence freeze a redacted viewport JPEG and bounded
+browser diagnostics at placement. The site stores evidence in server-only child documents in
+the same commit as the batch, leaving ordinary batch reads small. Each saved pin points to its
+evidence by index. Existing batches remain readable.
 Local desktop preview overlays use a checkout-local durable queue. Each Send atomically
 publishes one batch and optional frame under `local/qa-comments/pending/`; later
 batches accumulate while a responder works. An agent claims one batch with an
