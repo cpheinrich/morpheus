@@ -1,5 +1,5 @@
 import { type WebQaBatch, type WebQaReceipt } from "./schema.js";
-export type { WebQaBatch, WebQaComment, WebQaReceipt, WebQaScope } from "./schema.js";
+export type { WebQaBatch, WebQaComment, WebQaEvidence, WebQaReceipt, WebQaScope } from "./schema.js";
 /** The host uses this only for a response that rejected the request before writing. */
 export declare class WebQaRejectedError extends Error {
 }
@@ -10,6 +10,8 @@ export interface WebQaMountOptions {
     accountKey: string;
     /** Show the Build and deploy option. The server must still authorize it. */
     canBuild: boolean;
+    /** Attach a redacted pin-time viewport image and bounded diagnostics. Defaults to off. */
+    captureEvidence?: boolean;
     submit: (batch: WebQaBatch) => Promise<WebQaReceipt>;
     onClose: () => void;
 }

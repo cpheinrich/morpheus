@@ -440,6 +440,34 @@ viewport, scroll offset and normalized point, with an optional short
 the shared schema before storing anything. Browser drafts are scoped to the
 site, tab and enrolled identity.
 
+Set `captureEvidence: true` after updating the site's writer to accept the optional
+`WebQaComment.evidence` field. The pin freezes the viewport synchronously, before
+focus, later page changes, or Send; rendering uses the frozen copy. Each pin reports
+whether its screenshot is still working, attached, or unavailable and why. Send waits
+for capture to settle. You can still submit feedback when an image fails. A reload
+that interrupts rendering keeps the draft and shows the interruption; it does not
+take a later screenshot. Completed evidence survives reload and is frozen into retries.
+
+Only a redacted JPEG plus tightly bounded metadata leave the browser. Mark sensitive
+regions and closed shadow hosts with `data-qa-private`; unmarked closed roots on
+ordinary HTML elements cannot be detected. Form controls, editable regions, QA chrome,
+custom elements, shadow roots, embeds and unsupported media are masked or omitted.
+Loaded readable pixels can be copied from images, canvases and video without fetching
+their URLs again. CSS image resources, site fonts, generated content and SVG are not
+copied. The image is a DOM reconstruction; font layout, transformed/nested scroll
+containers and complex stacking can differ. Pinch-zoomed and over-budget pages report
+unavailable, as do browser policies that block the isolated frame or its data image.
+Inspect synthetic artifacts in both engines before releasing an integration.
+
+Metadata includes pin time and input, browser family and UA-exposed version (or
+unavailable), OS, DPR and effective theme, plus bounded target/ancestor geometry and
+semantic state. Diagnostics are resource-entry and since-mount error counts, not
+logs, URLs or request details. The existing path and viewport/scroll fields still apply.
+Limit the request body to `WEB_QA_MAX_BODY_BYTES` (3 MiB) before parsing. The host owns
+authorization, route normalization, private storage and comparison of identical retries,
+including attachments. Keep large images separate from the small comment records and
+commit both atomically. An opt-out client still sends old-format pins.
+
 The server may grant the owner two default-off controls. **Build and deploy**
 opts a batch into Factory. **Feature flag** applies to that build request.
 Persist the feedback and the optional Factory queue row together, then return

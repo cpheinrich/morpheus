@@ -25,6 +25,143 @@ declare const WebQaDraft: z.ZodObject<{
     scrollX: z.ZodOptional<z.ZodNumber>;
     scrollY: z.ZodOptional<z.ZodNumber>;
     anchor: z.ZodOptional<z.ZodString>;
+    evidence: z.ZodOptional<z.ZodObject<{
+        schemaVersion: z.ZodLiteral<1>;
+        capturedAt: z.ZodISODateTime;
+        input: z.ZodEnum<{
+            page: "page";
+            "left-click": "left-click";
+            "right-click": "right-click";
+            keyboard: "keyboard";
+        }>;
+        browser: z.ZodDiscriminatedUnion<[z.ZodObject<{
+            family: z.ZodEnum<{
+                Unknown: "Unknown";
+                Chromium: "Chromium";
+                Chrome: "Chrome";
+                Edge: "Edge";
+                Firefox: "Firefox";
+                Safari: "Safari";
+                Opera: "Opera";
+                "Samsung Internet": "Samsung Internet";
+            }>;
+            versionSource: z.ZodLiteral<"user-agent">;
+            version: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            family: z.ZodEnum<{
+                Unknown: "Unknown";
+                Chromium: "Chromium";
+                Chrome: "Chrome";
+                Edge: "Edge";
+                Firefox: "Firefox";
+                Safari: "Safari";
+                Opera: "Opera";
+                "Samsung Internet": "Samsung Internet";
+            }>;
+            versionSource: z.ZodLiteral<"unavailable">;
+        }, z.core.$strict>], "versionSource">;
+        os: z.ZodEnum<{
+            iOS: "iOS";
+            Unknown: "Unknown";
+            Android: "Android";
+            macOS: "macOS";
+            Windows: "Windows";
+            ChromeOS: "ChromeOS";
+            Linux: "Linux";
+        }>;
+        dpr: z.ZodOptional<z.ZodNumber>;
+        theme: z.ZodEnum<{
+            dark: "dark";
+            light: "light";
+        }>;
+        elements: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            tag: z.ZodEnum<{
+                main: "main";
+                a: "a";
+                summary: "summary";
+                other: "other";
+                body: "body";
+                label: "label";
+                dialog: "dialog";
+                span: "span";
+                header: "header";
+                footer: "footer";
+                button: "button";
+                article: "article";
+                form: "form";
+                img: "img";
+                table: "table";
+                div: "div";
+                p: "p";
+                ol: "ol";
+                li: "li";
+                h2: "h2";
+                nav: "nav";
+                section: "section";
+                aside: "aside";
+                details: "details";
+                h1: "h1";
+                h3: "h3";
+                td: "td";
+                ul: "ul";
+            }>;
+            role: z.ZodOptional<z.ZodEnum<{
+                link: "link";
+                status: "status";
+                list: "list";
+                main: "main";
+                dialog: "dialog";
+                button: "button";
+                menu: "menu";
+                checkbox: "checkbox";
+                heading: "heading";
+                listitem: "listitem";
+                menuitem: "menuitem";
+                navigation: "navigation";
+                region: "region";
+                switch: "switch";
+                tab: "tab";
+                tablist: "tablist";
+                tabpanel: "tabpanel";
+            }>>;
+            expanded: z.ZodOptional<z.ZodBoolean>;
+            pressed: z.ZodOptional<z.ZodEnum<{
+                true: "true";
+                false: "false";
+                mixed: "mixed";
+            }>>;
+            selected: z.ZodOptional<z.ZodBoolean>;
+            position: z.ZodEnum<{
+                fixed: "fixed";
+                static: "static";
+                relative: "relative";
+                absolute: "absolute";
+                sticky: "sticky";
+            }>;
+            width: z.ZodNumber;
+            height: z.ZodNumber;
+            scrollLeft: z.ZodOptional<z.ZodNumber>;
+            scrollTop: z.ZodOptional<z.ZodNumber>;
+        }, z.core.$strict>>>;
+        resources: z.ZodOptional<z.ZodNumber>;
+        errorsSinceMount: z.ZodOptional<z.ZodNumber>;
+        status: z.ZodDiscriminatedUnion<[z.ZodObject<{
+            kind: z.ZodLiteral<"captured">;
+            jpegBase64: z.ZodString;
+            width: z.ZodNumber;
+            height: z.ZodNumber;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"unavailable">;
+            reason: z.ZodEnum<{
+                unsupported: "unsupported";
+                interrupted: "interrupted";
+                "snapshot-limit": "snapshot-limit";
+                "render-failed": "render-failed";
+                "image-too-large": "image-too-large";
+                "storage-unavailable": "storage-unavailable";
+            }>;
+        }, z.core.$strict>], "kind">;
+    }, z.core.$strict>>;
     pageX: z.ZodNumber;
     pageY: z.ZodNumber;
     anchorX: z.ZodOptional<z.ZodNumber>;
@@ -49,6 +186,143 @@ declare const WebQaSession: z.ZodObject<{
         scrollX: z.ZodOptional<z.ZodNumber>;
         scrollY: z.ZodOptional<z.ZodNumber>;
         anchor: z.ZodOptional<z.ZodString>;
+        evidence: z.ZodOptional<z.ZodObject<{
+            schemaVersion: z.ZodLiteral<1>;
+            capturedAt: z.ZodISODateTime;
+            input: z.ZodEnum<{
+                page: "page";
+                "left-click": "left-click";
+                "right-click": "right-click";
+                keyboard: "keyboard";
+            }>;
+            browser: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                family: z.ZodEnum<{
+                    Unknown: "Unknown";
+                    Chromium: "Chromium";
+                    Chrome: "Chrome";
+                    Edge: "Edge";
+                    Firefox: "Firefox";
+                    Safari: "Safari";
+                    Opera: "Opera";
+                    "Samsung Internet": "Samsung Internet";
+                }>;
+                versionSource: z.ZodLiteral<"user-agent">;
+                version: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                family: z.ZodEnum<{
+                    Unknown: "Unknown";
+                    Chromium: "Chromium";
+                    Chrome: "Chrome";
+                    Edge: "Edge";
+                    Firefox: "Firefox";
+                    Safari: "Safari";
+                    Opera: "Opera";
+                    "Samsung Internet": "Samsung Internet";
+                }>;
+                versionSource: z.ZodLiteral<"unavailable">;
+            }, z.core.$strict>], "versionSource">;
+            os: z.ZodEnum<{
+                iOS: "iOS";
+                Unknown: "Unknown";
+                Android: "Android";
+                macOS: "macOS";
+                Windows: "Windows";
+                ChromeOS: "ChromeOS";
+                Linux: "Linux";
+            }>;
+            dpr: z.ZodOptional<z.ZodNumber>;
+            theme: z.ZodEnum<{
+                dark: "dark";
+                light: "light";
+            }>;
+            elements: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                tag: z.ZodEnum<{
+                    main: "main";
+                    a: "a";
+                    summary: "summary";
+                    other: "other";
+                    body: "body";
+                    label: "label";
+                    dialog: "dialog";
+                    span: "span";
+                    header: "header";
+                    footer: "footer";
+                    button: "button";
+                    article: "article";
+                    form: "form";
+                    img: "img";
+                    table: "table";
+                    div: "div";
+                    p: "p";
+                    ol: "ol";
+                    li: "li";
+                    h2: "h2";
+                    nav: "nav";
+                    section: "section";
+                    aside: "aside";
+                    details: "details";
+                    h1: "h1";
+                    h3: "h3";
+                    td: "td";
+                    ul: "ul";
+                }>;
+                role: z.ZodOptional<z.ZodEnum<{
+                    link: "link";
+                    status: "status";
+                    list: "list";
+                    main: "main";
+                    dialog: "dialog";
+                    button: "button";
+                    menu: "menu";
+                    checkbox: "checkbox";
+                    heading: "heading";
+                    listitem: "listitem";
+                    menuitem: "menuitem";
+                    navigation: "navigation";
+                    region: "region";
+                    switch: "switch";
+                    tab: "tab";
+                    tablist: "tablist";
+                    tabpanel: "tabpanel";
+                }>>;
+                expanded: z.ZodOptional<z.ZodBoolean>;
+                pressed: z.ZodOptional<z.ZodEnum<{
+                    true: "true";
+                    false: "false";
+                    mixed: "mixed";
+                }>>;
+                selected: z.ZodOptional<z.ZodBoolean>;
+                position: z.ZodEnum<{
+                    fixed: "fixed";
+                    static: "static";
+                    relative: "relative";
+                    absolute: "absolute";
+                    sticky: "sticky";
+                }>;
+                width: z.ZodNumber;
+                height: z.ZodNumber;
+                scrollLeft: z.ZodOptional<z.ZodNumber>;
+                scrollTop: z.ZodOptional<z.ZodNumber>;
+            }, z.core.$strict>>>;
+            resources: z.ZodOptional<z.ZodNumber>;
+            errorsSinceMount: z.ZodOptional<z.ZodNumber>;
+            status: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                kind: z.ZodLiteral<"captured">;
+                jpegBase64: z.ZodString;
+                width: z.ZodNumber;
+                height: z.ZodNumber;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"unavailable">;
+                reason: z.ZodEnum<{
+                    unsupported: "unsupported";
+                    interrupted: "interrupted";
+                    "snapshot-limit": "snapshot-limit";
+                    "render-failed": "render-failed";
+                    "image-too-large": "image-too-large";
+                    "storage-unavailable": "storage-unavailable";
+                }>;
+            }, z.core.$strict>], "kind">;
+        }, z.core.$strict>>;
         pageX: z.ZodNumber;
         pageY: z.ZodNumber;
         anchorX: z.ZodOptional<z.ZodNumber>;
@@ -76,6 +350,143 @@ declare const WebQaSession: z.ZodObject<{
                 scrollX: z.ZodOptional<z.ZodNumber>;
                 scrollY: z.ZodOptional<z.ZodNumber>;
                 anchor: z.ZodOptional<z.ZodString>;
+                evidence: z.ZodOptional<z.ZodObject<{
+                    schemaVersion: z.ZodLiteral<1>;
+                    capturedAt: z.ZodISODateTime;
+                    input: z.ZodEnum<{
+                        page: "page";
+                        "left-click": "left-click";
+                        "right-click": "right-click";
+                        keyboard: "keyboard";
+                    }>;
+                    browser: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                        family: z.ZodEnum<{
+                            Unknown: "Unknown";
+                            Chromium: "Chromium";
+                            Chrome: "Chrome";
+                            Edge: "Edge";
+                            Firefox: "Firefox";
+                            Safari: "Safari";
+                            Opera: "Opera";
+                            "Samsung Internet": "Samsung Internet";
+                        }>;
+                        versionSource: z.ZodLiteral<"user-agent">;
+                        version: z.ZodString;
+                    }, z.core.$strict>, z.ZodObject<{
+                        family: z.ZodEnum<{
+                            Unknown: "Unknown";
+                            Chromium: "Chromium";
+                            Chrome: "Chrome";
+                            Edge: "Edge";
+                            Firefox: "Firefox";
+                            Safari: "Safari";
+                            Opera: "Opera";
+                            "Samsung Internet": "Samsung Internet";
+                        }>;
+                        versionSource: z.ZodLiteral<"unavailable">;
+                    }, z.core.$strict>], "versionSource">;
+                    os: z.ZodEnum<{
+                        iOS: "iOS";
+                        Unknown: "Unknown";
+                        Android: "Android";
+                        macOS: "macOS";
+                        Windows: "Windows";
+                        ChromeOS: "ChromeOS";
+                        Linux: "Linux";
+                    }>;
+                    dpr: z.ZodOptional<z.ZodNumber>;
+                    theme: z.ZodEnum<{
+                        dark: "dark";
+                        light: "light";
+                    }>;
+                    elements: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                        tag: z.ZodEnum<{
+                            main: "main";
+                            a: "a";
+                            summary: "summary";
+                            other: "other";
+                            body: "body";
+                            label: "label";
+                            dialog: "dialog";
+                            span: "span";
+                            header: "header";
+                            footer: "footer";
+                            button: "button";
+                            article: "article";
+                            form: "form";
+                            img: "img";
+                            table: "table";
+                            div: "div";
+                            p: "p";
+                            ol: "ol";
+                            li: "li";
+                            h2: "h2";
+                            nav: "nav";
+                            section: "section";
+                            aside: "aside";
+                            details: "details";
+                            h1: "h1";
+                            h3: "h3";
+                            td: "td";
+                            ul: "ul";
+                        }>;
+                        role: z.ZodOptional<z.ZodEnum<{
+                            link: "link";
+                            status: "status";
+                            list: "list";
+                            main: "main";
+                            dialog: "dialog";
+                            button: "button";
+                            menu: "menu";
+                            checkbox: "checkbox";
+                            heading: "heading";
+                            listitem: "listitem";
+                            menuitem: "menuitem";
+                            navigation: "navigation";
+                            region: "region";
+                            switch: "switch";
+                            tab: "tab";
+                            tablist: "tablist";
+                            tabpanel: "tabpanel";
+                        }>>;
+                        expanded: z.ZodOptional<z.ZodBoolean>;
+                        pressed: z.ZodOptional<z.ZodEnum<{
+                            true: "true";
+                            false: "false";
+                            mixed: "mixed";
+                        }>>;
+                        selected: z.ZodOptional<z.ZodBoolean>;
+                        position: z.ZodEnum<{
+                            fixed: "fixed";
+                            static: "static";
+                            relative: "relative";
+                            absolute: "absolute";
+                            sticky: "sticky";
+                        }>;
+                        width: z.ZodNumber;
+                        height: z.ZodNumber;
+                        scrollLeft: z.ZodOptional<z.ZodNumber>;
+                        scrollTop: z.ZodOptional<z.ZodNumber>;
+                    }, z.core.$strict>>>;
+                    resources: z.ZodOptional<z.ZodNumber>;
+                    errorsSinceMount: z.ZodOptional<z.ZodNumber>;
+                    status: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                        kind: z.ZodLiteral<"captured">;
+                        jpegBase64: z.ZodString;
+                        width: z.ZodNumber;
+                        height: z.ZodNumber;
+                    }, z.core.$strict>, z.ZodObject<{
+                        kind: z.ZodLiteral<"unavailable">;
+                        reason: z.ZodEnum<{
+                            unsupported: "unsupported";
+                            interrupted: "interrupted";
+                            "snapshot-limit": "snapshot-limit";
+                            "render-failed": "render-failed";
+                            "image-too-large": "image-too-large";
+                            "storage-unavailable": "storage-unavailable";
+                        }>;
+                    }, z.core.$strict>], "kind">;
+                }, z.core.$strict>>;
             }, z.core.$strict>>;
             buildAndDeploy: z.ZodBoolean;
             makeFeatureFlag: z.ZodBoolean;
@@ -96,6 +507,143 @@ declare const WebQaSession: z.ZodObject<{
             scrollX: z.ZodOptional<z.ZodNumber>;
             scrollY: z.ZodOptional<z.ZodNumber>;
             anchor: z.ZodOptional<z.ZodString>;
+            evidence: z.ZodOptional<z.ZodObject<{
+                schemaVersion: z.ZodLiteral<1>;
+                capturedAt: z.ZodISODateTime;
+                input: z.ZodEnum<{
+                    page: "page";
+                    "left-click": "left-click";
+                    "right-click": "right-click";
+                    keyboard: "keyboard";
+                }>;
+                browser: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                    family: z.ZodEnum<{
+                        Unknown: "Unknown";
+                        Chromium: "Chromium";
+                        Chrome: "Chrome";
+                        Edge: "Edge";
+                        Firefox: "Firefox";
+                        Safari: "Safari";
+                        Opera: "Opera";
+                        "Samsung Internet": "Samsung Internet";
+                    }>;
+                    versionSource: z.ZodLiteral<"user-agent">;
+                    version: z.ZodString;
+                }, z.core.$strict>, z.ZodObject<{
+                    family: z.ZodEnum<{
+                        Unknown: "Unknown";
+                        Chromium: "Chromium";
+                        Chrome: "Chrome";
+                        Edge: "Edge";
+                        Firefox: "Firefox";
+                        Safari: "Safari";
+                        Opera: "Opera";
+                        "Samsung Internet": "Samsung Internet";
+                    }>;
+                    versionSource: z.ZodLiteral<"unavailable">;
+                }, z.core.$strict>], "versionSource">;
+                os: z.ZodEnum<{
+                    iOS: "iOS";
+                    Unknown: "Unknown";
+                    Android: "Android";
+                    macOS: "macOS";
+                    Windows: "Windows";
+                    ChromeOS: "ChromeOS";
+                    Linux: "Linux";
+                }>;
+                dpr: z.ZodOptional<z.ZodNumber>;
+                theme: z.ZodEnum<{
+                    dark: "dark";
+                    light: "light";
+                }>;
+                elements: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                    tag: z.ZodEnum<{
+                        main: "main";
+                        a: "a";
+                        summary: "summary";
+                        other: "other";
+                        body: "body";
+                        label: "label";
+                        dialog: "dialog";
+                        span: "span";
+                        header: "header";
+                        footer: "footer";
+                        button: "button";
+                        article: "article";
+                        form: "form";
+                        img: "img";
+                        table: "table";
+                        div: "div";
+                        p: "p";
+                        ol: "ol";
+                        li: "li";
+                        h2: "h2";
+                        nav: "nav";
+                        section: "section";
+                        aside: "aside";
+                        details: "details";
+                        h1: "h1";
+                        h3: "h3";
+                        td: "td";
+                        ul: "ul";
+                    }>;
+                    role: z.ZodOptional<z.ZodEnum<{
+                        link: "link";
+                        status: "status";
+                        list: "list";
+                        main: "main";
+                        dialog: "dialog";
+                        button: "button";
+                        menu: "menu";
+                        checkbox: "checkbox";
+                        heading: "heading";
+                        listitem: "listitem";
+                        menuitem: "menuitem";
+                        navigation: "navigation";
+                        region: "region";
+                        switch: "switch";
+                        tab: "tab";
+                        tablist: "tablist";
+                        tabpanel: "tabpanel";
+                    }>>;
+                    expanded: z.ZodOptional<z.ZodBoolean>;
+                    pressed: z.ZodOptional<z.ZodEnum<{
+                        true: "true";
+                        false: "false";
+                        mixed: "mixed";
+                    }>>;
+                    selected: z.ZodOptional<z.ZodBoolean>;
+                    position: z.ZodEnum<{
+                        fixed: "fixed";
+                        static: "static";
+                        relative: "relative";
+                        absolute: "absolute";
+                        sticky: "sticky";
+                    }>;
+                    width: z.ZodNumber;
+                    height: z.ZodNumber;
+                    scrollLeft: z.ZodOptional<z.ZodNumber>;
+                    scrollTop: z.ZodOptional<z.ZodNumber>;
+                }, z.core.$strict>>>;
+                resources: z.ZodOptional<z.ZodNumber>;
+                errorsSinceMount: z.ZodOptional<z.ZodNumber>;
+                status: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                    kind: z.ZodLiteral<"captured">;
+                    jpegBase64: z.ZodString;
+                    width: z.ZodNumber;
+                    height: z.ZodNumber;
+                }, z.core.$strict>, z.ZodObject<{
+                    kind: z.ZodLiteral<"unavailable">;
+                    reason: z.ZodEnum<{
+                        unsupported: "unsupported";
+                        interrupted: "interrupted";
+                        "snapshot-limit": "snapshot-limit";
+                        "render-failed": "render-failed";
+                        "image-too-large": "image-too-large";
+                        "storage-unavailable": "storage-unavailable";
+                    }>;
+                }, z.core.$strict>], "kind">;
+            }, z.core.$strict>>;
             pageX: z.ZodNumber;
             pageY: z.ZodNumber;
             anchorX: z.ZodOptional<z.ZodNumber>;

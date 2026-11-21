@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountWebQa, WebQaRejectedError, type WebQaBatch, type WebQaReceipt, type WebQaMountOptions } from "../src/qa/web/mount.js";
+import { captureViewport } from "../src/qa/web/evidence.js";
+import { sessionKey } from "../src/qa/web/drafts.js";
+import type { WebQaEvidence } from "../src/qa/web/schema.js";
+
+vi.mock("../src/qa/web/evidence.js", { spy: true });
 
 const pageClicks = vi.fn();
 let unmount: (() => void) | null = null;
@@ -36,6 +41,51 @@ beforeEach(() => { sessionStorage.clear(); pageClicks.mockClear(); page(); histo
 afterEach(() => { unmount?.(); unmount = null; document.body.removeEventListener("click", pageClicks); });
 
 describe("mountWebQa", () => {
+  it("waits for a right-click capture, reports its failure and keeps the comment editable", async () => {
+    let finish!: (status: WebQaEvidence["status"]) => void;
+    vi.mocked(captureViewport).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    const { submit } = mount({ captureEvidence: true });
+    const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 256, clientY: 192 });
+    document.getElementById("card")!.dispatchEvent(menu);
+    type("Preserve this feedback");
+    expect(button("Send").disabled).toBe(true);
+    expect(q(".open").textContent).toContain("Capturing screenshot");
+    expect(stored().drafts[0]).toMatchObject({ text: "Preserve this feedback", evidence: { input: "right-click", status: { kind: "unavailable", reason: "interrupted" } } });
+    key(q("textarea[aria-label=Comment]"), "Enter", { ctrlKey: true });
+    expect(status()).toBe("Wait for the screenshot capture to finish.");
+    expect(submit).not.toHaveBeenCalled();
+    finish({ kind: "unavailable", reason: "render-failed" });
+    await flush();
+    expect(q(".open").textContent).toContain("Screenshot unavailable: browser could not render it");
+    click(button("Send"));
+    await flush();
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(submit.mock.calls[0]?.[0].comments[0]).toMatchObject({ text: "Preserve this feedback", evidence: { input: "right-click", status: { kind: "unavailable", reason: "render-failed" } } });
+  });
+
+  it("aborts rendering on unmount and never replaces a newer account's draft", async () => {
+    let finish!: (status: WebQaEvidence["status"]) => void;
+    let aborted: AbortSignal | undefined;
+    vi.mocked(captureViewport).mockImplementationOnce((_win, _container, signal) => {
+      aborted = signal;
+      return new Promise(resolve => { finish = resolve; });
+    });
+    mount({ captureEvidence: true });
+    click(document.getElementById("card")!);
+    type("Original account");
+    unmount!();
+    expect(aborted?.aborted).toBe(true);
+    mount({ accountKey: "another" });
+    click(document.getElementById("link")!);
+    type("Current account");
+    finish({ kind: "unavailable", reason: "render-failed" });
+    await flush();
+    expect(q(".open").textContent).toContain("Current account");
+    expect(q(".open").textContent).not.toContain("Screenshot");
+    const original = JSON.parse(sessionStorage.getItem(sessionKey("demo", "user-1", location.origin))!);
+    expect(original.drafts[0]).toMatchObject({ text: "Original account", evidence: { status: { kind: "unavailable", reason: "interrupted" } } });
+  });
+
   it("opens in Pin mode and pins instead of letting the page handle the click", () => {
     mount();
     expect(button("Pin").getAttribute("aria-pressed")).toBe("true");

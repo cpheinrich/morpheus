@@ -12,7 +12,8 @@
  * leave the site's own clicks, menus and keys alone.
  */
 import { canPin, freeze, loadSession, outcomeMessage, pinAt, markerPoint, reopenPending, saveSession, sessionKey, settle, skipBuild, } from "./drafts.js";
-import { WEB_QA_LIMITS } from "./schema.js";
+import { captureViewport, evidenceMetadata } from "./evidence.js";
+import { WEB_QA_COUNT_MAX, WEB_QA_LIMITS } from "./schema.js";
 import { QA_COLUMN_PX, QA_PIN_COLOR, siteTheme, themeVariables } from "./visuals.js";
 /** The host uses this only for a response that rejected the request before writing. */
 export class WebQaRejectedError extends Error {
@@ -89,15 +90,35 @@ function safeStorage() {
         return null;
     }
 }
+function evidenceLabel(evidence, working) {
+    if (working)
+        return "Capturing screenshot…";
+    if (!evidence)
+        return;
+    if (evidence.status.kind === "captured")
+        return "Screenshot attached";
+    const message = {
+        interrupted: "capture interrupted",
+        "snapshot-limit": "page exceeds capture limits",
+        unsupported: "viewport unsupported",
+        "render-failed": "browser could not render it",
+        "image-too-large": "image exceeds size limit",
+        "storage-unavailable": "browser storage unavailable",
+    }[evidence.status.reason];
+    return `Screenshot unavailable: ${message}`;
+}
 /** Mount the QA panel in Pin mode. Returns a function that removes every trace of it from the page. */
 export function mountWebQa(options) {
-    const { project, accountKey, canBuild, submit, onClose } = options;
+    const { project, accountKey, canBuild, captureEvidence, submit, onClose } = options;
     const storage = safeStorage();
     const key = sessionKey(project, accountKey, location.origin);
     let session = loadSession(storage, key);
     let pinMode = true, busy = false, mounted = true, focusedId = null;
     let deleteArm = null;
     let lastPath = location.pathname, frame = 0;
+    const captures = new Map();
+    let errorsSinceMount = 0;
+    const countError = () => { errorsSinceMount = Math.min(WEB_QA_COUNT_MAX, errorsSinceMount + 1); };
     const pageStyle = document.documentElement.style;
     const priorCursor = pageStyle.cursor;
     const priorMargin = pageStyle.marginInlineEnd;
@@ -130,6 +151,8 @@ export function mountWebQa(options) {
     // ---- state helpers ----------------------------------------------------------------------------
     const focused = () => session.drafts.find(d => d.id === focusedId);
     function storeAttempt(next) {
+        if (next.pending?.batch.comments.some(comment => comment.evidence?.status.kind === "captured"))
+            return saveSession(storage, key, next);
         if (!storage || saveSession(storage, key, next))
             return true;
         // If there was a stored draft, starting now could restore its editable text
@@ -150,6 +173,7 @@ export function mountWebQa(options) {
         statusEl.className = `status ${kind}`.trim();
     }
     function update(next) { session = next; persist(); render(); }
+    const sendDisabled = () => busy || captures.size > 0 || (!session.pending && !session.drafts.some(d => d.text.trim()));
     // ---- rendering --------------------------------------------------------------------------------
     function render() {
         pinBtn.setAttribute("aria-pressed", String(pinMode));
@@ -176,14 +200,15 @@ export function mountWebQa(options) {
         flagEl.checked = session.makeFeatureFlag;
         flagRow.hidden = !session.buildAndDeploy;
         sendBtn.textContent = busy ? "Sending…" : session.pending ? "Retry" : "Send";
-        sendBtn.disabled = busy || (!session.pending && !session.drafts.some(x => x.text.trim()));
+        sendBtn.disabled = sendDisabled();
         renderPins();
     }
     function renderList() {
         const items = session.drafts.map((d, i) => {
             const del = h("button", { type: "button", class: "x", "aria-label": `Delete comment ${i + 1}` }, "✕");
             del.addEventListener("click", () => remove(d.id));
-            const open = h("button", { type: "button", class: "open" }, d.text.trim() ? d.text : h("span", { class: "empty" }, "No text yet"), h("span", { class: "meta" }, `${SCOPES.find(s => s[0] === d.scope)[1]} · ${d.path}`));
+            const evidence = evidenceLabel(d.evidence, captures.has(d.id));
+            const open = h("button", { type: "button", class: "open" }, d.text.trim() ? d.text : h("span", { class: "empty" }, "No text yet"), h("span", { class: "meta" }, `${SCOPES.find(s => s[0] === d.scope)[1]} · ${d.path}`), ...(evidence ? [h("span", { class: "meta" }, evidence)] : []));
             open.addEventListener("click", () => select(d.id));
             return h("li", { class: d.id === focusedId ? "focused" : "" }, h("span", { class: "num", "aria-hidden": "true" }, String(i + 1)), open, del);
         });
@@ -240,7 +265,7 @@ export function mountWebQa(options) {
             host.style.setProperty(name, value);
     }
     // ---- pins and editing -------------------------------------------------------------------------
-    function addPin(target, clientX, clientY, scope = "element") {
+    function addPin(target, clientX, clientY, input) {
         if (!canPin(session)) {
             setStatus(`At most ${WEB_QA_LIMITS.comments} comments per batch; send these first.`, "err");
             return;
@@ -250,13 +275,39 @@ export function mountWebQa(options) {
             setStatus(result.error, "err");
             return;
         }
-        result.draft.scope = scope;
+        if (input === "page")
+            result.draft.scope = "page";
+        if (captureEvidence)
+            startCapture(result.draft, target, input);
         deleteArm = null;
         focusedId = result.draft.id;
         textEl.value = "";
         update({ ...session, drafts: [...session.drafts, result.draft] });
         setStatus(`Pin ${session.drafts.length} placed; type a comment.`);
         textEl.focus();
+    }
+    function startCapture(draft, target, input) {
+        const evidence = evidenceMetadata(window, target, input, errorsSinceMount);
+        draft.evidence = evidence;
+        const controller = new AbortController();
+        captures.set(draft.id, controller);
+        const finish = (status) => {
+            if (!mounted || !captures.delete(draft.id))
+                return;
+            const withStatus = (status) => ({
+                ...session, drafts: session.drafts.map(current => current.id === draft.id ? { ...current, evidence: { ...evidence, status } } : current),
+            });
+            const next = withStatus(status);
+            if (status.kind === "unavailable")
+                update(next);
+            else if (!saveSession(storage, key, next))
+                update(withStatus({ kind: "unavailable", reason: "storage-unavailable" }));
+            else {
+                session = next;
+                render();
+            }
+        };
+        void captureViewport(window, root, controller.signal).then(finish, () => finish({ kind: "unavailable", reason: "render-failed" }));
     }
     function select(id) {
         deleteArm = null;
@@ -266,6 +317,8 @@ export function mountWebQa(options) {
         textEl.focus();
     }
     function remove(id) {
+        captures.get(id)?.abort();
+        captures.delete(id);
         deleteArm = null;
         if (focusedId === id)
             focusedId = null;
@@ -280,7 +333,7 @@ export function mountWebQa(options) {
         persist();
         renderList();
         countEl.textContent = `${textEl.value.length}/${WEB_QA_LIMITS.textChars}`;
-        sendBtn.disabled = busy || (!session.pending && !session.drafts.some(x => x.text.trim()));
+        sendBtn.disabled = sendDisabled();
     }
     function saveAndClear() {
         deleteArm = null;
@@ -288,8 +341,16 @@ export function mountWebQa(options) {
         textEl.value = "";
         render();
     }
-    async function send() {
+    function sendBlocked() {
         if (busy)
+            return true;
+        if (!captures.size)
+            return false;
+        setStatus("Wait for the screenshot capture to finish.", "err");
+        return true;
+    }
+    async function send() {
+        if (sendBlocked())
             return;
         const canCorrect = !session.pending || session.pending.state === "rejected";
         const frozen = freeze(session, session.pending?.batch.batchId ?? uuid(), canBuild);
@@ -354,7 +415,7 @@ export function mountWebQa(options) {
             return;
         const target = pinTarget(e);
         if (target)
-            addPin(target, mouse.clientX, mouse.clientY);
+            addPin(target, mouse.clientX, mouse.clientY, mouse.button === 2 ? "right-click" : mouse.detail ? "left-click" : "keyboard");
     }
     function onPageKey(e) {
         if (ours(e))
@@ -372,7 +433,7 @@ export function mountWebQa(options) {
             if (!target)
                 return;
             const r = target.getBoundingClientRect();
-            addPin(target, r.left + r.width / 2, r.top + r.height / 2);
+            addPin(target, r.left + r.width / 2, r.top + r.height / 2, "keyboard");
         }
     }
     let listening = false;
@@ -487,10 +548,19 @@ export function mountWebQa(options) {
             cancelAnimationFrame(frame);
         window.removeEventListener("scroll", follow, { capture: true });
         window.removeEventListener("resize", layout);
+        window.removeEventListener("error", countError, true);
+        window.removeEventListener("unhandledrejection", countError);
+        for (const controller of captures.values())
+            controller.abort();
+        captures.clear();
         pageStyle.marginInlineEnd = priorMargin;
         host.remove();
     }
     document.body.append(host);
+    if (captureEvidence) {
+        window.addEventListener("error", countError, true);
+        window.addEventListener("unhandledrejection", countError);
+    }
     layout();
     applyTheme();
     setMode(true);
