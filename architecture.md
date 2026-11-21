@@ -1853,7 +1853,9 @@ qa/
 | Pre-deploy | E2E against the preview deployment | Deploy |
 | Human review | Preview link + screenshots + test plan | Deploy |
 
-Interactive comment QA uses a checkout-local durable queue. Each Send atomically
+Live web and in-app iOS QA feedback use the reporting site's or build's configured Firestore
+project. The shared `comment-qa` skill starts there for submitted feedback.
+Local desktop preview overlays use a checkout-local durable queue. Each Send atomically
 publishes one batch and optional frame under `local/qa-comments/pending/`; later
 batches accumulate while a responder works. An agent claims one batch with an
 exclusive on-disk record before acting, resolves it after work, or releases the
