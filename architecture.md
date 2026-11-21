@@ -4089,25 +4089,29 @@ For a release build, callers can opt into `check-app-store-version` and pass exp
 `app-store-connect-app-id` and `ios-bundle-id`, plus `app-store-storefront` when the listing is
 outside the default `us` storefront. After source verification and before simulator tests, the
 selected runner and exact Xcode version query archive build settings at the verified SHA without
-building or signing. The supplied project, scheme, and explicit `archive-configuration` (default
-`Release`) must resolve to exactly one installable iOS app for `generic/platform=iOS`. Its resolved
-bundle must match `ios-bundle-id`. Before comparing the resolved `MARKETING_VERSION` with the
-public app ID and storefront, the check repeats the same metadata query with a different positive
-`CURRENT_PROJECT_VERSION` in scratch derived data. Both queries must resolve one installable app
-with the same target, configuration, marketing version, bundle ID, canonical plist source, and
-plist generation, preprocessing and expansion settings. The probe does not allocate a build
-number; the uploader still does that at release time.
+building or signing. The tracked `project.pbxproj` must describe one native application target
+and no subproject references. Other target types are allowed. The supplied scheme and explicit
+`archive-configuration` (default `Release`) must resolve to that project's one installable app
+for `generic/platform=iOS`. Its resolved bundle must match `ios-bundle-id`.
 
-Supported shapes are `GENERATE_INFOPLIST_FILE=YES` with no `INFOPLIST_FILE`, or the selected
-target's checked-in `INFOPLIST_FILE` (resolved from its `SRCROOT` and confined to the checkout).
-In a checked-in plist, `CFBundleShortVersionString` and `CFBundleIdentifier` must match the
-resolved values literally or directly expand `MARKETING_VERSION` and `PRODUCT_BUNDLE_IDENTIFIER`,
-respectively, with `INFOPLIST_EXPAND_BUILD_SETTINGS=YES`. Plist preprocessing, ambiguous keys,
-identity build key overrides, and unreadable or unsupported plists refuse delivery. This check
-supports settings that keep the same identity for any allocated build number; it does not verify
-arbitrary build scripts or other archive-time mutations. The uploader must still verify the final
-packaged app's identity. The comparison uses Morpheus's action at `actions-ref` (pass the workflow's
-pin when pinning).
+Before comparing with the storefront, the check reads the project and app target's exact archive
+configuration. Neither may inherit an `.xcconfig`, and `XCODE_XCCONFIG_FILE` must be unset or empty.
+Use direct, unconditional numeric `MARKETING_VERSION` and literal `PRODUCT_BUNDLE_IDENTIFIER`
+assignments matching Xcode's resolved values. Any assignments for `SKIP_INSTALL`, plist generation,
+preprocessing, or expansion must be unconditional literal `YES` or `NO`. Leave the derived project,
+target, source-root, and processed plist path settings to Xcode. Other configurations and unrelated
+settings may still use conditionals and macros.
+
+Use `GENERATE_INFOPLIST_FILE=YES` without `INFOPLIST_FILE`, or a direct, unconditional relative
+`INFOPLIST_FILE` pointing to a tracked regular `.plist` under the project directory, without symlinks.
+The latter must resolve to the same file in Xcode. Its `CFBundleShortVersionString` and
+`CFBundleIdentifier` must match the resolved values literally or expand `MARKETING_VERSION` and
+`PRODUCT_BUNDLE_IDENTIFIER` directly, respectively, with `INFOPLIST_EXPAND_BUILD_SETTINGS=YES`.
+Preprocessing, ambiguous keys, and `INFOPLIST_KEY_` overrides of those two fields refuse delivery.
+This subset rules out build-number-dependent plist selection without sampling build numbers or
+interpreting xcconfigs. The uploader still allocates the build number and verifies the final
+packaged app; arbitrary build scripts and other archive-time mutations are outside the metadata
+check. The comparison uses Morpheus's action at `actions-ref` (pass the workflow's pin when pinning).
 The runner must be able to load the project and any locked package dependencies for this metadata
 query. Equality proposes a patch bump and stops delivery; a behind version or an unavailable or
 invalid result stops delivery without a proposal. Visual-only runs do not consult the store.

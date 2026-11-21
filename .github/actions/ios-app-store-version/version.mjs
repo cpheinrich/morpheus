@@ -1,6 +1,7 @@
 import { chmodSync, lstatSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
+import { parseProject } from "./xcode-project.mjs";
 
 const marketing = "MARKETING_VERSION";
 const build = "CURRENT_PROJECT_VERSION";
@@ -62,66 +63,9 @@ function listingVersion(data, appId, bundleId, storefront) {
   return listing.version;
 }
 
-function unquote(value) {
-  return value.startsWith('"') ? value.slice(1, -1) : value;
-}
-
-function projectTokens(text) {
-  return [...text.matchAll(/\/\*[\s\S]*?\*\/|\/\/[^\r\n]*|"(?:\\[\s\S]|[^"\\])*"|<[0-9a-fA-F\s]*>|(?:[^\s"={};(),<>/]|\/(?![/*]))+|[^\s]/g)]
-    .filter(([token]) => !token.startsWith("//") && !token.startsWith("/*"));
-}
-
-function parseProject(text) {
-  const tokens = projectTokens(text);
-  let index = 0;
-  const peek = () => tokens[index]?.[0];
-  function take(expected) {
-    if (peek() !== expected) throw new Error(`Invalid Xcode project: expected ${expected}`);
-    return tokens[index++];
-  }
-  function scalar() {
-    const token = tokens[index++];
-    if (token?.[0] === '"' || (token?.[0] === "/" && text.startsWith("/*", token.index))) {
-      throw new Error("Unterminated string or comment in the Xcode project");
-    }
-    if (!token || /^[={};(),<>]$/.test(token[0])) throw new Error("Invalid scalar in the Xcode project");
-    return { start: token.index, raw: token[0], literal: unquote(token[0]) };
-  }
-  function value() {
-    if (peek() === "{") return dictionary();
-    if (peek() !== "(") return scalar();
-    take("(");
-    while (peek() !== ")") {
-      value();
-      if (peek() === ")") break;
-      take(",");
-    }
-    take(")");
-    return null;
-  }
-  function dictionary() {
-    take("{");
-    const entries = new Map();
-    while (peek() !== "}") {
-      const { literal: name } = scalar();
-      if (name.includes("\\")) throw new Error("Escaped assignment key in the Xcode project");
-      if (entries.has(name)) throw new Error(`Duplicate ${name} key in the Xcode project`);
-      take("=");
-      entries.set(name, value());
-      take(";");
-    }
-    take("}");
-    return entries;
-  }
-  const root = dictionary();
-  const objects = root.get("objects");
-  if (index !== tokens.length || !(objects instanceof Map)) throw new Error("Invalid Xcode project object dictionary");
-  return objects;
-}
-
 function projectBuildSettings(text) {
   const settings = [];
-  for (const object of parseProject(text).values()) {
+  for (const object of parseProject(text).get("objects").values()) {
     if (!(object instanceof Map) || typeof object.get("isa")?.literal !== "string") {
       throw new Error("Invalid object in the Xcode project");
     }

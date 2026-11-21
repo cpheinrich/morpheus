@@ -1,5 +1,5 @@
 import { execFile, spawnSync } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -1551,17 +1551,42 @@ describe("firebase-tests.yml", () => {
 describe("ios-nightly-build.yml", () => {
   const mockArchiveSettings = `#!/usr/bin/env node
 const args = process.argv.slice(2);
-const assignment = args.find((arg) => arg.startsWith("CURRENT_PROJECT_VERSION="));
-const probe = assignment?.split("=")[1];
-const rows = JSON.parse((probe && process.env.PROBE_METADATA) || process.env.METADATA);
-if (probe) {
-  for (const { buildSettings } of rows) {
-    buildSettings.CURRENT_PROJECT_VERSION = process.env.PROBE_REPORTED_VERSION || probe;
-  }
-}
 if (process.env.ARGV) require("node:fs").appendFileSync(process.env.ARGV, JSON.stringify(args) + "\\n");
-console.log(JSON.stringify(rows));
+console.log(process.env.METADATA);
 `;
+  async function archiveFixture(workspace: string, directory: string) {
+    const project = join(directory, "Example.xcodeproj");
+    const actions = join(workspace, ".morpheus-ci/.github/actions");
+    await mkdir(project, { recursive: true });
+    await mkdir(actions, { recursive: true });
+    await symlink(join(DIR, "../actions/ios-app-store-version"), join(actions, "ios-app-store-version"));
+    await execFileAsync("git", ["init", "--quiet", workspace]);
+    const writeProject = (settings: string, targetConfig = "", projectSettings = "", projectConfig = "") =>
+      writeFile(join(project, "project.pbxproj"), `// !$*UTF8*$!
+{
+  rootObject = Project;
+  objects = {
+    Project = {isa = PBXProject; buildConfigurationList = ProjectConfigs; targets = (App);};
+    App = {isa = PBXNativeTarget; name = ExampleApp; productType = com.apple.product-type.application; buildConfigurationList = AppConfigs;};
+    AppConfigs = {isa = XCConfigurationList; buildConfigurations = (Debug, Release);};
+    ProjectConfigs = {isa = XCConfigurationList; buildConfigurations = (ProjectRelease);};
+    Debug = {isa = XCBuildConfiguration; name = Debug; baseConfigurationReference = DebugConfig; buildSettings = {};};
+    ProjectRelease = {isa = XCBuildConfiguration; name = Release; ${projectConfig} buildSettings = {${projectSettings}};};
+    Release = {isa = XCBuildConfiguration; name = Release; ${targetConfig} buildSettings = {
+      PRODUCT_BUNDLE_IDENTIFIER = com.example.ios;
+      CURRENT_PROJECT_VERSION = 12;
+      "CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "$(inherited)";
+      ${settings}
+    };};
+    DebugConfig = {isa = PBXFileReference; path = Debug.xcconfig; sourceTree = "<group>";};
+    ArchiveConfig = {isa = PBXFileReference; path = Archive.xcconfig; sourceTree = "<group>";};
+  };
+}
+`);
+    await writeProject("MARKETING_VERSION = 1.0; GENERATE_INFOPLIST_FILE = YES;");
+    await execFileAsync("git", ["-C", directory, "add", "--", "Example.xcodeproj/project.pbxproj"]);
+    return { project, writeProject };
+  }
   type NightlyIosBuild = {
     on?: {
       workflow_call?: {
@@ -1792,10 +1817,11 @@ console.log(JSON.stringify(rows));
     const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
     const resolve = wf.jobs?.["version-check"]?.steps?.find(({ id }) => id === "identity");
     const root = await mkdtemp(join(tmpdir(), "nightly-archive-settings-"));
+    const { project, writeProject } = await archiveFixture(root, join(root, "apps/ios"));
     const app = { target: "ExampleApp", action: "archive", buildSettings: {
       PRODUCT_TYPE: "com.apple.product-type.application", PLATFORM_NAME: "iphoneos", SKIP_INSTALL: "NO",
       CONFIGURATION: "Release", PRODUCT_BUNDLE_IDENTIFIER: "com.example.ios", MARKETING_VERSION: "1.0",
-      GENERATE_INFOPLIST_FILE: "YES", CURRENT_PROJECT_VERSION: "13",
+      GENERATE_INFOPLIST_FILE: "YES", CURRENT_PROJECT_VERSION: "12", PROJECT_FILE_PATH: project,
     } };
     const row = (settings: Record<string, string>) => ({ ...app, buildSettings: { ...app.buildSettings, ...settings } });
     try {
@@ -1811,32 +1837,32 @@ console.log(JSON.stringify(rows));
       expect(await readFile(output, "utf8")).toBe("version=1.0\n");
       const calls: string[][] = (await readFile(join(root, "argv"), "utf8")).trimEnd().split("\n").map((line) => JSON.parse(line));
       const scratch = calls[0]?.[11];
-      expect(scratch?.startsWith(`${root}/ios-version-check.`)).toBe(true);
+      expect(scratch).toMatch(/\/ios-version-check\.[^/]+$/);
       const args = [
-        "-showBuildSettings", "-json", "-project", `${root}/apps/ios/Example.xcodeproj`, "-scheme", "Example Release", "-configuration",
+        "-showBuildSettings", "-json", "-project", await realpath(project), "-scheme", "Example Release", "-configuration",
         "Release", "-destination", "generic/platform=iOS", "-derivedDataPath", scratch,
         "-disableAutomaticPackageResolution", "-onlyUsePackageVersionsFromResolvedFile",
       ];
-      expect(calls).toEqual([[...args, "archive"], [...args, "CURRENT_PROJECT_VERSION=14", "archive"]]);
+      expect(calls).toEqual([[...args, "archive"]]);
       expect(run([app], { BUNDLE_ID: "com.other.ios" })).toMatchObject({ status: 1, stdout: "", stderr: expect.stringContaining("app bundle ID") });
       expect(run([row({ CONFIGURATION: "Debug", MARKETING_VERSION: "1.0.1" })])).toMatchObject({ status: 1, stdout: "" });
       expect(run([{ ...app, action: "build" }])).toMatchObject({ status: 1, stdout: "" });
       expect(run([app, row({ PRODUCT_BUNDLE_IDENTIFIER: "com.other.ios" })])).toMatchObject({ status: 1, stdout: "" });
       expect(await readFile(output, "utf8")).toBe("version=1.0\n");
       await rm(output);
-      const unstable = "Cannot prove stable archive identity";
-      const changedSettings: Record<string, string>[] = [{ MARKETING_VERSION: "1.0.1" }, { PRODUCT_BUNDLE_IDENTIFIER: "com.other.ios" },
-        { CONFIGURATION: "Debug" }, { GENERATE_INFOPLIST_FILE: "NO" }, { INFOPLIST_EXPAND_BUILD_SETTINGS: "NO" }];
-      for (const override of changedSettings) {
-        expect(run([app], { PROBE_METADATA: JSON.stringify([row(override)]) }), JSON.stringify(override)).toMatchObject({
-          status: 1, stderr: expect.stringContaining(unstable),
-        });
-      }
-      expect(run([app], { PROBE_METADATA: JSON.stringify([app, app]) })).toMatchObject({
-        status: 1, stderr: expect.stringContaining("Expected one installable iOS archive app; found 2"),
+      expect(run([row({ MARKETING_VERSION: "1.0.1" })])).toMatchObject({
+        status: 1, stderr: expect.stringContaining("Expected a direct literal MARKETING_VERSION matching the resolved archive app"),
       });
-      expect(run([app], { PROBE_REPORTED_VERSION: "13" })).toMatchObject({ status: 1, stderr: expect.stringContaining(unstable) });
+      expect(run([{ ...app, target: "SomeOtherApp" }])).toMatchObject({
+        status: 1, stderr: expect.stringContaining("Resolved archive project, target, configuration or app bundle ID"),
+      });
+      expect(run([app], { XCODE_XCCONFIG_FILE: "override.xcconfig" })).toMatchObject({
+        status: 1, stderr: expect.stringContaining("without an external XCODE_XCCONFIG_FILE override"),
+      });
       expect(await readFile(output, "utf8").catch(() => "")).toBe("");
+      await writeProject("GENERATE_INFOPLIST_FILE = YES;", "", "MARKETING_VERSION = 1.0;");
+      expect(run([app])).toMatchObject({ status: 0, stderr: "" });
+      expect(await readFile(output, "utf8")).toBe("version=1.0\n");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -1869,8 +1895,13 @@ console.log(JSON.stringify(rows));
       GENERATE_INFOPLIST_FILE: "NO", CURRENT_PROJECT_VERSION: "12",
     };
     try {
-      await mkdir(project, { recursive: true });
-      await execFileAsync("git", ["init", "--quiet", workspace]);
+      const fixture = await archiveFixture(workspace, project);
+      const configure = (overrides: Record<string, string> = {}, targetConfig = "", projectSettings = "", projectConfig = "") => {
+        const direct = { MARKETING_VERSION: "1.0.1", INFOPLIST_FILE: plistName, ...overrides };
+        return fixture.writeProject(Object.entries(direct).filter(([, value]) => value !== "")
+          .map(([key, value]) => `${JSON.stringify(key)} = ${JSON.stringify(value)};`).join("\n"), targetConfig, projectSettings, projectConfig);
+      };
+      await configure();
       await writeFile(join(root, "xcodebuild"), mockArchiveSettings, { mode: 0o755 });
       if (process.platform !== "darwin") {
         await writeFile(join(root, "plutil"), `#!/usr/bin/env python3
@@ -1887,27 +1918,32 @@ with open(sys.argv[-1], "rb") as source:
       await writeFile(join(project, "Untracked.plist"), plist("1.0.1"));
       const metadata = (overrides: Record<string, string>) => JSON.stringify([
         { action: "archive", buildSettings: { ...settings, SKIP_INSTALL: "YES", INFOPLIST_FILE: "Ignored.plist" } },
-        { action: "archive", buildSettings: { ...settings, ...overrides } },
+        { action: "archive", target: "ExampleApp", buildSettings: { ...settings, PROJECT_FILE_PATH: fixture.project, ...overrides } },
       ]);
-      const run = (overrides: Record<string, string> = {}, probeOverrides = overrides) => spawnSync("bash", ["-e", "-c", resolve!.run!], {
+      const argv = join(root, "argv");
+      const run = (overrides: Record<string, string> = {}) => spawnSync("bash", ["-e", "-c", resolve!.run!], {
         env: { ...process.env, PATH: `${root}:${process.env.PATH}`, GITHUB_WORKSPACE: workspace, RUNNER_TEMP: root,
           GITHUB_OUTPUT: output, XCODE_XCCONFIG_FILE: "", WORKING_DIRECTORY: "apps/Example iOS", PROJECT: "Example.xcodeproj",
           SCHEME: "Example", CONFIGURATION: "Release", BUNDLE_ID: settings.PRODUCT_BUNDLE_IDENTIFIER,
-          METADATA: metadata(overrides), PROBE_METADATA: metadata(probeOverrides) }, encoding: "utf8",
+          ARGV: argv, METADATA: metadata(overrides) }, encoding: "utf8",
       });
-      const rejected = async (overrides: Record<string, string>, diagnostic: string, probeOverrides = overrides) => {
-        expect(run(overrides, probeOverrides), JSON.stringify([overrides, probeOverrides])).toMatchObject({
+      const rejected = async (overrides: Record<string, string>, diagnostic: string) => {
+        expect(run(overrides), JSON.stringify(overrides)).toMatchObject({
           status: 1, stderr: expect.stringContaining(diagnostic),
         });
         expect(await readFile(output, "utf8").catch(() => "")).toBe("");
       };
       const versionDiagnostic = `Info.plist must set ${versionKey} to the resolved MARKETING_VERSION (1.0.1)`;
       await rejected({}, versionDiagnostic);
-      await rejected({ INFOPLIST_FILE: "Missing.plist" }, "Cannot read the archive app Info.plist");
-      await rejected({ INFOPLIST_FILE: "Link.plist" }, "Cannot read the archive app Info.plist");
-      await rejected({ INFOPLIST_FILE: "Untracked.plist" }, "Cannot read the archive app Info.plist");
+      for (const file of ["Missing.plist", "Link.plist", "Untracked.plist"]) {
+        await configure({ INFOPLIST_FILE: file });
+        await rejected({ INFOPLIST_FILE: file }, "Cannot read the archive app Info.plist");
+      }
+      await configure({ INFOPLIST_FILE: "" });
       await rejected({ INFOPLIST_FILE: "" }, "must generate its Info.plist");
+      await configure({ INFOPLIST_FILE: "", GENERATE_INFOPLIST_FILE: "YES" });
       await rejected({ INFOPLIST_FILE: "", GENERATE_INFOPLIST_FILE: "YES", DONT_GENERATE_INFOPLIST_FILE: "YES" }, "must generate its Info.plist");
+      await configure();
       await writeFile(join(project, plistName), "not a plist");
       await rejected({}, "Cannot read the archive app Info.plist");
       await writeFile(join(project, plistName), plist("1.0.1", `<key>${versionKey}-iphoneos</key><string>1.0</string>`));
@@ -1928,14 +1964,32 @@ with open(sys.argv[-1], "rb") as source:
       await rejected({ INFOPLIST_KEY_CFBundleIdentifier: "com.example.other" }, "identity build setting override");
       await rejected({ INFOPLIST_FILE: "", GENERATE_INFOPLIST_FILE: "YES", INFOPLIST_KEY_CFBundleIdentifier: "com.example.other" },
         "identity build setting override");
-      await rejected({}, "identity build setting override", { INFOPLIST_KEY_CFBundleIdentifier: "com.example.other" });
-      for (const build of [12, 13]) await writeFile(join(project, `Info-${build}.plist`), plist("1.0.1"));
-      await execFileAsync("git", ["-C", project, "add", "--", "Info-12.plist", "Info-13.plist"]);
-      await rejected({ INFOPLIST_FILE: "Info-12.plist" }, "Cannot prove stable archive identity", { INFOPLIST_FILE: "Info-13.plist" });
+
+      const selection = "$(PLIST_FOR_$(CURRENT_PROJECT_VERSION):default=Ahead.plist)";
+      await writeFile(join(project, "Archive.xcconfig"), `INFOPLIST_FILE = ${selection}\nPLIST_FOR_14 = Equal.plist\n`);
+      await writeFile(join(project, "Ahead.plist"), plist("1.0.1"));
+      await writeFile(join(project, "Equal.plist"), plist("1.0"));
+      await execFileAsync("git", ["-C", project, "add", "--", "Archive.xcconfig", "Ahead.plist", "Equal.plist"]);
+      await rm(argv);
+      for (const scope of ["project", "target"]) {
+        const reference = "baseConfigurationReference = ArchiveConfig;";
+        await configure({ INFOPLIST_FILE: "" }, scope === "target" ? reference : "", "", scope === "project" ? reference : "");
+        await rejected({ INFOPLIST_FILE: "Ahead.plist" }, "Cannot prove stable archive identity with an xcconfig");
+      }
+      await configure({ INFOPLIST_FILE: selection }, "", "PLIST_FOR_14 = Equal.plist;");
+      await rejected({ INFOPLIST_FILE: "Ahead.plist" }, "Cannot prove stable archive identity with INFOPLIST_FILE");
+      await configure({}, "", '"INFOPLIST_FILE[sdk=iphoneos*]" = "$(PLIST_FOR_$(CURRENT_PROJECT_VERSION))";');
+      await rejected({}, "Cannot prove stable archive identity with INFOPLIST_FILE[sdk=iphoneos*]");
+      await configure({ "INFOPLIST_KEY_CFBundleIdentifier[sdk=iphoneos*]": "$(OTHER_IDENTIFIER)" });
+      await rejected({}, "identity build setting override: INFOPLIST_KEY_CFBundleIdentifier[sdk=iphoneos*]");
+      await expect(readFile(argv, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+
+      await configure();
+      await rejected({ INFOPLIST_FILE: "Ahead.plist" }, "Cannot read the archive app Info.plist");
       for (const [version, bundle] of [["1.0.1", "com.example.ios"], ["$(MARKETING_VERSION)", "$(PRODUCT_BUNDLE_IDENTIFIER)"],
         ["${MARKETING_VERSION}", "${PRODUCT_BUNDLE_IDENTIFIER}"]] as const) {
         await writeFile(join(project, plistName), plist(version, "", bundle));
-        expect(run({}, { INFOPLIST_FILE: join(project, plistName) }), `${version} / ${bundle}`).toMatchObject({ status: 0, stderr: "" });
+        expect(run({ INFOPLIST_FILE: join(project, plistName) }), `${version} / ${bundle}`).toMatchObject({ status: 0, stderr: "" });
         expect(await readFile(output, "utf8")).toBe("version=1.0.1\n");
         await rm(output);
       }

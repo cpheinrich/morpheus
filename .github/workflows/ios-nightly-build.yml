@@ -475,87 +475,10 @@ jobs:
           fi
           scratch=$(mktemp -d "$RUNNER_TEMP/ios-version-check.XXXXXX")
           trap 'rm -rf "$scratch"' EXIT
-          node --input-type=module - -project "$GITHUB_WORKSPACE/$WORKING_DIRECTORY/$PROJECT" \
-            -scheme "$SCHEME" -configuration "$CONFIGURATION" -destination 'generic/platform=iOS' \
-            -derivedDataPath "$scratch" -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile <<'NODE'
-            import { execFileSync } from "node:child_process";
-            import { appendFileSync, realpathSync, statSync } from "node:fs";
-            import { isAbsolute, relative, resolve } from "node:path";
-            function archiveApp(...overrides) {
-              const json = execFileSync("xcodebuild", ["-showBuildSettings", "-json", ...process.argv.slice(2), ...overrides, "archive"],
-                { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], maxBuffer: 64 * 1024 * 1024 });
-              const apps = JSON.parse(json).filter(({action, buildSettings: settings}) =>
-                action === "archive" && settings?.PRODUCT_TYPE === "com.apple.product-type.application" &&
-                settings.PLATFORM_NAME === "iphoneos" && settings.SKIP_INSTALL === "NO");
-              if (apps.length !== 1) throw new Error("Expected one installable iOS archive app; found " + apps.length);
-              return apps[0];
-            }
-            const { target, buildSettings: settings } = archiveApp();
-            if (settings.CONFIGURATION !== process.env.CONFIGURATION || !process.env.BUNDLE_ID ||
-                settings.PRODUCT_BUNDLE_IDENTIFIER !== process.env.BUNDLE_ID) {
-              throw new Error("Resolved archive configuration or app bundle ID does not match the version check inputs");
-            }
-            const version = settings.MARKETING_VERSION;
-            if (typeof version !== "string" || !/^(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){1,2}$/.test(version)) {
-              throw new Error("Expected a literal numeric marketing version for the archive app");
-            }
-            const workspace = realpathSync(process.env.GITHUB_WORKSPACE);
-            function plistSource(settings) {
-              if (!settings.INFOPLIST_FILE) return null;
-              try {
-                const path = realpathSync(resolve(workspace, settings.SRCROOT, settings.INFOPLIST_FILE));
-                const within = relative(workspace, path);
-                if (!within || within === ".." || within.startsWith("../") || isAbsolute(within) || !statSync(path).isFile()) {
-                  throw new Error();
-                }
-                return path;
-              } catch {
-                throw new Error("Cannot read the archive app Info.plist as a checked-in plist inside the checkout");
-              }
-            }
-            const source = plistSource(settings);
-            const probe = settings.CURRENT_PROJECT_VERSION === "13" ? "14" : "13";
-            const probed = archiveApp("CURRENT_PROJECT_VERSION=" + probe);
-            const stableSettings = ["CONFIGURATION", "PRODUCT_BUNDLE_IDENTIFIER", "MARKETING_VERSION", "INFOPLIST_PREPROCESS",
-              "INFOPLIST_EXPAND_BUILD_SETTINGS", "GENERATE_INFOPLIST_FILE", "DONT_GENERATE_INFOPLIST_FILE"];
-            if (probed.buildSettings.CURRENT_PROJECT_VERSION !== probe || probed.target !== target ||
-                stableSettings.some((key) => settings[key] !== probed.buildSettings[key]) ||
-                source !== plistSource(probed.buildSettings)) {
-              throw new Error("Cannot prove stable archive identity and Info.plist settings under a CURRENT_PROJECT_VERSION override");
-            }
-            const identityFields = [["CFBundleShortVersionString", "MARKETING_VERSION"], ["CFBundleIdentifier", "PRODUCT_BUNDLE_IDENTIFIER"]];
-            const identityKeys = identityFields.map(([key]) => key);
-            if (![undefined, "", "NO"].includes(settings.INFOPLIST_PREPROCESS) ||
-                [settings, probed.buildSettings].some((candidate) => Object.keys(candidate).some((key) =>
-                  identityKeys.some((identityKey) => key.startsWith("INFOPLIST_KEY_" + identityKey))))) {
-              throw new Error("Cannot prove the archive identity with Info.plist preprocessing or an identity build setting override");
-            }
-            if (source) {
-              let plist;
-              try {
-                const options = { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000, maxBuffer: 1024 * 1024 };
-                execFileSync("git", ["--literal-pathspecs", "-C", workspace, "ls-files", "--error-unmatch", "--", relative(workspace, source)], options);
-                plist = JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", "--", source], options));
-              } catch {
-                throw new Error("Cannot read the archive app Info.plist as a checked-in plist inside the checkout");
-              }
-              const ambiguous = Object.keys(plist ?? {}).some((key) =>
-                /[$][({]/.test(key) || identityKeys.some((identityKey) => key !== identityKey && key.startsWith(identityKey)));
-              if (ambiguous) throw new Error("Archive app Info.plist must declare its identity without overriding keys");
-              for (const [key, setting] of identityFields) {
-                const value = plist?.[key];
-                const expands = settings.INFOPLIST_EXPAND_BUILD_SETTINGS === "YES" &&
-                  ["$(" + setting + ")", "${" + setting + "}"].includes(value);
-                if (value !== settings[setting] && !expands) {
-                  throw new Error(`Archive app Info.plist must set ${key} to the resolved ${setting} (${settings[setting]}) or expand ${setting} directly`);
-                }
-              }
-            } else if (settings.GENERATE_INFOPLIST_FILE !== "YES" ||
-                       ![undefined, "", "NO"].includes(settings.DONT_GENERATE_INFOPLIST_FILE)) {
-              throw new Error("Archive app must generate its Info.plist or supply a checked-in INFOPLIST_FILE");
-            }
-            appendFileSync(process.env.GITHUB_OUTPUT, "version=" + version + "\n");
-          NODE
+          node "$GITHUB_WORKSPACE/.morpheus-ci/.github/actions/ios-app-store-version/archive-identity.mjs" \
+            "$WORKING_DIRECTORY/$PROJECT" -scheme "$SCHEME" -configuration "$CONFIGURATION" \
+            -destination 'generic/platform=iOS' -derivedDataPath "$scratch" \
+            -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile
       - name: Check live App Store version
         uses: ./.morpheus-ci/.github/actions/ios-app-store-version
         with:
