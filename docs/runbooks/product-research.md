@@ -72,3 +72,6 @@ download. Deep links use `#screen=<id>&control=<id>` with an optional `capture` 
 offers a labeled capture selector. Brand the views by overriding the
 `--app-research-accent`, `-border`, `-muted`, `-surface`, `-selected`, `-radius` and `-gap` custom
 properties, or target the `app-research-*` classes.
+
+The wireframe preserves the captured control bounds. Controls whose full label cannot fit
+show a number keyed to the Controls list, where the full name remains visible.
