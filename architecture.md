@@ -4096,6 +4096,73 @@ non-ancestor baseline builds conservatively. Manual callers may force a build. K
 workflow filename stable makes its successful runs the durable release cursor without a second
 state store.
 
+For a release build, callers can opt into `check-app-store-version` and pass explicit
+`app-store-connect-app-id` and `ios-bundle-id`, plus `app-store-storefront` when the listing is
+outside the default `us` storefront. After source verification and before simulator tests, the
+selected runner and exact Xcode version query archive build settings at the verified SHA without
+building or signing. The tracked `project.pbxproj` must describe one native application target
+and no subproject references. Other target types are allowed. The supplied scheme and explicit
+`archive-configuration` (default `Release`) must resolve to that project's one installable app
+for `generic/platform=iOS`. Its resolved bundle must match `ios-bundle-id`.
+
+Before comparing with the storefront, the check reads the project and app target's exact archive
+configuration. Neither may inherit an `.xcconfig`, and `XCODE_XCCONFIG_FILE` must be unset or empty.
+Use direct, unconditional numeric `MARKETING_VERSION` and literal `PRODUCT_BUNDLE_IDENTIFIER`
+assignments matching Xcode's resolved values. Any assignments for `SKIP_INSTALL`, plist generation,
+preprocessing, or expansion must be unconditional literal `YES` or `NO`. Leave the derived project,
+target, source-root, and processed plist path settings to Xcode. Other configurations and unrelated
+settings may still use conditionals and macros.
+
+Use `GENERATE_INFOPLIST_FILE=YES` without `INFOPLIST_FILE`, or a direct, unconditional relative
+`INFOPLIST_FILE` pointing to a tracked regular `.plist` under the project directory, without symlinks.
+The latter must resolve to the same file in Xcode. Its `CFBundleShortVersionString` and
+`CFBundleIdentifier` must match the resolved values literally or expand `MARKETING_VERSION` and
+`PRODUCT_BUNDLE_IDENTIFIER` directly, respectively, with `INFOPLIST_EXPAND_BUILD_SETTINGS=YES`.
+Preprocessing, ambiguous keys, and `INFOPLIST_KEY_` overrides of those two fields refuse delivery.
+This subset rules out build-number-dependent plist selection without sampling build numbers or
+interpreting xcconfigs. The uploader still allocates the build number and verifies the final
+packaged app; arbitrary build scripts and other archive-time mutations are outside the metadata
+check. The comparison uses Morpheus's action at `actions-ref` (pass the workflow's pin when pinning).
+The runner must be able to load the project and any locked package dependencies for this metadata
+query. Equality proposes a patch bump and stops delivery; a behind version or an unavailable or
+invalid result stops delivery without a proposal. Visual-only runs do not consult the store.
+
+Without opt-in, `build` and `sha` retain the change decision and preflight SHA respectively. With
+opt-in, they expose `true` and the verified SHA only after preflight, version comparison and tests
+pass, with both source and version verified in the current run attempt; otherwise they are `false`
+and empty. Opted-in, caller-owned upload jobs (`run-upload: false`)
+must use the following job guard (for a reusable workflow job named `nightly`):
+
+```yaml
+needs: nightly
+if: >-
+  ${{ needs.nightly.result == 'success' && needs.nightly.outputs.build == 'true'
+      && needs.nightly.outputs.sha != '' && needs.nightly.outputs.archive-version != ''
+      && needs.nightly.outputs.check-attempt == github.run_attempt }}
+```
+
+Check out that exact `sha`. Both upload paths must archive the qualified app with the same Xcode,
+project, scheme, configuration, iOS destination, bundle ID, and App Store Connect app ID as the
+check. Pass `archive-version` as `MARKETING_VERSION` to the caller-owned `ios-testflight-upload`
+step and pass the same identity and configuration inputs to it. Do not override this identity
+through archive build settings, environment, plist, or scripts. The built-in upload passes the
+qualified `BUILD_CONFIGURATION` and `MARKETING_VERSION` to its script and rejects a different
+effective `IOS_BUNDLE_ID` (including a `vars.IOS_BUNDLE_ID` override) before invoking it. The
+script must honor these settings and the supplied `PROJECT_PATH`, `SCHEME_NAME`, and `ASC_APP_ID`.
+
+[GitHub supports rerunning only failed jobs](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-workflow-runs/re-running-workflows-and-jobs),
+and [`github.run_attempt` increases on rerun](https://docs.github.com/en/actions/learn-github-actions/contexts#github-context).
+A selective retry can retain a successful source or version check from an earlier attempt, after
+main or the storefront has moved. The version job refuses retained source verification, and
+neither upload path accepts eligibility unless both checks ran in the same, current attempt.
+Start a fresh complete workflow invocation from current `main` instead of retrying selected jobs.
+
+The [version action and CLI](.github/actions/ios-app-store-version/README.md) are credential-free.
+The caller owns the repair: plan against the candidate, apply only an equal-version proposal on
+the claimed repair branch, reset every governed Xcode build setting to `0`, and land the change
+through independent review and protected merge before admitting a new release SHA. Build-number
+allocation at upload remains with App Store Connect and the caller's upload action.
+
 `ios-nightly-build` requires caller-supplied project and scheme. Callers opting into
 `capture-every-night` run simulator tests even when the release change detector skips an upload.
 Callers should keep their 06:00 local trigger and add off-hour recovery triggers at 06:17,
@@ -4413,6 +4480,8 @@ The preflight then also accepts a reviewed merge that current `main` strictly co
 compare must report `ahead`, and anything else, including an unreadable `main`, refuses. The
 exact checkout, merged-PR binding and read-only permissions are the same in both modes, and there
 is still no caller-selected source. A manual dispatch has no inputs, so it keeps the default.
+The additive `current-main-attempt` output is set only when successful preflight verified equality
+with the current head of `main`; existing SHA consumers do not need to use it.
 
 The workflow is only the middle of the external-action contract:
 
