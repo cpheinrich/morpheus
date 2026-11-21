@@ -41,6 +41,43 @@ describe("ProductResearchViewer", () => {
     expect(readAsset.mock.calls).toEqual([["screens/home.png"]]);
   });
 
+  it("names both figures and matches compact wireframe controls to the full labels", () => {
+    const scrollHeight = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get");
+    const clientHeight = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(32);
+    let fitLabels: () => void = () => {};
+    const disconnect = vi.fn();
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: () => void) { fitLabels = callback; }
+      observe() {}
+      disconnect = disconnect;
+    });
+    try {
+      scrollHeight.mockReturnValue(33);
+      const { unmount } = render(<ProductResearchViewer study={study} readAsset={reader()} />);
+      expect(screen.getByRole("heading", { level: 4, name: "Wireframe" }).closest("figure")?.className)
+        .toBe("app-research-wireframe");
+      expect(screen.getByRole("heading", { level: 4, name: "Screenshot" }).closest("figure")?.className)
+        .toBe("app-research-capture");
+
+      const region = screen.getByRole("button", { name: "Settings (button)" });
+      const row = within(screen.getByRole("region", { name: "Controls" })).getByRole("button", { name: /Settings/ });
+      expect(region.getAttribute("title")).toBe("Settings");
+      expect(region.hasAttribute("data-compact")).toBe(true);
+      expect(region.querySelector(".app-research-region-number")?.textContent).toBe("1");
+      expect(row.querySelector(".app-research-control-number")?.textContent).toBe("1");
+
+      scrollHeight.mockReturnValue(32);
+      fitLabels();
+      expect(region.hasAttribute("data-compact")).toBe(false);
+      unmount();
+      expect(disconnect).toHaveBeenCalledOnce();
+    } finally {
+      scrollHeight.mockRestore();
+      clientHeight.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("reveals all captures for a screen and restores a capture deep link", async () => {
     const raw = syntheticStudy();
     const secondCapture = "screens/home-scrolled.png";

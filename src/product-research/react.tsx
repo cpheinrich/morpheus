@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useFragmentView } from "../ops-desk/react.js";
 import { verifiedResearchLibraryBlob } from "../research-library/client.js";
@@ -150,21 +150,12 @@ function ScreenDetail({ study, screen, screens, control, capture, restoring, rea
       </div>
       <div className="app-research-figures" data-pane={pane}>
         <figure className="app-research-wireframe">
-          <div className="app-research-canvas" style={{ aspectRatio: canvasRatio(shot) }}>
-            {screen.elements.map((element) => {
-              const box = geometry(element, screen);
-              return box ? (
-                <button key={element.id} type="button" className="app-research-region" style={box}
-                  aria-pressed={element.id === control} aria-label={`${element.label} (${element.role})`}
-                  onClick={() => select(element.id === control ? null : element.id)}>
-                  <span className="app-research-region-label">{element.label}</span>
-                </button>
-              ) : null;
-            })}
-          </div>
+          <h4 className="app-research-figure-title">Wireframe</h4>
+          <Wireframe screen={screen} shot={shot} control={control} select={select} />
           <figcaption>Wireframe from recorded element bounds</figcaption>
         </figure>
         <figure className="app-research-capture">
+          <h4 className="app-research-figure-title">Screenshot</h4>
           <Capture key={shot?.path} screen={screen} shot={shot} study={study} read={read} selected={selected} restoring={restoring} />
           <figcaption>{shot ? `Captured ${day(shot.capturedAt)} · ${shot.width}×${shot.height}` : "No screenshot"}</figcaption>
         </figure>
@@ -173,10 +164,11 @@ function ScreenDetail({ study, screen, screens, control, capture, restoring, rea
         <h4>Controls</h4>
         {screen.elements.length ? (
           <ul>
-            {screen.elements.map((element) => (
+            {screen.elements.map((element, index) => (
               <li key={element.id}>
                 <button type="button" className="app-research-control-button" aria-pressed={element.id === control}
                   onClick={() => select(element.id === control ? null : element.id)}>
+                  <span className="app-research-control-number" aria-hidden="true">{index + 1}</span>
                   {element.label} <span className="app-research-meta">{element.role} · {element.status}</span>
                 </button>
               </li>
@@ -195,6 +187,49 @@ function ScreenDetail({ study, screen, screens, control, capture, restoring, rea
       </section>
       {shot?.accessibility ? <AccessibilityText key={shot.accessibility} study={study} read={read} path={shot.accessibility} /> : null}
     </section>
+  );
+}
+
+function Wireframe({ screen, shot, control, select }: {
+  screen: AppResearchScreen; shot: AppResearchScreenshot | null;
+  control: string | null; select: (id: string | null) => void;
+}) {
+  const canvas = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const root = canvas.current;
+    if (!root) return;
+    const labels = root.querySelectorAll<HTMLElement>(".app-research-region-label");
+    function fitLabels() {
+      for (const label of labels) {
+        const region = label.parentElement!;
+        region.toggleAttribute("data-compact",
+          label.scrollHeight > region.clientHeight || label.scrollWidth > region.clientWidth);
+      }
+    }
+    fitLabels();
+    if (typeof ResizeObserver === "undefined") return;
+    // Measure the labels even in compact mode so they return when the layout widens.
+    const observer = new ResizeObserver(fitLabels);
+    observer.observe(root);
+    for (const label of labels) observer.observe(label);
+    return () => observer.disconnect();
+  }, [screen, shot]);
+
+  return (
+    <div ref={canvas} className="app-research-canvas" style={{ aspectRatio: canvasRatio(shot) }}>
+      {screen.elements.map((element, index) => {
+        const box = geometry(element, screen);
+        return box ? (
+          <button key={element.id} type="button" className="app-research-region" style={box}
+            aria-pressed={element.id === control} aria-label={`${element.label} (${element.role})`}
+            title={element.label} onClick={() => select(element.id === control ? null : element.id)}>
+            <span className="app-research-region-label">{element.label}</span>
+            <span className="app-research-region-number" aria-hidden="true">{index + 1}</span>
+          </button>
+        ) : null;
+      })}
+    </div>
   );
 }
 
