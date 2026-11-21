@@ -3536,6 +3536,13 @@ failures in the existing settlement journal and receipt; uncertain cleanup still
 shared workspace. Synthetic source qualification and actual host/profile canaries are
 separate evidence. See the [workspace enrollment contract](plugins/factory/README.md#enroll-a-related-repository-workspace).
 Artifacts are private Cloud Storage generations referenced by Firestore.
+Private controller inputs use a separate create-only object prefix scoped to authenticated
+context, project and submission message. Admission binds the exact generation and digest
+manifest, not the bytes, to the task and its submission replay record. Only a capable
+supervisor can claim such a task, and only its exact worker identity, attempt and live lease
+can read an input. The executor uses a private attempt directory outside the source checkouts
+for verified files, retains it across clarification turns and removes it before verified task
+settlement. It does not automatically include inputs in result artifacts or the dashboard.
 Sub2API selects the upstream account within the provider bound to the task. Codex is
 the existing default. One optional service-wide Claude binding applies to each Git-backed
 execution grant. Pinned checkouts and viewer grants do not admit Claude tasks. A slot advertises scoped quota for both providers, shares

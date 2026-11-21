@@ -31,12 +31,24 @@ async function preferredSlot(db, transaction, task, now, maxAgeMs) {
     slot: await read(transaction, db.doc(slotPath(id))),
   })));
   return candidates
-    .filter(({ slot }) => available(slot, now, maxAgeMs) && matchesClaudeQuota(slot, task.selection, now))
+    .filter(({ slot }) => available(slot, now, maxAgeMs) && matchesInputs(slot, task) && matchesClaudeQuota(slot, task.selection, now))
     .sort((a, b) => b.slot.capacity - a.slot.capacity || a.id.localeCompare(b.id))[0];
 }
 
 function matchesClaudeQuota(slot, selection, now) {
   return selection?.provider !== "claude" || quotaStatus(slot.quota, selection, now).status === "available";
+}
+
+function matchesInputs(slot, task) {
+  return !task.inputs?.length || slot.privateInputs === true;
+}
+
+function replayClaim(task, uid, now) {
+  const attempt = task.attempt;
+  if (attempt.inputWorkerUid && attempt.inputWorkerUid !== uid) return { reason: "unknown-task" };
+  if (attempt.leaseUntil <= now) return { reason: "lease-expired" };
+  if (task.state !== "TASK_STATE_WORKING" || task.cancelRequestedAt != null) return { reason: "attempt-held" };
+  return { attempt, replay: true };
 }
 
 export async function fleetQueueReason(db, task, now, maxAgeMs) {
@@ -45,7 +57,7 @@ export async function fleetQueueReason(db, task, now, maxAgeMs) {
     ...task.eligibleSlots.map(id => db.doc(slotPath(id)).get()),
   ]);
   if (workspace.data()?.attemptId) return "workspace-busy";
-  const idle = slots.map(doc => doc.data()).filter(slot => available(slot, now, maxAgeMs));
+  const idle = slots.map(doc => doc.data()).filter(slot => available(slot, now, maxAgeMs) && matchesInputs(slot, task));
   if (!idle.length) return "worker-unavailable";
   const statuses = idle.map(slot => quotaStatus(slot.quota, task.selection, now).status);
   if (statuses.includes("available")) return "awaiting-worker";
@@ -53,19 +65,15 @@ export async function fleetQueueReason(db, task, now, maxAgeMs) {
 }
 
 export function claimTask(db, {
-  taskId, attemptId, slotId, hostId, now, leaseMs, maxAgeMs,
+  taskId, attemptId, slotId, hostId, uid, privateInputs, now, leaseMs, maxAgeMs,
 }) {
   return db.runTransaction(async (transaction) => {
     const taskRef = db.doc(taskPath(taskId));
     const task = await read(transaction, taskRef);
     if (!task) return { reason: "unknown-task" };
+    if (task.inputs?.length && !(privateInputs && uid)) return { reason: "private-inputs-unsupported" };
     const prior = task.attempt;
-    if (prior?.id === attemptId && prior.hostId === hostId && prior.slotId === slotId) {
-      if (prior.leaseUntil <= now) return { reason: "lease-expired" };
-      if (task.state !== "TASK_STATE_WORKING" || task.cancelRequestedAt != null)
-        return { reason: "attempt-held" };
-      return { attempt: prior, replay: true };
-    }
+    if (prior?.id === attemptId && prior.hostId === hostId && prior.slotId === slotId) return replayClaim(task, uid, now);
     if (task.state !== "TASK_STATE_SUBMITTED" || prior) return { reason: "already-claimed" };
 
     const winner = await preferredSlot(db, transaction, task, now, maxAgeMs);
@@ -73,7 +81,8 @@ export function claimTask(db, {
     const workspaceRef = db.doc(workspacePath(task.workspaceKey));
     if ((await read(transaction, workspaceRef))?.attemptId) return { reason: "workspace-busy" };
 
-    const attempt = { id: attemptId, hostId, slotId, leaseUntil: now + leaseMs };
+    const attempt = { id: attemptId, hostId, slotId, leaseUntil: now + leaseMs,
+      ...(task.inputs?.length && { inputWorkerUid: uid }) };
     transaction.update(taskRef, { state: "TASK_STATE_WORKING", attempt, queuedSlots: [] });
     transaction.update(db.doc(slotPath(slotId)), { attemptId, lastProvider: task.selection?.provider ?? "codex" });
     transaction.set(workspaceRef, { attemptId, taskId });
@@ -94,6 +103,11 @@ export function renewAttempt(db, { taskId, attemptId, hostId, now, leaseMs }) {
 
 function ownsAttempt(task, attemptId, hostId) {
   return task?.attempt?.id === attemptId && task.attempt.hostId === hostId;
+}
+
+function requeueOwner(task, attemptId, hostId, slotId, uid) {
+  return ownsAttempt(task, attemptId, hostId) && task.attempt.slotId === slotId &&
+    (!task.attempt.inputWorkerUid || task.attempt.inputWorkerUid === uid);
 }
 
 // An expired lease indicates lost contact. It cannot free a slot or worktree.
@@ -135,7 +149,7 @@ export function settleAttempt(db, { taskId, attemptId, hostId, outcome, result, 
 // A still-owned reservation that has never started inference can release
 // both leases after a fresh quota failure. The slot remembers this release
 // for a lost reply, even if another host has already reclaimed the task.
-export function requeueUnstartedTask(db, { taskId, attemptId, hostId, slotId, invocation }) {
+export function requeueUnstartedTask(db, { taskId, attemptId, hostId, slotId, uid, invocation }) {
   return db.runTransaction(async transaction => {
     const slotRef = db.doc(slotPath(slotId));
     const slot = await read(transaction, slotRef);
@@ -143,13 +157,13 @@ export function requeueUnstartedTask(db, { taskId, attemptId, hostId, slotId, in
     if (slot.requeued?.taskId === taskId && slot.requeued.attemptId === attemptId) return true;
     const taskRef = db.doc(taskPath(taskId));
     const task = await read(transaction, taskRef);
-    if (!ownsAttempt(task, attemptId, hostId) || task.attempt.slotId !== slotId || slot.attemptId !== attemptId) return false;
+    if (!requeueOwner(task, attemptId, hostId, slotId, uid) || slot.attemptId !== attemptId) return false;
     if (task.selection?.provider !== "claude" || task.questionId || task.answerId || task.state !== "TASK_STATE_WORKING") return false;
     const workspaceRef = db.doc(workspacePath(task.workspaceKey));
     const workspace = await read(transaction, workspaceRef);
     if (workspace?.attemptId !== attemptId || workspace.taskId !== taskId) return false;
     const state = task.cancelRequestedAt != null ? "TASK_STATE_CANCELED" : "TASK_STATE_SUBMITTED";
-    const queuedSlots = state === "TASK_STATE_SUBMITTED" ? taskQueueKeys(task.eligibleSlots, task.selection) : [];
+    const queuedSlots = state === "TASK_STATE_SUBMITTED" ? taskQueueKeys(task.eligibleSlots, task.selection, task.inputs) : [];
     transaction.update(taskRef, { state, queuedSlots, attempt: null, lastAttempt: task.attempt });
     transaction.update(slotRef, { attemptId: null, available: false, requeued: { taskId, attemptId } });
     transaction.set(db.doc(receiptPath(taskId)), { ...invocation, taskId, attemptId, hostId, slotId, state, terminationVerified: true, selection: task.selection, source: task.source });

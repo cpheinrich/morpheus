@@ -9,7 +9,7 @@ import { doc, getFirestore, onSnapshot, terminate } from "firebase/firestore";
 const slowLinkOperations = new Set(["heartbeat", "claim", "inspect", "renew", "question", "finish"]);
 
 function requestTimeout(op) {
-  if (op === "upload" || op === "download") return 45_000;
+  if (["upload", "download", "upload_input", "input"].includes(op)) return 45_000;
   return slowLinkOperations.has(op) ? 20_000 : 8_000;
 }
 

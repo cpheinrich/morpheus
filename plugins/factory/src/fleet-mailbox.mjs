@@ -8,7 +8,11 @@ const identifier = /^[A-Za-z0-9_-]{1,128}$/;
 // Keep the existing indexed field and the legacy Codex slot keys. A provider
 // blocked on quota must not occupy the other provider's candidate window.
 export const claudeQueueKey = slot => `claude:${slot}`;
-export const taskQueueKeys = (slots, selection) => selection?.provider === "claude" ? slots.map(claudeQueueKey) : slots;
+export const inputQueueKey = slot => `inputs:${slot}`;
+export function taskQueueKeys(slots, selection, inputs) {
+  const keys = selection?.provider === "claude" ? slots.map(claudeQueueKey) : slots;
+  return inputs?.length ? keys.map(inputQueueKey) : keys;
+}
 
 function assertId(value) {
   if (typeof value !== "string" || !identifier.test(value)) throw new Error("Invalid Factory identity");
@@ -29,7 +33,7 @@ function matchContext(task, contextId) {
 
 // This boundary takes the authenticated controller's context and a launch
 // spec resolved by the service from a registered project and exact revision.
-export function submitTask(db, { contextId, messageId, text, launch, display, now }) {
+export async function submitTask(db, { contextId, messageId, text, launch, display, inputs, validateInputs, now }) {
   assertId(contextId);
   assertId(messageId);
   assertText(text);
@@ -37,22 +41,30 @@ export function submitTask(db, { contextId, messageId, text, launch, display, no
   if (!Array.isArray(eligibleSlots) || !eligibleSlots.length || eligibleSlots.length > 16)
     throw new Error("Factory requires between one and sixteen eligible slots");
   for (const value of [workspaceKey, ...eligibleSlots]) assertId(value);
-  const spec = { eligibleSlots, workspaceKey, source, selection };
+  const spec = { eligibleSlots, workspaceKey, source, selection, ...(inputs?.length && { inputs }) };
   const submissionId = createHash("sha256").update(contextId).update("\0").update(messageId).digest("hex");
   const submission = db.doc(`factorySubmissions/${submissionId}`);
   const id = randomUUID();
+  let validated = false;
   return db.runTransaction(async (transaction) => {
     const prior = await data(transaction, submission);
     if (prior) {
       const task = await data(transaction, db.doc(taskPath(prior.taskId)));
       matchContext(task, contextId);
       // Presentation can be backfilled without changing the execution intent.
-      if (task.brief.text !== text || !isDeepStrictEqual(prior.launch, spec))
-        throw new Error("Message ID already used for a different brief");
+      if (task.brief.text !== text || !isDeepStrictEqual(prior.launch, spec)) {
+        const conflict = new Error("Message ID already used for a different brief");
+        if (prior.launch.inputs || spec.inputs) conflict.status = 409;
+        throw conflict;
+      }
       return { task, replay: true };
     }
+    if (spec.inputs && !validated) {
+      await validateInputs();
+      validated = true;
+    }
     const brief = { messageId, role: "ROLE_USER", text, createdAt: now };
-    const task = { ...spec, queuedSlots: taskQueueKeys(eligibleSlots, selection), id, contextId, brief, ...(display && { display }), state: "TASK_STATE_SUBMITTED", createdAt: now };
+    const task = { ...spec, queuedSlots: taskQueueKeys(eligibleSlots, selection, inputs), id, contextId, brief, ...(display && { display }), state: "TASK_STATE_SUBMITTED", createdAt: now };
     transaction.set(db.doc(taskPath(id)), task);
     transaction.set(submission, { taskId: id, launch: spec });
     return { task, replay: false };

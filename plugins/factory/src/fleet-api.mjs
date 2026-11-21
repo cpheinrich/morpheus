@@ -2,13 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { fleetModel, fleetProvider } from "./config.mjs";
 import { claimTask, fleetQueueReason, leaseMs, renewAttempt, requeueUnstartedTask, settleAttempt } from "./fleet-claims.mjs";
-import { answerQuestion, askQuestion, cancelTask, claudeQueueKey, submitTask } from "./fleet-mailbox.mjs";
+import { answerQuestion, askQuestion, cancelTask, claudeQueueKey, inputQueueKey, submitTask } from "./fleet-mailbox.mjs";
 import { fleetDiagnostic, invocationReceipt, receiptPath } from "./fleet-receipt.mjs";
 import { workspaceIntent, workspaceLaunch } from "./fleet-workspace.mjs";
 import { dashboardMetadata, reportedPullRequests } from "./fleet-display.mjs";
 import { readFleetWork } from "./fleet-work.mjs";
 import { fleetReadiness } from "./fleet-readiness.mjs";
 import { hasClaudeHeadroom, quotaObservation } from "./fleet-quota.mjs";
+import { assertInputBytes, inputManifest, inputName, inputUploadFields, uploadInput, validateStoredInputs } from "./fleet-inputs.mjs";
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const digest = /^[0-9a-f]{64}$/;
@@ -22,9 +23,10 @@ const taskFields = { taskId: id };
 const attemptFields = { ...taskFields, attemptId: id };
 const scope = { rootId: id, ...taskFields };
 const worker = {
-  heartbeat: z.object({ available: z.boolean(), capacity: z.number().int().min(0).max(1048576), quota: quotaObservation.optional() }),
-  claim: z.object(attemptFields),
+  heartbeat: z.object({ available: z.boolean(), capacity: z.number().int().min(0).max(1048576), quota: quotaObservation.optional(), privateInputs: z.boolean().optional() }),
+  claim: z.object({ ...attemptFields, privateInputs: z.boolean().optional() }),
   inspect: z.object(attemptFields),
+  input: z.object({ ...attemptFields, name: inputName }),
   renew: z.object(attemptFields),
   question: z.object({ ...attemptFields, questionId: id, text: message }),
   finish: z.object({
@@ -41,7 +43,8 @@ const worker = {
   }),
 };
 const controller = {
-  submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, workspace: workspaceIntent.optional(), provider: fleetProvider.optional(), model: fleetModel.optional(), display: dashboardMetadata.optional() }),
+  submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, workspace: workspaceIntent.optional(), provider: fleetProvider.optional(), model: fleetModel.optional(), display: dashboardMetadata.optional(), inputs: inputManifest.optional() }),
+  upload_input: z.object({ rootId: id, messageId: id, project: id, ...inputUploadFields }),
   get: z.object(scope),
   readiness: z.object({ rootId: id, project: id, provider: fleetProvider.optional() }),
   answer: z.object({ ...scope, attemptId: id, questionId: id, messageId: id, text: message }),
@@ -122,10 +125,17 @@ function inspectReadiness(db, config, principal, { project: projectName, provide
 async function handleController(op, input, { db, config, principal, uid, objects, log, now }) {
   if (op === "readiness") return inspectReadiness(db, config, principal, input, now);
   const contextId = hash(`${uid}\0${input.rootId}`);
+  const inputScope = { ...input, contextId };
+  if (op === "upload_input") {
+    if (!enrolledProject(config, principal, input.project)) throw failure(403, "Project is outside enrollment");
+    return uploadInput(objects, inputScope, input);
+  }
   const notify = (slots) => signal(db, Object.keys(config.users).filter((key) =>
     slots.includes(config.users[key].slotId)), log);
   if (op === "submit") {
-    const result = await submitTask(db, { ...input, contextId, now, launch: launchFor(config, principal, input) });
+    const launch = launchFor(config, principal, input);
+    const result = await submitTask(db, { ...inputScope, now, launch,
+      validateInputs: () => validateStoredInputs(objects, inputScope, input.inputs ?? []) });
     await notify(result.task.eligibleSlots);
     return result;
   }
@@ -164,13 +174,14 @@ async function heartbeat(db, { hostId, slotId }, input, now) {
     const prior = (await tx.get(slot)).data();
     if (prior && prior.hostId !== hostId) throw failure(409, "Factory slot belongs to another host");
     tx.set(slot, { hostId, available: input.available, capacity: input.capacity, observedAt: now,
-      quota: input.quota ?? null }, { merge: true });
+      quota: input.quota ?? null, privateInputs: input.privateInputs === true }, { merge: true });
     return prior?.lastProvider;
   });
   if (!input.available) return { tasks: [] };
   const queues = [slotId];
   if (hasClaudeHeadroom(input.quota, now)) queues.push(claudeQueueKey(slotId));
   if (lastProvider === "codex") queues.reverse();
+  if (input.privateInputs) queues.push(...queues.map(key => inputQueueKey(key)));
   const pending = await Promise.all(queues.map(key => db.collection("factoryTasks").where("queuedSlots", "array-contains", key).limit(16).get()));
   // Each provider has its own bounded window in the shared queue. Interleave
   // them so both advance when the slot supports both providers.
@@ -193,8 +204,9 @@ async function storedResult(objects, input) {
   return { summary: input.result.summary, artifacts, ...(input.result.diagnosticCode ? { diagnosticCode: input.result.diagnosticCode } : {}), ...(input.result.pullRequests?.length && { pullRequests: input.result.pullRequests }) };
 }
 
-function attemptOwner(attempt, { attemptId, hostId, slotId }) {
-  return attempt?.id === attemptId && attempt.hostId === hostId && attempt.slotId === slotId;
+function attemptOwner(attempt, { attemptId, hostId, slotId, uid }) {
+  return attempt?.id === attemptId && attempt.hostId === hostId && attempt.slotId === slotId &&
+    (!attempt.inputWorkerUid || attempt.inputWorkerUid === uid);
 }
 
 async function finishAttempt(db, binding, objects) {
@@ -210,10 +222,28 @@ async function withAnswer(db, task) {
   return { task, answer };
 }
 
-async function handleWorker(op, input, { db, principal, objects, now, config, log }) {
+async function workerInput(db, objects, binding, clock) {
+  const load = () => loadTask(db, binding.taskId, task =>
+    attemptOwner(task.attempt, binding) && task.attempt.inputWorkerUid === binding.uid);
+  const read = async () => {
+    const task = await load();
+    if (task.state !== "TASK_STATE_WORKING" || task.cancelRequestedAt != null || task.attempt.leaseUntil <= clock())
+      throw failure(409, "Factory attempt cannot read inputs");
+    const file = task.inputs?.find(({ name }) => name === binding.name);
+    if (!file) throw failure(404, "Unknown Factory input");
+    return file;
+  };
+  const file = await read();
+  const bytes = assertInputBytes(file, await objects.download(file));
+  await read();
+  return { input: file, bytes: bytes.toString("base64") };
+}
+
+async function handleWorker(op, input, { db, principal, uid, objects, now, clock, config, log }) {
   const { hostId, slotId } = principal;
   if (op === "heartbeat") return heartbeat(db, principal, input, now);
-  const binding = { ...input, hostId, slotId, now, leaseMs, maxAgeMs };
+  const binding = { ...input, hostId, slotId, uid, now, leaseMs, maxAgeMs };
+  if (op === "input") return workerInput(db, objects, binding, clock);
   const notify = () => signal(db, Object.keys(config.users).filter((uid) => config.users[uid].role === "controller"), log);
   if (op === "finish") {
     const result = await finishAttempt(db, binding, objects);
@@ -288,7 +318,7 @@ export function createFleetApi({ db, verifyToken, config, objects, clock = Date.
         return;
       }
       const handle = principal.role === "controller" ? handleController : handleWorker;
-      response.end(JSON.stringify(await handle(op, input, { db, config, principal, uid, objects, log, now: clock() })));
+      response.end(JSON.stringify(await handle(op, input, { db, config, principal, uid, objects, log, clock, now: clock() })));
     } catch (error) {
       if (!error.status) log("Factory request failed", error.code ?? error.name);
       response.statusCode = error.status ?? 500;
