@@ -331,6 +331,18 @@ describe("serve-sim and the guide", () => {
     expect(QA_GUIDE).not.toMatch(/\bEvo\b|\bLakina\b/);
   });
 
+  it("routes submitted feedback to Firestore and keeps local lookups read-only", () => {
+    const intake = QA_GUIDE.split("## Local preview and overlay inbox")[0]!.replace(/\s+/g, " ");
+    expect(commentQaSkill()).toMatch(/already submitted, check Firestore first/);
+    expect(intake).toMatch(/Start with Firestore.*website.*iOS app/);
+    expect(intake).toMatch(/unclear source, check Firestore first.*local inbox/);
+    expect(intake).toMatch(/local desktop preview overlay, go straight to its checkout inbox/);
+    expect(intake).toMatch(/inspect a local batch, run `morpheus qa comments pending` and `morpheus qa comments show <batchId>`/);
+    expect(intake).not.toMatch(/morpheus qa comments (claim|resolve)/);
+    expect(intake).toMatch(/site and environment that received the comment, even when the page is about a different project.*webQaBatches/);
+    expect(intake).toMatch(/Firebase project for the reporting build.*users\/\{uid\}\/bugReports/);
+  });
+
   it("keeps both repository copies of the skill identical to the template init writes", async () => {
     for (const dir of [".agents", ".claude"]) {
       expect(await readFile(join(import.meta.dirname, "..", dir, "skills/comment-qa/SKILL.md"), "utf8")).toBe(commentQaSkill());

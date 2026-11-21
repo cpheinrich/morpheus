@@ -12,9 +12,11 @@ export const QA_GUIDE = `# Comment QA
 ## Find submitted feedback
 
 Start with Firestore for feedback already submitted from a website or inside an iOS app.
-If the person identifies a local desktop preview overlay, go straight to its checkout inbox
-(see step 4). For an unclear source, check Firestore first and check the local inbox if an
-overlay send is plausible.
+If the person identifies a local desktop preview overlay, go straight to its checkout inbox.
+For an unclear source, check Firestore first and check the local inbox if a local send is
+plausible. To inspect a local batch, run \`morpheus qa comments pending\` and
+\`morpheus qa comments show <batchId>\` from the checkout that hosted the overlay. Use claim
+and resolve only when authorized to act on the batch.
 
 1. **Live web.** Use the Firebase project for the site and environment that received the
    comment, even when the page is about a different project. Open \`webQaBatches/{batchId}\` if

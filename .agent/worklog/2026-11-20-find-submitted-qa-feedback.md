@@ -19,3 +19,12 @@ lookup and matching, batch Notes, and reporting what evidence was stored.
 Verified 130 focused tests for QA guide and skill parity, scaffolding, and project skill discovery.
 Typecheck, compile, the roadmap index, complexity, and both skill frontmatter checks passed.
 Read the compiled QA guide to verify both Firestore routes and the local overlay exception.
+
+## Review corrections
+
+Lookup-only requests now use the existing read-only pending and show commands in the checkout
+that hosted the overlay. Claim and resolve remain for authorized batch handling. Added a focused
+test for Firestore-first intake, the two Firebase project choices and the read-only local route.
+The test failed when run against the previous guide, then passed with the corrected guide.
+All 131 focused tests passed. Typecheck, compile, roadmap index, complexity and both skill
+validators passed again.

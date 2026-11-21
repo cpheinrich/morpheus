@@ -1746,8 +1746,9 @@ iOS feedback. Run \`morpheus qa guide\` for the lookup steps and read any batch-
 ## Local preview and overlay inbox
 
 Use the local queue directly when the person identifies a desktop preview overlay. If the
-submission source is unclear, check Firestore first and look in the checkout's overlay inbox
-when a local send is plausible.
+submission source is unclear, check Firestore first and look in the local inbox when a local
+send is plausible. For lookup only, use \`morpheus qa comments pending\` and
+\`morpheus qa comments show <batchId>\` from the checkout that hosted the overlay.
 
 Run \`morpheus qa guide\` for the local workflow. The guide ships with the CLI, so its instructions
 match the commands you run. Read any batch-level Notes before handling individual comments.
