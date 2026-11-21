@@ -1,13 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { fleetCodexModel } from "./config.mjs";
-import { claimTask, leaseMs, renewAttempt, settleAttempt } from "./fleet-claims.mjs";
-import { answerQuestion, askQuestion, cancelTask, submitTask } from "./fleet-mailbox.mjs";
+import { fleetModel, fleetProvider } from "./config.mjs";
+import { claimTask, fleetQueueReason, leaseMs, renewAttempt, requeueUnstartedTask, settleAttempt } from "./fleet-claims.mjs";
+import { answerQuestion, askQuestion, cancelTask, claudeQueueKey, submitTask } from "./fleet-mailbox.mjs";
 import { fleetDiagnostic, invocationReceipt, receiptPath } from "./fleet-receipt.mjs";
 import { workspaceIntent, workspaceLaunch } from "./fleet-workspace.mjs";
 import { dashboardMetadata, reportedPullRequests } from "./fleet-display.mjs";
 import { readFleetWork } from "./fleet-work.mjs";
-import { fleetReadiness, quotaObservation } from "./fleet-readiness.mjs";
+import { fleetReadiness } from "./fleet-readiness.mjs";
+import { hasClaudeHeadroom, quotaObservation } from "./fleet-quota.mjs";
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const digest = /^[0-9a-f]{64}$/;
@@ -28,7 +29,7 @@ const worker = {
   question: z.object({ ...attemptFields, questionId: id, text: message }),
   finish: z.object({
     ...attemptFields,
-    outcome: z.enum(["TASK_STATE_COMPLETED", "TASK_STATE_FAILED", "TASK_STATE_CANCELED"]),
+    outcome: z.enum(["TASK_STATE_COMPLETED", "TASK_STATE_FAILED", "TASK_STATE_CANCELED", "TASK_STATE_SUBMITTED"]),
     result: z.object({ summary: shortText, diagnosticCode: fleetDiagnostic.optional(), artifacts: z.array(name).max(8).optional(), pullRequests: reportedPullRequests.optional() }).nullable(),
     cleanupVerified: z.boolean(),
     admissionId: z.uuid().optional(),
@@ -40,15 +41,17 @@ const worker = {
   }),
 };
 const controller = {
-  submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, workspace: workspaceIntent.optional(), model: fleetCodexModel.optional(), display: dashboardMetadata.optional() }),
+  submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, workspace: workspaceIntent.optional(), provider: fleetProvider.optional(), model: fleetModel.optional(), display: dashboardMetadata.optional() }),
   get: z.object(scope),
-  readiness: z.object({ rootId: id, project: id }),
+  readiness: z.object({ rootId: id, project: id, provider: fleetProvider.optional() }),
   answer: z.object({ ...scope, attemptId: id, questionId: id, messageId: id, text: message }),
   cancel: z.object(scope),
   download: z.object({ ...scope, name }),
 };
 
 function validFinishReceipt(input) {
+  if (input.outcome === "TASK_STATE_SUBMITTED")
+    return input.cleanupVerified && input.admissionId === undefined && input.invocation?.launch === "never-launched" && input.invocation.admissionId === null;
   if (!input.invocation) return input.admissionId === undefined;
   if (!input.cleanupVerified || input.invocation.admissionId !== (input.admissionId ?? null)) return false;
   return input.invocation.launch !== "never-launched" || input.outcome !== "TASK_STATE_COMPLETED";
@@ -74,11 +77,19 @@ function enrolledProject(config, principal, name) {
   return principal.projects.includes(name) && Object.hasOwn(config.projects, name) && config.projects[name];
 }
 
+function projectSelection(config, project, provider, model) {
+  const claude = config.claudeSelection;
+  const useClaude = provider === "claude" || (!provider && claude && model === claude.model);
+  if (!useClaude) return project?.selection;
+  if (project?.revision !== "git") return undefined;
+  return Object.values(config.users).some(user => user.role === "worker" && project.eligibleSlots.includes(user.slotId)) ? claude : undefined;
+}
+
 function launchFor(config, principal, input) {
   const project = enrolledProject(config, principal, input.project);
-  const selection = project?.selection;
+  const selection = projectSelection(config, project, input.provider, input.model);
   const fetchSource = project?.revision === "git";
-  if (!project || (!fetchSource && project.revision !== input.revision) || (input.model && input.model !== selection.model))
+  if (!project || !selection || (!fetchSource && project.revision !== input.revision) || (input.model && input.model !== selection.model))
     throw failure(403, "Project revision or model is outside the pilot enrollment");
   let workspace;
   if (input.workspace || project.workspace) {
@@ -100,14 +111,16 @@ async function signal(db, uids, log) {
   }));
 }
 
-function inspectReadiness(db, config, principal, projectName, now) {
+function inspectReadiness(db, config, principal, { project: projectName, provider }, now) {
   const project = enrolledProject(config, principal, projectName);
-  if (!project) throw failure(403, "Project is outside the pilot enrollment");
-  return fleetReadiness(db, config.users, projectName, project, now, maxAgeMs);
+  if (!project) throw failure(403, "Project is outside enrollment");
+  const selection = projectSelection(config, project, provider);
+  if (!selection) throw failure(403, "Worker provider is outside enrollment");
+  return fleetReadiness(db, config.users, projectName, { ...project, selection }, now, maxAgeMs);
 }
 
 async function handleController(op, input, { db, config, principal, uid, objects, log, now }) {
-  if (op === "readiness") return inspectReadiness(db, config, principal, input.project, now);
+  if (op === "readiness") return inspectReadiness(db, config, principal, input, now);
   const contextId = hash(`${uid}\0${input.rootId}`);
   const notify = (slots) => signal(db, Object.keys(config.users).filter((key) =>
     slots.includes(config.users[key].slotId)), log);
@@ -117,7 +130,7 @@ async function handleController(op, input, { db, config, principal, uid, objects
     return result;
   }
   const task = await loadTask(db, input.taskId, (row) => row.contextId === contextId);
-  if (op === "get") return controllerSnapshot(db, task);
+  if (op === "get") return controllerSnapshot(db, task, now);
   if (op === "download") {
     const artifact = task.result?.artifacts?.find(({ name }) => name === input.name);
     if (!artifact) throw failure(404, "Unknown Factory artifact");
@@ -131,25 +144,37 @@ async function handleController(op, input, { db, config, principal, uid, objects
   return result;
 }
 
-async function controllerSnapshot(db, task) {
-  const [question, receipt] = await Promise.all([
+async function controllerSnapshot(db, task, now) {
+  const [question, receipt, queueReason] = await Promise.all([
     task.questionId ? messageRef(db, task.id, task.questionId).get().then((doc) => doc.data()) : null,
     task.lastAttempt && !task.attempt ? db.doc(receiptPath(task.id)).get().then((doc) => doc.data()) : null,
+    task.state === "TASK_STATE_SUBMITTED" ? fleetQueueReason(db, task, now, maxAgeMs) : null,
   ]);
-  return { task, question, ...(receipt ? { receipt } : {}) };
+  const snapshot = { task, question, ...(queueReason ? { queueReason } : {}) };
+  if (receipt && receipt.attemptId === task.lastAttempt?.id) {
+    const key = receipt.state === "TASK_STATE_SUBMITTED" ? "previousAttemptReceipt" : "receipt";
+    snapshot[key] = receipt;
+  }
+  return snapshot;
 }
 
 async function heartbeat(db, { hostId, slotId }, input, now) {
   const slot = db.doc(`factorySlots/${slotId}`);
-  await db.runTransaction(async (tx) => {
+  const lastProvider = await db.runTransaction(async (tx) => {
     const prior = (await tx.get(slot)).data();
     if (prior && prior.hostId !== hostId) throw failure(409, "Factory slot belongs to another host");
     tx.set(slot, { hostId, available: input.available, capacity: input.capacity, observedAt: now,
       quota: input.quota ?? null }, { merge: true });
+    return prior?.lastProvider;
   });
   if (!input.available) return { tasks: [] };
-  const queued = await db.collection("factoryTasks").where("queuedSlots", "array-contains", slotId).limit(16).get();
-  return { tasks: queued.docs.map(({ id }) => id) };
+  const queues = [slotId];
+  if (hasClaudeHeadroom(input.quota, now)) queues.push(claudeQueueKey(slotId));
+  if (lastProvider === "codex") queues.reverse();
+  const pending = await Promise.all(queues.map(key => db.collection("factoryTasks").where("queuedSlots", "array-contains", key).limit(16).get()));
+  // Each provider has its own bounded window in the shared queue. Interleave
+  // them so both advance when the slot supports both providers.
+  return { tasks: Array.from({ length: 16 }, (_, i) => pending.flatMap(({ docs }) => docs[i]?.id ?? [])).flat() };
 }
 
 async function upload(objects, input) {
@@ -172,7 +197,9 @@ function attemptOwner(attempt, { attemptId, hostId, slotId }) {
   return attempt?.id === attemptId && attempt.hostId === hostId && attempt.slotId === slotId;
 }
 
-async function finishAttempt(db, binding, task, objects) {
+async function finishAttempt(db, binding, objects) {
+  if (binding.outcome === "TASK_STATE_SUBMITTED") return { settled: await requeueUnstartedTask(db, binding) };
+  const task = await loadTask(db, binding.taskId, task => attemptOwner(task.attempt, binding) || attemptOwner(task.lastAttempt, binding));
   if (task.lastAttempt && !task.attempt) return { settled: true };
   const result = binding.cleanupVerified ? await storedResult(objects, binding) : null;
   return { settled: await settleAttempt(db, { ...binding, result }) };
@@ -187,6 +214,12 @@ async function handleWorker(op, input, { db, principal, objects, now, config, lo
   const { hostId, slotId } = principal;
   if (op === "heartbeat") return heartbeat(db, principal, input, now);
   const binding = { ...input, hostId, slotId, now, leaseMs, maxAgeMs };
+  const notify = () => signal(db, Object.keys(config.users).filter((uid) => config.users[uid].role === "controller"), log);
+  if (op === "finish") {
+    const result = await finishAttempt(db, binding, objects);
+    await notify();
+    return result;
+  }
   const owns = (task) => attemptOwner(task.attempt, binding);
   if (op === "claim") {
     const result = await claimTask(db, binding);
@@ -194,15 +227,15 @@ async function handleWorker(op, input, { db, principal, objects, now, config, lo
     return { ...result, task: await loadTask(db, input.taskId, owns) };
   }
   const task = await loadTask(db, input.taskId, (task) => owns(task) ||
-    ((op === "finish" || op === "inspect") && attemptOwner(task.lastAttempt, binding)));
+    (op === "inspect" && attemptOwner(task.lastAttempt, binding)));
   if (op === "inspect") return withAnswer(db, task);
   if (op === "renew") return { renewed: await renewAttempt(db, binding), leaseMs };
   if (op === "upload") {
     if (task.cancelRequestedAt != null || task.attempt.leaseUntil <= now) throw failure(409, "Factory attempt cannot publish artifacts");
     return upload(objects, input);
   }
-  const result = op === "question" ? await askQuestion(db, binding) : await finishAttempt(db, binding, task, objects);
-  await signal(db, Object.keys(config.users).filter((uid) => config.users[uid].role === "controller"), log);
+  const result = await askQuestion(db, binding);
+  await notify();
   return result;
 }
 

@@ -28,7 +28,8 @@ export const activation = (config) => ({
  * not be a dash, so a value can never be read by the CLI as another flag.
  */
 export const modelIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*(\[[a-zA-Z0-9]+\])?$/;
-export const fleetCodexModel = z.string().regex(/^[a-zA-Z0-9_-][a-zA-Z0-9_.-]{0,127}$/);
+export const fleetProvider = z.enum(["codex", "claude"]);
+export const fleetModel = z.string().regex(/^[a-zA-Z0-9_-][a-zA-Z0-9_.-]{0,127}$/);
 /**
  * Aliases that resolve to whatever the CLI currently considers best are refused: the
  * subscription allowlist existed to stop one of these selecting a paid-credit-only

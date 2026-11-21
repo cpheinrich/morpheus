@@ -91,6 +91,19 @@ export async function connectFleet(config, signIn = signInWithEmailAndPassword) 
   };
 }
 
+// The service resolves a repeated message ID to the same task transactionally.
+export async function submitFleetTask(client, body) {
+  try { return await client.call("submit", body); }
+  catch (error) {
+    if (error?.retryable !== true) throw error;
+  }
+  try { return await client.call("submit", body); }
+  catch (error) {
+    if (error?.retryable !== true) throw error;
+    throw new Error(`Factory submission acknowledgement is uncertain. Retry the same message ID: ${body.messageId}.`, { cause: error });
+  }
+}
+
 export function waitForFleetTask(client, body, seconds = 25) {
   let stop;
   return new Promise((resolve, reject) => {

@@ -50,6 +50,9 @@ ticket". The reviewer returns the paths it read as **Context read**, and the aut
 reported as a `review-context` warning by `review validate` and `check pr`. It is never refused,
 so older records and reviews of trivial changes still pass.
 
+Fill the packet’s **Author evidence** line with the PR intent, actual **Test plan** results, and any
+required visuals tied to the published candidate. Review exact Git diffs one path at a time and
+read long outputs in consecutive ranges. Use the packet’s full blob IDs to verify the evidence.
 The reviewer also reads the PR description, above all its **Test plan**. It checks that what the
 author ran covers the change, reruns what would settle a doubt, and adds its own checks wherever
 the plan falls short. The plan is where review starts, not where it stops.

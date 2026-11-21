@@ -193,7 +193,8 @@ describe("measured review timing", () => {
       expect(output).toContain(AUTHOR_CONTEXT_SLOT);
       expect(output).toContain("Read the PR description too, and its Test plan above all");
       expect(output).toContain("never the limit of your review");
-      expect(output).toContain("PR description and test plan: run `gh pr view --json title,body` from the repository");
+      expect(output).toContain("Author evidence: paste the PR intent, actual Test plan results and any required visual evidence");
+      expect(output).toContain("Check the live PR with `gh pr view --json title,body`");
       expect(output).toContain("mechanism that the requirements do not need is substantive; a local simplification is minor");
       expect(output).not.toContain("risk class; elapsed minutes;");
     } finally { log.mockRestore(); }

@@ -1,33 +1,39 @@
 // Explicit unattended admission is separate from desktop task/permission discovery.
 import { z } from 'zod';
 import { constants } from 'node:fs';
-import { access, mkdir, open, readFile, realpath, stat } from 'node:fs/promises';
+import { access, link, mkdir, open, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { join, dirname, isAbsolute, relative } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn, execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
+import { homedir } from 'node:os';
 import { home, modelIdPattern, MOVING_MODEL_ALIASES, secretRef, codexPermission, withoutReferencedSecrets } from './config.mjs';
 import { checkCodex, codexArgs, codexHandoff, applyCodexEvent } from './codex-exec.mjs';
+import { checkClaude, claudeArgs, applyClaudeEvent } from './claude.mjs';
+import { claudeOverage } from './fleet-claude.mjs';
 import { atomic, readJSON, key } from './store.mjs';
 
 import { workspaceHost, enrolledWorkspace } from './fleet-workspace-checkout.mjs';
 
+const gatewaySchema = provider => z.strictObject({
+  name: z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/),
+  provider: z.literal(provider),
+  baseUrl: z.string().url(),
+  keyRef: secretRef,
+});
+const fixedModel = z.string().regex(modelIdPattern).refine(v => !MOVING_MODEL_ALIASES.has(v.toLowerCase()));
 const schema = z.strictObject({
   version: z.literal(1),
   jobId: z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/),
   cwd: z.string().refine(isAbsolute),
-  gateway: z.strictObject({
-    name: z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/),
-    provider: z.literal('codex'),
-    baseUrl: z.string().url(),
-    keyRef: secretRef,
-  }),
-  model: z.string().regex(modelIdPattern).refine(v => !MOVING_MODEL_ALIASES.has(v.toLowerCase())),
+  gateway: gatewaySchema('codex'),
+  model: fixedModel,
   effort: z.enum(['none', 'low', 'medium', 'high', 'xhigh', 'max']),
   sandbox: z.enum(['read-only', 'workspace-write', 'danger-full-access']),
   approvalPolicy: z.literal('never'),
   fleetWorkspace: workspaceHost.optional(),
+  fleetClaude: z.strictObject({ gateway: gatewaySchema('claude'), model: fixedModel }).optional(),
   maxRunSeconds: z.number().int().min(1).max(28800),
   maxLogBytes: z.number().int().min(256).max(16 * 1024 * 1024),
 });
@@ -53,6 +59,12 @@ async function configAuthority(path) {
     return 'operator';
   throw new Error('Configuration must be an owner-only regular file or a protected operator file');
 }
+function normalizeGateway(gateway) {
+  const url = new URL(gateway.baseUrl);
+  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || /["\\\s]/.test(gateway.baseUrl))
+    throw new Error('Gateway URL must be an explicit credential-free HTTP(S) endpoint');
+  gateway.baseUrl = gateway.baseUrl.replace(/\/+$/, '');
+}
 export async function readWorkerConfig(path) {
   const configPath = await realpath(path);
   const authority = await configAuthority(configPath);
@@ -61,15 +73,30 @@ export async function readWorkerConfig(path) {
   catch { throw new Error('Invalid unattended worker configuration'); }
   config.cwd = await realpath(config.cwd);
   if (config.fleetWorkspace && authority !== 'operator') throw new Error('Workspace policy requires protected operator configuration');
+  if (config.fleetClaude && authority !== 'operator') throw new Error('Fleet Claude requires protected operator configuration');
   // A service authority file cannot be part of an agent-editable checkout.
   let workspaceRoot;
   try { workspaceRoot = await realpath(execFileSync('git', ['-C', dirname(configPath), 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()); } catch {}
   if (workspaceRoot || inside(config.cwd, configPath)) throw new Error('Configuration must be outside workspaces');
-  const url = new URL(config.gateway.baseUrl);
-  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || /["\\\s]/.test(config.gateway.baseUrl))
-    throw new Error('Gateway URL must be an explicit credential-free HTTP(S) endpoint');
-  config.gateway.baseUrl = config.gateway.baseUrl.replace(/\/+$/, '');
+  normalizeGateway(config.gateway);
+  if (config.fleetClaude) normalizeGateway(config.fleetClaude.gateway);
   return Object.assign(config, { authority });
+}
+export function fleetWorkerRoute(config, selection) {
+  const route = selection?.provider === 'codex' ? config : config.fleetClaude;
+  if (!route || selection?.provider !== route.gateway.provider || selection.gateway !== route.gateway.name || selection.model !== route.model)
+    throw new Error('Fleet selection does not match an enrolled worker route');
+  if (selection.provider === 'claude' && ((selection.speed !== undefined && selection.speed !== 'standard') || config.effort === 'none'))
+    throw new Error('Fleet Claude requires Standard speed and a supported effort');
+  return { gateway: route.gateway, model: route.model };
+}
+export async function enrolledSandbox(config, source) {
+  const { sandbox, authority } = config;
+  if (sandbox === 'workspace-write') return true;
+  if (sandbox !== 'danger-full-access' || authority !== 'operator' || source?.checkout !== 'git' || process.getuid() === 0)
+    return false;
+  const info = await stat(homedir());
+  return info.isDirectory() && info.uid === process.getuid() && !(info.mode & 0o077);
 }
 function assertWorkerInputs(prompt, admissionId) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(admissionId)) throw new Error('Invalid admission UUID');
@@ -108,7 +135,7 @@ async function continuationSession(resume, binding) {
   if (!/^[0-9a-f-]{36}$/.test(resume)) throw new Error('Invalid continuation admission ID');
   const previous = await workerResult(resume);
   // An upgrade may resume a pre-receipt admission with the checkout's old binding.
-  const upgrading = binding.fleet && !previous.binding?.fleet;
+  const upgrading = binding.gateway.provider === 'codex' && binding.fleet && !previous.binding?.fleet;
   const expected = upgrading ? legacyBinding(binding) : binding;
   if (JSON.stringify(previous.binding) !== JSON.stringify(expected) || !previous.terminationVerified || !previous.sessionId)
     throw new Error('Continuation requires a terminated session with the same job, checkout and gateway binding');
@@ -117,21 +144,42 @@ async function continuationSession(resume, binding) {
 // This branch always resolves the named gateway key. No native authentication path.
 async function gatewayEnv(config, root, binding, step) {
   step.summary = 'Gateway credential resolution failed; no fallback';
-  let { env } = await checkCodex(config.cwd, undefined, config.gateway);
-  if (!env.OPENAI_API_KEY?.trim()) throw new Error('Gateway credential is empty; no fallback');
+  const claude = config.gateway.provider === 'claude';
+  const keyName = claude ? 'ANTHROPIC_AUTH_TOKEN' : 'OPENAI_API_KEY';
+  const checkProvider = claude ? checkClaude : checkCodex;
+  let { env } = await checkProvider(config.cwd, undefined, config.gateway);
+  if (!env[keyName]?.trim()) throw new Error('Gateway credential is empty; no fallback');
   step.summary = 'Worker preparation failed; no launch.';
-  const providerKey = env.OPENAI_API_KEY;
+  const providerKey = env[keyName];
   env = withoutReferencedSecrets(env, { gateways: [config.gateway] });
   const isolated = {};
   for (const name of ['PATH', 'HOME', 'USER', 'LOGNAME', 'TMPDIR', 'LANG', 'LC_ALL'])
     if (env[name]) isolated[name] = env[name];
-  isolated.OPENAI_API_KEY = providerKey;
+  isolated[keyName] = providerKey;
   isolated.FACTORY_DELEGATED = '1';
-  isolated.CODEX_HOME = join(root, 'sessions', key(JSON.stringify(binding)));
-  await mkdir(isolated.CODEX_HOME, { recursive: true, mode: 0o700 });
+  const sessionKey = key(JSON.stringify(binding));
+  const sessionHome = join(root, 'sessions', sessionKey);
+  await mkdir(sessionHome, { recursive: true, mode: 0o700 });
+  if (claude) {
+    const directory = await realpath(sessionHome);
+    const info = await stat(directory);
+    if (directory !== join(await realpath(root), 'sessions', sessionKey) || !info.isDirectory() ||
+        info.uid !== process.getuid() || (info.mode & 0o077)) throw new Error('Claude session home must be private and unredirected');
+    Object.assign(isolated, {
+      CLAUDE_CONFIG_DIR: directory, ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL,
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', CLAUDE_CODE_DISABLE_FAST_MODE: '1',
+    });
+  } else isolated.CODEX_HOME = sessionHome;
   return isolated;
 }
 function workerArgv(config, sessionId) {
+  if (config.gateway.provider === 'claude') {
+    const addDirs = (config.writableRoots ?? []).filter(path => path !== config.cwd);
+    const argv = claudeArgs(sessionId, { ...config, speed: 'standard' }, 'bypassPermissions', addDirs, config.cwd);
+    const roots = config.sandbox === 'workspace-write' ? [config.cwd, ...addDirs] : null;
+    return [process.execPath, fileURLToPath(new URL('./fleet-claude.mjs', import.meta.url)), String(config.maxLogBytes),
+      JSON.stringify(roots), ...argv, '--setting-sources', '', '--strict-mcp-config'];
+  }
   const permission = codexPermission({ 'read-only': 'plan', 'workspace-write': 'acceptEdits', 'danger-full-access': 'bypassPermissions' }[config.sandbox]);
   return codexArgs(sessionId, config, permission, config.gateway, config.cwd);
 }
@@ -151,15 +199,16 @@ async function prepareJob({ config, prompt, resume, admissionId, root, directory
   }
   const isolated = await gatewayEnv(config, root, sessionBinding, step);
   const argv = workerArgv(config, sessionId);
+  const claude = config.gateway.provider === 'claude';
   record.sessionId = sessionId;
   await atomic(join(directory, 'admission.json'), record);
   const job = {
     runId: admissionId, cwd: config.cwd, argv,
-    prompt: await codexHandoff(prompt, [], 'the unattended service'), input: 'text',
+    prompt: await codexHandoff(prompt, [], 'the unattended service'), input: claude ? 'stream-json' : 'text',
     maxRunSeconds: config.maxRunSeconds, maxLogBytes: config.maxLogBytes,
     graceSeconds: 2, background: false,
     admission: { directory: root, workspaceKey: key(config.cwd) },
-    redactEnv: ['OPENAI_API_KEY'],
+    redactEnv: [claude ? 'ANTHROPIC_AUTH_TOKEN' : 'OPENAI_API_KEY'],
   };
   await atomic(join(directory, 'job.json'), job);
   return isolated;
@@ -202,12 +251,24 @@ async function bindCheckout(config, checkout, fleet) {
     config.cwd = cwd;
   }
 }
-export async function gatewayWorker(configPath, prompt, resume = null, admissionId = randomUUID(), signal, checkout, fleet) {
-  assertWorkerInputs(prompt, admissionId);
+async function admittedWorkerConfig(configPath, checkout, fleet, selection) {
   const config = await readWorkerConfig(configPath);
+  if (selection !== undefined) Object.assign(config, fleetWorkerRoute(config, selection));
+  const claude = config.gateway.provider === 'claude';
+  if (claude && (!checkout || !z.uuid().safeParse(fleet?.taskId).success || !z.uuid().safeParse(fleet?.attemptId).success ||
+      fleet.gatewayBaseUrl !== config.gateway.baseUrl || fleet.source?.checkout !== 'git' || !await enrolledSandbox(config, fleet.source)))
+    throw new Error('Fleet Claude requires a matching Git enrollment and a supported worker sandbox');
   await bindCheckout(config, checkout, fleet);
+  if (claude && !fleet.workspace && config.cwd !== join(dirname(config.cwd), fleet.attemptId))
+    throw new Error('Checkout differs from the enrolled Fleet attempt');
+  return config;
+}
+export async function gatewayWorker(configPath, prompt, resume = null, admissionId = randomUUID(), signal, checkout, fleet, selection) {
+  assertWorkerInputs(prompt, admissionId);
+  const config = await admittedWorkerConfig(configPath, checkout, fleet, selection);
+  const claude = config.gateway.provider === 'claude';
   const root = await workerStateRoot(config);
-  const binding = { jobId: config.jobId, cwd: config.cwd, gateway: config.gateway, model: config.model, effort: config.effort, sandbox: config.sandbox, approvalPolicy: config.approvalPolicy, ...(fleet ? { fleet } : {}), ...(config.writableRoots ? { writableRoots: config.writableRoots } : {}) };
+  const binding = { jobId: config.jobId, cwd: config.cwd, gateway: config.gateway, model: config.model, effort: config.effort, sandbox: config.sandbox, approvalPolicy: config.approvalPolicy, ...(fleet ? { fleet } : {}), ...(config.writableRoots ? { writableRoots: config.writableRoots } : {}), ...(claude ? { authority: config.authority } : {}) };
   const directory = join(root, admissionId);
   const existing = await existingAdmission(directory, admissionId, binding);
   if (existing) return existing;
@@ -241,7 +302,12 @@ const proofValid = (directory, admissionId) =>
 export async function reconcileWorker(admissionId) {
   if (!/^[0-9a-f-]{36}$/.test(admissionId)) throw new Error('Invalid admission ID');
   const directory = join(home(), 'unattended', admissionId);
-  const record = await readJSON(join(directory, 'admission.json'), null);
+  let record;
+  try { record = await readJSON(join(directory, 'admission.json'), null); }
+  catch (error) {
+    if (error.code === 'ENOTDIR') return readRetiredAdmission(directory, admissionId);
+    throw error;
+  }
   if (!record || record.admissionId !== admissionId) throw new Error('Unknown admission ID');
   const run = spawnSync('python3', [terminationProof, 'reconcile', directory, admissionId], { encoding: 'utf8', timeout: 30000 });
   let reconciliation;
@@ -255,18 +321,42 @@ function prelaunchFailed(record, state) {
   return !state && failure?.proof === 'never-launched' && ['preparation', 'guardian-spawn'].includes(failure.phase)
     && typeof failure.summary === 'string' && failure.summary && record.sessionId === null;
 }
+const structuredClaude = z.strictObject({
+  outcome: z.enum(['completed', 'needs_input', 'failed']),
+  summary: z.string(), evidence: z.array(z.string()), question: z.string().optional(),
+});
+function foldClaudeEvent(run, event) {
+  if (claudeOverage(event)) run.overage = true;
+  if (event.type === 'system' && event.subtype === 'init') {
+    if (!z.uuid().safeParse(event.session_id).success || (run.newSession && run.newSession !== event.session_id))
+      run.invalidSession = true;
+    else run.observedSession = run.newSession = event.session_id;
+  } else if (event.session_id && run.newSession && event.session_id !== run.newSession) {
+    run.invalidSession = true;
+  }
+  if (event.type !== 'result') return;
+  const report = structuredClaude.safeParse(event.structured_output);
+  if (event.is_error || !report.success) {
+    run.result = null;
+    return;
+  }
+  applyClaudeEvent(run, { ...event, structured_output: report.data });
+}
 async function foldWorkerEvents(directory, record) {
-  const run = { sequence: 0, newSession: record.sessionId };
+  const claude = record.binding?.gateway?.provider === 'claude';
+  const run = { sequence: 0, newSession: record.sessionId, claude };
   const events = await readFile(join(directory, 'events.jsonl'), 'utf8').catch(() => '');
   for (const line of events.split('\n')) {
     if (!line.trim()) continue;
     try {
       const event = JSON.parse(line);
+      if (claude) { foldClaudeEvent(run, event); continue; }
       if (event.type === 'turn.started') run.startedTurn = true;
       if (event.type === 'thread.started' && event.thread_id) run.observedSession = event.thread_id;
       applyCodexEvent(run, event);
     } catch { /* Incomplete bounded event is checkpoint evidence. */ }
   }
+  if (run.invalidSession) run.observedSession = run.newSession = null;
   return run;
 }
 function workerTermination(state, directory, admissionId) {
@@ -280,9 +370,11 @@ function workerOutcome(state, terminationVerified, run) {
     return { outcome: 'needs_input', summary: state.reason, evidence: [], question: 'Reconcile the existing workspace admission before retrying.' };
   if (!terminationVerified)
     return { outcome: 'needs_input', summary: 'Worker termination is unverified; workspace admission remains held.', evidence: [], question: 'Reconcile the exact guardian and worker group before retrying.' };
+  if (run.overage || run.invalidSession)
+    return { outcome: 'failed', summary: run.overage ? 'Claude reported paid overage; worker stopped without fallback.' : 'Claude session differs from the admitted session.', evidence: [], question: '' };
   if (state.interrupted)
     return { outcome: 'needs_input', summary: state.reason || 'Bounded invocation stopped; resume the retained session.', evidence: [], question: '' };
-  if (state.exitCode !== 0 || !run.result)
+  if (state.exitCode !== 0 || !run.result || (run.claude && !run.observedSession))
     return { outcome: 'failed', summary: run.error || 'Gateway worker exited without a successful structured turn; no fallback.', evidence: [], question: '' };
   return run.result;
 }
@@ -309,8 +401,9 @@ async function inputDiagnostic(directory) {
   return null;
 }
 async function workerDiagnostic(directory, state, verified, run) {
+  if (run.overage || run.invalidSession) return null;
   if (verified && state.interrupted && state.reason === 'Run deadline reached') return 'deadline_reached';
-  if (!verified || state.admissionRejected || state.interrupted || !Number.isInteger(state.exitCode)
+  if (run.claude || !verified || state.admissionRejected || state.interrupted || !Number.isInteger(state.exitCode)
       || state.exitCode === 0 || run.startedTurn || run.result) return null;
   return inputDiagnostic(directory);
 }
@@ -327,10 +420,56 @@ function workerLaunch(state, verified, run) {
   if (state.admissionRejected || state.launchFailed) return 'never-launched';
   return run.observedSession ? 'session' : 'unknown';
 }
+// Recovery competes with launch in the existing admission namespace. The
+// exclusive hard link publishes a complete retirement or leaves the existing
+// reservation untouched. A late executor's mkdir cannot win after retirement.
+async function retireAdmission(root, admissionId, fleet) {
+  const reservation = join(root, admissionId);
+  const staging = `${reservation}.${randomUUID()}.retiring`;
+  const file = await open(staging, 'wx', 0o600);
+  try {
+    try {
+      await file.writeFile(JSON.stringify({ kind: 'retired-prelaunch', admissionId, fleet }));
+      await file.sync();
+    } finally { await file.close(); }
+    await link(staging, reservation).catch(error => { if (error.code !== 'EEXIST') throw error; });
+    const directory = await open(root, 'r');
+    try { await directory.sync(); } finally { await directory.close(); }
+  } finally { await rm(staging, { force: true }); }
+}
+
+export async function recoverWorkerAdmission(configPath, admissionId, fleet) {
+  z.uuid().parse(admissionId);
+  try { return await workerResult(admissionId); }
+  catch (error) {
+    if (!z.uuid().safeParse(fleet?.taskId).success || !z.uuid().safeParse(fleet?.attemptId).success) throw error;
+  }
+  await retireAdmission(await workerStateRoot(await readWorkerConfig(configPath)), admissionId, fleet);
+  return workerResult(admissionId);
+}
+
+async function readRetiredAdmission(path, admissionId) {
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const info = await file.stat();
+    if (!info.isFile() || info.uid !== process.getuid() || (info.mode & 0o077) || info.size > 64 * 1024)
+      throw new Error('Unsafe retired admission');
+    const record = JSON.parse(await file.readFile('utf8'));
+    if (record.kind !== 'retired-prelaunch' || record.admissionId !== admissionId)
+      throw new Error('Invalid retired admission');
+    return { admissionId, binding: { fleet: record.fleet }, state: 'failed', sessionId: null,
+      launch: 'never-launched', terminationVerified: true };
+  } finally { await file.close(); }
+}
 export async function workerResult(admissionId) {
   if (!/^[0-9a-f-]{36}$/.test(admissionId)) throw new Error('Invalid admission ID');
   const directory = join(home(), 'unattended', admissionId);
-  const record = await readJSON(join(directory, 'admission.json'), null);
+  let record;
+  try { record = await readJSON(join(directory, 'admission.json'), null); }
+  catch (error) {
+    if (error.code === 'ENOTDIR') return readRetiredAdmission(directory, admissionId);
+    throw error;
+  }
   if (!record || record.admissionId !== admissionId) throw new Error('Unknown admission ID');
   const state = await readJSON(join(directory, 'process.json'), null);
   if (prelaunchFailed(record, state)) {

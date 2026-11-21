@@ -9,14 +9,22 @@ try {
   if (!path) throw new Error("Usage: node scripts/fleet-studio.mjs CONFIG");
   const config = await readFleetConfig(path);
   const client = await connectFleet(config);
-  const checkQuota = createFleetQuota(config.quota);
-  const execution = { ...config.execution, gatewayBaseUrl: config.quota.baseUrl };
+  const checkCodexQuota = createFleetQuota(config.quota);
+  const checkClaudeQuota = config.claudeQuota ? createFleetQuota({ ...config.claudeQuota, provider: "claude" }) : null;
+  const checkQuota = task => (task.provider === "claude" && checkClaudeQuota ? checkClaudeQuota : checkCodexQuota)(task);
+  const quotaObservation = () => {
+    const codex = checkCodexQuota.observation();
+    if (!checkClaudeQuota) return codex;
+    return [codex, checkClaudeQuota.observation()].filter(Boolean);
+  };
+  const execution = { ...config.execution, gatewayBaseUrl: config.quota.baseUrl, claudeGatewayBaseUrl: config.claudeQuota?.baseUrl };
   const runner = createFleetRunner({
     call: client.call,
     ...createStudioExecutors(execution, client.call, checkQuota),
     journalPath: config.journalPath,
     capacity: studioCapacity,
-    quotaObservation: checkQuota.observation,
+    quotaObservation,
+    checkLaunchQuota: checkClaudeQuota,
   });
   const tick = () => runner.tick().then(result => {
     if (result === "reconciling") console.error("Factory control request interrupted; retaining the last confirmed lease");

@@ -81,7 +81,13 @@ export function reviewPacket(opts) {
     else {
         lines.push("Acceptance: none declared — review against the ticket context and the PR description. That is a supported state, not a gap to fill by creating an item.");
     }
-    lines.push("PR description and test plan: run `gh pr view --json title,body` from the repository; if no PR exists yet, ask the author for the test plan.", "Suggested context (read with read_project_record before the diff):", ...(opts.suggested ?? []).map(path => `- ${path}`), `- ${AUTHOR_CONTEXT_SLOT}`);
+    lines.push("Author evidence: paste the PR intent, actual Test plan results and any required visual evidence (candidate, paths and digests) here before handoff. Check the live PR with `gh pr view --json title,body` when available.", "Suggested context (read with read_project_record before the diff):", ...(opts.suggested ?? []).map(path => `- ${path}`), `- ${AUTHOR_CONTEXT_SLOT}`);
+    if (opts.changedFiles?.length) {
+        const diff = `git diff --no-ext-diff --no-textconv --no-color --full-index --no-renames ${opts.fork} ${opts.head}`;
+        lines.push("Exact diff (read one path at a time to avoid clipped tool output):", `- Use \`${diff} -- <path>\`. For long files, request consecutive line ranges until the diff ends.`, `- Verify the old and new blob IDs against \`${diff} --raw --no-abbrev\`. A zero ID marks an absent blob.`, ...opts.changedFiles.slice(0, 24).map(path => `- ${path}`));
+        if (opts.changedFiles.length > 24)
+            lines.push(`- All ${opts.changedFiles.length} paths: \`${diff} --name-only\`.`);
+    }
     if (opts.complexity)
         lines.push(opts.complexity);
     return lines.join("\n");

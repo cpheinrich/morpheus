@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import childProcess, { execFileSync, spawn } from "node:child_process";
 import { once, EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, readdir, rm, writeFile, symlink } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -14,6 +14,7 @@ import { bindWorkspace, digest, verifyWorkspace } from "../src/fleet-workspace.m
 import { createFleetApi } from "../src/fleet-api.mjs";
 import { readWorkerConfig } from "../src/gateway-worker.mjs";
 import { createStudioExecutor } from "../src/fleet-execution.mjs";
+import { createFleetRunner } from "../src/fleet-runner.mjs";
 import { authorizeFleetProjects } from "../scripts/fleet-mcp.mjs";
 import { projectRun, dispatchFleet } from "../scripts/fleet-delegate.mjs";
 import { checkoutWorkspace } from "../src/fleet-workspace-checkout.mjs";
@@ -115,8 +116,15 @@ function updateTask(previous, value) {
 function memoryDb() {
   const docs = new Map();
   const doc = path => ({ path, get: async () => ({ data: () => structuredClone(docs.get(path)) }), set: async value => docs.set(path, value) });
-  return { docs, doc, async runTransaction(fn) {
-    return fn({ get: ref => ref.get(), set: (ref, value) => docs.set(ref.path, structuredClone(value)),
+  const collection = name => ({ where(field, op, value) {
+    assert.equal(op, "array-contains");
+    return { limit(n) { return { get: async () => ({ docs: [...docs.entries()]
+      .filter(([path, row]) => path.startsWith(`${name}/`) && row[field]?.includes(value))
+      .slice(0, n).map(([path]) => ({ id: path.split("/").at(-1) })) }) }; } };
+  } });
+  return { docs, doc, collection, async runTransaction(fn) {
+    return fn({ get: ref => ref.get(), set: (ref, value, options) =>
+      docs.set(ref.path, options?.merge ? { ...docs.get(ref.path), ...structuredClone(value) } : structuredClone(value)),
       update: (ref, value) => docs.set(ref.path, updateTask(docs.get(ref.path), value)), delete: ref => docs.delete(ref.path) });
   } };
 }
@@ -153,6 +161,240 @@ test("the service advertises the same authenticated lease duration it grants", a
   assert.deepEqual(renewal, { status: 200, value: { renewed: true, leaseMs: 120_000 } });
   const confirmed = await api.call("inspect", binding, "worker");
   assert.equal(confirmed.value.task.attempt.leaseUntil, 120_180);
+});
+
+test("Claude enrollment shares one workspace and slot without using Codex quota or widening project access", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  const selection = { provider: "claude", gateway: "claude-queue", model: "claude-opus-fixture" };
+  const request = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "fixture", messageId: "claude-queue", provider: "claude" };
+  assert.equal((await api.call("submit", request)).status, 403);
+  api.config.claudeSelection = selection;
+  assert.equal((await api.call("submit", { ...request, project: "outside" })).status, 403);
+  assert.equal((await api.call("submit", { ...request, model: "different-model" })).status, 403);
+  const sent = await api.call("submit", { ...request, provider: undefined, model: selection.model });
+  assert.equal(sent.status, 200);
+  assert.deepEqual(sent.value.task.selection, selection);
+  const taskId = sent.value.task.id;
+  const get = async () => (await api.call("get", { taskId })).value.queueReason;
+  const binding = { taskId, attemptId: randomUUID() };
+  assert.equal(await get(), "quota-unavailable");
+  assert.deepEqual((await api.call("claim", binding, "worker")).value, { reason: "not-preferred" });
+  const slot = api.db.docs.get("factorySlots/slot");
+  slot.quota = [{ provider: "codex", gateway: "fixture", checkedAt: 100, status: "available" },
+    { provider: "claude", gateway: selection.gateway, checkedAt: 100, status: "limited" }];
+  assert.equal(await get(), "quota-limited");
+  slot.quota[1].status = "available";
+  assert.equal(await get(), "awaiting-worker");
+  const claim = await api.call("claim", binding, "worker");
+  assert.equal(claim.value.attempt.id, binding.attemptId);
+  const codex = await api.call("submit", { ...request, messageId: "same-workspace", provider: "codex" });
+  assert.deepEqual(codex.value.task.selection, api.config.projects.app.selection);
+  assert.equal((await api.call("get", { taskId: codex.value.task.id })).value.queueReason, "workspace-busy");
+});
+
+test("Claude readiness and submission refuse pinned-only and viewer-only enrollment before queueing", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  api.config.claudeSelection = { provider: "claude", gateway: "anthropic", model: "claude-test" };
+  const original = api.config.projects.app;
+  for (const enrollment of [{ ...original, revision: f.revisions.app }, { ...original, eligibleSlots: ["viewer-only"] }]) {
+    api.config.projects.app = enrollment;
+    assert.equal((await api.call("readiness", { project: "app", provider: "claude" })).status, 403);
+    assert.equal((await api.call("submit", { project: "app", revision: f.revisions.app, workspace: f.intent,
+      text: "fixture", messageId: "refuse-before-queue", provider: "claude" })).status, 403);
+  }
+  assert.deepEqual([...api.db.docs.keys()], ["factorySlots/slot"]);
+});
+
+test("16 Claude tasks held for quota cannot hide a runnable Codex task", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  api.config.claudeSelection = { provider: "claude", gateway: "anthropic", model: "claude-test" };
+  const base = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "fixture" };
+  const claudeIds = [];
+  for (let i = 0; i < 17; i++) {
+    const submitted = await api.call("submit", { ...base, provider: "claude", messageId: `claude-${i}` });
+    claudeIds.push(submitted.value.task.id);
+  }
+  const codex = (await api.call("submit", { ...base, messageId: "codex" })).value.task.id;
+  const quota = [{ provider: "claude", gateway: "anthropic", checkedAt: 100, status: "limited" },
+    { provider: "codex", gateway: "fixture", checkedAt: 100, status: "available" }];
+  const heartbeat = () => api.call("heartbeat", { available: true, capacity: 1, quota }, "worker").then(reply => reply.value.tasks);
+  assert.deepEqual(await heartbeat(), [codex]);
+  const claim = await api.call("claim", { taskId: codex, attemptId: randomUUID() }, "worker");
+  assert.equal(claim.value.task.id, codex);
+  const refused = await api.call("finish", { taskId: codex, attemptId: claim.value.attempt.id,
+    outcome: "TASK_STATE_SUBMITTED", cleanupVerified: true, result: null,
+    invocation: { launch: "never-launched", admissionId: null, sessionId: null } }, "worker");
+  assert.deepEqual(refused.value, { settled: false });
+  quota[0].status = "available";
+  assert.deepEqual(await heartbeat(), claudeIds.slice(0, 16));
+});
+
+test("transient launch quota requeues an untouched task and keeps an accepted answer bound to its session", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  api.config.claudeSelection = { provider: "claude", gateway: "anthropic", model: "claude-test" };
+  const request = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "original brief", messageId: "held-original", provider: "claude" };
+  const taskId = (await api.call("submit", request)).value.task.id;
+  const snapshot = async () => (await api.call("get", { taskId })).value;
+  let quota = "available", denyLaunch = true;
+  const launches = [];
+  const sessionId = randomUUID();
+  const originalSpawn = childProcess.spawn;
+  t.mock.method(childProcess, "spawn", (command, args, options) => {
+    if (command === process.execPath) return originalSpawn(command, args, options);
+    assert.equal(command, "/usr/bin/sudo");
+    return originalSpawn(args[5], ["--import", f.preload, ...args.slice(6)], { ...options, env: { ...options.env, FACTORY_HOME: f.state } });
+  });
+  syncBuiltinESMExports();
+  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  const checkQuota = async () => { if (denyLaunch) { quota = "unknown"; throw new Error("unavailable"); } };
+  const executor = createStudioExecutor({ account: "fixture", node: process.execPath, script: executorScript,
+    workerConfig: f.configPath, project: "app", fleetWorkspace: f.host }, undefined, checkQuota);
+  let preparing;
+  const runner = createFleetRunner({ journalPath: join(f.root, "runner.json"),
+    prepare: (task, signal) => (preparing = executor.prepare(task, signal)),
+    quotaObservation: () => [{ provider: "claude", gateway: "anthropic", checkedAt: 100, status: quota }],
+    checkLaunchQuota: checkQuota,
+    call: async (op, input) => {
+      const response = await api.call(op, input, "worker");
+      assert.equal(response.status, 200, JSON.stringify(response.value));
+      return response.value;
+    },
+    execute: async ({ admissionId, resume, prompt }) => {
+      launches.push({ admissionId, resume, prompt });
+      return { terminationVerified: true, sessionId, invocation: { launch: "session", admissionId, sessionId },
+        result: resume ? { outcome: "completed", summary: "done" } : { outcome: "needs_input", question: "Which value?" } };
+    },
+  });
+  t.after(() => runner.stop());
+  const tick = async state => { await new Promise(setImmediate); assert.equal(await runner.tick(), state); };
+  await tick("preparing");
+  const originalAttempt = (await snapshot()).task.attempt.id;
+  await preparing;
+  await tick("settled");
+  const held = await snapshot();
+  assert.equal(held.task.state, "TASK_STATE_SUBMITTED");
+  assert.equal(held.task.attempt, null);
+  assert.equal(held.receipt, undefined);
+  assert.equal(held.previousAttemptReceipt.launch, "never-launched");
+  assert.equal(held.previousAttemptReceipt.attemptId, originalAttempt);
+  const receiptPath = `factoryReceipts/${taskId}`;
+  api.db.docs.set(receiptPath, { ...held.previousAttemptReceipt, attemptId: randomUUID() });
+  assert.equal((await snapshot()).previousAttemptReceipt, undefined);
+  api.db.docs.set(receiptPath, held.previousAttemptReceipt);
+  assert.deepEqual(launches, []);
+  await tick("idle");
+  assert.equal((await snapshot()).queueReason, "quota-unavailable");
+  assert.equal((await api.call("submit", request)).value.task.id, taskId);
+  quota = "available";
+  await tick("preparing");
+  const lastHeld = (await snapshot()).task.attempt.id;
+  await preparing;
+  await tick("settled");
+  assert.deepEqual(await readdir(f.cwd), []);
+  denyLaunch = false; quota = "available";
+  await tick("preparing");
+  await preparing;
+  await tick("running");
+  await tick("waiting");
+  const pending = await snapshot();
+  assert.equal(pending.task.state, "TASK_STATE_INPUT_REQUIRED");
+  assert.notEqual(pending.task.attempt.id, originalAttempt);
+  assert.deepEqual(await readdir(f.cwd), [pending.task.attempt.id]);
+  const replay = await api.call("finish", { taskId, attemptId: lastHeld, outcome: "TASK_STATE_SUBMITTED", cleanupVerified: true,
+    result: null, invocation: { launch: "never-launched", admissionId: null, sessionId: null } }, "worker");
+  assert.deepEqual(replay.value, { settled: true });
+  await api.call("answer", { taskId, attemptId: pending.task.attempt.id, questionId: pending.task.questionId, messageId: "saved-answer", text: "the saved value" });
+  denyLaunch = true;
+  await tick("waiting");
+  assert.equal((await snapshot()).task.answerId, "saved-answer");
+  assert.equal(launches.length, 1);
+  denyLaunch = false; quota = "available";
+  await tick("running");
+  await tick("settled");
+  const complete = await snapshot();
+  assert.equal(complete.task.state, "TASK_STATE_COMPLETED");
+  assert.equal(complete.receipt.sessionId, sessionId);
+  assert.deepEqual(launches.map(({ resume,prompt }) => [resume,prompt]), [[null,"original brief"],[launches[0].admissionId,"the saved value"]]);
+});
+
+test("a restarted supervisor retires an exact preadmission while the real Claude executor checks Git", async t => {
+  const f = await fixture(t), api = await service(t, f);
+  const gateway = { name: "anthropic", provider: "claude", baseUrl: "https://fixture.invalid", keyRef: "env:FIXTURE_CLAUDE_KEY" };
+  const model = "claude-test";
+  api.config.claudeSelection = { provider: gateway.provider, gateway: gateway.name, model };
+  await writeFile(f.configPath, JSON.stringify({ ...f.config, fleetClaude: { gateway, model } }));
+  const request = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "fixture",
+    messageId: "interrupted-checkout", provider: "claude" };
+  const taskId = (await api.call("submit", request)).value.task.id;
+  const journalPath = join(f.root, "interrupted.json");
+  const barrier = join(f.root, "checking"), release = join(f.root, "release");
+  await writeFile(join(f.bin, "git"), `#!/bin/sh
+if [ "$FIXTURE_PAUSE" = 1 ] && [ "$3" = status ]; then
+  /usr/bin/touch "$FIXTURE_BARRIER"
+  while [ ! -f "$FIXTURE_RELEASE" ]; do /bin/sleep 0.01; done
+fi
+exec /usr/bin/git "$@"
+`, { mode: 0o700 });
+  await writeFile(join(f.bin, "claude"), '#!/bin/sh\n/usr/bin/touch .fixture-launched\n', { mode: 0o700 });
+  const originalSpawn = childProcess.spawn;
+  let pause = false;
+  t.mock.method(childProcess, "spawn", (command, args, options) => {
+    if (command === process.execPath) return originalSpawn(command, args, options);
+    assert.equal(command, "/usr/bin/sudo");
+    return originalSpawn(args[5], ["--import", f.preload, ...args.slice(6)], { ...options, env: { ...options.env,
+      PATH: `${f.bin}:${process.env.PATH}`, FACTORY_HOME: f.state, FIXTURE_CLAUDE_KEY: "fixture-key",
+      FIXTURE_PAUSE: pause ? "1" : "0", FIXTURE_BARRIER: barrier, FIXTURE_RELEASE: release,
+    } });
+  });
+  syncBuiltinESMExports();
+  t.after(async () => { t.mock.restoreAll(); syncBuiltinESMExports(); await writeFile(release, "release").catch(() => {}); });
+  const call = async (op, input) => (await api.call(op, input, "worker")).value;
+  const executor = createStudioExecutor({ account: "fixture", node: process.execPath, script: executorScript,
+    workerConfig: f.configPath, project: "app", fleetWorkspace: f.host, claudeGatewayBaseUrl: gateway.baseUrl }, call, async () => {});
+  let preparation, execution;
+  const options = { ...executor, call, journalPath,
+    quotaObservation: () => [{ provider: "claude", gateway: "anthropic", checkedAt: 100, status: "available" }],
+    prepare: (...args) => (preparation = executor.prepare(...args)),
+    execute: (...args) => (execution = executor.execute(...args)),
+  };
+  const initial = createFleetRunner(options);
+  assert.equal(await initial.tick(), "preparing");
+  assert.equal(await preparation, true);
+  pause = true;
+  assert.equal(await initial.tick(), "running");
+  for (let i = 0; i < 200; i++) {
+    if (await readFile(barrier).catch(() => null)) break;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.deepEqual(await readFile(barrier), Buffer.alloc(0));
+  const { phase, attemptId, admissionId } = JSON.parse(await readFile(journalPath, "utf8"));
+  assert.equal(phase, "running");
+  assert.equal(api.db.docs.get("factorySlots/slot").attemptId, attemptId);
+  assert.equal(api.db.docs.get("factoryWorkspaces/related-lock").attemptId, attemptId);
+  await assert.rejects(readFile(join(f.state, "unattended", admissionId, "admission.json")), { code: "ENOENT" });
+  pause = false;
+  const restarted = createFleetRunner(options);
+  assert.equal(await restarted.tick(), "settled");
+  const { task, receipt } = (await api.call("get", { taskId })).value;
+  assert.equal(task.state, "TASK_STATE_FAILED");
+  assert.equal(task.attempt, null);
+  assert.equal(receipt.launch, "never-launched");
+  assert.equal(receipt.admissionId, admissionId);
+  assert.equal(receipt.attemptId, attemptId);
+  assert.equal(api.db.docs.get("factorySlots/slot").attemptId, null);
+  assert.equal(api.db.docs.has("factoryWorkspaces/related-lock"), false);
+  await assert.rejects(readFile(journalPath), { code: "ENOENT" });
+  await writeFile(release, "release");
+  await execution;
+  await assert.rejects(readFile(join(f.cwd, attemptId, "app", ".fixture-launched")), { code: "ENOENT" });
+  const binding = { taskId, attemptId, workspace: task.source.workspace };
+  const repeat = await exchange(f, { op: "recover", admissionId, binding });
+  assert.deepEqual(repeat.invocation, { launch: "never-launched", admissionId, sessionId: null });
+  const ambiguous = randomUUID();
+  await mkdir(join(f.state, "unattended", ambiguous), { mode: 0o700 });
+  const held = await exchange(f, { op: "recover", admissionId: ambiguous, binding });
+  assert.equal(held.terminationVerified, false);
+  assert.deepEqual(await readdir(join(f.state, "unattended", ambiguous)), []);
 });
 
 async function exchange(f, job, protectedConfig = true, environment = {}) {

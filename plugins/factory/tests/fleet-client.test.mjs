@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { getApps } from "firebase/app";
-import { connectFleet } from "../src/fleet-client.mjs";
+import { connectFleet, submitFleetTask } from "../src/fleet-client.mjs";
 
 const config = {
   endpoint: "https://example.invalid",
@@ -83,4 +83,30 @@ test("the total deadline includes token acquisition and a stalled successful res
   token.resolve("fixture-expired-token");
   await token.promise;
   assert.equal(fetch.mock.callCount(), 1);
+});
+
+
+test("a lost Fleet submission acknowledgement reuses the exact message and original task", async () => {
+  const requests = [];
+  const body = { messageId: "stable-message", project: "fixture", text: "brief" };
+  const original = { task: { id: "accepted-task" }, replay: true };
+  const client = { async call(op, input) {
+    requests.push([op, input]);
+    if (requests.length === 1) throw Object.assign(new Error("lost acknowledgement"), { retryable: true });
+    return original;
+  } };
+  assert.deepEqual(await submitFleetTask(client, body), original);
+  assert.deepEqual(requests, [["submit", body], ["submit", body]]);
+});
+
+test("an authority denial is returned immediately, while two lost acknowledgements identify the same message", async () => {
+  const denied = new Error("not enrolled");
+  const temporary = Object.assign(new Error("lost acknowledgement"), { retryable: true });
+  const body = { messageId: "stable-message" };
+  const requests = [];
+  const client = { async call(op, input) { requests.push([op, input]); throw requests.length === 1 ? denied : temporary; } };
+  await assert.rejects(submitFleetTask(client, body), error => error === denied);
+  assert.deepEqual(requests, [["submit", body]]);
+  await assert.rejects(submitFleetTask(client, body), /Retry the same message ID: stable-message/);
+  assert.deepEqual(requests, [["submit", body], ["submit", body], ["submit", body]]);
 });
