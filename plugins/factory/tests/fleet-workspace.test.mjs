@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import childProcess, { execFileSync, spawn } from "node:child_process";
 import { once, EventEmitter } from "node:events";
 import { PassThrough, Readable } from "node:stream";
-import { mkdir, mkdtemp, readFile, realpath, readdir, rm, writeFile, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readlink, realpath, readdir, rename, rm, writeFile, symlink } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -19,7 +19,7 @@ import { createFleetRunner } from "../src/fleet-runner.mjs";
 import { authorizeFleetProjects } from "../scripts/fleet-mcp.mjs";
 import { projectRun, dispatchFleet } from "../scripts/fleet-delegate.mjs";
 import { checkoutWorkspace } from "../src/fleet-workspace-checkout.mjs";
-import { fetchWorkspaceRevision } from "../src/fleet-source.mjs";
+import { fetchStudioRevision, fetchWorkspaceRevision } from "../src/fleet-source.mjs";
 import { observeFactory } from "../src/host/reporting/factory.mjs";
 
 const git = (cwd, ...args) => execFileSync("/usr/bin/git", ["-C", cwd, ...args], {
@@ -79,7 +79,7 @@ import fs from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { dirname, relative } from 'node:path';
 const config=${JSON.stringify(configPath)}, wrapper=${JSON.stringify(join(companion, "bin", "credentials"))};
-const protectedPath = path => [config, wrapper].some(file => { const rel=relative(path,file); return rel==='' || (!rel.startsWith('..') && !rel.startsWith('/')); });
+const protectedPath = path => [config, wrapper, ${JSON.stringify(join(companion, ".git"))}].some(file => { const rel=relative(path,file); return rel==='' || (!rel.startsWith('..') && !rel.startsWith('/')); });
 const { stat, access }=fs;
 fs.stat=async(path,...args)=>{const info=await stat(path,...args);if(typeof path==='string'&&protectedPath(path)){info.uid=0;info.mode &= ~0o022; if(path===config)info.mode=(info.mode&~0o777)|0o640;}return info;};
 fs.access=async(path,mode)=>{if(mode===2&&path===wrapper&&process.env.WRAPPER_WRITABLE==='1')return;if(mode===2&&typeof path==='string'&&protectedPath(path))throw Object.assign(new Error('fixture denied'),{code:'EACCES'});return access(path,mode);};
@@ -793,6 +793,149 @@ function invocation(f, source, attemptId, extra = {}) {
     binding: { taskId: randomUUID(), attemptId, workspace: source.workspace }, checkout: { attemptId },
     gatewayBaseUrl: f.config.gateway.baseUrl, admissionId: randomUUID(), prompt: "Synthetic qualification", ...extra };
 }
+
+async function singleProjectFixture(t) {
+  const f = await fixture(t);
+  const store = f.host.credentials["build-tools"];
+  const wrapper = join(store.path, "bin", "credentials");
+  const original = await readFile(wrapper, "utf8");
+  await writeFile(wrapper, original.replace('#!/bin/sh\n', '#!/bin/sh\ncase "$1" in\nlist) echo SYNTHETIC_ACCESS; exit 0;;\ndoctor) echo ready; exit 0;;\nesac\n'));
+  git(store.path, "add", "--", "bin/credentials");
+  git(store.path, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "Add wrapper checks");
+  const fleetCredentials = { ...store, revision: git(store.path, "rev-parse", "HEAD"), project: "app",
+    manifestSha256: f.policy.repositories[0].credential.manifestSha256 };
+  const config = { ...f.config, fleetCredentials };
+  delete config.fleetWorkspace;
+  await writeFile(f.configPath, JSON.stringify(config));
+  const source = { project: "app", checkout: "git", revision: f.revisions.app };
+  const mirror = f.mirrors.app;
+  const comparison = await fetchStudioRevision(mirror, source.revision);
+  const attemptId = randomUUID();
+  const job = invocation(f, source, attemptId, { checkout: { attemptId, mirror, ...comparison } });
+  const cwd = join(f.cwd, attemptId);
+  return { ...f, config, job, cwd, link: join(cwd, "local", ".credentials-fixture") };
+}
+
+async function installFixtureProvider(f, provider, enrolled) {
+  const claude = provider === "claude";
+  const credentialsModule = new URL("../../../dist/credentials/index.js", import.meta.url).href;
+  const result = { outcome: "completed", summary: "fixture provider checked credential scope", evidence: [], question: "" };
+  const codexEvents = [{ type: "thread.started", thread_id: f.session }, { type: "item.completed", item: { type: "agent_message", text: JSON.stringify(result) } }, { type: "turn.completed" }];
+  const claudeEvents = [{ type: "system", subtype: "init", session_id: f.session }, { type: "result", subtype: "success", is_error: false, structured_output: result, session_id: f.session }];
+  await writeFile(join(f.bin, provider), `#!/usr/bin/env node
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { existsSync, writeFileSync } from 'node:fs';
+import { once } from 'node:events';
+const prompt = ${claude ? "String((await once(process.stdin, 'data'))[0])" : "await (async () => { let text = ''; for await (const chunk of process.stdin) text += chunk; return text; })()"};
+assert.equal(existsSync(${JSON.stringify(f.link)}), ${enrolled});
+assert.equal(prompt.includes('Never read secret files'), ${enrolled});
+assert.equal(process.env.SYNTHETIC_ACCESS, undefined);
+assert.equal(process.env.MORPHEUS_CREDENTIALS_REPO, undefined);
+if (${enrolled}) {
+  const cli = (action, ...args) => execFileSync(process.execPath, ['--input-type=module', '-e', 'import { credentials } from ' + JSON.stringify(${JSON.stringify(credentialsModule)}) + '; process.exitCode = credentials(process.argv.slice(1));', '--', action, ...args], { encoding: 'utf8' }).trim();
+  assert.equal(cli('list'), 'SYNTHETIC_ACCESS');
+  assert.equal(cli('doctor'), 'ready');
+  assert.equal(cli('run', '--', process.execPath, '-e', 'process.exit(process.env.SYNTHETIC_ACCESS === "approved" ? 0 : 4)'), '');
+}
+writeFileSync('.fixture-provider', JSON.stringify(process.argv.slice(2)));
+for (const event of ${JSON.stringify(claude ? claudeEvents : codexEvents)}) console.log(JSON.stringify(event));
+`, { mode: 0o700 });
+  if (!claude) return;
+  const gateway = { ...f.config.gateway, provider: "claude", name: "claude-fixture" };
+  const model = "claude-fixture";
+  f.config.fleetClaude = { gateway, model };
+  f.job.task.selection = { provider, gateway: gateway.name, model };
+  await writeFile(f.configPath, JSON.stringify(f.config));
+}
+
+const prepareSingle = f => exchange(f, { op: "prepare", source: f.job.task.source, checkout: f.job.checkout });
+const resumeSingle = f => exchange(f, { ...f.job, resume: f.job.admissionId, admissionId: randomUUID() });
+const recoverSingle = f => exchange(f, { op: "recover", admissionId: f.job.admissionId, binding: f.job.binding,
+  recovery: { source: f.job.task.source, checkout: f.job.checkout } });
+
+test("single-project Codex and Claude attach the enrolled companion and verify it on continuation", async t => {
+  for (const provider of ["codex", "claude"]) await t.test(provider, async t => {
+    const f = await singleProjectFixture(t);
+    await installFixtureProvider(f, provider, true);
+    assert.deepEqual(await prepareSingle(f), { prepared: true });
+    await assert.rejects(readlink(f.link), { code: "ENOENT" });
+    const output = await exchange(f, f.job, true, { SYNTHETIC_ACCESS: "inherited", MORPHEUS_CREDENTIALS_REPO: "/ignored" });
+    assert.equal(output.result?.summary, "fixture provider checked credential scope", JSON.stringify(output));
+    assert.equal(output.sessionId, f.session);
+    assert.equal(await readlink(f.link), f.config.fleetCredentials.path);
+    assert.equal(git(f.cwd, "ls-files", "--", "local"), "");
+    git(f.cwd, "check-ignore", "-q", "--", f.link);
+    assert.equal((await recoverSingle(f)).result?.outcome, "completed");
+    assert.equal((await resumeSingle(f)).result?.outcome, "completed");
+    const argv = JSON.parse(await readFile(join(f.cwd, ".fixture-provider"), "utf8"));
+    assert.equal(argv.includes(f.session), true);
+  });
+});
+
+test("single-project Git without enrollment leaves even a declared pointer unattached", async t => {
+  const f = await singleProjectFixture(t);
+  delete f.config.fleetCredentials;
+  await writeFile(f.configPath, JSON.stringify(f.config));
+  await installFixtureProvider(f, "codex", false);
+  assert.deepEqual(await prepareSingle(f), { prepared: true });
+  assert.equal((await exchange(f, f.job)).result?.summary, "fixture provider checked credential scope");
+  await assert.rejects(readlink(f.link), { code: "ENOENT" });
+});
+
+test("single-project credentials refuse unprotected authority and mismatched project, pointer and companion", async t => {
+  const f = await singleProjectFixture(t);
+  assert.deepEqual(await prepareSingle(f), { prepared: true });
+  assert.equal((await exchange(f, f.job, false)).diagnosticCode, "checkout_failed");
+  const enrollment = f.config.fleetCredentials;
+  const wrong = { project: "other", manifestSha256: "0".repeat(64), repository: "https://github.com/example/other.git", revision: "0".repeat(40) };
+  for (const [field, value] of Object.entries(wrong)) {
+    await writeFile(f.configPath, JSON.stringify({ ...f.config, fleetCredentials: { ...enrollment, [field]: value } }));
+    const outcome = await exchange(f, { ...f.job, admissionId: randomUUID() });
+    assert.equal(outcome.invocation.launch, "never-launched", field);
+    assert.match(outcome.result.summary, /credential enrollment or checkout verification failed/);
+    await assert.rejects(readlink(f.link), { code: "ENOENT" });
+  }
+  await writeFile(f.configPath, JSON.stringify(f.config));
+  assert.equal((await exchange(f, { ...f.job, admissionId: randomUUID() }, true, { WRAPPER_WRITABLE: "1" })).invocation.launch, "never-launched");
+  await assert.rejects(readlink(f.link), { code: "ENOENT" });
+});
+
+test("single-project credential changes prevent continuation and result recovery without hiding cleanup proof", async t => {
+  const f = await singleProjectFixture(t);
+  await installFixtureProvider(f, "codex", true);
+  assert.deepEqual(await prepareSingle(f), { prepared: true });
+  assert.equal((await exchange(f, f.job)).result?.outcome, "completed");
+  async function refused() {
+    assert.equal((await resumeSingle(f)).invocation.launch, "never-launched");
+    const recovered = await recoverSingle(f);
+    assert.equal(recovered.terminationVerified, true);
+    assert.equal(recovered.result, undefined);
+  }
+  const { fleetCredentials, ...unenrolled } = f.config;
+  await writeFile(f.configPath, JSON.stringify(unenrolled));
+  await refused();
+  await writeFile(f.configPath, JSON.stringify({ ...f.config, fleetCredentials: { ...fleetCredentials, repository: "git@github.com:example/fixture-credentials.git" } }));
+  await refused();
+  await writeFile(f.configPath, JSON.stringify(f.config));
+  const pointer = join(f.cwd, ".morpheus", "credentials.json");
+  const original = await readFile(pointer);
+  await writeFile(pointer, Buffer.concat([original, Buffer.from("\n")]));
+  await refused();
+  await writeFile(pointer, original);
+  await rm(f.link);
+  await symlink(f.root, f.link);
+  await refused();
+  await rm(f.link);
+  await symlink(fleetCredentials.path, f.link);
+  const redirected = join(f.root, "redirected-local");
+  await rename(dirname(f.link), redirected);
+  await symlink(redirected, dirname(f.link));
+  await refused();
+  await rm(dirname(f.link));
+  await rename(redirected, dirname(f.link));
+  assert.equal((await recoverSingle(f)).result?.outcome, "completed");
+});
 
 test("workspace authorization rejects extra repositories, moving refs, credentials and model overrides before placement", async t => {
   const f = await fixture(t), api = await service(t, f);

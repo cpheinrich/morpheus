@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { cleanupWorkerInputs, enrolledSandbox, fleetWorkerRoute, gatewayWorker, readWorkerConfig, reconcileWorker, recoverWorkerAdmission } from "../src/gateway-worker.mjs";
 import { readArtifactFiles, readCheckpointFiles } from "../src/fleet-artifacts.mjs";
-import { checkoutWorkspace } from "../src/fleet-workspace-checkout.mjs";
+import { checkoutWorkspace, checkoutSingleProjectCredentials, credentialEnrollment } from "../src/fleet-workspace-checkout.mjs";
 import { studioCheckout } from "../src/fleet-source.mjs";
 import { invocationFromWorker, notLaunched } from "../src/fleet-receipt.mjs";
 import { gitEnv } from "../src/workspace.mjs";
@@ -45,7 +45,8 @@ async function prepare({ task, admissionId, resume, prompt, gatewayBaseUrl, chec
   const outputDir = join(cwd, `.factory-artifacts-${admissionId}`);
   await mkdir(outputDir, { mode: 0o700 });
   const handoff = `${prompt}${paths ? `\n\nAuthorized workspace checkouts: ${JSON.stringify(paths)}. Comparison refs are pinned in each checkout. Use morpheus credentials run -- <trusted-command> only for declared companions; keep all repositories on their normal review, CI and release path.` : ""}\n\nFor output artifacts, write files directly in ${outputDir}. Include each file in the final evidence array as artifact:<filename>. Use flat filenames. Before a long operation, atomically write checkpoint.json there as a JSON array of completed artifact filenames to return if the invocation reaches its deadline. Each file must be at most 8 MiB.`;
-  return { outputDir, handoff, checkout: checkout ? cwd : undefined, claudeGateway: claude ? gateway.baseUrl : undefined };
+  return { outputDir, handoff, checkout: checkout ? cwd : undefined, claudeGateway: claude ? gateway.baseUrl : undefined,
+    credentialEnrollment: credentialEnrollment(config) };
 }
 
 async function emitArtifacts(outputDir, result, deadline) {
@@ -74,7 +75,10 @@ async function execute(job) {
   if (JSON.stringify(job.binding?.workspace) !== JSON.stringify(job.task.source.workspace) ||
       (job.checkout && job.binding?.attemptId !== job.checkout.attemptId))
     return { terminationVerified: true, invocation: notLaunched(admissionId), diagnosticCode: "workspace_policy_mismatch", result: { outcome: "failed" } };
-  const binding = prepared.claudeGateway ? { ...job.binding, source: job.task.source, gatewayBaseUrl: prepared.claudeGateway } : job.binding;
+  const binding = { ...job.binding,
+    ...(prepared.claudeGateway || prepared.credentialEnrollment ? { source: job.task.source } : {}),
+    ...(prepared.claudeGateway ? { gatewayBaseUrl: prepared.claudeGateway } : {}),
+    ...(prepared.credentialEnrollment ? { credentialEnrollment: prepared.credentialEnrollment } : {}) };
   const inputs = job.inputs;
   if (inputs) binding.inputManifest = createHash("sha256").update(JSON.stringify(inputs.manifest)).digest("hex");
   const outcome = await gatewayWorker(configPath, handoff, resume, admissionId, controller.signal, prepared.checkout, binding, job.task.selection, inputs);
@@ -120,12 +124,15 @@ async function recover(job) {
 
 async function recoverCompleted(job, observed, proof) {
   const { source, checkout } = job.recovery;
-  const admitted = observed.binding.fleet?.source;
+  const fleet = observed.binding.fleet;
+  const admitted = fleet?.source;
   if (admitted && (source.project !== admitted.project || source.revision !== admitted.revision ||
       source.checkout !== admitted.checkout || JSON.stringify(source.workspace) !== JSON.stringify(admitted.workspace))) return proof;
   const config = await readWorkerConfig(configPath);
+  if (credentialEnrollment(config) !== fleet?.credentialEnrollment) return proof;
   const { cwd } = await executionCheckout(config, source, checkout);
   if (observed.binding.cwd !== cwd) return proof;
+  if (config.fleetCredentials) await checkoutSingleProjectCredentials(cwd, source, config.fleetCredentials, true);
   const emitted = await emitArtifacts(join(cwd, `.factory-artifacts-${job.admissionId}`), observed.result, false);
   return emitted ? { ...proof, result: observed.result } : proof;
 }

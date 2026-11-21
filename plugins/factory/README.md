@@ -924,6 +924,72 @@ flowchart LR
   Sub2API -->|Provider requests| Provider[Subscription accounts]
 ```
 
+### Enroll a single-project credential companion
+
+Ordinary Git execution routes do not attach any companion by default, even when the
+project tracks `.morpheus/credentials.json`. An operator can opt a dedicated execution
+account into the declared companion for a single project. Add `fleetCredentials` to
+that route's **protected worker JSON only**, not to its supervisor route, service config,
+task submission, or repository. Do not combine it with `fleetWorkspace`.
+
+```json
+{
+  "fleetCredentials": {
+    "project": "app",
+    "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "path": "/opt/factory/companions/app-private",
+    "repository": "https://github.com/example/fixture-credentials.git",
+    "revision": "3333333333333333333333333333333333333333"
+  }
+}
+```
+
+`project` must match the selected Git source route. `manifestSha256` hashes the exact
+bytes of `.morpheus/credentials.json` at the published source SHA, including its declared
+relative `local/` path and `bin/` command. `path` is the **host** path, not the source path.
+Use the canonical absolute path for both the protected worker JSON and the separate
+companion checkout. Keep the JSON and its ancestors root-owned and unwritable by the
+worker, including ACLs. The JSON may be `0640`, readable by the dedicated account's group.
+
+1. Verify companion access and private visibility separately from project access.
+   Provision a clean standalone Git checkout using the operator's existing authenticated
+   Git access and a credential-free `origin`; never embed tokens in config or remote URLs.
+   Check out the approved commit and record `git rev-parse HEAD` as `revision`. Grant
+   read/traverse access only to authorized execution identities. For a dedicated group,
+   use root-owned `0750` directories and executables and `0640` data and Git files; check
+   ACLs and every ancestor. The account must be able to read the declared wrapper, its
+   inputs, and Git metadata, but must not be able to change them. Under that account,
+   enroll only this exact canonical checkout in Git `safe.directory`, not `*`.
+2. Drain the selected host/slot and verify it has no active admission, waiting question,
+   retained checkout awaiting recovery, or uncertain cleanup. Install the compatible
+   executor/worker and protected JSON at that idle boundary. Do not change an active
+   companion in place: the first launch and every continuation require the enrolled
+   revision and the original enrollment. To pull updates, use the operator's authenticated
+   Git access and a clean default branch with `git pull --ff-only` at an idle boundary (or
+   stage a separate protected checkout), then pin the reviewed new SHA in the JSON.
+3. Canary the actual account and enrolled project through the eligible slot for each
+   configured provider. In a fresh admitted attempt, require the declared `local/` symlink
+   to resolve to the pin, `git check-ignore -- <declared-local-path>` to list it, and
+   `git ls-files -- <declared-local-path>` to return nothing. Require `morpheus credentials
+   list` to show names only, `morpheus credentials doctor` to succeed without values, and
+   `morpheus credentials run -- <trusted-command>` to verify a required input by exit status
+   only. Continue the canary and verify an unenrolled route has no attachment. Never dump
+   environment variables, read secret files, or put values in prompts, logs, or artifacts.
+4. If the canary fails, keep the route drained. At a verified idle boundary restore the
+   previous known-good protected checkout and matching pin, or remove `fleetCredentials`
+   and admit fresh credential-free attempts. Do not reuse a credential-bearing checkout
+   after removing enrollment. Keep the route unavailable if cleanup is uncertain; do not
+   replace a link or revise a saved admission to force it to resume.
+
+The worker links the ignored path before the first Codex or Claude invocation. It revalidates
+the committed and working pointer, repository, revision, wrapper protection, and exact link
+on continuation and completed-result recovery. A changed or removed enrollment cannot
+resume an older session or restore its result; termination proof remains available for cleanup.
+The companion is not exported to the provider process. Use the ordinary `morpheus credentials`
+commands; `setup` and `sync` belong to the operator, not to an admitted worker. Enrollment does
+not change controller project grants, sandbox permissions, or approvals for external actions.
+The OS account remains the read-access boundary; do not share it with unauthorized workloads.
+
 ### Controller private task inputs
 
 Use the existing authenticated `POST /v1` endpoint. The upload and submission must use

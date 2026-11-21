@@ -3544,6 +3544,14 @@ when each attempt materializes its own private checkout. Fixed and related
 workspaces use the shared lease. Each authenticated slot has its own supervised
 admission, even when multiple slots share a physical host. Stable submission
 replay preserves the task's originally recorded lease and eligible slots.
+An ordinary single-project Git worker can also opt into the same protected companion
+attachment via its operator-managed `fleetCredentials` configuration. The worker matches
+the source project and exact committed pointer to the protected checkout before linking
+it under `local/`; both providers use the same worker gate. The enrollment digest is part
+of the local admission binding, and continuation and completed-result recovery recheck
+the pin and link. Unenrolled profiles attach nothing. This does not change controller
+project grants, OS-account access, or the model environment. See the
+[single-project enrollment contract](plugins/factory/README.md#enroll-a-single-project-credential-companion).
 Artifacts are private Cloud Storage generations referenced by Firestore.
 Private controller inputs use a separate create-only object prefix scoped to authenticated
 context, project and submission message. Admission binds the exact generation and digest
