@@ -174,6 +174,7 @@ function workerArgv(config, sessionId) {
   return codexArgs(sessionId, config, permission, config.gateway, config.cwd);
 }
 async function enrolledCredentials(config, fleet, resume) {
+  if (config.fleetCredentials && !fleet) throw new Error('Credential enrollment requires a matching Fleet Git attempt');
   if (credentialEnrollment(config) !== fleet?.credentialEnrollment)
     throw new Error('Credential enrollment changed before invocation');
   if (!config.fleetCredentials) return false;
