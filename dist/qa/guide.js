@@ -8,6 +8,31 @@
  */
 export const QA_GUIDE = `# Comment QA
 
+## Find submitted feedback
+
+Start with Firestore for feedback already submitted from a website or inside an iOS app.
+If the person identifies a local desktop preview overlay, go straight to its checkout inbox
+(see step 4). For an unclear source, check Firestore first and check the local inbox if an
+overlay send is plausible.
+
+1. **Live web.** Use the Firebase project for the site and environment that received the
+   comment, even when the page is about a different project. Open \`webQaBatches/{batchId}\` if
+   you have a receipt ID. Otherwise query a small set ordered by \`createdAt\` newest first and
+   match the submitter, time, page, or comment. Read the batch's \`notes\`, then its comments
+   and deployment metadata.
+2. **In-app iOS.** Use the Firebase project for the reporting build and the project's QA
+   intake instructions. For user-scoped bug reports, look under
+   \`users/{uid}/bugReports/{reportId}\` using the reporter's UID in that project. Open the
+   report by ID or check that reporter's recent reports. Pinned comments can share a
+   \`sessionID\`. Read any \`batchNotes\`, then the matching reports and available attachments.
+
+Use an existing authorized Firestore connection, Console session, or authenticated REST API.
+Keep lookups private and read-only. Report access errors separately from a successful search
+with no match. Summarize the fields stored with the matching submission and identify any
+requested evidence that is absent.
+
+## Local preview and overlay inbox
+
 The person runs the app — the iOS app in a simulator, or the website in a browser — pins comments
 on it, and you act on them. Every agent — Claude, Codex, Grok — uses the same surface: the QA
 overlay page the preview prints. Do not substitute a host's native simulator panel or its own

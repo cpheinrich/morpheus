@@ -1813,13 +1813,23 @@ jobs:
  */
 export const commentQaSkill = (): string => `---
 name: comment-qa
-description: Run the app or website for interactive comment QA — the person pins comments on the running app and you act on them. The iOS app runs in a simulator and the website in its local dev server, both shown through one QA overlay page that Claude, Codex and Grok all open. Use for "QA the app", "QA the site", "comment QA", "web comments", "ios-qa", "run the iOS app so I can leave comments", or to check or stop a QA preview.
+description: Find submitted iOS and live web QA feedback in Firestore, or run interactive comment QA for a local website or simulator. Use for QA comments, submitted snapshots, and starting, checking, or stopping a QA preview.
 ---
 
 # Comment QA
 
-Run \`morpheus qa guide\` and follow it. Read any batch-level Notes before handling the
-individual comments. The guide ships with the CLI, so its instructions match the commands you run.
+For feedback that was already submitted, check Firestore first. Use the submitting website's
+Firebase project for live web feedback and the reporting build's Firebase project for in-app
+iOS feedback. Run \`morpheus qa guide\` for the lookup steps and read any batch-level Notes first.
+
+## Local preview and overlay inbox
+
+Use the local queue directly when the person identifies a desktop preview overlay. If the
+submission source is unclear, check Firestore first and look in the checkout's overlay inbox
+when a local send is plausible.
+
+Run \`morpheus qa guide\` for the local workflow. The guide ships with the CLI, so its instructions
+match the commands you run. Read any batch-level Notes before handling individual comments.
 
 The short form:
 
