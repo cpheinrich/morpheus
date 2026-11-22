@@ -189,6 +189,22 @@ describe("ios-test-retry.py", () => {
     expect(JSON.parse(await h.read("Results/attempt-2/summary.json"))).toMatchObject({ result: "Passed" });
   });
 
+  it("opens the working directory's Swift package when ios-ci passes no project, on every attempt", async () => {
+    for (const [project, expected] of [["", []], ["App.xcodeproj", ["-project", "App.xcodeproj"]]] as const) {
+      const h = await harness([{ id: unit, behavior: "pass" }, { id: stale, behavior: "leftover" }], { PROJECT: project });
+      expect((await h.run()).code).toBe(0);
+      const invocations = await h.invocations();
+      expect(invocations).toHaveLength(2);
+      for (const { argv } of invocations) {
+        const at = argv.indexOf("-project");
+        expect(at < 0 ? [] : argv.slice(at, at + 2), project || "package").toEqual(expected);
+        expect(argv.slice(argv.indexOf("-scheme"), argv.indexOf("-scheme") + 2)).toEqual(["-scheme", "App"]);
+        expect(argv).toContain("-onlyUsePackageVersionsFromResolvedFile");
+        expect(argv).toContain("-disableAutomaticPackageResolution");
+      }
+    }
+  });
+
   it("fails the job for a test that fails every attempt, retrying only what still fails", async () => {
     const h = await harness([{ id: unit, behavior: "pass" }, { id: stale, behavior: "leftover" }, { id: broken, behavior: "fail" }]);
     const { code, stdout } = await h.run();

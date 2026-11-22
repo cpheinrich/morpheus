@@ -18,6 +18,7 @@ Only what the tree does not show; `src/` and `tests/` (Vitest, mirroring `src/`)
 | `src/project-skills.ts` | Reusable project-skill registry consumed by scaffold, discovery and sync |
 | `src/init/templates.ts` | What every scaffolded project's `AGENTS.md` and files say — keep aligned with this file |
 | `.github/workflows/` | Reusable workflows every project calls at `@main` — a merge here ships to all of them |
+| `Package.swift`, `packages/swift/` | Opt-in Swift packages apps pin by release tag — [`swift-packages.md`](docs/swift-packages.md) |
 | `.github/agent-review-prompt.md` | The rung-2 reviewer persona — versioned, so it is reviewable |
 | `.claude/skills/` | Canonical Claude procedures, classified in `src/project-skills.ts` |
 | `.agents/skills/` | Canonical Codex/Grok procedures, classified in `src/project-skills.ts` |

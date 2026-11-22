@@ -230,3 +230,8 @@ export declare const chiefProductOfficerPointerSkill: () => string;
 export declare const vpDesignPointerSkill: () => string;
 /** Early planning stays visible even before the installed canonical guide is read. */
 export declare const visualDesignPointerSkill: () => string;
+/**
+ * Shared Swift package changes route upstream. The pointer keeps the canonical description, so
+ * both providers trigger on the same requests, and states the boundary before the guide is read.
+ */
+export declare const swiftPackagesPointerSkill: () => string;

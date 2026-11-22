@@ -2607,6 +2607,68 @@ describe("ios-testflight-upload action", () => {
 });
 
 /**
+ * Morpheus's own caller for its shared Swift packages. It is public-repository
+ * code whose own native lane becomes available after the repo is private.
+ * Public-period admission happens in the private calling repository.
+ */
+describe("swift-packages.yml", () => {
+  type Caller = {
+    on?: { push?: { branches?: string[]; paths?: string[] }; pull_request?: unknown; [event: string]: unknown };
+    permissions?: Record<string, string>;
+    jobs?: Record<string, { if?: string; uses?: string; with?: Record<string, unknown>; secrets?: unknown }>;
+  };
+  const caller = async () => (await read("swift-packages.yml")) as unknown as Caller;
+
+  it("tests the package through ios-ci with Xcode 27.2 on an iOS 26.5 simulator from the xcode-27.2 pool", async () => {
+    const wf = await caller();
+    expect(Object.keys(wf.jobs ?? {})).toEqual(["screen-qa"]);
+    const job = wf.jobs!["screen-qa"]!;
+    expect(job.uses).toBe("./.github/workflows/ios-ci.yml");
+    expect(job.with).toMatchObject({
+      "swift-package": true,
+      "working-directory": ".",
+      scheme: "MorpheusScreenQA",
+      runner: "xcode-27.2",
+      "xcode-version": "27.2",
+      destination: "OS=26.5,name=iPhone 17 Pro Max",
+      "actions-ref": "${{ github.sha }}",
+      "artifact-stage-ref": "${{ github.sha }}",
+    });
+    // The scheme is the package's automatic one, named after the package while it has one product.
+    const manifest = await readFile(join(import.meta.dirname, "../Package.swift"), "utf8");
+    expect(manifest).toMatch(/let package = Package\(\n {4}name: "MorpheusScreenQA",/);
+    expect(job.with).not.toHaveProperty("runner-labels-json");
+    expect(job.secrets).toBeUndefined();
+    expect(wf.permissions).toEqual({ contents: "read" });
+  });
+
+  it("calls the Mac lane only for a private repository and a trusted event", async () => {
+    const wf = await caller();
+    expect(Object.keys(wf.on ?? {}).sort()).toEqual(["pull_request", "push"]);
+    expect(wf.on?.push?.branches).toEqual(["main"]);
+    expect(wf.jobs!["screen-qa"]!.if).toBe(
+      "${{ github.event.repository.private && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}",
+    );
+  });
+
+  it("watches the same package and CI paths on pull requests and pushes, and each exists", async () => {
+    const wf = await caller();
+    const push = wf.on?.push?.paths ?? [];
+    const watched = String(wf.jobs!["screen-qa"]!.with?.["watch-paths"]).trimEnd().split("\n");
+    // A push filter globs a directory's contents; a Git pathspec names the directory itself.
+    expect(push.map((path) => path.replace(/\/\*\*$/, "/"))).toEqual(watched);
+    expect(watched).toEqual(expect.arrayContaining([
+      "Package.swift", "Package.resolved", "packages/swift/", ".github/workflows/ios-ci.yml", "scripts/ios-test-retry.py",
+    ]));
+    // The lock appears only once a package declares a dependency; the source arrives with its import.
+    for (const path of watched.filter((entry) => entry !== "Package.resolved" && entry !== "packages/swift/")) {
+      await expect(readFile(join(import.meta.dirname, "..", path)).then(() => true, (e: NodeJS.ErrnoException) => e.code === "EISDIR"), path)
+        .resolves.toBe(true);
+    }
+  });
+});
+
+/**
  * `ios-ci.yml` is the native Apple equivalent of node-ci and python-ci. The
  * lock and simulator defaults are part of its public caller contract: if
  * package resolution mutates the lock, or the destination names a runtime the
@@ -2636,6 +2698,33 @@ describe("ios-ci.yml", () => {
     expect(wf.on).toHaveProperty("workflow_call");
     expect(wf.on?.workflow_call?.secrets).toBeUndefined();
     expect(wf.permissions).toEqual({ contents: "read" });
+  });
+
+  it("requires an exact source when a private caller checks out another repository", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const steps = wf.jobs?.test?.steps ?? [];
+    const validation = steps.find((step) => step.name === "Validate execution identity");
+    const checkout = steps.find((step) => step.uses === CHECKOUT_V7);
+    expect(wf.on?.workflow_call?.inputs?.["source-repository"]).toMatchObject({
+      type: "string",
+      default: "",
+    });
+    expect(checkout?.with).toMatchObject({
+      repository: "${{ inputs.source-repository || github.repository }}",
+      ref: "${{ inputs.source-sha || github.sha }}",
+      "persist-credentials": false,
+    });
+    const sha = "a".repeat(40);
+    const run = (repository: string, source: string) =>
+      spawnSync("bash", ["-c", String(validation?.run)], {
+        encoding: "utf8",
+        env: { ...process.env, SOURCE_REPOSITORY: repository, SOURCE_SHA: source, EXECUTION_ID: "" },
+      });
+    expect(run("", "").status).toBe(0);
+    expect(run("cpheinrich/morpheus", sha).status).toBe(0);
+    expect(run("cpheinrich/morpheus", "").stderr).toContain("requires owner/repository and an exact source-sha");
+    expect(run("cpheinrich/morpheus", "main").stderr).toContain("must be an exact lowercase");
+    expect(run("../morpheus", sha).stderr).toContain("requires owner/repository and an exact source-sha");
   });
 
   it("pins the current iOS 26 runner, Xcode, and simulator contract", async () => {
@@ -2887,6 +2976,153 @@ describe("ios-ci.yml", () => {
     expect(String(validate?.run)).toContain("git ls-files --error-unmatch");
     expect(String(resolve?.run)).toContain("-onlyUsePackageVersionsFromResolvedFile");
     expect(String(resolve?.run)).toContain("-resolvePackageDependencies");
+  });
+
+  describe("Swift package mode", () => {
+    const PACKAGE_PROJECT = "${{ !inputs.swift-package && inputs.project || '' }}";
+    const XCODEBUILD_STEPS = ["Resolve locked Swift packages", "Build for testing", "Build", "Run unit and UI tests"];
+    type Step = { name?: string; run?: string; env?: Record<string, string> };
+    const step = async (name: string) =>
+      ((((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? []) as Step[]).find((s) => s.name === name)!;
+
+    it("is an explicit opt-in that leaves project callers' inputs unchanged", async () => {
+      const inputs = ((await read("ios-ci.yml")) as IosCi).on?.workflow_call?.inputs ?? {};
+      expect(inputs["swift-package"]).toMatchObject({ type: "boolean", default: false });
+      expect(inputs.project?.default).toBe("Evo.xcodeproj");
+      for (const name of XCODEBUILD_STEPS) {
+        // GitHub renders `false && x || ''` as '' and `true && x || ''` as x.
+        expect((await step(name)).env?.PROJECT, name).toBe(PACKAGE_PROJECT);
+      }
+      const validate = await step("Validate locked project inputs");
+      expect(validate.env).toMatchObject({ PROJECT: "${{ inputs.project }}", SWIFT_PACKAGE: "${{ inputs.swift-package }}" });
+    });
+
+    /** Runs the validation step in a git checkout with a fake xcrun standing in for SwiftPM. */
+    async function validate(files: Record<string, string>, opts: { track?: string[]; env?: Record<string, string> } = {}) {
+      const root = await mkdtemp(join(tmpdir(), "ios-ci-swift-package-"));
+      const bin = join(root, "bin");
+      const repo = join(root, "repo");
+      const calls = join(root, "xcrun.log");
+      try {
+        await mkdir(bin, { recursive: true });
+        await mkdir(repo, { recursive: true });
+        await execFileAsync("git", ["init", "--quiet"], { cwd: repo });
+        for (const [path, content] of Object.entries(files)) {
+          if (path.endsWith("/")) await mkdir(join(repo, path), { recursive: true });
+          else await writeFile(join(repo, path), content);
+        }
+        if (opts.track?.length) await execFileAsync("git", ["add", "--", ...opts.track], { cwd: repo });
+        await writeFile(join(bin, "xcrun"), [
+          "#!/bin/bash",
+          'printf "%s\\n" "$*" >> "$XCRUN_LOG"',
+          '[ "$*" = "swift package dump-package" ] || exit 2',
+          '[ -z "${DUMP_FAILS:-}" ] || { echo "manifest failed to parse" >&2; exit 1; }',
+          'printf \'{"name":"MorpheusScreenQA","dependencies":%s,"targets":[]}\\n\' "$DEPENDENCIES"',
+        ].join("\n"));
+        await chmod(join(bin, "xcrun"), 0o755);
+        const script = String((await step("Validate locked project inputs")).run);
+        const env = {
+          PATH: `${bin}:${process.env.PATH}`, HOME: process.env.HOME ?? root, XCRUN_LOG: calls, GITHUB_WORKSPACE: repo,
+          PROJECT: "Evo.xcodeproj", SWIFT_PACKAGE: "true", SCHEME: "MorpheusScreenQA", PARALLEL_TESTING: "NO",
+          MAXIMUM_PARALLEL_TESTING_WORKERS: "0", SIMULATOR_LANES_FROM_HOST: "false", TEST_ITERATIONS: "3",
+          FIREBASE_EMULATORS: "false", PRE_TEST_SCRIPT: "", TEST_EVIDENCE_SCRIPT: "", SWIFT_FORMAT_LINT: "false",
+          DEPENDENCIES: "[]", ...opts.env,
+        };
+        // GitHub's default bash shell: errexit and pipefail.
+        const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", script], { cwd: repo, env, encoding: "utf8" });
+        const xcrun = await readFile(calls, "utf8").catch(() => "");
+        return { status: result.status, stderr: result.stderr, xcrun: xcrun.trim().split("\n").filter(Boolean) };
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+
+    const MANIFEST = { "Package.swift": "// swift-tools-version: 6.2\n" };
+
+    it("accepts a dependency-free package without a lock, after asking SwiftPM what it declares", async () => {
+      expect(await validate(MANIFEST)).toEqual({ status: 0, stderr: "", xcrun: ["swift package dump-package"] });
+    });
+
+    it("requires a committed lock as soon as the package declares a dependency", async () => {
+      const declared = await validate(MANIFEST, { env: { DEPENDENCIES: '[{"sourceControl":[{}]}]' } });
+      expect(declared.status).toBe(1);
+      expect(declared.stderr).toContain(
+        "A checked-in Package.resolved is required for reproducible SwiftPM resolution: Package.swift declares 1 dependencies",
+      );
+
+      const untracked = await validate({ ...MANIFEST, "Package.resolved": "{}\n" }, { track: ["Package.swift"] });
+      expect(untracked.status).toBe(1);
+      expect(untracked.stderr).toContain("Package.resolved must be committed: Package.resolved");
+
+      // A committed lock is the reproducible state whatever the manifest declares.
+      const locked = await validate({ ...MANIFEST, "Package.resolved": "{}\n" }, {
+        track: ["Package.swift", "Package.resolved"], env: { DEPENDENCIES: '[{"sourceControl":[{}]}]' },
+      });
+      expect(locked).toEqual({ status: 0, stderr: "", xcrun: [] });
+    });
+
+    it("fails rather than skipping the lock check when SwiftPM cannot read the manifest", async () => {
+      const result = await validate(MANIFEST, { env: { DUMP_FAILS: "1" } });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("manifest failed to parse");
+    });
+
+    it("refuses a missing manifest, and a project or workspace xcodebuild would open instead", async () => {
+      const missing = await validate({});
+      expect(missing.status).toBe(1);
+      expect(missing.stderr).toContain("swift-package requires a Package.swift");
+      for (const container of ["App.xcodeproj/", "App.xcworkspace/"]) {
+        const shadowed = await validate({ ...MANIFEST, [container]: "" });
+        expect(shadowed.status, container).toBe(1);
+        expect(shadowed.stderr).toContain("swift-package found an Xcode project or workspace beside Package.swift");
+      }
+    });
+
+    it("keeps project callers on the project and their nested-lock requirement", async () => {
+      const project = await validate(MANIFEST, { env: { SWIFT_PACKAGE: "false" } });
+      expect(project.status).toBe(1);
+      expect(project.stderr).toContain("Xcode project 'Evo.xcodeproj' was not found");
+      const unlocked = await validate({ "Evo.xcodeproj/": "" }, { env: { SWIFT_PACKAGE: "false" } });
+      expect(unlocked.status).toBe(1);
+      expect(unlocked.stderr).toContain("A checked-in Package.resolved is required for reproducible SwiftPM resolution\n");
+      expect(unlocked.xcrun).toEqual([]);
+    });
+
+    it("passes -project to every xcodebuild step only when the caller has a project", async () => {
+      const root = await mkdtemp(join(tmpdir(), "ios-ci-xcodebuild-"));
+      try {
+        const bin = join(root, "bin");
+        await mkdir(bin, { recursive: true });
+        await writeFile(join(bin, "xcodebuild"), '#!/bin/bash\nprintf "%s\\n" "$@" > "$ARGV_LOG"\n');
+        await chmod(join(bin, "xcodebuild"), 0o755);
+        for (const name of ["Resolve locked Swift packages", "Build for testing", "Build"]) {
+          const script = String((await step(name)).run);
+          for (const [project, expected] of [["", []], ["App.xcodeproj", ["-project", "App.xcodeproj"]]] as const) {
+            const argvLog = join(root, "argv");
+            const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", script], {
+              cwd: root, encoding: "utf8",
+              env: {
+                PATH: `${bin}:${process.env.PATH}`, ARGV_LOG: argvLog, LOGS: root, RESULTS: root, PROJECT: project,
+                SCHEME: "MorpheusScreenQA", CONFIGURATION: "Debug", SDK: "iphonesimulator", PLATFORM: "iOS Simulator",
+                DESTINATION: "OS=26.5,name=iPhone 17 Pro Max", SOURCE_PACKAGES: join(root, "sp"), DERIVED_DATA: join(root, "dd"),
+                TEST_PLAN: "", PARALLEL_TESTING: "NO", MAXIMUM_PARALLEL_TESTING_WORKERS: "0", OPTIMIZE_TEST_BUILD: "false",
+              },
+            });
+            expect(result.status, `${name} ${project || "package"}: ${result.stderr}`).toBe(0);
+            const argv = (await readFile(argvLog, "utf8")).trimEnd().split("\n");
+            const at = argv.indexOf("-project");
+            expect(at < 0 ? [] : argv.slice(at, at + 2), `${name} ${project || "package"}`).toEqual(expected);
+            expect(argv.slice(argv.indexOf("-scheme"), argv.indexOf("-scheme") + 2)).toEqual(["-scheme", "MorpheusScreenQA"]);
+            // A project caller's invocation keeps its original order: action, then -project, then -scheme.
+            if (project) expect(argv.slice(1, 4), name).toEqual(["-project", project, "-scheme"]);
+            // Package mode keeps the locked-resolution flags project callers have.
+            expect(argv).toContain("-onlyUsePackageVersionsFromResolvedFile");
+          }
+        }
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
   });
 
   it("keeps packages, build products, results, and logs in isolated paths", async () => {

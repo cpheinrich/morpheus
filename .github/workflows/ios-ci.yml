@@ -12,13 +12,19 @@ name: iOS CI
 #         scheme: Evo
 #
 # The defaults track Evo's current iOS 26 test surface. A different native app
-# normally needs to pass only its project and scheme.
+# normally needs to pass only its project and scheme. A Swift package passes
+# swift-package: true, its manifest's working-directory and an automatic scheme
+# instead of a project.
 
 on:
   workflow_call:
     inputs:
       source-sha:
         description: Optional exact 40-character source commit to test; required for CD execution.
+        type: string
+        default: ""
+      source-repository:
+        description: Optional public source repository for a trusted caller testing an exact source-sha.
         type: string
         default: ""
       execution-id:
@@ -66,9 +72,17 @@ on:
         type: string
         default: "apps/ios"
       project:
-        description: Xcode project path, relative to working-directory.
+        description: Xcode project path, relative to working-directory. Ignored for a Swift package.
         type: string
         default: "Evo.xcodeproj"
+      swift-package:
+        description: >
+          Build and test the Package.swift in working-directory instead of an Xcode project; scheme
+          names one of its automatic schemes. Resolution stays locked: a package that declares
+          dependencies must commit Package.resolved beside its manifest, and only one that declares
+          none may omit it.
+        type: boolean
+        default: false
       scheme:
         description: Shared scheme whose test action owns the unit and UI test targets.
         type: string
@@ -348,9 +362,14 @@ jobs:
         working-directory: .
         env:
           SOURCE_SHA: ${{ inputs.source-sha }}
+          SOURCE_REPOSITORY: ${{ inputs.source-repository }}
           EXECUTION_ID: ${{ inputs.execution-id }}
         run: |
           set -euo pipefail
+          if [[ -n "${SOURCE_REPOSITORY:-}" && ( -z "$SOURCE_SHA" || ! "$SOURCE_REPOSITORY" =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ ) ]]; then
+            echo 'source-repository requires owner/repository and an exact source-sha' >&2
+            exit 1
+          fi
           if [[ -n "$SOURCE_SHA" && ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "source-sha must be an exact lowercase 40-character commit hash" >&2
             exit 1
@@ -364,6 +383,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          repository: ${{ inputs.source-repository || github.repository }}
           ref: ${{ inputs.source-sha || github.sha }}
           # Scoped PRs need ancestry to verify a merge regenerated after the event.
           # Other callers only need the first parent for the style gate.
@@ -482,6 +502,7 @@ jobs:
         if: ${{ steps.scope.outputs.run == 'true' }}
         env:
           PROJECT: ${{ inputs.project }}
+          SWIFT_PACKAGE: ${{ inputs.swift-package }}
           SCHEME: ${{ inputs.scheme }}
           PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
           MAXIMUM_PARALLEL_TESTING_WORKERS: ${{ inputs.maximum-parallel-testing-workers }}
@@ -497,16 +518,28 @@ jobs:
           SWIFT_FORMAT_LINT: ${{ inputs.swift-format-lint }}
           SWIFT_FORMAT_CONFIGURATION: ${{ inputs.swift-format-configuration }}
         run: |
-          case "$PROJECT" in
-            ""|/*|*".."*)
-              echo "project must be a non-empty relative path without '..'" >&2
+          if [ "$SWIFT_PACKAGE" = "true" ]; then
+            if [ ! -f Package.swift ]; then
+              echo "swift-package requires a Package.swift in $PWD" >&2
               exit 1
-              ;;
-          esac
+            fi
+            # xcodebuild prefers a project or workspace beside the manifest over the package.
+            if compgen -G '*.xcodeproj' >/dev/null || compgen -G '*.xcworkspace' >/dev/null; then
+              echo "swift-package found an Xcode project or workspace beside Package.swift in $PWD" >&2
+              exit 1
+            fi
+          else
+            case "$PROJECT" in
+              ""|/*|*".."*)
+                echo "project must be a non-empty relative path without '..'" >&2
+                exit 1
+                ;;
+            esac
 
-          if [ ! -d "$PROJECT" ]; then
-            echo "Xcode project '$PROJECT' was not found in $PWD" >&2
-            exit 1
+            if [ ! -d "$PROJECT" ]; then
+              echo "Xcode project '$PROJECT' was not found in $PWD" >&2
+              exit 1
+            fi
           fi
           if [ -z "$SCHEME" ]; then
             echo "scheme must not be empty" >&2
@@ -529,15 +562,32 @@ jobs:
             exit 1
           fi
 
-          lockfile=$(find . -type f -name Package.resolved -print -quit)
-          if [ -z "$lockfile" ]; then
-            echo "A checked-in Package.resolved is required for reproducible SwiftPM resolution" >&2
-            exit 1
+          if [ "$SWIFT_PACKAGE" = "true" ]; then
+            # A root package's lock sits beside its manifest. With no dependencies SwiftPM writes
+            # none, and there is nothing for resolution to choose; any dependency needs the lock.
+            if [ -f Package.resolved ]; then
+              lockfile=Package.resolved
+            else
+              lockfile=""
+              dependencies=$(xcrun swift package dump-package | python3 -I -c 'import json, sys; print(len(json.load(sys.stdin)["dependencies"]))')
+              if [ "$dependencies" != "0" ]; then
+                echo "A checked-in Package.resolved is required for reproducible SwiftPM resolution: Package.swift declares $dependencies dependencies" >&2
+                exit 1
+              fi
+            fi
+          else
+            lockfile=$(find . -type f -name Package.resolved -print -quit)
+            if [ -z "$lockfile" ]; then
+              echo "A checked-in Package.resolved is required for reproducible SwiftPM resolution" >&2
+              exit 1
+            fi
           fi
-          git ls-files --error-unmatch -- "$lockfile" >/dev/null || {
-            echo "Package.resolved must be committed: $lockfile" >&2
-            exit 1
-          }
+          if [ -n "$lockfile" ]; then
+            git ls-files --error-unmatch -- "$lockfile" >/dev/null || {
+              echo "Package.resolved must be committed: $lockfile" >&2
+              exit 1
+            }
+          fi
 
           if [ -n "$PRE_TEST_SCRIPT" ]; then
             case "$PRE_TEST_SCRIPT" in
@@ -711,14 +761,16 @@ jobs:
       - name: Resolve locked Swift packages
         if: ${{ steps.scope.outputs.run == 'true' }}
         env:
-          PROJECT: ${{ inputs.project }}
+          PROJECT: ${{ !inputs.swift-package && inputs.project || '' }}
           SCHEME: ${{ inputs.scheme }}
         run: |
           set -o pipefail
+          args=(-scheme "$SCHEME")
+          # No project: xcodebuild opens the Swift package in the working directory.
+          if [ -n "$PROJECT" ]; then args=(-project "$PROJECT" "${args[@]}"); fi
           xcodebuild \
             -resolvePackageDependencies \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
+            "${args[@]}" \
             -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
             -onlyUsePackageVersionsFromResolvedFile \
             2>&1 | tee "$LOGS/package-resolution.log"
@@ -739,7 +791,7 @@ jobs:
       - name: Build for testing
         if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}
         env:
-          PROJECT: ${{ inputs.project }}
+          PROJECT: ${{ !inputs.swift-package && inputs.project || '' }}
           SCHEME: ${{ inputs.scheme }}
           CONFIGURATION: ${{ inputs.configuration }}
           SDK: ${{ inputs.sdk }}
@@ -752,7 +804,6 @@ jobs:
         run: |
           set -o pipefail
           args=(
-            -project "$PROJECT"
             -scheme "$SCHEME"
             -configuration "$CONFIGURATION"
             -sdk "$SDK"
@@ -768,6 +819,8 @@ jobs:
             # compiler work nothing ever reads.
             COMPILER_INDEX_STORE_ENABLE=NO
           )
+          # No project: xcodebuild opens the Swift package in the working directory.
+          if [ -n "$PROJECT" ]; then args=(-project "$PROJECT" "${args[@]}"); fi
           if [ -n "$TEST_PLAN" ]; then
             args+=(-testPlan "$TEST_PLAN")
           fi
@@ -802,7 +855,7 @@ jobs:
       - name: Build
         if: ${{ steps.scope.outputs.run == 'true' && !inputs.run-tests }}
         env:
-          PROJECT: ${{ inputs.project }}
+          PROJECT: ${{ !inputs.swift-package && inputs.project || '' }}
           SCHEME: ${{ inputs.scheme }}
           CONFIGURATION: ${{ inputs.configuration }}
           SDK: ${{ inputs.sdk }}
@@ -812,7 +865,6 @@ jobs:
         run: |
           set -o pipefail
           args=(
-            -project "$PROJECT"
             -scheme "$SCHEME"
             -configuration "$CONFIGURATION"
             -sdk "$SDK"
@@ -824,6 +876,8 @@ jobs:
             -disableAutomaticPackageResolution
             COMPILER_INDEX_STORE_ENABLE=NO
           )
+          # No project: xcodebuild opens the Swift package in the working directory.
+          if [ -n "$PROJECT" ]; then args=(-project "$PROJECT" "${args[@]}"); fi
           if [ "$OPTIMIZE_TEST_BUILD" = "true" ]; then
             args+=(SWIFT_OPTIMIZATION_LEVEL=-O SWIFT_COMPILATION_MODE=wholemodule GCC_OPTIMIZATION_LEVEL=s)
           fi
@@ -854,7 +908,7 @@ jobs:
         id: tests
         if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}
         env:
-          PROJECT: ${{ inputs.project }}
+          PROJECT: ${{ !inputs.swift-package && inputs.project || '' }}
           SCHEME: ${{ inputs.scheme }}
           CONFIGURATION: ${{ inputs.configuration }}
           SDK: ${{ inputs.sdk }}

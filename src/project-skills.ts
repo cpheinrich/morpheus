@@ -11,6 +11,7 @@ import {
   meetingIntakeSkill,
   motionDesignExplorationSkill,
   researchEngineerPointerSkill,
+  swiftPackagesPointerSkill,
   vpDesignPointerSkill,
   visualDesignPointerSkill,
   websiteInitSkill,
@@ -74,6 +75,15 @@ export const PROJECT_SKILLS: readonly ProjectSkillDefinition[] = [
     canonical: true,
     guide: "morpheus qa guide",
     render: commentQaSkill,
+  },
+  {
+    name: "morpheus-swift-packages",
+    providers: ["agents", "claude"],
+    kinds: ALL_KINDS,
+    distribution: "pointer",
+    canonical: true,
+    guide: "morpheus skills guide morpheus-swift-packages",
+    render: swiftPackagesPointerSkill,
   },
   {
     name: "meeting-intake",
