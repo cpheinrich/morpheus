@@ -366,7 +366,7 @@ jobs:
           EXECUTION_ID: ${{ inputs.execution-id }}
         run: |
           set -euo pipefail
-          if [[ -n "$SOURCE_REPOSITORY" && ( -z "$SOURCE_SHA" || ! "$SOURCE_REPOSITORY" =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ ) ]]; then
+          if [[ -n "${SOURCE_REPOSITORY:-}" && ( -z "$SOURCE_SHA" || ! "$SOURCE_REPOSITORY" =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ ) ]]; then
             echo 'source-repository requires owner/repository and an exact source-sha' >&2
             exit 1
           fi
