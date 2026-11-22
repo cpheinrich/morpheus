@@ -1496,6 +1496,11 @@ before the executor, it atomically retires that exact ID and can recover a never
 receipt. An existing reservation still needs its ordinary termination evidence. A queued receipt is exposed as `previousAttemptReceipt` and must
 match the task snapshot’s last attempt.
 An accepted clarification waits with its original session and answer until quota returns.
+Unattended Fleet refuses native Claude tool-permission requests in the same stream, with
+guidance to try a bounded, non-destructive alternative within the existing permissions.
+Malformed or unsupported native control requests stop the invocation without granting access.
+Native requests do not become controller questions; a worker can still return a structured
+clarification at the end of its turn.
 `placementCandidate` means the slot was free in a heartbeat at most 45 seconds old
 and its last scoped quota check reported headroom within two minutes. It does not
 test the source checkout, inference credential, model or later claim. Every eligible
