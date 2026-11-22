@@ -1,14 +1,22 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { VISUAL_DESIGN_SKILL } from "../design/visual-design.js";
+import { SWIFT_PACKAGES_SKILL } from "../swift-packages/skill.js";
 import { projectSkillCatalog, syncProjectSkills, } from "../project-skills.js";
 const providerName = (provider) => provider === "agents" ? "Codex/Grok" : "Claude";
+/** Canonical skills whose installed pointers defer to `morpheus skills guide <name>`. */
+const GUIDES = {
+    "visual-design": VISUAL_DESIGN_SKILL,
+    "morpheus-swift-packages": SWIFT_PACKAGES_SKILL,
+};
 export function showProjectSkillGuide(name) {
-    if (name !== "visual-design") {
-        console.error(`Unknown project skill guide "${name ?? ""}". Guides: visual-design.`);
+    // Own keys only: "constructor" or "toString" is not a guide.
+    const guide = name !== undefined && Object.hasOwn(GUIDES, name) ? GUIDES[name] : undefined;
+    if (guide === undefined) {
+        console.error(`Unknown project skill guide "${name ?? ""}". Guides: ${Object.keys(GUIDES).join(", ")}.`);
         return 1;
     }
-    console.log(VISUAL_DESIGN_SKILL.replace(/\n$/, ""));
+    console.log(guide.replace(/\n$/, ""));
     return 0;
 }
 export function listProjectSkills(json) {

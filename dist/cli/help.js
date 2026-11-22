@@ -89,6 +89,7 @@ Usage
   morpheus skills lifecycle <stage> <surface> [--gstack --host codex|claude] [--json]
                             opt-in gstack handoffs from the project root
   morpheus skills guide visual-design — early diagrams for relationship-heavy planning
+  morpheus skills guide morpheus-swift-packages — change or update a shared Swift package upstream
   morpheus skills sync      [--check] — add missing loader-native skill entrypoints;
                             existing project-owned skill files are never overwritten
   morpheus meeting-intake guide

@@ -1,0 +1,52 @@
+name: Swift packages
+
+# Morpheus's own caller for the shared Swift packages declared by the root
+# Package.swift. ios-ci.yml owns the toolchain, simulator, locked resolution,
+# tests and evidence; this file owns only when they run and on which runner.
+# See docs/swift-packages.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Package.swift
+      - Package.resolved
+      - packages/swift/**
+      - .github/workflows/swift-packages.yml
+      - .github/workflows/ios-ci.yml
+      - .github/actions/ios-simulator/**
+      - .github/actions/ios-testflight-upload/artifact-stage/**
+      - scripts/ios-test-retry.py
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  screen-qa:
+    name: MorpheusScreenQA
+    # The Mac pool serves pushes to main and pull requests from branches of this
+    # repository, which only maintainers can push. A fork's pull request skips
+    # this job, so its code never reaches a Mac.
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+    uses: ./.github/workflows/ios-ci.yml
+    with:
+      # Test the workflow's helpers at the revision under test, not main's.
+      actions-ref: ${{ github.sha }}
+      artifact-stage-ref: ${{ github.sha }}
+      swift-package: true
+      working-directory: "."
+      scheme: MorpheusScreenQA
+      runner: xcode-27.2
+      xcode-version: "27.2"
+      destination: "OS=26.5,name=iPhone 17 Pro Max"
+      # A pull request that touches none of these reports success without Mac work.
+      watch-paths: |
+        Package.swift
+        Package.resolved
+        packages/swift/
+        .github/workflows/swift-packages.yml
+        .github/workflows/ios-ci.yml
+        .github/actions/ios-simulator/
+        .github/actions/ios-testflight-upload/artifact-stage/
+        scripts/ios-test-retry.py

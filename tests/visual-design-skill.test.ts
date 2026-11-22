@@ -37,7 +37,7 @@ describe("visual planning distribution (not an agent behavior evaluation)", () =
         error.mockClear();
         expect(await run(["skills", "guide", ...topic])).toBe(1);
         expect(log).not.toHaveBeenCalled();
-        expect(error.mock.calls).toEqual([[`Unknown project skill guide "${topic[0] ?? ""}". Guides: visual-design.`]]);
+        expect(error.mock.calls).toEqual([[`Unknown project skill guide "${topic[0] ?? ""}". Guides: visual-design, morpheus-swift-packages.`]]);
       }
     } finally {
       log.mockRestore();

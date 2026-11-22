@@ -51,7 +51,9 @@ def lines(name):
 def xcodebuild_args(bundle):
     env = os.environ
     destination = env.get('MORPHEUS_IOS_DESTINATION') or env['DESTINATION']
-    args = ['-project', env['PROJECT'], '-scheme', env['SCHEME'], '-configuration', env['CONFIGURATION'],
+    # An empty project selects the Swift package in the working directory (ios-ci swift-package).
+    args = (['-project', env['PROJECT']] if env['PROJECT'] else []) + [
+            '-scheme', env['SCHEME'], '-configuration', env['CONFIGURATION'],
             '-sdk', env['SDK'], '-destination', f"platform={env['PLATFORM']},{destination}",
             '-clonedSourcePackagesDirPath', env['SOURCE_PACKAGES'], '-derivedDataPath', env['DERIVED_DATA'],
             '-resultBundlePath', str(bundle),

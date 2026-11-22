@@ -2043,6 +2043,13 @@ workflow accepts GitHub's versioned Xcode application layout and a dedicated Mac
 self-hosted runners are restricted to private repositories and isolated operating-system accounts;
 public-repository pull-request code never receives a route to an operator workstation.
 
+A Swift package opts in with `swift-package: true`: xcodebuild opens the `Package.swift` in the
+working directory instead of a project, with the same simulator, build/test split and evidence.
+Resolution stays locked: a package declaring dependencies needs its committed `Package.resolved`,
+and only one declaring none may omit it. Morpheus's own `swift-packages.yml` caller tests its
+shared packages with Xcode 27.2 on an iOS 26.5 simulator, on the `xcode-27.2` Mac pool label, for
+pushes to `main` and same-repository pull requests; a fork's pull request skips the job.
+
 Physical devices additionally need a provisioning profile and a connected device, so simulator is
 the default for the review loop.
 
@@ -3665,6 +3672,13 @@ The git dependency includes committed `dist/` output and exposes no install-time
 script. Consumers therefore unpack ready-to-run JavaScript rather than compiling Morpheus inside
 their own install. Morpheus contributors run `pnpm compile`; CI rebuilds and rejects any diff so the
 committed artifacts cannot drift from `src/`.
+
+**Native runtime code is the Swift package counterpart.** The root `Package.swift` declares
+opt-in Swift products (`MorpheusScreenQA` first) with sources and tests under `packages/swift/`.
+They use Apple frameworks only and share this repository's SemVer release tags, because SwiftPM
+reads a dependency's manifest from the repository root. Apps pin a release tag; shared behavior
+changes upstream, never in an app's copy. The project-facing `morpheus-swift-packages` skill
+carries that procedure, and [`docs/swift-packages.md`](docs/swift-packages.md) the boundary.
 
 ```
 morpheus/

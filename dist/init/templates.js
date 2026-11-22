@@ -20,6 +20,7 @@ import { AGENTIC_CTO_SKILL, RESEARCH_ENGINEER_SKILL, DEVOPS_ENGINEER_SKILL } fro
 import { productSkillDescription } from "../product/guide.js";
 import { CHIEF_PRODUCT_OFFICER_SKILL, VP_DESIGN_SKILL } from "../product/skill.js";
 import { VISUAL_DESIGN_SKILL } from "../design/visual-design.js";
+import { SWIFT_PACKAGES_SKILL } from "../swift-packages/skill.js";
 export const manifest = (s) => JSON.stringify({
     name: s.name,
     prefix: s.prefix,
@@ -70,12 +71,12 @@ work, what a pull request must carry, the inbox cycle.
 
 ### Found a gap in Morpheus itself?
 
-**Send it upstream** instead of working around it here: a local workaround fixes one project and
-hides the defect from every other.
+**Send it upstream** instead of working around it: a local workaround fixes one project and
+hides the defect from every other. Shared Swift packages: use the \`morpheus-swift-packages\` skill.
 
-1. **Open an issue:** ${MORPHEUS_REPO}/issues. It needs no fork and is where triage happens.
+1. **Open an issue:** ${MORPHEUS_REPO}/issues. No fork needed; triage happens there.
 2. **A pull request with a verified fix is welcome too.** It needs a fork, and a fork's CI runs
-   without secrets; a first-time contributor's workflows wait for approval.
+   without secrets; GitHub may require workflow approval.
 3. **Create the roadmap item in your pull request** (\`morpheus pm new roadmap "..."\`): its id is a
    timestamp and \`baseSha\` the commit you were on, so both mean something only when recorded as
    you hit the problem.
@@ -1923,5 +1924,25 @@ Morpheus holds the reviewed procedure and the installed CLI prints it.
 Distinguish current from proposed and label assumptions. Render in the conversation or a preview;
 use fenced Mermaid for durable docs and update retained diagrams after material design changes.
 This adds no approval pause or merge gate. If the guide is unknown, run \`morpheus self update\`.
+`;
+/**
+ * Shared Swift package changes route upstream. The pointer keeps the canonical description, so
+ * both providers trigger on the same requests, and states the boundary before the guide is read.
+ */
+export const swiftPackagesPointerSkill = () => `${SWIFT_PACKAGES_SKILL.slice(0, SWIFT_PACKAGES_SKILL.indexOf("\n---", 4) + 4)}
+
+# Morpheus Swift packages
+
+Run \`morpheus skills guide morpheus-swift-packages\` and follow it; Morpheus holds the reviewed
+procedure and the installed CLI prints it.
+
+Until you have read it: locate the declaration (\`Package.swift\` or the Xcode package reference),
+the pinned version in \`Package.resolved\`, and the product's upstream source and tests at that
+tag, and check the newest compatible release. Change the app only when the package already
+supports the behavior. Shared behavior is fixed in Morpheus: a claimed pull request with write
+access, otherwise a sanitized Morpheus issue linked from the blocked app item. Never copy, vendor
+or locally patch package source; update the pin only to a tagged release.
+
+If the guide is unknown, run \`morpheus self update\`.
 `;
 //# sourceMappingURL=templates.js.map

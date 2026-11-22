@@ -13,7 +13,7 @@ diagram needs zoom or sideways scrolling, simplify or split it into focused view
 ## Distribution and refinement
 
 Edit `.agents/skills/visual-design/SKILL.md`, then run
-`node scripts/sync-visual-design-skill.mjs` to refresh the Claude mirror and the generated CLI
+`node scripts/sync-skill-guides.mjs` to refresh the Claude mirror and the generated CLI
 module. Distribution tests compare all three byte for byte. `src/project-skills.ts` remains the
 only registry. Descriptions in scaffold pointers come from the canonical frontmatter.
 

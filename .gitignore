@@ -6,6 +6,9 @@ dist/
 !/dist/**
 build/
 *.log
+# SwiftPM and Xcode state for the root Package.swift
+/.build/
+/.swiftpm/
 
 # Local scratch — never committed
 local/
