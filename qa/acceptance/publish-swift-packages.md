@@ -7,8 +7,8 @@
   provide service configuration and credentials through their own integration.
 - The reusable iOS workflow runs the native package tests on a short-lived
   self-hosted Mac VM. Existing Xcode project callers keep their build and
-  test contract. Public fork workflows are subject to maintainer approval
-  and the package workflow skips forks while using the private runner pool.
+  test contract. While Morpheus is public, a private caller tests the exact
+  reviewed commit and the public repo has no runner registration path.
 - Managed project scaffolding and skill sync expose upstream package
   navigation, app configuration, upstream PRs, and issue filing as applicable.
 - A semantic version tag points to the reviewed protected merge. Consumer

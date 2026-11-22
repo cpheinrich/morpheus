@@ -2042,6 +2042,9 @@ workflow accepts GitHub's versioned Xcode application layout and a dedicated Mac
 `/Applications/Xcode.app`, but verifies the toolchain's reported version in both cases. Persistent
 self-hosted runners are restricted to private repositories and isolated operating-system accounts;
 public-repository pull-request code never receives a route to an operator workstation.
+Public Swift package candidates are validated by a private caller on the Mac pool against an
+exact reviewed source commit. Morpheus's direct Mac lane takes over once its repository is private
+and enrolled in the pool.
 
 A Swift package opts in with `swift-package: true`: xcodebuild opens the `Package.swift` in the
 working directory instead of a project, with the same simulator, build/test split and evidence.

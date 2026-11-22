@@ -2608,8 +2608,8 @@ describe("ios-testflight-upload action", () => {
 
 /**
  * Morpheus's own caller for its shared Swift packages. It is public-repository
- * code that reaches a Mac pool, so the event and repository conditions are the
- * security boundary, not a convenience filter.
+ * code whose own native lane becomes available after the repo is private.
+ * Public-period admission happens in the private calling repository.
  */
 describe("swift-packages.yml", () => {
   type Caller = {
@@ -2642,12 +2642,12 @@ describe("swift-packages.yml", () => {
     expect(wf.permissions).toEqual({ contents: "read" });
   });
 
-  it("gives fork pull requests no route to the Mac pool", async () => {
+  it("calls the Mac lane only for a private repository and a trusted event", async () => {
     const wf = await caller();
     expect(Object.keys(wf.on ?? {}).sort()).toEqual(["pull_request", "push"]);
     expect(wf.on?.push?.branches).toEqual(["main"]);
     expect(wf.jobs!["screen-qa"]!.if).toBe(
-      "${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}",
+      "${{ github.event.repository.private && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}",
     );
   });
 
@@ -2698,6 +2698,33 @@ describe("ios-ci.yml", () => {
     expect(wf.on).toHaveProperty("workflow_call");
     expect(wf.on?.workflow_call?.secrets).toBeUndefined();
     expect(wf.permissions).toEqual({ contents: "read" });
+  });
+
+  it("requires an exact source when a private caller checks out another repository", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const steps = wf.jobs?.test?.steps ?? [];
+    const validation = steps.find((step) => step.name === "Validate execution identity");
+    const checkout = steps.find((step) => step.uses === CHECKOUT_V7);
+    expect(wf.on?.workflow_call?.inputs?.["source-repository"]).toMatchObject({
+      type: "string",
+      default: "",
+    });
+    expect(checkout?.with).toMatchObject({
+      repository: "${{ inputs.source-repository || github.repository }}",
+      ref: "${{ inputs.source-sha || github.sha }}",
+      "persist-credentials": false,
+    });
+    const sha = "a".repeat(40);
+    const run = (repository: string, source: string) =>
+      spawnSync("bash", ["-c", String(validation?.run)], {
+        encoding: "utf8",
+        env: { ...process.env, SOURCE_REPOSITORY: repository, SOURCE_SHA: source, EXECUTION_ID: "" },
+      });
+    expect(run("", "").status).toBe(0);
+    expect(run("cpheinrich/morpheus", sha).status).toBe(0);
+    expect(run("cpheinrich/morpheus", "").stderr).toContain("requires owner/repository and an exact source-sha");
+    expect(run("cpheinrich/morpheus", "main").stderr).toContain("must be an exact lowercase");
+    expect(run("../morpheus", sha).stderr).toContain("requires owner/repository and an exact source-sha");
   });
 
   it("pins the current iOS 26 runner, Xcode, and simulator contract", async () => {

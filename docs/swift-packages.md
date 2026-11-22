@@ -41,9 +41,14 @@ simulator ownership, locked build-for-testing/test-without-building split, retri
 as an app; xcodebuild opens the manifest instead of a project. It runs Xcode 27.2 on an
 iOS 26.5 simulator, on runners carrying the `xcode-27.2` label, and needs no secrets.
 
-It runs for pushes to `main` that touch the package or its CI, and for pull requests from branches
-of this repository. A pull request that touches none of the watched paths reports success without
-Mac work. A fork's pull request skips the job, so its code never reaches a Mac.
+The direct Mac lane runs once the repository is private and enrolled on the Mac pool. It covers
+pushes to `main` and same-repository pull requests that affect the package or native workflow.
+While Morpheus is public, the Mac pool enrolls only the private validation repository for this
+lane. A maintainer starts its thin workflow against an exact reviewed Morpheus commit. The
+private caller pins this reusable workflow and passes the public repository and source SHA to it,
+then the maintainer records the result on the corresponding Morpheus pull request. The Mac
+registers its one-job runner in the private caller's repository using its existing on-host login.
+Public forks have no route to that runner through their workflow definitions.
 
 ## Consuming and changing a package
 

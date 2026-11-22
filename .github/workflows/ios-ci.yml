@@ -23,6 +23,10 @@ on:
         description: Optional exact 40-character source commit to test; required for CD execution.
         type: string
         default: ""
+      source-repository:
+        description: Optional public source repository for a trusted caller testing an exact source-sha.
+        type: string
+        default: ""
       execution-id:
         description: Durable CD dispatch effect id; isolates concurrency and disables cancellation.
         type: string
@@ -358,9 +362,14 @@ jobs:
         working-directory: .
         env:
           SOURCE_SHA: ${{ inputs.source-sha }}
+          SOURCE_REPOSITORY: ${{ inputs.source-repository }}
           EXECUTION_ID: ${{ inputs.execution-id }}
         run: |
           set -euo pipefail
+          if [[ -n "$SOURCE_REPOSITORY" && ( -z "$SOURCE_SHA" || ! "$SOURCE_REPOSITORY" =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ ) ]]; then
+            echo 'source-repository requires owner/repository and an exact source-sha' >&2
+            exit 1
+          fi
           if [[ -n "$SOURCE_SHA" && ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "source-sha must be an exact lowercase 40-character commit hash" >&2
             exit 1
@@ -374,6 +383,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          repository: ${{ inputs.source-repository || github.repository }}
           ref: ${{ inputs.source-sha || github.sha }}
           # Scoped PRs need ancestry to verify a merge regenerated after the event.
           # Other callers only need the first parent for the style gate.
