@@ -833,19 +833,79 @@ time.sleep(60)
 });
 }
 
+const claudeDriver = fileURLToPath(new URL('../src/fleet-claude.mjs', import.meta.url));
+const toolRequest = { type: 'control_request', request_id: 'permission-fixture',
+  request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'printf %s fixture' } } };
+
+function startClaudeFixture(script) {
+  const child = spawn(process.execPath, [claudeDriver, '65536', 'null', process.execPath, '--input-type=module', '-e', script], {
+    stdio: ['pipe', 'pipe', 'pipe'], timeout: 7000,
+  });
+  child.stdin.on('error', () => {});
+  let stdout = '', stderr = '';
+  child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+  child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
+  const finished = once(child, 'close').then(exit => ({ exit, stdout, stderr }));
+  child.stdin.write('fixture prompt\n');
+  return { child, finished };
+}
+
+test('Fleet Claude denies only a complete permission frame and continues to a result', async () => {
+  const request = JSON.stringify(toolRequest);
+  const split = request.indexOf('can_use_tool') + 3;
+  const result = { type: 'result', result: 'Used a read-only fixture alternative' };
+  const { child, finished } = startClaudeFixture(`
+    import assert from 'node:assert/strict';
+    import { createInterface } from 'node:readline';
+    import { access } from 'node:fs/promises';
+    setTimeout(() => process.exit(124), 5000).unref();
+    const input = createInterface({ input: process.stdin })[Symbol.asyncIterator]();
+    assert.equal((await input.next()).value, 'fixture prompt');
+    process.stdout.write(${JSON.stringify(request.slice(0, split))});
+    assert.equal((await input.next()).value, 'send remainder');
+    process.stdout.write(${JSON.stringify(request.slice(split))});
+    assert.equal((await input.next()).value, 'end frame');
+    process.stdout.write('\\n');
+    const response = JSON.parse((await input.next()).value);
+    assert.match(response.response.response.message, /bounded, non-destructive alternative/);
+    assert.deepEqual(response, { type: 'control_response', response: { subtype: 'success',
+      request_id: 'permission-fixture', response: { behavior: 'deny', message: response.response.response.message } } });
+    await access(process.execPath);
+    console.log(${JSON.stringify(JSON.stringify(result))});
+    assert.equal((await input.next()).done, true);
+  `);
+  let bytes = 0;
+  child.stdout.on('data', chunk => {
+    bytes += chunk.length;
+    if (bytes === split) child.stdin.write('send remainder\n');
+    if (bytes === request.length) child.stdin.write('end frame\n');
+  });
+  assert.deepEqual(await finished, { exit: [0, null], stdout: request + '\n' + JSON.stringify(result) + '\n', stderr: '' });
+});
+
+test('Fleet Claude fails closed on malformed or unsupported control requests', async t => {
+  for (const [label, event] of [
+    ['uncorrelatable ID', { ...toolRequest, request_id: '' }],
+    ['malformed permission payload', { ...toolRequest, request: { ...toolRequest.request, input: [] } }],
+    ['unsupported subtype', { ...toolRequest, request: { ...toolRequest.request, subtype: 'fixture_other' } }],
+  ]) await t.test(label, async () => {
+    const frame = JSON.stringify(event) + '\n';
+    const { finished } = startClaudeFixture(`
+      setTimeout(() => process.exit(124), 5000).unref();
+      process.stdin.once('data', () => process.stdout.write(${JSON.stringify(frame)}));
+    `);
+    assert.deepEqual(await finished, { exit: [1, null], stdout: frame,
+      stderr: 'Malformed or unsupported Claude control request; no tool permission granted.\n' });
+  });
+});
+
 test('Fleet Claude relay closes after a final report and does not wait on an overage', async () => {
-  const driver = fileURLToPath(new URL('../src/fleet-claude.mjs', import.meta.url));
   for (const overage of [false, true]) {
     const event = overage ? { type: 'rate_limit_event', rate_limit_info: { isUsingOverage: true } } : { type: 'result' };
     const cli = `process.stdin.resume(); process.stdin.once('data', () => console.log(${JSON.stringify(JSON.stringify(event))}));`;
-    const child = spawn(process.execPath, [driver, '65536', 'null', process.execPath, '-e', cli], {
-      stdio: ['pipe', 'pipe', 'ignore'], timeout: 4000,
-    });
-    child.stdin.write('fixture prompt\n');
-    let stdout = '';
-    child.stdout.setEncoding('utf8');
-    child.stdout.on('data', data => { stdout += data; });
-    assert.deepEqual(await once(child, 'close'), [overage ? 1 : 0, null]);
+    const { finished } = startClaudeFixture(cli);
+    const { exit, stdout, stderr } = await finished;
+    assert.deepEqual(exit, [overage ? 1 : 0, null], stderr);
     assert.deepEqual(JSON.parse(stdout), event);
   }
 });
@@ -989,7 +1049,7 @@ fs.access = async (path, mode) => {
 };
 syncBuiltinESMExports();
 `);
-  async function exchange(fixture, { home = privateHome, checkout = 'git', envelope = {} } = {}) {
+  async function exchange(fixture, { home = privateHome, checkout = 'git', envelope = {}, stopOnDenial = false } = {}) {
     const admissionId = randomUUID();
     const job = {
       task: { source: { project: 'fixture', revision, checkout },
@@ -1001,11 +1061,17 @@ syncBuiltinESMExports();
     const child = spawn(process.execPath, args, { env: { ...process.env, HOME: home, OPERATOR_FIXTURE: fixture,
       CLAUDE_FIXTURE_KEY: 'claude-gateway-only-test', ANTHROPIC_API_KEY: 'unrelated-native-key', CLAUDE_CONFIG_DIR: '/unrelated-native-home' },
       stdio: ['pipe', 'pipe', 'inherit'] });
+    const closed = once(child, 'close');
     child.stdin.write(JSON.stringify(job) + '\n');
     let stdout = '';
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', chunk => { stdout += chunk; });
-    assert.equal((await once(child, 'close'))[0], 0);
+    if (stopOnDenial) {
+      try {
+        await waitFor(() => readFile(join(f.root, job.admissionId + '.denied'), 'utf8'), value => value === 'deny');
+      } finally { child.stdin.end('stop\n'); }
+    }
+    assert.deepEqual(await closed, [0, null]);
     const messages = stdout.trim().split('\n').map(line => JSON.parse(line));
     return { admissionId: job.admissionId, outcome: messages.at(-1).outcome, artifacts: messages.slice(0, -1).map(message => message.artifact) };
   }
@@ -1045,6 +1111,16 @@ pathlib.Path(${JSON.stringify(f.root)}, run + '.json').write_text(json.dumps({'a
 session = ${JSON.stringify(sessionId)} if 'wrong session' not in prompt else ${JSON.stringify(otherSession)}
 def emit(event): print(json.dumps(dict(event,session_id=session)),flush=True)
 emit({'type':'system','subtype':'init'})
+if 'finish fixture' in prompt or 'cancel fixture' in prompt:
+ emit(json.loads(${JSON.stringify(JSON.stringify(toolRequest))}))
+ reply = json.loads(sys.stdin.readline())
+ assert reply['type'] == 'control_response'
+ response = reply['response']
+ assert response['subtype'] == 'success' and response['request_id'] == 'permission-fixture'
+ assert response['response']['behavior'] == 'deny'
+ if 'cancel fixture' in prompt:
+  pathlib.Path(${JSON.stringify(f.root)}, run + '.denied').write_text(response['response']['behavior'])
+  time.sleep(30)
 output = pathlib.Path('.factory-artifacts-' + run)
 (output/'result.txt').write_text('claude fixture')
 if 'deadline fixture' in prompt:
@@ -1127,6 +1203,14 @@ sys.stdin.read()
   assert.deepEqual(overage.artifacts, []);
   const stopped = await json(join(f.root, overage.admissionId + '.json'));
   assert.throws(() => process.kill(stopped.pid, 0), { code: 'ESRCH' });
+  const canceled = await exchange('protected', { envelope: { ...envelope, prompt: 'cancel fixture', resume: done.admissionId }, stopOnDenial: true });
+  assert.equal(canceled.outcome.terminationVerified, true);
+  assert.deepEqual(canceled.artifacts, []);
+  const canceledProcess = await json(join(f.state, canceled.admissionId, 'process.json'));
+  assert.equal(canceledProcess.interrupted, true);
+  assert.equal(canceledProcess.cleanupVerified, true);
+  const canceledClaude = await json(join(f.root, canceled.admissionId + '.json'));
+  assert.throws(() => process.kill(canceledClaude.pid, 0), { code: 'ESRCH' });
   await writeFile(f.configPath, JSON.stringify({ ...config, maxRunSeconds: 1 }));
   const deadline = await runClaude('deadline fixture', done.admissionId);
   assert.equal(deadline.outcome.diagnosticCode, 'deadline_reached');

@@ -13,6 +13,34 @@ function streamEvent(chunks) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { return null; }
 }
 
+function toolDenial({ request_id, request }) {
+  if (typeof request_id !== 'string' || !request_id.trim() || request?.subtype !== 'can_use_tool' ||
+      typeof request.tool_name !== 'string' || !request.tool_name.trim() ||
+      !request.input || typeof request.input !== 'object' || Array.isArray(request.input)) return null;
+  return { type: 'control_response', response: { subtype: 'success', request_id, response: {
+    behavior: 'deny',
+    message: 'Unattended Fleet cannot grant this tool permission. Choose a bounded, non-destructive alternative within the current permissions. If none is available, report the blocker in your final result.',
+  } } };
+}
+
+function refuseControlRequest(input, event) {
+  const denial = toolDenial(event);
+  if (!denial) {
+    process.stderr.write('Malformed or unsupported Claude control request; no tool permission granted.\n');
+    return false;
+  }
+  return new Promise((resolve, reject) => {
+    input.write(JSON.stringify(denial) + '\n', error => error ? reject(error) : resolve(true));
+  });
+}
+
+function relayEvent(event, input, closeInput) {
+  if (claudeOverage(event)) return false;
+  if (event?.type === 'control_request') return refuseControlRequest(input, event);
+  if (event?.type === 'result') closeInput();
+  return true;
+}
+
 async function relay(child, limit, closeInput) {
   let pending = [];
   let bytes = 0;
@@ -26,8 +54,7 @@ async function relay(child, limit, closeInput) {
       offset = end + 1;
       const event = streamEvent(pending);
       pending = [];
-      if (claudeOverage(event)) return false;
-      if (event?.type === 'result') closeInput();
+      if (!await relayEvent(event, child.stdin, closeInput)) return false;
     }
     if (offset < chunk.length) pending.push(chunk.subarray(offset));
   }

@@ -1,5 +1,14 @@
 # Decisions
 
+## Unattended Fleet denies native Claude tool requests in the stream — 2026-11-21
+
+[MO-26-11-21-23.37.49](../hq/product/roadmap/MO-26-11-21-23.37.49-refuse-claude-tool-hangs.md).
+Reuse the native `control_response` shape from the interactive Claude bridge in the
+existing Fleet relay. Send an actionable denial for a valid permission request; stop
+on malformed or unsupported native control requests. Fleet's durable question owner
+starts only after a verified turn result and is not a live permission channel. Keep the
+existing frame reader and guardian; no new protocol framework or dependency.
+
 ## Swift palettes are an opt-in primitive binding — 2026-11-16
 
 [MO-26-11-16-13.37.39](../hq/product/roadmap/MO-26-11-16-13.37.39-generate-swift-palettes.md),

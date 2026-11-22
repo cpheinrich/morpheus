@@ -3573,6 +3573,9 @@ and private input tasks within each provider based on the last successful claim.
 prelaunch quota hold releases the initial slot and workspace under the same task identity. Restricted
 Claude workers share the same guardian under an OS write sandbox. A per-invocation
 loopback relay restricts their network access to the configured model endpoint.
+The unattended stream relay denies native tool-permission requests in the current turn.
+Malformed or unsupported native control requests fail closed. The durable Fleet
+question path still consumes only structured clarification results from terminated turns.
 A retryable submit replays the same stable message ID, and existing status reports the
 current queue condition for the workspace, eligible slots, or selected provider.
 The pilot keeps the A2A task semantics and uses the Factory transport described
