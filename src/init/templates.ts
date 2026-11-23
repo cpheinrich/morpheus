@@ -1569,14 +1569,7 @@ heavy temporary concept media in \`research/assets/\`, which is local and Git-ig
 its README; \`research/brand.html\` itself remains versioned evidence.
 `;
 
-/**
- * A project-generic, reusable Codex motion-concept review procedure.
- *
- * Unlike the brand-review skill, this is useful even to an internal project:
- * the live product can supply its visual system when no hq/brand package exists.
- * Keep this template byte-identical to the repository-level skill; init.test.ts
- * holds that distribution boundary.
- */
+/** Managed instructions for refreshing a private iOS capture study. */
 export const iosCaptureRefreshSkill = (): string => `---
 name: ios-capture-refresh
 description: Refresh private iOS app navigation and product research captures after frontend changes or for a published App Store build. Use for synthetic route replay, study export, and capture provenance, not app distribution.
@@ -1626,6 +1619,14 @@ evidence or fill gaps in a release study with simulator captures.
    publication.
 `;
 
+/**
+ * A project-generic, reusable Codex motion-concept review procedure.
+ *
+ * Unlike the brand-review skill, this is useful even to an internal project:
+ * the live product can supply its visual system when no hq/brand package exists.
+ * Keep this template byte-identical to the repository-level skill; init.test.ts
+ * holds that distribution boundary.
+ */
 export const motionDesignExplorationSkill = (): string => `---
 name: motion-design-exploration
 description: Explore and mock up branded motion graphics for loading, upload, scanning, analysis, processing, progress, transitions, or other product activity states. Use when someone wants several visual directions before choosing or implementing an animation.

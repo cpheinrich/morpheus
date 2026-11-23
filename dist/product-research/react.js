@@ -1,12 +1,23 @@
 "use client";
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { lazy, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Component, lazy, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useFragmentView } from "../ops-desk/react.js";
 import { verifiedResearchLibraryBlob } from "../research-library/client.js";
 import { formatResearchLibraryBytes } from "../research-library/index.js";
 import { APP_RESEARCH_POINT_CANVAS, } from "./index.js";
 const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 const NavigationGraph = lazy(() => import("./navigation-graph.js"));
+class GraphBoundary extends Component {
+    state = { failed: false };
+    static getDerivedStateFromError() {
+        return { failed: true };
+    }
+    render() {
+        return this.state.failed
+            ? _jsx("p", { className: "app-research-meta", role: "status", children: "The graph could not load. Use the screen list below." })
+            : this.props.children;
+    }
+}
 export function ProductResearchViewer({ study, readAsset, screenMetrics }) {
     const { app } = study;
     const [reveal, setReveal] = useState();
@@ -28,7 +39,7 @@ export function ProductResearchViewer({ study, readAsset, screenMetrics }) {
     reader.current = readAsset;
     const read = useMemo(() => (path) => reader.current(path), []);
     const selectScreen = (id) => navigate({ screen: id, control: null });
-    return (_jsxs("div", { className: "app-research", children: [_jsxs("header", { className: "app-research-header", children: [_jsx("h2", { className: "app-research-title", children: app.name }), _jsxs("p", { className: "app-research-meta", children: ["Version ", app.version, " \u00B7 ", _jsx("span", { className: "app-research-badge", children: app.status }), " \u00B7 ", study.device.model, study.device.osVersion ? ` (iOS ${study.device.osVersion})` : "", " \u00B7 captured ", day(study.capturedAt)] }), app.summary ? _jsx("p", { className: "app-research-summary", children: app.summary }) : null] }), _jsxs("section", { className: "app-research-navigation", "aria-label": "Navigation graph", children: [_jsx("h3", { className: "app-research-figure-title", children: "Navigation graph" }), _jsx("div", { className: "app-research-graph", children: _jsx(Suspense, { fallback: _jsx("p", { className: "app-research-meta", role: "status", children: "Loading navigation graph\u2026" }), children: _jsx(NavigationGraph, { app: app, selected: screen.id, screenMetrics: screenMetrics, onSelect: (id) => { selectScreen(id); setReveal({ id }); } }, study.studyId) }) })] }), _jsxs("div", { className: "app-research-layout", children: [_jsx(ScreenList, { screens: app.screens, selected: screen.id, reveal: reveal, onSelect: selectScreen }), _jsx(ScreenDetail, { study: study, screen: screen, screens: screens, control: view.control, capture: view.capture, restoring: view.restoring, read: read, navigate: navigate }, screen.id)] }), _jsx(StudyNotes, { study: study, read: read })] }));
+    return (_jsxs("div", { className: "app-research", children: [_jsxs("header", { className: "app-research-header", children: [_jsx("h2", { className: "app-research-title", children: app.name }), _jsxs("p", { className: "app-research-meta", children: ["Version ", app.version, " \u00B7 ", _jsx("span", { className: "app-research-badge", children: app.status }), " \u00B7 ", study.device.model, study.device.osVersion ? ` (iOS ${study.device.osVersion})` : "", " \u00B7 captured ", day(study.capturedAt)] }), app.summary ? _jsx("p", { className: "app-research-summary", children: app.summary }) : null] }), _jsxs("section", { className: "app-research-navigation", "aria-label": "Navigation graph", children: [_jsx("h3", { className: "app-research-figure-title", children: "Navigation graph" }), _jsx(GraphBoundary, { children: _jsx("div", { className: "app-research-graph", children: _jsx(Suspense, { fallback: _jsx("p", { className: "app-research-meta", role: "status", children: "Loading navigation graph\u2026" }), children: _jsx(NavigationGraph, { app: app, selected: screen.id, screenMetrics: screenMetrics, onSelect: (id) => { selectScreen(id); setReveal({ id }); } }, study.studyId) }) }) }, study.studyId)] }), _jsxs("div", { className: "app-research-layout", children: [_jsx(ScreenList, { screens: app.screens, selected: screen.id, reveal: reveal, onSelect: selectScreen }), _jsx(ScreenDetail, { study: study, screen: screen, screens: screens, control: view.control, capture: view.capture, restoring: view.restoring, read: read, navigate: navigate }, screen.id)] }), _jsx(StudyNotes, { study: study, read: read })] }));
 }
 function readView(hash, screens, entry) {
     const params = new URLSearchParams(hash.replace(/^#/, ""));

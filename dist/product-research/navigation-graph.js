@@ -1,8 +1,8 @@
 "use client";
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { Graph, layout } from "@dagrejs/dagre";
-import { BaseEdge, Controls, Handle, MarkerType, MiniMap, Position, ReactFlow, useReactFlow, } from "@xyflow/react";
-import { useId, useMemo } from "react";
+import { BaseEdge, Controls, Handle, MarkerType, MiniMap, Position, ReactFlow, useNodesInitialized, useReactFlow, } from "@xyflow/react";
+import { useEffect, useId, useMemo, useRef } from "react";
 const width = 204;
 const height = 80;
 const marker = { type: MarkerType.ArrowClosed, color: "var(--app-research-muted)" };
@@ -56,6 +56,24 @@ function TransitionEdgeView({ id, data, markerEnd }) {
 const nodeTypes = { screen: ScreenNodeView };
 const edgeTypes = { transition: TransitionEdgeView };
 const minimapSize = { width: 112, height: 76 };
+function InitialViewport({ selected }) {
+    const initialized = useNodesInitialized();
+    const { viewportInitialized, fitView, getNode, setCenter } = useReactFlow();
+    const positioned = useRef(false);
+    useEffect(() => {
+        if (positioned.current || !initialized || !viewportInitialized)
+            return;
+        positioned.current = true;
+        const node = getNode(selected);
+        if (node && window.matchMedia?.("(max-width: 47.99rem)").matches) {
+            void setCenter(node.position.x + width / 2, node.position.y + height / 2, { zoom: 0.8 });
+        }
+        else {
+            void fitView();
+        }
+    }, [fitView, getNode, initialized, selected, setCenter, viewportInitialized]);
+    return null;
+}
 export default function NavigationGraph({ app, selected, screenMetrics, onSelect }) {
     const id = useId();
     const graph = useMemo(() => projectGraph(app), [app]);
@@ -63,13 +81,6 @@ export default function NavigationGraph({ app, selected, screenMetrics, onSelect
         ...node, selected: node.id === selected,
         data: { ...node.data, metrics: screenMetrics && Object.hasOwn(screenMetrics, node.id) ? screenMetrics[node.id] : undefined },
     })), [graph, selected, screenMetrics]);
-    return (_jsxs(ReactFlow, { id: id, nodes: nodes, edges: graph.edges, nodeTypes: nodeTypes, edgeTypes: edgeTypes, onNodeClick: (_event, node) => onSelect(node.id), fitView: true, minZoom: 0.05, maxZoom: 2, onInit: (flow) => {
-            if (!window.matchMedia?.("(max-width: 47.99rem)").matches)
-                return;
-            const node = flow.getNode(selected);
-            if (node) {
-                void flow.setCenter(node.position.x + width / 2, node.position.y + height / 2, { zoom: 0.8 });
-            }
-        }, nodesDraggable: false, nodesConnectable: false, nodesFocusable: false, edgesFocusable: false, elementsSelectable: false, edgesReconnectable: false, deleteKeyCode: null, zoomOnScroll: false, children: [_jsx(Controls, { showInteractive: false }), _jsx(MiniMap, { ariaLabel: "Navigation overview", style: minimapSize, zoomable: true, pannable: true, nodeColor: (node) => node.selected ? "var(--app-research-accent)" : "var(--app-research-muted)" })] }));
+    return (_jsxs(ReactFlow, { id: id, nodes: nodes, edges: graph.edges, nodeTypes: nodeTypes, edgeTypes: edgeTypes, onNodeClick: (_event, node) => onSelect(node.id), minZoom: 0.05, maxZoom: 2, nodesDraggable: false, nodesConnectable: false, nodesFocusable: false, edgesFocusable: false, elementsSelectable: false, edgesReconnectable: false, deleteKeyCode: null, zoomOnScroll: false, children: [_jsx(InitialViewport, { selected: selected }), _jsx(Controls, { showInteractive: false }), _jsx(MiniMap, { ariaLabel: "Navigation overview", style: minimapSize, zoomable: true, pannable: true, nodeColor: (node) => node.selected ? "var(--app-research-accent)" : "var(--app-research-muted)" })] }));
 }
 //# sourceMappingURL=navigation-graph.js.map

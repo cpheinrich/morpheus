@@ -1,6 +1,6 @@
 "use client";
 
-import { lazy, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Component, lazy, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useFragmentView } from "../ops-desk/react.js";
 import { verifiedResearchLibraryBlob } from "../research-library/client.js";
@@ -31,6 +31,20 @@ type Load<T> = { status: "idle" | "loading" } | { status: "ready"; value: T } | 
 
 const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 const NavigationGraph = lazy(() => import("./navigation-graph.js"));
+
+class GraphBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  override render() {
+    return this.state.failed
+      ? <p className="app-research-meta" role="status">The graph could not load. Use the screen list below.</p>
+      : this.props.children;
+  }
+}
 
 export function ProductResearchViewer({ study, readAsset, screenMetrics }: {
   study: AppResearchStudy; readAsset: ReadAsset; screenMetrics?: ScreenMetrics;
@@ -68,12 +82,14 @@ export function ProductResearchViewer({ study, readAsset, screenMetrics }: {
       </header>
       <section className="app-research-navigation" aria-label="Navigation graph">
         <h3 className="app-research-figure-title">Navigation graph</h3>
-        <div className="app-research-graph">
-          <Suspense fallback={<p className="app-research-meta" role="status">Loading navigation graph…</p>}>
-            <NavigationGraph key={study.studyId} app={app} selected={screen.id} screenMetrics={screenMetrics}
-              onSelect={(id) => { selectScreen(id); setReveal({ id }); }} />
-          </Suspense>
-        </div>
+        <GraphBoundary key={study.studyId}>
+          <div className="app-research-graph">
+            <Suspense fallback={<p className="app-research-meta" role="status">Loading navigation graph…</p>}>
+              <NavigationGraph key={study.studyId} app={app} selected={screen.id} screenMetrics={screenMetrics}
+                onSelect={(id) => { selectScreen(id); setReveal({ id }); }} />
+            </Suspense>
+          </div>
+        </GraphBoundary>
       </section>
       <div className="app-research-layout">
         <ScreenList screens={app.screens} selected={screen.id} reveal={reveal} onSelect={selectScreen} />
