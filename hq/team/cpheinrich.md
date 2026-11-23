@@ -1,18 +1,21 @@
 ---
 owner: cpheinrich
-date: 2026-11-16
+date: 2026-11-23
 agents:
   - codex
-previous: .agent/inbox-archive/2026-11-16-2149-cpheinrich.md
+previous: .agent/inbox-archive/2026-11-23-2013-cpheinrich.md
 ---
-# Inbox — 2026-11-16
+# Inbox — 2026-11-23
 
-The issue automation reconciled every open issue and its comments and linked PRs with GitHub.
-Ten previously open issues closed in other sessions; their merged-source evidence is retained.
-[PR #725](https://github.com/cpheinrich/morpheus/pull/725) adds optional Swift brand palettes
-for #491 and merged after independent review with no findings and passing required checks.
-The ledger now tracks 88 closed issues out of 100. The prior inbox is [archived](../../.agent/inbox-archive/2026-11-16-2149-cpheinrich.md).
-The two unanswered items below are preserved.
+The issue automation verified and closed [#693](https://github.com/cpheinrich/morpheus/issues/693)
+against merged [PR #736](https://github.com/cpheinrich/morpheus/pull/736) and 63 passing current-main
+regressions. [PR #764](https://github.com/cpheinrich/morpheus/pull/764) adds validated sibling-worktree
+context reads for #691 and merged after independent review with no findings and passing required checks.
+[PR #767](https://github.com/cpheinrich/morpheus/pull/767) preserves branded ASO terms through
+deduplication and closed #765 after independent review and passing required checks.
+The ledger records 94 of 102 tracked issues closed. Three intervening closures (#335, #723, #759)
+were reconciled with owner or merged evidence. The prior inbox is
+[archived](../../.agent/inbox-archive/2026-11-23-2013-cpheinrich.md); both unanswered items remain.
 
 ## ❗ 1. Kairos certificate-chain evidence · `codex`
 
@@ -31,11 +34,11 @@ The two unanswered items below are preserved.
 
 ~
 
-## ✅ 3. Remaining issue groups are tracked · `codex`
+## ✅ 3. Remaining work is tracked · `codex`
 
-Next work is context lookup and task attribution (#687/#691/#693), configurable worktree storage
-(#423), active Factory cache preservation (#481), legacy review provenance (#628), and CI
-merge-state diagnostics (#723). #600 requires consumer-side HQ authorization acceptance; #707
-requires Fleet enrollment acceptance. No production activation or credential change was attempted.
-The intentional Manager logs #335/#451 remain open. Details and concrete next actions are in
-`local/issue-triage/progress.md` and its atomic JSON ledger.
+Queued source work: cross-repository evidence attribution (#687), durable worktree storage (#423),
+active Factory cache preservation (#481), and legacy review provenance (#628).
+#600 needs consumer HQ authorization acceptance; #707 needs live Fleet host qualification.
+These deployment/credential steps were not activated. #451 remains the intentional Manager log;
+its older predecessor #335 was archived by the owner. Unrelated audit PRs and claims remain intact.
+Detailed next actions and evidence are in `local/issue-triage/progress.md` and its atomic JSON ledger.
