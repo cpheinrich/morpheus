@@ -134,4 +134,20 @@ describe('native selection and result evidence', () => {
       await expect(f.run('Export complete test evidence')).rejects.toMatchObject({code:7});
     } finally { await rm(f.dir,{recursive:true,force:true}); }
   });
+  it('reports the package-only executed count from summary.json and fails when none ran', async () => {
+    const f = await fixture();
+    try {
+      const step = f.steps.find(s => s.name === 'Report Swift package test count')!;
+      expect(step.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.swift-package && inputs.run-tests }}");
+      const index = (name: string) => f.steps.findIndex(s => s.name === name);
+      expect(index('Report Swift package test count')).toBe(index('Export complete test evidence') + 1);
+      const stepSummary = join(f.dir, 'step-summary.md');
+      Object.assign(f.env, { GITHUB_STEP_SUMMARY: stepSummary });
+      await writeFile(join(f.env.RESULTS, 'summary.json'), JSON.stringify({ totalTestCount: 37, passedTests: 36, failedTests: 0, skippedTests: 1, expectedFailures: 0 }));
+      await f.run('Report Swift package test count');
+      expect(await readFile(stepSummary, 'utf8')).toContain('Swift package tests executed: 36 (passed 36, failed 0, expected failures 0, skipped 1)');
+      await writeFile(join(f.env.RESULTS, 'summary.json'), JSON.stringify({ totalTestCount: 2, passedTests: 0, failedTests: 0, skippedTests: 2, expectedFailures: 0 }));
+      await expect(f.run('Report Swift package test count')).rejects.toMatchObject({ code: 1, stdout: expect.stringContaining('No Swift package tests ran') });
+    } finally { await rm(f.dir,{recursive:true,force:true}); }
+  });
 });

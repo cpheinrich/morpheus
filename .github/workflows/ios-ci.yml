@@ -981,6 +981,28 @@ jobs:
             bash "$GITHUB_WORKSPACE/$TEST_EVIDENCE_SCRIPT"
           fi
 
+      # xcodebuild's console prints a separate XCTest line that reads "0 tests" when every test
+      # uses Swift Testing; the exported summary counts both, so it is the one to report.
+      - name: Report Swift package test count
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.swift-package && inputs.run-tests }}
+        run: |
+          python3 -I -S -B - <<'PYTHON'
+          import json, os, pathlib, sys
+          summary = json.loads((pathlib.Path(os.environ["RESULTS"]) / "summary.json").read_text())
+          count = {k: int(summary.get(k, 0)) for k in ("passedTests", "failedTests", "skippedTests", "expectedFailures")}
+          executed = count["passedTests"] + count["failedTests"] + count["expectedFailures"]
+          line = (f"Swift package tests executed: {executed} "
+                  f"(passed {count['passedTests']}, failed {count['failedTests']}, "
+                  f"expected failures {count['expectedFailures']}, skipped {count['skippedTests']}), "
+                  f"from summary.json, Swift Testing and XCTest combined.")
+          print(line)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write(line + "\n")
+          if executed == 0:
+              print("::error title=No Swift package tests ran::summary.json records no executed test.")
+              sys.exit(1)
+          PYTHON
+
       - name: Export rendered test attachments
         if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
         run: |

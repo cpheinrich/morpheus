@@ -50,6 +50,26 @@ then the maintainer records the result on the corresponding Morpheus pull reques
 registers its one-job runner in the private caller's repository using its existing on-host login.
 Public forks have no route to that runner through their workflow definitions.
 
+### Reading a package run's test result
+
+Xcode prints separate summaries for XCTest and Swift Testing. The step “Report Swift package test
+count” reads the combined `Results/summary.json`, writes the executed, failed and skipped counts
+to the job summary, and fails the job when no test ran. Record that count and the artifact's
+`tested-sha.txt` when validating a release.
+
+Rendered checks attach images to the result bundle rather than writing files: for example,
+`ScreenCommentToolbarAppearanceTests` attaches `ScreenCommentToolbar-light.png` and
+`ScreenCommentToolbar-dark.png`, which the run exports into its screenshots artifact. Locally:
+
+```sh
+qa_results="$(mktemp -d)"
+xcodebuild test -scheme MorpheusScreenQA \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -resultBundlePath "$qa_results/Tests.xcresult"
+xcrun xcresulttool get test-results summary --path "$qa_results/Tests.xcresult"
+xcrun xcresulttool export attachments \
+  --path "$qa_results/Tests.xcresult" --output-path "$qa_results/attachments"
+```
+
 ## Consuming and changing a package
 
 Apps declare `https://github.com/cpheinrich/morpheus` with a version requirement, in
