@@ -9,6 +9,14 @@ import { parseAppeekySnapshot, parseAppResearchStudy } from "../src/product-rese
 import { AppStoreSignals, ProductResearchViewer } from "../src/product-research/react.js";
 import { asset, FILES, sha, syntheticStudy } from "./fixtures/product-research-study.js";
 
+vi.mock("../src/product-research/navigation-graph.js", async (loadOriginal) => {
+  const { default: Graph } = await loadOriginal<typeof import("../src/product-research/navigation-graph.js")>();
+  return { default: (props: Parameters<typeof Graph>[0]) => {
+    if (props.app.slug === "unavailable-fixture") throw new Error("Graph fixture cannot render");
+    return <Graph {...props} />;
+  } };
+});
+
 const study = parseAppResearchStudy(syntheticStudy());
 let created: string[];
 let revoked: string[];
@@ -88,6 +96,21 @@ describe("ProductResearchViewer", () => {
     await waitFor(() => expect(settings.getAttribute("aria-current")).toBe("true"));
     expect(window.location.hash).toBe("#screen=settings");
     expect(readAsset.mock.calls).toEqual([["screens/home.png"]]);
+  });
+
+  it("keeps screen selection and detail available if the graph fails", async () => {
+    const raw = syntheticStudy();
+    raw.app.slug = "unavailable-fixture";
+    const report = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      render(<ProductResearchViewer study={parseAppResearchStudy(raw)} readAsset={reader()} />);
+      await screen.findByText("The graph could not load. Use the screen list below.");
+      const list = within(screen.getByRole("navigation", { name: "Screens" }));
+      await userEvent.click(list.getByRole("button", { name: /Settings/ }));
+      expect(screen.getByRole("region", { name: "Screen: Settings" })).toBeTruthy();
+    } finally {
+      report.mockRestore();
+    }
   });
 
   it("names both figures and matches compact wireframe controls to the full labels", () => {
