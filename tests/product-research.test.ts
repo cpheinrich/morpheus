@@ -218,6 +218,26 @@ describe("fetchAppeekySnapshot", () => {
     expect(calls.map((url) => url.pathname)).toEqual(["/v1/auth/usage"]);
   });
 
+  it.each([
+    ["exact overlap at the lower bound", ["example app", "meal tracker", "food journal"], ["example app"]],
+    ["case and whitespace overlap at the upper bound", [" Example App ", "meal tracker", "food journal", "nutrition", "MEAL TRACKER"], ["EXAMPLE APP", " example app ", "Brand Only", "brand only", "  "]],
+  ])("merges branded membership while keeping first term order and casing: %s", async (_name, terms, brandedTerms) => {
+    const expected = [
+      { term: terms[0]!.trim(), branded: true },
+      { term: "meal tracker", branded: false },
+      { term: "food journal", branded: false },
+      ...(terms.length > 3 ? [{ term: "nutrition", branded: false }, { term: "Brand Only", branded: true }] : []),
+    ];
+    const { fetcher, calls } = fakeAppeeky({
+      "/v1/auth/usage": { data: { credits: { general: { remaining: 5 + expected.length * 2 } } } },
+      "/v1/apps/123": LISTING, "/v1/apps/123/keywords": { data: { keywords: [] } },
+      ...Object.fromEntries(expected.map(({ term }) => [`ranks:${term}`, { data: { ranks: [] } }])),
+    });
+    const snapshot = await fetchAppeekySnapshot({ ...request, terms, brandedTerms }, { apiKey: "test-key", fetch: fetcher });
+    expect(snapshot.keywords).toEqual(expected.map((term) => ({ ...term, rank: null, status: "unranked" })));
+    expect(calls.slice(3).map((url) => url.searchParams.get("keyword"))).toEqual(expected.map(({ term }) => term));
+  });
+
   it("proceeds at exactly the worst-case credit boundary", async () => {
     const usage = { data: { credits: { general: { remaining: 13 } } } };
     const { fetcher } = fakeAppeeky({
@@ -238,6 +258,8 @@ describe("fetchAppeekySnapshot", () => {
     [{ terms: ["a", "b"] }, "Configure 3–5 distinct terms; got 2."],
     [{ terms: ["a", "b", "c", "d", "e", "f"] }, "Configure 3–5 distinct terms; got 6."],
     [{ terms: ["a", "A", "b"], brandedTerms: [] }, "Configure 3–5 distinct terms; got 2."],
+    [{ terms: ["a", "b"], brandedTerms: [" A ", "B"] }, "Configure 3–5 distinct terms; got 2."],
+    [{ terms: ["a", "b", "c", "d", "e", "f"], brandedTerms: [" A "] }, "Configure 3–5 distinct terms; got 6."],
     [{ appId: "com.example" }, "--app must be a numeric App Store id."],
   ])("validates the request before any network call: %j", async (override, message) => {
     const { fetcher, calls } = fakeAppeeky({});
