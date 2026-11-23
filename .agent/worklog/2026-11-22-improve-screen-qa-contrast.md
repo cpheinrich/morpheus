@@ -24,3 +24,5 @@ text on white in light mode and white text on black in dark mode. The test also 
 the semantic color contrast. The workflow fixture verifies a real count and rejects an
 all-skipped result. The 242 focused workflow tests, typecheck, compile, project index,
 complexity, actionlint and whitespace checks passed.
+
+Independent review found that the original rendered test checked the Review capsule background without exercising both labels against it. The corrected test checks the rendered Review and Exit text against their own capsule colors using a deliberately light app accent. All 38 package tests passed again, and the two standard appearance captures are byte-identical.
