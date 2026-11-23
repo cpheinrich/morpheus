@@ -11,7 +11,9 @@ The issue automation verified and closed [#693](https://github.com/cpheinrich/mo
 against merged [PR #736](https://github.com/cpheinrich/morpheus/pull/736) and 63 passing current-main
 regressions. [PR #764](https://github.com/cpheinrich/morpheus/pull/764) adds validated sibling-worktree
 context reads for #691 and merged after independent review with no findings and passing required checks.
-The ledger records 93 of 101 tracked issues closed. Three intervening closures (#335, #723, #759)
+[PR #767](https://github.com/cpheinrich/morpheus/pull/767) preserves branded ASO terms through
+deduplication and closed #765 after independent review and passing required checks.
+The ledger records 94 of 102 tracked issues closed. Three intervening closures (#335, #723, #759)
 were reconciled with owner or merged evidence. The prior inbox is
 [archived](../../.agent/inbox-archive/2026-11-23-2013-cpheinrich.md); both unanswered items remain.
 
