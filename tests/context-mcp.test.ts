@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -15,7 +15,7 @@ import { summarizeContextTraces } from "../src/context-search/trace-summary.js";
 import { armMcpTaskContext, taskContextRefusal, taskPrompt } from "../src/context-search/task-start.js";
 import { warmTrunkContext } from "../src/context-search/warm.js";
 import { sessionTag } from "../src/session/evidence.js";
-import { bindTask } from "../src/session/tasks.js";
+import { bindTask, boundTask } from "../src/session/tasks.js";
 import { recordRead } from "../src/session/read-hook.js";
 
 const taskPath = "hq/product/roadmap/MO-001-verify.md";
@@ -680,4 +680,87 @@ it("rebuilds locally when the matching primary index cannot be opened", async ()
     expect.objectContaining({ cacheHit: true, buildMs: 0, outcome: "ok" }),
   ]);
   await expect(access(join(primary, store!))).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+async function siblingFixture() {
+  const fixtureData = await fixture();
+  const { root } = fixtureData;
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root });
+  git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "fixture");
+  const linked = await realpath(await mkdtemp(join(tmpdir(), "morpheus-mcp-target-")));
+  dirs.push(linked);
+  git("worktree", "add", "-qb", "mo-001-target", linked);
+  const path = ".agent/worklog/target-only.md";
+  await writeFile(join(linked, path), "# Worktree target\nOnly this worktree contains the cobalt reviewer decision.\n");
+  execFileSync("git", ["add", path], { cwd: linked });
+  return { ...fixtureData, linked, path };
+}
+
+it("targets all context tools at a registered sibling without rebinding the reviewer", async () => {
+  const { root, call, session, linked, path } = await siblingFixture();
+  const args = { worktree: linked, path, from: 1, to: 2 };
+  expect((await call("read_project_record", { path })).isError).toBe(true);
+  const read = await call("read_project_record", args);
+  expect(read.structuredContent).toMatchObject({ outcome: "ok", path, from: 1, to: 2 });
+  expect(read.structuredContent?.excerpt).toContain("cobalt reviewer decision");
+  expect((await call("search_project_context", { worktree: linked, query: "cobalt reviewer" })).structuredContent?.citations)
+    .toEqual(expect.arrayContaining([expect.objectContaining({ path })]));
+  expect((await call("check_context_coverage", { worktree: linked, paths: [path] })).structuredContent?.paths)
+    .toEqual([{ path, status: "included" }]);
+  expect((await call("get_context_overview", { worktree: linked })).structuredContent?.task).toMatchObject({ id: "MO-001" });
+  expect((await call("get_related_context", { worktree: linked, path })).isError).not.toBe(true);
+  expect(await boundTask(root, session)).toBeNull();
+  // An explicit read also remains explicit when this session is bound elsewhere.
+  await bindTask(linked, "MO-001", session);
+  expect((await call("read_project_record", { ...args, worktree: root })).isError).toBe(true);
+  expect((await boundTask(root, session))?.root).toBe(linked);
+});
+
+it("rejects foreign, relative, missing and unregistered targets and preserves the Factory pin", async () => {
+  const { root, call, linked, path } = await siblingFixture();
+  const foreign = await fixture();
+  const fake = join(root, "pretend-worktree");
+  await mkdir(fake);
+  await writeFile(join(fake, ".git"), await readFile(join(linked, ".git"), "utf8"));
+  for (const worktree of [foreign.root, "relative", join(root, "missing"), fake]) {
+    expect(await call("read_project_record", { worktree, path })).toMatchObject({ isError: true });
+  }
+  const alias = join(root, "linked-alias");
+  await symlink(linked, alias);
+  expect((await call("read_project_record", { worktree: alias, path })).structuredContent?.outcome).toBe("ok");
+  vi.stubEnv("MORPHEUS_CONTEXT_WORKTREE_PIN", "1");
+  expect(await call("read_project_record", { worktree: alias, path })).toMatchObject({
+    isError: true, content: [{ type: "text", text: expect.stringContaining("admitted checkout") }],
+  });
+  expect((await call("read_project_record", { worktree: root, path: ".agent/decisions.md" })).structuredContent?.outcome).toBe("ok");
+});
+
+it.each(["claude", "codex"])("credits %s explicit reads only after validating the target and source", async provider => {
+  const { root, call, session, linked, path } = await siblingFixture();
+  const args = { worktree: linked, path, from: 1, to: 2 };
+  const response = await call("read_project_record", args);
+  const payload = (worktree: unknown = linked) => JSON.stringify({
+    cwd: root, session_id: session, ...(provider === "codex" ? { turn_id: "turn" } : {}),
+    hook_event_name: "PostToolUse", tool_name: "mcp__morpheus_context__read_project_record",
+    tool_input: { ...args, worktree },
+    tool_response: provider === "claude" ? JSON.stringify(response.structuredContent) : response,
+  });
+  const seen = () => readFile(join(linked, "local/context-search/startup", sessionTag(session) + ".seen"), "utf8").catch(() => null);
+  await armMcpTaskContext(linked, session);
+  await recordRead(payload(42));
+  await recordRead(payload(root));
+  expect(await seen()).toBeNull();
+  vi.stubEnv("MORPHEUS_CONTEXT_WORKTREE_PIN", "1");
+  await recordRead(payload());
+  expect(await seen()).toBeNull();
+  vi.unstubAllEnvs();
+  await writeFile(join(linked, path), "Changed since the call.\n");
+  await recordRead(payload());
+  expect(await seen()).toBeNull();
+  await writeFile(join(linked, path), "# Worktree target\nOnly this worktree contains the cobalt reviewer decision.\n");
+  await recordRead(payload());
+  expect(await seen()).toBe("1\n");
+  expect(await taskContextRefusal(linked, session)).toBeUndefined();
+  const log = await readFile(join(linked, "local/context-search/traces", new Date().toISOString().slice(0, 10) + ".jsonl"), "utf8");
+  expect(log.split("\n").filter(Boolean).map(line => JSON.parse(line)).filter(row => row.type === "visible").map(row => row.operation)).toEqual(["read"]);
 });
