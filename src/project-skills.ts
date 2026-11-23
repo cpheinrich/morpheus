@@ -8,6 +8,7 @@ import {
   chiefProductOfficerPointerSkill,
   commentQaSkill,
   devopsEngineerPointerSkill,
+  iosCaptureRefreshSkill,
   meetingIntakeSkill,
   motionDesignExplorationSkill,
   researchEngineerPointerSkill,
@@ -84,6 +85,14 @@ export const PROJECT_SKILLS: readonly ProjectSkillDefinition[] = [
     canonical: true,
     guide: "morpheus skills guide morpheus-swift-packages",
     render: swiftPackagesPointerSkill,
+  },
+  {
+    name: "ios-capture-refresh",
+    providers: ["agents"],
+    kinds: ALL_KINDS,
+    distribution: "copy",
+    canonical: true,
+    render: iosCaptureRefreshSkill,
   },
   {
     name: "meeting-intake",

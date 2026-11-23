@@ -2770,3 +2770,16 @@ attaches the ignored symlink on first invocation only; continuation and result r
 require the same enrollment digest and usable link. Independent termination proof remains
 available when a result cannot be restored. This is a Factory-specific extension of the
 existing Zod and Node/Git checks; it adds no package or second credential authority.
+
+
+## Use React Flow for research navigation graphs — 2026-11-23
+
+MO-26-11-23-13.52.55. The existing app study schema supplies screen IDs and
+observed transitions. React Flow supplies read-only selection, navigation and
+viewport controls. Dagre places the recorded routes from left to right. The
+screen list, detail and graph share the viewer's existing selection and URL
+history.
+
+React Flow 13.0.2 is MIT-licensed and supports the React 19 consumer stack. It
+passes the repository's dependency release age check. Dagre 3.1.3 adds the
+layout calculation. The graph module loads separately from the viewer.
