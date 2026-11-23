@@ -57,7 +57,7 @@ Fresh normal-risk review found one substantive stale lifecycle status. The revie
   "version": 2,
   "base": "8c5ef843761bd6798975c5b4c3c5fcb070f17cdb",
   "reviewed": "dff64ebc5a0768b2e388d930c6918998094316e7",
-  "covered": "9b7c812d5735faf5ad5e1e6bc999c231887e2656",
+  "covered": "abf90b72f9347a4959a00ec86bc7669ce2a8f713",
   "authorSession": "01a20957-112c-7f23-9c98-7bc8b9cda6a5",
   "reviewerSession": "/root/morpheus_audit_reviewer",
   "risk": "normal",
@@ -94,6 +94,21 @@ Fresh normal-risk review found one substantive stale lifecycle status. The revie
         "evidence": "Run pnpm morpheus pm validate, pnpm morpheus pm index, and git diff --check."
       },
       "conditionMet": "Commit 9b7c812d changes only the conditioned roadmap item. PM validation passes, PM index reports the generated README unchanged, and git diff --check passes."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/morpheus_audit_reviewer",
+      "commit": "abf90b72f9347a4959a00ec86bc7669ce2a8f713",
+      "scopeReason": "late PR-metadata correction: link newly opened audit PR #763 from the governed roadmap item and verify the live draft metadata",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.8302166666666666,
+      "timing": {
+        "source": "runner",
+        "durationMs": 109813,
+        "evidence": "Collaboration task /root/morpheus_audit_reviewer follow-up task_complete for turn 01a20985-728d-72e0-a3e5-bf97e9f5da34 reported duration_ms=109813."
+      },
+      "summary": "Same reviewer cleared the one-line PR link after verifying draft PR #763, its audit marker, review-record line, no-auto-merge state, and passing PM/index/diff checks; no findings."
     }
   ]
 }
