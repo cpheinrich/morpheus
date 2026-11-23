@@ -96,14 +96,14 @@ declare const WebQaDraft: z.ZodObject<{
                 ol: "ol";
                 li: "li";
                 h2: "h2";
-                nav: "nav";
-                section: "section";
+                ul: "ul";
                 aside: "aside";
                 details: "details";
                 h1: "h1";
                 h3: "h3";
+                nav: "nav";
+                section: "section";
                 td: "td";
-                ul: "ul";
             }>;
             role: z.ZodOptional<z.ZodEnum<{
                 link: "link";
@@ -257,14 +257,14 @@ declare const WebQaSession: z.ZodObject<{
                     ol: "ol";
                     li: "li";
                     h2: "h2";
-                    nav: "nav";
-                    section: "section";
+                    ul: "ul";
                     aside: "aside";
                     details: "details";
                     h1: "h1";
                     h3: "h3";
+                    nav: "nav";
+                    section: "section";
                     td: "td";
-                    ul: "ul";
                 }>;
                 role: z.ZodOptional<z.ZodEnum<{
                     link: "link";
@@ -421,14 +421,14 @@ declare const WebQaSession: z.ZodObject<{
                             ol: "ol";
                             li: "li";
                             h2: "h2";
-                            nav: "nav";
-                            section: "section";
+                            ul: "ul";
                             aside: "aside";
                             details: "details";
                             h1: "h1";
                             h3: "h3";
+                            nav: "nav";
+                            section: "section";
                             td: "td";
-                            ul: "ul";
                         }>;
                         role: z.ZodOptional<z.ZodEnum<{
                             link: "link";
@@ -578,14 +578,14 @@ declare const WebQaSession: z.ZodObject<{
                         ol: "ol";
                         li: "li";
                         h2: "h2";
-                        nav: "nav";
-                        section: "section";
+                        ul: "ul";
                         aside: "aside";
                         details: "details";
                         h1: "h1";
                         h3: "h3";
+                        nav: "nav";
+                        section: "section";
                         td: "td";
-                        ul: "ul";
                     }>;
                     role: z.ZodOptional<z.ZodEnum<{
                         link: "link";

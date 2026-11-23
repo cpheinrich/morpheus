@@ -15,6 +15,11 @@ let revoked: string[];
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/hq/research");
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
   created = [];
   revoked = [];
   let next = 0;
@@ -22,7 +27,7 @@ beforeEach(() => {
   URL.createObjectURL = vi.fn(() => { const url = `blob:test/${next++}`; created.push(url); return url; });
   URL.revokeObjectURL = vi.fn((url: string) => { revoked.push(url); });
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 // jsdom's Blob has no arrayBuffer(); browsers and Node do, so serve Node blobs.
 const blob = (text: string) => new NodeBlob([text]) as unknown as Blob;
@@ -35,9 +40,53 @@ describe("ProductResearchViewer", () => {
     const readAsset = reader();
     render(<ProductResearchViewer study={study} readAsset={readAsset} />);
     expect(screen.getByRole("heading", { level: 2, name: "Example App" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Home/ }).getAttribute("aria-current")).toBe("true");
+    expect(within(screen.getByRole("navigation", { name: "Screens" })).getByRole("button", { name: /Home/ })
+      .getAttribute("aria-current")).toBe("true");
     const image = await screen.findByRole("img", { name: "Home screenshot" });
     expect(image.getAttribute("src")).toBe("blob:test/0");
+    expect(readAsset.mock.calls).toEqual([["screens/home.png"]]);
+  });
+
+  it("maps recorded navigation and shares selection with the list, detail and history", async () => {
+    const raw = syntheticStudy();
+    raw.app.screens.push({ id: "offline", title: "Offline", state: "offline", description: "", elements: [], screenshots: null });
+    const verified = raw.app.transitions[0]!;
+    raw.app.transitions.push(
+      { ...verified, id: "back", from: "settings", to: "home", action: "Go back", status: "observed" },
+      { ...verified, id: "unverified", to: "offline", action: "Lose network", status: "untested" },
+    );
+    const readAsset = reader();
+    const user = userEvent.setup();
+    render(<ProductResearchViewer study={parseAppResearchStudy(raw)} readAsset={readAsset}
+      screenMetrics={{ settings: { eventCount: 0, replayCount: 2 } }} />);
+    const graph = within(screen.getByRole("region", { name: "Navigation graph" }));
+    const list = within(screen.getByRole("navigation", { name: "Screens" }));
+    const home = await graph.findByRole("button", { name: /Home Entry/ });
+    const settings = graph.getByRole("button", { name: /Settings protected Events: 0 · Replays: 2/ });
+    const offline = graph.getByRole("button", { name: /Offline offline/ });
+    expect(home.getAttribute("aria-current")).toBe("true");
+    expect(graph.getAllByRole("img").filter((edge) => edge.getAttribute("aria-roledescription") === "edge")
+      .map((edge) => edge.getAttribute("aria-label"))).toEqual([
+      "Home → Settings: Tap Settings", "Settings → Home: Go back",
+    ]);
+    expect(readAsset.mock.calls).toEqual([["screens/home.png"]]);
+
+    await user.type(list.getByRole("searchbox"), "secure");
+    expect(list.queryByRole("button", { name: /Offline/ })).toBeNull();
+    offline.focus();
+    await user.keyboard("{Enter}");
+    expect(window.location.hash).toBe("#screen=offline");
+    expect(screen.getByRole("region", { name: "Screen: Offline" }).tagName).toBe("SECTION");
+    expect(list.getByRole("button", { name: /Offline/ }).getAttribute("aria-current")).toBe("true");
+
+    await user.click(settings);
+    expect(window.location.hash).toBe("#screen=settings");
+    expect(list.getByRole("button", { name: /Settings/ }).getAttribute("aria-current")).toBe("true");
+    await user.click(list.getByRole("button", { name: /Offline/ }));
+    expect(offline.getAttribute("aria-current")).toBe("true");
+    window.history.back();
+    await waitFor(() => expect(settings.getAttribute("aria-current")).toBe("true"));
+    expect(window.location.hash).toBe("#screen=settings");
     expect(readAsset.mock.calls).toEqual([["screens/home.png"]]);
   });
 
@@ -47,9 +96,16 @@ describe("ProductResearchViewer", () => {
     let fitLabels: () => void = () => {};
     const disconnect = vi.fn();
     vi.stubGlobal("ResizeObserver", class {
-      constructor(callback: () => void) { fitLabels = callback; }
-      observe() {}
-      disconnect = disconnect;
+      private watchesWireframe = false;
+      constructor(private readonly callback: () => void) {}
+      observe(target: Element) {
+        if (target.classList.contains("app-research-canvas")) {
+          fitLabels = this.callback;
+          this.watchesWireframe = true;
+        }
+      }
+      unobserve() {}
+      disconnect() { if (this.watchesWireframe) disconnect(); }
     });
     try {
       scrollHeight.mockReturnValue(33);

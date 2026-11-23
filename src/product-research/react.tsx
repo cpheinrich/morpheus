@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useFragmentView } from "../ops-desk/react.js";
 import { verifiedResearchLibraryBlob } from "../research-library/client.js";
@@ -25,13 +25,18 @@ import {
  */
 
 export type ReadAsset = (path: string) => Promise<Blob>;
+export type ScreenMetrics = Readonly<Record<string, { eventCount: number; replayCount?: number }>>;
 type View = { screen: string; control: string | null; capture?: string; restoring?: true };
 type Load<T> = { status: "idle" | "loading" } | { status: "ready"; value: T } | { status: "error"; message: string };
 
 const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+const NavigationGraph = lazy(() => import("./navigation-graph.js"));
 
-export function ProductResearchViewer({ study, readAsset }: { study: AppResearchStudy; readAsset: ReadAsset }) {
+export function ProductResearchViewer({ study, readAsset, screenMetrics }: {
+  study: AppResearchStudy; readAsset: ReadAsset; screenMetrics?: ScreenMetrics;
+}) {
   const { app } = study;
+  const [reveal, setReveal] = useState<{ id: string }>();
   const screens = useMemo(() => new Map(app.screens.map((screen) => [screen.id, screen])), [app.screens]);
   const entry: View = { screen: app.entryScreenId, control: null, restoring: true };
   const { view, navigate } = useFragmentView<View>({
@@ -49,6 +54,7 @@ export function ProductResearchViewer({ study, readAsset }: { study: AppResearch
   const reader = useRef(readAsset);
   reader.current = readAsset;
   const read = useMemo<ReadAsset>(() => (path) => reader.current(path), []);
+  const selectScreen = (id: string) => navigate({ screen: id, control: null });
 
   return (
     <div className="app-research">
@@ -60,8 +66,17 @@ export function ProductResearchViewer({ study, readAsset }: { study: AppResearch
         </p>
         {app.summary ? <p className="app-research-summary">{app.summary}</p> : null}
       </header>
+      <section className="app-research-navigation" aria-label="Navigation graph">
+        <h3 className="app-research-figure-title">Navigation graph</h3>
+        <div className="app-research-graph">
+          <Suspense fallback={<p className="app-research-meta" role="status">Loading navigation graph…</p>}>
+            <NavigationGraph key={study.studyId} app={app} selected={screen.id} screenMetrics={screenMetrics}
+              onSelect={(id) => { selectScreen(id); setReveal({ id }); }} />
+          </Suspense>
+        </div>
+      </section>
       <div className="app-research-layout">
-        <ScreenList screens={app.screens} selected={screen.id} onSelect={(id) => navigate({ screen: id, control: null })} />
+        <ScreenList screens={app.screens} selected={screen.id} reveal={reveal} onSelect={selectScreen} />
         <ScreenDetail
           key={screen.id}
           study={study}
@@ -88,11 +103,21 @@ function readView(hash: string, screens: Map<string, AppResearchScreen>, entry: 
   return { screen: screen.id, control: screen.elements.some((element) => element.id === control) ? control : null, capture };
 }
 
-function ScreenList({ screens, selected, onSelect }: {
-  screens: AppResearchScreen[]; selected: string; onSelect: (id: string) => void;
+function ScreenList({ screens, selected, reveal, onSelect }: {
+  screens: AppResearchScreen[]; selected: string; reveal?: { id: string }; onSelect: (id: string) => void;
 }) {
-  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState({ query: "", reveal });
+  const query = search.reveal === reveal ? search.query : "";
   const inputId = useId();
+  const revealedRow = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    const row = revealedRow.current;
+    const list = row?.closest("ul");
+    if (!reveal || !row || !list) return;
+    const bounds = list.getBoundingClientRect();
+    const target = row.getBoundingClientRect();
+    list.scrollTop += Math.min(0, target.top - bounds.top) + Math.max(0, target.bottom - bounds.bottom);
+  }, [reveal]);
   const needle = query.trim().toLowerCase();
   const matches = needle ? screens.filter((screen) =>
     [screen.title, screen.state, screen.description, ...screen.elements.map((element) => element.label)]
@@ -101,12 +126,13 @@ function ScreenList({ screens, selected, onSelect }: {
     <nav className="app-research-screens" aria-label="Screens">
       <label className="app-research-search-label" htmlFor={inputId}>Search screens</label>
       <input id={inputId} className="app-research-search" type="search" value={query}
-        onChange={(event) => setQuery(event.target.value)} />
+        onChange={(event) => setSearch({ query: event.target.value, reveal })} />
       <p className="app-research-count" aria-live="polite">{matches.length} of {screens.length} screens</p>
       <ul className="app-research-screen-list">
         {matches.map((screen) => (
           <li key={screen.id}>
             <button type="button" className="app-research-screen-button" aria-current={screen.id === selected ? "true" : undefined}
+              ref={screen.id === reveal?.id ? revealedRow : undefined}
               onClick={() => onSelect(screen.id)}>
               <span className="app-research-screen-name">{screen.title}</span>
               <span className="app-research-screen-state">

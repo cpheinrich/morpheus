@@ -178,6 +178,7 @@ export declare const brandReviewSkill: () => string;
  * Keep this template byte-identical to the repository-level skill; init.test.ts
  * holds that distribution boundary.
  */
+export declare const iosCaptureRefreshSkill: () => string;
 export declare const motionDesignExplorationSkill: () => string;
 /**
  * The website initializer's discovery point.

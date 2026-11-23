@@ -7,9 +7,14 @@ import { type AppeekySnapshot, type AppResearchStudy } from "./index.js";
  * `--app-research-*` custom properties, or target the documented `app-research-*` classes.
  */
 export type ReadAsset = (path: string) => Promise<Blob>;
-export declare function ProductResearchViewer({ study, readAsset }: {
+export type ScreenMetrics = Readonly<Record<string, {
+    eventCount: number;
+    replayCount?: number;
+}>>;
+export declare function ProductResearchViewer({ study, readAsset, screenMetrics }: {
     study: AppResearchStudy;
     readAsset: ReadAsset;
+    screenMetrics?: ScreenMetrics;
 }): import("react").JSX.Element;
 export declare function AppStoreSignals({ snapshot, appeekyUrl }: {
     snapshot: AppeekySnapshot | null;
