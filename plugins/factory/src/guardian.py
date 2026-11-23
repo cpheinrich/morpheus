@@ -130,7 +130,7 @@ class Guardian:
             except ProcessLookupError: return
             raise
 
-    def on_signal(self, signum, frame): self.stop()
+    def on_signal(self, signum, _frame): self.stop()
 
     def prepare_input(self):
         signal.signal(signal.SIGTERM, self.on_signal); signal.signal(signal.SIGINT, self.on_signal)
