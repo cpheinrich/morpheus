@@ -2,10 +2,10 @@
 
 import { Graph, layout, type EdgeLabel, type NodeLabel } from "@dagrejs/dagre";
 import {
-  BaseEdge, Controls, Handle, MarkerType, MiniMap, Position, ReactFlow, useNodesInitialized, useReactFlow,
+  BaseEdge, Controls, Handle, MarkerType, MiniMap, Position, ReactFlow, getNodesBounds, useReactFlow,
   type Edge, type EdgeProps, type Node, type NodeProps,
 } from "@xyflow/react";
-import { useEffect, useId, useMemo, useRef } from "react";
+import { useId, useMemo } from "react";
 
 import type { AppResearchStudy } from "./index.js";
 import type { ScreenMetrics } from "./react.js";
@@ -84,25 +84,6 @@ const nodeTypes = { screen: ScreenNodeView };
 const edgeTypes = { transition: TransitionEdgeView };
 const minimapSize = { width: 112, height: 76 };
 
-function InitialViewport({ selected }: { selected: string }) {
-  const initialized = useNodesInitialized();
-  const { viewportInitialized, fitView, getNode, setCenter } = useReactFlow<ScreenNode, TransitionEdge>();
-  const positioned = useRef(false);
-
-  useEffect(() => {
-    if (positioned.current || !initialized || !viewportInitialized) return;
-    positioned.current = true;
-    const node = getNode(selected);
-    if (node && window.matchMedia?.("(max-width: 47.99rem)").matches) {
-      void setCenter(node.position.x + width / 2, node.position.y + height / 2, { zoom: 0.8 });
-    } else {
-      void fitView();
-    }
-  }, [fitView, getNode, initialized, selected, setCenter, viewportInitialized]);
-
-  return null;
-}
-
 export default function NavigationGraph({ app, selected, screenMetrics, onSelect }: {
   app: App; selected: string; screenMetrics?: ScreenMetrics; onSelect: (id: string) => void;
 }) {
@@ -115,9 +96,16 @@ export default function NavigationGraph({ app, selected, screenMetrics, onSelect
   return (
     <ReactFlow id={id} nodes={nodes} edges={graph.edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
       onNodeClick={(_event, node) => onSelect(node.id)} minZoom={0.05} maxZoom={2}
+      onInit={(flow) => {
+        const node = graph.nodes.find(({ id }) => id === selected);
+        if (node && window.matchMedia?.("(max-width: 47.99rem)").matches) {
+          void flow.setCenter(node.position.x + width / 2, node.position.y + height / 2, { zoom: 0.8 });
+        } else {
+          void flow.fitBounds(getNodesBounds(graph.nodes), { padding: 0.12 });
+        }
+      }}
       nodesDraggable={false} nodesConnectable={false} nodesFocusable={false} edgesFocusable={false}
       elementsSelectable={false} edgesReconnectable={false} deleteKeyCode={null} zoomOnScroll={false}>
-      <InitialViewport selected={selected} />
       <Controls showInteractive={false} />
       <MiniMap ariaLabel="Navigation overview" style={minimapSize} zoomable pannable
         nodeColor={(node) => node.selected ? "var(--app-research-accent)" : "var(--app-research-muted)"} />
