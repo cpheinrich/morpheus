@@ -72,6 +72,10 @@ public enum ScreenCommentCapture {
 
 struct ScreenCommentToolbar: View {
     static let rowHeight: CGFloat = 45
+    /// Review and Exit pills: the system label on an opaque system background, so text keeps its
+    /// contrast in light and dark appearance whatever the app's primary color is.
+    static let pillForeground = UIColor.label
+    static let pillBackground = UIColor.systemBackground
     let theme: ScreenQATheme
     @ObservedObject var session: ScreenCommentSession
     let topInset: CGFloat
@@ -93,7 +97,8 @@ struct ScreenCommentToolbar: View {
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 31.5)
-            .background(.white.opacity(0.88), in: Capsule())
+            .foregroundStyle(Color(uiColor: Self.pillForeground))
+            .background(Color(uiColor: Self.pillBackground), in: Capsule())
             .accessibilityIdentifier("reviewScreenComments")
             Button("Send All", action: onSend)
                 .fontWeight(.semibold)
@@ -105,7 +110,8 @@ struct ScreenCommentToolbar: View {
                 .accessibilityIdentifier("sendScreenCommentsFromHeader")
             Button("Exit", action: onExit)
                 .frame(maxWidth: .infinity, minHeight: 31.5)
-                .background(.white.opacity(0.88), in: Capsule())
+                .foregroundStyle(Color(uiColor: Self.pillForeground))
+                .background(Color(uiColor: Self.pillBackground), in: Capsule())
                 .disabled(session.isUploading)
                 .accessibilityIdentifier("closeScreenComments")
             Button(action: isPlacing ? onCancelPlacement : onAdd) {
