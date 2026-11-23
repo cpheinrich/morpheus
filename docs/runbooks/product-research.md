@@ -44,7 +44,10 @@ APPEEKY_API_KEY=… morpheus product-research aso --app <numeric-id> --country u
   --terms "term one,term two,term three" [--branded-terms "brand"] --out <path>
 ```
 
-Three to five distinct terms. Before any paid call it reads `GET /v1/auth/usage` and stops
+Three to five distinct terms after trimming whitespace and deduplicating case-insensitively.
+The first occurrence keeps its spelling and position; any occurrence in `--branded-terms`
+marks that single row as branded, including a term also listed in `--terms`.
+Before any paid call it reads `GET /v1/auth/usage` and stops
 unless included general plan credits cover the worst case: listing (2), organic keywords (3) and a
 per-term rank lookup (2 each) for terms the organic list lacks. The wallet is never relied on.
 Requests use `platform=apple`. A term is `ranked`, `unranked` (verified outside the results) or

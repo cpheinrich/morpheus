@@ -64,15 +64,21 @@ export async function fetchAppeekySnapshot(
 }
 
 function configuredTerms(request: AppeekyRequest): { term: string; branded: boolean }[] {
-  const seen = new Set<string>();
+  const seen = new Map<string, { term: string; branded: boolean }>();
   const terms: { term: string; branded: boolean }[] = [];
   const add = (values: string[] | undefined, branded: boolean) => {
     for (const value of values ?? []) {
       const term = value.trim();
       const key = term.toLowerCase();
-      if (!term || seen.has(key)) continue;
-      seen.add(key);
-      terms.push({ term, branded });
+      if (!term) continue;
+      const existing = seen.get(key);
+      if (existing) {
+        existing.branded ||= branded;
+        continue;
+      }
+      const row = { term, branded };
+      seen.set(key, row);
+      terms.push(row);
     }
   };
   add(request.terms, false);

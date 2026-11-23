@@ -35,16 +35,22 @@ export async function fetchAppeekySnapshot(request, options) {
     });
 }
 function configuredTerms(request) {
-    const seen = new Set();
+    const seen = new Map();
     const terms = [];
     const add = (values, branded) => {
         for (const value of values ?? []) {
             const term = value.trim();
             const key = term.toLowerCase();
-            if (!term || seen.has(key))
+            if (!term)
                 continue;
-            seen.add(key);
-            terms.push({ term, branded });
+            const existing = seen.get(key);
+            if (existing) {
+                existing.branded ||= branded;
+                continue;
+            }
+            const row = { term, branded };
+            seen.set(key, row);
+            terms.push(row);
         }
     };
     add(request.terms, false);
