@@ -20,7 +20,10 @@ and rejection at 2/6 distinct terms before any fetch. An initial test fixture ty
 possibly undefined first element; its known nonempty fixture is now explicit and typecheck rerun.
 Frozen install, typecheck, lint, compile, PM index and diff checks pass. Complexity passes: eight
 touched functions across two measured files, limit 15; the normalizer and helper were inspected.
-The automation also requests one full suite; its result is recorded below when complete.
+Full `pnpm test` ran once with actionlint 1.7.12 on PATH: 4,687 passed; one unchanged
+artifact workflow test exceeded its 100 ms Node VM deadline under suite load. All seven
+`tests/artifact-workflows.test.ts` tests passed in the focused rerun. No timeout was relaxed.
+Required hosted Node CI must pass before merge.
 
 Graph evidence: main-checkout generation 2026-11-23T20:21:02Z, configuredTerms inbound caller
 fetchAppeekySnapshot and outbound add, exact snippet, no recorded coverage gap for appeeky.ts or
