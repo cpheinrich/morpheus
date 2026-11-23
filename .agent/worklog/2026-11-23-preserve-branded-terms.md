@@ -35,3 +35,39 @@ Context MCP overview/search and coverage included architecture, product-research
 ## Open questions
 
 None.
+
+## Independent review
+
+Independent review cleared the exact published head with no findings. The reviewer verified branded merging, spelling/order, distinct-term and lookup boundaries; reran all 55 focused tests, exercised organic matches and frozen inputs, and matched generated output to TypeScript emission. Hosted Node CI passed on the reviewed head.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "2105901c0cbedf6da9a0b8550f6cb02bdc64ea0e",
+  "reviewed": "dffcd8995a00dd76613c67ec470354a0098bb369",
+  "covered": "dffcd8995a00dd76613c67ec470354a0098bb369",
+  "authorSession": "01a209fd-2dc8-7523-aa73-7ec5401f7f32",
+  "reviewerSession": "/root/review_branded_terms",
+  "risk": "normal",
+  "elapsedMinutes": 3.6333333333333333,
+  "timing": {
+    "source": "clock",
+    "durationMs": 218000,
+    "evidence": "clock.curr_time immediately before reviewer spawn 2026-11-23T20:31:03Z and completion observation 2026-11-23T20:34:41Z; /root/review_branded_terms under author thread 01a209fd-2dc8-7523-aa73-7ec5401f7f32."
+  },
+  "outcome": "complete",
+  "summary": "Independent review cleared the exact published head with no findings. The reviewer verified branded merging, spelling/order, distinct-term and lookup boundaries; reran all 55 focused tests, exercised organic matches and frozen inputs, and matched generated output to TypeScript emission. Hosted Node CI passed on the reviewed head.",
+  "contextRead": [
+    "AGENTS.md",
+    "docs/runbooks/independent-review.md",
+    "hq/product/roadmap/MO-26-11-23-12.21.07-preserve-branded-terms.md",
+    "docs/runbooks/product-research.md",
+    "architecture.md",
+    ".agent/worklog/2026-11-20-host-app-research.md",
+    ".agent/worklog/2026-11-23-preserve-branded-terms.md",
+    "docs/runbooks/test-quality.md",
+    "hq/product/roadmap/MO-26-11-23-12.02.14-target-context-worktree.md"
+  ],
+  "findings": []
+}
+```
