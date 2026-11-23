@@ -973,7 +973,12 @@ Each execution host still needs its own runtime and trust. See
 
 The local `morpheus_context` server resolves the host worktree and uses the session identity
 for validated bindings and profiling when one is available. It exposes search, exact reads,
-coverage, overview and relationship traversal. The overview gives exact read ranges for local
+coverage, overview and relationship traversal. Each tool accepts an optional absolute `worktree`
+for read-only review of a registered checkout sharing the launch repository's common Git directory.
+An explicit target takes precedence over the session binding without changing that binding;
+pinned Factory workers may target only their admitted checkout. The read hook applies the same
+validation to the tool input and verifies the excerpt against that target's current source.
+The overview gives exact read ranges for local
 architecture sections, and a read cut short by its budget names the range to continue with.
 The host read hook validates visible excerpts against their source, in the form each host
 presents them.

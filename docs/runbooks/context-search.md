@@ -206,3 +206,18 @@ Startup tokens estimate the listed required reads with `o200k_base`.
 Search time includes source discovery, local engine work and excerpt packing. Compare startup load, total search time and returned tokens per session.
 Context-related reminders need separate review of real tasks. A fast query
 does not establish task success or show why a person intervened.
+
+## Reviewing records in a sibling worktree
+
+Pass `worktree: "/absolute/path/to/task-checkout"` to the Context MCP search, read,
+overview, coverage or relationship tool when the reviewed records exist only on that branch.
+The target must be a registered worktree of the server's launch repository, checked by the
+canonical common Git directory and Git's worktree inventory. Symlinks resolve to their real
+checkout. Relative paths, other clones and other repositories are refused. The request does
+not change a session's task binding; omitting it retains the usual bound or launch checkout.
+
+The post-tool hook uses the same target validation before crediting the returned excerpt.
+Factory workers pinned to their admitted checkout cannot target a sibling, even in the same
+repository. Use the exact-checkout CLI fallback if an older server lacks the argument, or start
+a session in the intended admitted checkout. Cross-repository attribution remains separate work
+([#687](https://github.com/cpheinrich/morpheus/issues/687)).

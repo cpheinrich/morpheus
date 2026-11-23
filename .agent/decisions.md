@@ -1,5 +1,15 @@
 # Decisions
 
+## Context MCP accepts explicit same-repository review worktrees — 2026-11-23
+
+MO-26-11-23-12.02.14, issue #691. All five context tools accept an optional absolute
+`worktree`, validated against the launch repository common Git directory and registered
+worktrees. It overrides lookup scope without rebinding the session. Factory pins stay confined
+to the admitted checkout, and hook credit validates the identical target and current source.
+Reuse `checkoutIdentity`, `sessionGit` and native filesystem identity; this is a narrow extension
+of Morpheus scope resolution, with no new generic module or dependency. Cross-repository
+lookup remains outside this change.
+
 ## Unattended Fleet denies native Claude tool requests in the stream — 2026-11-21
 
 [MO-26-11-21-23.37.49](../hq/product/roadmap/MO-26-11-21-23.37.49-refuse-claude-tool-hangs.md).

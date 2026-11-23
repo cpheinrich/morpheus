@@ -13,6 +13,7 @@ import { contextArm, traceContext } from "./rollout.js";
 import { CONTEXT_KINDS, contextCoverage, contextKind, discoverSources, readContextSources } from "./sources.js";
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const pathInput = z.string().min(1).max(512).describe("Repository-relative Markdown path from a citation.");
+const worktreeInput = z.string().min(1).max(4096).optional().describe("Absolute registered worktree path in this repository. Omit for the current session checkout; pinned Factory workers cannot leave their admitted checkout.");
 const tokenInput = z.number().int().min(1).max(2500).default(1000);
 function activeIndexFor(indexes, root, kinds) {
     const key = JSON.stringify([root, [...new Set(kinds)].sort()]);
@@ -47,11 +48,11 @@ async function recordTool(scope, operation, outcome, started, detail = {}) {
         transport: "mcp", operation, outcome, queryMs: performance.now() - started, ...detail,
     });
 }
-async function call(cwd, metadata, operation, handler) {
+async function call(cwd, metadata, operation, handler, worktree) {
     const started = performance.now();
     let scope;
     try {
-        scope = await contextMcpScope(cwd, contextMcpSession(metadata));
+        scope = await contextMcpScope(cwd, contextMcpSession(metadata), worktree);
         const response = await handler(scope, started);
         if (operation !== "search") {
             const tokens = response.structuredContent?.returnedTokens;
@@ -139,32 +140,32 @@ export function createContextMcp(cwd, mcpStartedAt, indexes = new Map()) {
     server.registerTool("search_project_context", {
         description: "Find decisions, prior attempts, roadmap items, runbooks and meeting notes in the active project. Returns ranked excerpts and citations. Use this first for governing records and project history, including in reviews and delegated tasks.",
         inputSchema: {
-            query: z.string().trim().min(1).max(4000), max_tokens: tokenInput,
+            worktree: worktreeInput, query: z.string().trim().min(1).max(4000), max_tokens: tokenInput,
             kinds: z.array(z.enum(CONTEXT_KINDS)).min(1).max(CONTEXT_KINDS.length).optional()
                 .describe("Optional restriction to particular record kinds. Search all eligible kinds by default."),
         }, annotations: READ_ONLY,
-    }, (input, extra) => call(cwd, extra._meta, "search", (scope, started) => search(scope, input, started, activeIndexFor(indexes, scope.root, input.kinds), mcpStartedAt)));
+    }, (input, extra) => call(cwd, extra._meta, "search", (scope, started) => search(scope, input, started, activeIndexFor(indexes, scope.root, input.kinds), mcpStartedAt), input.worktree));
     server.registerTool("read_project_record", {
         description: "Read an exact cited section of an indexed project record in source order. Use the citation path and line range.",
-        inputSchema: { path: pathInput, from: z.number().int().min(1).max(10_000_000).default(1),
+        inputSchema: { worktree: worktreeInput, path: pathInput, from: z.number().int().min(1).max(10_000_000).default(1),
             to: z.number().int().min(1).max(10_000_000).optional(), max_tokens: tokenInput }, annotations: READ_ONLY,
-    }, (input, extra) => call(cwd, extra._meta, "read", scope => read(scope, input)));
+    }, (input, extra) => call(cwd, extra._meta, "read", scope => read(scope, input), input.worktree));
     server.registerTool("check_context_coverage", {
         description: "Check project context source eligibility. Reports included, excluded, uncovered and unavailable tracked Markdown.",
-        inputSchema: { paths: z.array(pathInput).max(50).optional() }, annotations: READ_ONLY,
-    }, (input, extra) => call(cwd, extra._meta, "coverage", scope => coverage(scope, input)));
+        inputSchema: { worktree: worktreeInput, paths: z.array(pathInput).max(50).optional() }, annotations: READ_ONLY,
+    }, (input, extra) => call(cwd, extra._meta, "coverage", scope => coverage(scope, input), input.worktree));
     server.registerTool("get_context_overview", {
         description: "Orient a fresh agent. Find the governing Morpheus architecture sections, the active task and the project's record locations.",
-        inputSchema: {}, annotations: READ_ONLY,
-    }, (_input, extra) => call(cwd, extra._meta, "overview", async (scope) => {
+        inputSchema: { worktree: worktreeInput }, annotations: READ_ONLY,
+    }, (input, extra) => call(cwd, extra._meta, "overview", async (scope) => {
         const data = await contextOverview(scope.root, scope.task);
         return result(JSON.stringify(data), data);
-    }));
+    }, input.worktree));
     server.registerTool("get_related_context", {
         description: "Follow explicit links from a project record, including backlinks, roadmap associations and GitHub references. Each relationship cites its declaring source.",
-        inputSchema: { path: pathInput, depth: z.number().int().min(1).max(3).default(1),
+        inputSchema: { worktree: worktreeInput, path: pathInput, depth: z.number().int().min(1).max(3).default(1),
             limit: z.number().int().min(1).max(30).default(15) }, annotations: READ_ONLY,
-    }, (input, extra) => call(cwd, extra._meta, "related", scope => related(scope, input)));
+    }, (input, extra) => call(cwd, extra._meta, "related", scope => related(scope, input), input.worktree));
     return server;
 }
 export async function runContextMcp() {

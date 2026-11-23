@@ -238,7 +238,11 @@ async function recordContextMcpResult(payload, root, session, provider, tool) {
     if (!isContextSearchOutput(text))
         return;
     const { contextMcpScope } = await import("../context-search/mcp-scope.js");
-    const scope = await contextMcpScope(root, session);
+    const input = isObject(payload["tool_input"]) ? payload["tool_input"] : {};
+    const worktree = input["worktree"];
+    if (worktree !== undefined && typeof worktree !== "string")
+        return;
+    const scope = await contextMcpScope(root, session, worktree);
     const { observeTaskContext } = await import("../context-search/task-start.js");
     await observeTaskContext(scope.root, session, text, operation);
 }
