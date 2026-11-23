@@ -50,11 +50,7 @@ None.
 
 ## Independent review
 
-Fresh normal-risk review found one substantive lifecycle-record issue: the roadmap item still said
-`in-progress` after independent review had begun. The reviewer conditionally cleared changing the
-item to `review` and regenerating/validating the PM index. Commit `9b7c812d` changes only the item;
-the generated index was already current, PM validation passes, and `git diff --check` passes. No
-other finding was reported.
+Fresh normal-risk review found one substantive stale lifecycle status. The reviewer conditionally cleared moving the roadmap item to review; PM validation, index regeneration, and diff checks passed. No other finding was reported.
 
 ```morpheus-review
 {
