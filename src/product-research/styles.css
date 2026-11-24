@@ -168,9 +168,9 @@
 .app-research-graph-heading > *,
 .app-research-graph-caption > * { margin: 0; }
 .app-research-graph-caption:empty { display: none; }
-.app-research-graph-caption select {
-  max-width: 100%; padding: 0.25rem 0.5rem; color: inherit; font: inherit; font-size: 0.875em;
-  background: var(--app-research-surface); border: 1px solid var(--app-research-border);
-  border-radius: var(--app-research-radius);
+.app-research-subflows { min-width: 0; width: 100%; font-size: 0.875em; }
+.app-research-subflows summary { width: fit-content; cursor: pointer; padding: 0.25rem 0.5rem; }
+.app-research-subflows summary:focus-visible { outline: 2px solid var(--app-research-accent); }
+@media (pointer: coarse) {
+  .app-research-zoom-hint { display: none; }
 }
-.app-research-graph-caption select:focus-visible { outline: 2px solid var(--app-research-accent); outline-offset: 2px; }

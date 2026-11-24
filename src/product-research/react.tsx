@@ -83,7 +83,7 @@ export function ProductResearchViewer({ study, readAsset, screenMetrics }: {
       <section className="app-research-navigation" aria-label="Navigation graph">
         <div className="app-research-graph-heading">
           <h3 className="app-research-figure-title">Navigation graph</h3>
-          <p className="app-research-meta">Hold Cmd (Mac) or Ctrl and scroll to zoom.</p>
+          <p className="app-research-meta app-research-zoom-hint">Hold Cmd (Mac) or Ctrl and scroll to zoom.</p>
         </div>
         <GraphBoundary key={study.studyId}>
           <Suspense fallback={<div className="app-research-graph">

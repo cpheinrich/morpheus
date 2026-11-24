@@ -20,3 +20,5 @@ flowchart LR
   D --> C
   C -->|Back or Escape| B
 ```
+
+The first independent review found the scoped graph highlight ignored screen-list and history changes. The highlight now follows the selected screen while Back retains its traversal history. Follow-up improvements add actual fit padding, explicit keyboard activation for subflows and a single zoom hint that hides on touch-only devices. The focused suite covers both list/history synchronization and keyboard subflow selection, for 65 passing tests.

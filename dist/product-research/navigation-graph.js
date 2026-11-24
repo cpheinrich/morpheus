@@ -78,7 +78,6 @@ function TransitionEdgeView({ id, data, markerEnd }) {
 const nodeTypes = { screen: ScreenNodeView };
 const edgeTypes = { transition: TransitionEdgeView };
 const minimapSize = { width: 112, height: 76 };
-const zoomHelp = "Zoom with Cmd / Ctrl + scroll";
 const zoomKeys = ["Meta", "Control"];
 function GraphViewport({ graph, initialScreen, scoped }) {
     const flow = useReactFlow();
@@ -99,7 +98,7 @@ function GraphViewport({ graph, initialScreen, scoped }) {
         }
         else {
             const bounds = flow.getNodesBounds(graph.nodes);
-            const viewport = getViewportForBounds(bounds, viewportWidth, viewportHeight, 0.05, scoped ? 1.25 : 2, 0.12);
+            const viewport = getViewportForBounds(bounds, viewportWidth, viewportHeight, 0.05, scoped ? 1.25 : 2, scoped ? "12%" : 0.12);
             void flow.setViewport(viewport);
         }
     }, [flow, graph, initialScreen, scoped, viewportWidth, viewportHeight]);
@@ -115,7 +114,7 @@ function GraphCanvas({ graph, selected, initialScreen, screenMetrics, onSelect, 
             activate: onSelect, focusRequest: node.id === selected ? focusRequest : undefined,
         },
     })), [graph, selected, screenMetrics, onSelect, scope, expanded, focusRequest]);
-    return (_jsx("div", { className: "app-research-graph", role: "group", "aria-label": "Navigation canvas", "aria-description": zoomHelp, title: zoomHelp, children: _jsxs(ReactFlow, { id: id, nodes: nodes, edges: graph.edges, nodeTypes: nodeTypes, edgeTypes: edgeTypes, minZoom: 0.05, maxZoom: 2, zoomActivationKeyCode: zoomKeys, zoomOnScroll: false, nodesDraggable: false, nodesConnectable: false, nodesFocusable: false, edgesFocusable: false, elementsSelectable: false, edgesReconnectable: false, deleteKeyCode: null, children: [_jsx(GraphViewport, { graph: graph, initialScreen: initialScreen, scoped: scope !== undefined }), _jsx(Controls, { showInteractive: false }), _jsx(MiniMap, { ariaLabel: "Navigation overview", style: minimapSize, zoomable: true, pannable: true, nodeColor: (node) => node.selected ? "var(--app-research-accent)" : "var(--app-research-muted)" })] }) }));
+    return (_jsx("div", { className: "app-research-graph", role: "group", "aria-label": "Navigation canvas", children: _jsxs(ReactFlow, { id: id, nodes: nodes, edges: graph.edges, nodeTypes: nodeTypes, edgeTypes: edgeTypes, minZoom: 0.05, maxZoom: 2, zoomActivationKeyCode: zoomKeys, zoomOnScroll: false, nodesDraggable: false, nodesConnectable: false, nodesFocusable: false, edgesFocusable: false, elementsSelectable: false, edgesReconnectable: false, deleteKeyCode: null, children: [_jsx(GraphViewport, { graph: graph, initialScreen: initialScreen, scoped: scope !== undefined }), _jsx(Controls, { showInteractive: false }), _jsx(MiniMap, { ariaLabel: "Navigation overview", style: minimapSize, zoomable: true, pannable: true, nodeColor: (node) => node.selected ? "var(--app-research-accent)" : "var(--app-research-muted)" })] }) }));
 }
 function LegacyGraph({ app, ...props }) {
     const graph = useMemo(() => projectGraph(app.screens, graphTransitions(app, false), app.entryScreenId), [app]);
@@ -158,7 +157,7 @@ function ScopedGraph({ app, flows, roots, ...props }) {
     const root = trail.findLast(({ flow }) => !flow.parentFlowId).flow;
     const childFlows = flows.filter((flow) => flow.parentFlowId === view.flow.id);
     return (_jsxs("div", { onKeyDown: (event) => {
-            if (event.key !== "Escape" || event.defaultPrevented || trail.length < 2 || event.target instanceof HTMLSelectElement)
+            if (event.key !== "Escape" || event.defaultPrevented || trail.length < 2)
                 return;
             event.preventDefault();
             event.stopPropagation();
@@ -166,11 +165,7 @@ function ScopedGraph({ app, flows, roots, ...props }) {
         }, children: [_jsxs("div", { className: "app-research-graph-toolbar", children: [_jsx("button", { type: "button", title: "Back in graph", "aria-label": "Back in graph", disabled: trail.length < 2, onClick: goBack, children: _jsx("span", { "aria-hidden": "true", children: "\u2190" }) }), _jsx("div", { className: "app-research-flow-picker", role: "group", "aria-label": "Top-level flows", children: roots.map((flow) => (_jsx("button", { type: "button", "aria-pressed": root.id === flow.id, onClick: () => {
                                 if (view.flow.id !== flow.id || view.expanded.size)
                                     openFlow(flow);
-                            }, children: flow.title }, flow.id))) })] }), _jsxs("div", { className: "app-research-graph-caption", children: [view.flow.parentFlowId && _jsx("p", { className: "app-research-flow-title", "aria-live": "polite", children: view.flow.title }), childFlows.length > 0 && (_jsxs("select", { "aria-label": "Open a subflow", value: "", onChange: (event) => {
-                            const child = childFlows.find(({ id }) => id === event.target.value);
-                            if (child)
-                                openFlow(child);
-                        }, children: [_jsx("option", { value: "", children: "Open a subflow" }), childFlows.map((flow) => _jsx("option", { value: flow.id, children: flow.title }, flow.id))] }))] }), _jsx(GraphCanvas, { ...props, graph: graph, selected: view.selected, initialScreen: view.flow.entryScreenId, onSelect: activate, scope: scope, expanded: view.expanded, focusRequest: trail === restoreFocus.current ? trail : undefined }), _jsxs("div", { className: "app-research-graph-legend app-research-meta", "aria-label": "Transition evidence", children: [_jsx("span", { children: "Observed or verified" }), _jsx("span", { children: "Documented in release source" })] })] }));
+                            }, children: flow.title }, flow.id))) })] }), _jsxs("div", { className: "app-research-graph-caption", children: [view.flow.parentFlowId && _jsx("p", { className: "app-research-flow-title", "aria-live": "polite", children: view.flow.title }), childFlows.length > 0 && (_jsxs("details", { className: "app-research-subflows", children: [_jsx("summary", { children: "Open a subflow" }), _jsx("div", { className: "app-research-flow-picker", role: "group", "aria-label": "Subflows", children: childFlows.map((flow) => (_jsx("button", { type: "button", onClick: () => openFlow(flow), children: flow.title }, flow.id))) })] }, view.flow.id))] }), _jsx(GraphCanvas, { ...props, graph: graph, initialScreen: view.flow.entryScreenId, onSelect: activate, scope: scope, expanded: view.expanded, focusRequest: trail === restoreFocus.current ? trail : undefined }), _jsxs("div", { className: "app-research-graph-legend app-research-meta", "aria-label": "Transition evidence", children: [_jsx("span", { children: "Observed or verified" }), _jsx("span", { children: "Documented in release source" })] })] }));
 }
 export default function NavigationGraph(props) {
     const flows = props.app.flows;

@@ -95,8 +95,7 @@ describe("ProductResearchViewer", () => {
     const settings = graph.getByRole("button", { name: /Settings protected Events: 0 · Replays: 2/ });
     const offline = graph.getByRole("button", { name: /Offline offline/ });
     expect(home.getAttribute("aria-current")).toBe("true");
-    expect(graph.getByRole("group", { name: "Navigation canvas" }).getAttribute("aria-description"))
-      .toBe("Zoom with Cmd / Ctrl + scroll");
+    expect(graph.getByText("Hold Cmd (Mac) or Ctrl and scroll to zoom.")).toBeTruthy();
     expect(graph.queryByRole("group", { name: "Top-level flows" })).toBeNull();
     expect(graph.getAllByRole("img").filter((edge) => edge.getAttribute("aria-roledescription") === "edge")
       .map((edge) => edge.getAttribute("aria-label"))).toEqual([
@@ -165,8 +164,6 @@ describe("ProductResearchViewer", () => {
     render(<ProductResearchViewer study={scopedStudy()} readAsset={reader()} />);
     const graph = within(screen.getByRole("region", { name: "Navigation graph" }));
     const canvas = within(await graph.findByRole("group", { name: "Navigation canvas" }));
-    expect(canvas.getByRole("button", { name: /Home Entry/ }).closest(".app-research-graph")?.getAttribute("aria-description"))
-      .toBe("Zoom with Cmd / Ctrl + scroll");
     await user.click(canvas.getByRole("button", { name: /Home Entry/ }));
     await user.click(canvas.getByRole("button", { name: /Settings protected/ }));
     const child = canvas.getByRole("button", { name: "Account Subflow · Manage account" });
@@ -200,6 +197,40 @@ describe("ProductResearchViewer", () => {
     expect(canvas.queryByRole("button", { name: "Profile" })).toBeNull();
     expect(window.location.hash).toBe("#screen=settings");
     expect(screen.getByRole("region", { name: "Screen: Settings" }).tagName).toBe("SECTION");
+  });
+
+  it("highlights the active visible screen after list selection and browser history", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, "", "#screen=profile");
+    render(<ProductResearchViewer study={scopedStudy()} readAsset={reader()} />);
+    const graph = within(screen.getByRole("region", { name: "Navigation graph" }));
+    const home = await graph.findByRole("button", { name: /Home Entry/ });
+    expect(home.getAttribute("aria-current")).toBeNull();
+    await user.click(home);
+    const list = within(screen.getByRole("navigation", { name: "Screens" }));
+    const settings = graph.getByRole("button", { name: /Settings protected/ });
+    await user.click(list.getByRole("button", { name: /Settings/ }));
+    expect(settings.getAttribute("aria-current")).toBe("true");
+    expect(home.getAttribute("aria-current")).toBeNull();
+    await user.click(list.getByRole("button", { name: /Profile/ }));
+    expect(settings.getAttribute("aria-current")).toBeNull();
+    window.history.back();
+    await waitFor(() => expect(settings.getAttribute("aria-current")).toBe("true"));
+  });
+
+  it("opens a subflow only when its button is activated", async () => {
+    const user = userEvent.setup();
+    render(<ProductResearchViewer study={scopedStudy()} readAsset={reader()} />);
+    const graph = within(screen.getByRole("region", { name: "Navigation graph" }));
+    const disclosure = await graph.findByText("Open a subflow");
+    disclosure.focus();
+    await user.keyboard("{Enter}");
+    const child = graph.getByRole("button", { name: "Manage account" });
+    child.focus();
+    await user.keyboard("{ArrowDown}");
+    expect(graph.getByRole("button", { name: /Home Entry/ })).toBeTruthy();
+    await user.keyboard("{Enter}");
+    expect(graph.getByRole("button", { name: "Account Entry" })).toBe(document.activeElement);
   });
 
   it("keeps screen selection and detail available if the graph fails", async () => {

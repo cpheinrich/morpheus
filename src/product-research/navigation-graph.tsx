@@ -115,7 +115,6 @@ const nodeTypes = { screen: ScreenNodeView };
 const edgeTypes = { transition: TransitionEdgeView };
 const minimapSize = { width: 112, height: 76 };
 
-const zoomHelp = "Zoom with Cmd / Ctrl + scroll";
 const zoomKeys = ["Meta", "Control"];
 
 function GraphViewport({ graph, initialScreen, scoped }: {
@@ -136,7 +135,7 @@ function GraphViewport({ graph, initialScreen, scoped }: {
       void flow.setCenter(node.position.x + width / 2, node.position.y + height / 2, { zoom: narrow ? 0.8 : 1 });
     } else {
       const bounds = flow.getNodesBounds(graph.nodes);
-      const viewport = getViewportForBounds(bounds, viewportWidth, viewportHeight, 0.05, scoped ? 1.25 : 2, 0.12);
+      const viewport = getViewportForBounds(bounds, viewportWidth, viewportHeight, 0.05, scoped ? 1.25 : 2, scoped ? "12%" : 0.12);
       void flow.setViewport(viewport);
     }
   }, [flow, graph, initialScreen, scoped, viewportWidth, viewportHeight]);
@@ -156,7 +155,7 @@ function GraphCanvas({ graph, selected, initialScreen, screenMetrics, onSelect, 
     },
   })), [graph, selected, screenMetrics, onSelect, scope, expanded, focusRequest]);
   return (
-    <div className="app-research-graph" role="group" aria-label="Navigation canvas" aria-description={zoomHelp} title={zoomHelp}>
+    <div className="app-research-graph" role="group" aria-label="Navigation canvas">
       <ReactFlow id={id} nodes={nodes} edges={graph.edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
         minZoom={0.05} maxZoom={2} zoomActivationKeyCode={zoomKeys} zoomOnScroll={false}
         nodesDraggable={false} nodesConnectable={false} nodesFocusable={false} edgesFocusable={false}
@@ -216,7 +215,7 @@ function ScopedGraph({ app, flows, roots, ...props }: GraphProps & { flows: Flow
   const childFlows = flows.filter((flow) => flow.parentFlowId === view.flow.id);
   return (
     <div onKeyDown={(event) => {
-      if (event.key !== "Escape" || event.defaultPrevented || trail.length < 2 || event.target instanceof HTMLSelectElement) return;
+      if (event.key !== "Escape" || event.defaultPrevented || trail.length < 2) return;
       event.preventDefault();
       event.stopPropagation();
       goBack();
@@ -236,16 +235,17 @@ function ScopedGraph({ app, flows, roots, ...props }: GraphProps & { flows: Flow
       <div className="app-research-graph-caption">
         {view.flow.parentFlowId && <p className="app-research-flow-title" aria-live="polite">{view.flow.title}</p>}
         {childFlows.length > 0 && (
-          <select aria-label="Open a subflow" value="" onChange={(event) => {
-            const child = childFlows.find(({ id }) => id === event.target.value);
-            if (child) openFlow(child);
-          }}>
-            <option value="">Open a subflow</option>
-            {childFlows.map((flow) => <option key={flow.id} value={flow.id}>{flow.title}</option>)}
-          </select>
+          <details key={view.flow.id} className="app-research-subflows">
+            <summary>Open a subflow</summary>
+            <div className="app-research-flow-picker" role="group" aria-label="Subflows">
+              {childFlows.map((flow) => (
+                <button key={flow.id} type="button" onClick={() => openFlow(flow)}>{flow.title}</button>
+              ))}
+            </div>
+          </details>
         )}
       </div>
-      <GraphCanvas {...props} graph={graph} selected={view.selected} initialScreen={view.flow.entryScreenId}
+      <GraphCanvas {...props} graph={graph} initialScreen={view.flow.entryScreenId}
         onSelect={activate} scope={scope} expanded={view.expanded} focusRequest={trail === restoreFocus.current ? trail : undefined} />
       <div className="app-research-graph-legend app-research-meta" aria-label="Transition evidence">
         <span>Observed or verified</span><span>Documented in release source</span>
