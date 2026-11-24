@@ -11,22 +11,27 @@ export declare const APP_RESEARCH_POINT_CANVAS: {
     readonly height: 852;
 };
 export declare const STUDY_FILE = "study.json";
+type ValidationIssue = {
+    path: string;
+    message: string;
+};
 export declare class ProductResearchValidationError extends Error {
     readonly kind: "study" | "snapshot";
-    readonly issues: {
-        path: string;
-        message: string;
-    }[];
-    constructor(kind: "study" | "snapshot", issues: {
-        path: string;
-        message: string;
-    }[]);
+    readonly issues: ValidationIssue[];
+    constructor(kind: "study" | "snapshot", issues: ValidationIssue[]);
 }
 /**
  * A relative path inside the study directory: plain segments only, so no absolute path, parent
  * traversal, backslash, query or fragment can reach storage or the filesystem.
  */
 export declare function isSafeAssetPath(value: string): boolean;
+declare const flowSchema: z.ZodObject<{
+    id: z.ZodString;
+    title: z.ZodString;
+    entryScreenId: z.ZodString;
+    parentFlowId: z.ZodOptional<z.ZodString>;
+    screenIds: z.ZodOptional<z.ZodArray<z.ZodString>>;
+}, z.core.$loose>;
 declare const studySchema: z.ZodObject<{
     schemaVersion: z.ZodLiteral<1>;
     studyId: z.ZodString;
@@ -98,6 +103,13 @@ declare const studySchema: z.ZodObject<{
                 layoutRegions?: unknown[] | undefined;
             }[] | null>>;
         }, z.core.$loose>>;
+        flows: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            id: z.ZodString;
+            title: z.ZodString;
+            entryScreenId: z.ZodString;
+            parentFlowId: z.ZodOptional<z.ZodString>;
+            screenIds: z.ZodOptional<z.ZodArray<z.ZodString>>;
+        }, z.core.$loose>>>;
         transitions: z.ZodArray<z.ZodObject<{
             id: z.ZodString;
             actionId: z.ZodString;
@@ -128,6 +140,7 @@ declare const studySchema: z.ZodObject<{
 }, z.core.$loose>;
 export type AppResearchStudy = z.output<typeof studySchema>;
 export type AppResearchScreen = AppResearchStudy["app"]["screens"][number];
+export type AppResearchFlow = z.output<typeof flowSchema>;
 export type AppResearchElement = AppResearchScreen["elements"][number];
 export type AppResearchScreenshot = AppResearchScreen["screenshots"][number];
 export type AppResearchTransition = AppResearchStudy["app"]["transitions"][number];

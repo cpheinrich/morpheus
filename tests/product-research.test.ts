@@ -10,6 +10,7 @@ import {
   parseAppeekySnapshot,
   parseAppResearchStudy,
   ProductResearchValidationError,
+  type AppResearchFlow,
 } from "../src/product-research/index.js";
 import { validateStudyDirectory } from "../src/product-research/server.js";
 import { asset, FILES, sha, syntheticStudy } from "./fixtures/product-research-study.js";
@@ -24,12 +25,66 @@ function issuesOf(input: unknown): string[] {
   return [];
 }
 
+function studyWithFlows(flows: AppResearchFlow[]) {
+  const study = syntheticStudy();
+  return { ...study, app: { ...study.app, flows } };
+}
+
 describe("parseAppResearchStudy", () => {
   it("accepts a valid study, keeps unknown keys and normalizes a null screenshot list", () => {
     const study = parseAppResearchStudy(syntheticStudy());
     expect((study as Record<string, unknown>).captureTool).toEqual({ name: "synthetic", version: "0" });
     expect(study.app.screens[1]!.screenshots).toEqual([]);
     expect(study.app.screens[0]!.elements[1]!.bounds).toBeNull();
+    expect(study.app).not.toHaveProperty("flows");
+  });
+
+  it("keeps authored flows, shared screens, and source-documented transitions in v1", () => {
+    const flows: AppResearchFlow[] = [
+      { id: "preferences", title: "Preferences", entryScreenId: "settings", parentFlowId: "onboarding", screenIds: ["settings"] },
+      { id: "onboarding", title: "Onboarding", entryScreenId: "home", screenIds: ["settings"] },
+      { id: "profile", title: "Profile", entryScreenId: "settings", parentFlowId: "preferences" },
+    ];
+    const study = studyWithFlows(flows);
+    study.app.transitions[0]!.status = "source-documented";
+    const parsed = parseAppResearchStudy(study);
+    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.app.flows).toEqual(flows);
+    expect(parsed.app.transitions[0]!.status).toBe("source-documented");
+    expect(parseAppResearchStudy(studyWithFlows([])).app.flows).toEqual([]);
+  });
+
+  it("rejects duplicate flow and member IDs and unknown screen and parent references", () => {
+    const study = studyWithFlows([
+      { id: "onboarding", title: "Onboarding", entryScreenId: "missing-entry", parentFlowId: "missing-parent", screenIds: ["home", "missing-member", "home"] },
+      { id: "onboarding", title: "Another flow", entryScreenId: "home" },
+    ]);
+    expect(issuesOf(study)).toEqual([
+      'app.flows.1.id: duplicate flow id "onboarding"',
+      'app.flows.0.entryScreenId: unknown screen "missing-entry"',
+      'app.flows.0.parentFlowId: unknown flow "missing-parent"',
+      'app.flows.0.screenIds.1: unknown screen "missing-member"',
+      'app.flows.0.screenIds.2: duplicate screen id "home"',
+    ]);
+  });
+
+  it("rejects cycles, including self-parenting and a cycle reached from another flow", () => {
+    const study = studyWithFlows([
+      { id: "tail", title: "Tail", entryScreenId: "home", parentFlowId: "first" },
+      { id: "first", title: "First", entryScreenId: "home", parentFlowId: "second" },
+      { id: "second", title: "Second", entryScreenId: "home", parentFlowId: "first" },
+      { id: "self", title: "Self", entryScreenId: "home", parentFlowId: "self" },
+    ]);
+    expect(issuesOf(study)).toEqual([
+      'app.flows.2.parentFlowId: flow parent cycle through "first"',
+      'app.flows.3.parentFlowId: flow parent cycle through "self"',
+    ]);
+  });
+
+  it("requires an entry screen ID on each authored flow", () => {
+    const study = syntheticStudy();
+    expect(() => parseAppResearchStudy({ ...study, app: { ...study.app, flows: [{ id: "onboarding", title: "Onboarding" }] } }))
+      .toThrow(/Invalid app research study:\n {2}app\.flows\.0\.entryScreenId:/);
   });
 
   it("rejects duplicate ids and unresolved references with their paths", () => {
