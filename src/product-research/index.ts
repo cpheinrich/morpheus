@@ -11,8 +11,10 @@ import { z } from "zod";
 export const APP_RESEARCH_POINT_CANVAS = { width: 393, height: 852 } as const;
 export const STUDY_FILE = "study.json";
 
+type ValidationIssue = { path: string; message: string };
+
 export class ProductResearchValidationError extends Error {
-  constructor(readonly kind: "study" | "snapshot", readonly issues: { path: string; message: string }[]) {
+  constructor(readonly kind: "study" | "snapshot", readonly issues: ValidationIssue[]) {
     const shown = issues.slice(0, 8).map((issue) => `  ${issue.path || "(root)"}: ${issue.message}`);
     const more = issues.length > shown.length ? [`  …and ${issues.length - shown.length} more`] : [];
     super([`Invalid ${kind === "study" ? "app research study" : "Appeeky snapshot"}:`, ...shown, ...more].join("\n"));
@@ -68,6 +70,12 @@ const screenSchema = z.looseObject({
   screenshots: z.array(screenshotSchema).nullable().transform((shots) => shots ?? []),
 });
 
+const flowSchema = z.looseObject({
+  id, title: text, entryScreenId: id,
+  parentFlowId: id.optional(),
+  screenIds: z.array(id).optional(),
+});
+
 const transitionSchema = z.looseObject({
   id, actionId: z.string(),
   from: id.nullable(), to: id.nullable(), elementId: id.nullable(),
@@ -90,6 +98,7 @@ const studySchema = z.looseObject({
     name: text, version: z.string(), status: z.string(), summary: z.string(),
     entryScreenId: id,
     screens: z.array(screenSchema).min(1),
+    flows: z.array(flowSchema).optional(),
     transitions: z.array(transitionSchema),
     gaps: z.array(z.unknown()),
     replayChecks: z.array(z.unknown()),
@@ -101,6 +110,7 @@ const studySchema = z.looseObject({
 
 export type AppResearchStudy = z.output<typeof studySchema>;
 export type AppResearchScreen = AppResearchStudy["app"]["screens"][number];
+export type AppResearchFlow = z.output<typeof flowSchema>;
 export type AppResearchElement = AppResearchScreen["elements"][number];
 export type AppResearchScreenshot = AppResearchScreen["screenshots"][number];
 export type AppResearchTransition = AppResearchStudy["app"]["transitions"][number];
@@ -115,8 +125,8 @@ export function parseAppResearchStudy(input: unknown): AppResearchStudy {
 }
 
 /** Every id is unique and every reference — screen, element, asset, hash — resolves. */
-function studyReferenceIssues(study: AppResearchStudy): { path: string; message: string }[] {
-  const issues: { path: string; message: string }[] = [];
+function studyReferenceIssues(study: AppResearchStudy): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
   const { app, assets } = study;
   const asset = (path: string, at: string) => {
     if (path === STUDY_FILE) issues.push({ path: at, message: `${STUDY_FILE} is not an asset` });
@@ -149,6 +159,7 @@ function studyReferenceIssues(study: AppResearchStudy): { path: string; message:
     });
   });
   if (!screens.has(app.entryScreenId)) issues.push({ path: "app.entryScreenId", message: `unknown screen "${app.entryScreenId}"` });
+  checkFlowReferences(app.flows ?? [], screens, issues);
 
   const transitions = new Set<string>();
   app.transitions.forEach((transition, t) => {
@@ -167,6 +178,51 @@ function studyReferenceIssues(study: AppResearchStudy): { path: string; message:
   });
   study.downloads.forEach((download, d) => asset(download.path, `downloads.${d}.path`));
   return issues;
+}
+
+function checkFlowReferences(flows: AppResearchFlow[], screens: ReadonlySet<string>, issues: ValidationIssue[]): void {
+  const flowIndexes = new Map<string, number>();
+  flows.forEach((flow, index) => {
+    if (flowIndexes.has(flow.id)) issues.push({ path: `app.flows.${index}.id`, message: `duplicate flow id "${flow.id}"` });
+    else flowIndexes.set(flow.id, index);
+  });
+  flows.forEach((flow, index) => {
+    const at = `app.flows.${index}`;
+    if (!screens.has(flow.entryScreenId)) {
+      issues.push({ path: `${at}.entryScreenId`, message: `unknown screen "${flow.entryScreenId}"` });
+    }
+    if (flow.parentFlowId !== undefined && !flowIndexes.has(flow.parentFlowId)) {
+      issues.push({ path: `${at}.parentFlowId`, message: `unknown flow "${flow.parentFlowId}"` });
+    }
+    const members = new Set<string>();
+    flow.screenIds?.forEach((screenId, memberIndex) => {
+      const memberAt = `${at}.screenIds.${memberIndex}`;
+      if (members.has(screenId)) issues.push({ path: memberAt, message: `duplicate screen id "${screenId}"` });
+      if (!screens.has(screenId)) issues.push({ path: memberAt, message: `unknown screen "${screenId}"` });
+      members.add(screenId);
+    });
+  });
+  checkFlowParentCycles(flows, flowIndexes, issues);
+}
+
+function checkFlowParentCycles(
+  flows: AppResearchFlow[], flowIndexes: ReadonlyMap<string, number>, issues: ValidationIssue[],
+): void {
+  const traversalRoots = new Map<string, string>();
+  for (const root of flowIndexes.keys()) {
+    let flowId: string | undefined = root;
+    while (flowId !== undefined && !traversalRoots.has(flowId)) {
+      const index = flowIndexes.get(flowId);
+      if (index === undefined) break;
+      traversalRoots.set(flowId, root);
+      const parentId = flows[index]!.parentFlowId;
+      if (parentId !== undefined && traversalRoots.get(parentId) === root) {
+        issues.push({ path: `app.flows.${index}.parentFlowId`, message: `flow parent cycle through "${parentId}"` });
+        break;
+      }
+      flowId = parentId;
+    }
+  }
 }
 
 const optionalText = z.string().optional();
@@ -206,6 +262,6 @@ export function parseAppeekySnapshot(input: unknown): AppeekySnapshot {
   return parsed.data;
 }
 
-function zodIssues(error: z.ZodError): { path: string; message: string }[] {
+function zodIssues(error: z.ZodError): ValidationIssue[] {
   return error.issues.map((issue) => ({ path: issue.path.map(String).join("."), message: issue.message }));
 }

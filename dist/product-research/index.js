@@ -62,6 +62,11 @@ const screenSchema = z.looseObject({
     // A protected or text-only observation has no capture; null and [] mean the same thing.
     screenshots: z.array(screenshotSchema).nullable().transform((shots) => shots ?? []),
 });
+const flowSchema = z.looseObject({
+    id, title: text, entryScreenId: id,
+    parentFlowId: id.optional(),
+    screenIds: z.array(id).optional(),
+});
 const transitionSchema = z.looseObject({
     id, actionId: z.string(),
     from: id.nullable(), to: id.nullable(), elementId: id.nullable(),
@@ -82,6 +87,7 @@ const studySchema = z.looseObject({
         name: text, version: z.string(), status: z.string(), summary: z.string(),
         entryScreenId: id,
         screens: z.array(screenSchema).min(1),
+        flows: z.array(flowSchema).optional(),
         transitions: z.array(transitionSchema),
         gaps: z.array(z.unknown()),
         replayChecks: z.array(z.unknown()),
@@ -140,6 +146,7 @@ function studyReferenceIssues(study) {
     });
     if (!screens.has(app.entryScreenId))
         issues.push({ path: "app.entryScreenId", message: `unknown screen "${app.entryScreenId}"` });
+    checkFlowReferences(app.flows ?? [], screens, issues);
     const transitions = new Set();
     app.transitions.forEach((transition, t) => {
         const at = `app.transitions.${t}`;
@@ -161,6 +168,52 @@ function studyReferenceIssues(study) {
     });
     study.downloads.forEach((download, d) => asset(download.path, `downloads.${d}.path`));
     return issues;
+}
+function checkFlowReferences(flows, screens, issues) {
+    const flowIndexes = new Map();
+    flows.forEach((flow, index) => {
+        if (flowIndexes.has(flow.id))
+            issues.push({ path: `app.flows.${index}.id`, message: `duplicate flow id "${flow.id}"` });
+        else
+            flowIndexes.set(flow.id, index);
+    });
+    flows.forEach((flow, index) => {
+        const at = `app.flows.${index}`;
+        if (!screens.has(flow.entryScreenId)) {
+            issues.push({ path: `${at}.entryScreenId`, message: `unknown screen "${flow.entryScreenId}"` });
+        }
+        if (flow.parentFlowId !== undefined && !flowIndexes.has(flow.parentFlowId)) {
+            issues.push({ path: `${at}.parentFlowId`, message: `unknown flow "${flow.parentFlowId}"` });
+        }
+        const members = new Set();
+        flow.screenIds?.forEach((screenId, memberIndex) => {
+            const memberAt = `${at}.screenIds.${memberIndex}`;
+            if (members.has(screenId))
+                issues.push({ path: memberAt, message: `duplicate screen id "${screenId}"` });
+            if (!screens.has(screenId))
+                issues.push({ path: memberAt, message: `unknown screen "${screenId}"` });
+            members.add(screenId);
+        });
+    });
+    checkFlowParentCycles(flows, flowIndexes, issues);
+}
+function checkFlowParentCycles(flows, flowIndexes, issues) {
+    const traversalRoots = new Map();
+    for (const root of flowIndexes.keys()) {
+        let flowId = root;
+        while (flowId !== undefined && !traversalRoots.has(flowId)) {
+            const index = flowIndexes.get(flowId);
+            if (index === undefined)
+                break;
+            traversalRoots.set(flowId, root);
+            const parentId = flows[index].parentFlowId;
+            if (parentId !== undefined && traversalRoots.get(parentId) === root) {
+                issues.push({ path: `app.flows.${index}.parentFlowId`, message: `flow parent cycle through "${parentId}"` });
+                break;
+            }
+            flowId = parentId;
+        }
+    }
 }
 const optionalText = z.string().optional();
 const snapshotSchema = z.object({

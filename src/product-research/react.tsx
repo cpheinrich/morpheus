@@ -81,14 +81,17 @@ export function ProductResearchViewer({ study, readAsset, screenMetrics }: {
         {app.summary ? <p className="app-research-summary">{app.summary}</p> : null}
       </header>
       <section className="app-research-navigation" aria-label="Navigation graph">
-        <h3 className="app-research-figure-title">Navigation graph</h3>
+        <div className="app-research-graph-heading">
+          <h3 className="app-research-figure-title">Navigation graph</h3>
+          <p className="app-research-meta">Hold Cmd (Mac) or Ctrl and scroll to zoom.</p>
+        </div>
         <GraphBoundary key={study.studyId}>
-          <div className="app-research-graph">
-            <Suspense fallback={<p className="app-research-meta" role="status">Loading navigation graph…</p>}>
-              <NavigationGraph key={study.studyId} app={app} selected={screen.id} screenMetrics={screenMetrics}
-                onSelect={(id) => { selectScreen(id); setReveal({ id }); }} />
-            </Suspense>
-          </div>
+          <Suspense fallback={<div className="app-research-graph">
+            <p className="app-research-meta" role="status">Loading navigation graph…</p>
+          </div>}>
+            <NavigationGraph app={app} selected={screen.id} screenMetrics={screenMetrics}
+              onSelect={(id) => { selectScreen(id); setReveal({ id }); }} />
+          </Suspense>
         </GraphBoundary>
       </section>
       <div className="app-research-layout">
