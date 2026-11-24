@@ -58,7 +58,16 @@ mechanism that the requirements do not need is substantive; a local simplificati
 Name the mechanism and callers or contract it serves. Check whether an existing owner can handle
 the supported scenario and whether each caller fits a shared abstraction. Describe the smallest
 simpler approach that preserves behavior.
-For a human-facing HQ change, apply docs/runbooks/hq-product-design.md: current direction is a
+For a human-facing HQ change, apply the canonical HQ product and design standard,
+https://github.com/cpheinrich/morpheus/blob/main/docs/runbooks/hq-product-design.md (a project
+repository rarely has its own copy; \`morpheus product guide vp-design/hq-experience\` prints the
+portable summary). Check the page against its page type and a recently shipped local page of that
+type: the first screen names the next action and owner, a procedure shows its stop conditions and
+acceptance check, shared page primitives are reused, and existing URLs and heading anchors still
+resolve. Judge visual materiality from the rendered result, whatever the file extension: a material
+Markdown change needs final-build renders at 1440, 1024 and 390 CSS pixels even when no
+review.visualEvidence path matched, and private pages may use privately stored or synthetic
+captures. Missing evidence for a material page leaves the review incomplete. Current direction is a
 verb-led outcome of at most ten words, the executive brief is at most 75 words or five one-sentence
 bullets, and a verbose legacy page should usually lose 40–60% of its prose without losing the
 decision or action, owner, deadline, thresholds, material evidence, caveats or compliance constraints. Check

@@ -8,6 +8,30 @@ The governing idea is simple: **the first screen gives the decision or action; t
 page earns its space.** Detail is valuable, but it must not compete with the reason someone opened
 the page.
 
+This file is the canonical standard for every Morpheus project:
+<https://github.com/cpheinrich/morpheus/blob/main/docs/runbooks/hq-product-design.md>. A project
+repository rarely has its own copy; `morpheus product guide vp-design/hq-experience` prints the
+portable summary.
+
+## Author checklist
+
+Use it for every material HQ page change, including a Markdown-only one.
+
+**Before editing**
+
+1. Choose the [page type](#page-types-and-required-order) and open a recently shipped local page of
+   the same type as the model. Reuse its [shared page primitives](#shared-component-boundary)
+   rather than hand-building a variant.
+2. Note the page's URL and heading anchors that other pages, issues or messages link to.
+
+**Before finishing**
+
+1. The first screen names the next action and its owner. A procedure shows its stop conditions and
+   acceptance check prominently, never only in troubleshooting or an appendix.
+2. Every noted URL and anchor still resolves.
+3. Review the final render at 1440, 1024 and 390 CSS pixels and attach the evidence described in
+   [Review and acceptance](#review-and-acceptance).
+
 ## The reading contract
 
 Every page serves three depths without making three documents:
@@ -184,6 +208,13 @@ is not equivalent. Respect reduced motion and never invent determinate progress.
 Rendered HQ content is interface behavior even when only Markdown changed. Require visual evidence
 when a change alters the first-screen hierarchy, heading structure, tables/charts, navigation,
 component styling, or a document above the long-page triggers. Ordinary typo fixes do not need it.
+
+Judge that materiality from the rendered result, whatever the file extension. It is a separate
+expectation from `review.visualEvidence`, whose `include` globs make `morpheus check pr` demand an
+upload only for matching paths and usually do not match HQ Markdown. A material page change carries
+evidence even when no path matched. When the page holds private content, capture it where the
+project's private records live, or capture a synthetic page of the same structure for the public
+PR; never publish private content to satisfy evidence.
 
 For material HQ work, inspect the final build at desktop (about 1440px), compact desktop/tablet
 (about 1024px) and mobile (390px), including keyboard traversal and at least the normal, empty and

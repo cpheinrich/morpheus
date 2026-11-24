@@ -44,6 +44,8 @@ export const firebaseConfig = (rulesPath) => JSON.stringify({ firestore: { rules
  * memory by design, and agents working for collaborators.
  */
 export const MORPHEUS_REPO = "https://github.com/cpheinrich/morpheus";
+/** The canonical HQ presentation standard; project repositories rarely carry a copy. */
+export const HQ_DESIGN_STANDARD = `${MORPHEUS_REPO}/blob/main/docs/runbooks/hq-product-design.md`;
 /**
  * The callout every project carries, in two registers.
  *
@@ -873,13 +875,13 @@ item moved to \`review\`. Tests must pin expected behaviour, exercise guards at 
 and fail when a stated invariant is broken; coverage alone is not evidence of quality. See
 [Morpheus's test guidance](${MORPHEUS_REPO}/blob/main/AGENTS.md#what-makes-a-test-count).
 
-**Front-end changes must carry visual evidence.** When a changed path matches
-\`review.visualEvidence.include\` in \`morpheus.json\` (minus \`exclude\`), attach a screen recording
-to the PR when practical, otherwise screenshots, and list them under \`## Visual evidence\`.
-Capture final-build screens/states; author and reviewer inspect pixels. Refresh after fixes.
-\`morpheus check pr\` accepts GitHub attachments and exact public HTTPS prefixes declared in
-\`allowedUrlPrefixes\`, without fetching them or judging the pixels. A repository may disable
-the rule only with \`enabled: false\` and a substantive \`reason\` in the manifest.
+**Front-end changes must carry visual evidence.** When \`review.visualEvidence.include\` matches
+a path, minus \`exclude\`, link final-build recordings or screenshots under \`## Visual evidence\`.
+Authors and reviewers inspect pixels and refresh stale captures. \`check pr\` checks links against
+GitHub attachments or \`allowedUrlPrefixes\`. Opt out only with \`enabled: false\` and a substantive \`reason\`.
+
+For [HQ pages](${HQ_DESIGN_STANDARD}), follow the author checklist and verify
+material Markdown changes in the final render even outside that path rule.
 
 **Before opening a PR**, run \`morpheus pm index\` and commit any one-time roadmap README migration
 or generated goal/request index changes. CI runs the same check.
@@ -1417,6 +1419,11 @@ Everything about running ${s.name} that is not code.
 
 Markdown with YAML frontmatter is the source of truth. Index tables are generated between the
 \`morpheus:\` markers and are never edited by hand.
+
+Pages rendered at \`/hq\` follow the [HQ product and design standard](${HQ_DESIGN_STANDARD}).
+Before a material page change, Markdown included, run its author checklist
+(\`morpheus product guide vp-design/hq-experience\` prints a portable summary) and model the page
+on a recently shipped page of the same type.
 `;
 export const BRAND_EXPLORATION_IGNORE_RULES = [
     "hq/brand/moodboard/*",

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/cli/run.js";
 import { scaffold } from "../src/init/index.js";
 import {
+  HQ_DESIGN_STANDARD,
   chiefProductOfficerPointerSkill,
   vpDesignPointerSkill,
   type Seed,
@@ -146,6 +147,20 @@ describe("product leadership hierarchy and guide", () => {
     expect(unknown.err).toBe(
       `Unknown product guide topic "vp-design/unknown". Topics: ${expectedTopics.join(", ")}.`,
     );
+  });
+
+  it("gives HQ authors and reviewers exact checks and the canonical standard", () => {
+    const guide = vpDesignSkillFiles()["references/hq-experience.md"]!.replace(/\s+/g, " ");
+    expect(productGuideTopics()).toContain(`${VP_DESIGN_SKILL}/hq-experience`);
+    expect(guide).toContain(`(${HQ_DESIGN_STANDARD})`);
+    expect(guide).toContain("## Author and reviewer checks");
+    expect(guide).toContain("model the page on a recently shipped local page of that type");
+    expect(guide).toContain("the first screen names the next action and owner");
+    expect(guide).toContain("a procedure shows its stop conditions and acceptance check");
+    expect(guide).toContain("every noted URL and anchor still resolves");
+    expect(guide).toContain("reviewed at 1440, 1024 and 390 CSS pixels");
+    expect(guide).toContain("not the file extension or `review.visualEvidence` path matching");
+    expect(guide).toContain("Missing captures for a material change leave the review incomplete.");
   });
 
   it("uses the canonical descriptions in scaffold pointers", () => {

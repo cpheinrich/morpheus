@@ -368,6 +368,20 @@ may use detail or download. A chart owns title/question, units, legend/tooltip t
 summary, exact-data fallback and reduced motion. Use Recharts when conventional interactivity helps;
 do not force domain diagrams into it.
 
+## Author and reviewer checks
+
+Apply these to every material HQ page change, Markdown included.
+
+- **Author, before editing:** choose the page type, model the page on a recently shipped local page
+  of that type, reuse its shared primitives, and note the URLs and heading anchors others link to.
+- **Author, before finishing:** the first screen names the next action and owner; a procedure shows
+  its stop conditions and acceptance check; every noted URL and anchor still resolves; the final
+  render has been reviewed at 1440, 1024 and 390 CSS pixels.
+- **Reviewer:** judge materiality from the rendered page, not the file extension or
+  \`review.visualEvidence\` path matching. Inspect final-build captures at all three widths; a
+  private page may use privately stored or synthetic captures. Missing captures for a material
+  change leave the review incomplete.
+
 ## Migration
 
 Inventory routes and resolve duplicate ownership first. Build the shell/content foundation, then
@@ -376,9 +390,11 @@ integrated builds at desktop, compact desktop/tablet and 390px mobile before a s
 the extraction real. Migrate active operational pages before archives and preserve stable URLs and
 source meaning.
 
-The full living standard is \`docs/runbooks/hq-product-design.md\` in Morpheus. When the installed
-guide and the current Morpheus standard differ, update Morpheus and use the reviewed newer version;
-do not fork local guidance silently.
+The full living standard is Morpheus's
+[\`docs/runbooks/hq-product-design.md\`](https://github.com/cpheinrich/morpheus/blob/main/docs/runbooks/hq-product-design.md);
+a project repository rarely carries its own copy. When the installed guide and the current Morpheus
+standard differ, update Morpheus and use the reviewed newer version; do not fork local guidance
+silently.
 `,
 });
 //# sourceMappingURL=skill.js.map

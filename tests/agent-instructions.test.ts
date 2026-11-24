@@ -1,7 +1,7 @@
 import { access, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { agents, contextFreshness, type Seed } from "../src/init/templates.js";
+import { HQ_DESIGN_STANDARD, agents, contextFreshness, hqReadme, type Seed } from "../src/init/templates.js";
 import { GATED } from "../src/session/gate.js";
 import { LOCAL_REVIEW_PROMPT } from "../src/review/local-prompt.js";
 
@@ -125,6 +125,41 @@ describe("Morpheus's own AGENTS.md", () => {
       expect(normalized).toContain("raw meeting/source records");
     }
   });
+
+  it("sends the shared reviewer to the canonical HQ standard and material Markdown evidence", () => {
+    // Consumer repositories rarely carry docs/runbooks/hq-product-design.md, so a repo-relative path misleads.
+    const review = LOCAL_REVIEW_PROMPT.replace(/\s+/g, " ");
+    expect(review).toContain(`apply the canonical HQ product and design standard, ${HQ_DESIGN_STANDARD}`);
+    expect(review).not.toMatch(/apply docs\/runbooks\/hq-product-design\.md/);
+    expect(review).toContain("`morpheus product guide vp-design/hq-experience`");
+    expect(review).toContain("Judge visual materiality from the rendered result, whatever the file extension");
+    expect(review).toContain(
+      "a material Markdown change needs final-build renders at 1440, 1024 and 390 CSS pixels even when no review.visualEvidence path matched",
+    );
+    expect(review).toContain("Missing evidence for a material page leaves the review incomplete.");
+  });
+
+  it("gives HQ authors a canonical checklist whose same-page links resolve", async () => {
+    const text = await readFile(join(ROOT, "docs/runbooks/hq-product-design.md"), "utf8");
+    const normalized = text.replace(/\s+/g, " ");
+    expect(text).toContain("## Author checklist");
+    expect(text).toContain(`<${HQ_DESIGN_STANDARD}>`);
+    expect(normalized).toContain("open a recently shipped local page of the same type");
+    expect(normalized).toContain("The first screen names the next action and its owner.");
+    expect(normalized).toContain("stop conditions and acceptance check");
+    expect(normalized).toContain("Every noted URL and anchor still resolves.");
+    expect(normalized).toContain("1440, 1024 and 390 CSS pixels");
+    expect(normalized).toContain("Judge that materiality from the rendered result, whatever the file extension.");
+    expect(normalized).toContain("A material page change carries evidence even when no path matched.");
+    const slugs = new Set(
+      [...text.matchAll(/^#{2,4} (.+)$/gm)].map(([, heading]) =>
+        heading!.toLowerCase().replace(/[^a-z0-9 -]/g, "").replace(/ /g, "-"),
+      ),
+    );
+    const anchors = [...text.matchAll(/\]\(#([\w-]+)\)/g)].map(([, anchor]) => anchor);
+    expect(anchors).toEqual(["page-types-and-required-order", "shared-component-boundary", "review-and-acceptance"]);
+    for (const anchor of anchors) expect(slugs, anchor).toContain(anchor);
+  });
 });
 
 describe("the scaffolded AGENTS.md", () => {
@@ -203,6 +238,19 @@ describe("the scaffolded AGENTS.md", () => {
     expect(text.slice(gap, tools)).toContain("morpheus pm new roadmap");
     // The embedded block ends the callout, so it must not leave a second blank line before Layout.
     expect(text.slice(tools, text.indexOf("## Layout"))).not.toMatch(/\n\n\n/);
+  });
+
+  it("points HQ authors at the canonical standard in AGENTS.md and the HQ README", () => {
+    const text = agents(SEED).replace(/\s+/g, " ");
+    expect(text).toContain(
+      `For [HQ pages](${HQ_DESIGN_STANDARD}), follow the author checklist`,
+    );
+    expect(text).toContain("material Markdown changes in the final render even outside that path rule");
+    const readme = hqReadme(SEED).replace(/\s+/g, " ");
+    expect(readme).toContain(`follow the [HQ product and design standard](${HQ_DESIGN_STANDARD})`);
+    expect(readme).toContain("Before a material page change, Markdown included, run its author checklist");
+    expect(readme).toContain("`morpheus product guide vp-design/hq-experience`");
+    expect(readme).toContain("model the page on a recently shipped page of the same type");
   });
 
   it("links only to Morpheus runbooks that exist", async () => {
