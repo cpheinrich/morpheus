@@ -97,8 +97,10 @@ Persistent entries may opt into observeListener. Local listener process state is
 GitHub registration, online and busy state.
 
 An enrolled phone uses bounded read-only devicectl inventory and lock facts bracketed by lease
-and exact identity reads. Both inventory reads pass `--filter "Identifier = '<deviceUdid>'"` so
-unrelated CoreDevice rows cannot exceed the output bound; there is no unfiltered fallback. A held
+and exact identity reads. Both inventory reads pass
+`--filter "properties.hardware.udid = '<deviceUdid>' OR hardwareProperties.udid = '<deviceUdid>'"`
+so unrelated CoreDevice rows cannot exceed the output bound; the display `Identifier` is not used
+because some rows report a CoreDevice UUID there. There is no unfiltered fallback. A held
 lease is busy and skips the lock read. Disconnection, pairing, developer mode, tunnel and DDI
 facts describe host prerequisites. Unlock-since-boot does not assert current screen unlock. No
 connection, mount, lease acquisition or device control is issued.

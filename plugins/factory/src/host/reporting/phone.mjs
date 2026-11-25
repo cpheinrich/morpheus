@@ -69,8 +69,9 @@ export async function observePhone(source,{run=exec,readLease=leaseAt,now=()=>ne
   const before=await readLease(source.leasePath);
   if(!source.deviceUdid)return {value:{lease:before.lease,ready:null}};
   if(!UDID.test(source.deviceUdid))throw new Error('unavailable');
-  // Unrelated CoreDevice rows can exceed maxBuffer; both passive inventory reads use the exact identifier.
-  const inventory=()=>read(['list','devices','--filter',`Identifier = '${source.deviceUdid}'`]);
+  // Unrelated CoreDevice rows can exceed maxBuffer; both passive inventory reads filter on the exact hardware UDID
+  // (modern or legacy key), never the display Identifier, which can be a CoreDevice UUID.
+  const inventory=()=>read(['list','devices','--filter',`properties.hardware.udid = '${source.deviceUdid}' OR hardwareProperties.udid = '${source.deviceUdid}'`]);
   let first;
   try{first=enrolledDevice(await inventory(),source.deviceUdid);}
   catch{const after=await readLease(source.leasePath);if(after.lease==='held')return {sourceObservedAt:now().toISOString(),value:{lease:'held',ready:null,state:'busy',reasons:['lease-held']}};throw new Error('unavailable');}
