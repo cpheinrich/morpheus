@@ -920,7 +920,7 @@ export class Manager {
         }
         task.codexSessionSpeeds = {
           ...task.codexSessionSpeeds,
-          [confirmed]: run.selection.speed,
+          [confirmed]: run.selection?.speed ?? "standard",
         };
       });
     }

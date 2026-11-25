@@ -42,6 +42,11 @@ recent run history was trimmed. The bridge now records the speed with the
 confirmed Codex session. The regression reproduces history trimming before
 resuming the original session, with the worker default reset to Standard.
 
+CI exercised an older run record with no selection object. The author
+restored the Standard fallback for that record. The separate artifact
+transport job reported a missing fixture immediately after upload. A later
+download returned both expected files and their exact digests.
+
 ## Governing records
 
 - [Gateway binding and speed isolation](./2026-11-07-bind-factory-gateway-workers.md)
