@@ -373,9 +373,9 @@ echo '{"type":"turn.completed","usage":{}}'
   assert.equal((await settle(m, replied.id)).state, "completed");
   assert.deepEqual(await tiers(), fast);
   const reset = await m.factoryDelegate({ rootKind: "codex", rootId, prompt: "After reset" });
-  assert.equal(reset.selection.speed, "standard");
+  assert.equal(reset.selection.speed, "fast");
   await settle(m, reset.id);
-  assert.deepEqual(await tiers(), standard);
+  assert.deepEqual(await tiers(), fast);
   await writeCodexSpeed("fast");
   const explicit = await m.factoryDelegate({ rootKind: "codex", rootId, prompt: "Ask first", speed: "standard" });
   assert.equal(explicit.selection.speed, "standard");
@@ -391,8 +391,77 @@ echo '{"type":"turn.completed","usage":{}}'
   await assert.rejects(writeCodexSpeed("priority"), /codex-speed standard or codex-speed fast/);
   assert.equal(await readCodexSpeed(), "fast");
   await writeFile(join(process.env.FACTORY_HOME, "worker-speed.json"), JSON.stringify({ codex: "turbo" }));
-  await assert.rejects(m.factoryDelegate({ rootKind: "codex", rootId, prompt: "Corrupt preference" }), /Invalid saved Factory Codex worker speed/);
+  await assert.rejects(m.factoryDelegate({ rootKind: "codex", rootId, fresh: true, prompt: "Corrupt preference" }), /Invalid saved Factory Codex worker speed/);
 });
+
+for (const rootKind of ["codex", "claude"]) {
+  test(`a ${rootKind} root distinguishes implicit Codex session resumes from fresh speed defaults`, async (t) => {
+    const primary = "0199bbbb-cccc-7ddd-8eee-ffff00002222";
+    const isolated = "0199bbbb-cccc-7ddd-8eee-ffff00003333";
+    const result = { outcome: "completed", summary: "done", evidence: ["ok"], question: "" };
+    const event = { type: "item.completed", item: { type: "agent_message", text: JSON.stringify(result) } };
+    const { root, repo } = await harness(t, {
+      codex: String.raw`#!/bin/sh
+printf '%s\n' "$@" > "__ROOT__/argv"
+prompt=$(cat)
+case "$prompt" in *"Isolated launch"*) session=${isolated} ;; *) session=${primary} ;; esac
+printf '{"type":"thread.started","thread_id":"%s"}\n' "$session"
+printf '%s\n' '${JSON.stringify(event)}'
+echo '{"type":"turn.completed","usage":{}}'
+`,
+    });
+    const binary = join(root, "bin", "codex");
+    await writeFile(binary, (await readFile(binary, "utf8")).replaceAll("__ROOT__", root));
+    process.env.OPENAI_API_KEY = "sk-gateway-test";
+    await gatewayConfig("codex", "env:OPENAI_API_KEY");
+    const manager = new Manager();
+    t.after(() => manager.viewer.close());
+    const rootId = "0199cccc-dddd-7eee-8fff-000011113333";
+    manager.snapshot = async () => ({
+      cwd: repo, model: "gpt-6.1-sol", reasoningEffort: "medium",
+      sandbox: { type: "dangerFullAccess" }, approvalPolicy: "never",
+    });
+    if (rootKind === "claude") await manager.dispatch("codex.hook", {
+      sessionId: rootId, event: "SessionStart", cwd: repo, permissionMode: "auto",
+      model: "claude-opus-5-5", effort: "medium",
+    });
+    const delegate = async (args) => {
+      const run = await manager.factoryDelegate({ rootKind, rootId, ...args });
+      const done = await settle(manager, run.id);
+      assert.equal(done.state, "completed");
+      const argv = (await readFile(join(root, "argv"), "utf8")).trim().split("\n");
+      const tiers = argv.filter(arg => /^(service_tier|features\.fast_mode)/.test(arg));
+      return { done, argv, tiers };
+    };
+    const standard = ['service_tier="default"'];
+    const fast = ['service_tier="fast"', "features.fast_mode=true"];
+    const initial = await delegate({ prompt: "Primary launch", speed: "standard" });
+    assert.equal(initial.done.codexSession, primary);
+    assert.deepEqual(initial.tiers, standard);
+    await writeCodexSpeed("fast");
+    const fresh = await delegate({ prompt: "Isolated launch", fresh: true });
+    assert.equal(fresh.done.codexSession, isolated);
+    assert.equal(fresh.done.selection.speed, "fast");
+    assert.deepEqual(fresh.argv.slice(0, 2), ["exec", "--json"]);
+    assert.deepEqual(fresh.tiers, fast);
+    const resumed = await delegate({ prompt: "Implicit continuation" });
+    assert.equal(resumed.done.codexSession, primary);
+    assert.equal(resumed.done.selection.speed, "standard");
+    assert.deepEqual(resumed.argv.slice(0, 2), ["exec", "resume"]);
+    assert.deepEqual(resumed.argv.slice(-2), [primary, "-"]);
+    assert.deepEqual(resumed.tiers, standard);
+    const overridden = await delegate({ prompt: "Explicit continuation", speed: "fast" });
+    assert.deepEqual(overridden.argv.slice(-2), [primary, "-"]);
+    assert.deepEqual(overridden.tiers, fast);
+    const { speed, ...legacySelection } = overridden.done.selection;
+    manager.runs.delete(overridden.done.id);
+    await atomic(join(runDir(overridden.done.id), "run.json"), { ...overridden.done, selection: legacySelection });
+    const legacy = await delegate({ prompt: "Legacy continuation" });
+    assert.equal(legacy.done.selection.speed, "standard");
+    assert.deepEqual(legacy.argv.slice(-2), [primary, "-"]);
+    assert.deepEqual(legacy.tiers, standard);
+  });
+}
 
 test("an explicit Factory cancellation settles only after the local guardian exits", async (t) => {
   const { repo } = await harness(t, { codex: "#!/bin/sh\nexec sleep 30\n" });

@@ -416,9 +416,9 @@ node ~/plugins/factory/scripts/bridge.mjs codex-speed standard # reset
 
 An explicit `speed` always wins, so `speed: "standard"` selects Standard. The default never
 reaches the controller's native Codex fallback or any Claude worker; those stay Standard
-unless the user explicitly authorizes Fast. A reply to an existing run (`runId`) keeps that
-run's recorded speed when the default changes. An invalid saved value refuses Codex gateway
-delegation rather than guessing.
+unless the user explicitly authorizes Fast. If `speed` is omitted, a resumed Codex session
+keeps its recorded speed (Standard for legacy sessions without speed), even without a `runId`.
+An invalid saved value refuses a fresh Codex gateway launch that relies on the default.
 
 Factory reads usage from the sub2api admin API. In Simple Mode each provider
 uses one shared gateway route. Factory reads every page of the account list
@@ -1278,9 +1278,10 @@ Fleet accepts `provider: "claude"` or an exact enrolled Claude model on an eligi
 route. Omit the provider to use the existing Codex default. Fleet refuses `fresh: true`,
 background operation and effort overrides. Fleet Codex speed follows the service enrollment's
 `codexSpeed`, described in the enrollment steps below; `speed: "standard"` always selects
-Standard, and `speed: "fast"` is admitted only where the enrollment enables Fast. Fleet Claude
-runs at Standard speed and refuses Fast. Already-started runs keep
-their original route. To reset the controller default,
+Standard for a new task, and `speed: "fast"` is admitted only where the enrollment enables Fast.
+Fleet Claude runs at Standard speed and refuses Fast. Already-started runs keep
+their original route and admitted speed. A clarification reply must omit `speed` or match
+the admitted speed; it cannot change the speed. To reset the controller default,
 run the same command with `local`. This preference affects the normal Codex
 Factory tools; Claude tools and the explicit unattended runner are unchanged.
 The Fleet route supports one checkout or the exact operator-declared workspace described below.

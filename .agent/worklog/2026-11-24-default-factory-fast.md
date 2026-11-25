@@ -29,6 +29,14 @@ retains its original speed and session home, and legacy jobs default to
 Standard. The controller matched the supplemental patch to its independent
 Fleet execution receipt before applying it.
 
+## Review corrections
+
+The independent review found three speed-intent defects. Local continuations
+now read speed from the matching Codex session. Fleet rejects a conflicting
+reply speed before posting an answer, and a conflicting stable-ID retry
+returns HTTP 409 so the client can report the error without retrying. Six
+controller-run focused tests cover the corrections.
+
 ## Governing records
 
 - [Gateway binding and speed isolation](./2026-11-07-bind-factory-gateway-workers.md)

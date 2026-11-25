@@ -110,3 +110,13 @@ test("an authority denial is returned immediately, while two lost acknowledgemen
   await assert.rejects(submitFleetTask(client, body), /Retry the same message ID: stable-message/);
   assert.deepEqual(requests, [["submit", body], ["submit", body], ["submit", body]]);
 });
+
+test("a Fleet speed replay conflict is returned after one submission attempt", async (t) => {
+  const client = await connectFleet(config, async () => ({ user: { getIdToken: async () => "fixture-id-token" } }));
+  t.after(() => client.close());
+  const message = "Fleet message ID was already submitted at fast speed";
+  const fetch = t.mock.method(globalThis, "fetch", async () => Response.json({ error: message }, { status: 409 }));
+  const body = { messageId: "stable-message", speed: "standard" };
+  await assert.rejects(submitFleetTask(client, body), { message, retryable: false });
+  assert.deepEqual(fetch.mock.calls.map(({ arguments: [, request] }) => JSON.parse(request.body)), [{ ...body, op: "submit" }]);
+});

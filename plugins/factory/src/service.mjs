@@ -106,13 +106,22 @@ function factoryWorkerSelection(worker, config, rootKind, rootEffort, args = {},
   return { model, effort, speed: args.speed ?? defaultSpeed };
 }
 // The operator's Codex default reaches only a Codex worker behind a configured gateway, so a
-// native fallback and every Claude worker stay Standard. A reply to a recorded run on the same
-// gateway keeps that run's speed, so changing the default never alters a continuation.
-async function defaultWorkerSpeed(worker, decision, replied = null) {
+// native fallback and every Claude worker stay Standard by default.
+async function defaultWorkerSpeed(worker, decision) {
   if (worker !== "codex" || decision.gateway?.provider !== "codex") return "standard";
-  if (replied?.executor === "codex" && replied.gateway === decision.gateway.name)
-    return replied.selection?.speed ?? "standard";
   return readCodexSpeed();
+}
+async function workerLaunchSpeed({ worker, decision, requested, task, codexSession, previous }) {
+  if (requested != null) return requested;
+  if (!codexSession) return defaultWorkerSpeed(worker, decision);
+  const matches = (run) => run?.threadId === task.id && run.codexSession === codexSession;
+  if (matches(previous)) return previous.selection?.speed ?? "standard";
+  let latest;
+  for (const id of new Set([task.runId, ...(task.runIds ?? [])].filter(Boolean))) {
+    const run = await readJSON(join(runDir(id), "run.json"), null);
+    if (matches(run) && (!latest || (run.createdAt ?? 0) > (latest.createdAt ?? 0))) latest = run;
+  }
+  return latest?.selection?.speed ?? "standard";
 }
 const RECENT_RUN_LIMIT = 5;
 // The route is pinned once per root session, and so is the primary conversation's working
@@ -657,7 +666,7 @@ export class Manager {
     this.assertOneWriter(workspace.dirs, config);
     await this.recoverOrphans(task, workspace.dirs);
     const permissions = permissionMode(snapshot);
-    const speed = await defaultWorkerSpeed(worker, decision, args.runId ? previous : null);
+    const speed = await workerLaunchSpeed({ worker, decision, requested: args.speed, task, codexSession, previous });
     const selection = workerSelection(worker, config, snapshot, args, speed);
     const roots = extraRoots(workspace.map, task.cwd);
     const codexSandbox = worker === "codex" ? codexPermission(permissions, roots) : null;
@@ -1237,7 +1246,7 @@ export class Manager {
     this.assertOneWriter(workspace.dirs, config);
     await this.recoverOrphans(task, workspace.dirs);
     const roots = extraRoots(workspace.map, task.cwd);
-    const speed = await defaultWorkerSpeed(worker, decision, args.runId ? previous : null);
+    const speed = await workerLaunchSpeed({ worker, decision, requested: args.speed, task, codexSession, previous });
     const selection = claudeRootSelection(worker, config, session, args, speed);
     const permission =
       worker === "codex"

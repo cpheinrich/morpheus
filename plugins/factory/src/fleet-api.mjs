@@ -90,14 +90,17 @@ function projectSelection(config, project, provider, model, replay = false) {
 
 // Standard stays the legacy selection without a speed field, so existing submissions replay
 // unchanged. A new submission without a speed takes the service's Codex default; a replay keeps
-// its recorded speed, and a conflicting explicit speed then fails the replay comparison. Fast
+// its recorded speed and rejects a conflicting explicit speed before replay comparison. Fast
 // is admitted only once the operator enables it for compatible workers, and never for Claude.
 function selectionSpeed(config, selection, requested, prior) {
+  const admitted = prior?.selection?.speed ?? "standard";
+  if (prior && requested != null && requested !== admitted)
+    throw failure(409, `Fleet message ID was already submitted at ${admitted} speed`);
   if (selection.provider !== "codex") {
     if (requested === "fast") throw failure(403, "Fleet Claude workers run at Standard speed");
     return selection;
   }
-  const speed = requested ?? (prior ? prior.selection?.speed : config.codexSpeed) ?? "standard";
+  const speed = prior ? admitted : requested ?? config.codexSpeed ?? "standard";
   if (speed === "standard") return selection;
   if (!prior && config.codexSpeed !== "fast") throw failure(403, "Codex Fast is not enabled for this Fleet enrollment");
   return { ...selection, speed };

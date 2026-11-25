@@ -86,9 +86,7 @@ async function submit(method, args, authorize) {
   return projectRun(result, result.task.id);
 }
 
-async function reply(method, args, checkoutPath, checkoutPaths) {
-  const body = { taskId: args.runId };
-  const { task } = await fleetOperation(args.rootId, { ...body, op: "get" });
+function attributedReply(method, args, task) {
   const source = method === "delegate" ? args.replySource : args.source;
   const reason = method === "delegate" ? args.replyReason : args.reason;
   const text = method === "delegate" ? args.prompt : args.answers?.[task.questionId] ??
@@ -96,15 +94,25 @@ async function reply(method, args, checkoutPath, checkoutPaths) {
   if (!["root", "user"].includes(source) || !reason?.trim() || !text?.trim() || args.allow === false ||
       (args.questionId && args.questionId !== task.questionId) || !task.attempt || !task.questionId)
     throw new Error("The fleet task requires an attributed reply to its current clarification.");
-  const response = await fleetOperation(args.rootId, {
+  return { source, text };
+}
+
+async function reply(method, args, { checkoutPath, checkoutPaths }, operate = fleetOperation) {
+  const body = { taskId: args.runId };
+  const { task } = await operate(args.rootId, { ...body, op: "get" });
+  const speed = task.selection?.speed ?? "standard";
+  if (args.speed != null && args.speed !== speed)
+    throw new Error(`Fleet reply cannot change the admitted speed (${speed}). Omit speed or match the admitted speed.`);
+  const { source, text } = attributedReply(method, args, task);
+  const response = await operate(args.rootId, {
     ...body, op: "answer", attemptId: task.attempt.id, questionId: task.questionId, text,
     messageId: key(`${task.questionId}\0${source}\0${text}`),
   }, { checkoutPath, checkoutPaths });
   if (response.reason) throw new Error(`Fleet reply refused: ${response.reason}`);
-  return projectRun(await fleetOperation(args.rootId, { ...body, op: "get" }), args.runId);
+  return projectRun(await operate(args.rootId, { ...body, op: "get" }), args.runId);
 }
 
-export async function dispatchFleet(method, args, { authorize = call } = {}) {
+export async function dispatchFleet(method, args, { authorize = call, operate } = {}) {
   if (!args.runId) {
     const placement = args.placement ?? await readPlacement();
     return placement === "fleet" ? submit(method, args, authorize) : undefined;
@@ -115,7 +123,7 @@ export async function dispatchFleet(method, args, { authorize = call } = {}) {
     return undefined;
   }
   if (record.rootId !== args.rootId || args.placement === "local") throw new Error("Fleet run is outside this route or root.");
-  if (method === "answer" || method === "delegate") return reply(method, args, record.checkoutPath, record.checkoutPaths);
+  if (method === "answer" || method === "delegate") return reply(method, args, record, operate);
   const body = { taskId: args.runId };
   if (method === "stop") {
     const response = await fleetOperation(args.rootId, { ...body, op: "cancel" });

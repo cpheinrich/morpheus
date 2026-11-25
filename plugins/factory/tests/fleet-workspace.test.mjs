@@ -1073,6 +1073,7 @@ test("Fleet stamps only the enabled Codex speed and replays each submission's re
   const input = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "speed fixture" };
   const submit = (messageId, extra = {}) => api.call("submit", { ...input, messageId, ...extra });
   const replayOf = ({ value }) => ({ status: 200, value: { task: value.task, replay: true } });
+  const conflictAt = (speed) => ({ status: 409, value: { error: `Fleet message ID was already submitted at ${speed} speed` } });
   const fastRefused = { status: 403, value: { error: "Codex Fast is not enabled for this Fleet enrollment" } };
   // An enrollment without codexSpeed keeps the legacy Standard selection and refuses Fast.
   const legacy = await submit("legacy");
@@ -1090,11 +1091,13 @@ test("Fleet stamps only the enabled Codex speed and replays each submission's re
   // A replay keeps the speed admitted first; a conflicting explicit speed is a different brief.
   assert.deepEqual(await submit("legacy"), replayOf(legacy));
   assert.deepEqual(await submit("legacy", { speed: "standard" }), replayOf(legacy));
-  assert.equal((await submit("legacy", { speed: "fast" })).status, 500);
+  assert.deepEqual(await submit("legacy", { speed: "fast" }), conflictAt("standard"));
+  assert.deepEqual(await submit("legacy"), replayOf(legacy));
   delete api.config.codexSpeed;
   assert.deepEqual(await submit("default-fast"), replayOf(byDefault));
   assert.deepEqual(await submit("default-fast", { speed: "fast" }), replayOf(byDefault));
-  assert.equal((await submit("default-fast", { speed: "standard" })).status, 500);
+  assert.deepEqual(await submit("default-fast", { speed: "standard" }), conflictAt("fast"));
+  assert.deepEqual(await submit("default-fast"), replayOf(byDefault));
   assert.deepEqual(await submit("after-disable", { speed: "fast" }), fastRefused);
   // Claude ignores the Codex default and refuses an explicit Fast request.
   api.config.codexSpeed = "fast";

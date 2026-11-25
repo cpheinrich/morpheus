@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -8,6 +8,48 @@ import { randomUUID } from "node:crypto";
 import { fetchStudioRevision, studioCheckout } from "../src/fleet-source.mjs";
 import { dispatchFleet, fleetTarget } from "../scripts/fleet-delegate.mjs";
 import { writePlacement } from "../src/fleet-placement.mjs";
+
+test("a Fleet clarification reply cannot change the admitted speed", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "factory-speed-reply-"));
+  const previous = process.env.FACTORY_HOME;
+  process.env.FACTORY_HOME = home;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.FACTORY_HOME;
+    else process.env.FACTORY_HOME = previous;
+    await rm(home, { recursive: true, force: true });
+  });
+  const rootId = randomUUID(), runId = randomUUID();
+  const directory = join(home, "fleet-runs");
+  await mkdir(directory);
+  await writeFile(join(directory, `${runId}.json`), JSON.stringify({ rootId }));
+  const task = { id: runId, state: "TASK_STATE_INPUT_REQUIRED", selection: { speed: "fast" },
+    attempt: { id: randomUUID() }, questionId: "fixture-question" };
+  const ops = [];
+  const operate = async (root, operation) => {
+    assert.equal(root, rootId);
+    assert.equal(operation.taskId, runId);
+    ops.push(operation.op);
+    if (operation.op === "get") return { task };
+    assert.equal(operation.op, "answer");
+    assert.equal(operation.questionId, task.questionId);
+    assert.equal(operation.text, "Blue");
+    return {};
+  };
+  const reply = (speed) => dispatchFleet("delegate", {
+    rootId, runId, prompt: "Blue", replySource: "root", replyReason: "Routine fixture default", speed,
+  }, { operate });
+  await assert.rejects(reply("standard"), /cannot change the admitted speed \(fast\)/);
+  assert.deepEqual(ops.splice(0), ["get"]);
+  for (const speed of [undefined, "fast"]) {
+    assert.deepEqual((await reply(speed)).selection, { speed: "fast" });
+    assert.deepEqual(ops.splice(0), ["get", "answer", "get"]);
+  }
+  task.selection = {};
+  await assert.rejects(reply("fast"), /cannot change the admitted speed \(standard\)/);
+  assert.deepEqual(ops.splice(0), ["get"]);
+  assert.deepEqual((await reply("standard")).selection, {});
+  assert.deepEqual(ops, ["get", "answer", "get"]);
+});
 
 const git = (cwd, ...args) => execFileSync("/usr/bin/git", ["-C", cwd, ...args], {
   encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
