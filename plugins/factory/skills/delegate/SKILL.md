@@ -39,7 +39,8 @@ never submit a local task to a different machine by guessing its project path.
    only for explicit user authorization to continue after disconnection.
 4. Local Factory workers default to GPT-6.2 Sol (`gpt-6.2-sol`) at High effort for Codex
    and Claude Opus 5.5 (`claude-opus-5-5`) with the controller's mapped effort for Claude.
-   Both use Standard speed. Pass model, effort, or speed overrides only when the user requests them,
+   Both use Standard speed unless the operator saved a Codex default for Codex gateway workers.
+   Pass `speed: "standard"` when the user asks for Standard. Pass model, effort, or speed overrides only when the user requests them,
    including on later runs covered by the same request. Check `selection` before reporting
    what was requested. If the CLI refuses a model or speed, report the error and retry only
    with a user-authorized alternative. Full access does not waive business approvals,
@@ -94,9 +95,11 @@ workspace; the controller resolves each checkout's exact revision. Existing sing
 enrollments use only `cwd`. For each new Fleet task, write a short action title and
 one-sentence explanation for the authorized Infra dashboard in `display`. Base it on
 the request's purpose. Keep private prompts, logs, and sensitive details out of it.
-Fleet uses enrolled Codex or Claude worker settings at Standard speed. Specify `provider: "claude"`
+Fleet uses enrolled Codex or Claude worker settings. Codex speed follows the service's enrolled
+default; `speed: "standard"` selects Standard and Fast is admitted only where the operator enabled
+it. Fleet Claude runs at Standard speed. Specify `provider: "claude"`
 or the exact enrolled Claude model to use that pool. If neither is specified, Fleet uses the
-project’s default. Fresh, background, and custom effort or Fast options apply only to local placement. Pass `placement: "local"`
+project’s default. Fresh, background, and custom effort options apply only to local placement. Pass `placement: "local"`
 when the operator explicitly chooses local Factory placement. Supervise the Fleet run by its
 returned run ID and download its declared artifacts via `factory_remote`. The controller owns
 implementation delivery through PR, review, CI, and merge. See the README's authenticated Studio

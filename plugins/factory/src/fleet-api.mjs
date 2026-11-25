@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { fleetModel, fleetProvider } from "./config.mjs";
+import { fleetModel, fleetProvider, workerSpeed } from "./config.mjs";
 import { claimTask, fleetQueueReason, leaseMs, renewAttempt, requeueUnstartedTask, settleAttempt } from "./fleet-claims.mjs";
 import { answerQuestion, askQuestion, cancelTask, claudeQueueKey, inputQueueKey, submitTask } from "./fleet-mailbox.mjs";
 import { fleetDiagnostic, invocationReceipt, receiptPath } from "./fleet-receipt.mjs";
@@ -43,7 +43,7 @@ const worker = {
   }),
 };
 const controller = {
-  submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, workspace: workspaceIntent.optional(), provider: fleetProvider.optional(), model: fleetModel.optional(), display: dashboardMetadata.optional(), inputs: inputManifest.optional() }),
+  submit: z.object({ rootId: id, messageId: id, text: message, project: id, revision, workspace: workspaceIntent.optional(), provider: fleetProvider.optional(), model: fleetModel.optional(), speed: workerSpeed.optional(), display: dashboardMetadata.optional(), inputs: inputManifest.optional() }),
   upload_input: z.object({ rootId: id, messageId: id, project: id, ...inputUploadFields }),
   get: z.object(scope),
   readiness: z.object({ rootId: id, project: id, provider: fleetProvider.optional() }),
@@ -88,18 +88,37 @@ function projectSelection(config, project, provider, model, replay = false) {
   return replay || Object.values(config.users).some(user => user.role === "worker" && project.eligibleSlots.includes(user.slotId)) ? claude : undefined;
 }
 
+// Standard stays the legacy selection without a speed field, so existing submissions replay
+// unchanged. A new submission without a speed takes the service's Codex default; a replay keeps
+// its recorded speed and rejects a conflicting explicit speed before replay comparison. Fast
+// is admitted only once the operator enables it for compatible workers, and never for Claude.
+function selectionSpeed(config, selection, requested, prior) {
+  const admitted = prior?.selection?.speed ?? "standard";
+  if (prior && requested != null && requested !== admitted)
+    throw failure(409, `Fleet message ID was already submitted at ${admitted} speed`);
+  if (selection.provider !== "codex") {
+    if (requested === "fast") throw failure(403, "Fleet Claude workers run at Standard speed");
+    return selection;
+  }
+  const speed = prior ? admitted : requested ?? config.codexSpeed ?? "standard";
+  if (speed === "standard") return selection;
+  if (!prior && config.codexSpeed !== "fast") throw failure(403, "Codex Fast is not enabled for this Fleet enrollment");
+  return { ...selection, speed };
+}
+
 export const taskWorkspaceLeaseError = "Task workspace leases require single-repository Git enrollment";
 
 export function validTaskWorkspaceLease({ workspaceLease, revision, workspace }) {
   return workspaceLease === undefined || (workspaceLease === "task" && revision === "git" && !workspace);
 }
 
-function launchFor(config, principal, input, replay) {
+function launchFor(config, principal, input, prior) {
   const project = enrolledProject(config, principal, input.project);
-  const selection = projectSelection(config, project, input.provider, input.model, replay);
+  const enrolled = projectSelection(config, project, input.provider, input.model, Boolean(prior));
   const fetchSource = project?.revision === "git";
-  if (!project || !selection || (!fetchSource && project.revision !== input.revision) || (input.model && input.model !== selection.model))
+  if (!project || !enrolled || (!fetchSource && project.revision !== input.revision) || (input.model && input.model !== enrolled.model))
     throw failure(403, "Project revision or model is outside the pilot enrollment");
+  const selection = selectionSpeed(config, enrolled, input.speed, prior);
   if (!validTaskWorkspaceLease(project)) throw failure(403, taskWorkspaceLeaseError);
   let workspace;
   if (input.workspace || project.workspace) {
@@ -141,7 +160,7 @@ async function handleController(op, input, { db, config, principal, uid, objects
     slots.includes(config.users[key].slotId)), log);
   if (op === "submit") {
     const result = await submitTask(db, { ...inputScope, now,
-      resolveLaunch: replay => launchFor(config, principal, input, replay),
+      resolveLaunch: prior => launchFor(config, principal, input, prior),
       validateInputs: () => validateStoredInputs(objects, inputScope, input.inputs ?? []) });
     await notify(result.task.eligibleSlots);
     return result;

@@ -38,6 +38,7 @@ import {
   runDir,
 } from "../src/store.mjs";
 import { Manager, claudeTaskId } from "../src/service.mjs";
+import { writeCodexSpeed } from "../src/worker-speed.mjs";
 const gw = (name, provider, usedPercent) => ({ name, provider, baseUrl: "http://gw", keyRef: "env:KEY", usedPercent });
 
 async function isolatedHome(t) {
@@ -334,6 +335,8 @@ echo '{"type":"turn.completed","usage":{}}'
     effort: "low",
   });
   assert.match(advice.additionalContext, /"executor":"codex"/);
+  // The operator's Codex default never reaches the controller's native Codex fallback.
+  await writeCodexSpeed("fast");
   const started = await m.factoryDelegate({
     rootKind: "claude",
     rootId: sessionId,
@@ -355,6 +358,8 @@ echo '{"type":"turn.completed","usage":{}}'
   assert.equal(argv.at(-1), "-");
   assert.equal(argv[argv.indexOf("-m") + 1], "gpt-6.2-sol");
   assert.ok(argv.includes('model_reasoning_effort="high"'));
+  assert.ok(argv.includes('service_tier="default"'));
+  assert.equal(argv.includes("features.fast_mode=true"), false);
   assert.match(await readFile(join(root, "stdin"), "utf8"), /Implement the thing$/);
   assert.match(await readFile(join(root, "env"), "utf8"), /^FACTORY_DELEGATED=1$/m);
   const task = await taskRead(claudeTaskId(sessionId));

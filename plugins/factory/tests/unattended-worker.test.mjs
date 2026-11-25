@@ -149,6 +149,61 @@ test('gateway-only launch pins args/env, stdin, exact permissions, and correlate
   assert.deepEqual((await json(join(f.cwd,'observed.json'))).argv.slice(0,2),['exec','resume']);
   assert.ok((await json(join(f.cwd,'observed.json'))).argv.includes('session-fixture'));
 });
+const speedArgs = argv => argv.filter((arg, index) => argv[index - 1] === '-c' && /^(service_tier|features\.fast_mode)/.test(arg));
+
+test('Fleet selection speed reaches only the Codex launch arguments, never the continuation binding', async t => {
+  const f = await setup(t, doneScript, { speed: 'fast' });
+  const fleet = { taskId: randomUUID(), attemptId: randomUUID() };
+  const selection = { provider: 'codex', gateway: f.config.gateway.name, model: f.config.model };
+  const launch = (prompt, speed, resume = null) => gatewayWorker(f.configPath, prompt, resume, randomUUID(), undefined, undefined, fleet,
+    speed === undefined ? selection : { ...selection, speed });
+  const observed = async () => (await json(join(f.cwd, 'observed.json'))).argv;
+  // A task admitted before the speed field launches at Standard, as does an explicit Standard.
+  const legacy = await launch('legacy task');
+  assert.equal(legacy.result.outcome, 'completed');
+  assert.deepEqual(speedArgs(await observed()), ['service_tier="default"']);
+  await launch('standard task', 'standard');
+  assert.deepEqual(speedArgs(await observed()), ['service_tier="default"']);
+  await gatewayWorker(f.configPath, 'legacy Fleet launch without selection', null, randomUUID(), undefined, undefined, fleet);
+  assert.deepEqual(speedArgs(await observed()), ['service_tier="default"']);
+  await writeFile(f.configPath, JSON.stringify({ ...f.config, speed: 'standard' }));
+  const fast = await launch('continue at fast', 'fast', legacy.admissionId);
+  assert.equal(fast.result.outcome, 'completed');
+  assert.deepEqual(fast.binding, legacy.binding);
+  const resumed = await observed();
+  assert.deepEqual(resumed.slice(0, 2), ['exec', 'resume']);
+  assert.ok(resumed.includes('session-fixture'));
+  assert.deepEqual(speedArgs(resumed), ['service_tier="fast"', 'features.fast_mode=true']);
+  await assert.rejects(launch('unknown speed', 'priority'), /unsupported speed/);
+});
+test('standalone continuations keep Fast or legacy Standard after job speed changes', async t => {
+  const f = await setup(t);
+  const observed = () => json(join(f.cwd, 'observed.json'));
+  const standardArgs = ['service_tier="default"'];
+  const fastArgs = ['service_tier="fast"', 'features.fast_mode=true'];
+  const legacy = await gatewayWorker(f.configPath, 'legacy Standard');
+  assert.equal(legacy.result.outcome, 'completed');
+  assert.equal(legacy.standaloneSpeed, undefined);
+  const initial = await observed();
+  assert.deepEqual(speedArgs(initial.argv), standardArgs);
+
+  await writeFile(f.configPath, JSON.stringify({ ...f.config, speed: 'fast' }));
+  const fast = await gatewayWorker(f.configPath, 'new Fast');
+  assert.equal(fast.result.outcome, 'completed');
+  assert.deepEqual(fast.binding, legacy.binding);
+  assert.deepEqual(speedArgs((await observed()).argv), fastArgs);
+  const resumedLegacy = await gatewayWorker(f.configPath, 'continue legacy', legacy.admissionId);
+  assert.equal(resumedLegacy.sessionId, legacy.sessionId);
+  assert.deepEqual(speedArgs((await observed()).argv), standardArgs);
+
+  await writeFile(f.configPath, JSON.stringify({ ...f.config, speed: 'standard' }));
+  const resumedFast = await gatewayWorker(f.configPath, 'continue Fast', fast.admissionId);
+  assert.equal(resumedFast.sessionId, fast.sessionId);
+  const resumed = await observed();
+  assert.deepEqual(resumed.argv.slice(0, 2), ['exec', 'resume']);
+  assert.deepEqual(speedArgs(resumed.argv), fastArgs);
+  assert.equal(resumed.env.CODEX_HOME, initial.env.CODEX_HOME);
+});
 test('resume reports a typed pre-turn input rejection without copying stderr or the prompt', async t => {
   const f = await setup(t);
   const first = await gatewayWorker(f.configPath, 'first turn');
@@ -192,7 +247,7 @@ test('missing key and invalid provider/permissions/config never run a native fal
   delete process.env.TEST_GATEWAY_KEY;
   assert.equal((await gatewayWorker(f.configPath,'x')).result.summary,'Gateway credential resolution failed; no fallback');
   await assert.rejects(readFile(join(f.cwd,'observed.json')),{code:'ENOENT'});
-  for(const change of [{gateway:{...f.config.gateway,provider:'claude'}},{approvalPolicy:'on-request'},{sandbox:'unknown'},{model:'auto'},{maxRunSeconds:0},{gateway:{...f.config.gateway,baseUrl:'https://user:password@gateway.invalid'}}]) {
+  for(const change of [{gateway:{...f.config.gateway,provider:'claude'}},{approvalPolicy:'on-request'},{sandbox:'unknown'},{model:'auto'},{speed:'priority'},{maxRunSeconds:0},{gateway:{...f.config.gateway,baseUrl:'https://user:password@gateway.invalid'}}]) {
     await writeFile(f.configPath,JSON.stringify({...f.config,...change}));
     await assert.rejects(gatewayWorker(f.configPath,'x'),/Invalid unattended|Gateway URL/);
   }

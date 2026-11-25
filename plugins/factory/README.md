@@ -395,13 +395,30 @@ path, since the bridge service inherits the PATH of whichever session started it
 
 For local placement, `factory_delegate` defaults to `gpt-6.2-sol` at High effort on Codex
 and `claude-opus-5-5` with the controller's mapped effort on Claude. Both use Standard
-speed. The `selection` reports the requested model, effort and speed. An explicit
+speed unless the operator saves a Codex default. The `selection` reports the requested model, effort and speed. An explicit
 Codex model other than GPT-6.2 Sol inherits the controller's effort unless overridden. Legacy client model maps do not select models for
 `factory_delegate`. Unattended services retain their explicitly configured model.
 Codex selects a dedicated gateway provider with a required environment key and sets the
 default service tier per launch. A missing gateway key fails before any request and cannot
 fall back to the controller's Codex login. Claude workers disable Fast mode for the child
 session. These controls apply to fresh and resumed worker turns.
+
+The operator can save a default speed for Codex workers behind a configured Codex
+subscription gateway. It is stored separately in `$FACTORY_HOME/worker-speed.json` and
+does not change the controller's own Codex or Claude settings. A fresh installation has
+no saved value and uses Standard:
+
+```sh
+node ~/plugins/factory/scripts/bridge.mjs codex-speed          # print the saved default
+node ~/plugins/factory/scripts/bridge.mjs codex-speed fast     # opt in on this controller
+node ~/plugins/factory/scripts/bridge.mjs codex-speed standard # reset
+```
+
+An explicit `speed` always wins, so `speed: "standard"` selects Standard. The default never
+reaches the controller's native Codex fallback or any Claude worker; those stay Standard
+unless the user explicitly authorizes Fast. If `speed` is omitted, a resumed Codex session
+keeps its recorded speed (Standard for legacy sessions without speed), even without a `runId`.
+An invalid saved value refuses a fresh Codex gateway launch that relies on the default.
 
 Factory reads usage from the sub2api admin API. In Simple Mode each provider
 uses one shared gateway route. Factory reads every page of the account list
@@ -746,7 +763,7 @@ launchd job or consumer policy is added. The operator must authorize the service
 and its permissions; possession of a private configuration is its local authority.
 
 Create an owner-only (`0600`) JSON file **outside every checkout**, in a trusted
-operator-controlled directory. All fields are required; unknown fields are refused:
+operator-controlled directory. The fields below are required; unknown fields are refused:
 
 ```json
 {
@@ -767,6 +784,10 @@ operator-controlled directory. All fields are required; unknown fields are refus
   "maxLogBytes": 1048576
 }
 ```
+
+Add `"speed": "fast"` to opt new standalone Codex sessions into Fast. Omit `speed` or use
+`"speed": "standard"` for Standard. A continuation keeps its recorded launch speed, including
+Standard for admissions made before this setting existed.
 
 `cwd` must name the already claimed isolated checkout. The runner canonicalizes it;
 claim lifecycle and independent review are the consumer's responsibility. Independent
@@ -1118,6 +1139,19 @@ required CI and protected delivery. Keep source capture, transport and delivery 
    It applies to every existing Git-backed execution grant without duplicating policy by
    project. Pinned checkouts and viewer-only slots are refused before Claude submission.
 
+   The optional top-level `"codexSpeed": "fast"` makes Fast the service-wide default for new
+   Codex submissions and allows an explicit Fast request. Omitted or `"standard"` keeps every
+   Codex task at Standard and refuses Fast. The service records Fast in the admitted task's
+   `selection` (`"speed": "fast"`); a Standard task keeps the legacy selection without a speed.
+   A replay with the same `messageId` keeps its recorded speed after the setting changes, and a
+   conflicting explicit speed is refused as a different brief. Each Codex worker passes the
+   recorded speed to its launch without changing the admission binding, so tasks admitted
+   before an upgrade continue unchanged. Roll out in this order: deploy the service, update
+   every eligible Codex worker and execution account, update the controllers so they forward an
+   explicit `speed`, then set `codexSpeed`. A worker from an earlier release ignores the
+   recorded speed and runs Standard. Fleet launches ignore the host job's standalone `speed`.
+   Standalone jobs default to Standard and can opt into Fast in their private job file.
+
 4. Deploy `factory-pilot` with the runtime service account, an explicit region
    and a pinned image digest. Have an admin disable the Cloud Run Invoker IAM
    check for this service so the Pro and Studio can send Firebase ID tokens.
@@ -1241,9 +1275,13 @@ node ~/plugins/factory/scripts/bridge.mjs placement fleet
 Pass `placement: "local"` to override for a new request. A missing, dirty or
 unenrolled Fleet checkout is refused; it does not fall back to a local worker.
 Fleet accepts `provider: "claude"` or an exact enrolled Claude model on an eligible Git-backed
-route. Omit the provider to use the existing Codex default. Fleet accepts Standard speed and
-refuses `fresh: true`, background operation and effort overrides. Already-started runs keep
-their original route. To reset the controller default,
+route. Omit the provider to use the existing Codex default. Fleet refuses `fresh: true`,
+background operation and effort overrides. Fleet Codex speed follows the service enrollment's
+`codexSpeed`, described in the enrollment steps below; `speed: "standard"` always selects
+Standard for a new task, and `speed: "fast"` is admitted only where the enrollment enables Fast.
+Fleet Claude runs at Standard speed and refuses Fast. Already-started runs keep
+their original route and admitted speed. A clarification reply must omit `speed` or match
+the admitted speed; it cannot change the speed. To reset the controller default,
 run the same command with `local`. This preference affects the normal Codex
 Factory tools; Claude tools and the explicit unattended runner are unchanged.
 The Fleet route supports one checkout or the exact operator-declared workspace described below.

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { call } from "../src/client.mjs";
 import { readPlacement, writePlacement } from "../src/fleet-placement.mjs";
+import { readCodexSpeed, writeCodexSpeed } from "../src/worker-speed.mjs";
 import { configRead, configWrite, initStore } from "../src/store.mjs";
 import { Codex } from "../src/codex.mjs";
 import { checkClaude } from "../src/claude.mjs";
@@ -23,7 +24,7 @@ import { rm } from "node:fs/promises";
 const [command = "help", ...rest] = process.argv.slice(2);
 function help() {
   console.log(
-    "factory: doctor | config | enable manual|automatic | disable | placement [local|fleet] | statusline install|uninstall | factory.inspect | factory.delegate | factory.status | factory.wait | factory.answer | factory.stop | inspect | start | wait | status | answer | stop | override | memories | codex.inspect | codex.start | codex.wait | codex.status | codex.stop | codex.view | codex.override | codex.memories\nRPC commands take a JSON object as their argument, or read JSON from stdin with -. Factory is experimental: delegation is off until this machine runs enable.",
+    "factory: doctor | config | enable manual|automatic | disable | placement [local|fleet] | codex-speed [standard|fast] | statusline install|uninstall | factory.inspect | factory.delegate | factory.status | factory.wait | factory.answer | factory.stop | inspect | start | wait | status | answer | stop | override | memories | codex.inspect | codex.start | codex.wait | codex.status | codex.stop | codex.view | codex.override | codex.memories\nRPC commands take a JSON object as their argument, or read JSON from stdin with -. Factory is experimental: delegation is off until this machine runs enable.",
   );
 }
 async function toggle() {
@@ -46,6 +47,12 @@ async function placement() {
     if (!Object.keys(enrollment.projects ?? {}).length) throw new Error("Enroll a Fleet project first");
   }
   console.log(JSON.stringify({ defaultPlacement: await writePlacement(rest[0]) }));
+}
+// Applies only to local Codex workers behind a configured Codex gateway; explicit speed wins.
+async function codexSpeed() {
+  if (rest.length === 0) return console.log(JSON.stringify({ codexSpeed: await readCodexSpeed() }));
+  if (rest.length !== 1) throw new Error("Use codex-speed standard or codex-speed fast");
+  console.log(JSON.stringify({ codexSpeed: await writeCodexSpeed(rest[0]) }));
 }
 async function statusline() {
   // Claude exposes subscription usage only to its status line, so routing from a
@@ -205,6 +212,7 @@ try {
   if (command === "help") help();
   else if (command === "enable" || command === "disable") await toggle();
   else if (command === "placement") await placement();
+  else if (command === "codex-speed") await codexSpeed();
   else if (command === "statusline") await statusline();
   else if (command === "doctor") await doctor();
   else await rpc();
