@@ -31,6 +31,7 @@ const schema = z.strictObject({
   gateway: gatewaySchema('codex'),
   model: fixedModel,
   effort: z.enum(['none', 'low', 'medium', 'high', 'xhigh', 'max']),
+  speed: workerSpeed.optional(),
   sandbox: z.enum(['read-only', 'workspace-write', 'danger-full-access']),
   approvalPolicy: z.literal('never'),
   fleetWorkspace: workspaceHost.optional(),
@@ -133,7 +134,7 @@ async function continuationSession(resume, binding) {
   const expected = upgrading ? legacyBinding(binding) : binding;
   if (JSON.stringify(previous.binding) !== JSON.stringify(expected) || !previous.terminationVerified || !previous.sessionId)
     throw new Error('Continuation requires a terminated session with the same job, checkout and gateway binding');
-  return { sessionId: previous.sessionId, legacySessionHome: !!(upgrading || previous.legacySessionHome === true) };
+  return { sessionId: previous.sessionId, legacySessionHome: !!(upgrading || previous.legacySessionHome === true), standaloneSpeed: previous.standaloneSpeed };
 }
 // This branch always resolves the named gateway key. No native authentication path.
 async function gatewayEnv(config, root, binding, step) {
@@ -190,13 +191,15 @@ async function enrolledCredentials(config, fleet, resume) {
 }
 
 // Every step before the guardian spawn; `step.summary` names the phase a failure is reported as.
-async function prepareJob({ config, prompt, resume, admissionId, root, directory, binding, record, inputs }, step) {
+async function prepareJob({ config, prompt, resume, admissionId, root, directory, binding, record, inputs, standalone }, step) {
   let sessionId = null;
   let sessionBinding = binding;
+  let speed = config.speed;
   if (resume) {
     step.summary = 'Continuation requires a terminated session with the same job, checkout and gateway binding';
     const continuation = await continuationSession(resume, binding);
     sessionId = continuation.sessionId;
+    if (standalone) speed = continuation.standaloneSpeed ?? 'standard';
     if (continuation.legacySessionHome) {
       // Codex reads the retained thread from the same home on every later resume.
       sessionBinding = legacyBinding(binding);
@@ -207,13 +210,14 @@ async function prepareJob({ config, prompt, resume, admissionId, root, directory
   if (await enrolledCredentials(config, binding.fleet, Boolean(resume)))
     prompt += '\n\nUse the enrolled local companion only as needed for this project. Use `morpheus credentials list`, `morpheus credentials doctor`, or `morpheus credentials run -- <trusted-command>`. Never read secret files or print, copy, or record credential values.';
   const isolated = await gatewayEnv(config, root, sessionBinding, step);
-  const argv = workerArgv(config, sessionId);
+  const argv = workerArgv({ ...config, speed }, sessionId);
   const claude = config.gateway.provider === 'claude';
   if (inputs) {
     const paths = await materializeInputs(root, binding.fleet.attemptId, inputs.manifest, inputs.bytes, resume);
     prompt += privateInputPrompt(config.gateway.provider, paths);
   }
   record.sessionId = sessionId;
+  if (standalone && speed === 'fast') record.standaloneSpeed = speed;
   await atomic(join(directory, 'admission.json'), record);
   const job = {
     runId: admissionId, cwd: config.cwd, argv,
@@ -267,6 +271,7 @@ async function bindCheckout(config, checkout, fleet) {
 async function admittedWorkerConfig(configPath, checkout, fleet, selection) {
   const config = await readWorkerConfig(configPath);
   if (selection !== undefined) Object.assign(config, fleetWorkerRoute(config, selection));
+  else if (fleet) delete config.speed;
   const claude = config.gateway.provider === 'claude';
   if (claude && (!checkout || !z.uuid().safeParse(fleet?.taskId).success || !z.uuid().safeParse(fleet?.attemptId).success ||
       fleet.gatewayBaseUrl !== config.gateway.baseUrl || fleet.source?.checkout !== 'git' || !await enrolledSandbox(config, fleet.source)))
@@ -294,9 +299,10 @@ export async function gatewayWorker(configPath, prompt, resume = null, admission
     return workerResult(admissionId);
   };
   const step = { summary: 'Worker preparation failed; no launch.' };
+  const standalone = !fleet && selection === undefined;
   let isolated;
   try {
-    isolated = await prepareJob({ config, prompt, resume, admissionId, root, directory, binding, record, inputs }, step);
+    isolated = await prepareJob({ config, prompt, resume, admissionId, root, directory, binding, record, inputs, standalone }, step);
   } catch {
     // No guardian spawn has been attempted. Never persist raw resolver/OS errors.
     return neverLaunched('preparation', step.summary);

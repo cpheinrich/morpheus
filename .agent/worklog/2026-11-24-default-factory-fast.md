@@ -23,6 +23,12 @@ Four additional Factory distribution tests passed. Typecheck, compilation,
 and PM indexes passed. The complexity check passed with an advisory on
 the existing Fleet controller dispatch function.
 
+Existing standalone Codex jobs also use the shared gateway worker.
+Their private configuration can select Fast for a fresh job. A continuation
+retains its original speed and session home, and legacy jobs default to
+Standard. The controller matched the supplemental patch to its independent
+Fleet execution receipt before applying it.
+
 ## Governing records
 
 - [Gateway binding and speed isolation](./2026-11-07-bind-factory-gateway-workers.md)

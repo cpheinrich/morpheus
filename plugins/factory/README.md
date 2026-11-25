@@ -763,7 +763,7 @@ launchd job or consumer policy is added. The operator must authorize the service
 and its permissions; possession of a private configuration is its local authority.
 
 Create an owner-only (`0600`) JSON file **outside every checkout**, in a trusted
-operator-controlled directory. All fields are required; unknown fields are refused:
+operator-controlled directory. The fields below are required; unknown fields are refused:
 
 ```json
 {
@@ -784,6 +784,10 @@ operator-controlled directory. All fields are required; unknown fields are refus
   "maxLogBytes": 1048576
 }
 ```
+
+Add `"speed": "fast"` to opt new standalone Codex sessions into Fast. Omit `speed` or use
+`"speed": "standard"` for Standard. A continuation keeps its recorded launch speed, including
+Standard for admissions made before this setting existed.
 
 `cwd` must name the already claimed isolated checkout. The runner canonicalizes it;
 claim lifecycle and independent review are the consumer's responsibility. Independent
@@ -1145,8 +1149,8 @@ required CI and protected delivery. Keep source capture, transport and delivery 
    before an upgrade continue unchanged. Roll out in this order: deploy the service, update
    every eligible Codex worker and execution account, update the controllers so they forward an
    explicit `speed`, then set `codexSpeed`. A worker from an earlier release ignores the
-   recorded speed and runs Standard. The standalone unattended runner has no selection and
-   stays Standard.
+   recorded speed and runs Standard. Fleet launches ignore the host job's standalone `speed`.
+   Standalone jobs default to Standard and can opt into Fast in their private job file.
 
 4. Deploy `factory-pilot` with the runtime service account, an explicit region
    and a pinned image digest. Have an admin disable the Cloud Run Invoker IAM
