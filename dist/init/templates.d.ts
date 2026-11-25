@@ -28,6 +28,8 @@ export declare const firebaseConfig: (rulesPath: string) => string;
  * memory by design, and agents working for collaborators.
  */
 export declare const MORPHEUS_REPO = "https://github.com/cpheinrich/morpheus";
+/** The canonical HQ presentation standard; project repositories rarely carry a copy. */
+export declare const HQ_DESIGN_STANDARD = "https://github.com/cpheinrich/morpheus/blob/main/docs/runbooks/hq-product-design.md";
 /**
  * The callout every project carries, in two registers.
  *
