@@ -8,7 +8,7 @@ import { spawn, execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
 import { homedir } from 'node:os';
-import { home, modelIdPattern, MOVING_MODEL_ALIASES, secretRef, codexPermission, withoutReferencedSecrets } from './config.mjs';
+import { home, modelIdPattern, MOVING_MODEL_ALIASES, secretRef, codexPermission, withoutReferencedSecrets, workerSpeed } from './config.mjs';
 import { checkCodex, codexArgs, codexHandoff, applyCodexEvent } from './codex-exec.mjs';
 import { checkClaude, claudeArgs, applyClaudeEvent } from './claude.mjs';
 import { claudeOverage } from './fleet-claude.mjs';
@@ -72,13 +72,17 @@ export async function readWorkerConfig(path) {
   if (config.fleetClaude) normalizeGateway(config.fleetClaude.gateway);
   return Object.assign(config, { authority });
 }
+// The admitted speed reaches only the launch arguments, never the admission binding, so a
+// task admitted before an upgrade keeps its continuation and session home. Omitted is Standard.
 export function fleetWorkerRoute(config, selection) {
   const route = selection?.provider === 'codex' ? config : config.fleetClaude;
   if (!route || selection?.provider !== route.gateway.provider || selection.gateway !== route.gateway.name || selection.model !== route.model)
     throw new Error('Fleet selection does not match an enrolled worker route');
-  if (selection.provider === 'claude' && ((selection.speed !== undefined && selection.speed !== 'standard') || config.effort === 'none'))
+  const speed = selection.speed ?? 'standard';
+  if (!workerSpeed.safeParse(speed).success) throw new Error('Fleet selection names an unsupported speed');
+  if (selection.provider === 'claude' && (speed !== 'standard' || config.effort === 'none'))
     throw new Error('Fleet Claude requires Standard speed and a supported effort');
-  return { gateway: route.gateway, model: route.model };
+  return { gateway: route.gateway, model: route.model, speed };
 }
 export async function enrolledSandbox(config, source) {
   const { sandbox, authority } = config;

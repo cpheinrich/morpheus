@@ -3580,7 +3580,12 @@ and attempt binding, before settlement. This prevents ordinary writes and rename
 replacements, not deliberate permission changes by a full-access process under the same
 account. It does not automatically include inputs in result artifacts or the dashboard.
 Sub2API selects the upstream account within the provider bound to the task. Codex is
-the existing default. One optional service-wide Claude binding applies to each Git-backed
+the existing default. One optional service-wide Codex speed default stamps Fast into newly
+admitted Codex selections and is the only way Fleet admits Fast; Standard keeps the legacy
+selection, and a replayed submission keeps its recorded speed. Workers apply the recorded
+speed to launch arguments only, outside the continuation binding. A local controller keeps a
+separate operator default for Codex gateway workers; native fallback and Claude stay Standard.
+One optional service-wide Claude binding applies to each Git-backed
 execution grant. Pinned checkouts and viewer grants do not admit Claude tasks. A slot advertises scoped quota for both providers, shares
 one lease and journal between them, and checks quota again before invocation. Windows in the
 same indexed queue let both providers advance; capable slots alternate priority between legacy

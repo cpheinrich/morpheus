@@ -149,6 +149,31 @@ test('gateway-only launch pins args/env, stdin, exact permissions, and correlate
   assert.deepEqual((await json(join(f.cwd,'observed.json'))).argv.slice(0,2),['exec','resume']);
   assert.ok((await json(join(f.cwd,'observed.json'))).argv.includes('session-fixture'));
 });
+test('Fleet selection speed reaches only the Codex launch arguments, never the continuation binding', async t => {
+  const f = await setup(t);
+  const selection = { provider: 'codex', gateway: f.config.gateway.name, model: f.config.model };
+  const launch = (prompt, speed, resume = null) => gatewayWorker(f.configPath, prompt, resume, randomUUID(), undefined, undefined, undefined,
+    speed === undefined ? selection : { ...selection, speed });
+  const observed = async () => (await json(join(f.cwd, 'observed.json'))).argv;
+  const tiers = argv => argv.filter((arg, i) => argv[i - 1] === '-c' && /^(service_tier|features\.fast_mode)/.test(arg));
+  // A task admitted before the speed field launches at Standard, as does an explicit Standard.
+  const legacy = await launch('legacy task');
+  assert.equal(legacy.result.outcome, 'completed');
+  assert.deepEqual(tiers(await observed()), ['service_tier="default"']);
+  await launch('standard task', 'standard');
+  assert.deepEqual(tiers(await observed()), ['service_tier="default"']);
+  const fast = await launch('continue at fast', 'fast', legacy.admissionId);
+  assert.equal(fast.result.outcome, 'completed');
+  assert.deepEqual(fast.binding, legacy.binding);
+  const resumed = await observed();
+  assert.deepEqual(resumed.slice(0, 2), ['exec', 'resume']);
+  assert.ok(resumed.includes('session-fixture'));
+  assert.deepEqual(tiers(resumed), ['service_tier="fast"', 'features.fast_mode=true']);
+  await assert.rejects(launch('unknown speed', 'priority'), /unsupported speed/);
+  // The standalone runner has no selection and keeps Standard.
+  await gatewayWorker(f.configPath, 'standalone');
+  assert.deepEqual(tiers(await observed()), ['service_tier="default"']);
+});
 test('resume reports a typed pre-turn input rejection without copying stderr or the prompt', async t => {
   const f = await setup(t);
   const first = await gatewayWorker(f.configPath, 'first turn');

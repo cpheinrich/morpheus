@@ -49,8 +49,7 @@ export function projectRun({ task, question, pending, receipt, previousAttemptRe
 }
 
 function checkOptions(args) {
-  if (args.effort || args.speed === "fast" ||
-      args.fresh || args.background)
+  if (args.effort || args.fresh || args.background)
     throw new Error("This Fleet route requires enrolled worker settings and an explicitly enrolled repository set.");
 }
 
@@ -80,7 +79,7 @@ async function submit(method, args, authorize) {
       reason: "Local source preflight passed. The service validates enrollment at submission and Studio checks quota before launch." };
   }
   const result = await fleetOperation(args.rootId, {
-    op: "submit", ...target, text: args.prompt, display: args.display, provider: args.provider, model: args.model, messageId: args.messageId ?? randomUUID(),
+    op: "submit", ...target, text: args.prompt, display: args.display, provider: args.provider, model: args.model, speed: args.speed, messageId: args.messageId ?? randomUUID(),
   }, { checkoutPath: args.cwd, checkoutPaths });
   await mkdir(join(home(), "fleet-runs"), { recursive: true, mode: 0o700 });
   await atomic(runPath(result.task.id), { rootId: args.rootId, checkoutPath: args.cwd, checkoutPaths });

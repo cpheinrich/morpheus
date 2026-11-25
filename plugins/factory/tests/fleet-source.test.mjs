@@ -104,6 +104,9 @@ test("a Studio attempt fetches its exact commit, isolates edits, and resumes the
   await assert.rejects(dispatchFleet("inspect", { rootId, cwd: upstream }), /clean linked checkout/);
   const display = { title: "Verify the fixture", summary: "Check the expected source checkout." };
   await assert.rejects(dispatchFleet("delegate", { rootId, cwd: upstream, prompt: "test", display }), /clean linked checkout/);
+  // The service owns Codex speed admission, so the controller no longer refuses Fast itself.
+  await assert.rejects(dispatchFleet("delegate", { rootId, cwd: upstream, prompt: "test", display, speed: "fast" }), /clean linked checkout/);
+  await assert.rejects(dispatchFleet("delegate", { rootId, cwd: upstream, prompt: "test", display, effort: "low" }), /enrolled worker settings/);
 });
 
 test("single-repository Fleet can still check out an unrelated published commit", async (t) => {

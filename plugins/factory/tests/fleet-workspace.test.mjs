@@ -1067,6 +1067,46 @@ test("Fleet preserves a dotted enrolled model and accepts only an exact explicit
   assert.equal((await api.call("submit", { ...input, project: "app.v1", messageId: "invalid-project" })).status, 400);
 });
 
+test("Fleet stamps only the enabled Codex speed and replays each submission's recorded speed", async t => {
+  const f = await fixture(t), api = await service(t, f, {}, true);
+  const enrolled = api.config.projects.app.selection;
+  const input = { project: "app", revision: f.revisions.app, workspace: f.intent, text: "speed fixture" };
+  const submit = (messageId, extra = {}) => api.call("submit", { ...input, messageId, ...extra });
+  const replayOf = ({ value }) => ({ status: 200, value: { task: value.task, replay: true } });
+  const fastRefused = { status: 403, value: { error: "Codex Fast is not enabled for this Fleet enrollment" } };
+  // An enrollment without codexSpeed keeps the legacy Standard selection and refuses Fast.
+  const legacy = await submit("legacy");
+  assert.deepEqual(legacy.value.task.selection, enrolled);
+  assert.deepEqual((await submit("legacy-standard", { speed: "standard" })).value.task.selection, enrolled);
+  assert.deepEqual(await submit("early-fast", { speed: "fast" }), fastRefused);
+  api.config.codexSpeed = "standard";
+  assert.deepEqual(await submit("still-early", { speed: "fast" }), fastRefused);
+  api.config.codexSpeed = "fast";
+  const byDefault = await submit("default-fast");
+  assert.deepEqual(byDefault.value.task.selection, { ...enrolled, speed: "fast" });
+  assert.deepEqual(byDefault.value.task.queuedSlots, ["slot"]);
+  assert.deepEqual((await submit("explicit-fast", { speed: "fast" })).value.task.selection, { ...enrolled, speed: "fast" });
+  assert.deepEqual((await submit("explicit-standard", { speed: "standard" })).value.task.selection, enrolled);
+  // A replay keeps the speed admitted first; a conflicting explicit speed is a different brief.
+  assert.deepEqual(await submit("legacy"), replayOf(legacy));
+  assert.deepEqual(await submit("legacy", { speed: "standard" }), replayOf(legacy));
+  assert.equal((await submit("legacy", { speed: "fast" })).status, 500);
+  delete api.config.codexSpeed;
+  assert.deepEqual(await submit("default-fast"), replayOf(byDefault));
+  assert.deepEqual(await submit("default-fast", { speed: "fast" }), replayOf(byDefault));
+  assert.equal((await submit("default-fast", { speed: "standard" })).status, 500);
+  assert.deepEqual(await submit("after-disable", { speed: "fast" }), fastRefused);
+  // Claude ignores the Codex default and refuses an explicit Fast request.
+  api.config.codexSpeed = "fast";
+  api.config.claudeSelection = { provider: "claude", gateway: "anthropic", model: "claude-test" };
+  for (const [messageId, speed] of [["claude-default"], ["claude-standard", "standard"]])
+    assert.deepEqual((await submit(messageId, { provider: "claude", speed })).value.task.selection, api.config.claudeSelection);
+  assert.deepEqual(await submit("claude-fast", { provider: "claude", speed: "fast" }),
+    { status: 403, value: { error: "Fleet Claude workers run at Standard speed" } });
+  assert.equal((await submit("unknown-speed", { speed: "priority" })).status, 400);
+  assert.equal([...api.db.docs.keys()].filter(path => path.startsWith("factorySubmissions/")).length, 7);
+});
+
 test("every prepared repository refuses tracked and untracked edits before first invocation", async t => {
   const f = await fixture(t);
   const source = { project: "app", checkout: "git", revision: f.revisions.app, workspace: bindWorkspace(f.policy, f.intent) };

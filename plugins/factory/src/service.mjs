@@ -57,6 +57,7 @@ import { identity, ownedProcessState, stopOrphan } from "./processes.mjs";
 import { Viewer } from "./viewer.mjs";
 import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
 import { installationId } from "./installation.mjs";
+import { readCodexSpeed } from "./worker-speed.mjs";
 import { confirmedGroupExit, confirmedTaskCancel, currentAttemptId, rememberContinuation, taskIdForAttempt, taskView, unverifiedTaskCancel } from "./task-model.mjs";
 import {
   editTargets,
@@ -93,7 +94,7 @@ function factoryCodexEffort(config, rootKind, model, requestedEffort, override) 
   const effort = model === "gpt-6.1-sol" && requestedEffort === "none" ? "low" : requestedEffort;
   return rootKind === "claude" ? codexWorkerEffort(config, effort) : codexRootEffort(effort);
 }
-function factoryWorkerSelection(worker, config, rootKind, rootEffort, args = {}) {
+function factoryWorkerSelection(worker, config, rootKind, rootEffort, args = {}, defaultSpeed = "standard") {
   const model = args.model ?? DEFAULT_WORKER_MODELS[worker];
   if (!modelIdPattern.test(model) || MOVING_MODEL_ALIASES.has(model.toLowerCase()))
     throw new Error("Name a fixed worker model or an approved Claude family alias.");
@@ -102,7 +103,16 @@ function factoryWorkerSelection(worker, config, rootKind, rootEffort, args = {})
     ? config.effortMap[requestedEffort ?? "high"]
     : factoryCodexEffort(config, rootKind, model, requestedEffort, args.effort);
   if (requestedEffort && !effort) throw new Error("Unsupported Factory worker effort.");
-  return { model, effort, speed: args.speed ?? "standard" };
+  return { model, effort, speed: args.speed ?? defaultSpeed };
+}
+// The operator's Codex default reaches only a Codex worker behind a configured gateway, so a
+// native fallback and every Claude worker stay Standard. A reply to a recorded run on the same
+// gateway keeps that run's speed, so changing the default never alters a continuation.
+async function defaultWorkerSpeed(worker, decision, replied = null) {
+  if (worker !== "codex" || decision.gateway?.provider !== "codex") return "standard";
+  if (replied?.executor === "codex" && replied.gateway === decision.gateway.name)
+    return replied.selection?.speed ?? "standard";
+  return readCodexSpeed();
 }
 const RECENT_RUN_LIMIT = 5;
 // The route is pinned once per root session, and so is the primary conversation's working
@@ -210,9 +220,9 @@ function continuationReplies({ previous, continuation, worker, decision, args, t
 }
 // A Codex worker runs the coordinator's own model and effort; the sandbox follows the
 // same approval mapping, never wider (full access only for a never-approve task).
-function workerSelection(worker, config, snapshot, args) {
+function workerSelection(worker, config, snapshot, args, defaultSpeed) {
   if (args.factoryDefaults)
-    return factoryWorkerSelection(worker, config, "codex", snapshot.reasoningEffort, args);
+    return factoryWorkerSelection(worker, config, "codex", snapshot.reasoningEffort, args, defaultSpeed);
   return worker === "claude"
     ? modelSelection(config, snapshot, { model: args.model, effort: args.effort })
     : {
@@ -312,9 +322,9 @@ function claudeRootReplies(previous, args, task, config) {
 }
 // A Claude worker inherits the session's own model, effort and permission mode, so
 // it can never be wider than the coordinator.
-function claudeRootSelection(worker, config, session, args) {
+function claudeRootSelection(worker, config, session, args, defaultSpeed) {
   if (args.factoryDefaults)
-    return factoryWorkerSelection(worker, config, "claude", session.effort, args);
+    return factoryWorkerSelection(worker, config, "claude", session.effort, args, defaultSpeed);
   return worker === "codex"
     ? codexSelection(config, session, { model: args.model, effort: args.effort })
     : {
@@ -647,7 +657,8 @@ export class Manager {
     this.assertOneWriter(workspace.dirs, config);
     await this.recoverOrphans(task, workspace.dirs);
     const permissions = permissionMode(snapshot);
-    const selection = workerSelection(worker, config, snapshot, args);
+    const speed = await defaultWorkerSpeed(worker, decision, args.runId ? previous : null);
+    const selection = workerSelection(worker, config, snapshot, args, speed);
     const roots = extraRoots(workspace.map, task.cwd);
     const codexSandbox = worker === "codex" ? codexPermission(permissions, roots) : null;
     const env = await workerEnv(worker, task, decision, config);
@@ -1226,7 +1237,8 @@ export class Manager {
     this.assertOneWriter(workspace.dirs, config);
     await this.recoverOrphans(task, workspace.dirs);
     const roots = extraRoots(workspace.map, task.cwd);
-    const selection = claudeRootSelection(worker, config, session, args);
+    const speed = await defaultWorkerSpeed(worker, decision, args.runId ? previous : null);
+    const selection = claudeRootSelection(worker, config, session, args, speed);
     const permission =
       worker === "codex"
         ? codexPermission(session.permissionMode, roots)
@@ -1403,7 +1415,10 @@ export class Manager {
       : this.claudeInspect(args.rootId, args.provider));
     const rootEffort = codex ? status.snapshot?.reasoningEffort : status.session?.effort;
     const worker = status.route?.executor;
-    if (worker) status.selection = factoryWorkerSelection(worker, await configRead(), args.rootKind, rootEffort);
+    if (worker) {
+      const speed = await defaultWorkerSpeed(worker, status.route);
+      status.selection = factoryWorkerSelection(worker, await configRead(), args.rootKind, rootEffort, {}, speed);
+    }
     return status;
   }
   factoryDelegate(args) {

@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { dashboardMetadata } from "../src/fleet-display.mjs";
-import { delegatedMarker, fleetModel, fleetProvider, home } from "../src/config.mjs";
+import { delegatedMarker, fleetModel, fleetProvider, workerSpeed, home } from "../src/config.mjs";
 import { call } from "../src/client.mjs";
 import { codexRootId } from "./codex-root.mjs";
 
@@ -14,7 +14,7 @@ const task = { taskId: z.string().uuid() };
 const artifact = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/);
 const text = z.string().min(1).max(65536);
 const operation = z.discriminatedUnion("op", [
-  z.object({ op: z.literal("submit"), project: id, revision: z.string().regex(/^[0-9a-f]{40}$/), text, workspace: workspaceIntent.optional(), display: dashboardMetadata, provider: fleetProvider.optional(), model: fleetModel.optional(), messageId: id }),
+  z.object({ op: z.literal("submit"), project: id, revision: z.string().regex(/^[0-9a-f]{40}$/), text, workspace: workspaceIntent.optional(), display: dashboardMetadata, provider: fleetProvider.optional(), model: fleetModel.optional(), speed: workerSpeed.optional(), messageId: id }),
   z.object({ op: z.literal("get"), ...task }),
   z.object({ op: z.literal("readiness"), project: id, provider: fleetProvider.optional() }),
   z.object({ op: z.literal("wait"), ...task }),

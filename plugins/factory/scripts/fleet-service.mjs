@@ -4,7 +4,7 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { z } from "zod";
-import { fleetModel } from "../src/config.mjs";
+import { fleetModel, workerSpeed } from "../src/config.mjs";
 import { createFleetApi, taskWorkspaceLeaseError, validTaskWorkspaceLease } from "../src/fleet-api.mjs";
 import { githubRepository } from "../src/fleet-display.mjs";
 import { fleetObjects } from "../src/fleet-objects.mjs";
@@ -23,6 +23,8 @@ const schema = z.strictObject({
   ])),
   workspaces: z.record(id, workspacePolicy).optional(),
   claudeSelection: z.strictObject({ provider: z.literal("claude"), gateway: id, model: fleetModel }).optional(),
+  // Enable only after every eligible Codex worker runs a release that applies selection speed.
+  codexSpeed: workerSpeed.optional(),
   projects: z.record(id, z.strictObject({
     revision: z.union([z.string().regex(/^[a-f0-9]{40}$/), z.literal("git")]),
     workspaceKey: id,

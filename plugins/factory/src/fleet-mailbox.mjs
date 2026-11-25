@@ -51,7 +51,7 @@ export async function submitTask(db, { contextId, messageId, text, launch, resol
   let validated = false;
   return db.runTransaction(async (transaction) => {
     const prior = await data(transaction, submission);
-    const { eligibleSlots, workspaceKey, workspaceLease, source, selection } = resolveLaunch(Boolean(prior));
+    const { eligibleSlots, workspaceKey, workspaceLease, source, selection } = resolveLaunch(prior?.launch ?? null);
     if (prior) {
       const task = await data(transaction, db.doc(taskPath(prior.taskId)));
       matchContext(task, contextId);
