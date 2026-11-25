@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { defaults } from "../src/config.mjs";
-import { initStore, configWrite, taskRead, atomic, runDir } from "../src/store.mjs";
+import { initStore, configWrite, taskRead, taskWrite, atomic, runDir } from "../src/store.mjs";
 import { Manager, claudeTaskId } from "../src/service.mjs";
 import { readCodexSpeed, writeCodexSpeed } from "../src/worker-speed.mjs";
 
@@ -444,6 +444,7 @@ echo '{"type":"turn.completed","usage":{}}'
     assert.equal(fresh.done.selection.speed, "fast");
     assert.deepEqual(fresh.argv.slice(0, 2), ["exec", "--json"]);
     assert.deepEqual(fresh.tiers, fast);
+    assert.deepEqual((await taskRead(initial.done.threadId)).codexSessionSpeeds, { [primary]: "standard" });
     const resumed = await delegate({ prompt: "Implicit continuation" });
     assert.equal(resumed.done.codexSession, primary);
     assert.equal(resumed.done.selection.speed, "standard");
@@ -453,9 +454,24 @@ echo '{"type":"turn.completed","usage":{}}'
     const overridden = await delegate({ prompt: "Explicit continuation", speed: "fast" });
     assert.deepEqual(overridden.argv.slice(-2), [primary, "-"]);
     assert.deepEqual(overridden.tiers, fast);
-    const { speed, ...legacySelection } = overridden.done.selection;
-    manager.runs.delete(overridden.done.id);
-    await atomic(join(runDir(overridden.done.id), "run.json"), { ...overridden.done, selection: legacySelection });
+    let lastPrimary = overridden.done;
+    if (rootKind === "claude") {
+      await writeCodexSpeed("standard");
+      for (let count = 0; count < 6; count++) await delegate({ prompt: "Isolated launch", fresh: true });
+      const afterPrune = await delegate({ prompt: "Implicit continuation after fresh run history" });
+      const task = await taskRead(claudeTaskId(rootId));
+      assert.equal(task.runIds.includes(overridden.done.id), false);
+      assert.deepEqual(afterPrune.argv.slice(-2), [primary, "-"]);
+      assert.deepEqual(afterPrune.tiers, fast);
+      lastPrimary = afterPrune.done;
+      await writeCodexSpeed("fast");
+    }
+    const task = await taskRead(lastPrimary.threadId);
+    delete task.codexSessionSpeeds;
+    await taskWrite(task);
+    const { speed, ...legacySelection } = lastPrimary.selection;
+    manager.runs.delete(lastPrimary.id);
+    await atomic(join(runDir(lastPrimary.id), "run.json"), { ...lastPrimary, selection: legacySelection });
     const legacy = await delegate({ prompt: "Legacy continuation" });
     assert.equal(legacy.done.selection.speed, "standard");
     assert.deepEqual(legacy.argv.slice(-2), [primary, "-"]);

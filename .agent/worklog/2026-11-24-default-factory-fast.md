@@ -37,6 +37,11 @@ reply speed before posting an answer, and a conflicting stable-ID retry
 returns HTTP 409 so the client can report the error without retrying. Six
 controller-run focused tests cover the corrections.
 
+The follow-up identified a Fast session that could lose its saved speed when
+recent run history was trimmed. The bridge now records the speed with the
+confirmed Codex session. The regression reproduces history trimming before
+resuming the original session, with the worker default reset to Standard.
+
 ## Governing records
 
 - [Gateway binding and speed isolation](./2026-11-07-bind-factory-gateway-workers.md)

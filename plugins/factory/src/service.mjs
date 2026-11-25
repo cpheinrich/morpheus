@@ -114,14 +114,15 @@ async function defaultWorkerSpeed(worker, decision) {
 async function workerLaunchSpeed({ worker, decision, requested, task, codexSession, previous }) {
   if (requested != null) return requested;
   if (!codexSession) return defaultWorkerSpeed(worker, decision);
+  const retainedSpeed = task.codexSessionSpeeds?.[codexSession] ?? "standard";
   const matches = (run) => run?.threadId === task.id && run.codexSession === codexSession;
-  if (matches(previous)) return previous.selection?.speed ?? "standard";
+  if (matches(previous)) return previous.selection?.speed ?? retainedSpeed;
   let latest;
   for (const id of new Set([task.runId, ...(task.runIds ?? [])].filter(Boolean))) {
     const run = await readJSON(join(runDir(id), "run.json"), null);
     if (matches(run) && (!latest || (run.createdAt ?? 0) > (latest.createdAt ?? 0))) latest = run;
   }
-  return latest?.selection?.speed ?? "standard";
+  return latest?.selection?.speed ?? retainedSpeed;
 }
 const RECENT_RUN_LIMIT = 5;
 // The route is pinned once per root session, and so is the primary conversation's working
@@ -905,16 +906,22 @@ export class Manager {
   }
   async codexEvent(run, event) {
     const ended = applyCodexEvent(run, event);
-    if (run.newSession && !run.codexSession) {
-      run.codexSession = run.newSession;
+    const confirmed = event.type === "thread.started" ? event.thread_id : null;
+    const startsSession = confirmed && !run.codexSession;
+    if (startsSession) run.codexSession = confirmed;
+    if (confirmed && confirmed === run.codexSession && !run.fresh) {
       await this.mutateTask(run.threadId, (task) => {
-        if (!run.fresh) {
+        if (startsSession) {
           const key = run.sessionKey ?? sessionKeyFor(run.cwd);
           task.codexSessions = {
             ...task.codexSessions,
-            [key]: run.newSession,
+            [key]: confirmed,
           };
         }
+        task.codexSessionSpeeds = {
+          ...task.codexSessionSpeeds,
+          [confirmed]: run.selection.speed,
+        };
       });
     }
     if (ended) this.send(run, { type: "close" });
