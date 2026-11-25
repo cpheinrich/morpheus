@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { jsonFile } from './files.mjs';
 const exec = promisify(execFile);
+const UDID = /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}$/;
 async function leaseAt(path) {
   try {
     const record = await jsonFile(path);
@@ -67,13 +68,16 @@ export async function observePhone(source,{run=exec,readLease=leaseAt,now=()=>ne
   const read=async args=>JSON.parse((await run('xcrun',['devicectl',...args,'--quiet','--timeout','10','--json-output','-'],{timeout:15000,maxBuffer:262144})).stdout);
   const before=await readLease(source.leasePath);
   if(!source.deviceUdid)return {value:{lease:before.lease,ready:null}};
+  if(!UDID.test(source.deviceUdid))throw new Error('unavailable');
+  // Unrelated CoreDevice rows can exceed maxBuffer; both passive inventory reads use the exact identifier.
+  const inventory=()=>read(['list','devices','--filter',`Identifier = '${source.deviceUdid}'`]);
   let first;
-  try{first=enrolledDevice(await read(['list','devices']),source.deviceUdid);}
+  try{first=enrolledDevice(await inventory(),source.deviceUdid);}
   catch{const after=await readLease(source.leasePath);if(after.lease==='held')return {sourceObservedAt:now().toISOString(),value:{lease:'held',ready:null,state:'busy',reasons:['lease-held']}};throw new Error('unavailable');}
   const priorLock=await readLease(source.leasePath);
   const lock=await lockFacts(first,before,priorLock,source,read);
   let second;
-  try{second=enrolledDevice(await read(['list','devices']),source.deviceUdid);}
+  try{second=enrolledDevice(await inventory(),source.deviceUdid);}
   catch{const after=await readLease(source.leasePath);if(after.lease==='held')return {sourceObservedAt:now().toISOString(),value:{lease:'held',ready:null,state:'busy',reasons:['lease-held']}};throw new Error('unavailable');}
   const after=await readLease(source.leasePath);
   return {sourceObservedAt:now().toISOString(),value:phoneResult(before,priorLock,after,first,second,lock)};

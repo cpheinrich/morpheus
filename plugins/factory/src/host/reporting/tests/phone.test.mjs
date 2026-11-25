@@ -64,3 +64,15 @@ test('a currently valid held lease survives either inventory timeout or malforme
   assert.equal(f.calls.some(c=>c.args[1]==='device'),false);
  }
 });
+test('both passive inventory reads are filtered to the exact enrolled identifier with no broad fallback',async()=>{
+  const f=fixture();await observePhone(source,f.options);
+  const lists=f.calls.filter(c=>c.args[1]==='list');
+  assert.equal(lists.length,2);
+  for(const c of lists)assert.deepEqual(c.args,['devicectl','list','devices','--filter',`Identifier = '${udid}'`,'--quiet','--timeout','10','--json-output','-']);
+  const g=fixture(),base=g.options.run;g.options.run=(c,a)=>{if(a[1]!=='list')return base(c,a);g.calls.push({command:c,args:a});return Promise.reject(Error('maxBuffer'));};
+  await assert.rejects(observePhone(source,g.options));
+  assert.equal(g.calls.length,1);assert.equal(g.calls[0].args[3],'--filter');
+  for(const bad of [`${udid}' OR TRUEPREDICATE OR '`,'not-a-udid']){
+    const h=fixture();await assert.rejects(observePhone({...source,deviceUdid:bad},h.options));assert.equal(h.calls.length,0);
+  }
+});
