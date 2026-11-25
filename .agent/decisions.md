@@ -1,5 +1,15 @@
 # Decisions
 
+## Context MCP accepts explicit same-repository review worktrees — 2026-11-23
+
+MO-26-11-23-12.02.14, issue #691. All five context tools accept an optional absolute
+`worktree`, validated against the launch repository common Git directory and registered
+worktrees. It overrides lookup scope without rebinding the session. Factory pins stay confined
+to the admitted checkout, and hook credit validates the identical target and current source.
+Reuse `checkoutIdentity`, `sessionGit` and native filesystem identity; this is a narrow extension
+of Morpheus scope resolution, with no new generic module or dependency. Cross-repository
+lookup remains outside this change.
+
 ## Unattended Fleet denies native Claude tool requests in the stream — 2026-11-21
 
 [MO-26-11-21-23.37.49](../hq/product/roadmap/MO-26-11-21-23.37.49-refuse-claude-tool-hangs.md).
@@ -2760,3 +2770,16 @@ attaches the ignored symlink on first invocation only; continuation and result r
 require the same enrollment digest and usable link. Independent termination proof remains
 available when a result cannot be restored. This is a Factory-specific extension of the
 existing Zod and Node/Git checks; it adds no package or second credential authority.
+
+
+## Use React Flow for research navigation graphs — 2026-11-23
+
+MO-26-11-23-13.52.55. The existing app study schema supplies screen IDs and
+observed transitions. React Flow supplies read-only selection, navigation and
+viewport controls. Dagre places the recorded routes from left to right. The
+screen list, detail and graph share the viewer's existing selection and URL
+history.
+
+React Flow 13.0.2 is MIT-licensed and supports the React 19 consumer stack. It
+passes the repository's dependency release age check. Dagre 3.1.3 adds the
+layout calculation. The graph module loads separately from the viewer.

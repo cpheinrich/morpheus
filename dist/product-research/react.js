@@ -1,13 +1,26 @@
 "use client";
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Component, lazy, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useFragmentView } from "../ops-desk/react.js";
 import { verifiedResearchLibraryBlob } from "../research-library/client.js";
 import { formatResearchLibraryBytes } from "../research-library/index.js";
 import { APP_RESEARCH_POINT_CANVAS, } from "./index.js";
 const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
-export function ProductResearchViewer({ study, readAsset }) {
+const NavigationGraph = lazy(() => import("./navigation-graph.js"));
+class GraphBoundary extends Component {
+    state = { failed: false };
+    static getDerivedStateFromError() {
+        return { failed: true };
+    }
+    render() {
+        return this.state.failed
+            ? _jsx("p", { className: "app-research-meta", role: "status", children: "The graph could not load. Use the screen list below." })
+            : this.props.children;
+    }
+}
+export function ProductResearchViewer({ study, readAsset, screenMetrics }) {
     const { app } = study;
+    const [reveal, setReveal] = useState();
     const screens = useMemo(() => new Map(app.screens.map((screen) => [screen.id, screen])), [app.screens]);
     const entry = { screen: app.entryScreenId, control: null, restoring: true };
     const { view, navigate } = useFragmentView({
@@ -25,7 +38,8 @@ export function ProductResearchViewer({ study, readAsset }) {
     const reader = useRef(readAsset);
     reader.current = readAsset;
     const read = useMemo(() => (path) => reader.current(path), []);
-    return (_jsxs("div", { className: "app-research", children: [_jsxs("header", { className: "app-research-header", children: [_jsx("h2", { className: "app-research-title", children: app.name }), _jsxs("p", { className: "app-research-meta", children: ["Version ", app.version, " \u00B7 ", _jsx("span", { className: "app-research-badge", children: app.status }), " \u00B7 ", study.device.model, study.device.osVersion ? ` (iOS ${study.device.osVersion})` : "", " \u00B7 captured ", day(study.capturedAt)] }), app.summary ? _jsx("p", { className: "app-research-summary", children: app.summary }) : null] }), _jsxs("div", { className: "app-research-layout", children: [_jsx(ScreenList, { screens: app.screens, selected: screen.id, onSelect: (id) => navigate({ screen: id, control: null }) }), _jsx(ScreenDetail, { study: study, screen: screen, screens: screens, control: view.control, capture: view.capture, restoring: view.restoring, read: read, navigate: navigate }, screen.id)] }), _jsx(StudyNotes, { study: study, read: read })] }));
+    const selectScreen = (id) => navigate({ screen: id, control: null });
+    return (_jsxs("div", { className: "app-research", children: [_jsxs("header", { className: "app-research-header", children: [_jsx("h2", { className: "app-research-title", children: app.name }), _jsxs("p", { className: "app-research-meta", children: ["Version ", app.version, " \u00B7 ", _jsx("span", { className: "app-research-badge", children: app.status }), " \u00B7 ", study.device.model, study.device.osVersion ? ` (iOS ${study.device.osVersion})` : "", " \u00B7 captured ", day(study.capturedAt)] }), app.summary ? _jsx("p", { className: "app-research-summary", children: app.summary }) : null] }), _jsxs("section", { className: "app-research-navigation", "aria-label": "Navigation graph", children: [_jsxs("div", { className: "app-research-graph-heading", children: [_jsx("h3", { className: "app-research-figure-title", children: "Navigation graph" }), _jsx("p", { className: "app-research-meta app-research-zoom-hint", children: "Hold Cmd (Mac) or Ctrl and scroll to zoom." })] }), _jsx(GraphBoundary, { children: _jsx(Suspense, { fallback: _jsx("div", { className: "app-research-graph", children: _jsx("p", { className: "app-research-meta", role: "status", children: "Loading navigation graph\u2026" }) }), children: _jsx(NavigationGraph, { app: app, selected: screen.id, screenMetrics: screenMetrics, onSelect: (id) => { selectScreen(id); setReveal({ id }); } }) }) }, study.studyId)] }), _jsxs("div", { className: "app-research-layout", children: [_jsx(ScreenList, { screens: app.screens, selected: screen.id, reveal: reveal, onSelect: selectScreen }), _jsx(ScreenDetail, { study: study, screen: screen, screens: screens, control: view.control, capture: view.capture, restoring: view.restoring, read: read, navigate: navigate }, screen.id)] }), _jsx(StudyNotes, { study: study, read: read })] }));
 }
 function readView(hash, screens, entry) {
     const params = new URLSearchParams(hash.replace(/^#/, ""));
@@ -36,13 +50,24 @@ function readView(hash, screens, entry) {
     const capture = screen.screenshots.find((shot) => shot.path === params.get("capture"))?.path;
     return { screen: screen.id, control: screen.elements.some((element) => element.id === control) ? control : null, capture };
 }
-function ScreenList({ screens, selected, onSelect }) {
-    const [query, setQuery] = useState("");
+function ScreenList({ screens, selected, reveal, onSelect }) {
+    const [search, setSearch] = useState({ query: "", reveal });
+    const query = search.reveal === reveal ? search.query : "";
     const inputId = useId();
+    const revealedRow = useRef(null);
+    useLayoutEffect(() => {
+        const row = revealedRow.current;
+        const list = row?.closest("ul");
+        if (!reveal || !row || !list)
+            return;
+        const bounds = list.getBoundingClientRect();
+        const target = row.getBoundingClientRect();
+        list.scrollTop += Math.min(0, target.top - bounds.top) + Math.max(0, target.bottom - bounds.bottom);
+    }, [reveal]);
     const needle = query.trim().toLowerCase();
     const matches = needle ? screens.filter((screen) => [screen.title, screen.state, screen.description, ...screen.elements.map((element) => element.label)]
         .some((value) => value.toLowerCase().includes(needle))) : screens;
-    return (_jsxs("nav", { className: "app-research-screens", "aria-label": "Screens", children: [_jsx("label", { className: "app-research-search-label", htmlFor: inputId, children: "Search screens" }), _jsx("input", { id: inputId, className: "app-research-search", type: "search", value: query, onChange: (event) => setQuery(event.target.value) }), _jsxs("p", { className: "app-research-count", "aria-live": "polite", children: [matches.length, " of ", screens.length, " screens"] }), _jsx("ul", { className: "app-research-screen-list", children: matches.map((screen) => (_jsx("li", { children: _jsxs("button", { type: "button", className: "app-research-screen-button", "aria-current": screen.id === selected ? "true" : undefined, onClick: () => onSelect(screen.id), children: [_jsx("span", { className: "app-research-screen-name", children: screen.title }), _jsxs("span", { className: "app-research-screen-state", children: [screen.state, screen.screenshots.length ? "" : " · text only"] })] }) }, screen.id))) })] }));
+    return (_jsxs("nav", { className: "app-research-screens", "aria-label": "Screens", children: [_jsx("label", { className: "app-research-search-label", htmlFor: inputId, children: "Search screens" }), _jsx("input", { id: inputId, className: "app-research-search", type: "search", value: query, onChange: (event) => setSearch({ query: event.target.value, reveal }) }), _jsxs("p", { className: "app-research-count", "aria-live": "polite", children: [matches.length, " of ", screens.length, " screens"] }), _jsx("ul", { className: "app-research-screen-list", children: matches.map((screen) => (_jsx("li", { children: _jsxs("button", { type: "button", className: "app-research-screen-button", "aria-current": screen.id === selected ? "true" : undefined, ref: screen.id === reveal?.id ? revealedRow : undefined, onClick: () => onSelect(screen.id), children: [_jsx("span", { className: "app-research-screen-name", children: screen.title }), _jsxs("span", { className: "app-research-screen-state", children: [screen.state, screen.screenshots.length ? "" : " · text only"] })] }) }, screen.id))) })] }));
 }
 function ScreenDetail({ study, screen, screens, control, capture, restoring, read, navigate }) {
     const [pane, setPane] = useState("wireframe");

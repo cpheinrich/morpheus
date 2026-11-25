@@ -72,14 +72,14 @@ export declare const WebQaEvidenceElement: z.ZodObject<{
         ol: "ol";
         li: "li";
         h2: "h2";
-        nav: "nav";
-        section: "section";
+        ul: "ul";
         aside: "aside";
         details: "details";
         h1: "h1";
         h3: "h3";
+        nav: "nav";
+        section: "section";
         td: "td";
-        ul: "ul";
     }>;
     role: z.ZodOptional<z.ZodEnum<{
         link: "link";
@@ -206,14 +206,14 @@ export declare const WebQaEvidence: z.ZodObject<{
             ol: "ol";
             li: "li";
             h2: "h2";
-            nav: "nav";
-            section: "section";
+            ul: "ul";
             aside: "aside";
             details: "details";
             h1: "h1";
             h3: "h3";
+            nav: "nav";
+            section: "section";
             td: "td";
-            ul: "ul";
         }>;
         role: z.ZodOptional<z.ZodEnum<{
             link: "link";
@@ -359,14 +359,14 @@ export declare const WebQaComment: z.ZodObject<{
                 ol: "ol";
                 li: "li";
                 h2: "h2";
-                nav: "nav";
-                section: "section";
+                ul: "ul";
                 aside: "aside";
                 details: "details";
                 h1: "h1";
                 h3: "h3";
+                nav: "nav";
+                section: "section";
                 td: "td";
-                ul: "ul";
             }>;
             role: z.ZodOptional<z.ZodEnum<{
                 link: "link";
@@ -516,14 +516,14 @@ export declare const WebQaBatch: z.ZodObject<{
                     ol: "ol";
                     li: "li";
                     h2: "h2";
-                    nav: "nav";
-                    section: "section";
+                    ul: "ul";
                     aside: "aside";
                     details: "details";
                     h1: "h1";
                     h3: "h3";
+                    nav: "nav";
+                    section: "section";
                     td: "td";
-                    ul: "ul";
                 }>;
                 role: z.ZodOptional<z.ZodEnum<{
                     link: "link";
@@ -640,7 +640,7 @@ export declare function parseWebQaBatch(value: unknown): z.ZodSafeParseResult<{
             };
             dpr?: number | undefined;
             elements?: {
-                tag: "main" | "a" | "summary" | "other" | "body" | "label" | "dialog" | "span" | "header" | "footer" | "button" | "article" | "form" | "img" | "table" | "div" | "p" | "ol" | "li" | "h2" | "nav" | "section" | "aside" | "details" | "h1" | "h3" | "td" | "ul";
+                tag: "main" | "a" | "summary" | "other" | "body" | "label" | "dialog" | "span" | "header" | "footer" | "button" | "article" | "form" | "img" | "table" | "div" | "p" | "ol" | "li" | "h2" | "ul" | "aside" | "details" | "h1" | "h3" | "nav" | "section" | "td";
                 position: "fixed" | "static" | "relative" | "absolute" | "sticky";
                 width: number;
                 height: number;

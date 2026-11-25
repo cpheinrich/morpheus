@@ -91,6 +91,7 @@ describe("the reusable project-skill registry", () => {
       "motion-design-exploration",
       "comment-qa",
       "morpheus-swift-packages",
+      "ios-capture-refresh",
       "meeting-intake",
       "agentic-cto",
       "research-engineer",
@@ -117,6 +118,12 @@ describe("the reusable project-skill registry", () => {
       expect(skill.description.length).toBeGreaterThan(0);
       expect(skill.description.length).toBeLessThanOrEqual(1024);
     }
+  });
+
+  it("distributes the exact canonical iOS capture refresh instructions", async () => {
+    const skill = PROJECT_SKILLS.find(({ name }) => name === "ios-capture-refresh");
+    const path = projectSkillPath("agents", "ios-capture-refresh");
+    expect(skill?.render()).toBe(await readFile(join(REPO, path), "utf8"));
   });
 
   it.each(["company", "personal", "internal"] as const)(
@@ -236,7 +243,7 @@ describe("project-skill synchronization", () => {
       await writeFile(join(root, "morpheus.json"), '{"kind":"internal"}\n');
       expect(await syncProjectSkillEntrypoints(root, false)).toBe(0);
       expect(error).not.toHaveBeenCalled();
-      expect(log.mock.calls.flat().join(" ")).toContain("Created 19 Morpheus project skill");
+      expect(log.mock.calls.flat().join(" ")).toContain("Created 20 Morpheus project skill");
     } finally {
       error.mockRestore();
       log.mockRestore();
@@ -256,7 +263,7 @@ describe("morpheus skills list", () => {
 
     const defaultCommand = await cli("skills");
     expect(defaultCommand.code).toBe(0);
-    expect(defaultCommand.out).toContain("Morpheus project skills (12)");
+    expect(defaultCommand.out).toContain("Morpheus project skills (13)");
     expect(defaultCommand.out).toContain("morpheus skills sync");
   });
 

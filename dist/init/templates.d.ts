@@ -170,6 +170,8 @@ export declare const gitignore: () => string;
  * after that handoff has been archived or revised.
  */
 export declare const brandReviewSkill: () => string;
+/** Managed instructions for refreshing a private iOS capture study. */
+export declare const iosCaptureRefreshSkill: () => string;
 /**
  * A project-generic, reusable Codex motion-concept review procedure.
  *
