@@ -5,7 +5,7 @@ set -euo pipefail
 export TAILSCALE_BE_CLI=1
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
-usage() { printf '%s\n' 'Usage: setup-tailscale.sh --tag tag:NAME [--check]' >&2; exit 2; }
+usage() { printf '%s\n' 'Usage: setup-tailscale.sh --tag tag:NAME [--check] or setup-tailscale.sh --check' >&2; exit 2; }
 tag=""
 check=0
 while (($#)); do
@@ -15,7 +15,7 @@ while (($#)); do
     *) usage ;;
   esac
 done
-[[ -n "$tag" ]] || usage
+[[ -n "$tag" || "$check" == 1 ]] || usage
 [[ "$(uname -s)" == Darwin ]] || die "This installer supports macOS hosts."
 command -v python3 >/dev/null || die "python3 is required to check Tailscale enrollment."
 
@@ -60,15 +60,19 @@ if status.get("BackendState") == "Running" and node.get("ID"):
         print("tagged")
     else:
         print("connected")
-elif status.get("BackendState") == "NeedsLogin" and not node.get("ID") and not status.get("CurrentTailnet"):
+elif (status.get("BackendState") == "NeedsLogin" and status.get("HaveNodeKey") is False
+      and not node.get("ID") and not status.get("CurrentTailnet")):
     print("enroll")
 else:
     print("unavailable")
 ' "$tag"
 }
 
-case "$(read_enrollment "$status")" in
+enrollment=$(read_enrollment "$status") || die "Could not read Tailscale enrollment."
+case "$enrollment" in
   tagged|connected)
+    [[ "$enrollment" == tagged || -z "$tag" ]] ||
+      die "The existing Tailscale device does not have the requested tag. Verify its access policy before changing its identity."
     printf '%s\n' 'Tailscale is running with device key expiry disabled.'
     exit 0 ;;
   expiring)

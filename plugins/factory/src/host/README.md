@@ -54,14 +54,16 @@ non-expiring device keys the default when it enrolls a new tagged host:
 ```sh
 bash worker/setup.sh --tailscale-tag tag:ci
 bash scripts/setup-sub2api.sh --tailscale-tag tag:gateway
-bash scripts/setup-tailscale.sh --tag tag:ci --check
+bash scripts/setup-tailscale.sh --check  # or add --tag tag:ci to verify the host role
 ```
 
 For unattended enrollment, set `TAILSCALE_AUTH_KEY_FILE` to an absolute path to a one-time tagged
 auth key supplied through the operator's credential mechanism. Otherwise open the sign-in URL
 shown by the CLI and authorize the requested tag. Setup verifies the tag and disabled expiry
-after enrollment. An already-connected device keeps its identity, and an expiring device
-requires an explicit change to its existing record through the Tailscale admin console or API.
+after enrollment. The tagged setup leaves existing identities in place and stops if a device
+has a different tag or a saved key that needs reauthentication. Use `--check` without a tag
+to verify expiry on an existing device. Changing an existing device's expiry requires an
+explicit change in the Tailscale admin console or API.
 The helper can install the Homebrew command-line variant and start its root service on a new
 Mac. A Mac using the Tailscale app keeps using that app.
 

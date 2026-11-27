@@ -57,9 +57,9 @@ case "$1" in
   status)
     test -f "$FIXTURE_ROOT/daemon"
     case "$(cat "$FIXTURE_ROOT/state")" in
-      enroll) printf '%s\\n' '{"BackendState":"NeedsLogin","Self":{"ID":""},"CurrentTailnet":null}' ;;
+      enroll) printf '%s\\n' '{"BackendState":"NeedsLogin","HaveNodeKey":false,"Self":{"ID":""},"CurrentTailnet":null}' ;;
       expiring) printf '%s\\n' '{"BackendState":"Running","Self":{"ID":"nFixture","KeyExpiry":"2030-01-01T00:00:00Z"}}' ;;
-      blocked) printf '%s\\n' '{"BackendState":"NeedsLogin","Self":{"ID":"nExisting"},"CurrentTailnet":null}' ;;
+      blocked) printf '%s\\n' '{"BackendState":"NeedsLogin","HaveNodeKey":true,"Self":{"ID":""},"CurrentTailnet":null}' ;;
       tagged) printf '%s\\n' '{"BackendState":"Running","Self":{"ID":"nFixture","Tags":["tag:ci"]}}' ;;
       connected) printf '%s\\n' '{"BackendState":"Running","Self":{"ID":"nFixture","KeyExpiry":null}}' ;;
       *) exit 82 ;;
@@ -76,9 +76,10 @@ esac
         (self.root / "daemon").touch()
         (self.bin / "tailscale").symlink_to(self.root / "tailscale-fixture")
 
-    def run_setup(self, *args, **env):
+    def run_setup(self, *args, require_tag=True, **env):
+        tag_args = ["--tag", "tag:ci"] if require_tag else []
         return subprocess.run(
-            ["/bin/bash", str(self.setup), "--tag", "tag:ci", *args],
+            ["/bin/bash", str(self.setup), *tag_args, *args],
             env={**self.env, **env}, capture_output=True, text=True, timeout=15,
         )
 
@@ -105,15 +106,20 @@ esac
 
     def test_existing_connections_keep_their_identity(self):
         self.install_fixture("connected")
-        result = self.run_setup("--check")
+        result = self.run_setup("--check", require_tag=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("device key expiry disabled", result.stdout)
+        mismatch = self.run_setup()
+        self.assertEqual(mismatch.returncode, 1)
+        self.assertIn("existing Tailscale device does not have the requested tag", mismatch.stderr)
         self.state.write_text("expiring")
         refusal = self.run_setup()
         self.assertEqual(refusal.returncode, 1)
         self.assertIn("existing Tailscale device has key expiry enabled", refusal.stderr)
         self.state.write_text("blocked")
-        self.assertEqual(self.run_setup().returncode, 1)
+        retained = self.run_setup(TAILSCALE_AUTH_KEY_FILE=str(self.root / "unreadable-key"))
+        self.assertEqual(retained.returncode, 1)
+        self.assertIn("Could not verify Tailscale enrollment", retained.stderr)
         self.assertEqual(self.log.read_text(), "")
 
     def test_enrollment_requires_both_requested_tag_and_disabled_expiry(self):
@@ -124,6 +130,10 @@ esac
                 result = self.run_setup(FIXTURE_AFTER=state)
                 self.assertEqual(result.returncode, 1)
                 self.assertIn("did not confirm the requested tag and disabled key expiry", result.stderr)
+                log = self.log.read_text()
+                self.assertEqual(self.run_setup().returncode, 1)
+                self.assertEqual(self.run_setup("--check").returncode, 1)
+                self.assertEqual(self.log.read_text(), log)
 
 
 if __name__ == "__main__":
