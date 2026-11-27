@@ -14,7 +14,7 @@ removed and fixtures replaced by synthetic values.
 | `worker/` | Worker setup, per-host Xcode update controller, runner and LaunchAgent installers |
 | `worker/host_config.py` | The one boundary for the private host manifest |
 | `fleet/` | Cross-repository Xcode pin coordinator and scoped GitHub auth |
-| `scripts/` | Storage watchdog, worktree cleanup, sub2api gateway install |
+| `scripts/` | Storage watchdog, worktree cleanup, sub2api gateway install and Tailscale enrollment |
 | `docs/` | Design, host updates, storage policy, sub2api runbook |
 | `examples/` | Synthetic catalog and host manifest |
 | `tests/` | Vitest (`core/`) and unittest (everything else) |
@@ -45,6 +45,28 @@ python3 worker/install_updates.py --host <host> --github-user <login>   # hourly
 python3 worker/install_updates.py --rollback                           # restore the previous tick
 scripts/setup-sub2api.sh           # sub2api gateway (Docker), see docs/sub2api.md
 ```
+
+### Tailscale on managed Macs
+
+Use an existing tailnet tag whose grants cover the worker or gateway. Each installer makes
+non-expiring device keys the default when it enrolls a new tagged host:
+
+```sh
+bash worker/setup.sh --tailscale-tag tag:ci
+bash scripts/setup-sub2api.sh --tailscale-tag tag:gateway
+bash scripts/setup-tailscale.sh --tag tag:ci --check
+```
+
+For unattended enrollment, set `TAILSCALE_AUTH_KEY_FILE` to an absolute path to a one-time tagged
+auth key supplied through the operator's credential mechanism. Otherwise open the sign-in URL
+shown by the CLI and authorize the requested tag. Setup verifies the tag and disabled expiry
+after enrollment. An already-connected device keeps its identity, and an expiring device
+requires an explicit change to its existing record through the Tailscale admin console or API.
+The helper can install the Homebrew command-line variant and start its root service on a new
+Mac. A Mac using the Tailscale app keeps using that app.
+
+See [Tailscale device tags](https://tailscale.com/docs/features/tags) and
+[Tailscale key expiry](https://tailscale.com/docs/features/access-control/key-expiry).
 
 Rules carried over: no secrets in files, specs or logs (`core/config.ts` rejects a
 key-shaped `keyRef`); refusals are data; placement stays pure; fail closed on unknown quota.

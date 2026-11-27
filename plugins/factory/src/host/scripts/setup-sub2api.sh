@@ -8,7 +8,7 @@
 # override file. Upgrading is a deliberate edit of the pins below.
 #
 # Usage:
-#   scripts/setup-sub2api.sh [DEPLOY_DIR]
+#   scripts/setup-sub2api.sh [--tailscale-tag tag:NAME] [DEPLOY_DIR]
 #
 # DEPLOY_DIR defaults to ~/sub2api-deploy. It holds the compose files, the .env
 # (secrets) and the data directories — deliberately OUTSIDE the repo, because
@@ -26,6 +26,13 @@ if ! docker compose version >/dev/null 2>&1; then
   echo "  brew install docker-compose" >&2
   echo "  # then add cliPluginsExtraDirs to ~/.docker/config.json (see brew caveats)" >&2
   exit 1
+fi
+
+if [[ "${1:-}" == --tailscale-tag ]]; then
+  [[ "${2:-}" =~ ^tag:[A-Za-z][A-Za-z0-9-]*$ ]] || { echo "--tailscale-tag needs a valid tag:NAME" >&2; exit 2; }
+  scripts_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  bash "$scripts_dir/setup-tailscale.sh" --tag "$2"
+  shift 2
 fi
 
 DEPLOY_DIR="${1:-$HOME/sub2api-deploy}"
