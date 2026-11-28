@@ -50,8 +50,8 @@ exit 1
         self.script.write_text(patched)
         self.script.chmod(0o755)
 
-    def run_setup(self, **extra):
-        return subprocess.run(["bash", str(self.script), str(self.deploy)], env={**self.env, **extra},
+    def run_setup(self, *args, **extra):
+        return subprocess.run(["bash", str(self.script), *args, str(self.deploy)], env={**self.env, **extra},
                               capture_output=True, text=True)
 
     def env_value(self, name):
@@ -59,6 +59,17 @@ exit 1
             if line.startswith(name + "="):
                 return line.split("=", 1)[1]
         self.fail(f"{name} missing from .env")
+
+    def test_gateway_enrollment_uses_shared_tailscale_helper_before_install(self):
+        helper = self.root / "setup-tailscale.sh"
+        helper.write_text("""#!/bin/bash
+printf 'helper %s\\n' "$*" >> "$FIXTURE_LOG"
+exit 23
+""")
+        result = self.run_setup("--tailscale-tag", "tag:gateway", FIXTURE_LOG=str(self.log))
+        self.assertEqual(result.returncode, 23, result.stdout + result.stderr)
+        self.assertIn("helper --tag tag:gateway", self.log.read_text())
+        self.assertFalse(self.deploy.exists())
 
     def test_fresh_install_never_prints_secrets_and_locks_env(self):
         result = self.run_setup()

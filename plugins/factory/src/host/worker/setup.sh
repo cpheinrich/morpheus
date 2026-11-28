@@ -7,10 +7,14 @@ set -euo pipefail
 FACTORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKER_CODE_ROOT="$HOME/code"
 WORKER_CHECK_ONLY=0
+tailscale_tag=""
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 while (($#)); do
   case "$1" in
     --check) WORKER_CHECK_ONLY=1; shift ;;
+    --tailscale-tag)
+      [[ "${2:-}" =~ ^tag:[A-Za-z][A-Za-z0-9-]*$ ]] || { echo "--tailscale-tag needs a valid tag:NAME" >&2; exit 2; }
+      tailscale_tag="$2"; shift 2 ;;
     --code-root) [[ $# -ge 2 ]] || { echo "Missing value for --code-root" >&2; exit 2; }; WORKER_CODE_ROOT="$2"; shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -22,6 +26,11 @@ export FACTORY_ROOT WORKER_CODE_ROOT WORKER_CHECK_ONLY
 for stage in prerequisites apps tools root-helper source morpheus spotlight factory cleanup; do
   echo "== $stage"
   bash "$FACTORY_ROOT/worker/setup/$stage.sh"
+  if [[ "$stage" == tools && -n "$tailscale_tag" ]]; then
+    tailscale_args=(--tag "$tailscale_tag")
+    if ((WORKER_CHECK_ONLY)); then tailscale_args+=(--check); fi
+    bash "$FACTORY_ROOT/scripts/setup-tailscale.sh" "${tailscale_args[@]}"
+  fi
 done
 
 if ((WORKER_CHECK_ONLY)); then
